@@ -9,6 +9,11 @@ qualifies a subject for an unattended wake, without inventing work when the
 universe is quiet.
 
 Priority (soak-aligned):
+  0. one subject with an unanswered operator turn on that same subject
+     (role=operator, subject_guid set, not an approval callback, not already
+     receipted with a non-none effect). Newest turn wins. One slot is reserved
+     even when research would fill the limit. A turn is never attached to a
+     different subject.
   1. subjects with unconsumed research (ResearchObject lacking a non-none
      AgentConsumptionReceipt@v2 for this agent)
   2. InstrumentRecord subjects that are cadence-due (HELD/WATCH/EXIT) — closes
@@ -35,6 +40,7 @@ DEFAULT_LIMIT = 3
 # consumed; it is held for a documented reevaluation interval.
 MATERIAL_CHANGE_REEVAL_HOURS = 24
 
+SOURCE_OPERATOR_TURN = "operator_turn"
 SOURCE_UNCONSUMED_RESEARCH = "unconsumed_research"
 SOURCE_INSTRUMENT_RECORD = "instrument_record_due"
 SOURCE_MATERIAL_CHANGE = "material_change"
@@ -96,6 +102,89 @@ def _load_jsonl(path: Path | str | None) -> list[dict]:
         import json
         rows.append(json.loads(line))
     return rows
+
+
+def operator_turn_is_consumed(
+    *,
+    agent_id: str,
+    turn_id: str,
+    receipts: Iterable[dict],
+) -> bool:
+    """True when this agent already receipted this turn with a real effect.
+
+    effect_kind='none' does not count. An unanswered question stays eligible
+    until a wake actually changes the question or the desk has answered it.
+    """
+    for r in receipts:
+        if str(r.get("agent_id")) != str(agent_id):
+            continue
+        if str(r.get("source_kind")) != "operator_turn":
+            continue
+        if str(r.get("source_id")) != str(turn_id):
+            continue
+        if str(r.get("effect_kind") or "none") != "none":
+            return True
+    return False
+
+
+def operator_turn_candidates(
+    turns: Iterable[dict],
+    *,
+    agent_id: str,
+    receipts: Iterable[dict],
+) -> list[SubjectCandidate]:
+    """Newest unanswered operator turn per subject, newest subject first.
+
+    Skips approval callbacks, non-operator roles, rows with no subject_guid,
+    and turns already consumed. The subject on the candidate is the turn's
+    own subject_guid.
+    """
+    from scripts.lib.wake_comms_history import is_approval_callback
+
+    eligible: list[tuple[datetime, str, str]] = []
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+        if str(turn.get("role") or "operator") != "operator":
+            continue
+        if turn.get("answered"):
+            continue
+        if is_approval_callback(turn):
+            continue
+        subject = str(turn.get("subject_guid") or "").strip()
+        turn_id = str(turn.get("turn_id") or turn.get("id") or "").strip()
+        if not subject or not turn_id or turn_id == "None":
+            continue
+        if operator_turn_is_consumed(agent_id=agent_id, turn_id=turn_id, receipts=receipts):
+            continue
+        at = _parse_ts(turn.get("occurred_at") or turn.get("created_at"))
+        eligible.append((at or datetime.min.replace(tzinfo=timezone.utc), turn_id, subject))
+
+    def _id_key(turn_id: str) -> tuple:
+        try:
+            return (0, int(turn_id))
+        except ValueError:
+            return (1, turn_id)
+
+    eligible.sort(key=lambda row: (row[0], _id_key(row[1])), reverse=True)
+    seen: set[str] = set()
+    out: list[SubjectCandidate] = []
+    for at, turn_id, subject in eligible:
+        if subject in seen:
+            continue
+        seen.add(subject)
+        observed = None
+        if at.year > 1970:
+            observed = at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        out.append(
+            SubjectCandidate(
+                subject_guid=subject,
+                source=SOURCE_OPERATOR_TURN,
+                source_id=turn_id,
+                observed_at=observed,
+            )
+        )
+    return out
 
 
 def research_is_consumed(
@@ -257,6 +346,31 @@ def instrument_record_candidates(
     return out
 
 
+def _order_with_instrument_reservation(
+    research_candidates: list[SubjectCandidate],
+    ir_candidates: list[SubjectCandidate],
+    material_candidates: list[SubjectCandidate],
+    limit: int,
+) -> list[SubjectCandidate]:
+    """Research first, then due records, then material changes.
+
+    When research alone would fill ``limit`` and a record is due, one slot
+    stays with the least-recently-woken due record.
+    """
+    if limit <= 0:
+        return []
+    ordered = research_candidates + ir_candidates + material_candidates
+    if ir_candidates and len(research_candidates) >= limit and limit > 1:
+        ordered = (
+            research_candidates[: limit - 1]
+            + ir_candidates[:1]
+            + research_candidates[limit - 1:]
+            + ir_candidates[1:]
+            + material_candidates
+        )
+    return ordered[:limit]
+
+
 def select_subjects(
     agent_id: str,
     *,
@@ -266,6 +380,7 @@ def select_subjects(
     receipts: Iterable[dict] | None = None,
     material_changes: Iterable[dict] | None = None,
     instrument_records: Iterable[dict] | None = None,
+    operator_turns: Iterable[dict] | None = None,
     guid_for_symbol: Callable[[str], str | None] | None = None,
     recent_hours: float = DEFAULT_RECENT_HOURS,
     material_change_reeval_hours: float = MATERIAL_CHANGE_REEVAL_HOURS,
@@ -282,6 +397,7 @@ def select_subjects(
     receipts = list(receipts or [])
     material_changes = list(material_changes or [])
     instrument_records = list(instrument_records or [])
+    operator_turns = list(operator_turns or [])
 
     # --- priority a: unconsumed research ---
     research_candidates: list[SubjectCandidate] = []
@@ -383,23 +499,68 @@ def select_subjects(
         key=lambda c: (c.subject_guid, c.source_id),
     )
 
-    ordered = research_candidates + ir_candidates + material_candidates
     # R1 (agentic-memory tranche 1, 2026-09-24): with research first and
     # limit=3, the last 200 hourly wakes were 200/200 unconsumed_research and
     # 0 instrument_record_due while 37 of 52 HELD/WATCH/EXIT records were due.
     # When research alone would fill every slot and a record is due, one slot
     # is reserved for the least-recently-woken due record so the cadence path
     # is never starved and does not stick to whichever record sorts first.
-    # Ordering inside each source is otherwise unchanged (deterministic).
-    if ir_candidates and len(research_candidates) >= limit and limit > 1:
-        ordered = (
-            research_candidates[: limit - 1]
-            + ir_candidates[:1]
-            + research_candidates[limit - 1:]
-            + ir_candidates[1:]
-            + material_candidates
+    # An unanswered operator turn is the same kind of starvation in the other
+    # direction: research filled every slot, so a turn after 2026-09-29 never
+    # became a subject. One slot, the newest eligible turn, is reserved first.
+    # The remaining slots keep the research / record reservation.
+    op_candidates = operator_turn_candidates(
+        operator_turns, agent_id=agent_id, receipts=receipts
+    )
+    op_chosen = op_candidates[:1] if limit >= 1 else []
+    op_subjects = {c.subject_guid for c in op_chosen}
+    if op_subjects:
+        research_candidates = [
+            c for c in research_candidates if c.subject_guid not in op_subjects
+        ]
+        ir_candidates = [c for c in ir_candidates if c.subject_guid not in op_subjects]
+        material_candidates = [
+            c for c in material_candidates if c.subject_guid not in op_subjects
+        ]
+    rest_limit = limit - len(op_chosen)
+    return (
+        op_chosen
+        + _order_with_instrument_reservation(
+            research_candidates, ir_candidates, material_candidates, rest_limit
         )
-    return ordered[:limit]
+    )[:limit]
+
+
+def _load_operator_turns(env: dict) -> list[dict]:
+    """Operator rows for subject selection. Missing data is an empty list.
+
+    A JSONL path wins when set (tests and replays). Otherwise the read-only
+    comms query is used. Either path failing leaves the other wake sources
+    to run; a selector must not die because history is down.
+    """
+    path = env.get("TRADEAI_WAKE_OPERATOR_TURNS_PATH")
+    if path:
+        try:
+            return _load_jsonl(path)
+        except Exception:
+            return []
+    try:
+        from scripts.lib.wake_comms_history import DbCommsHistory
+
+        rows = DbCommsHistory().recent_operator_turns(limit=50)
+    except Exception:
+        rows = []
+    # The read is already in memory. Release it before the wake does anything
+    # slow; this connection is the shared thread-local one.
+    try:
+        from db_adapter import get_connection
+
+        conn = get_connection()
+        if conn is not None:
+            conn.rollback()
+    except Exception:
+        pass
+    return rows
 
 
 def load_selection_inputs(env: dict | None = None) -> dict[str, list[dict]]:
@@ -410,6 +571,9 @@ def load_selection_inputs(env: dict | None = None) -> dict[str, list[dict]]:
       TRADEAI_WAKE_RECEIPTS_PATH
       TRADEAI_WAKE_MATERIAL_CHANGES_PATH
       TRADEAI_WAKE_INSTRUMENT_RECORDS_PATH
+      TRADEAI_WAKE_OPERATOR_TURNS_PATH
+
+    Operator turns fall back to a read-only query when that path is unset.
     """
     e = env if env is not None else {}
     ir_path = e.get("TRADEAI_WAKE_INSTRUMENT_RECORDS_PATH")
@@ -428,6 +592,7 @@ def load_selection_inputs(env: dict | None = None) -> dict[str, list[dict]]:
         "receipts": _load_jsonl(e.get("TRADEAI_WAKE_RECEIPTS_PATH")),
         "material_changes": _load_jsonl(e.get("TRADEAI_WAKE_MATERIAL_CHANGES_PATH")),
         "instrument_records": _load_jsonl(ir_path),
+        "operator_turns": _load_operator_turns(e),
     }
 
 
@@ -436,9 +601,12 @@ __all__ = [
     "DEFAULT_LIMIT",
     "DEFAULT_RECENT_HOURS",
     "MATERIAL_CHANGE_REEVAL_HOURS",
+    "SOURCE_OPERATOR_TURN",
     "SOURCE_UNCONSUMED_RESEARCH",
     "SOURCE_INSTRUMENT_RECORD",
     "SOURCE_MATERIAL_CHANGE",
+    "operator_turn_is_consumed",
+    "operator_turn_candidates",
     "research_is_consumed",
     "material_change_is_suppressed",
     "instrument_record_candidates",

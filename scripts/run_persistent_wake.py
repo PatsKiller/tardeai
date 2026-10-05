@@ -523,6 +523,7 @@ def run_once(
     research_objects: list[dict] | None = None,
     receipts: list[dict] | None = None,
     material_changes: list[dict] | None = None,
+    operator_turns: list[dict] | None = None,
 ) -> int:
     """Resolve subject(s) and process the current schedule slot.
 
@@ -588,6 +589,7 @@ def run_once(
             "receipts": receipts,
             "material_changes": material_changes,
             "instrument_records": None,
+            "operator_turns": operator_turns,
         }
         if (
             inputs["research_objects"] is None
@@ -595,6 +597,8 @@ def run_once(
             and inputs["material_changes"] is None
         ):
             loaded = load_selection_inputs(env)
+            if operator_turns is not None:
+                loaded["operator_turns"] = operator_turns
             inputs = loaded
         # Union feed receipts with receipts this agent already emitted so a
         # subject consumed in an earlier slot is not selected again. Without
@@ -608,6 +612,7 @@ def run_once(
             receipts=inputs.get("receipts") or [],
             material_changes=inputs.get("material_changes") or [],
             instrument_records=inputs.get("instrument_records") or [],
+            operator_turns=inputs.get("operator_turns") or [],
         )
         if not selection_meta:
             _emit({

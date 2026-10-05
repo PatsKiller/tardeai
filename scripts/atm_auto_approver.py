@@ -122,19 +122,45 @@ def _account_automation_mode(conn, account):
         return None
 
 
+def release_read_before_http(conn) -> None:
+    """End a read transaction before quote or broker HTTP.
+
+    rollback, not commit: the reads must not be published. An open transaction
+    across that HTTP is killed at idle_in_transaction_session_timeout (120s),
+    and the next use of the caller's cursor raises 'cursor already closed'.
+    """
+    if conn is None:
+        return
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+
+
+def _live_conn_cursor(conn):
+    """Open a cursor on a connection that can still execute.
+
+    _log_decision commits, and a reconnect replaces the connection. Either one
+    leaves the cursor the caller was holding closed. Writers after a decision
+    must use the cursor returned here.
+    """
+    if conn is None or getattr(conn, "closed", 1):
+        conn = get_connection()
+    return conn, conn.cursor()
+
+
 def _log_decision(conn, proposal_id, symbol, strategy_id, target_account,
                   account_broker, account_mode, decision, rejection_reasons,
                   classifier_health, positions_open_account, positions_open_total,
                   new_today_account, new_today_total, daily_pnl_pct_account,
                   daily_pnl_pct_aggregate, b1_excluded, config_hash, atm_mode,
-                  trade_id=None) -> int:
+                  trade_id=None):
     # Self-heal: the shared db_adapter connection can be dropped during long approval / LLM
     # calls (DB idle timeout). A cached reference then reads 'connection already closed'.
     # db_adapter.get_connection() transparently reconnects the global if it's closed.
-    if conn is None or getattr(conn, "closed", 0):
-        from db_adapter import get_connection
-        conn = get_connection()
-    cur = conn.cursor()
+    # Commit invalidates the caller's cursor, so return the connection actually used.
+    # Callers that write afterwards must open a new cursor via _live_conn_cursor.
+    conn, cur = _live_conn_cursor(conn)
     cur.execute("""
         INSERT INTO atm_decision_log
             (proposal_id, symbol, strategy_id, target_account,
@@ -152,7 +178,7 @@ def _log_decision(conn, proposal_id, symbol, strategy_id, target_account,
           daily_pnl_pct_aggregate, b1_excluded, config_hash, atm_mode, trade_id))
     did = cur.fetchone()[0]
     conn.commit()
-    return did
+    return did, conn
 
 
 def _count_positions(conn, account_label: str) -> int:
@@ -773,13 +799,15 @@ def _run_cycle_locked():
 
             if reasons:
                 decision = "rejected" if mode == "active" else "dry_run_rejected"
-                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                _, conn = _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
                              decision, reasons, health, pos_open, pos_total,
                              new_today, new_total, pnl_acct, total_pnl_pct,
                              b1_flag, config_hash, mode)
-                # Actually reject the proposal so it stops re-alerting
+                # Actually reject the proposal so it stops re-alerting.
+                # The decision commit closed the cursor this loop was holding.
                 if mode == "active":
                     _reason_text = ", ".join(r["gate"] for r in reasons)
+                    conn, cur = _live_conn_cursor(conn)
                     cur.execute("""UPDATE paper_trade_proposals
                         SET status='REJECTED', rejection_reason=%s, rejected_at=NOW(), updated_at=NOW()
                         WHERE id=%s AND status='PENDING'""",
@@ -856,7 +884,11 @@ def _run_cycle_locked():
             log.info(f"  {sym}: dry_run_approved (would approve)")
             continue
 
-        # mode == 'active' — actually approve
+        # mode == 'active' — actually approve.
+        # The gate reads above are still an open transaction. approve_proposal and
+        # submit_paper do quote and broker HTTP; holding the read across that
+        # call is what left the next cursor 'already closed' (NEM/STX 2026-10-05).
+        release_read_before_http(conn)
         try:
             from paper_trade_logger import approve_proposal
             result = approve_proposal(pid)
@@ -870,11 +902,12 @@ def _run_cycle_locked():
                 fail_reason = result.get("message", "unknown")[:200]
                 reasons.append({"gate": "approve_proposal_failed",
                                 "detail": fail_reason})
-                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                _, conn = _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
                              "rejected", reasons, health, pos_open, pos_total,
                              new_today, new_total, pnl_acct, total_pnl_pct,
                              b1_flag, config_hash, mode)
-                # Track evaluation count for expiry detection
+                # Track evaluation count for expiry detection.
+                conn, cur = _live_conn_cursor(conn)
                 cur.execute("""
                     UPDATE paper_trade_proposals
                     SET atm_evaluation_count = atm_evaluation_count + 1,
@@ -916,10 +949,11 @@ def _run_cycle_locked():
                     fail_detail = "; ".join(str(x) for x in fail_detail)
                 fail_detail = str(fail_detail)[:200]
                 reasons.append({"gate": "broker_submit_failed", "detail": fail_detail})
-                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                _, conn = _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
                              "rejected", reasons, health, pos_open, pos_total,
                              new_today, new_total, pnl_acct, total_pnl_pct,
                              b1_flag, config_hash, mode, trade_id)
+                conn, cur = _live_conn_cursor(conn)
                 cur.execute("""
                     UPDATE paper_trade_proposals
                     SET atm_evaluation_count = atm_evaluation_count + 1,
@@ -934,13 +968,14 @@ def _run_cycle_locked():
                 continue
 
             # Stamp ATM provenance on the trade
-            decision_id = _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+            decision_id, conn = _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
                                         "force_approved" if atm_action == "force_approve" else "approved",
                                         None, health, pos_open, pos_total,
                                         new_today, new_total, pnl_acct, total_pnl_pct,
                                         b1_flag, config_hash, mode, trade_id)
 
             if trade_id:
+                conn, cur = _live_conn_cursor(conn)
                 cur.execute("""
                     UPDATE paper_trades SET atm_decision_id=%s, atm_config_hash=%s,
                            atm_during_b1=%s WHERE id=%s
@@ -964,10 +999,13 @@ def _run_cycle_locked():
         except Exception as e:
             log.error(f"  {sym}: approval error: {e}")
             reasons.append({"gate": "exception", "detail": str(e)[:200]})
-            _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
-                         "rejected", reasons, health, pos_open, pos_total,
-                         new_today, new_total, pnl_acct, total_pnl_pct,
-                         b1_flag, config_hash, mode)
+            try:
+                _, conn = _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                             "rejected", reasons, health, pos_open, pos_total,
+                             new_today, new_total, pnl_acct, total_pnl_pct,
+                             b1_flag, config_hash, mode)
+            except Exception as log_exc:
+                log.error(f"  {sym}: decision log failed after approval error: {log_exc}")
             rejected_count += 1
 
     # Batched Telegram for expired proposals (per-symbol 24h dedup)
@@ -984,7 +1022,8 @@ def _run_cycle_locked():
     # is applied without a paper_protection_adjustment_proposals record.
     try:
         from protection_atm_pass import run_protection_pass
-        pr = run_protection_pass(conn, mode=mode)
+        from db_adapter import ensure_conn
+        pr = run_protection_pass(ensure_conn() or conn, mode=mode)
         log.info(f"ATM protection pass: auto_applied={pr['auto_applied']} "
                  f"operator_pending={pr['operator_pending']} advisory={pr['skipped_action']} failed={pr['failed']}")
     except Exception as e:

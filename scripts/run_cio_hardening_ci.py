@@ -3269,6 +3269,20 @@ GATES = [
         "maturity_score_stale_20261005",
         ["tests/test_maturity_score_latest_stale_20261005.py"],
     ),
+    (
+        # 2026-10-05 — ATM approver must not reuse a cursor after its decision
+        # commit, and must not hold the read transaction across submit HTTP.
+        # The protection quote helper releases its own read before quote HTTP.
+        "atm_cursor_txn_scope_20261005",
+        ["tests/test_atm_cursor_txn_scope_20261005.py"],
+    ),
+    (
+        # 2026-10-05 — an unanswered operator turn for its own subject is a wake
+        # candidate even when research would fill the limit. Memory influence
+        # stays off; the turn is not attached to a different subject.
+        "wake_operator_turn_selection_20261005",
+        ["tests/test_wake_operator_turn_selection_20261005.py"],
+    ),
 ]
 
 
