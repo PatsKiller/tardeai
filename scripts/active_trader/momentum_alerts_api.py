@@ -85,8 +85,55 @@ def _compact(row: dict, score: Optional[dict]) -> dict:
         "score": {w: {k: v.get(k) for k in ("mfe_r", "mae_r", "mfe_pct", "mae_pct")} for w, v in windows.items()
                   if isinstance(v, dict) and v.get("mfe") is not None} or None,
         "supply": l2.get("supply") or None,
+        "signals": _signals_view(row.get("signals")),
         "outcome": _outcome_view((score or {}).get("outcome")),
     }
+
+
+def _signals_view(sig: Any) -> Optional[dict]:
+    if not isinstance(sig, dict):
+        return None
+    detail = {k: v for k, v in sig.items() if isinstance(v, dict)}
+    return {"status": sig.get("status"), "snapshots": sig.get("snapshots"),
+            "fired": [k for k, v in detail.items() if v.get("on") is True], "detail": detail}
+
+
+def _learning_block(day: str) -> dict:
+    """Replays, exit watch and learning summary — each part fails soft on its own."""
+    out: dict[str, Any] = {"replays": [], "exit_watch": [], "learning": None}
+    try:
+        from active_trader import trade_replay as tr
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.active_trader import trade_replay as tr
+    try:
+        out["replays"] = tr.read_replays(day)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from active_trader import exit_watch as ew
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.active_trader import exit_watch as ew
+    try:
+        out["exit_watch"] = [{"at": _et(r.get("ts_epoch")), "symbol": (r.get("position") or {}).get("symbol"),
+                              "fired": r.get("fired"), "last": r.get("last"), "verdict": r.get("verdict"),
+                              "sent": r.get("sent"), "mode": r.get("mode"), "position": r.get("position")}
+                             for r in ew.read_rows(day)][-50:]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from active_trader import trade_learning as tl
+        from active_trader import signal_calibration as sc
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.active_trader import trade_learning as tl
+        from scripts.active_trader import signal_calibration as sc
+    try:
+        rep = sc.read_report() or {}
+        summ = tl.summary(tl.read_records(), min_sample=int(rep.get("min_sample") or sc.DEFAULTS["min_sample"]))
+        summ["calibration"] = {k: rep.get(k) for k in ("status", "decisions", "worked_rate", "proposals", "generated_at")} if rep else None
+        out["learning"] = summ
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 def _outcome_view(o: Optional[dict]) -> Optional[dict]:
@@ -132,6 +179,15 @@ def operator_fills(day: str, symbols: set[str], *, conn=None) -> list[dict]:
                     "symbol": r[2], "side": r[3], "qty": float(r[4] or 0), "price": float(r[5] or 0),
                     "amount": float(r[6] or 0), "source": r[7]})
     return out
+
+
+def _with_replays(trips: list[dict], replays: list[dict]) -> list[dict]:
+    by = {(r.get("symbol"), r.get("buy_ts"), r.get("qty")): r for r in replays or []}
+    for t in trips:
+        rp = by.get((t.get("symbol"), t.get("buy_ts"), t.get("qty")))
+        if rp:
+            t["replay"] = {"buy": rp.get("buy"), "sell": rp.get("sell")}
+    return trips
 
 
 def attribute_fills(fills: list[dict], decisions: list[dict]) -> list[dict]:
@@ -198,6 +254,7 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
     compact = [_compact(r, scored.get(ms.decision_id(r)))
                for r in sorted(today, key=lambda x: x.get("ts_epoch") or 0, reverse=True)]
     fills = operator_fills(day, {d["symbol"] for d in compact if d.get("symbol")})
+    extra = _learning_block(day)
     sessions = sorted({(r.get("candidate") or {}).get("session_date") for r in journal} - {None}, reverse=True)
     hb_age = (now - float(hb["ts_epoch"])) if hb and hb.get("ts_epoch") else None
     return {
@@ -230,6 +287,8 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
         "scored_total": len(all_scored),
         "scored_session": len(day_scored),
         "sessions": sessions,
-        "your_trades": attribute_fills(fills, compact),
+        "your_trades": _with_replays(attribute_fills(fills, compact), extra["replays"]),
+        "exit_watch": extra["exit_watch"],
+        "learning": extra["learning"],
         "decisions": compact[:max(1, int(limit))],
     }

@@ -236,3 +236,47 @@ refit:
 #    operator ratification. ──
 active_trader_alerts:
   mode: send
+
+# ── Active Trader microstructure + learning (operator-approved 2026-10-05) ──
+# Recorder: moomoo QUOTE context only; writes <persistent>/data/active_trader/micro/<day>/<SYM>.jsonl
+microstructure_recorder:
+  interval_s: 5
+  max_symbols: 10              # your fills today first, then today's alerted names, then the universe
+  book_levels: 10
+  tape_prints: 100
+  window_et: ["09:28", "12:00"]
+  premarket_window_et: ["07:00", "09:28"]
+  universe_refresh_s: 300
+
+# Entry/exit signals (v1 priors; signal_calibration.py PROPOSES changes, operator ratifies)
+microstructure_signals:
+  window_s: 60
+  near_pct: 1.0
+  thin_ratio: 0.6
+  refill_mult: 2.0
+  pull_pct: 50
+  accel_mult: 2.0
+  accel_lookback: 5
+  extended_vwap_pct: 3.0
+  tape_prints: 50
+  tape_flip_ratio: 0.45
+  climax_mult: 3.0
+  climax_lookback: 10
+  climax_wick_frac: 0.5
+  wall_x_median: 4.0
+  schwab_mm_stack: 4
+
+# Exit signals on YOUR open alert-tagged scalps. shadow = journal only; send = also Telegram (operator decides)
+active_trader_exit_watch:
+  mode: shadow
+  eval_s: 60
+  lookback_s: 900
+  min_signals: 1
+  cooldown_s: 300
+
+# Learning memory + calibration report (proposals only)
+active_trader_learning:
+  sessions: 20
+  min_sample: 30
+  min_bucket: 8
+  min_edge: 0.15

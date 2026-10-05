@@ -379,7 +379,7 @@ def evaluate_pass(candidates: Iterable[Candidate], *, cfg: AlertConfig, now: Opt
                   fetch_primary_book=None, fetch_primary_tape=None, fetch_compare_book=None,
                   send_fn=None, journal_path: Optional[Path] = None,
                   throttle_path: Optional[Path] = None, run_id: str = "",
-                  persist: bool = True) -> list[dict]:
+                  persist: bool = True, fetch_signals=None) -> list[dict]:
     """Evaluate every interesting candidate once. Fetchers are injected (moomoo primary, Schwab
     comparison) so replay and tests use recorded data. Returns the journal rows written."""
     now = time.time() if now is None else now
@@ -403,6 +403,9 @@ def evaluate_pass(candidates: Iterable[Candidate], *, cfg: AlertConfig, now: Opt
         row = {"contract": CONTRACT, "authority": AUTHORITY, "run_id": run_id, "ts_epoch": now,
                "kind": kind, "mode": cfg.mode, "candidate": asdict(c), "r_dollars": c.r_dollars,
                "l2": l2, "tape": tape, "l2_compare": compare, **d, "sent": False}
+        if fetch_signals is not None:
+            # microstructure evidence (2026-10-05): observation only, never changes the verdict
+            row["signals"] = _safe(fetch_signals, c.symbol)
         if d["verdict"] == ALERT:
             throttle.record(c.symbol, kind, now)
             title, body = build_message(c, kind, l2, tape, d)

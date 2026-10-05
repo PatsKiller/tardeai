@@ -1012,6 +1012,12 @@ GATES = [
         "apply_policy_default_store_20261004",
         ["tests/test_apply_policy_default_store_20261004.py"],
     ),
+    # Active Trader microstructure recorder, entry/exit signals (moomoo + Schwab), trade replay, exit watch,
+    # learning memory + calibration proposals; Schwab stream subscribes the scalp names (2026-10-05).
+    (
+        "at_microstructure_learning_20261005",
+        ["tests/test_at_microstructure_learning_20261005.py"],
+    ),
     # Active Trader Phase 1: ARMED/TRIGGERED alerts on moomoo L2 + tape; fail closed; no order path (2026-10-04).
     (
         "active_trader_momentum_alerts_20261004",
