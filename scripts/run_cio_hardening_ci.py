@@ -1003,6 +1003,12 @@ GATES = [
         "health_make_interval_20261004",
         ["tests/test_health_make_interval_20261004.py"],
     ),
+    # Active Trader premarket watch: heads-up 07:00-09:29 with PM high / PM VWAP for the open; replay-safe,
+    # fail-closed float, shadow by default, AT alert path only, no trade context (2026-10-05).
+    (
+        "at_premarket_watch_20261005",
+        ["tests/test_at_premarket_watch_20261005.py"],
+    ),
     # Policy apply script ratifies into production state, not the running tree (2026-10-04).
     (
         "apply_policy_default_store_20261004",
