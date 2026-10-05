@@ -317,6 +317,7 @@ GATES = [
             "tests/test_alarm_fires_scalp_alerts_20261005.py",
             "tests/test_alarm_fires_batch5.py",
             "tests/test_alarm_fires_guard_approval.py",
+            "tests/test_alarm_fires_options_intent_20261005.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
             "tests/test_alarm_fires_disk_pressure_20260921.py",
             "tests/test_alarm_coverage.py",
@@ -1033,6 +1034,12 @@ GATES = [
     (
         "active_trader_live_alerts_20261004",
         ["tests/test_active_trader_live_alerts_20261004.py"],
+    ),
+    # Operator options intents: standing memory on the ticker directive, proactive Schwab contract
+    # matcher (shadow default, throttled digest), generic covered calls obey the intent floor (2026-10-05).
+    (
+        "options_intent_20261005",
+        ["tests/test_options_intent_20261005.py"],
     ),
     # CIO event bus fork repair: re-link without loss/reorder, byte-exact archive, idempotent (2026-10-04).
     (
