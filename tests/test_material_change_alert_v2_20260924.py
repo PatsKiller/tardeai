@@ -132,9 +132,11 @@ def test_freshness_uses_the_cio_entry_checks_own_bar():
 def test_one_cio_verdict_never_dont_buy_beside_buy_ready(sym):
     route = _route(sym)
     line = m.digest_line(dict(CHANGES[sym], guids=[]), _info(sym), route)
-    assert line.count("CIO:") == 1
-    assert "HOLD-OFF (price is at or below the plan stop)" in line
-    assert "BUY READY (2026-09-22) superseded by the entry check" in line
+    # 2026-10-05 concise format: exactly one CIO verdict — the more conservative one; the
+    # superseded BUY READY decision is not printed beside it at all.
+    assert line.count("CIO ") == 1
+    assert "CIO hold off (price is at or below the plan stop)" in line
+    assert "BUY READY" not in line.upper().replace("_", " ")
     assert "don't buy" not in line.lower() and "CIO decision:" not in line
 
 
@@ -178,12 +180,12 @@ Material change · Advisory only. No position action taken or implied."""
 
 GOLDEN_DIGEST = f"""📋 Material change — daily digest · Thu 24 Sep · 16:15 ET
 
-⛔ PLAN INVALIDATED (watchlist, not held) — re-plan or drop
-  ROL $30.24 (15m) · -4.2% (3.1× its normal daily move) · stop $31.57 · CIO: no stance on file
-  RCL $233.72 (15m) · -5.0% (3.0× its normal daily move) · stop $238.08 · CIO: HOLD-OFF (price is at or below the plan stop) · decision BUY READY (2026-09-22) superseded by the entry check
-  EXPE $258.13 (15m) · -7.0% (3.0× its normal daily move) · stop $260.84 · CIO: HOLD-OFF (price is at or below the plan stop) · decision BUY READY (2026-09-22) superseded by the entry check
+⛔ PLAN INVALIDATED (watchlist, not held) — re-plan or drop (3)
+• ROL $30.24 · -4.2% (3.1× its normal daily move) · through stop $31.57 · no CIO stance · ▶ re-plan or drop
+• RCL $233.72 · -5.0% (3.0× its normal daily move) · through stop $238.08 · CIO hold off (price is at or below the plan stop) · ▶ re-plan or drop
+• EXPE $258.13 · -7.0% (3.0× its normal daily move) · through stop $260.84 · CIO hold off (price is at or below the plan stop) · ▶ re-plan or drop
 
-🔕 Not shown: LTRN (quote 31h old), KLXE (quote 4.7d old) → Command Center
+🔕 Not shown — 2 names with no live price or no plan: LTRN, KLXE → Command Center
 Details → Command Center {CC}/v3/watch/intelligence · Advisory only."""
 
 
@@ -230,8 +232,9 @@ def test_the_digest_splits_on_ticker_boundaries_and_keeps_every_guid():
         assert len(ch["text"]) <= 900
         assert ch["text"].rstrip().endswith("Advisory only.")
         for ln in ch["text"].splitlines():
-            if ln.startswith("  T"):
-                assert ln.split()[0] in {f"T{i:02d}" for i in range(60)}  # never a cut line
+            if ln.startswith("• T"):
+                assert ln.split()[1] in {f"T{i:02d}" for i in range(60)}  # never a cut line
+    assert any(ln.startswith("• T") for ch in chunks for ln in ch["text"].splitlines())
     assert sorted(g for ch in chunks for g in ch["guids"]) == sorted(f"g-{i}" for i in range(60))
 
 

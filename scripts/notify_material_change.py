@@ -349,6 +349,22 @@ def _f(v) -> float | None:
         return None
 
 
+def _broker_quote(cur, sym: str) -> dict | None:
+    try:
+        from lib.alert_quotes import broker_quotes
+    except ImportError:  # imported as scripts.notify_material_change
+        from scripts.lib.alert_quotes import broker_quotes
+    try:
+        return broker_quotes(cur, [sym], refresh=True).get(sym)
+    except Exception as exc:  # noqa: BLE001 — no broker price renders as "no current price", never a guess
+        print(f"[broker-quote] {sym}: {type(exc).__name__}: {str(exc)[:120]}", file=sys.stderr)
+        try:
+            cur.connection.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+
 def _watch_context(cur, change: dict, out: dict) -> None:
     """The facts routing needs, read from the SAME sources the CIO entry runner uses.
 
@@ -359,17 +375,15 @@ def _watch_context(cur, change: dict, out: dict) -> None:
     Plan precedence and the decision filter now match cio_entry_state_runner.gather.
     """
     sym = str(change["symbol"]).upper()
-    cur.execute(
-        """SELECT price, change_pct, EXTRACT(EPOCH FROM (now() - last_enriched_at)) / 3600.0
-                     FROM watchlist_items WHERE upper(symbol) = %s AND price IS NOT NULL
-                    ORDER BY last_enriched_at DESC NULLS LAST LIMIT 1""",
-        (sym,),
-    )
-    r = cur.fetchone()
-    if r:
-        out["price"] = _f(r[0])
-        out["change_pct"] = _f(r[1])
-        out["quote_age_h"] = _f(r[2])
+    # Price from the Command Center data broker, refreshed through the broker when older than
+    # the registry contract (operator rule 2026-10-05). It used to read watchlist_items.price,
+    # an enrichment copy that showed NVDA 26 h old at 16:15 while the broker had it at 16:00.
+    q = _broker_quote(cur, sym)
+    if q:
+        out["price"] = _f(q.get("price"))
+        out["change_pct"] = _f(q.get("chg_pct"))
+        out["quote_age_h"] = _f(q.get("age_h"))
+        out["quote_source"] = q.get("source")
     cur.execute("""SELECT count(*) FROM watchlist_items WHERE upper(symbol) = %s AND status = 'active'""", (sym,))
     r = cur.fetchone()
     out["on_watchlist"] = bool(r and r[0])
@@ -677,6 +691,32 @@ def cio_verdict(info: dict) -> dict:
     return {"state": dec_action, "text": dec_text, "rank": _rank(dec_action)}
 
 
+_QUOTE_REASON = re.compile(r"^(quote is .*old|no current price)$", re.I)
+
+
+def stance_short(info: dict) -> str:
+    """The CIO stance in a few words with its own age. Never repeats a quote-age reason that the
+    price shown on the same line contradicts (the 16:15 digest printed '38m' beside 'HOLD-OFF
+    (quote is 65.9h old)'); such a stance is marked as needing a re-check instead."""
+    es, dec = info.get("entry_state") or {}, info.get("cio") or {}
+    state = es.get("state") or dec.get("action")
+    if not state:
+        return "no CIO stance"
+    word = {"BLOCKED": "hold off", "BUY_READY": "buy ready", "ENTRY_NEAR": "near entry",
+            "NOT_YET": "not yet"}.get(str(state).upper(), _pretty(state).lower())
+    reasons = [str(x) for x in (es.get("reasons") or []) if x]
+    if reasons and es.get("state") == "BLOCKED":
+        r = reasons[0]
+        if _QUOTE_REASON.match(r) and quote_is_fresh(info):
+            word += " — re-check due (judged on an older quote)"
+        else:
+            word += f" ({r})"
+    age = _f(es.get("age_h")) if es.get("state") else None
+    if age is not None:
+        return f"CIO {word} · set {_age_text(age)} ago"
+    return f"CIO {word}" + (f" ({dec.get('date')})" if not es.get("state") and dec.get("date") else "")
+
+
 def classify(c: dict, info: dict) -> dict:
     """Route one change to PAGE, DIGEST or COMMAND_CENTER on its structured facts.
 
@@ -812,22 +852,53 @@ def page_lines(c: dict, info: dict, route: dict) -> list[str]:
     return lines
 
 
+_NEXT_STEP = {
+    "PLAN_INVALIDATED": "re-plan or drop",
+    "HELD_NEWS": "read the news",
+    "STALE_QUOTE": "no live price — check in Command Center",
+    "TARGET_PASSED": "update the plan",
+    "MOVE": "watch",
+}
+#: Lines per digest section; the rest are counted, not listed (operator 2026-10-05: concise).
+DIGEST_PER_SECTION = 8
+DIGEST_HIDDEN_NAMES = 8
+
+
+def _price_text(info: dict) -> str:
+    px = info.get("price")
+    if px is None:
+        return "no price"
+    chg = info.get("change_pct")
+    age = _f(info.get("quote_age_h"))
+    bits = [f"{float(chg):+.1f}%"] if chg is not None else []
+    if age is not None and not quote_is_fresh(info):
+        bits.append(f"{_age_text(age)} old")
+    return _money(px) + (f" ({', '.join(bits)})" if bits else "")
+
+
 def digest_line(c: dict, info: dict, route: dict) -> str:
-    """One compact line per name in the daily digest."""
+    """One line per name: SYM $px (+chg%) · why · CIO stance (age) · next step."""
     sym = str(c["symbol"]).upper()
-    bits = [f"{sym} {_money(info.get('price'))} ({_age_text(info.get('quote_age_h'))})"]
+    head = f"{sym} {_price_text(info)}"
+    if route.get("held"):
+        head += f" · {_position_text(info) or 'held'}"
+    bits = [head]
     move = _move_text(c, info)
     if move:
         bits.append(move)
     plan = info.get("plan") or {}
     if route["state"] == "PLAN_INVALIDATED" and plan.get("stop") is not None:
-        bits.append(f"stop {_money(plan['stop'])}")
+        bits.append(f"through stop {_money(plan['stop'])}")
     if route["state"] == "TARGET_PASSED" and plan.get("target") is not None:
-        bits.append(f"target {_money(plan['target'])} passed")
-    if route.get("held"):
-        bits.append(_position_text(info) or "held")
-    bits.append(f"CIO: {route['verdict']['text']}")
-    return "  " + " · ".join(bits)
+        bits.append(f"past target {_money(plan['target'])}")
+    bits.append(stance_short(info))
+    bits.append("▶ " + _NEXT_STEP.get(route["state"], "watch"))
+    return "• " + " · ".join(bits)
+
+
+def _digest_rank(entry: tuple[dict, dict, dict]) -> float:
+    c, _info, _r = entry
+    return -abs(float(c.get("magnitude") or 0.0))
 
 
 _DIGEST_SECTIONS = [
@@ -851,15 +922,23 @@ def digest_blocks(entries: list[tuple[dict, dict, dict]], *, now: datetime | Non
         rows = [(c, i, r) for c, i, r in entries if r["route"] == ROUTE_DIGEST and r["state"] == state]
         if not rows:
             continue
-        blocks.append({"text": "\n" + title, "guids": []})
-        for c, info, route in rows:
+        rows.sort(key=_digest_rank)
+        blocks.append({"text": "\n" + title + f" ({len(rows)})", "guids": []})
+        for c, info, route in rows[:DIGEST_PER_SECTION]:
             blocks.append({"text": digest_line(c, info, route), "guids": list(c.get("guids") or [c["change_guid"]])})
+        if len(rows) > DIGEST_PER_SECTION:
+            rest = rows[DIGEST_PER_SECTION:]
+            blocks.append({"text": f"… +{len(rest)} more in Command Center",
+                           "guids": [g for c, _i, _r in rest for g in (c.get("guids") or [c["change_guid"]])]})
     hidden = [(c, i, r) for c, i, r in entries if r["route"] == ROUTE_CC]
     if hidden:
-        names = ", ".join(f"{str(c['symbol']).upper()} ({r.get('why') or r['state'].lower()})" for c, _i, r in hidden)
+        shown = hidden[:DIGEST_HIDDEN_NAMES]
+        names = ", ".join(str(c["symbol"]).upper() for c, _i, _r in shown)
+        more = f" +{len(hidden) - len(shown)} more" if len(hidden) > len(shown) else ""
+        names = f"{len(hidden)} names with no live price or no plan: {names}{more}"
         blocks.append(
             {
-                "text": f"\n🔕 Not shown: {names} → Command Center",
+                "text": f"\n🔕 Not shown — {names} → Command Center",
                 "guids": [g for c, _i, _r in hidden for g in (c.get("guids") or [c["change_guid"]])],
             }
         )
@@ -1264,6 +1343,22 @@ def run_pages(cur, conn, entries: list[tuple[dict, dict, dict]], *, apply: bool,
     result["rows_produced"] = sent_rows if apply else None
 
 
+def _no_symbol_links():
+    try:
+        from lib import comms_editor as ce
+    except ImportError:  # imported as scripts.notify_material_change
+        from scripts.lib import comms_editor as ce
+    return ce, ce.set_primary_symbols([])
+
+
+def _reset_symbol_links(token) -> None:
+    ce, tok = token
+    try:
+        ce.reset_primary_symbols(tok)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def run_digest(cur, conn, entries: list[tuple[dict, dict, dict]], *, apply: bool, result: dict) -> None:
     listed = [e for e in entries if e[2]["route"] in (ROUTE_DIGEST, ROUTE_CC)]
     result["digest_names"] = len(listed)
@@ -1278,7 +1373,12 @@ def run_digest(cur, conn, entries: list[tuple[dict, dict, dict]], *, apply: bool
         print(ch["text"])
         if not apply:
             continue
-        accepted, _gw = deliver_notice(ch["text"], subject_key=notice_key(ch["guids"] or [f"digest-header-{i}"]))
+        # One Command Center link in the footer; no per-symbol Finviz/Yahoo link dump (operator 2026-10-05).
+        token = _no_symbol_links()
+        try:
+            accepted, _gw = deliver_notice(ch["text"], subject_key=notice_key(ch["guids"] or [f"digest-header-{i}"]))
+        finally:
+            _reset_symbol_links(token)
         if accepted:
             sent_rows += _mark(cur, ch["guids"], "DIGEST_SENT")
         else:

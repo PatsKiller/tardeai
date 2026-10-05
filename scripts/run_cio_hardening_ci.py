@@ -1083,6 +1083,12 @@ GATES = [
         "atm_db_gate_fix_20261003",
         ["tests/test_atm_db_gate_fix_20261003.py"],
     ),
+    # Alerts read the Command Center (data broker / CC API), never their own sources; producer ratchet;
+    # material-change digest priced by the broker and concise; CIO entry plan sanity (2026-10-05).
+    (
+        "alert_single_source_20261005",
+        ["tests/test_alert_single_source_20261005.py"],
+    ),
     # /v3/cio/home memory: stream the action ledger, tail-read logs, one plan-store load (2026-10-03).
     (
         "cio_home_memory_20261003",

@@ -75,7 +75,12 @@ def test_the_digest_line_carries_price_age_move_and_one_cio_verdict(mod):
     route = mod.classify(_row(), info)
     assert route["route"] == mod.ROUTE_DIGEST and route["state"] == "MOVE"
     line = mod.digest_line(_row(), info, route)
-    assert "UZX $0.08 (12m) · -20.6% (4.3× its normal daily move) · CIO: HUMAN REVIEW (2026-09-14)" in line
+    # 2026-10-05 operator: one concise line — SYM $px (chg) · why · CIO stance · next step. A fresh
+    # quote carries no age; a stale one names its age (below). Exactly one CIO verdict.
+    assert line == "• UZX $0.08 (-13.6%) · -20.6% (4.3× its normal daily move) · CIO human review (2026-09-14) · ▶ watch"
+    assert line.count("CIO ") == 1
+    stale = mod.digest_line(_row(), dict(info, quote_age_h=26.0), route)
+    assert "UZX $0.08 (-13.6%, 26h old)" in stale
 
 
 def test_a_plan_that_reached_its_target_says_so(mod):
@@ -85,7 +90,7 @@ def test_a_plan_that_reached_its_target_says_so(mod):
     route = mod.classify(_row(symbol="PDSB"), info)
     assert route["state"] == "TARGET_PASSED" and route["route"] == mod.ROUTE_DIGEST
     line = mod.digest_line(_row(symbol="PDSB"), info, route)
-    assert "target $0.59 passed" in line and "stale" not in line.lower(), line
+    assert "past target $0.59" in line and "stale" not in line.lower(), line
 
 
 def test_rich_page_carries_the_catalyst_without_advice_words(mod):
