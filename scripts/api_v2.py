@@ -3979,6 +3979,17 @@ def _position_transfer_detect(body=None):
         return {"ok": False, "error": str(e)[:240]}
 
 
+def _pp_cfg_basis_truth() -> str:
+    """positions.cost_basis_truth from config/portfolio_positions.yaml ('broker' | 'anchor'); default broker."""
+    try:
+        import yaml
+
+        cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "portfolio_positions.yaml").read_text()) or {}
+        return str(((cfg.get("positions") or {}).get("cost_basis_truth")) or "broker")
+    except Exception:
+        return "broker"
+
+
 def portfolio_holdings():
     h = _load_json(STATE_DIR / "holdings.json") or {}
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
@@ -4319,6 +4330,13 @@ def portfolio_holdings():
                 # the anchor's (SCHD $125,341 vs broker $132,173; V 0.80 sh $63 vs $278 — reconciliation
                 # 2026-10-05). Keep the stored (broker-synced) basis and say so.
                 _basis_note = "anchor_stale"
+        # Operator decision 2026-10-05 ("fix all" — AMANX, XLB, V Roth, PFLT): when the broker reports a cost
+        # basis it is the truth (it carries dividend-reinvested lots the April anchors miss); anchors only
+        # serve accounts with no broker basis (Fidelity / manual). Config: positions.cost_basis_truth.
+        if _cb_broker is not None and _pp_cfg_basis_truth() == "broker":
+            if _cb is not None and abs(float(_cb) - float(_cb_broker)) > 1.0:
+                _basis_note = "broker_basis_rule"
+            _cb = _cb_broker
         if _cb is None and p.get("avg_cost") and _shares:
             _cb = float(p.get("avg_cost")) * _shares
         try:

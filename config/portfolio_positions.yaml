@@ -7,6 +7,9 @@ positions:
   value_tolerance_usd: 1.0        # reconciliation: value == shares × price
   basis_tolerance_usd: 1.0        # reconciliation: CC cost vs broker cost
   qty_tolerance: 0.001            # reconciliation: CC shares vs broker shares
+  # operator 2026-10-05 "fix all": broker-reported cost basis wins (includes dividend-reinvested lots);
+  # anchors only for accounts with no broker basis (Fidelity / manual). broker | anchor
+  cost_basis_truth: broker
 closed:
   # trade_closed rows written by health probes (2026-08-07), not trades — excluded from REALIZED/TRADING
   test_accounts: [health, journal_check]

@@ -221,3 +221,13 @@ def test_no_new_direct_position_store_readers():
     new = sorted(found - allowed)
     assert not new, ("new direct readers of holdings.json — read positions through "
                      f"scripts/lib/portfolio_positions.py instead: {new}")
+
+
+def test_broker_cost_basis_is_truth_by_operator_rule():
+    """Operator 2026-10-05 ("fix all"): broker-reported basis wins over stale anchors (AMANX, XLB, V Roth, PFLT)."""
+    import yaml
+
+    cfg = yaml.safe_load((ROOT / "config" / "portfolio_positions.yaml").read_text())
+    assert cfg["positions"]["cost_basis_truth"] == "broker"
+    src = (ROOT / "scripts" / "api_v2.py").read_text()
+    assert '_pp_cfg_basis_truth() == "broker"' in src and "_cb = _cb_broker" in src
