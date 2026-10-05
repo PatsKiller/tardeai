@@ -127,6 +127,13 @@ def _common_proposal_context(proposal_id, operator, reason, confirm, action_date
     if not t or t["status"] != "open":
         return fail("trade_not_open")
 
+    # p and t are already in memory. Quote HTTP must not sit inside this read
+    # transaction; the same connection is kept for the later UPDATE.
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+
     age, q = fresh_quote_age(p["symbol"])
     result["quote_age_min"] = age
     result["quote_price"] = q.get("last_price")

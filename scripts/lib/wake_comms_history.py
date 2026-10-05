@@ -131,5 +131,29 @@ class DbCommsHistory:
                 ORDER BY t.occurred_at DESC, t.id DESC LIMIT %s""",
             (str(subject_guid), int(limit)))
 
+    def recent_operator_turns(self, *, limit: int = 50) -> list[dict]:
+        """Newest operator rows that already have a subject, any subject.
 
-__all__ = ["DbCommsHistory", "AUTHORITY", "MBI"]
+        The subject-scoped query above only runs after a wake has picked a
+        subject. Selection itself had no operator source, so a turn written
+        after 2026-09-29 never became that subject. This read is still
+        advisory: it does not write, and a failure becomes an empty list.
+        Approval callbacks and answered rows are left for the selector.
+        """
+        return self._rows(
+            """SELECT t.id, t.role, t.text AS sanitized_body, t.symbol, t.subject_guid,
+                      t.occurred_at, t.occurred_at AS created_at, t.channel,
+                      EXISTS (SELECT 1 FROM operator_conversation_turns a
+                               WHERE a.role = 'agent' AND a.chat_id = t.chat_id
+                                 AND a.reply_to_message_id = t.message_id
+                                 AND a.subject_guid = t.subject_guid
+                                 AND a.message_id IS NOT NULL
+                                 AND a.occurred_at >= t.occurred_at) AS answered
+                 FROM operator_conversation_turns t
+                WHERE t.role = 'operator'
+                  AND t.subject_guid IS NOT NULL
+                ORDER BY t.occurred_at DESC, t.id DESC LIMIT %s""",
+            (int(limit),))
+
+
+__all__ = ["DbCommsHistory", "AUTHORITY", "MBI", "is_approval_callback"]
