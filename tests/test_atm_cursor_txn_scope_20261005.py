@@ -10,6 +10,8 @@ the cycle was still holding.
 from __future__ import annotations
 
 import inspect
+import sys
+import types
 
 import apply_paper_protection_adjustment as ap
 import atm_auto_approver as approver
@@ -114,6 +116,14 @@ def test_active_approve_releases_the_read_before_submit_http():
 
 
 def test_quote_http_is_outside_the_read_transaction(monkeypatch):
+    # The hardening job does not install psycopg2. The helper imports
+    # psycopg2.extras only to build a RealDictCursor; this test supplies the cursor.
+    extras = types.ModuleType("psycopg2.extras")
+    extras.RealDictCursor = object
+    pg = types.ModuleType("psycopg2")
+    pg.extras = extras
+    monkeypatch.setitem(sys.modules, "psycopg2", pg)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
     events: list[str] = []
 
     class Cur:
