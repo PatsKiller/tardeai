@@ -1040,14 +1040,20 @@ def reassess_on_research_completed(
             "status": "REASSESSMENT_PENDING",
             "as_of": _now(),
             "parent": parent,
-            "request": {"plan_id": parent.get("plan_id"), "research_id": parent.get("research_id")},
-            "result": {
-                "result_id": result.get("result_id"),
-                "research_id": result.get("research_id"),
-                "symbol": result.get("symbol"),
-                "summary": result.get("summary"),
-                "status": result.get("status"),
-            },
+            # A cheap retry must retain the original evidence identity and age;
+            # dropping them would turn a transient build failure into a permanent
+            # evidence-validation block. Never refresh timestamps during retry.
+            "request": {k: request[k] for k in (
+                "plan_id", "research_id", "symbol", "subject_guid", "issuer_guid", "parent_run_id",
+                "question_class", "prompt_context", "metadata", "retrieval_receipt_id",
+            ) if k in request},
+            "result": {k: result[k] for k in (
+                "result_id", "research_id", "symbol", "subject_guid", "issuer_guid", "summary", "status",
+                "sources", "source_urls", "source_refs", "evidence_as_of", "as_of", "completed_ts",
+                "freshness", "expires_at", "valid_until", "prompt_context", "retrieval_receipt_id",
+                "contradictory_evidence", "invalidation_evidence", "classification", "confidence",
+                "used_evidence_refs", "rejected_evidence_refs", "judgment_changing_evidence_refs",
+            ) if k in result},
             "critique": critique,
             "retries": 0,
             "error": f"{type(exc).__name__}:{exc}",

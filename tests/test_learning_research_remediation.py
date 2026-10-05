@@ -56,12 +56,54 @@ def test_uncited_or_unknown_premise_does_not_create_verified_review():
     ({"expires_at": NOW.isoformat()}, "expired_evidence"),
     ({"as_of": "2026-10-05T14:00:00"}, "evidence_time_missing_or_ambiguous"),
     ({"status": "failed"}, "research_not_completed"),
+    ({"status": "queued"}, "research_not_completed"),
+    ({"status": "running"}, "research_not_completed"),
 ])
 def test_bad_evidence_blocks_even_when_product_fields_change(patch, reason):
     out = evaluate(result(**patch), new={"plan_id": "plan-v", "recommendation": "SELL"})
     assert out["disposition"] == "BLOCKED"
     assert reason in out["evidence_validation"]["reasons"]
     assert not out["evidence_usage"]["used_refs"]
+
+
+def test_mismatched_request_identity_is_blocked():
+    from scripts.lib.research_quality import evidence_eligibility
+    out = evidence_eligibility({"symbol": "V", "research_id": "different-request"}, result(),
+                               {"verdict": "VALID"}, now=NOW)
+    assert not out["eligible"]
+    assert "research_request_mismatch" in out["reasons"]
+
+
+def test_retry_retains_original_evidence_without_paid_research(tmp_path, monkeypatch):
+    import sys
+    from scripts.lib import cio_product_reassessment as pr
+    from scripts.lib import cio_investment_product as prod
+    from scripts.lib import cio_persistent_cognition as cog
+    from scripts.lib import research_thesis_delta as delta
+    monkeypatch.setitem(sys.modules, "cio_investment_product", prod)
+    monkeypatch.setattr(cog, "build_cio_cognition", lambda *a, **k: {})
+    monkeypatch.setattr(delta, "accept_research_result", lambda *a, **k: {"version_published": False})
+    monkeypatch.setattr(prod, "load_brief", lambda *a, **k: {})
+    def unavailable(**kwargs):
+        raise OSError("fixture build failure")
+    monkeypatch.setattr(prod, "build_product", unavailable)
+    fresh = result(as_of=datetime.now(timezone.utc).isoformat())
+    request = {"research_id": fresh["research_id"], "symbol": "V", "question_class": "thesis"}
+    first = pr.reassess_on_research_completed(request, fresh, critique={"verdict": "VALID"}, root=tmp_path, notify=False)
+    assert first["research_evaluation"]["disposition"] == "BLOCKED"
+    seen = []
+    def retry(req, res, **kwargs):
+        from scripts.lib.research_quality import evidence_eligibility
+        assert res["sources"] == fresh["sources"]
+        assert res["as_of"] == fresh["as_of"]
+        assert req["research_id"] == fresh["research_id"]
+        assert evidence_eligibility(req, res, kwargs["critique"])["eligible"]
+        seen.append(res["result_id"])
+        return {"ok": True}
+    monkeypatch.setattr(pr, "reassess_on_research_completed", retry)
+    out = pr.retry_pending_reassessments(root=tmp_path, limit=1)
+    assert out["retried_ok"] == 1 and not out["paid_research_repeated"]
+    assert seen == [fresh["result_id"]]
 
 
 def test_change_records_before_after_and_retrieval_identity():

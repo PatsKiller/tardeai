@@ -177,7 +177,10 @@ def evidence_eligibility(request: dict, result: dict, critique: dict | None, *, 
         identities[field] = actual or expected or None
     if not (result.get("result_id") or result.get("research_id")):
         reasons.append("research_identity_missing")
-    if str(result.get("status") or "completed").lower() in {"failed", "error", "truncated", "cancelled", "cost_cap"}:
+    expected_research = request.get("research_id") or meta.get("research_id")
+    if expected_research and result.get("research_id") and str(expected_research) != str(result["research_id"]):
+        reasons.append("research_request_mismatch")
+    if str(result.get("status") or "completed").lower() not in {"completed", "sent", "success", "succeeded", "ok"}:
         reasons.append("research_not_completed")
     if not (identities["symbol"] or identities["subject_guid"]):
         reasons.append("subject_missing")
