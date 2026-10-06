@@ -648,7 +648,7 @@ def sync_schwab_positions(account_key, dry_run=True):
         return _sync_rows(account_key, label, live, st, dry_run=True)
     # Serialize the whole read-modify-write with the repricer and the other holdings writers
     # (scripts/lib/holdings_write_lock.py). Without it a slower writer's stale copy can land on top of this
-    # sync's rows — the lost update that froze moomoo at 2026-09-28 (2026-10-06).
+    # sync's rows — the lost update that froze another account's rows at 2026-09-28 (2026-10-06).
     from lib.holdings_write_lock import holdings_write_lock
     with holdings_write_lock():
         return _sync_rows(account_key, label, live, st, dry_run=False)
