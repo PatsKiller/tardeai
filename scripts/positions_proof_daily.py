@@ -191,7 +191,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(row_line)
     if a.send:
         from telegram_alert import send_telegram  # type: ignore
-        send_telegram(row_line, message_class="report")
+        # One line a day, operator-requested (plan: "a daily progress line"); the text router would fold it into
+        # a digest, so it bypasses the router like the other scheduled operator reports.
+        send_telegram(row_line, bypass_router=True, message_class="report")
     return 0 if row["pass"] else 1
 
 

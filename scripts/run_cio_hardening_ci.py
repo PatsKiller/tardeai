@@ -314,6 +314,7 @@ GATES = [
             "tests/test_alarm_fires.py",
             "tests/test_alarm_fires_stop_path.py",
             "tests/test_alarm_fires_ci_outage_emergency_20261005.py",
+            "tests/test_alarm_fires_positions_proof_20261006.py",
             "tests/test_alarm_fires_batch3.py",
             "tests/test_alarm_fires_batch4.py",
             "tests/test_alarm_fires_scalp_alerts_20261005.py",
