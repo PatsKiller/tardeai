@@ -16,6 +16,9 @@ positions:
   # Portfolio table: non-cash rows below this value are hidden (were a hard-coded $50, which hid the moomoo
   # NVDA 0.133 sh and Schwab fractional leftovers). 0 = show every position the broker reports.
   table_hide_below_usd: 0
+  # Repricer coverage guard (2026-10-06): in market hours, if fewer than this share of held symbols get a live
+  # quote, the repricer refuses and leaves the last good marks (no days-old cached prices at 0% day change).
+  reprice_min_live_coverage: 0.5
 closed:
   # trade_closed rows written by health probes (2026-08-07), not trades — excluded from REALIZED/TRADING
   test_accounts: [health, journal_check]

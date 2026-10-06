@@ -374,6 +374,29 @@ def _check_snaptrade_cash_stale(hp: dict, pcfg: dict) -> list[dict]:
     return out
 
 
+_FALLBACK_MARK_SOURCES = ("price_cache_nav", "yahoo_cache_fallback")
+
+
+def _check_portfolio_stale_marks(hp: dict, pcfg: dict, *, market_open: bool, max_rows: int) -> list[dict]:
+    """Held positions marked from a days-old fallback cache instead of a live quote (2026-10-06).
+
+    A loop that wrote its in-memory book back with 10-02 cached closes at 0% day change put 22 of 25 rows on
+    stale marks three times in one afternoon; last_repriced still looked fresh, so no existing check fired.
+    Critical so tier-1 escalation pages the operator; remediation reruns portfolio_repricer.py."""
+    if not market_open:
+        return []
+    rows = [p for p in (hp.get("holdings") or [])
+            if not p.get("is_cash") and float(p.get("market_value") or 0) >= 50
+            and str(p.get("price_source") or "") in _FALLBACK_MARK_SOURCES]
+    if len(rows) <= max_rows:
+        return []
+    syms = sorted({str(p.get("symbol")) for p in rows})
+    return [_f("data_quality", "portfolio_stale_marks", "critical",
+               f"{len(rows)} held positions priced from a stale fallback cache, not a live quote "
+               f"({', '.join(syms[:8])}{'…' if len(syms) > 8 else ''}) — day change shows 0%",
+               count=len(rows), symbols=syms[:20])]
+
+
 REMEDIATION_STATE = STATE_DIR / "health_agent_remediation_state.json"
 REMEDIATION_LOG = LOG_DIR / "health_agent_remediation.jsonl"
 
@@ -938,6 +961,9 @@ def collect_data_quality() -> list[dict]:
                                       age_minutes=age_m))
                     out.extend(_check_portfolio_totals_drift(hp_data, pcfg))
                     out.extend(_check_snaptrade_cash_stale(hp_data, pcfg))
+                    out.extend(_check_portfolio_stale_marks(
+                        hp_data, pcfg, market_open=_is_portfolio_market_hours(),
+                        max_rows=int(pcfg.get("stale_marks_max", 3))))
                 except Exception as ex:
                     out.append(_f("data_quality", "portfolio_repriced_error", "warning",
                                   f"holdings last_repriced check error: {ex}"))
@@ -1640,6 +1666,7 @@ WHY = {
     "data_gaps_open": "Some symbols lack required enrichment until these gaps are resolved.",
     "finviz_quote_cache_stale": "Finviz quote cache is the authoritative portfolio price layer — stale cache = wrong Command Center P/L.",
     "portfolio_repricer_stale": "portfolio_repricer.py has not run — holdings prices lag Finviz/broker reality.",
+    "portfolio_stale_marks": "Held positions are priced from a days-old fallback cache (0% day change) instead of live quotes — portfolio_repricer.py reruns automatically.",
     "portfolio_totals_drift": "Header portfolio_value disagrees with sum of position market values — Command Center shows two different totals.",
     "account_summary_drift": "An account_summary total is stale vs its holdings rows (common after SnapTrade sync without repricer).",
     "snaptrade_cash_stale": "Fidelity SPAXX cash is stale (SnapTrade position units); should use balances.buying_power (~Fidelity core MM).",
@@ -1659,6 +1686,7 @@ WHY = {
 
 _CTA_BY_TYPE = {
     "portfolio_repricer_stale": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
+    "portfolio_stale_marks": {"label": "Portfolio", "route": "/v3/portfolio"},
     "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
     "finviz_cookie_expired": {"label": "System → Admin secrets", "route": "/v3/system?tab=Admin"},
     "finviz_cookie_expired_token_ok": {"label": "System → Admin secrets", "route": "/v3/system?tab=Admin"},

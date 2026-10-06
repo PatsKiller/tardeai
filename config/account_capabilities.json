@@ -4,25 +4,25 @@
     "schwab_taxable": {
       "can_short_stock": true,
       "can_short_stock_verified": "2026-07-17 account record type=MARGIN",
-      "options_level": "none",
-      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026469): no Current level on any tier",
+      "options_level": "long",
+      "options_level_verified": "2026-10-06 operator stated in Claude session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te: Schwab options Level 1 (mapped Level 0=covered, 1=long, 2=spreads, 3=short_uncovered)",
       "inverse_etf_ok": true,
-      "covered_calls_ok": false,
+      "covered_calls_ok": true,
       "short_size_cap_pct_of_book": 2.0
     },
     "schwab_rollover_ira": {
       "can_short_stock": false,
-      "options_level": "covered",
-      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026258): Current level = Covered",
+      "options_level": "spreads",
+      "options_level_verified": "2026-10-06 operator stated in Claude session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te: Schwab options Level 2 (mapped Level 0=covered, 1=long, 2=spreads, 3=short_uncovered)",
       "inverse_etf_ok": true,
       "covered_calls_ok": true
     },
     "schwab_roth_ira": {
       "can_short_stock": false,
-      "options_level": "none",
-      "options_level_verified": "2026-07-18 operator read Schwab Margin & Options (\u2026415): no Current level on any tier",
+      "options_level": "long",
+      "options_level_verified": "2026-10-06 operator stated in Claude session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te: Schwab options Level 1 (mapped Level 0=covered, 1=long, 2=spreads, 3=short_uncovered)",
       "inverse_etf_ok": true,
-      "covered_calls_ok": false
+      "covered_calls_ok": true
     },
     "tradeai_automated": {
       "can_short_stock": true,

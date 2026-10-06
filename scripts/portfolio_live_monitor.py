@@ -411,7 +411,7 @@ def main() -> None:
 
     print(f"\n{'='*60}")
     print(f"  Portfolio Live Monitor v1.0")
-    print(f"  Market hours: 9:00 AM – 4:30 PM ET | Cycle: {CYCLE_MINUTES} min (reprice + triggers)")
+    print(f"  Market hours: 9:00 AM – 4:30 PM ET | Cycle: {CYCLE_MINUTES} min (triggers; prices come from portfolio_repricer)")
     print(f"  Self-terminates at 4:31 PM ET")
     print(f"{'='*60}\n")
 
@@ -537,32 +537,11 @@ def main() -> None:
 
             last_cycle = now
 
-            try:
-                from portfolio_repricer import reprice_portfolio
-                from portfolio_loader import save_state
-                portfolio = reprice_portfolio(portfolio, state_dir)
-
-                holdings_all = portfolio.get("holdings", [])
-                total_dc = sum(h.get("day_change") or 0 for h in holdings_all)
-                pt = portfolio.setdefault("portfolio_totals", {})
-                pt["day_change"] = round(total_dc, 2)
-                total_mv = pt.get("total_value", 1) or 1
-                prev_mv  = total_mv - total_dc
-                pt["day_change_pct"] = round((total_dc / prev_mv * 100) if prev_mv != 0 else 0, 4)
-
-                account_summaries = portfolio.get("account_summaries", {})
-                for acct_id, summary in account_summaries.items():
-                    acct_holdings = [h for h in holdings_all if h.get("account_id") == acct_id]
-                    acct_dc = sum(h.get("day_change") or 0 for h in acct_holdings)
-                    summary["day_change"] = round(acct_dc, 2)
-                    acct_mv = summary.get("total_value", 1) or 1
-                    acct_prev = acct_mv - acct_dc
-                    summary["day_change_pct"] = round((acct_dc / acct_prev * 100) if acct_prev != 0 else 0, 4)
-
-                save_state(portfolio, state_dir)
-                print(f"  → Dashboard repriced: ${pt.get('total_value',0):,.0f}  Today: ${total_dc:+,.0f} ({pt.get('day_change_pct',0):+.2f}%)")
-            except Exception as e:
-                print(f"  [monitor] Reprice error: {e}")
+            # 2026-10-06: this loop no longer reprices or saves holdings.json. It loaded the book once at
+            # start and wrote that in-memory copy back every hour; when its Finviz fetch came back empty it
+            # wrote 10-02 cached prices with 0% day change over 22 of 25 live marks (12:01, 13:01, 14:00 ET),
+            # and any share/basis update since its start was reverted. Prices are written ONLY by the
+            # */15 portfolio_repricer.py cron; this monitor reads them (AGENTS §7A positions rule 1).
 
         next_mins = (now_mins // CYCLE_MINUTES + 1) * CYCLE_MINUTES
         wait_secs = max(60, (next_mins - now_mins) * 60 - now.second)

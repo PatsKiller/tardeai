@@ -896,6 +896,16 @@ def _refresh_account_states(portfolio: Dict) -> None:
 
 
 # ── Main entry point ───────────────────────────────────────────────────────────
+def _min_live_coverage(root: Path) -> float:
+    """positions.reprice_min_live_coverage from config/portfolio_positions.yaml (default 0.5)."""
+    try:
+        import yaml
+        cfg = yaml.safe_load((root / "config" / "portfolio_positions.yaml").read_text(encoding="utf-8")) or {}
+        return float((cfg.get("positions") or {}).get("reprice_min_live_coverage", 0.5))
+    except Exception:
+        return 0.5
+
+
 def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, Any]:
     """
     Full reprice cycle:
@@ -936,6 +946,21 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
               f"(schwab {priced_schwab}/{len(sym_groups['schwab'])}, "
               f"fidelity_ira {priced_fid}/{len(sym_groups.get('fidelity_ira', []))}, "
               f"watchlist {len([s for s in sym_groups['watchlist'] if s in live_prices])}/{len(sym_groups['watchlist'])})")
+
+    # ── 1b. Coverage guard (2026-10-06) ───────────────────────────────────────
+    # When the live fetch comes back (nearly) empty in market hours, the Yahoo/NAV fallback below would mark
+    # every Schwab holding at a days-old cached close with 0% day change — 22 of 25 rows at 10-02 prices on
+    # 2026-10-06 (12:01, 13:01, 14:00 ET). Refuse instead: leave the holdings untouched so the last good marks
+    # stand, and say so. config/portfolio_positions.yaml positions.reprice_min_live_coverage.
+    _schwab = sym_groups.get("schwab") or []
+    if _schwab and _is_market_hours(now):
+        _cov = len([s for s in _schwab if s in live_prices]) / len(_schwab)
+        _min = _min_live_coverage(root)
+        if _cov < _min:
+            portfolio["_reprice_refused"] = (f"live coverage {_cov:.0%} < {_min:.0%} of held symbols at {now_str}; "
+                                             "holdings left at their last good marks")
+            print(f"  [repricer] ⛔ REFUSED: {portfolio['_reprice_refused']}")
+            return portfolio
 
     # ── 2. Delta-write to quote cache ──────────────────────────────────────────
     cache_path = state_dir / "finviz_quote_cache.json"
@@ -1212,6 +1237,10 @@ if __name__ == "__main__":
           f"Day: ${portfolio['portfolio_totals']['day_change']:+,.0f}")
 
     portfolio = reprice_portfolio(portfolio, state_dir)
+    if portfolio.pop("_reprice_refused", None):
+        # Nothing was repriced; do not rewrite the file (another writer may have landed since our read).
+        _holdings_lock.__exit__(None, None, None)
+        raise SystemExit(3)
 
     _payload = json.dumps(portfolio, indent=2, default=str)
     _written, _skipped = [], []

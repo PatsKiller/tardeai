@@ -65,3 +65,21 @@ Today's P&L from Schwab's own figures was about +$2,680, the same as the header'
 - **moomoo NVDA arrived at cost $0** (a promotional share). Returns counts the +$31 as gain when it is an inflow.
 - **moomoo is still flagged retired.** `account_summaries.moomoo_taxable_live` says `retired: true` (2026-09-01), but the broker reports the account active.
 - **Schwab reports SCHG Rollover `day_pl` as −$36,215**, which is a broker-side artifact. No surface uses `broker_day_pl` yet.
+
+## 6. Afternoon: prices overwritten with stale values (fixed 2026-10-06)
+
+At 12:01, 13:01 and 14:00 ET, 22 of 25 held positions dropped to Oct 2 cached prices with 0% day change. Today's P&L read about +$1,000 instead of about +$2,300.
+
+**Writer:** `scripts/portfolio_live_monitor.py`, a cron-started loop (`*/20`, `flock -n`) that runs all day.
+- It loaded the book once.
+- Every hour it called `reprice_portfolio` on that in-memory copy and saved it with `save_state`.
+- Its Finviz fetch came back empty, so the Yahoo/NAV fallback marked every Schwab row at a days-old close.
+- The 12:01 and 13:01 runs were a process still running the pre-deploy release (promote restarts units, not cron loops).
+- The 14:00 run was the fresh relaunch, so the design itself was at fault.
+
+**Caught by** a watcher on `holdings.json` writes that recorded the running processes at each write. Prices were restored each time by rerunning the repricer.
+
+**Fixes:**
+- The live monitor no longer reprices or writes `holdings.json`. The `*/15` repricer is the only price writer.
+- The repricer refuses to write when, in market hours, fewer than `positions.reprice_min_live_coverage` (0.5) of held symbols get a live quote. The last good marks stand, and it exits 3.
+- The health agent raises `portfolio_stale_marks` (critical) when more than `portfolio_price_freshness.stale_marks_max` (3) held positions carry fallback marks in market hours. Its auto-remediation reruns `portfolio_repricer.py`, and tier-1 escalation pages the operator.
