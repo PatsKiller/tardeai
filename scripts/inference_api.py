@@ -68,7 +68,7 @@ def _db_write(sql, params=None, fetch=None):
         return None
 
 
-def handle_inference(path: str, method: str = "GET", body: dict = None, query: dict = None):
+def handle_inference(path: str, method: str = "GET", body: dict = None, query: dict = None, *, trusted_options_workflow=False):
     """Return (status, dict) for /api/v2/inference/* or None if not ours."""
     if not path.startswith("/api/v2/inference"):
         return None
@@ -82,6 +82,8 @@ def handle_inference(path: str, method: str = "GET", body: dict = None, query: d
             if not content:
                 return 400, {"ok": False, "error": "content required"}
             target_type = b.get("target_type", "inference")
+            if target_type == "options_workflow" and not trusted_options_workflow:
+                return 400, {"ok": False, "error": "Use the options proposal analysis operation"}
             target_id = str(b.get("target_id") or "")
             # de-dupe: reuse an open job for the same target instead of stacking
             existing = _q("""SELECT id FROM inference_ensemble_jobs

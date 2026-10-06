@@ -151,13 +151,22 @@ function StrategyCard({ p, onTicket, onAck }: { p: any; onTicket: (spid: number)
       </div>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 5, fontSize: DASH.data, color: BB.text2 }}>
         <span title="unrealized P&L for the whole structure">P&L <b style={{ ...numStyle, color: (e.unrealized_pnl ?? 0) >= 0 ? BB.green : BB.red }}>{e.unrealized_pnl == null ? 'UNKNOWN' : fmtD(e.unrealized_pnl)}</b></span>
+        <span>Realized P&L <b style={{ ...numStyle }}>{e.realized_pnl == null ? 'UNKNOWN' : fmtD(e.realized_pnl)}</b></span>
         <span title="% of the structure's maximum possible profit already captured">max captured <b style={{ ...numStyle }}>{fmtP(e.pct_max_profit_captured)}</b></span>
         <span title="peak unrealized (MFE) and how much has been given back from it">peak {fmtD(e.mfe)}{gbPct != null && <b style={{ color: gbPct > 35 ? BB.red : BB.text2 }}> · gave back {gbPct.toFixed(0)}%</b>}</span>
         <span>DTE <b style={{ ...numStyle }}>{e.dte_nearest ?? '—'}</b></span>
-        <span title="net structure greeks">Δ {e.net?.delta ?? '—'} · Θ {e.net?.theta ?? '—'}</span>
+        <span title="Signed position totals; unknown values are not zero">Δ {e.net?.delta ?? '—'} · Γ {e.net?.gamma ?? '—'} · Θ {e.net?.theta ?? '—'} · Vega {e.net?.vega ?? '—'} · Rho {e.net?.rho ?? '—'}</span>
         <span title="worst leg bid/ask spread — liquidity truth">spread {fmtP(e.max_spread_pct)}</span>
       </div>
       <div style={{ fontSize: DASH.data, color: BB.text1, marginTop: 6 }}>{d.rationale}</div>
+      <div style={{ fontSize: DASH.chip, color: BB.text3, marginTop: 6 }}>
+        Basis {fmtD(e.entry_value)} · fees {fmtD(e.fees)} · quote {e.quote_timestamp ? new Date(e.quote_timestamp).toLocaleString() : 'timestamp unknown'}
+        <p>Next trigger: {d.next_trigger || (d.recommendation === 'DATA_BLOCKED' ? 'Complete quotes and basis, then the next scheduled evaluation' : 'Next scheduled evaluation or a recorded policy threshold crossing')}.</p>
+        <p>Early-assignment probability unavailable. Review dividend/extrinsic-value evidence below. Earnings exposure: {e.earnings_exposure || 'unknown; review the calendar before management'}.</p>
+        {(p.findings || []).map((f: any, i: number) => <p key={i}>{f.line || f.code}</p>)}
+        <a href={`/v3/journal?tab=Options&spid=${p.strategy_position_id}`}>Journal, fills and event history</a>
+      </div>
+      <details><summary>Complete legs and quantities</summary><table style={{ width: '100%' }}><thead><tr><th>Contract</th><th>Side</th><th>Remaining</th><th>Filled</th><th>Multiplier</th><th>Basis</th><th>Fees</th></tr></thead><tbody>{(p.legs || []).map((l: any) => <tr key={l.leg_id}><td>{l.occ_symbol} · {l.strike} {l.option_type} · {l.expiration}</td><td>{l.side}</td><td>{l.status === 'open' ? l.contracts : 0}</td><td>{l.filled_quantity ?? 'See fill evidence'}</td><td>{l.multiplier ?? 'unknown'}</td><td>{fmtD(l.opening_price)}</td><td>{fmtD(l.opening_fees)}</td></tr>)}</tbody></table></details>
       {p.oversight?.objection && (
         <div style={{ fontSize: DASH.chip, color: BB.amber, marginTop: 3 }}
           title={`free-lane exception review (${p.oversight.trigger}) — advisory only, deterministic decision stays canonical`}>
@@ -191,6 +200,8 @@ function StrategyCard({ p, onTicket, onAck }: { p: any; onTicket: (spid: number)
 
 export default function OptionsLifecycleView() {
   const [data, setData] = useState<any>(null)
+  const [account, setAccount] = useState(''), [strategy, setStrategy] = useState('')
+  const [spidFilter, setSpidFilter] = useState(() => new URLSearchParams(window.location.search).get('spid') || '')
   const [ticketSpid, setTicketSpid] = useState<number | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [armed, setArmed] = useState<boolean | null>(null)
@@ -223,7 +234,8 @@ export default function OptionsLifecycleView() {
   }
   const ack = async (id: number) => { await post('alert-ack', { alert_id: id }); await load() }
 
-  const positions = data?.positions || []
+  const allPositions = data?.positions || []
+  const positions = allPositions.filter((p: any) => (!account || p.account_key === account) && (!strategy || p.strategy_type === strategy) && (!spidFilter || String(p.strategy_position_id) === spidFilter))
   const strip = useMemo(() => {
     const num = (v: any) => (v == null || isNaN(Number(v)) ? 0 : Number(v))
     const pnl = positions.reduce((a: number, p: any) => a + num(p.economics?.unrealized_pnl), 0)
@@ -231,6 +243,7 @@ export default function OptionsLifecycleView() {
     const gb = positions.reduce((a: number, p: any) => a + num(p.economics?.giveback), 0)
     return {
       open: positions.length, pnl, peak, giveback: gb,
+      unknownPnl: positions.filter((p: any) => p.economics?.unrealized_pnl == null).length,
       harvest: positions.filter((p: any) => (p.decision?.recommendation || '').startsWith('HARVEST')).length,
       defend: positions.filter((p: any) => ['DEFEND', 'ROLL'].includes(p.decision?.recommendation)).length,
       assign: positions.filter((p: any) => ['ACCEPT_ASSIGNMENT', 'EXERCISE_REVIEW'].includes(p.decision?.recommendation) || (p.economics?.dte_nearest ?? 99) <= 3).length,
@@ -244,7 +257,7 @@ export default function OptionsLifecycleView() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline', background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: '10px 12px' }}>
         <span style={{ fontSize: DASH.panel, fontWeight: 800, color: BB.text1 }}>Options Lifecycle</span>
-        {[['open strategies', strip.open], ['total P&L', fmtD(strip.pnl)], ['peak reached', fmtD(strip.peak)],
+        {[['open strategies', strip.open], ['known unrealized P&L', `${fmtD(strip.pnl)}${strip.unknownPnl ? ` · ${strip.unknownPnl} unknown` : ''}`], ['peak reached', fmtD(strip.peak)],
           ['profit at giveback risk', fmtD(strip.giveback)], ['harvest', strip.harvest], ['defend/roll', strip.defend],
           ['assignment risk', strip.assign], ['expiring ≤5d', strip.week], ['data blocked', strip.stale]].map(([l, v]) => (
           <span key={String(l)} style={{ fontSize: DASH.data, color: BB.text3 }}>{l} <b style={{ ...numStyle, color: BB.text1 }}>{v as any}</b></span>
@@ -258,6 +271,12 @@ export default function OptionsLifecycleView() {
         </span>
       </div>
 
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <label>Account <select aria-label="Account" value={account} onChange={e => setAccount(e.target.value)}><option value="">All accounts</option>{[...new Set<string>(allPositions.map((p: any) => p.account_key))].map(a => <option key={a}>{a}</option>)}</select></label>
+        <label>Strategy <select aria-label="Strategy" value={strategy} onChange={e => setStrategy(e.target.value)}><option value="">All strategies</option>{[...new Set<string>(allPositions.map((p: any) => p.strategy_type))].map(s => <option key={s}>{s}</option>)}</select></label>
+        {spidFilter && <button onClick={() => setSpidFilter('')}>Clear strategy identity filter</button>}
+        <a href="/v3/journal?tab=Options">Options journal and complete history</a>
+      </div>
       {failedHealth.length > 0 && (
         <div style={{ border: `1px solid ${BB.red}`, borderRadius: 2, padding: '8px 10px' }}>
           <div style={{ fontSize: DASH.data, fontWeight: 800, color: BB.red }}>HEALTH — desk fails closed until these clear</div>

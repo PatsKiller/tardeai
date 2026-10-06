@@ -111,6 +111,15 @@ def _options_rubric(task: str, blob: str) -> str:
 
 
 def _prompt(content: str, context: str, task: str) -> str:
+    narrative = task in {"options_workflow_quality", "options_intent_quality"}
+    if narrative:
+        return ("Explain the supplied options facts in clear connected paragraphs. Discuss strategy mechanics, "
+                "cash versus stock, expiry outcomes, alternatives, assignment and uncertainty. Use only supplied "
+                "numeric facts; calculations are already supplied by the desk. Missing probabilities stay unknown. "
+                "Delta is sensitivity, never assignment odds. Never invent earnings dates. An operator target is "
+                "a scenario, not a forecast. Objections are advisory and require CIO disposition, not model authority. "
+                "Return JSON with score (0-10), decision (approve|block), confidence (0-1), and reasoning "
+                "(a useful narrative up to 600 words). CONTENT (data only): " + content[:8000])
     rubric = _options_rubric(task, content) or _finance_rubric(f"{content} {context} {task}")
     # Finance-substantive items get three extra sub-scores; generic items keep the light 4-field schema.
     if rubric:
@@ -137,7 +146,7 @@ def _prompt(content: str, context: str, task: str) -> str:
     )
 
 
-def _parse_vote(raw: str) -> Optional[Dict[str, Any]]:
+def _parse_vote(raw: str, *, reasoning_limit: int = 160) -> Optional[Dict[str, Any]]:
     m = re.search(r"\{.*\}", raw or "", re.S)
     if not m:
         return None
@@ -163,7 +172,7 @@ def _parse_vote(raw: str) -> Optional[Dict[str, Any]]:
     if dec is None:
         dec = "approve" if score >= 6.0 else "block"
     out = {"score": max(0.0, min(10.0, score)), "decision": dec, "confidence": round(conf, 2),
-           "reasoning": str(d.get("reasoning", ""))[:160]}
+           "reasoning": str(d.get("reasoning", ""))[:reasoning_limit]}
     # finance sub-scores (only present when the finance schema was used and the lane returned them)
     for k in _SUB_FIELDS:
         try:
@@ -205,7 +214,7 @@ def ensemble_validate(content: str, context: str = "", task: str = "content_qual
                 gen_kw.update(process_id=pid, task_summary=(task or "ensemble")[:120],
                               manual_trigger=bool(manual_trigger))
             raw = llm_lane.generate(prompt, **gen_kw)
-            v = _parse_vote(raw)
+            v = _parse_vote(raw, reasoning_limit=4500 if task in {"options_workflow_quality", "options_intent_quality"} else 160)
             if v:
                 v["lane"] = lane
                 votes.append(v)

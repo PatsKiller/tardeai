@@ -202,3 +202,78 @@ def fresh_validation(events: list[dict[str, Any]], fresh_minutes: float, now: Op
     if last.get("status") != "VALIDATED" or (now - at).total_seconds() > fresh_minutes * 60:
         return None
     return last
+
+
+def refresh_exact(p, *, chain_fn, clock=None, cfg=None):
+    """One expiration-scoped provider read for every leg; HTTP time is not quote time.
+
+    Returns a receipt and refreshed economics without changing the authorized limit.
+    The caller persists a new revision for material movement and returns to review.
+    Injectable clock/readers are the only route used by engineering tests.
+    """
+    from scripts.lib import options_workflow as wf
+    clock = clock or (lambda: datetime.now(timezone.utc))
+    try:
+        wanted = wf.proposal_legs(p)
+        chain = chain_fn(p.get("symbol") or p.get("underlying"),
+                         expiration=wanted[0]["expiration"], account_key=p.get("account"),
+                         all_strikes=True)
+        received = clock()
+    except Exception as exc:
+        return {"ok": False, "refusals": [wf.refusal("quotes_unavailable", str(exc)[:160])]}
+    if not chain or chain.get("status") != "ok":
+        return {"ok": False, "refusals": [wf.refusal("quotes_unavailable", "Exact-contract chain unavailable")]}
+    legs, problems = [], []
+    fields = ("bid", "ask", "last", "iv", "delta", "gamma", "theta", "vega", "rho", "volume", "oi",
+              "quote_time", "trade_time", "oi_time", "greeks_time", "volume_time", "multiplier",
+              "deliverables", "nonstandard", "non_standard", "occ_symbol")
+    for leg in wanted:
+        rows = [r for e in chain.get("expirations", []) if str(e.get("exp"))[:10] == leg["expiration"]
+                for r in e.get("strikes", []) if r.get("side") == leg["option_type"]
+                and wf.number(r.get("strike")) == leg["strike"]]
+        if len(rows) != 1:
+            problems.append(wf.refusal("contract_not_found", "Exact contract missing or ambiguous", leg=leg))
+            continue
+        row = rows[0]
+        q = {**leg, **{k: row.get(k) for k in fields}}
+        q["occ_symbol"] = row.get("symbol") or row.get("occ_symbol")
+        bid, ask = wf.number(q.get("bid")), wf.number(q.get("ask"))
+        q["mid"] = (bid + ask) / 2 if bid is not None and ask is not None else None
+        legs.append(q)
+    problems.extend(wf.quote_refusals(legs, now=received))
+    from scripts.options_desk_enterprise import liquidity_gate
+    for i, leg in enumerate(legs):
+        problems.extend(wf.refusal("liquidity", str(issue), leg=i)
+                        for issue in liquidity_gate(leg, cfg=cfg).get("issues", []))
+    underlying_time = wf.timestamp(chain.get("underlying_quote_time"))
+    if underlying_time is None or not 0 <= (received - underlying_time).total_seconds() <= 120:
+        problems.append(wf.refusal("underlying_quote_stale", "Timestamped underlying quote is missing, future or stale"))
+    receipt = {"underlying_quote_time": chain.get("underlying_quote_time"), "source": "schwab_chain", "received_at": received.isoformat(), "legs": legs,
+               "underlying_price": wf.number(chain.get("underlying_price")),
+               "chain_fetched_at": chain.get("fetched_at"), "environment": chain.get("environment", "live")}
+    receipt["id"] = wf.digest(receipt)
+    if problems:
+        return {"ok": False, "receipt": receipt, "refusals": problems}
+    credit = p["strategy"] in {"covered_call", "cash_secured_put", "credit_spread"}
+    signed = sum((l["bid"] if l["side"] == "SELL" else -l["ask"]) * l["ratio"] for l in legs)
+    quote_price = signed if credit else -signed
+    if len(legs) == 1:
+        quote_price = legs[0]["mid"]
+    if quote_price <= 0:
+        return {"ok": False, "receipt": receipt,
+                "refusals": [wf.refusal("quote_invalid", "Strategy has no positive executable premium")]}
+    live = {**p, "legs": legs, "legs_liquidity": legs,
+            "quotes_as_of": min(wf.timestamp(l["quote_time"]) for l in legs).isoformat(),
+            "quote_time": min(wf.timestamp(l["quote_time"]) for l in legs).isoformat(),
+            "chain_fetched_at": receipt["received_at"], "underlying_price": receipt["underlying_price"],
+            "quote_receipt": receipt, "data_source": "schwab_chain"}
+    changes = []
+    limits = settings(cfg)
+    for field, value, threshold in (("premium", quote_price, limits["max_premium_change_pct"]),
+                                    ("underlying_price", receipt["underlying_price"], limits["max_spot_change_pct"])):
+        old = wf.number(p.get(field))
+        if old and value is not None and abs(value - old) / abs(old) * 100 > float(threshold):
+            changes.append({"field": field, "reviewed": old, "current": value,
+                            "change_pct": 100 * (value - old) / abs(old)})
+    return {"ok": True, "proposal": live, "receipt": receipt, "market_premium": quote_price,
+            "material_changes": changes, "refusals": []}

@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    ("options_workflow", ["tests/test_options_workflow.py", "tests/test_options_workflow_execution.py", "tests/test_options_workflow_journal.py", "tests/test_options_workflow_submission.py", "tests/test_options_workflow_entry.py"]),
     ("learning_outcome_governance", ["tests/test_learning_outcome_governance.py"]),
     ("learning_research_remediation", ["tests/test_learning_research_remediation.py"]),
     ("learning_operator_remediation", ["tests/test_learning_operator_remediation.py"]),

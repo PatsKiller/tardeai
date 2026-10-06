@@ -20,6 +20,7 @@ import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualE
 import ManualExecutionLog from '../components/ManualExecutionLog'
 import OptionsLifecycleView from '../components/options/OptionsLifecycleView'
 import StandingIntentsPanel, { type IntentFeed } from '../components/options/StandingIntentsPanel'
+import StrategyProposalModal, { type ProposalSource } from '../components/options/StrategyProposalModal'
 
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -83,7 +84,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const [posSourceFilter, setPosSourceFilter] = useState('')
   const [ensembleBusy, setEnsembleBusy] = useState(false)
   const [ensembleMsg, setEnsembleMsg] = useState<string | null>(null)
-  const [pendingIntent, setPendingIntent] = useState<string | null>(null)
+  const [proposalSource, setProposalSource] = useState<ProposalSource | null>(null)
   const [execMsg, setExecMsg] = useState<string | null>(null)
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
   // PR4 (2026-09-28): the redesigned cards render only behind ui_v5; v4 stays the fallback.
@@ -255,30 +256,6 @@ export default function OptionsHub({ onDrill }: Props) {
 
   const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
 
-  const runPreflight = async (p: Proposal) => {
-    if (!execStatus?.armed_for_execution) {
-      setExecMsg('Options execution locked — run options_pilot_arm.py --approve on server.')
-      return
-    }
-    try {
-      const r = await fetch('/api/v2/options/preflight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: p.id, account_key: p.account || undefined }),
-      })
-      const j = await r.json()
-      const data = j.data ?? j
-      if (!data.ok) {
-        setExecMsg(data.error || 'Preflight blocked')
-        return
-      }
-      setPendingIntent(data.intent_id)
-      setExecMsg(`2FA requested for ${p.symbol} — approve via Telegram/email or confirm in Broker Orders (intent ${data.intent_id?.slice(0, 8)}…)`)
-    } catch (e: any) {
-      setExecMsg(String(e?.message || e))
-    }
-  }
-
   const handleAction = async (action: string, id: string, item: Proposal | Position) => {
     if (action === 'review_chain') {
       const sym = 'symbol' in item && item.symbol ? item.symbol : (item as Position).underlying
@@ -343,12 +320,7 @@ export default function OptionsHub({ onDrill }: Props) {
     }
     if (execActions.has(action) && 'symbol' in item) {
       const p = item as Proposal
-      const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || p.auto_eligible === false
-      if (manualOnly) {
-        setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })
-        return
-      }
-      await runPreflight(p)
+      setProposalSource({ proposal_id: p.id })
       return
     }
     onDrill({
@@ -390,15 +362,8 @@ export default function OptionsHub({ onDrill }: Props) {
       armed={!!execStatus?.armed_for_execution}
       onAction={(a, id) => handleAction(a, id, p)}
       onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
-      onDrill={() => onDrill({
-        title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,
-        subtitle: `$${p.strike} · ${p.dte} DTE · ${p.expiration ?? ''}`,
-        endpoint: `/api/v2/options/proposals`,
-        rows: [p],
-        subjectType: 'options_proposal',
-        subjectKey: p.id,
-      })}
-      reviewBar={<OptionReviewBar proposal={p} />}
+      onDrill={() => setProposalSource({ proposal_id: p.id })}
+      reviewBar={<><button type="button" onClick={() => setProposalSource({ proposal_id: p.id })}>Review strategy · account, quantity and time in force</button><OptionReviewBar proposal={p} /></>}
     />
   )
 
@@ -495,7 +460,7 @@ export default function OptionsHub({ onDrill }: Props) {
           </button>)}
       </div>}
       {/* Operator's standing options intents + the live Schwab contracts that fit them (2026-10-05). */}
-      <StandingIntentsPanel data={intentFeed} onSaved={refetchIntents} onSelectSymbol={symbol => { clearPropFilters(); setSymbolFilter(symbol); setTab('Proposals') }} />
+      <StandingIntentsPanel onSelectProposal={setProposalSource} data={intentFeed} onSaved={refetchIntents} onSelectSymbol={symbol => { clearPropFilters(); setSymbolFilter(symbol); setTab('Proposals') }} />
 
       {/* Desk Path B readiness — Schwab Path B only (Alpaca paper lane retired from Hub). */}
       {deskPathBRows.length > 0 && (
@@ -531,6 +496,9 @@ export default function OptionsHub({ onDrill }: Props) {
         </div>
       )}
 
+      {proposalSource && <StrategyProposalModal source={proposalSource} onClose={() => setProposalSource(null)} onManual={p => {
+        setProposalSource(null); setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })
+      }} />}
       {manualSeed && (
         <ManualExecutionModal seed={manualSeed} onClose={() => setManualSeed(null)} onLogged={() => refetchProps()} />
       )}
@@ -538,7 +506,7 @@ export default function OptionsHub({ onDrill }: Props) {
       {execMsg && (
         <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #60a5fa', fontSize: 11, color: 'var(--text2)' }}>
           {execMsg}
-          {pendingIntent && <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text3)' }}>Pending intent: {pendingIntent}</div>}
+
         </div>
       )}
 

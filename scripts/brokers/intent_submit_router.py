@@ -64,6 +64,10 @@ def submit_fully_approved(intent_id: str) -> dict:
     if not iid:
         return {"ok": False, "error": "intent_id required"}
     if not approval_service.is_fully_approved(iid):
+        existing = approval_service.submission_lookup(iid)
+        if existing and existing.get("status") == "submission_status_unknown":
+            return {"ok": False, "stage": "reconciliation", "status": "submission_status_unknown",
+                    "result": existing, "error": "Submission status unknown. Reconcile the existing attempt; do not submit another order."}
         return {"ok": True, "stage": "confirm", "fully_approved": False,
                 "note": "channel confirmed; waiting on approval"}
 
@@ -113,6 +117,9 @@ def submit_fully_approved(intent_id: str) -> dict:
                     if not auth.get("ok"):
                         return {"ok": False, "mode": "blocked", "stage": "authorization", "broker_submitted": False,
                                 "refusals": auth.get("refusals") or [],
+                                "review_required": auth.get("review_required", False),
+                                "material_changes": auth.get("material_changes") or [],
+                                "next_review": auth.get("next_review"),
                                 "error": "Trade AI blocked submit before Schwab: " + "; ".join(
                                     str(r.get("reason") or r.get("code")) for r in (auth.get("refusals") or [])[:3])}
                     res = oop.submit(acct, auth["order_spec"], ointent)

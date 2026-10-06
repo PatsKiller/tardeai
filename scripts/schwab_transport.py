@@ -153,6 +153,27 @@ def place_order(account_key, order_spec, intent, kind="canary"):
             raise NotProvenWrite(
                 f"replace_cancel_incomplete: {_symbol} stop #{_replace_oid} — {_err} — "
                 "new stop NOT placed (avoiding a double stop). Retry or cancel in ToS.")
+    if kind == "options":
+        # Serialize duplicate confirmations using the existing database transaction
+        # and pilot ledger. Every previous attempt requires reconciliation, including
+        # terminal/ambiguous responses. No second ledger or auth process.
+        source_id = ev.get("source_proposal_id") or ev.get("proposal_id")
+        if not source_id or not ev.get("proposal_revision"):
+            raise NotProvenWrite("Reviewed proposal identity required")
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("options-submit:" + source_id,))
+        cur.execute("""SELECT p.id, p.status, p.broker_order_id FROM schwab_pilot_orders p
+            LEFT JOIN broker_order_intents i ON i.intent_id=p.intent_id
+            WHERE p.kind='options' AND (p.intent_id=%s
+                OR i.intent_json->'meta'->'signal_evidence'->>'proposal_id'=%s
+                OR (i.intent_json->'meta'->'signal_evidence'->>'source_proposal_id'=%s
+                    AND p.status IN ('submitting','post_exception','submission_status_unknown','error_reconcile_required')))
+            ORDER BY p.id DESC LIMIT 1""", (intent.intent_id, ev.get("proposal_id"), source_id))
+        prior = cur.fetchone()
+        if prior:
+            conn.rollback()
+            return {"status": "submission_status_unknown" if prior[1] in ("submitting", "post_exception", "submission_status_unknown", "error_reconcile_required") else prior[1],
+                    "pilot_row_id": prior[0], "broker_order_id": prior[2], "existing": True,
+                    "note": "Existing order attempt; reconcile its status. No second order transmitted."}
     # Idempotency fence (P0-5): never create a second ACTIVE submit for the same
     # intent/account/symbol. Schwab does not dedupe, so a duplicate row = a duplicate live
     # order. A stale prior SUBMIT_REQUESTED must be reconciled (GET broker truth) first.
@@ -252,6 +273,24 @@ def place_order(account_key, order_spec, intent, kind="canary"):
         return {"status": "error", "error": "client unavailable", "detail": err, "pilot_row_id": row_id}
     h = _get_hash(account_key)
     _rate_acquire()
+    if kind == "options":
+        from datetime import datetime as _dt, timezone as _tz
+        from scripts.lib.options_workflow import quote_refusals, timestamp
+        from brokers.options_order_pilot import order_from_intent
+        receipt = ev.get("final_quote_receipt") or {}
+        issues = quote_refusals(receipt.get("legs") or [], now=_dt.now(_tz.utc))
+        resources_at = timestamp((ev.get("account_resources") or {}).get("as_of"))
+        if resources_at is None or not 0 <= (_dt.now(_tz.utc) - resources_at).total_seconds() <= 120:
+            issues.append({"code": "account_resources_stale", "reason": "Account resources aged before submission"})
+        if receipt.get("environment") != "live" or order_from_intent(intent) != order_spec:
+            issues.append({"code": "order_binding_invalid", "reason": "Live receipt and exact authorized order required"})
+        if not approval_service.is_fully_approved(intent.intent_id):
+            issues.append({"code": "approval_expired", "reason": "Per-order approval is no longer valid"})
+        if issues:
+            cur.execute("UPDATE schwab_pilot_orders SET status='validation_blocked', detail=%s, updated_at=NOW() WHERE id=%s",
+                        (_json.dumps(issues), row_id))
+            conn.commit()
+            return {"status": "validation_blocked", "refusals": issues, "pilot_row_id": row_id, "broker_submitted": False}
     try:
         resp = client.place_order(h, order_spec)
     except Exception as e:
@@ -265,8 +304,18 @@ def place_order(account_key, order_spec, intent, kind="canary"):
                 _tm.mark_degraded(f"place_order: {str(e)[:200]}")
         except Exception:
             pass
+        if kind == "options":
+            approval_service.consume(intent.intent_id)
+            return {"status": "submission_status_unknown", "pilot_row_id": row_id,
+                    "error": "Broker response is ambiguous; reconciliation required. No automatic retry."}
         return {"status": "error", "error": f"POST exception: {str(e)[:160]}", "pilot_row_id": row_id,
                 "note": "DO NOT blind-retry — reconcile open orders via GET first (Schwab does not dedupe)"}
+    if kind == "options" and (resp.status_code >= 500 or resp.status_code == 408):
+        cur.execute("UPDATE schwab_pilot_orders SET status='submission_status_unknown', detail=%s, updated_at=NOW() WHERE id=%s",
+                    (f"HTTP {resp.status_code}; reconciliation required", row_id))
+        conn.commit()
+        approval_service.consume(intent.intent_id)
+        return {"status": "submission_status_unknown", "pilot_row_id": row_id, "http_status": resp.status_code}
     if resp.status_code not in (200, 201):
         cur.execute("UPDATE schwab_pilot_orders SET status='rejected_by_broker', detail=%s, updated_at=NOW() "
                     "WHERE id=%s", (f"HTTP {resp.status_code}: {resp.text[:240]}", row_id)); conn.commit()
@@ -279,6 +328,11 @@ def place_order(account_key, order_spec, intent, kind="canary"):
     except Exception:
         loc = resp.headers.get("Location", "")
         order_id = loc.rstrip("/").rsplit("/", 1)[-1] if loc else None
+    if kind == "options" and not order_id:
+        cur.execute("UPDATE schwab_pilot_orders SET status='submission_status_unknown', detail='accepted response without order id', updated_at=NOW() WHERE id=%s", (row_id,))
+        conn.commit()
+        approval_service.consume(intent.intent_id)
+        return {"status": "submission_status_unknown", "pilot_row_id": row_id}
     approval_service.consume(intent.intent_id)              # single-use: burn the 2FA set NOW
     try:
         from brokers.evidence_approval import consume_approval as _consume_evidence_approval
@@ -322,8 +376,16 @@ def place_order(account_key, order_spec, intent, kind="canary"):
                     "WHERE id=%s", (_detail, row_id)); conn.commit()
         return {"status": "rejected", "broker_order_id": order_id, "pilot_row_id": row_id,
                 "readback": readback, "error": _detail or "broker rejected order after accept"}
+    journal = None
+    if kind == "options" and isinstance(readback, dict) and readback.get("orderActivityCollection"):
+        try:
+            from options_fill_evidence import record_option_order_readback
+            journal = record_option_order_readback(cur, conn, account=account_key, order=readback)
+        except Exception as exc:
+            conn.rollback()
+            journal = {"ok": False, "error": str(exc)[:200], "reconciliation_required": True}
     return {"status": "submitted", "broker_order_id": order_id, "pilot_row_id": row_id,
-            "readback": readback}
+            "readback": readback, **({"journal": journal} if kind == "options" else {})}
 
 
 _CANCEL_TERMINAL = frozenset({
@@ -761,6 +823,20 @@ def get_account(account_key, account_hash=None):
     return _read(account_key, "get_account", normalize_account, h)
 
 
+def get_options_resources(account_key):
+    """Fresh read-only account/position/order snapshot for options account validation."""
+    from datetime import datetime, timezone
+    from scripts.lib.options_account_resources import project
+    from schwab.client import Client
+    h = _get_hash(account_key)
+    if not h:
+        return {"commitments_complete": False, "error": "account link unavailable"}
+    raw = _read(account_key, "get_account", lambda value: value, h,
+                fields=Client.Account.Fields.POSITIONS)
+    orders = get_orders_raw(account_key)
+    return project(raw, orders, as_of=datetime.now(timezone.utc).isoformat())
+
+
 def get_positions(account_key, account_hash=None):
     h = account_hash or _get_hash(account_key)
     if not h:
@@ -1024,6 +1100,12 @@ def normalize_option_chain(raw):
                                  "symbol": c.get("symbol"), "multiplier": c.get("multiplier"),
                                  "nonstandard": bool(c.get("nonStandard")) or None,
                                  "iv": c.get("volatility"), "delta": c.get("delta"),
+                                 "gamma": c.get("gamma"), "theta": c.get("theta"),
+                                 "vega": c.get("vega"), "rho": c.get("rho"),
+                                 "deliverables": c.get("optionDeliverablesList"),
+                                 "oi_time": _ms_iso(c.get("openInterestTimeInLong")),
+                                 "greeks_time": _ms_iso(c.get("quoteTimeInLong")),
+                                 "volume_time": _ms_iso(c.get("quoteTimeInLong")),
                                  "oi": c.get("openInterest"), "volume": c.get("totalVolume"),
                                  "dte": c.get("daysToExpiration"),
                                  "quote_time": _ms_iso(c.get("quoteTimeInLong")),
@@ -1050,7 +1132,7 @@ def normalize_option_chain(raw):
 
 
 def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, contract_type=None,
-                     *, full_chain=False, min_dte=7, max_dte=365):
+                     *, full_chain=False, min_dte=7, max_dte=365, all_strikes=False):
     """READ-ONLY option chain (near-the-money by default). No order surface.
 
     2026-09-28: `expiration` (YYYY-MM-DD) pins the request to one expiration date (from_date =
@@ -1060,6 +1142,10 @@ def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, 
     if not account_key:
         return {"status": "needs_account_link"}
     kw = {"strike_count": max(1, min(int(strike_count or 8), 40)), "include_underlying_quote": True}
+    if all_strikes:
+        if not expiration or full_chain:
+            return {"status": "error", "error": "Exact-contract all-strike reads require one expiration"}
+        kw.pop("strike_count")
     if full_chain:
         from datetime import datetime as _datetime, timedelta as _timedelta
         from zoneinfo import ZoneInfo as _ZoneInfo
@@ -1086,7 +1172,7 @@ def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, 
             kw["contract_type"] = contract_type.upper()
     out = _read(account_key, "get_option_chain", normalize_option_chain, symbol.upper(), **kw)
     if isinstance(out, dict):
-        out["request_coverage"] = {"all_strikes": bool(full_chain), "both_sides": contract_type is None,
+        out["request_coverage"] = {"all_strikes": bool(full_chain or all_strikes), "both_sides": contract_type is None,
                                    "min_dte": int(min_dte) if full_chain else None,
                                    "max_dte": int(max_dte) if full_chain else None,
                                    "status": "COMPLETE" if full_chain and out.get("status") == "ok" and out.get("response_complete") is True else "PARTIAL"}

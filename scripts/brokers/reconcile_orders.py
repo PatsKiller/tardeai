@@ -43,7 +43,7 @@ def find_stale_internal_orders(*, max_age_minutes: int = 30) -> list[dict]:
         cur.execute(
             """SELECT id, intent_id, correlation_id, status, broker_order_id, created_at
                FROM schwab_pilot_orders
-               WHERE status IN ('submitting','submitted') AND broker_order_id IS NULL
+               WHERE (status IN ('submitting','submitted') OR (kind='options' AND status IN ('post_exception','submission_status_unknown','error_reconcile_required'))) AND broker_order_id IS NULL
                  AND created_at < NOW() - INTERVAL '%s minutes'""",
             (max_age_minutes,),
         )
@@ -94,6 +94,9 @@ def build_reconcile_report(local_intents: list[dict], pilot_rows: list[dict],
         status = r.get("state") or r.get("status") or ""
         age = r.get("age_minutes")
         boid = r.get("broker_order_id")
+        if str(status).lower() in ("post_exception", "submission_status_unknown", "error_reconcile_required") and r.get("kind") == "options":
+            out["unknown_statuses"].append({**r, "issue": "submission_status_unknown",
+                "recommended_action": "Reconcile broker truth against the persisted order and account; never automatically submit another order."})
         if submit_requires_reconcile(status, broker_order_id=boid, age_minutes=age or 0,
                                      max_age_minutes=max_age_minutes):
             out["stale_internal_orders"].append({
@@ -166,13 +169,13 @@ def _load_local_rows() -> tuple[list[dict], list[dict]]:
         pass
     try:
         cur.execute(
-            """SELECT id, intent_id, correlation_id, status, broker_order_id, symbol,
+            """SELECT id, intent_id, correlation_id, status, broker_order_id, symbol, kind,
                       EXTRACT(EPOCH FROM (NOW()-created_at))/60.0
                FROM schwab_pilot_orders
                WHERE status NOT IN ('filled','canceled','cancelled','rejected','expired')""")
-        for rid, iid, corr, status, boid, sym, age in cur.fetchall() or []:
+        for rid, iid, corr, status, boid, sym, kind, age in cur.fetchall() or []:
             pilots.append({"pilot_row_id": rid, "intent_id": iid, "correlation_id": corr,
-                           "status": status, "broker_order_id": boid, "symbol": sym,
+                           "status": status, "broker_order_id": boid, "symbol": sym, "kind": kind,
                            "age_minutes": float(age or 0)})
     except Exception:
         pass

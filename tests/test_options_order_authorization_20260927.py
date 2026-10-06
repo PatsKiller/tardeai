@@ -255,7 +255,11 @@ def _run_auth(intent, *, proposal, store, now=NOW, bp=(50_000.0, None), bind=Non
     reader = (lambda k: {"status": "active", "buying_power": bp[0]}) if bp[0] is not None else (lambda k: {"status": "degraded"})
     res = oop.confirm_authorization(intent, now=now, buying_power_reader=reader,
                                     proposal_loader=lambda pid: proposal, desk_gate=gate,
-                                    readiness_fn=readiness, bind_fn=bind or _bind)
+                                    readiness_fn=readiness, bind_fn=bind or _bind,
+                                    # This suite isolates the existing desk/readiness contract.
+                                    # The mandatory new final quote/revision gate has its own
+                                    # fake-clock adapter suite in test_options_workflow_execution.
+                                    workflow_gate=lambda *_: {"ok": True, "refusals": []})
     res["_bind_calls"] = calls["bind"]
     return res
 
@@ -396,6 +400,8 @@ def test_no_order_without_its_exact_evidence_bound_authorization(tmp_path):
 # ── the api confirm handler and the router run the contract before submit ───────────────────
 
 def test_api_confirm_refuses_before_submit_when_the_contract_refuses(monkeypatch):
+    from brokers import intent_submit_router as router
+    monkeypatch.setitem(sys.modules, "brokers.intent_submit_router", router)
     from unittest.mock import MagicMock
     brokers = MagicMock(name="brokers")
     oopm = MagicMock(name="brokers.options_order_pilot")
@@ -409,6 +415,8 @@ def test_api_confirm_refuses_before_submit_when_the_contract_refuses(monkeypatch
     import api_v2
     intent = MagicMock(); intent.account_key = "rollover"
     oopm.load_intent.return_value = intent
+    aps._load_intent_any.return_value = intent
+    aps.is_fully_approved.return_value = True
     aps.confirm.return_value = {"ok": True, "fully_approved": True}
     oopm.confirm_authorization.return_value = {"ok": False, "refusals": [{"code": "legs_changed", "reason": "x"}]}
     body = {"intent_id": "i1", "channel": "web", "code": "DELL"}
@@ -425,7 +433,7 @@ def test_api_confirm_refuses_before_submit_when_the_contract_refuses(monkeypatch
     oopm.confirm_authorization.return_value = {"ok": True, "order_spec": {"price": "6.35"}, "evidence": {"ok": True, "order_spec_hash": "h"}}
     oopm.submit.return_value = {"status": "submitted"}
     status, resp = api_v2.handle("/api/v2/options/confirm", "POST", body=body)
-    assert status == 200 and resp["stage"] == "submit" and resp["evidence"]["order_spec_hash"] == "h"
+    assert status == 200 and resp["stage"] == "submit" and resp["result"]["status"] == "submitted"
     oopm.submit.assert_called_once_with("rollover", {"price": "6.35"}, intent)
 
 

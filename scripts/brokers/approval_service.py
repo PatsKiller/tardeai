@@ -197,6 +197,15 @@ def intent_action_summary(intent) -> dict:
         is_protective = False
         is_queue_entry = False
 
+    if getattr(getattr(intent, "meta", None), "strategy_id", None) == "OPTIONS_EXECUTION_1":
+        legs = getattr(getattr(intent, "instrument", None), "option_legs", None) or []
+        tif = getattr(intent.tif, "value", intent.tif)
+        limit = getattr(getattr(intent, "entry", None), "limit_price", None)
+        details = "; ".join(f"{l.get('side')} {l.get('quantity')} {l.get('expiration')} {l.get('strike')} {l.get('option_type')}" for l in legs)
+        return {"kind": "options", "symbol": sym, "action": "options order", "action_label": "Options order",
+                "approve_btn": "Approve options order",
+                "headline": f"{sym} {ev.get('strategy')} · {ev.get('contracts')} contract(s)/spread(s) · {acct}",
+                "detail": f"{details} · LIMIT {limit} · {tif} · revision {str(ev.get('proposal_revision') or 'missing')[:12]}"}
     if is_queue_entry:
         entry_px = getattr(getattr(intent, "entry", None), "limit_price", None)
         stop_px = (intent.exit_policy.stop.price if intent.exit_policy and intent.exit_policy.stop else None)
@@ -361,8 +370,8 @@ def _execution_notice(intent) -> str:
             return "⛔ Protective orders are currently locked (system control off)."
         if intent is not None and _g._is_options_execution(intent):
             if _g._options_unlocked() and _g._live_future_unlocked():
-                return ("✅ Options execution LIVE — this order WILL submit to Schwab once approved "
-                        "(2FA is the final gate).")
+                return ("Options execution enabled. After per-order approval, exact quotes and account resources "
+                        "are revalidated. Changed or stale evidence returns the order to review.")
             return "⛔ Options execution locked — run options_pilot_arm.py --approve."
         if intent is not None and _g._live_future_unlocked():
             return "✅ Execution is LIVE — this order WILL submit once approved."
@@ -560,12 +569,17 @@ def submission_lookup(intent_id: str) -> dict | None:
         cur = _conn().cursor()
         cur.execute("""SELECT broker_order_id, status, symbol, account_key, qty, kind, updated_at
                        FROM schwab_pilot_orders
-                       WHERE intent_id=%s AND broker_order_id IS NOT NULL
+                       WHERE intent_id=%s AND (broker_order_id IS NOT NULL OR (kind='options'
+                            AND status IN ('submitting','post_exception','submission_status_unknown','error_reconcile_required')))
                        ORDER BY id DESC LIMIT 1""", (iid,))
         r = cur.fetchone()
         if not r:
             return None
         oid, st, sym, acct, qty, kind, upd = r
+        if kind == "options" and st in {"submitting", "post_exception", "submission_status_unknown", "error_reconcile_required"}:
+            return {"broker_order_id": str(oid) if oid else None, "status": "submission_status_unknown",
+                    "kind": kind, "account_key": acct, "symbol": sym,
+                    "reconciliation_required": True, "updated_at": str(upd) if upd else None}
         if str(st or "").lower() not in _SUBMITTED_PILOT_STATUSES:
             return None
         return {"broker_order_id": str(oid), "status": str(st), "symbol": sym,
@@ -588,6 +602,7 @@ def status(intent_id: str) -> dict:
     sub = submission_lookup(intent_id)
     out = {"intent_id": intent_id, "channels": rows, "fully_approved": is_fully_approved(intent_id)}
     if sub:
-        out["submitted"] = True
+        out["submitted"] = sub.get("status") != "submission_status_unknown"
+        out["submission_status_unknown"] = sub.get("status") == "submission_status_unknown"
         out["submission"] = sub
     return out

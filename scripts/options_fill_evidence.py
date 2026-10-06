@@ -195,6 +195,8 @@ def _queue_projection(cur, spid: int, kind: str = "trade_instance"):
 
 
 def _validate_identity(f: dict, source: str, allow_substitute: bool):
+    if f.get("environment") == "dry_test" or f.get("dry_run") or source == "dry_test":
+        raise ValueError("Dry-test receipts cannot enter live fill evidence")
     if source == "operator_manual":
         if not (f.get("operator_evidence_ref") and f.get("operator_name")):
             raise ValueError("operator evidence requires operator_name + operator_evidence_ref "
@@ -717,3 +719,180 @@ if __name__ == "__main__":
     ensure_evidence_tables(cur, conn)
     print("evidence/outbox/transfer/incident tables ensured")
     print(process_projection_outbox(cur, conn))
+
+
+def record_entry_evidence(cur, conn, *, proposal, fills, broker, source_ref, source):
+    """Project evidenced opening fills into the EXISTING strategy and fill ledgers.
+
+    Stable broker order/document identity, never symbol/date grouping. Proposed
+    quantities are targets; only observed filled quantities become positions.
+    A session advisory lock survives the existing schema/registration commits.
+    """
+    from scripts.lib import options_workflow as wf
+    from options_lifecycle_model import ensure_tables, register_strategy
+    from options_journal_bridge import ensure_bridge_tables
+    if not source_ref or not fills:
+        return {"ok": False, "error": "Opening execution evidence and a stable source reference are required"}
+    account = proposal.get("account")
+    if not account or proposal.get("environment") == "dry_test" or proposal.get("dry_run"):
+        raise ValueError("Live account evidence required; dry-test receipts cannot enter journals")
+    legs = wf.proposal_legs(proposal)
+    for leg in legs:
+        if wf.number(leg.get("multiplier")) is None or leg["multiplier"] <= 0:
+            raise ValueError("Recorded contract multiplier required")
+        if not leg.get("occ_symbol"):
+            raise ValueError("Exact OCC identity required")
+    for fill in fills:
+        _validate_identity(fill, source, allow_substitute=True)
+        if source == "broker_fill" and str(fill.get("broker_order_id") or "") != str(source_ref):
+            raise ValueError("Fill order identity differs from the source order")
+        wf.quantity(fill.get("contracts"))
+        if wf.number(fill.get("price")) is None or fill["price"] < 0 or wf.timestamp(fill.get("executed_at")) is None:
+            raise ValueError("Finite execution price and timestamp required")
+        if not any(l["occ_symbol"].strip() == fill.get("occ_symbol", "").strip()
+                   and fill.get("instruction") == ("BTO" if l["side"] == "BUY" else "STO") for l in legs):
+            raise ValueError("Opening fill differs from exact proposal legs")
+    for leg in legs:
+        submitted = sum(f["contracts"] for f in fills if f["occ_symbol"].strip() == leg["occ_symbol"].strip())
+        if submitted > leg["quantity"]:
+            raise ValueError("Opening fills exceed the order target")
+    ensure_tables(cur, conn)
+    ensure_bridge_tables(cur, conn)
+    ensure_evidence_tables(cur, conn)
+    key = f"entry:{broker}:{account}:{source_ref}"
+    cur.execute("SELECT pg_advisory_lock(hashtext(%s))", (key,))
+    try:
+        cur.execute("""SELECT p.strategy_position_id, e.details FROM options_strategy_positions p
+            JOIN options_journal_events e USING(strategy_position_id)
+            WHERE p.broker=%s AND p.account_key=%s AND e.event='OPEN' AND e.evidence_ref=%s
+            ORDER BY p.strategy_position_id LIMIT 1""", (broker, account, key))
+        found = cur.fetchone()
+        if found:
+            spid = found[0]
+            if found[1].get("order") != wf.order_binding(proposal):
+                raise ValueError("Source reference already belongs to a different reviewed order")
+        else:
+            registered = [{**l, "contracts": 0, "side": "long" if l["side"] == "BUY" else "short",
+                           "instruction": "BTO" if l["side"] == "BUY" else "STO",
+                           "opening_price": None} for l in legs]
+            spid = register_strategy(cur, conn, broker=broker, account_key=account,
+                underlying=proposal["symbol"], legs=registered, source=source,
+                opened_at=min(wf.timestamp(f["executed_at"]) for f in fills),
+                notes=json.dumps({"entry_source_ref": source_ref, "proposal_id": proposal.get("id"),
+                                  "revision": proposal.get("revision")}, sort_keys=True))
+            # Classification is supported by exact order evidence, not by the
+            # coincidental presence of another stock/option in the account.
+            cur.execute("UPDATE options_strategy_positions SET strategy_type=%s WHERE strategy_position_id=%s",
+                        (proposal["strategy"], spid))
+            refs = {k: proposal.get(k) for k in ("id", "revision", "directive_id", "directive_version",
+                    "options_thesis", "analysis", "analysis_lane", "cio_decision", "workflow_economics", "quote_receipt")}
+            _emit_event_idem(cur, spid, "OPEN", source, key,
+                             {"entry_source_ref": source_ref, "review_references": refs,
+                              "order": wf.order_binding(proposal)})
+            conn.commit()
+        inserted = 0
+        for fill in fills:
+            cur.execute("""SELECT contracts, price, commission FROM options_fill_evidence
+                WHERE strategy_position_id=%s AND BTRIM(occ_symbol)=%s AND instruction=%s
+                  AND broker_order_id IS NOT DISTINCT FROM %s
+                  AND ((%s IS NOT NULL AND broker_execution_id=%s)
+                       OR (%s IS NULL AND operator_evidence_ref=%s AND executed_at=%s))
+                LIMIT 1""", (spid, fill["occ_symbol"].strip(), fill["instruction"], fill.get("broker_order_id"),
+                    fill.get("broker_execution_id"), fill.get("broker_execution_id"), fill.get("broker_execution_id"),
+                    fill.get("operator_evidence_ref"), fill.get("executed_at")))
+            existing = cur.fetchone()
+            if existing:
+                expected = (float(fill["contracts"]), float(fill["price"]),
+                            float(fill["commission"]) if fill.get("commission") is not None else None)
+                if tuple(float(v) if v is not None else None for v in existing) != expected:
+                    raise ValueError("Conflicting execution evidence requires reconciliation")
+                continue
+            cur.execute("""INSERT INTO options_fill_evidence
+                (strategy_position_id, broker, account_key, broker_order_id, broker_execution_id,
+                 operator_evidence_ref, operator_name, occ_symbol, instruction, contracts, price,
+                 commission, executed_at, source, raw_json, dedupe_key)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)
+                ON CONFLICT (dedupe_key) DO NOTHING""",
+                (spid, broker, account, fill.get("broker_order_id"), fill.get("broker_execution_id"),
+                 fill.get("operator_evidence_ref"), fill.get("operator_name"), fill["occ_symbol"].strip(),
+                 fill["instruction"], fill["contracts"], fill["price"], fill.get("commission"),
+                 fill["executed_at"], source, json.dumps(fill, default=str),
+                 _dedupe_key(broker, account, spid, None, fill)))
+            inserted += cur.rowcount
+            _emit_event_idem(cur, spid, "PARTIAL_FILL", source,
+                key + ":" + _dedupe_key(broker, account, spid, None, fill), fill)
+        if not inserted:
+            conn.commit()
+            return {"ok": True, "strategy_position_id": spid, "inserted": 0, "idempotent_noop": True}
+        complete = True
+        for leg in legs:
+            cur.execute("""SELECT COALESCE(SUM(contracts),0), SUM(contracts*price)/NULLIF(SUM(contracts),0),
+                CASE WHEN COUNT(*)=COUNT(commission) THEN SUM(commission) ELSE NULL END
+                FROM options_fill_evidence WHERE strategy_position_id=%s AND ticket_id IS NULL
+                AND BTRIM(occ_symbol)=%s AND instruction=%s""",
+                (spid, leg["occ_symbol"].strip(), "BTO" if leg["side"] == "BUY" else "STO"))
+            count, price, fees = cur.fetchone()
+            if float(count) > leg["quantity"]:
+                raise ValueError("Opening fills exceed the evidenced order target; reconciliation required")
+            complete = complete and float(count) == leg["quantity"]
+            cur.execute("""SELECT COALESCE(SUM(contracts),0) FROM options_close_allocations
+                WHERE strategy_position_id=%s AND BTRIM(occ_symbol)=%s""", (spid, leg["occ_symbol"].strip()))
+            remaining = max(0, count - cur.fetchone()[0])
+            cur.execute("""UPDATE options_strategy_legs SET contracts=%s, opening_price=%s,
+                opening_fees=%s, original_contracts=%s, basis_source=%s
+                WHERE strategy_position_id=%s AND BTRIM(occ_symbol)=%s AND status='open'""",
+                (remaining, price, fees, leg["quantity"], source, spid, leg["occ_symbol"].strip()))
+        cur.execute("""UPDATE options_strategy_positions SET data_quality_status=%s, updated_at=now()
+            WHERE strategy_position_id=%s""", ("provisional_basis" if complete and source == "operator_manual" else "ok" if complete else "unreconciled", spid))
+        _queue_projection(cur, spid)
+        conn.commit()
+        return {"ok": True, "strategy_position_id": spid, "inserted": inserted, "entry_complete": complete}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.execute("SELECT pg_advisory_unlock(hashtext(%s))", (key,))
+        conn.commit()
+
+
+def record_option_order_readback(cur, conn, *, account, order):
+    """Only known pilot order IDs can link a broker fill to a reviewed proposal."""
+    from options_schwab_exec_parser import resolve_leg_execution_basis
+    from scripts.lib import options_workflow as wf
+    oid = str(order.get("orderId") or "")
+    if not oid:
+        return {"ok": False, "error": "Broker order identity unavailable"}
+    cur.execute("""SELECT q.proposal_json, i.intent_json FROM schwab_pilot_orders po
+        JOIN broker_order_intents i ON i.intent_id=po.intent_id
+        JOIN options_approval_queue q ON q.proposal_id=i.intent_json->'meta'->'signal_evidence'->>'proposal_id'
+        WHERE po.kind='options' AND po.broker_order_id=%s AND po.account_key=%s
+        ORDER BY po.id DESC LIMIT 1""", (oid, account))
+    row = cur.fetchone()
+    if not row:
+        return {"ok": False, "error": "No exact reviewed order identity; retain for reconciliation"}
+    proposal, intent = [json.loads(x) if isinstance(x, str) else x for x in row]
+    if proposal.get("account") != account:
+        raise ValueError("Order account mismatch")
+    evidence = (intent.get("meta") or {}).get("signal_evidence") or {}
+    proposal["analysis"] = {"id": evidence.get("analysis_reference"), "binding": evidence.get("analysis_binding")}
+    fills = []
+    raw_legs = order.get("orderLegCollection") or []
+    for leg in wf.proposal_legs(proposal):
+        matches = [l for l in raw_legs if (l.get("instrument") or {}).get("symbol", "").strip() == leg["occ_symbol"].strip()
+                   and l.get("instruction") == ("BUY_TO_OPEN" if leg["side"] == "BUY" else "SELL_TO_OPEN")]
+        if len(matches) != 1 or matches[0].get("legId") is None or matches[0].get("quantity") != leg["quantity"]:
+            raise ValueError("Broker order legs differ from reviewed identity")
+        # The canonical parser owns per-leg prices and fees; require explicit
+        # execution leg IDs so package prices never become individual-leg basis.
+        if any(e.get("legId") is None for a in order.get("orderActivityCollection", []) for e in a.get("executionLegs", [])):
+            raise ValueError("Execution leg mapping is ambiguous")
+        parsed = resolve_leg_execution_basis([order], leg["occ_symbol"])
+        for f in (parsed.get("raw_provenance") or {}).get("fills", []):
+            if not f.get("execution_id"):
+                raise ValueError("Stable execution reference required")
+            fills.append({"broker_order_id": oid, "broker_execution_id": str(f["execution_id"]),
+                          "occ_symbol": leg["occ_symbol"], "instruction": "BTO" if leg["side"] == "BUY" else "STO",
+                          "contracts": f["qty"], "price": f["px"], "commission": f.get("fee"),
+                          "executed_at": f.get("time")})
+    return record_entry_evidence(cur, conn, proposal=proposal, fills=fills, broker="schwab",
+                                 source_ref=oid, source="broker_fill")

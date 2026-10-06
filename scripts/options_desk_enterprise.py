@@ -1102,6 +1102,22 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
         pid = p.get("id")
         if not pid:
             continue
+        if p.get("workflow_version"):
+            root = str(p.get("source_proposal_id") or pid)
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", ("options-revision:" + root,))
+            # Updating choices supersedes prior review and pending per-order
+            # confirmations using the existing queue and approval stores.
+            cur.execute("""UPDATE trade_approvals SET status='superseded'
+                WHERE status IN ('pending','confirmed') AND intent_id IN (
+                    SELECT i.intent_id FROM broker_order_intents i JOIN options_approval_queue q
+                    ON q.proposal_id=i.intent_json->'meta'->'signal_evidence'->>'proposal_id'
+                    WHERE q.proposal_json->>'source_proposal_id'=%s AND q.proposal_id<>%s
+                      AND q.status<>'executed')""", (root, pid))
+            cur.execute("""UPDATE options_approval_queue SET status='rejected', reviewed_at=NOW(), updated_at=NOW(),
+                reviewer='revision_superseded', review_note='Superseded by a newly prepared revision',
+                meta=COALESCE(meta,'{}'::jsonb) || jsonb_build_object('superseded_by',%s::text)
+                WHERE proposal_json->>'source_proposal_id'=%s AND proposal_id<>%s AND status<>'executed'""",
+                (pid, root, pid))
         ent = p.get("enterprise") or {}
         thesis_blocks = list(p.get("thesis_blocks") or [])
         # 2026-09-26: an option needs the same thesis bar as a stock purchase.
@@ -1372,6 +1388,10 @@ def _canon_num(v: Any) -> Any:
 def canonical_legs(proposal: dict) -> dict:
     """The legs an approval is a decision about, normalised so a re-serialised proposal hashes the same."""
     p = proposal or {}
+    if p.get("workflow_version"):
+        from scripts.lib.options_workflow import order_binding, analysis_binding
+        return {**order_binding(p), "revision": p.get("revision"), "analysis_binding": analysis_binding(p),
+                "reviewed_analysis_id": p.get("reviewed_analysis_id")}
     short_strike = p.get("short_strike")
     if short_strike is None:
         short_strike = p.get("strike")
