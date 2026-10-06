@@ -314,6 +314,7 @@ GATES = [
             "tests/test_alarm_fires.py",
             "tests/test_alarm_fires_stop_path.py",
             "tests/test_alarm_fires_ci_outage_emergency_20261005.py",
+            "tests/test_alarm_fires_positions_proof_20261006.py",
             "tests/test_alarm_fires_batch3.py",
             "tests/test_alarm_fires_batch4.py",
             "tests/test_alarm_fires_scalp_alerts_20261005.py",
@@ -1134,6 +1135,11 @@ GATES = [
     (
         "price_writer_fix_20261006",
         ["tests/test_price_writer_fix_20261006.py"],
+    ),
+    # Positions plan phase 2: the 10-trading-day proof grader (runs, heartbeat, diff, lots; operator 2026-10-06).
+    (
+        "positions_proof_phase2_20261006",
+        ["tests/test_positions_proof_phase2_20261006.py"],
     ),
     # Active Trader soul: "should have been" session review reproduces the operator's XNDU table;
     # automated mode is SIMULATION ONLY (one brain, sized to the ask supply, no live mode) (2026-10-05).
