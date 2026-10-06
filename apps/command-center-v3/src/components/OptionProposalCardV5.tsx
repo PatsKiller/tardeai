@@ -14,7 +14,7 @@ import { Chip, ChipRow, Collapsible, Metric, MetricGuide, MetricRow, ShowMore, T
 import { RADIUS, SHADOW, TOKENS, TYPE, numStyle, toneVars } from '../lib/designTokens'
 import { fmt$ } from '../lib/format'
 import { sanitizeActionButtons, allowsManualLog, liquidityWarnings } from '../lib/optionsCardSemantics'
-import { floorCallouts } from '../lib/optionsDeskTruth'
+import { floorCallouts, packagePointer, reviewWorkflow, REVIEW_STAGES } from '../lib/optionsDeskTruth'
 import {
   fmtIso, proposalContractLine, proposalDetailMetrics, proposalHeroMetrics, proposalInsight, proposalStatusChips,
   visibleProposalActions, type ActionSpec, type MetricSpec,
@@ -81,6 +81,7 @@ export default function OptionProposalCardV5(props: Props) {
   const fund = x.fundamentals
   const legs: any[] = Array.isArray(x.legs_liquidity) ? x.legs_liquidity : []
   const combined = x.combined_exposure
+  const review = reviewWorkflow(x)
   const research = x.research_context
   const key = `options.proposal.${String(p.strategy || 'x')}`
   // values for the guide's {placeholders}: only fields already on the row (§13)
@@ -97,6 +98,9 @@ export default function OptionProposalCardV5(props: Props) {
     if (econ.collateral != null) econParts.push(`Collateral ${$(econ.collateral)} · max loss ${$(econ.max_loss_total)} · breakeven $${econ.breakeven}${econ.credit_basis ? ` · credit basis: ${econ.credit_basis}` : ''}`)
     if (econ.credit_total_at_mid != null) econParts.push(`At leg midpoints (not a fill): credit ${$(econ.credit_total_at_mid)} · max loss ${$(econ.max_loss_total_at_mid)} · breakeven $${econ.breakeven_at_mid}${econ.credit_haircut_total != null ? ` · haircut ${$(econ.credit_haircut_total)}` : ''}`)
     if (econ.floor_value_after_premium != null) econParts.push(`Insures ${econ.insured_shares} sh${econ.uninsured_shares ? ` (${econ.uninsured_shares} uninsured)` : ''} · floor ${$(econ.floor_value_after_premium)} · hedged max loss from mark ${$(econ.hedged_max_loss_from_mark)}${econ.put_breakeven != null ? ` · put breakeven $${econ.put_breakeven}` : ''}`)
+    if (econ.residual_shares != null) econParts.push(`${econ.shares_committed} covered shares; ${econ.residual_shares} additional shares outside this payoff`)
+    if (econ.assessment_basis) econParts.push(econ.assessment_basis)
+    if (econ.protection_scenarios) econParts.push(`Protection through ${p.expiration}: ` + econ.protection_scenarios.map((r: any) => `${r.move_pct}%: stock alone ${$(r.stock_pl)}, stock + put ${$(r.hedged_pl)}, loss reduction ${$(r.loss_reduction)}`).join(' · '))
     if (econ.uninsured_downside_note) econParts.push(String(econ.uninsured_downside_note))
     if (x.fill_assumption) econParts.push(`Fill assumption: ${x.fill_assumption}${x.quotes_as_of ? ` · quotes as of ${fmtIso(x.quotes_as_of)}` : ''}`)
     if (econ.ev_method) econParts.push(`Expected P/L method: ${econ.ev_method}`)
@@ -136,6 +140,11 @@ export default function OptionProposalCardV5(props: Props) {
           <ShowMore lines={1} style={{ marginTop: 4, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{x.company_description}</ShowMore>
         )}
       </TickerHeader>
+      <div data-testid="options-review-next-action" style={line}>
+        <b>{REVIEW_STAGES[review.state || ''] || 'Review status unavailable'}.</b> {review.reason}
+        <div>Next: {review.next_action} · Owner: {review.owner}</div>
+        <div style={dim}>Decision scope: this strategy, contract and account. Ticker decisions and model votes do not approve this idea.</div>
+      </div>
 
       <div style={{ marginTop: 8 }} onClick={e => e.stopPropagation()}>
         <TakeawayBanner insight={insight} />
@@ -202,7 +211,7 @@ export default function OptionProposalCardV5(props: Props) {
 
         {(econParts.length > 0 || legs.length > 0 || combined) && (
           <Collapsible title="Economics & fill" count={legs.length ? `${legs.length} legs` : undefined}
-            summary={x.credit_basis ? `credit basis ${x.credit_basis}${x.quotes_as_of ? ` · quotes ${fmtIso(x.quotes_as_of)}` : ''}` : econ?.ev_caveat}
+            summary={x.price_basis || econ?.prices_basis || econ?.ev_caveat}
             persistKey={`${key}.economics`}>
             {econParts.length > 0 && <div data-testid="options-economics">{econParts.map((t, i) => <div key={i} style={line}>{t}</div>)}</div>}
             {legs.length > 0 && (
@@ -217,13 +226,13 @@ export default function OptionProposalCardV5(props: Props) {
             )}
             {combined && !packageLead && (
               <div data-testid="options-combined-exposure-pointer" style={{ ...line, marginTop: 6 }}>
-                Same-symbol package is on the first {p.symbol} card. The expiries differ, so there is no single at-expiry payoff.
+                {packagePointer(p.symbol, combined?.expirations)}
               </div>
             )}
             {combined && packageLead && (
               <div data-testid="options-combined-exposure" style={{ marginTop: 6 }}>
                 <div style={line}><span style={{ ...label, color: combined.correlated ? TOKENS.warning : TOKENS.text[1] }}>Same-symbol ideas ({(combined.ideas || []).length}).</span> <span style={dim}>{combined.note}</span></div>
-                <div style={line}>Committed together {$(combined.capital_committed_total)}{combined.account_cash != null ? ` · account cash ${$(combined.account_cash)}${combined.committed_pct_of_cash != null ? ` (${combined.committed_pct_of_cash}% of it)` : ''}` : ''}{combined.shares_held ? ` · ${combined.shares_held} ${combined.symbol} shares already held` : ''}</div>
+                <div style={line}>Capital if all selected {$(combined.capital_committed_total)}{combined.account_cash != null ? ` · account cash ${$(combined.account_cash)}${combined.committed_pct_of_cash != null ? ` (${combined.committed_pct_of_cash}% of it)` : ''}` : ''}{combined.shares_held ? ` · ${combined.shares_held} ${combined.symbol} shares already held` : ''}</div>
                 {(combined.excluded_ideas || []).length > 0 && <div style={{ ...line, color: TOKENS.text[3] }}>Not counted (archived): {(combined.excluded_ideas || []).map((e: any) => `${String(e.strategy || '').replace(/_/g, ' ')} $${e.strike}`).join(', ')}</div>}
                 {combined.shares_by_account && Object.keys(combined.shares_by_account).length > 0 && (
                   <div style={line}>Shares by account: {Object.entries(combined.shares_by_account).map(([a, n]) => `${String(a).replace(/_/g, ' ')} ${n}`).join(' · ')}</div>
@@ -300,7 +309,7 @@ export default function OptionProposalCardV5(props: Props) {
                   <>
                     <Row k="Thesis." v={cv.thesis ? `${cv.thesis.pin} · ${String(cv.thesis.stance || cv.thesis.state || '').toLowerCase()}${cv.thesis.state ? ` (${String(cv.thesis.state).toLowerCase()})` : ''} · last reviewed ${fmtIso(cv.thesis.last_reviewed) || 'never'}` : undefined} />
                     <Row k="Summary." v={cv.thesis?.summary} />
-                    <Row k="Latest decision." v={cv.latest_decision ? `${cv.latest_decision.recommendation} · ${cv.latest_decision.source || ''} · ${fmtIso(cv.latest_decision.at)}` : undefined} />
+                    <Row k="Latest ticker decision (scope may differ)." v={cv.latest_decision ? `${cv.latest_decision.recommendation} · ${cv.latest_decision.source || ''} · ${fmtIso(cv.latest_decision.at)}` : undefined} />
                     <Row k="Changed." v={cv.change_since_previous ? `${cv.change_since_previous.previous} → ${cv.change_since_previous.current}` : undefined} />
                     <Row k="Research on file." v={`${cv.research?.count ?? 0} runs · last completed ${fmtIso(cv.research?.last_completed) || 'never'}`} />
                   </>

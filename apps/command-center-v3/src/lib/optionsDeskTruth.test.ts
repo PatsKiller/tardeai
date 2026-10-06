@@ -2,7 +2,7 @@
 import { isCardBlocked, sanitizeActionButtons } from './optionsCardSemantics.ts'
 import {
   armedDeskLine, armedOverviewLine, blockedRouteNote, coveredCallFunnelCounts, floorCallouts,
-  funnelNameText, optionsDeskPersonLine, packageLeadIds, rewardRiskPresentation,
+  funnelNameText, optionsDeskPersonLine, packageLeadIds, rewardRiskPresentation, packagePointer, isReviewQueueRow,
 } from './optionsDeskTruth.ts'
 
 let failed = 0
@@ -38,7 +38,7 @@ const blockedComplete = {
   enterprise: { blocks: [{ code: 'spread' }] },
 }
 const line = optionsDeskPersonLine([blockedThesis, blockedThesis, blockedThesis, blockedComplete], 0)
-ok('person line counts blocked and thesis apart', line.startsWith('Needs a person: 0 ready for operator review. 4 blocked. 3 missing a thesis.'))
+ok('person line counts blocked and thesis apart', line.startsWith('Review: 0 ready for investment review. 4 need research, data or block resolution.'))
 ok('person line does not say refused or incomplete', !line.includes('refused or incomplete'))
 
 eq('hedge ratio stays neutral above 0.3', rewardRiskPresentation({ strategy: 'protective_put', risk_reward: 33.48, enterprise: { blocks: [{ code: 'x' }] } }), { label: 'hedge ratio', success: false })
@@ -67,6 +67,13 @@ eq('wide quote names the 12% cap', floorCallouts({ strategy: 'cash_secured_put',
 eq('credit spread under 0.25 names the floor', floorCallouts({ strategy: 'credit_spread', risk_reward: 0.08 }), ['Reward/risk 0.08 is under the 0.25 credit-spread floor. The floor is unchanged.'])
 eq('cash-secured put is not judged by the credit-spread floor', floorCallouts({ strategy: 'cash_secured_put', risk_reward: 0.08 }), [])
 eq('spread text in a block is read', floorCallouts({ enterprise: { blocks: [{ reason: 'spread 63.6% > 12.0%' }] } })[0], 'Widest quote is 63.6% wide. The desk cap stays 12%.')
+
+const pendingReview = { approvable: false, enterprise: { live_eligible: false }, review_workflow: { state: 'READY_FOR_REVIEW' } }
+ok('pending CIO review is visible while execution stays blocked', isReviewQueueRow(pendingReview))
+ok('review summary uses independent count', optionsDeskPersonLine([pendingReview], 0).includes('1 ready for investment review.'))
+ok('same expiry is not reported as different', packagePointer('SPCX', ['2026-11-20']).includes('share one expiry'))
+ok('different expiry is explicit', packagePointer('V', ['2026-10-30', '2026-11-20']).includes('Expiries differ'))
+ok('unknown expiry stays unknown', packagePointer('X', []).includes('unavailable'))
 
 if (failed) throw new Error(`optionsDeskTruth: ${failed} failed`)
 console.log('optionsDeskTruth ok')

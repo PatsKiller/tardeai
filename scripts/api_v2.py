@@ -40175,12 +40175,44 @@ def _options_intents(query=None):
     except Exception:
         latest = {}
     cfg = _mt.load_config()
+    # Read-only contract joins; no second proposal/thesis store and no implicit staging.
+    proposals = (_get_options_engine().read_proposals() or {}).get("proposals") or []
+    joined = []
+    for intent in intents:
+        match = latest.get(intent.get("symbol"))
+        if match and intent.get("updated_at"):
+            from datetime import datetime as _dt
+
+            try:
+                stale = (
+                    match.get("intent_updated_at") != intent["updated_at"]
+                    if "intent_updated_at" in match
+                    else _dt.fromisoformat(match["as_of"]).timestamp()
+                    < _dt.fromisoformat(intent["updated_at"]).timestamp()
+                )
+            except (KeyError, TypeError, ValueError):
+                stale = True
+            if stale:
+                match = None
+        joined.append(
+            {
+                **intent,
+                "matches": _mt.link_desk_matches(match, proposals) if match else None,
+                "llm_review": _mt.review_packet(intent, match),
+            }
+        )
     return _json_clean(
         {
             "status": "ok",
             "advisory_only": True,
             "mode": cfg.get("mode"),
-            "intents": [{**i, "matches": latest.get(i.get("symbol"))} for i in intents],
+            "intents": joined,
+            "match_count": sum(
+                ((i.get("matches") or {}).get("desk_link_summary") or {}).get("match_count", 0) for i in joined
+            ),
+            "unstaged_count": sum(
+                ((i.get("matches") or {}).get("desk_link_summary") or {}).get("unstaged_matches", 0) for i in joined
+            ),
         }
     )
 
@@ -40197,6 +40229,7 @@ def _options_intent_upsert(body):
     body = dict(body or {})
     dry = bool(body.pop("dry_run", False))
     status = body.pop("set_status", None)
+    expected = body.pop("expected_intent_updated_at", _st._UNCHECKED)
     from db_adapter import get_connection as _gc
 
     conn = _gc()
@@ -40207,7 +40240,9 @@ def _options_intent_upsert(body):
                 cur, body.get("symbol") or "", status, source=str(body.get("source") or "operator"), apply=not dry
             )
         else:
-            plan = _st.upsert_intent(cur, body, source=str(body.get("source") or "operator"), apply=not dry)
+            plan = _st.upsert_intent(
+                cur, body, source=str(body.get("source") or "operator"), apply=not dry, expected_updated_at=expected
+            )
         if dry:
             conn.rollback()
         else:
@@ -40459,7 +40494,7 @@ def _options_holdings_funnel(query=None):
 
 
 def _options_coverage(query=None):
-    from lib.options_scan import ScanStore, coverage_page, load_config, scan_coverage
+    from lib.options_scan import ScanStore, capacity_summary, coverage_page, load_config, scan_coverage
 
     oe = _get_options_engine()
     q = query or {}
@@ -40469,8 +40504,9 @@ def _options_coverage(query=None):
         return raw[0] if isinstance(raw, list) else raw
 
     store = ScanStore(oe.STATE_DIR)
+    snapshot = scan_coverage(oe.read_proposals(), store)
     page = coverage_page(
-        scan_coverage(oe.read_proposals(), store),
+        snapshot,
         offset=int(value("offset", 0)),
         limit=int(value("limit", 100)),
         symbol=str(value("symbol", "")),
@@ -40478,6 +40514,7 @@ def _options_coverage(query=None):
     cfg = load_config(oe.PROJECT_ROOT)
     runs = ScanStore(oe.STATE_DIR).runs(summaries=True)
     page["scan_enabled"] = cfg.get("enabled", False)
+    page["scan_capacity"] = capacity_summary(snapshot.get("coverage") or {}, cfg)
     page["runs"] = [
         {
             "run_id": r["id"],
@@ -40518,7 +40555,45 @@ def _options_proposals(query=None):
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
     force = str(g("force", "")).lower() in ("1", "true", "yes")
     oe = _get_options_engine()
-    data = dict(oe.read_proposals())
+    # Cache projection only: repair legacy display arithmetic without rewriting its receipt,
+    # acquiring quotes, submitting an order or treating fetch time as quote freshness.
+    from copy import deepcopy
+    from lib.options_economics import stamp_payoff
+    from lib.options_decision_packet import review_workflow
+    from lib.options_exposure import combined_exposure
+    from lib.options_scan import capacity_summary, load_config
+
+    data = deepcopy(oe.read_proposals())
+    data["scan_capacity"] = capacity_summary(data.get("coverage") or {}, load_config(oe.PROJECT_ROOT))
+    captured_combos = {}
+    for row in data.get("proposals") or []:
+        combo = row.get("combined_exposure") or {}
+        if combo:
+            captured_combos[row.get("symbol")] = combo
+        if row.get("data_source") == "schwab_chain" and row.get("economics_revision") != "coherent_quote_v1":
+            liq = (row.get("enterprise") or {}).get("liquidity") or {}
+            stamp_payoff(
+                row,
+                session=row.get("market_session") or data.get("market_session"),
+                quote_issues=list(liq.get("issues") or []) if liq.get("pass") is False else None,
+            )
+        row["review_workflow"] = review_workflow(row)
+    for symbol, old_combo in captured_combos.items():
+        members = [row for row in data.get("proposals") or [] if row.get("symbol") == symbol]
+        revised = combined_exposure(
+            members,
+            shares_by_symbol={symbol: old_combo.get("shares_held")},
+            shares_by_symbol_account={symbol: old_combo.get("shares_by_account") or {}},
+        ).get(symbol)
+        if revised:
+            for key in ("account_cash", "committed_pct_of_cash"):
+                revised[key] = old_combo.get(key)
+            cash = revised.get("account_cash")
+            revised["committed_pct_of_cash"] = (
+                round(100 * revised["capital_committed_total"] / cash, 1) if cash else None
+            )
+            for row in members:
+                row["combined_exposure"] = revised
     if force:
         data["scan_request_required"] = "POST /api/v2/options/scans"
     proposals = data.get("proposals") or []
@@ -40587,6 +40662,13 @@ def _options_proposals(query=None):
             if p.get("approvable") is True
             and (p.get("enterprise") or {}).get("live_eligible") is True
             and not (p.get("enterprise") or {}).get("blocks")
+        ]
+    if str(g("review_only", "")).lower() in {"1", "true", "yes"}:
+        filtered = [
+            p
+            for p in filtered
+            if (p.get("review_workflow") or {}).get("state")
+            in {"READY_FOR_REVIEW", "APPROVED_AWAITING_QUOTES", "READY_FOR_PREFLIGHT"}
         ]
     if g("flag"):
         filtered = [p for p in filtered if any(f.get("key") == g("flag") for f in p.get("flags") or [])]
@@ -40658,6 +40740,18 @@ def _options_proposals(query=None):
                 p.get("approvable") is True and (p.get("enterprise") or {}).get("live_eligible") is True
                 for p in proposals
             ),
+            "review_counts": {
+                state: sum((p.get("review_workflow") or {}).get("state") == state for p in proposals)
+                for state in (
+                    "READY_FOR_REVIEW",
+                    "NEEDS_RESEARCH",
+                    "NEEDS_DATA",
+                    "BLOCKED",
+                    "APPROVED_AWAITING_QUOTES",
+                    "READY_FOR_PREFLIGHT",
+                    "REJECTED_OR_EXPIRED",
+                )
+            },
             "queue_counts": {
                 key: sum(p.get("desk_queue") == key for p in proposals)
                 for key in ("income", "protection", "watch_reentry", "discovery")

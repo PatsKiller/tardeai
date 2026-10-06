@@ -1,5 +1,17 @@
 # Options Module — Architecture & Operations
 
+The October 5 review repair also adds a **Create standing plan** modal for any symbol, using the
+existing ticker directive and options-intent writer. It previews before saving, preserves the
+previous plan in the preview, refuses a changed-version overwrite and waits for the scheduled
+matcher. Editing a plan invalidates older contract matches. Strategy and risk/reward tooltips
+explain capital, upside limits, full downside and assignment; delta is not assignment probability.
+An optional **LLM summary of this standing plan** reuses the governed ensemble job/result store,
+bound to the exact intent and captured scan. It shows each model's reasoning and recording time;
+no result is invented and page loads do not request models. These controls create advisory plans,
+not account allocation, trade approval or broad-scan activation. Fixtures verify the UI paths;
+organic matcher/model results for newly saved plans remain a runtime acceptance requirement.
+
+
 > **SUPERSESSION NOTE (2026-07-19):** Open-position MANAGEMENT is now owned by
 > the **Options Lifecycle Desk** — see `docs/OPTIONS_LIFECYCLE_DESK.md`
 > (canonical) and `docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md`
@@ -37,9 +49,19 @@ See the [capacity, API, ownership and acceptance contract](ops/OPTIONS_SCAN_CAPA
 for exact source/code status, rollout requirements and five-session acceptance. Source completion
 and fixture success do not establish deployed or organically effective behavior.
 
-Package payoff/POP display identifies executable bid/ask assumptions, IV basis and heuristic
+Package payoff/POP display identifies captured bid/ask estimates, IV basis and heuristic
 scores. Profit probability includes premium; model estimates are not observed win rates.
 Readiness gates and operator-controlled execution policy retain their authority.
+
+## Review repair and captured quote basis (2026-10-05)
+
+The [review/economics repair record](ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md#review-and-economics-repair--2026-10-05)
+supersedes earlier display semantics: investment review has its own states and next actions,
+independent of execution blocks. Every card's premium, floor, breakeven and risk share one captured
+quote basis and contract-lot scope. Standing-intent matches show quote timestamps and links to
+existing account-specific ideas; unmatched contracts are explicitly not staged. Ticker decisions
+and model votes do not approve an option idea. API GET repair is a read-only projection, not a
+quote refresh, new research or mutation of the original snapshot.
 
 ## Current flow (2026-09-26)
 

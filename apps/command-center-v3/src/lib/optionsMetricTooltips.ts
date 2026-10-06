@@ -275,7 +275,7 @@ const BASE: Record<OptionsMetricKey, (ctx: OptionsMetricContext) => OptionsMetri
 
   rr: () => ({
     short: 'Reward-to-risk ratio: max gain divided by max loss.',
-    more: 'R:R compares upside to downside on defined-risk trades. Higher is generally better, but a high R:R with low POP may still be a low-quality idea. Spreads and credits use package economics.',
+    more: 'A ratio of 0.25 means $0.25 maximum gain for each $1 of maximum loss, using the displayed quote basis. It is not a probability or expected return. Covered calls include the covered shares; spreads use package economics. Unlimited-upside calls have no finite maximum-gain ratio. Insurance is assessed by protection cost and loss reduction, not this ratio.',
     watch: 'Read R:R together with POP, breakeven, and liquidity.',
   }),
 

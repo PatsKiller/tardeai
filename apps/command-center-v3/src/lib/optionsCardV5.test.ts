@@ -96,5 +96,12 @@ const pi = positionInsight(POS)
 eq('position takeaway = recommended action, lifecycle tone, rationale driver', [pi.headline, pi.tone, pi.drivers], ['Close at 50% of max profit', 'warning', ['Harvest rule: half the premium captured']])
 eq('position chips', positionStatusChips(POS).map(c => [c.label, c.tone]), [['HARVEST', 'warning'], ['OTM', 'success'], ['Schwab live', 'success']])
 
+const askHedge = proposalHeroMetrics({ strategy: 'protective_put', data_source: 'schwab_chain', bid: .65, ask: 7,
+  premium_basis: 'ask', price_basis: 'ask estimate; not a fill; AFTER_HOURS', premium_total: 700,
+  economics: { option_cost_total: 700, floor_value_after_premium: 21300, hedged_max_loss_from_mark: 1828 } })
+eq('ask hedge labels the selected basis', askHedge[0].label, 'Cost (ask est.)')
+eq('ask hedge uses consistent premium', askHedge[0].value, '$700')
+ok('ask hedge does not call closed quotes executable', !String(askHedge[0].meta).includes('executable'))
+
 if (failed) throw new Error(`optionsCardV5: ${failed} failed`)
 console.log('[optionsCardV5] ok')

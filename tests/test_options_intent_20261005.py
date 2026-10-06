@@ -157,7 +157,8 @@ def test_csp_respects_strike_max_delta_liquidity_and_earnings():
     top = rows[0]
     assert top["strike"] == 157.5 and top["credit_per_contract"] == pytest.approx(370.0)
     assert top["collateral_per_contract"] == 15750.0 and top["breakeven"] == pytest.approx(153.8)
-    assert top["assignment_odds_pct"] == 28
+    assert top["delta_magnitude_pct"] == 28
+    assert "assignment_odds_pct" not in top
 
 
 def test_covered_calls_never_below_the_operator_floor():
@@ -250,3 +251,59 @@ def test_no_order_or_broker_surface_in_new_code():
         src = (ROOT / rel).read_text()
         for bad in ("place_order", "submit_order", "build_client", "unlock_trade", "/orders"):
             assert bad not in src, f"{rel} contains {bad}"
+
+
+
+def test_intent_links_share_contract_identity_but_never_inherit_another_strategy_decision():
+    from scripts.lib.options_identity import contract_guid
+    registry = {"entities": []}  # Inject missing identity; exact contract attributes still join.
+    match = {"symbol": "TEST", "directive_id": 17, "as_of": "2026-10-05T17:00:00Z",
+             "plays": {"cash_secured_put": [{"strike": 100, "exp": "2026-11-20", "assignment_odds_pct": 28}]}}
+    proposals = [{"id": "hedge", "symbol": "TEST", "strategy": "protective_put", "option_type": "put",
+                  "strike": 100, "expiration": "2026-11-20", "account": "a",
+                  "cio_decision": {"decision_guid": "rejected-hedge"}}]
+    result = mt.link_desk_matches(match, proposals, registry=registry)
+    row = result['plays']['cash_secured_put'][0]
+    assert row['desk_status'] == 'NOT_STAGED'
+    assert row['desk_links'][0]['relationship'] == 'same_contract_other_strategy'
+    assert row['desk_links'][0]['decision_guid'] is None
+    assert 'assignment_odds_pct' not in row
+    assert match['plays']['cash_secured_put'][0]['assignment_odds_pct'] == 28  # no cache mutation
+    proposals.append({**proposals[0], 'id': 'income', 'strategy': 'cash_secured_put'})
+    linked = mt.link_desk_matches(match, proposals, registry=registry)
+    assert linked['desk_link_summary'] == {'linked_matches': 1, 'unstaged_matches': 0, 'match_count': 1}
+    assert len(linked['plays']['cash_secured_put'][0]['desk_links']) == 2
+    assert contract_guid('TEST', 'put', 100, '2026-11-20', registry=registry) is None
+
+
+def test_standing_plan_preview_cannot_overwrite_a_newer_operator_edit():
+    cur = FakeCur()
+    store.upsert_intent(cur, INTENT, apply=True)
+    before = cur.rows[17]["spec"]["options_intent"]["updated_at"]
+    store.upsert_intent(cur, {**INTENT, "thesis_target": 310}, apply=True, expected_updated_at=before)
+    with pytest.raises(ValueError, match="changed since preview"):
+        store.upsert_intent(cur, {**INTENT, "thesis_target": 320}, apply=True, expected_updated_at=before)
+    assert cur.rows[17]["spec"]["options_intent"]["thesis_target"] == 310
+    assert any("FOR UPDATE" in sql for sql, _ in cur.sql)
+
+
+@pytest.mark.parametrize("changes", [
+    {"thesis_target": float("nan")}, {"thesis_target": -1},
+    {"plays": {"cash_secured_put": {"strike_max": float("inf")}}},
+    {"plays": {"covered_call": {"dte": [0, 20]}}},
+    {"plays": {"leap_call": {"min_delta": 2}}},
+])
+def test_standing_plan_invalid_numeric_preferences_are_refused(changes):
+    with pytest.raises(ValueError):
+        store.validate_intent({**INTENT, **changes})
+
+
+def test_intent_summary_review_is_bound_to_plan_and_scan_without_model_calls():
+    match = {"as_of": "2026-10-05T17:00:00Z", "spot": 170, "plays": {}}
+    a = mt.review_packet(INTENT, match)
+    assert a == mt.review_packet(INTENT, match)
+    assert a["target_type"] == "options_intent" and len(a["content"]) < 8000
+    assert a["target_id"] != mt.review_packet({**INTENT, "thesis_target": 310}, match)["target_id"]
+    assert a["target_id"] != mt.review_packet(INTENT, {**match, "spot": 180})["target_id"]
+    assert "not assignment probability" in a["content"]
+    assert mt.review_packet(INTENT, None)["as_of"] is None

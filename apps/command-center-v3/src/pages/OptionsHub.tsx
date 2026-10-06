@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import OptionsCoverage from '../components/options/OptionsCoverage'
 import { isCardBlocked } from '../lib/optionsCardSemantics'
-import { armedDeskLine, armedOverviewLine, coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine, packageLeadIds } from '../lib/optionsDeskTruth'
+import { armedDeskLine, armedOverviewLine, coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine, packageLeadIds, reviewWorkflow, isReviewQueueRow, REVIEW_STAGES } from '../lib/optionsDeskTruth'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { type OptionProposal } from '../components/OptionProposalCard'
@@ -19,7 +19,7 @@ import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
 import OptionsLifecycleView from '../components/options/OptionsLifecycleView'
-import StandingIntentsPanel from '../components/options/StandingIntentsPanel'
+import StandingIntentsPanel, { type IntentFeed } from '../components/options/StandingIntentsPanel'
 
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -101,7 +101,7 @@ export default function OptionsHub({ onDrill }: Props) {
     p.set('offset', String(proposalPage * 50))
     p.set('limit', '50')
     if (deskQueue) p.set('desk_queue', deskQueue)
-    if (!showBlocked) p.set('show_blocked', '0')
+    if (!showBlocked) p.set('review_only', '1')
     if (flagFilter) p.set('flag', flagFilter)
     if (symbolFilter) p.set('symbol', symbolFilter.toUpperCase())
     if (strategyFilter) p.set('strategy', strategyFilter)
@@ -134,6 +134,7 @@ export default function OptionsHub({ onDrill }: Props) {
     useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
   const { data: monitor, loading: monLoading, error: monError, refetch: refetchMon } =
     useApi<any>(`/api/v2/options/open-positions${posQ}`, 300_000)
+  const { data: intentFeed, refetch: refetchIntents } = useApi<IntentFeed>('/api/v2/options/intents', 300_000)
   const { data: overview, refetch: refetchOverview } = useApi<any>('/api/v2/options/overview', 300_000)
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
   // Stage B: advisory paper-validation gate progress (deep_itm_call) — header strip
@@ -169,12 +170,10 @@ export default function OptionsHub({ onDrill }: Props) {
       && !(p as any).paper_only
       && String(p.broker || '').toLowerCase() !== 'alpaca'
     )
-    if (!showBlocked) base = base.filter(p => !isBlockedProp(p))
+    if (!showBlocked) base = base.filter(p => isReviewQueueRow(p as any))
     if (flagFilter) base = base.filter(p => ((p as any).flags || []).some((f: any) => f.key === flagFilter))
     return base
   }, [propList, showBlocked, flagFilter])
-  const reviewProps = shownProps.filter(p => !isBlockedProp(p))
-  const blockedProps = shownProps.filter(isBlockedProp)
   const packageLeads = useMemo(() => packageLeadIds(shownProps), [shownProps])
   // Counts for the status pills, from every card the desk returned.
   const flagCounts = useMemo(() => {
@@ -413,6 +412,11 @@ export default function OptionsHub({ onDrill }: Props) {
           <div style={hubSubtitle(terminalUi)}>
             {(proposals?.universe_census?.banner) || 'Coverage unavailable until a producer snapshot is recorded.'}
             {' '}· {propCount} matching ideas · {proposals?.coverage?.inventory_count ?? '—'} securities in inventory · {posList.length} open legs
+            <div data-testid="options-evaluation-summary" style={{ marginTop: 4 }}>
+              Evaluation: {proposals?.coverage?.status_counts?.EVALUATED ?? 0} marked evaluated · {proposals?.coverage?.status_counts?.PENDING ?? 'unknown'} pending · {proposals?.coverage?.chain_completed_count ?? 0} complete chain snapshots. Scan status: {proposals?.scan_status || 'unavailable'}.
+              {' '}Inventory membership is not a completed opportunity search.
+              {proposals?.scan_capacity && <div>Expanded scan: {proposals.scan_capacity.status}. The requested {proposals.scan_capacity.refresh_interval_minutes}-minute refresh needs at least {proposals.scan_capacity.minimum_chain_requests_per_minute} fresh chain requests/minute; provider capacity is unverified.</div>}
+            </div>
             {(() => {
               // 2026-09-26: say why names did not become cards, instead of showing dead ones.
               const reasons = (proposals as any)?.income_screen?.reasons as Record<string, { count: number; symbols: string[] }> | undefined
@@ -487,11 +491,11 @@ export default function OptionsHub({ onDrill }: Props) {
       {tab === 'Proposals' && <div aria-label="Options desk queues" style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         {Object.entries({ '': 'All ideas', income: 'Holdings income', protection: 'Portfolio protection', watch_reentry: 'Watch / re-entry', discovery: 'New opportunities' }).map(([key, label]) =>
           <button key={key} onClick={() => setDeskQueue(key)} aria-pressed={deskQueue === key} style={hubTab(deskQueue === key, terminalUi)}>
-            {label}{key && proposals?.queue_counts ? ` (${proposals.queue_counts[key] ?? 0})` : ''}
+            {label}{key && proposals?.queue_counts ? ` (${proposals.queue_counts[key] ?? 0} proposals)` : ''}{key === 'watch_reentry' && intentFeed?.match_count ? ` · ${intentFeed.match_count} standing-intent matches (${intentFeed.unstaged_count ?? 0} not staged)` : ''}
           </button>)}
       </div>}
       {/* Operator's standing options intents + the live Schwab contracts that fit them (2026-10-05). */}
-      <StandingIntentsPanel />
+      <StandingIntentsPanel data={intentFeed} onSaved={refetchIntents} onSelectSymbol={symbol => { clearPropFilters(); setSymbolFilter(symbol); setTab('Proposals') }} />
 
       {/* Desk Path B readiness — Schwab Path B only (Alpaca paper lane retired from Hub). */}
       {deskPathBRows.length > 0 && (
@@ -548,7 +552,7 @@ export default function OptionsHub({ onDrill }: Props) {
             {' '}An eligible idea still needs an operator decision, a fresh preflight, and per-order 2FA.
             {' '}Options execution: {execStatus ? (execStatus.armed_for_execution ? 'armed' : 'disarmed') : 'status unverified'}.
             {blockedCount > 0 && <button type="button" onClick={() => { if (showBlocked && (flagFilter === 'NOT_APPROVABLE' || flagFilter === 'THESIS_INCOMPLETE')) setFlagFilter(null); setShowBlocked(v => !v) }} style={{ ...SEL, marginLeft: 10, cursor: 'pointer' }}>
-              {showBlocked ? 'Hide blocked research' : `Review ${blockedCount} blocked idea${blockedCount === 1 ? '' : 's'}`}
+              {showBlocked ? 'Hide research / data work' : 'Show research / data work'}
             </button>}
           </div>
           <details style={{ ...panel, marginBottom: 14 }}>
@@ -649,7 +653,7 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.tierB, 'Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
               {facetChip(FILTERS.tierC, 'Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
               {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
-              {blockedCount > 0 && facetChip('Blocked ideas are research and refusals. Open them to inspect their reasons; none is ready for an order.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
+              {blockedCount > 0 && facetChip('Blocked ideas are research and refusals. Open them to inspect their reasons; none is ready for an order.', `Execution blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
               <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
                 Showing {propList.length} of {propCount} matching ideas · page {proposalPage + 1} ⓘ
                 <button disabled={!proposalPage} onClick={() => setProposalPage(p => p - 1)}>Previous</button>
@@ -715,7 +719,7 @@ export default function OptionsHub({ onDrill }: Props) {
           {propList.length === 0 && !propLoading && !propError && (
             <div style={panel}>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                No proposals passed quality gates (edge ≥62, POP ≥52%, IV rank).
+                No recorded proposals match this view. This is not a completed-market search result.
                 {funnelSummary
                   ? ` Holdings funnel: ${funnelSummary.cc_need_100_shares ?? 0} need ≥100 shares, ${funnelSummary.cc_iv_below ?? 0} IV below floor, ${funnelCounts.cleared.count} cleared the covered-call gates, ${funnelCounts.intentIvOnly.count} cleared only the intent IV floor.`
                   : ' Check All coverage for missing data and processing status.'}
@@ -725,16 +729,16 @@ export default function OptionsHub({ onDrill }: Props) {
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', marginBottom: 6 }}><NoviceToggle on={novice} onChange={v => { setNovice(v); setNoviceMode(v) }} /><UiV5Toggle /></div>
-          <div style={{ fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Ready for review · {reviewProps.length} card{reviewProps.length === 1 ? '' : 's'} in this view</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
-            {reviewProps.map(proposalCard)}
-          </div>
-          {blockedProps.length > 0 && <>
-            <div style={{ fontWeight: 700, color: BB.amber, margin: '18px 0 8px' }}>Blocked research · {blockedProps.length} card{blockedProps.length === 1 ? '' : 's'} · no order action</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
-              {blockedProps.map(proposalCard)}
-            </div>
-          </>}
+          {Object.entries(REVIEW_STAGES).map(([stage, label]) => {
+            const cards = shownProps.filter(p => reviewWorkflow(p as any).state === stage)
+            if (!cards.length && stage !== 'READY_FOR_REVIEW') return null
+            return <section key={stage} data-testid={`options-review-stage-${stage}`}>
+              <div style={{ fontWeight: 700, color: 'var(--text0)', margin: '18px 0 8px' }}>{label} · {cards.length} card{cards.length === 1 ? '' : 's'} in this view</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+                {cards.map(proposalCard)}
+              </div>
+            </section>
+          })}
         </>
       )}
 

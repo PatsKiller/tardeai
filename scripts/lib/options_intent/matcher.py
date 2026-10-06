@@ -39,6 +39,7 @@ def match_intent(intent: Dict[str, Any], *, chain_fn: Callable[[str, str], Dict[
     avoid = bool(intent.get("avoid_earnings_cross")) and bool(edate)
     out: Dict[str, Any] = {
         "contract": CONTRACT, "directive_id": intent.get("directive_id"), "symbol": sym,
+        "intent_updated_at": intent.get("updated_at"),
         "as_of": (now or datetime.now(timezone.utc)).isoformat(timespec="seconds"),
         "thesis_target": intent.get("thesis_target"), "earnings": {"date": edate, "source": esrc},
         "plays": {}, "errors": [],
@@ -83,6 +84,78 @@ def match_intent(intent: Dict[str, Any], *, chain_fn: Callable[[str, str], Dict[
     return out
 
 
+def link_desk_matches(match: Dict[str, Any], proposals: List[Dict[str, Any]], *, registry=None) -> Dict[str, Any]:
+    """Join captured intent contracts to the existing identity/lifecycle, without staging.
+
+    A shared contract may express a different strategy. Never inherit its CIO approval
+    across strategies/accounts, nor mint a second thesis store for unmatched contracts.
+    """
+    from copy import deepcopy
+    from scripts.lib.options_identity import contract_guid
+    out = deepcopy(match)
+    sym = str(out.get("symbol") or "").upper()
+    linked, unmatched = 0, 0
+    for play, rows in (out.get("plays") or {}).items():
+        strategy = "long_call" if play == "leap_call" else play
+        right = "put" if play == "cash_secured_put" else "call"
+        for row in rows:
+            guid = contract_guid(sym, right, row.get("strike"), row.get("exp"), registry=registry)
+            row["contract_guid"] = guid
+            row["source_receipt"] = {"source": "options_intent", "directive_id": out.get("directive_id"),
+                                     "captured_at": out.get("as_of"), "quote_time": row.get("quote_time"),
+                                     "scope": "standing intent contract match; not full-universe evaluation"}
+            matches = []
+            for p in proposals:
+                same = bool(guid and p.get("contract_guid") == guid)
+                if not guid or not p.get("contract_guid"):
+                    same = (str(p.get("symbol") or "").upper() == sym
+                            and p.get("strike") == row.get("strike")
+                            and str(p.get("expiration") or "")[:10] == str(row.get("exp") or "")[:10]
+                            and p.get("option_type") == right)
+                if not same:
+                    continue
+                exact = p.get("strategy") == strategy
+                matches.append({"proposal_id": p.get("id"), "option_strategy_guid": p.get("option_strategy_guid"),
+                                "account": p.get("account"), "strategy": p.get("strategy"),
+                                "relationship": "same_strategy" if exact else "same_contract_other_strategy",
+                                "options_thesis_pin": (p.get("options_thesis") or {}).get("pin"),
+                                "decision_guid": (p.get("cio_decision") or {}).get("decision_guid") if exact else None})
+            row["desk_links"] = matches
+            row["desk_status"] = "LINKED" if any(m['relationship'] == 'same_strategy' for m in matches) else "NOT_STAGED"
+            row["next_action"] = ("Review the linked account-specific idea" if row['desk_status'] == 'LINKED' else
+                                  "Account allocation and an account-specific thesis are required before proposal review")
+            linked += row['desk_status'] == 'LINKED'
+            unmatched += row['desk_status'] == 'NOT_STAGED'
+            # Delta is not an assignment probability. Keep no misleading probability alias.
+            row.pop("assignment_odds_pct", None)
+            row.pop("called_away_odds_pct", None)
+    out['desk_link_summary'] = {'linked_matches': linked, 'unstaged_matches': unmatched,
+                               'match_count': linked + unmatched}
+    return out
+
+
+def review_packet(intent: Dict[str, Any], match: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Reuse the governed ensemble's persisted result/job store; never call a model on GET."""
+    import hashlib
+    import json
+    facts = {k: intent.get(k) for k in ("symbol", "directive_id", "updated_at", "thesis_target", "goals", "plays", "rationale", "avoid_earnings_cross")}
+    facts["captured_scan"] = ({k: match.get(k) for k in ("as_of", "quote_time", "spot", "earnings", "empty_reasons")} if match else None)
+    if match:
+        fields = ("exp", "strike", "bid", "ask", "mid", "delta", "oi", "quote_time", "credit_per_contract", "collateral_per_contract", "cost_per_contract")
+        facts["captured_scan"]["plays"] = {play: [{k: row.get(k) for k in fields} for row in rows[:3]]
+                                            for play, rows in (match.get("plays") or {}).items()}
+    raw = json.dumps(facts, sort_keys=True, default=str)
+    content = ("STANDING OPTIONS PLAN — advisory explanation, not a trade approval. "
+               "In your reasoning, give a concise plain-English comparison of the requested strategies: "
+               "purpose, capital, capped/unlimited upside, downside, expiry, and missing evidence. "
+               "Use only the captured facts below. Do not invent live prices or current research. "
+               "Delta is not assignment probability; annualized premium yield is not expected return. "
+               "A target is an operator preference, not a forecast. No account allocation or CIO approval is implied.\n"
+               + raw[:6900])
+    return {"target_type": "options_intent", "target_id": "intent_" + hashlib.sha256(content.encode()).hexdigest()[:40],
+            "content": content, "as_of": (match or {}).get("as_of"), "task": "options_intent_quality"}
+
+
 def material_changes(prev: Optional[Dict[str, Any]], cur: Dict[str, Any], *,
                      min_improvement_pct: float = 10.0) -> List[str]:
     """Plain-English reasons a digest is worth sending: a play's best contract is new, or its
@@ -107,10 +180,10 @@ def _line(r: Dict[str, Any]) -> str:
     exp, k = r.get("exp"), r.get("strike")
     if r.get("play") == "cash_secured_put":
         return (f"  {exp} ${k:g}P · mid ${r['mid']:.2f} (${r['credit_per_contract']:,.0f} on ${r['collateral_per_contract']:,.0f}) · "
-                f"{r['annualized_pct']:.0f}%/yr · breakeven ${r['breakeven']:.2f} · IV {r.get('iv')}% · Δ {r.get('delta')} · OI {r.get('oi')}")
+                f"{r['annualized_pct']:.0f}% annualized premium yield (not expected return) · breakeven ${r['breakeven']:.2f} · IV {r.get('iv')}% · Δ {r.get('delta')} · OI {r.get('oi')}")
     if r.get("play") == "covered_call":
         return (f"  {exp} ${k:g}C · mid ${r['mid']:.2f} (${r['credit_per_contract']:,.0f}/contract) · keeps +{r['upside_kept_pct']:.0f}% · "
-                f"{r['annualized_pct']:.0f}%/yr · IV {r.get('iv')}% · Δ {r.get('delta')} · OI {r.get('oi')}")
+                f"{r['annualized_pct']:.0f}% annualized premium yield (not expected return) · IV {r.get('iv')}% · Δ {r.get('delta')} · OI {r.get('oi')}")
     return (f"  {exp} ${k:g}C · ${r['cost_per_contract']:,.0f} vs ${r['stock_cost_100']:,.0f} stock · "
             f"time value {r['time_value_pct']:.1f}% · Δ {r.get('delta')} · OI {r.get('oi')}")
 

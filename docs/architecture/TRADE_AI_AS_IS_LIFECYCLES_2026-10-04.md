@@ -1,5 +1,17 @@
 # Trade AI Platform — AS-IS Lifecycles, 2026-10-04 (re-measurement)
 
+The October 5 review repair also adds a **Create standing plan** modal for any symbol, using the
+existing ticker directive and options-intent writer. It previews before saving, preserves the
+previous plan in the preview, refuses a changed-version overwrite and waits for the scheduled
+matcher. Editing a plan invalidates older contract matches. Strategy and risk/reward tooltips
+explain capital, upside limits, full downside and assignment; delta is not assignment probability.
+An optional **LLM summary of this standing plan** reuses the governed ensemble job/result store,
+bound to the exact intent and captured scan. It shows each model's reasoning and recording time;
+no result is invented and page loads do not request models. These controls create advisory plans,
+not account allocation, trade approval or broad-scan activation. Fixtures verify the UI paths;
+organic matcher/model results for newly saved plans remain a runtime acceptance requirement.
+
+
 ```
 Status:      ACTIVE
 as_of:       2026-10-05T18:58:00Z (scoped update; full census remains 10-04)
@@ -27,6 +39,25 @@ five-session effectiveness remain unproved. The 15-minute watchlist requirement 
 369.4 requests/minute without cross-cycle stale reuse. Broker routes, agent enablement, financial
 thresholds, per-order 2FA and memory authority are unchanged. Additional expressions are blocked
 research ideas, not approved trades. See [the capacity and acceptance record](../ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md).
+
+## Options review repair and runtime evidence — 2026-10-05 evening
+
+The operator-requested refresh at **23:58:28Z**, served by `c96bec23c`, reconciled 5,562 unique
+inventory symbols: 23 held, 5,551 watchlist and 102 reentry, with overlapping memberships and no
+membership omissions. The coverage ledger marked six evaluated and 5,556 pending; no full-chain
+completion receipt was recorded. Eight cards comprised two covered calls and six protective puts;
+none was execution-eligible. This establishes inventory reconciliation, not effective broad discovery.
+
+Inspection found the previous release mixed midpoint premiums/floors with bid/ask risk figures and
+filtered investment review by live eligibility. The repair rebuilds displayed economics from one
+quote basis, separates review states, reports quote timestamps and connects standing-intent matches
+to existing contract/proposal identities. Offline replay yields 3 review-ready, 1 research, 3 data
+and 1 policy-blocked idea, preserving execution ineligibility and the original snapshot. That is
+**replay evidence**, not organic learning or a newly approved trade. Exact release and process-pin
+acceptance belong to deployment receipts; expanded scanning remains disabled pending capacity.
+
+The [scoped repair record](../ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md#review-and-economics-repair--2026-10-05)
+contains current semantics and remaining proof. Historical maturity figures elsewhere are unchanged.
 
 ## How to read this document
 

@@ -158,7 +158,7 @@ export function proposalRiskFlags(p: OptionProposal): RiskFlag[] {
   if (p.dte != null && p.dte <= 14) {
     flags.push({ label: 'Short DTE', tip: 'Under 2 weeks to expiry — time decay is fast; assignment checks matter more.', severity: 'warn' })
   }
-  if (p.pop_pct != null && p.pop_pct < 55) {
+  if (p.strategy !== 'protective_put' && p.pop_pct != null && p.pop_pct < 55) {
     flags.push({ label: 'Lower POP', tip: `Only ~${p.pop_pct.toFixed(0)}% modeled chance of profit — not a high-odds income trade.`, severity: 'warn' })
   }
   if (p.risk_reward != null && p.risk_reward < 0.15 && p.strategy === 'covered_call') {
