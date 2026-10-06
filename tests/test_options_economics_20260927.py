@@ -152,3 +152,94 @@ def test_unanswerable_gap_is_retired_then_the_question_forms_a_stance(tmp_path):
     assert why3 == "gaps_exhausted_form_stance" and "Form a thesis stance for DELL" in q3
     q4, why4 = rsa.choose_question("DELL", {**fields, "thesis_stance": "watch"}, **kw)
     assert why4 == "first_gap"   # with a stance, the normal first-gap behaviour is unchanged
+
+
+
+def test_quote_basis_is_consistent_across_hedge_fields_and_scenarios():
+    p = {"strategy": "protective_put", "strike": 220, "premium": 3.83,
+         "premium_total": 383, "underlying_price": 231.28, "contracts": 1,
+         "shares_held": 109, "bid": .65, "ask": 7, "dte": 46, "iv_used": .31,
+         "market_session": "AFTER_HOURS", "data_source": "schwab_chain"}
+    oe.stamp_payoff(p, quote_issues=["spread too wide"])
+    assert p["premium"] == 7 and p["premium_total"] == 700
+    assert p["breakeven"] == 238.28 and p["max_loss"] == 1828
+    assert p["floor_value"] == 21300 and p["option_max_loss"] == 700
+    assert p["economics"]["stock_plus_put_breakeven_from_mark"] == p["breakeven"]
+    assert p["economics"]["hedged_max_loss_from_mark"] == p["max_loss"]
+    assert p["economics"]["uninsured_shares"] == 9
+    assert p["economics"]["expected_pl_at_expiry"] is None and p["expected_value"] is None
+    assert p["premium_midpoint"] == 3.83
+    assert "executable" not in p["price_basis"]
+    assert "ask" in p["price_basis"] and "AFTER_HOURS" in p["price_basis"]
+    before = dict(p)
+    oe.stamp_payoff(p, quote_issues=["spread too wide"])
+    assert p == before  # Serving a stored card again does not change its basis.
+
+
+def test_covered_call_risk_is_for_the_covered_lot_and_keeps_residual_shares_separate():
+    p = {"strategy": "covered_call", "strike": 390, "premium": 2.54,
+         "premium_total": 254, "underlying_price": 369.71, "contracts": 1,
+         "shares_held": 130.499, "stock_downside_risk": 47992.6,
+         "bid": 2.4, "ask": 2.67, "dte": 25, "iv_used": .264}
+    oe.stamp_payoff(p)
+    assert p["premium_total"] == p["economics"]["credit_total"] == 240
+    assert p["stock_downside_risk"] == p["max_loss"] == 36731
+    assert p["max_profit"] == 2269 and p["breakeven"] == 367.31
+    assert p["economics"]["residual_shares"] == 30.499
+    assert p["economics"]["shares_committed"] == 100
+
+
+def test_missing_and_crossed_quotes_remain_estimates_and_do_not_gain_authority():
+    for quote in ({}, {"bid": 4, "ask": 2}, {"bid": float("nan"), "ask": 2}):
+        p = {"strategy": "long_call", "strike": 100, "premium": 3, "underlying_price": 100,
+             "contracts": 1, "iv_used": .3, "dte": 30, "approvable": False,
+             "enterprise": {"live_eligible": False}, **quote}
+        oe.stamp_payoff(p)
+        assert p["premium_total"] == p["max_loss"] == 300
+        assert p["expected_value"] is None
+        assert p["approvable"] is False and p["enterprise"]["live_eligible"] is False
+        assert "midpoint" in p["price_basis"]
+
+
+
+def test_review_queue_is_independent_of_live_eligibility_and_keeps_failures():
+    from scripts.lib.options_decision_packet import review_workflow
+    base = {"id": "idea", "option_strategy_guid": "strategy", "premium": 2, "max_loss": 500,
+            "options_thesis": {"pin": "opt@v3", "missing_required": []}, "approvable": False,
+            "enterprise": {"live_eligible": False, "blocks": ["awaiting_cio_decision"],
+                           "liquidity": {"pass": True}}, "market_session": "AFTER_HOURS"}
+    assert review_workflow(base)["state"] == "READY_FOR_REVIEW"
+    assert review_workflow(base)["live_submit"] is False
+    assert base["enterprise"]["live_eligible"] is False
+    assert review_workflow({**base, "cio_view": {"latest_decision": {"recommendation": "REJECT"}}})["state"] == "READY_FOR_REVIEW"
+    assert review_workflow({**base, "cio_decision": {"decision_guid": "d", "outcome": "REJECT"}})["state"] == "REJECTED_OR_EXPIRED"
+    assert review_workflow({**base, "cio_decision": {"decision_guid": "d", "outcome": "APPROVE"}})["state"] == "APPROVED_AWAITING_QUOTES"
+    assert review_workflow({**base, "options_thesis": {"pin": "opt@v3", "missing_required": ["exit_criteria"]}})["state"] == "NEEDS_RESEARCH"
+    assert review_workflow({**base, "enterprise": {"liquidity": {"pass": False, "issues": ["spread 165%"]}}})["state"] == "NEEDS_DATA"
+    assert review_workflow({**base, "enterprise": {"blocks": ["NEED_100_SHARES"]}})["state"] == "BLOCKED"
+    assert review_workflow({**base, "enterprise": {"blocks": ["UNKNOWN_POLICY"]}})["state"] == "BLOCKED"
+
+
+
+def test_expired_and_missing_quote_assessments_do_not_enter_review():
+    from scripts.lib.options_decision_packet import review_workflow
+    row = {"options_thesis": {"pin": "opt@v1"}, "premium": 2, "max_loss": 200,
+           "expiration": "2026-10-01", "enterprise": {"liquidity": {"pass": True}}}
+    assert review_workflow(row, now=datetime(2026, 10, 5, tzinfo=timezone.utc))["state"] == "REJECTED_OR_EXPIRED"
+    row.update(expiration="2026-11-20", enterprise={})
+    assert review_workflow(row)["state"] == "NEEDS_DATA"
+
+
+
+def test_hedge_costs_and_explicit_multiplier_stay_in_the_same_payoff_scope():
+    p = {"strategy": "protective_put", "strike": 95, "premium": 2, "bid": 1.9, "ask": 2.1,
+         "underlying_price": 100, "contracts": 2, "multiplier": 10, "shares_held": 25,
+         "fees_total": 1, "slippage_total": 1, "dte": 30, "iv_used": .3}
+    oe.stamp_payoff(p)
+    assert p['premium_total'] == 42
+    assert p['economics']['insured_shares'] == 20
+    assert p['economics']['uninsured_shares'] == 5
+    assert p['max_loss'] == p['economics']['hedged_max_loss_from_mark'] == 144
+    assert p['floor_value'] == 1856 and p['option_max_loss'] == 44
+    assert p['breakeven'] == 102.2
+    assert all(r['hedged_pl'] == -144 for r in p['economics']['protection_scenarios'])

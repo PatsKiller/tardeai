@@ -15,6 +15,7 @@ type CoverageRow = {
 type Coverage = {
   rows: CoverageRow[]; total: number; inventory_count: number; account_position_count: number
   chain_completed_count: number; status: string; as_of?: string; run_id?: string; scan_enabled?: boolean
+  scan_capacity?: { minimum_chain_requests_per_minute?: number; priority_symbol_count?: number; refresh_interval_minutes?: number; next_action?: string }
   source_receipts?: Record<string, { status: string; reason?: string; observed_at?: string }>
   runs?: Array<{ run_id: string; profile: string; status: string; completed: number; inventory_count: number }>
 }
@@ -29,15 +30,16 @@ export default function OptionsCoverage({ requestScan }: { requestScan: (profile
     <h3>All coverage</h3>
     <p>{data?.inventory_count ?? '—'} distinct securities · {data?.account_position_count ?? '—'} account positions · {data?.chain_completed_count ?? '—'} complete chain snapshots</p>
     <p>Scan: {data?.status || 'unavailable'} · As of {data?.as_of ? new Date(data.as_of).toLocaleString() : 'unknown'}</p>
-    {!data?.scan_enabled && <p role="status">Expanded scanning awaits capacity approval and worker activation.</p>}
+    {!data?.scan_enabled && <p role="status">Expanded scanning is disabled. Requests cannot start until capacity is approved and the worker is activated.</p>}
+    {data?.scan_capacity && <p>{data.scan_capacity.priority_symbol_count} priority symbols / {data.scan_capacity.refresh_interval_minutes} minutes requires at least {data.scan_capacity.minimum_chain_requests_per_minute} fresh chain requests/minute, before retries and projection. {data.scan_capacity.next_action}</p>}
     {Object.entries(data?.source_receipts || {}).map(([source, receipt]) =>
       <div key={source}>{source.replace(/_/g, ' ')}: {receipt.status}{receipt.reason ? ` · ${receipt.reason}` : ''}</div>)}
     {(data?.runs || []).slice(0, 2).map(run => <p key={run.run_id}>{run.profile} scan: {run.status} · {run.completed}/{run.inventory_count} securities processed</p>)}
     <p>Every holding, active watch and re-entry record belongs here. Inclusion does not mean an option is suitable or approved. Share coverage is calculated separately for each account.</p>
     <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
       <input aria-label="Find covered security" placeholder="Find symbol" value={symbol} onChange={e => { setSymbol(e.target.value); setPage(0) }} />
-      <button onClick={() => requestScan('priority')}>Request priority scan</button>
-      <button onClick={() => requestScan('full')}>Request full scan</button>
+      <button disabled={!data?.scan_enabled} onClick={() => requestScan('priority')}>Request priority scan</button>
+      <button disabled={!data?.scan_enabled} onClick={() => requestScan('full')}>Request full scan</button>
     </div>
     {error && <p role="alert">Coverage unavailable: {error}</p>}
     {loading && !data && <p>Loading coverage…</p>}
@@ -48,7 +50,7 @@ export default function OptionsCoverage({ requestScan }: { requestScan: (profile
         <td>{row.status}<div>{row.research_status?.replace(/_/g, ' ')}</div><div>{[...new Set((row.reasons || []).map(r => r.reason))].join(', ')}</div></td>
         <td>{row.chain?.status || 'PENDING'}<div>{row.chain?.contract_count ?? '—'} contracts</div><div>{row.chain?.fetched_at ? new Date(row.chain.fetched_at).toLocaleString() : 'No chain timestamp'}</div></td>
         <td>{(row.accounts || []).map((account, index) => <div key={`${account.account}-${index}`}>{account.account || 'unresolved account'}: {account.shares} shares · {account.covered_call_capacity} covered calls{account.excluded ? ' · excluded by policy' : ''}</div>)}</td>
-        <td>{row.proposal_count} ideas · {row.ready_count} ready</td>
+        <td>{row.proposal_count} ideas · {row.ready_count} live eligible</td>
       </tr>)}</tbody>
     </table>
     {!rows.length && !loading && <p>No coverage rows{symbol ? ' match this symbol' : ' have been recorded'}.</p>}

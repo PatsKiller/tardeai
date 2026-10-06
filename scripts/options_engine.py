@@ -2857,31 +2857,10 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         # distribution at the desk's own IV, replacing `credit x POP`; plus net cost if
         # assigned, cash committed, and hedge floor / insured vs uninsured shares.
         try:
-            from lib.options_economics import economics as _econ
-            _liq = (p.get("enterprise") or {}).get("liquidity") or {}
-            p["economics"] = _econ(p, shares_held=p.get("shares_held"),
-                                   quote_issues=(list(_liq.get("issues") or []) if _liq.get("pass") is False else None),
-                                   session=_SESSION.get("now"))
-            p["expected_value"] = p["economics"].get("expected_pl_at_expiry")
-            p["expected_value_method"] = p["economics"]["ev_method"]
-            if p["economics"].get("ev_caveat"):
-                p["expected_value_caveat"] = p["economics"]["ev_caveat"]
-            # Protective put (operator 2026-09-27): the card is insurance for held stock, so its
-            # headline max loss / breakeven are the hedged position's, and the put-alone figures
-            # are labelled as such.
-            if str(p.get("strategy") or "") == "protective_put":
-                _e = p["economics"]
-                if _e.get("hedged_max_loss_from_mark") is not None:
-                    p["option_max_loss"] = _e.get("option_max_loss")
-                    p["put_breakeven"] = _e.get("put_breakeven")
-                    p["max_loss"] = _e["hedged_max_loss_from_mark"]
-                    p["max_loss_label"] = "Max loss (hedged shares, to the floor)"
-                    p["breakeven"] = _e.get("stock_plus_put_breakeven_from_mark")
-                    p["breakeven_label"] = "Stock+put breakeven from mark"
-                    p["floor_value"] = _e.get("floor_value_after_premium")
-                    p["uninsured_shares"] = _e.get("uninsured_shares")
             from lib.options_economics import stamp_payoff
-            stamp_payoff(p, quote_issues=list(_liq.get("issues") or []) if _liq.get("pass") is False else None)
+            _liq = (p.get("enterprise") or {}).get("liquidity") or {}
+            stamp_payoff(p, session=_SESSION.get("now"),
+                         quote_issues=list(_liq.get("issues") or []) if _liq.get("pass") is False else None)
         except Exception:  # noqa: BLE001
             p["expected_value"] = None
         rc = p.get("research_context") or {}

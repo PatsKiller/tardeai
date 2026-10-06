@@ -1,5 +1,17 @@
 # Options Lifecycle Desk — Architecture & Acceptance (2026-07-19)
 
+The October 5 review repair also adds a **Create standing plan** modal for any symbol, using the
+existing ticker directive and options-intent writer. It previews before saving, preserves the
+previous plan in the preview, refuses a changed-version overwrite and waits for the scheduled
+matcher. Editing a plan invalidates older contract matches. Strategy and risk/reward tooltips
+explain capital, upside limits, full downside and assignment; delta is not assignment probability.
+An optional **LLM summary of this standing plan** reuses the governed ensemble job/result store,
+bound to the exact intent and captured scan. It shows each model's reasoning and recording time;
+no result is invented and page loads do not request models. These controls create advisory plans,
+not account allocation, trade approval or broad-scan activation. Fixtures verify the UI paths;
+organic matcher/model results for newly saved plans remain a runtime acceptance requirement.
+
+
 Status:      ACTIVE
 as_of:       2026-07-19T18:08:28-04:00
 Measured at: efcc51365 / not measured
@@ -15,6 +27,12 @@ Measured at: efcc51365 / not measured
 > [capacity/acceptance contract](ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md). Expanded scanning is
 > disabled pending capacity approval and activation. Open-position management ownership remains
 > with this lifecycle desk; new advisory expressions do not activate execution routes.
+
+> **Review repair (2026-10-05):** Proposal investment-review status is now independent of
+> execution eligibility, with quote-consistent economics and strategy/account decision scope.
+> Standing-intent matches link to existing proposal identities or explicitly remain unstaged.
+> See the [repair record](ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md#review-and-economics-repair--2026-10-05).
+> These proposal repairs do not validate open-position outcomes or change management authority.
 
 ## Status (the three-level language, applied honestly)
 

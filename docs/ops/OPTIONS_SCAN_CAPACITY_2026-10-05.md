@@ -1,8 +1,73 @@
 # Options coverage and scan capacity — 2026-10-05
 
+The October 5 review repair also adds a **Create standing plan** modal for any symbol, using the
+existing ticker directive and options-intent writer. It previews before saving, preserves the
+previous plan in the preview, refuses a changed-version overwrite and waits for the scheduled
+matcher. Editing a plan invalidates older contract matches. Strategy and risk/reward tooltips
+explain capital, upside limits, full downside and assignment; delta is not assignment probability.
+An optional **LLM summary of this standing plan** reuses the governed ensemble job/result store,
+bound to the exact intent and captured scan. It shows each model's reasoning and recording time;
+no result is invented and page loads do not request models. These controls create advisory plans,
+not account allocation, trade approval or broad-scan activation. Fixtures verify the UI paths;
+organic matcher/model results for newly saved plans remain a runtime acceptance requirement.
+
+
 Status: IMPLEMENTED IN SOURCE; expanded worker DISABLED pending measured capacity and activation.
 Authority: advisory research only. This document does not approve broker activation, orders,
 changes to risk thresholds, 2FA, memory influence, or provider limits.
+
+## Review and economics repair — 2026-10-05
+
+Status: source repair, verified with hermetic tests and replay of the captured production
+snapshot. Deployment and fresh market acceptance are separate receipts; this section does not
+claim a new scan or a profitable trade. Base/previous served release: `c96bec23c`.
+
+The previous release mixed bid/ask payoff figures with midpoint premiums and hedge floors.
+`options_economics.stamp_payoff` now selects one captured price basis and rebuilds the premium,
+contract total, nested economics, payoff and covered/insured-lot figures together. Extra held
+shares are identified separately. Quotes are estimates, never labelled executable merely because
+both sides exist; closed-session or failed-liquidity POP/EV is withheld. Protection scenarios show
+stock-alone loss, stock-plus-put loss and the difference on the insured lot. Model profitability
+is not an insurance suitability score.
+
+Investment review is independent of execution eligibility. `review_workflow` reports
+`READY_FOR_REVIEW`, `NEEDS_RESEARCH`, `NEEDS_DATA`, `BLOCKED`, `APPROVED_AWAITING_QUOTES`,
+`READY_FOR_PREFLIGHT` or `REJECTED_OR_EXPIRED`, with reason, owner and next action. Existing
+approvability, enterprise blocks, quote validation, strategy policy and per-order 2FA remain
+binding. A symbol-level CIO decision is context; it is not approval of a different option
+contract, strategy or account. Model votes do not count as a CIO decision.
+
+GET proposal reads project legacy cached economics without overwriting the source receipt,
+fetching quotes or creating approvals. Both card versions use the corrected amounts. Same-expiry
+packages no longer claim different expiries; combined capital/scenarios are explicitly hypothetical
+if all displayed ideas were selected. Missing quote time stays unknown, not the scan fetch time.
+
+Standing intents retain their existing producer and directive store. Their GET projection joins
+canonical option-contract identities to existing account-specific proposal/thesis/decision links.
+A matching contract in a different strategy never transfers a decision. Unmatched contracts are
+reported as **not staged**, with account allocation and thesis requirements, and counted separately
+from proposals. Cached intent prices say captured spot and show contract/underlying quote times.
+Delta is no longer presented as assignment probability; annualized premium yield is explicitly
+not an expected return. Long-dated intent matches retain their declared horizon, separate from
+the main scanner's 7–365 DTE scope. No new thesis or approval store is introduced.
+
+The 2026-10-05 **23:58:28Z** production snapshot contained 5,562 unique inventory symbols,
+including all 23 held symbols, 5,551 watchlist names and 102 reentry names (memberships overlap).
+Its coverage ledger marked six evaluated and 5,556 pending, with zero completed full-chain
+receipts. This is not proof that no bounded chain reads occurred. Offline replay of the eight
+cards yields **3 ready for investment review, 1 needing research, 3 needing data and 1 policy
+block**, with all eight execution-ineligible and the original snapshot unchanged.
+
+Expanded scanning remains disabled and unmeasured. The main view exposes pending evaluation and
+capacity arithmetic; 5,562 mandatory names at 15 minutes imply at least **370.8 fresh chain
+requests/minute**, before retries and projection. A configured rate is not observed throughput.
+Provider allowance, measured runtime capacity and governed scheduler activation remain required.
+No scan cadence, limits or trading settings were changed to manufacture more ready cards.
+
+Verification must cover coherent debit/credit arithmetic, residual-share scope, invalid quotes,
+review versus execution counts, exact strategy/account decision scope, immutable cached GETs,
+intent joins, both browser card versions and unchanged execution restrictions. Close the broad
+search target only with natural full/priority run receipts and the existing five-session criteria.
 
 ## Observed problem and requested service
 

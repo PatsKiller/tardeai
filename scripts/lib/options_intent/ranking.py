@@ -95,7 +95,7 @@ def rank_csp(chain: Dict[str, Any], play: Dict[str, Any], *, earnings_date: Opti
                      "credit_per_contract": round(m * 100, 2), "collateral_per_contract": round(k * 100, 2),
                      "return_pct": round(ret * 100, 3), "annualized_pct": round(ret * 365 / dte * 100, 1),
                      "breakeven": round(k - m, 4), "breakeven_vs_spot_pct": round((k - m) / spot * 100 - 100, 2),
-                     "assignment_odds_pct": round(d * 100), "crosses_earnings": cross})
+                     "delta_magnitude_pct": round(d * 100), "crosses_earnings": cross})
     rows.sort(key=lambda r: r["annualized_pct"], reverse=True)
     return rows[:top]
 
@@ -128,7 +128,7 @@ def rank_covered_calls(chain: Dict[str, Any], play: Dict[str, Any], *, thesis_ta
         rows.append({**_base(c, m), "play": "covered_call",
                      "credit_per_contract": round(m * 100, 2), "contracts_available": contracts_avail,
                      "yield_pct": round(m / spot * 100, 3), "annualized_pct": round(m / spot * 365 / dte * 100, 1),
-                     "upside_kept_pct": round((k / spot - 1) * 100, 1), "called_away_odds_pct": round(d * 100),
+                     "upside_kept_pct": round((k / spot - 1) * 100, 1), "delta_magnitude_pct": round(d * 100),
                      "below_thesis_target": bool(thesis_target and k < thesis_target), "crosses_earnings": cross})
     rows.sort(key=lambda r: r["credit_per_contract"], reverse=True)
     return rows[:top]

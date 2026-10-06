@@ -71,19 +71,47 @@ export function funnelNameText(list: FunnelNameList): string {
   return 'none'
 }
 
+export type ReviewWorkflow = { state?: string; reason?: string; next_action?: string; owner?: string }
 type PersonRow = {
-  options_decision_packet?: { state?: string }
+  review_workflow?: ReviewWorkflow
+  options_decision_packet?: { state?: string; review_workflow?: ReviewWorkflow }
   flags?: Array<{ key?: string }>
 } & Record<string, unknown>
 
-/** Matches the status chips. Thesis-incomplete is its own count, not "refused or incomplete". */
+export function reviewWorkflow(row: PersonRow): ReviewWorkflow {
+  return row.review_workflow || row.options_decision_packet?.review_workflow || {
+    state: 'NEEDS_DATA', reason: 'Review status unavailable', next_action: 'Refresh the recorded review evidence', owner: 'Options research',
+  }
+}
+
+export function isReviewQueueRow(row: PersonRow): boolean {
+  return ['READY_FOR_REVIEW', 'APPROVED_AWAITING_QUOTES', 'READY_FOR_PREFLIGHT'].includes(reviewWorkflow(row).state || '')
+}
+
+export const REVIEW_STAGES: Record<string, string> = {
+  READY_FOR_REVIEW: 'Ready for investment review',
+  APPROVED_AWAITING_QUOTES: 'CIO approved · execution checks pending',
+  READY_FOR_PREFLIGHT: 'Ready for fresh execution preflight',
+  NEEDS_RESEARCH: 'Research / thesis work needed',
+  NEEDS_DATA: 'Quote / data repair needed',
+  BLOCKED: 'Policy / evidence block',
+  REJECTED_OR_EXPIRED: 'Rejected / expired',
+}
+
+/** Investment review and execution eligibility have separate denominators. */
 export function optionsDeskPersonLine(rows: PersonRow[] | undefined, openStrategies: number): string {
   const list = Array.isArray(rows) ? rows : []
-  const blocked = list.filter(r => r.options_decision_packet?.state === 'BLOCKED' || isCardBlocked(r as never)).length
-  const ready = list.filter(r => r.options_decision_packet?.state === 'ELIGIBLE_FOR_OPERATOR_REVIEW').length
-  const thesisIncomplete = list.filter(r => (r.flags || []).some(f => f?.key === 'THESIS_INCOMPLETE')).length
-  const thesisPart = thesisIncomplete ? ` ${thesisIncomplete} missing a thesis.` : ''
-  return `Needs a person: ${ready} ready for operator review. ${blocked} blocked.${thesisPart} ${openStrategies} open strategies. A model score is not a CIO decision. Outcomes are not validated from this screen.`
+  const ready = list.filter(r => reviewWorkflow(r).state === 'READY_FOR_REVIEW').length
+  const needs = list.filter(r => !isReviewQueueRow(r)).length
+  const pending = list.filter(r => reviewWorkflow(r).state === 'APPROVED_AWAITING_QUOTES').length
+  const execution = list.filter(r => r.approvable === true && (r.enterprise as { live_eligible?: boolean })?.live_eligible === true && !isCardBlocked(r as never)).length
+  return `Review: ${ready} ready for investment review. ${needs} need research, data or block resolution. ${pending} CIO approved with execution checks pending. ${execution} live eligible. ${openStrategies} open option strategies. Model votes are not CIO decisions.`
+}
+
+export function packagePointer(symbol: string, expirations: unknown[] | undefined): string {
+  const dates = new Set((expirations || []).filter(Boolean))
+  return `Same-symbol scenarios are on the first ${symbol} card.` + (dates.size > 1
+    ? ' Expiries differ; each date has its own payoff.' : dates.size === 1 ? ' These ideas share one expiry.' : ' Expiry comparison unavailable.')
 }
 
 /** Existing desk rules. Display only — do not lower either number in this module. */

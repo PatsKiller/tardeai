@@ -29,6 +29,26 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def capacity_summary(coverage: dict, config: dict) -> dict:
+    """Planning arithmetic, never an assertion of provider entitlement or live throughput."""
+    rows = coverage.get('rows') or []
+    priority = len({r['symbol'] for r in rows if r.get('symbol') and
+                    (set(r.get('source_lanes') or []).intersection(PRIORITY_LANES) or r.get('shortlisted'))})
+    interval = float(config.get('priority_interval_minutes') or 15)
+    rate = float(config.get('provider_requests_per_minute') or 0)
+    required = priority / interval
+    state = 'DISABLED' if not config.get('enabled') else 'CAPACITY_UNVERIFIED'
+    if config.get('enabled') and rate < required:
+        state = 'CONFIGURED_RATE_BELOW_REQUIREMENT'
+    return {'status': state, 'priority_symbol_count': priority, 'refresh_interval_minutes': interval,
+            'minimum_chain_requests_per_minute': round(required, 2),
+            'configured_requests_per_minute': rate or None,
+            'best_case_refresh_minutes': round(priority / rate, 1) if rate else None,
+            'provider_capacity_verified': False,
+            'assumption': 'One fresh request per distinct priority symbol; excludes retries and projection time.',
+            'next_action': 'Measure shared provider allowance and full-run throughput before enabling the existing worker.'}
+
+
 def load_config(root: Path) -> dict:
     path = root / "config" / "options_scan.json"
     try:

@@ -106,7 +106,10 @@ def test_check_runs_the_linters_on_the_live_crontab_output(monkeypatch):
     def fake_run(*a, **k):
         return SimpleNamespace(returncode=0, stdout=HEAD + L791 + "\n", stderr="")
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(ccs.os.path, "exists", _exists)
+    # The default exists callable was bound when lint_crontab was defined.
+    # Inject the fixture explicitly so a later real release venv cannot change this test.
+    lint = ccs.lint_crontab
+    monkeypatch.setattr(ccs, "lint_crontab", lambda text: lint(text, exists=_exists))
     types = {f["type"] for f in ccs.check()}
     assert "cron_interpreter_missing" in types
 

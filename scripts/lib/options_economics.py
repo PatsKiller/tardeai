@@ -141,13 +141,14 @@ def economics(p: dict[str, Any], *, shares_held: Optional[float] = None,
     $345 put (Wave B, 2026-09-27). Strike/premium arithmetic is still shown, at the mid."""
     strat = str(p.get("strategy") or "")
     n = int(_f(p.get("contracts")) or 1)
-    mult = 100 * n
+    multiplier = _f(p.get("multiplier")) or 100
+    mult = multiplier * n
     spot = _f(p.get("underlying_price"))
     iv = _f(p.get("iv_used"))
     dte = p.get("dte")
     k = _f(p.get("strike"))
     prem = _f(p.get("premium"))
-    out: dict[str, Any] = {"schema": "OptionsEconomics@v1", "contracts": n, "multiplier": 100,
+    out: dict[str, Any] = {"schema": "OptionsEconomics@v1", "contracts": n, "multiplier": multiplier,
                            "ev_method": "expected P/L at expiration, lognormal at the desk's IV, zero drift"}
     pay = _payoff(p)
     ev = expected_payoff(pay, spot, iv, dte) if pay else None
@@ -349,47 +350,122 @@ def payoff_metrics(p: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def stamp_payoff(proposal: dict[str, Any], *, quote_issues: list | None = None) -> None:
-    """Replace displayed metrics with their actual economic meaning after policy gates.
+def stamp_payoff(proposal: dict[str, Any], *, quote_issues: list | None = None,
+                 session: str | None = None) -> None:
+    """Price every displayed field from one captured quote and the same contract lot.
 
-    Preserve legacy policy inputs explicitly. This fixes labels/calculation without
-    silently changing the operator's heuristic score or eligibility thresholds.
+    This is advisory arithmetic after policy gates, not a fill or quote validation.
+    Preserve the old heuristic input once; repeated cache reads must be idempotent.
     """
-    proposal['gate_probability_pct'] = proposal.get('pop_pct')
-    proposal['gate_probability_basis'] = 'legacy strike probability used by existing heuristic gate'
+    proposal.setdefault('gate_probability_pct', proposal.get('pop_pct'))
+    proposal.setdefault('gate_probability_basis', 'legacy strike probability used by existing heuristic gate')
+    proposal.setdefault('premium_midpoint', proposal.get('premium'))
     strategy = proposal.get('strategy')
-    priced = dict(proposal)
+    session = session or proposal.get('market_session') or 'UNKNOWN'
     bid, ask = _f(proposal.get('bid')), _f(proposal.get('ask'))
-    executable = False
-    if strategy == 'credit_spread' and proposal.get('executable_credit') is not None:
-        priced['premium'] = proposal['executable_credit']
-        executable = True
-    elif bid is not None and ask is not None and 0 <= bid <= ask and ask > 0:
-        priced['premium'] = ask if strategy in {'long_call', 'long_put', 'protective_put'} else bid
-        executable = True
-    priced['price_basis'] = 'executable bid/ask before fees and slippage' if executable else 'midpoint estimate; not executable'
+    selected = _f(proposal.get('premium_midpoint'))
+    side, quoted = 'midpoint', False
+    if strategy == 'credit_spread' and _f(proposal.get('executable_credit')) is not None:
+        selected, side, quoted = _f(proposal['executable_credit']), 'short bid minus long ask', True
+    elif strategy in {'debit_spread', 'collar'}:
+        # These generators already supply the signed multi-leg entry cash flow.
+        selected, side = _f(proposal.get('premium')), 'multi-leg quoted price'
+    elif (bid is not None and ask is not None and math.isfinite(bid) and math.isfinite(ask)
+          and 0 <= bid <= ask and ask > 0):
+        side = 'ask' if strategy in {'long_call', 'long_put', 'protective_put'} else 'bid'
+        selected, quoted = (ask if side == 'ask' else bid), True
+    basis = f'{side} estimate; not a fill; session {session}; fees and slippage excluded from premium'
+    proposal['price_basis'] = basis
+    proposal['premium_basis'] = side
+    priced = dict(proposal, premium=selected)
     metrics = payoff_metrics(priced)
-    if quote_issues or not executable or proposal.get('data_source') == 'bs_estimate':
+    issues = list(quote_issues or [])
+    if session != 'REGULAR':
+        issues.append(f'quote session {session}; live validation required')
+    if issues or not quoted or proposal.get('data_source') == 'bs_estimate':
         metrics['probability_of_profit_pct'] = None
         metrics['expected_pl'] = None
         metrics['model_status'] = 'WITHHELD_UNVALIDATED_QUOTES'
     proposal['payoff'] = metrics
-    proposal['price_basis'] = metrics['price_basis']
     proposal['edge_basis'] = 'heuristic score; not calibrated expected return'
     proposal['pop_pct'] = metrics.get('probability_of_profit_pct')
     proposal['pop_basis'] = metrics['probability_basis']
     proposal['expected_value'] = metrics.get('expected_pl')
     proposal['expected_value_method'] = metrics['probability_basis']
-    if metrics['status'] == 'MODELED':
-        proposal['max_loss'] = metrics['max_loss']
-        proposal['max_profit'] = 'unlimited' if metrics['profit_unlimited'] else metrics['max_profit']
-        proposal['breakeven'] = metrics['breakeven']
-        proposal['risk_reward'] = (round(metrics['max_profit'] / metrics['max_loss'], 4)
-                                  if metrics['max_profit'] is not None and metrics['max_loss'] else None)
-    else:
+    proposal['economics_revision'] = 'coherent_quote_v1'
+    if metrics['status'] != 'MODELED':
         proposal['pop_pct'] = None
         proposal['expected_value'] = None
+        # Never retain a legacy finite risk figure when the payoff is unavailable.
+        for key in ('max_loss', 'max_profit', 'breakeven', 'risk_reward', 'floor_value', 'option_max_loss'):
+            proposal[key] = None
         ent = proposal.setdefault('enterprise', {})
         ent['live_eligible'] = False
-        ent['blocks'] = list(ent.get('blocks') or []) + [metrics['status']]
+        ent['blocks'] = list(ent.get('blocks') or [])
+        if metrics['status'] not in ent['blocks']:
+            ent['blocks'].append(metrics['status'])
         proposal['enterprise_blocked'] = True
+        proposal['economics'] = {'schema': 'OptionsEconomics@v1', 'status': metrics['status'], 'prices_basis': basis}
+        return
+    proposal['premium'] = selected
+    mult = float(proposal.get('multiplier') or 100) * int(proposal.get('contracts') or 1)
+    proposal['premium_total'] = round(selected * mult, 2)
+    proposal['max_loss'] = metrics['max_loss']
+    proposal['max_profit'] = 'unlimited' if metrics['profit_unlimited'] else metrics['max_profit']
+    proposal['breakeven'] = metrics['breakeven']
+    proposal['risk_reward'] = (round(metrics['max_profit'] / metrics['max_loss'], 4)
+                              if metrics['max_profit'] is not None and metrics['max_loss'] else None)
+    e = economics(priced, shares_held=_f(proposal.get('shares_held')), quote_issues=issues, session=session)
+    e.update(prices_basis=basis, premium=selected, premium_total=proposal['premium_total'],
+             expected_pl_at_expiry=metrics.get('expected_pl'), ev_method=metrics['probability_basis'],
+             quote_time=proposal.get('quotes_as_of') or proposal.get('quote_time'),
+             market_session=session, scope='contract lot; stock marked from captured underlying price')
+    if e.get('credit_basis'):
+        e['credit_basis'] = side
+    if e.get('ev_inputs'):
+        e['ev_inputs']['credit_basis'] = side
+    if metrics.get('model_status'):
+        e['expected_pl_status'] = 'withheld: quotes require live validation'
+    costs = (_f(proposal.get('fees_total')) or 0) + (_f(proposal.get('slippage_total')) or 0)
+    held = _f(proposal.get('shares_held'))
+    e['fees_and_slippage_total'] = costs
+    if strategy == 'credit_spread':
+        e.update(max_loss_total=metrics['max_loss'], breakeven=metrics['breakeven'])
+    if strategy == 'cash_secured_put':
+        assigned = float(proposal['strike']) - selected + costs / mult
+        e.update(net_cost_if_assigned_per_share=round(assigned, 2),
+                 net_cost_if_assigned_total=round(assigned * mult, 2),
+                 discount_to_spot_pct=round(100 * (1 - assigned / float(proposal['underlying_price'])), 1))
+    if strategy == 'protective_put':
+        e.update(hedged_max_loss_from_mark=metrics['max_loss'],
+                 downside_to_floor_from_mark=metrics['max_loss'],
+                 stock_plus_put_breakeven_from_mark=metrics['breakeven'],
+                 floor_value_after_premium=round((float(proposal['strike']) - selected) * mult - costs, 2),
+                 option_max_loss=round(selected * mult + costs, 2),
+                 put_breakeven=round(float(proposal['strike']) - selected - costs / mult, 2))
+        proposal.update(option_max_loss=e['option_max_loss'], put_breakeven=e.get('put_breakeven'),
+                        max_loss_label='Max loss (hedged shares, to the floor)',
+                        breakeven_label='Stock+put breakeven from mark',
+                        floor_value=e['floor_value_after_premium'], uninsured_shares=e.get('uninsured_shares'))
+        spot = float(proposal['underlying_price'])
+        e['protection_scenarios'] = []
+        for move in (-30, -20, -10):
+            terminal = spot * (1 + move / 100)
+            stock_pl = (terminal - spot) * mult
+            hedge_pl = max(float(proposal['strike']) - terminal, 0) * mult - selected * mult - costs
+            e['protection_scenarios'].append({'move_pct': move, 'stock_pl': round(stock_pl, 2),
+                'hedged_pl': round(stock_pl + hedge_pl, 2), 'loss_reduction': round(hedge_pl, 2)})
+        e['assessment_basis'] = ('Insurance: compare premium budget, protection window and loss reduction on insured '
+                                 'shares. Profit probability is not an insurance suitability score.')
+    if strategy == 'covered_call':
+        e['called_away_price_per_share'] = round(float(proposal['strike']) + selected - costs / mult, 2)
+        proposal['stock_downside_risk'] = metrics['max_loss']
+        e['residual_shares'] = round(max(0, held - mult), 3) if held is not None else None
+        e['stock_downside_risk'] = metrics['max_loss']
+    proposal['economics'] = e
+    # Rebuild deterministic prose too; a repaired number must not coexist with an old mid-price sentence.
+    from scripts.lib.options_plain_english import explain, _plain_summary
+    proposal['plain_english'] = explain(proposal)
+    if proposal.get('committee_memo') and not proposal['committee_memo'].get('error'):
+        memo = proposal['committee_memo']
+        memo['plain_summary'] = _plain_summary(proposal, memo.get('classification', ''), memo.get('purpose', ''))

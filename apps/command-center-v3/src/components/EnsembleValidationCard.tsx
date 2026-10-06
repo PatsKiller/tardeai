@@ -29,6 +29,7 @@ export interface EnsembleResult {
   lanes_used: string[]
   votes: EnsembleVote[]
   reasoning_summary?: string
+  created_at?: string
   retirement_relevance?: number
   finance_actionability?: number
   risk_alignment?: number
@@ -66,6 +67,7 @@ export function normalizeEnsembleResult(raw: any): EnsembleResult | null {
       lanes_used: Array.isArray(lanes_used) ? lanes_used : [],
       votes: normVotes,
       reasoning_summary: raw.reasoning_summary,
+      created_at: raw.created_at,
       retirement_relevance: raw.retirement_relevance != null ? normalizeScore10(raw.retirement_relevance) : undefined,
       finance_actionability: raw.finance_actionability != null ? normalizeScore10(raw.finance_actionability) : undefined,
       risk_alignment: raw.risk_alignment != null ? normalizeScore10(raw.risk_alignment) : undefined,
@@ -198,7 +200,7 @@ function EnsembleRunButtons({ compact, busy, onRun }: {
 }
 
 // ── Self-contained: button → enqueue → poll → render. Reusable on any surface. ──
-export function EnsembleValidationInline({ targetType, targetId, subject, content, task, autoRequest, compact }: {
+export function EnsembleValidationInline({ targetType, targetId, subject, content, task, autoRequest, compact, narrative }: {
   targetType: string
   targetId: string | number
   subject?: string
@@ -207,6 +209,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
   /** Auto-enqueue if no fresh verdict (options desk). */
   autoRequest?: boolean
   compact?: boolean
+  narrative?: boolean
 }) {
   const [state, setState] = useState<'loading' | 'idle' | 'queued' | 'done' | 'error'>('loading')
   const [result, setResult] = useState<EnsembleResult | null>(null)
@@ -276,6 +279,12 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
 
   if (state === 'loading') return <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Aegis review…</div>
   if (state === 'done' && result) {
+    if (narrative) return <section aria-label="LLM standing plan summary" style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Model review recorded {result.created_at ? new Date(result.created_at).toLocaleString() : '(time unavailable)'} · describes this captured plan, not a CIO approval.</div>
+      {result.votes.filter(v => v.reasoning).map((v, i) => <p key={i} style={{ fontSize: 13, lineHeight: 1.5 }}><b>{LANE_LABEL[v.lane] || v.lane}:</b> {v.reasoning}</p>)}
+      {!result.votes.some(v => v.reasoning) && <p>No narrative returned. {result.reasoning_summary}</p>}
+      <details><summary>Model scores and rerun</summary><EnsembleValidationCard result={result} onRevalidate={() => request()} /></details>
+    </section>
     if (compact) {
       return (
         <div>
@@ -323,6 +332,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
   }
   return (
     <div>
+      {narrative && <p style={{ fontSize: 12 }}>No LLM summary recorded for this version. Choose a model to request one through the existing review queue.</p>}
       {job?.status === 'expired' && <div style={{ fontSize: 10, color: BB.amber, marginTop: compact ? 0 : 6 }}>Earlier request expired during the worker outage. Run it again.</div>}
       <EnsembleRunButtons compact={compact} busy={runBusy} onRun={request} />
     </div>

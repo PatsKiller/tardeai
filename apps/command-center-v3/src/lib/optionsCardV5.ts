@@ -118,10 +118,11 @@ export function proposalHeroMetrics(p: AnyRow): MetricSpec[] {
   const isMidEstimate = !missingSingleLegQuote && (p.credit_basis === 'midpoint' || (!p.credit_basis && p.data_source === 'schwab_chain'))
   const quoteSides = twoSided
     ? `; bid ${fmt$(Number(p.bid), 2)} / ask ${fmt$(Number(p.ask), 2)} per share` : ''
-  const basis = missingSingleLegQuote ? 'no valid two-sided quote; amount withheld' : isMidEstimate ? `midpoint estimate, not a fill${quoteSides}` : p.credit_basis ? `credit basis: ${p.credit_basis}` : undefined
+  const basis = p.price_basis || (missingSingleLegQuote ? 'no valid two-sided quote; amount withheld' : isMidEstimate ? `midpoint estimate, not a fill${quoteSides}` : p.credit_basis ? `credit basis: ${p.credit_basis}` : undefined)
+  const priceLabel = p.premium_basis ? ` (${p.premium_basis} est.)` : isMidEstimate ? ' (mid est.)' : ''
   const out: MetricSpec[] = []
   if (p.strategy === 'protective_put') {
-    out.push({ guideKey: 'options.total_debit', label: missingSingleLegQuote ? 'Cost unverified' : isMidEstimate ? 'Cost (mid est.)' : 'Cost', value: missingSingleLegQuote ? '—' : money(econ.option_cost_total ?? p.premium_total), tone: 'neutral', meta: basis })
+    out.push({ guideKey: 'options.total_debit', label: missingSingleLegQuote ? 'Cost unverified' : `Cost${priceLabel}`, value: missingSingleLegQuote ? '—' : money(econ.option_cost_total ?? p.premium_total), tone: 'neutral', meta: basis })
     out.push({ guideKey: 'options.hedged_max_loss_from_mark', label: 'Hedged max loss', value: money(econ.hedged_max_loss_from_mark), tone: 'warning' })
     out.push({ guideKey: 'options.floor_value', label: 'Floor', value: money(econ.floor_value_after_premium ?? p.floor_value) })
     out.push({ guideKey: 'options.insured_shares', label: 'Insured', value: econ.insured_shares != null ? `${num(econ.insured_shares)} sh${econ.uninsured_shares ? ` (+${num(econ.uninsured_shares)} not)` : ''}` : '—' })
@@ -129,7 +130,7 @@ export function proposalHeroMetrics(p: AnyRow): MetricSpec[] {
   }
   out.push({
     guideKey: isCredit ? 'options.total_credit' : 'options.total_debit',
-    label: `${isCredit ? 'Credit' : 'Debit'}${missingSingleLegQuote ? ' unverified' : isMidEstimate ? ' (mid est.)' : ''}`,
+    label: `${isCredit ? 'Credit' : 'Debit'}${missingSingleLegQuote ? ' unverified' : priceLabel}`,
     value: missingSingleLegQuote ? '—' : money(econ.credit_total ?? p.premium_total), tone: isCredit && !missingSingleLegQuote ? 'success' : 'neutral', meta: basis,
   })
   out.push({ guideKey: 'options.max_loss', label: p.max_loss_label || 'Max loss', value: money(econ.max_loss_total ?? p.max_loss), tone: 'warning' })
@@ -151,7 +152,7 @@ export function proposalDetailMetrics(p: AnyRow): MetricSpec[] {
   if (p.breakeven != null) out.push({ guideKey: 'options.breakeven', label: p.breakeven_label || 'Breakeven', value: `$${price(p.breakeven)}` })
   if (p.iv_rank != null) out.push({ guideKey: 'options.iv_rank', label: p.iv_rank_source === 'history' ? 'IV rank' : 'IV/price proxy', value: num(p.iv_rank), meta: p.iv_rank_source === 'history' ? undefined : 'historical IV rank not verified on this card' })
   const rr = p.reward_to_risk ?? p.risk_reward
-  if (rr != null) out.push({ guideKey: 'options.rr', label: 'R:R', value: Number(rr).toFixed(2) })
+  if (rr != null && p.strategy !== 'protective_put') out.push({ guideKey: 'options.rr', label: 'R:R', value: Number(rr).toFixed(2) })
   if (econ.collateral != null) out.push({ guideKey: 'options.collateral', label: 'Collateral', value: money(econ.collateral) })
   if (p.short_strike != null && p.long_strike != null) out.push({ guideKey: 'options.spread_width', label: 'Width', value: `$${num(Math.abs(Number(p.short_strike) - Number(p.long_strike)))}` })
   if (econ.net_cost_if_assigned_per_share != null) out.push({ guideKey: 'options.net_cost_if_assigned', label: 'If assigned', value: `$${price(econ.net_cost_if_assigned_per_share)}/sh${econ.discount_to_spot_pct != null ? ` (${Number(econ.discount_to_spot_pct).toFixed(1)}% below)` : ''}` })

@@ -1,5 +1,17 @@
 # Trade AI Platform — FUTURE STATE Lifecycles, 2026-10-04: targets, contract status and roadmap
 
+The October 5 review repair also adds a **Create standing plan** modal for any symbol, using the
+existing ticker directive and options-intent writer. It previews before saving, preserves the
+previous plan in the preview, refuses a changed-version overwrite and waits for the scheduled
+matcher. Editing a plan invalidates older contract matches. Strategy and risk/reward tooltips
+explain capital, upside limits, full downside and assignment; delta is not assignment probability.
+An optional **LLM summary of this standing plan** reuses the governed ensemble job/result store,
+bound to the exact intent and captured scan. It shows each model's reasoning and recording time;
+no result is invented and page loads do not request models. These controls create advisory plans,
+not account allocation, trade approval or broad-scan activation. Fixtures verify the UI paths;
+organic matcher/model results for newly saved plans remain a runtime acceptance requirement.
+
+
 ```
 Status:      ACTIVE
 as_of:       2026-10-05T18:58:00Z (remediation status and remaining acceptance updated)
@@ -32,6 +44,25 @@ shared evidence identity, nonduplicated research, and honest no-change/blocked d
 Do not force changed recommendations, successful outcomes or lesson promotions to satisfy a
 metric. [Capacity and release acceptance](../ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md) is the scoped
 contract; the earlier learning-remediation acceptance remains independently open where stated.
+
+## Options repair acceptance remaining — 2026-10-05 evening
+
+The scoped repair separates investment review from execution readiness and unifies captured-quote
+arithmetic across cards. Fixture and captured-snapshot replay are required correctness evidence,
+not proof of opportunity quality. The replay's three review-ready ideas remain execution-ineligible.
+
+Before closing this target, observe the repaired API/UI on the exact CI-approved served release;
+validate quotes through the existing process during a regular session; confirm strategy/account
+CIO lineage; and measure full-universe acquisition/publication. The measured 5,562-name mandatory
+inventory needs at least 370.8 fresh chain requests/minute for a 15-minute cycle, before retries.
+Provider allowance and achieved throughput remain unknown. Keep the expanded worker disabled
+until capacity and activation are approved; any reduced service requires an explicit operator choice.
+
+Standing-intent contracts now link to existing ideas with shared contract identities; unmatched
+matches remain unstaged until account allocation and an account-specific thesis are supplied.
+Do not count these matches as approved proposals, merge unrelated CIO decisions or manufacture
+proposal sizing. Quote freshness, review readiness, execution eligibility and later outcomes must
+remain separately measurable. The existing five-natural-session acceptance still applies.
 
 ## 0. How to read this document
 

@@ -43,7 +43,7 @@ import {
   type PrimeDisplay,
   type SafetyStatusBadge,
 } from '../lib/optionsCardSemantics'
-import { blockedRouteNote, floorCallouts, rewardRiskPresentation } from '../lib/optionsDeskTruth'
+import { blockedRouteNote, floorCallouts, rewardRiskPresentation, packagePointer, reviewWorkflow, REVIEW_STAGES } from '../lib/optionsDeskTruth'
 import type { OptionProposal } from './OptionProposalCard'
 
 // Option Proposal Card v4 — options-desk member of the card-v4 family (2026-07-04).
@@ -437,7 +437,9 @@ export default function OptionProposalCardV4({
   const isCredit = ext.cashflow_is_credit === true || (ext.cashflow_is_credit == null && cashflowIsCredit(p.strategy, p.side))
   const twoSided = Number(ext.bid) > 0 && Number(ext.ask) >= Number(ext.bid)
   const missingSingleLegQuote = p.data_source === 'schwab_chain' && p.short_strike == null && p.long_strike == null && !twoSided
-  const midEstimate = !missingSingleLegQuote && (ext.credit_basis === 'midpoint' || (!ext.credit_basis && p.data_source === 'schwab_chain'))
+  const premiumBasis = String(ext.premium_basis || 'midpoint')
+  const quoteSuffix = ` ${premiumBasis} est.`
+  const review = reviewWorkflow(p as any)
   const cfColor = cashflowColor(isCredit)
   const actionButtons = sanitizeActionButtons(p)
   const route = executionRouteBadge(ext)
@@ -887,6 +889,11 @@ export default function OptionProposalCardV4({
                 })}
               </div>
             )}
+            <div data-testid="options-review-next-action" style={{ marginTop: 8, color: BB.text1 }}>
+              <b>{REVIEW_STAGES[review.state || ''] || 'Review status unavailable'}.</b> {review.reason}
+              <div>Next: {review.next_action} · Owner: {review.owner}</div>
+              <div style={{ color: BB.text2 }}>Decision scope: this strategy, contract and account. Ticker decisions and model votes do not approve this idea.</div>
+            </div>
             {p.id && <OptionValidateButton proposalId={String(p.id)} />}
             {(() => {
               // 2026-09-26 (operator): the living CIO view of this ticker, then this idea's lifecycle.
@@ -903,7 +910,7 @@ export default function OptionProposalCardV4({
                 <div data-testid="options-cio-view" style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
                   {v?.has_view ? (
                     <>
-                      <div style={{ fontWeight: 900, color: BB.text1 }}>CIO view on file · {v.symbol}</div>
+                      <div style={{ fontWeight: 900, color: BB.text1 }}>Ticker context · {v.symbol}</div>
                       {v.thesis && line('Thesis.', `${v.thesis.pin} · ${String(v.thesis.stance || v.thesis.state || '').toLowerCase()} · last reviewed ${ago(v.thesis.last_reviewed)}${v.thesis.next_review_at ? ` · next ${String(v.thesis.next_review_at).slice(0, 16)}` : ''}`)}
                       {v.thesis?.summary && (
                         <details style={{ marginTop: 4 }}>
@@ -911,7 +918,7 @@ export default function OptionProposalCardV4({
                           <div style={{ marginTop: 3, color: BB.text2 }}>{v.thesis.summary}</div>
                         </details>
                       )}
-                      {v.latest_decision && line('Latest decision.', `${v.latest_decision.recommendation} · ${v.latest_decision.source} · ${ago(v.latest_decision.at)} · ${v.latest_decision.decision_id}`)}
+                      {v.latest_decision && line('Latest ticker decision (scope may differ).', `${v.latest_decision.recommendation} · ${v.latest_decision.source} · ${ago(v.latest_decision.at)} · ${v.latest_decision.decision_id}`)}
                       {v.change_since_previous && line('Changed.', `${v.change_since_previous.previous} → ${v.change_since_previous.current}`)}
                       {line('Research on file.', `${v.research?.count ?? 0} runs · last completed ${ago(v.research?.last_completed)}`)}
                     </>
@@ -930,6 +937,9 @@ export default function OptionProposalCardV4({
                     if (e.ev_caveat) parts.push(`Expected P/L: ${e.ev_caveat}`)
                     if (e.expected_pl_status) parts.push(`Expected P/L ${e.expected_pl_status}`)
                     if (e.floor_value_after_premium != null) parts.push(`Insures ${e.insured_shares} sh${e.uninsured_shares ? ` (${e.uninsured_shares} uninsured)` : ''} · floor ${$(e.floor_value_after_premium)} after premium · downside to floor from mark ${$(e.downside_to_floor_from_mark)} · stock+put breakeven $${e.stock_plus_put_breakeven_from_mark}`)
+                    if (e.residual_shares != null) parts.push(`${e.shares_committed} shares in the covered lot; ${e.residual_shares} additional shares outside this payoff`)
+                    if (e.assessment_basis) parts.push(e.assessment_basis)
+                    if (e.protection_scenarios) parts.push(`Protection through ${p.expiration}: ` + e.protection_scenarios.map((r: any) => `${r.move_pct}%: stock alone ${$(r.stock_pl)}, stock + put ${$(r.hedged_pl)}, loss reduction ${$(r.loss_reduction)}`).join(' · '))
                     return parts.length ? (
                       <div data-testid="options-economics" style={{ marginTop: 6 }}>
                         <b style={{ color: BB.text1 }}>Economics.</b>{' '}
@@ -951,7 +961,7 @@ export default function OptionProposalCardV4({
                   )}
                   {(p as any).combined_exposure && !packageLead && (
                     <div data-testid="options-combined-exposure-pointer" style={{ marginTop: 6, color: BB.text2 }}>
-                      Same-symbol package is on the first {p.symbol} card. The expiries differ, so there is no single at-expiry payoff.
+                      {packagePointer(p.symbol, (p as any).combined_exposure?.expirations)}
                     </div>
                   )}
                   {(p as any).combined_exposure && packageLead && (() => {
@@ -961,7 +971,7 @@ export default function OptionProposalCardV4({
                         <b style={{ color: c.correlated ? BB.amber : BB.text1 }}>Same-symbol ideas ({(c.ideas || []).length}).</b>{' '}
                         <span style={{ color: BB.text2 }}>{c.note}</span>
                         <div style={{ color: BB.text2, marginLeft: 10 }}>
-                          Committed together {fmt$(c.capital_committed_total)}
+                          Capital if all selected {fmt$(c.capital_committed_total)}
                           {c.account_cash != null ? ` · account cash ${fmt$(c.account_cash)}${c.committed_pct_of_cash != null ? ` (${c.committed_pct_of_cash}% of it)` : ''}` : ''}
                           {c.shares_held ? ` · ${c.shares_held} ${c.symbol} shares already held` : ''}
                         </div>
@@ -1212,7 +1222,7 @@ export default function OptionProposalCardV4({
           </span>
           <MetricChipTooltip
             metricKey={isCredit ? 'total_credit' : 'total_debit'}
-            label={missingSingleLegQuote ? 'Quote unverified' : p.premium_total != null ? `${fmt$(p.premium_total)}${midEstimate ? ' mid est.' : ''}` : '—'}
+            label={missingSingleLegQuote ? 'Quote unverified' : p.premium_total != null ? `${fmt$(p.premium_total)}${quoteSuffix}` : '—'}
             context={metricCtx}
             style={{ flexShrink: 0 }}
             valueStyle={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: terminalUi ? (isCredit ? BB.green : BB.text0) : cfColor }}
@@ -1569,13 +1579,13 @@ export default function OptionProposalCardV4({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: terminalUi ? 4 : 7 }}>
               <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} context={metricCtx} terminal={terminalUi} />
               <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} context={metricCtx} terminal={terminalUi} />
-              <Metric label={missingSingleLegQuote ? 'Premium unverified' : (p as any).credit_basis === 'executable' ? 'Credit (executable)' : midEstimate ? 'Premium (mid est.)' : 'Premium'} value={missingSingleLegQuote ? '—' : p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} terminal={terminalUi} />
-              <Metric label={`${cashflowLabel}${missingSingleLegQuote ? ' unverified' : midEstimate ? ' (mid est.)' : ''}`} value={missingSingleLegQuote ? '—' : fmt$(p.premium_total)} color={cfColor} metricKey={isCredit ? 'total_credit' : 'total_debit'} context={metricCtx} terminal={terminalUi} />
+              <Metric label={missingSingleLegQuote ? 'Premium unverified' : `Premium (${premiumBasis} est.)`} value={missingSingleLegQuote ? '—' : p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} terminal={terminalUi} />
+              <Metric label={`${cashflowLabel}${missingSingleLegQuote ? ' unverified' : quoteSuffix}`} value={missingSingleLegQuote ? '—' : fmt$(p.premium_total)} color={cfColor} metricKey={isCredit ? 'total_credit' : 'total_debit'} context={metricCtx} terminal={terminalUi} />
               <Metric label={(p as any).breakeven_label || 'Breakeven'} value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} context={metricCtx} terminal={terminalUi} />
               <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} context={metricCtx} terminal={terminalUi} />
               {p.strategy === 'covered_call' ? (
                 <>
-                  <Metric label="Stock risk" value={fmt$(stockRisk)} color={WL.signal.red} context={metricCtx} terminal={terminalUi} />
+                  <Metric label="Covered-lot risk" value={fmt$(stockRisk)} color={WL.signal.red} context={metricCtx} terminal={terminalUi} />
                   <Metric label="Upside cap" value={p.upside_cap ?? `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} if assigned`} color={WL.signal.amber} terminal={terminalUi} />
                 </>
               ) : (

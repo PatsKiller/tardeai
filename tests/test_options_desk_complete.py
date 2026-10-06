@@ -353,3 +353,46 @@ def test_credit_collar_cashflow_and_unknown_iv_or_deliverable_are_honest():
     for row in chain['expirations'][0]['strikes']:
         row.pop('multiplier')
     assert generate_candidates([], holdings, {'X': chain}) == []
+
+
+
+def test_cached_api_repairs_legacy_math_and_counts_review_without_changing_store(tmp_path, monkeypatch):
+    import ast
+    import copy
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+    source = ast.parse((Path(__file__).parents[1] / 'scripts/api_v2.py').read_text())
+    fn = next(n for n in source.body if isinstance(n, ast.FunctionDef) and n.name == '_options_proposals')
+    p = {'id': 'xar', 'symbol': 'XAR', 'strategy': 'protective_put', 'data_source': 'schwab_chain',
+         'strike': 220, 'premium': 3.83, 'premium_total': 383, 'underlying_price': 231.28,
+         'contracts': 1, 'shares_held': 100, 'bid': .65, 'ask': 7, 'dte': 46, 'iv_used': .31,
+         'options_thesis': {'pin': 'opt@v3', 'missing_required': []}, 'approvable': False,
+         'enterprise': {'live_eligible': False, 'blocks': ['awaiting_cio_decision'], 'liquidity': {'pass': True}}}
+    snapshot = {'proposals': [p], 'market_session': 'AFTER_HOURS', 'coverage': {}}
+    before = copy.deepcopy(snapshot)
+    fake = SimpleNamespace(PROJECT_ROOT=tmp_path, read_proposals=lambda: snapshot, filter_proposals=lambda p, **kw: p,
+                           proposal_filter_facets=lambda p: {})
+    monkeypatch.setitem(sys.modules, 'options_pilot_arm', SimpleNamespace(status=lambda: {}))
+    ns = {'_get_options_engine': lambda: fake, '_json_clean': lambda x: x}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), '<cache-repair>', 'exec'), ns)
+    got = ns['_options_proposals']({'review_only': ['1']})
+    assert got['review_counts']['READY_FOR_REVIEW'] == 1
+    assert got['ready_count'] == 0
+    row = got['proposals'][0]
+    assert row['premium_total'] == 700 and row['floor_value'] == 21300
+    assert '$700' in row['plain_english']['premium_line']
+    assert '$383' not in str(row['plain_english'])
+    assert row['max_loss'] == row['economics']['hedged_max_loss_from_mark'] == 1828
+    assert row['options_decision_packet']['readiness']['live_submit'] is False
+    assert snapshot == before
+
+
+def test_scan_capacity_does_not_turn_inventory_or_a_configured_rate_into_throughput_proof():
+    from scripts.lib.options_scan import capacity_summary
+    coverage = {'rows': [{'symbol': str(i), 'source_lanes': ['watchlist', 'reentry']} for i in range(120)]}
+    got = capacity_summary(coverage, {'enabled': False, 'priority_interval_minutes': 15})
+    assert got['status'] == 'DISABLED' and got['minimum_chain_requests_per_minute'] == 8
+    assert got['priority_symbol_count'] == 120 and got['provider_capacity_verified'] is False
+    slow = capacity_summary(coverage, {'enabled': True, 'provider_requests_per_minute': 2})
+    assert slow['status'] == 'CONFIGURED_RATE_BELOW_REQUIREMENT' and slow['best_case_refresh_minutes'] == 60
