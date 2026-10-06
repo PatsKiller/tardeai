@@ -197,9 +197,26 @@ def stamp_broker_qty(
         fields["last_reconciled_at"] = _now()
         return fields, None
 
-    # DRIP-like: sticky system shares + pending task
     is_etf = bool(name and ("ETF" in name.upper() or "FUND" in name.upper()))
     source = classify_drift(prior, broker_qty, is_etf_or_div=is_etf)
+    # DRIP-like INCREASE: the broker's share count is a fact (plan of record, day 7: "share drift resolved
+    # from broker data; no manual edit"). Before 2026-10-06 every reinvestment waited for an operator click
+    # (PFLT 12.0071 vs 12.1461 for 4 days; XLB and V Roth cleared by hand 10-01). auto_applied also makes
+    # schwab_position_sync rebase cost on the broker's average price. Config: positions.share_drift_drip_auto.
+    if delta > 0 and drip_auto_enabled():
+        fields["shares"] = broker_qty
+        fields["system_shares"] = broker_qty
+        fields["share_drift"] = round(delta, 6)
+        fields["share_drift_status"] = "auto_applied"
+        fields["share_drift_source"] = source
+        fields["last_reconciliation_source"] = "dividend_reinvestment"
+        fields["last_reconciled_at"] = _now()
+        return fields, {"account_key": account_key, "symbol": symbol.upper(), "system_shares": prior,
+                        "broker_shares": broker_qty, "drift_amount": round(delta, 6), "source": source,
+                        "auto_resolved": True,
+                        "notes": "Reinvestment-sized increase applied from broker data (auto_drip)"}
+
+    # DRIP-like decrease (or auto off): sticky system shares + pending task
     fields["shares"] = prior
     fields["system_shares"] = prior
     fields["share_drift"] = round(delta, 6)
@@ -277,13 +294,53 @@ def upsert_open_drift(event: dict) -> int | None:
     return int(tid)
 
 
+def drip_auto_enabled() -> bool:
+    """positions.share_drift_drip_auto in config/portfolio_positions.yaml (default true)."""
+    try:
+        import yaml
+        cfg = yaml.safe_load((Path(__file__).resolve().parent.parent / "config" / "portfolio_positions.yaml")
+                             .read_text(encoding="utf-8")) or {}
+        return bool((cfg.get("positions") or {}).get("share_drift_drip_auto", True))
+    except Exception:
+        return True
+
+
+def record_auto_resolution(event: dict) -> int | None:
+    """Audit row for an auto-applied reinvestment + close any open/snoozed task for that position."""
+    ensure_tables()
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    cur = conn.cursor()
+    acct, sym = str(event["account_key"]), str(event["symbol"]).upper()
+    cur.execute("""
+        INSERT INTO position_reconciliation_log
+            (account_key, symbol, previous_system_shares, new_system_shares, broker_shares_at_time,
+             drift_amount, source, reconciled_by, notes, impact_json, drift_task_id)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,NULL)
+        RETURNING id
+    """, (acct, sym, event["system_shares"], event["broker_shares"], event["broker_shares"],
+          event["drift_amount"], event["source"] if event.get("source") in SOURCES else "dividend_reinvestment",
+          "auto_drip", event.get("notes"), json.dumps({"auto": True})))
+    log_id = cur.fetchone()[0]
+    cur.execute("""
+        UPDATE position_share_drift SET status='reconciled', updated_at=NOW()
+        WHERE account_key=%s AND symbol=%s AND status IN ('open','snoozed')
+    """, (acct, sym))
+    conn.commit()
+    return log_id
+
+
 def process_sync_events(events: list[dict]) -> int:
-    """Upsert a batch of drift events from Schwab/SnapTrade sync. Returns count opened/updated."""
+    """Upsert a batch of drift events from Schwab/SnapTrade sync. Returns count opened/updated/auto-resolved."""
     n = 0
     for ev in events or []:
         if not ev:
             continue
         try:
+            if ev.get("auto_resolved"):
+                if record_auto_resolution(ev):
+                    n += 1
+                continue
             if upsert_open_drift(ev):
                 n += 1
         except Exception as e:

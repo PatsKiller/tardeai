@@ -97,32 +97,57 @@ def canonical_assert(path=None, last_good=None):
     return v.total, v.position_count
 
 
-def check_basis_divergence(new_holdings, account_key="schwab"):
-    """Compare incoming Schwab average price vs stored tax-grade cost basis. FLAG divergences (do NOT
-    overwrite). Returns the list of flagged symbols. Material to MFS filing + Roth math."""
+def _cost_basis_truth():
+    """config/portfolio_positions.yaml positions.cost_basis_truth: broker (default) | anchor."""
+    try:
+        import yaml
+        cfg = yaml.safe_load((Path(__file__).resolve().parent.parent / "config" / "portfolio_positions.yaml")
+                             .read_text(encoding="utf-8")) or {}
+        return str((cfg.get("positions") or {}).get("cost_basis_truth") or "broker")
+    except Exception:
+        return "broker"
+
+
+def _basis_key(p):
+    return ((p.get("symbol") or p.get("ticker") or "").upper(),
+            p.get("account") or p.get("account_id") or p.get("account_key") or "")
+
+
+def check_basis_divergence(new_holdings, account_key="schwab", label=None):
+    """Compare the broker's cost (averagePrice × shares) with the stored cost for the SAME account+symbol.
+
+    2026-10-06 root fix: this keyed the stored map by symbol only (V Roth compared against V Rollover),
+    read `average_price`/`avg_price` (absent on live rows, so it fell through to the row's own TOTAL cost)
+    and checked every account's rows on each account's sync. Its flag then made the caller revert PL's
+    correct new basis ($18,398, 1,000 sh) to the stale $1,766 (100 sh). Now: only rows of the account
+    being synced (`label`), keyed by (symbol, account), broker total from `broker_avg_price`.
+    Logs to schwab_basis_divergence and returns the flags; the caller decides by cost_basis_truth."""
     flagged = []
     cur_map = {}
     if HOLDINGS_PATH.exists():
         try:
             for p in _positions_of(json.load(open(HOLDINGS_PATH))):
-                s = (p.get("symbol") or p.get("ticker") or "").upper()
-                basis = p.get("cost_basis") or p.get("avg_cost") or p.get("average_price") or p.get("basis")
-                if s and basis:
-                    cur_map[s] = float(basis)
+                basis = p.get("cost_basis")
+                if basis and not p.get("is_cash"):
+                    cur_map[_basis_key(p)] = float(basis)
         except Exception:
             return flagged
     conn = _conn(); cur = conn.cursor()
     for p in _positions_of(new_holdings):
-        s = (p.get("symbol") or p.get("ticker") or "").upper()
-        api_avg = p.get("average_price") or p.get("avg_price") or p.get("cost_basis")
-        if not (s and api_avg and s in cur_map and cur_map[s]):
+        k = _basis_key(p)
+        if label and k[1] != label:
             continue
-        api_avg = float(api_avg); stored = cur_map[s]
-        div = abs(api_avg - stored) / stored * 100 if stored else 0
+        avg, shares = p.get("broker_avg_price"), p.get("shares")
+        stored = cur_map.get(k)
+        if not (k[0] and avg and shares and stored):
+            continue
+        broker_total = round(float(avg) * float(shares), 2)
+        div = abs(broker_total - stored) / stored * 100
         if div > BASIS_DIVERGENCE_PCT:
             cur.execute("""INSERT INTO schwab_basis_divergence (account_key, symbol, api_avg_price, stored_basis, divergence_pct)
-                           VALUES (%s,%s,%s,%s,%s)""", (account_key, s, api_avg, stored, round(div, 2)))
-            flagged.append({"symbol": s, "api_avg": api_avg, "stored_basis": stored, "divergence_pct": round(div, 2)})
+                           VALUES (%s,%s,%s,%s,%s)""", (account_key, k[0], float(avg), stored, round(div, 2)))
+            flagged.append({"symbol": k[0], "account": k[1], "api_avg": float(avg), "broker_total": broker_total,
+                            "stored_basis": stored, "divergence_pct": round(div, 2)})
     conn.commit()
     return flagged
 
@@ -219,6 +244,7 @@ def reconcile_totals(doc, *, source="unknown"):
 
 
 def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab", protect_basis=False,
+                            basis_label=None,
                             target_path=None, skip_transfer_detect=False):
     """GATE B / mandatory holdings wipe-guard. Routes EVERY holdings/current-state write so a bad payload
     fails closed instead of zeroing holdings.json. NEVER overwrites a good snapshot with empty/zeroed/
@@ -288,21 +314,26 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
             pass  # shield is best-effort; never blocks a write
 
     # preserve manually-repaired tax-grade basis — Schwab sync only (opt-in), never for general writers
-    flagged = check_basis_divergence(new_holdings, account_key) if protect_basis else []
+    flagged = check_basis_divergence(new_holdings, account_key, label=basis_label) if protect_basis else []
     if protect_basis and flagged and HP.exists():
         try:
-            # KEY BY (symbol, account) — NOT symbol alone. A symbol held in >1 account (SCHD/SCHG in both
-            # taxable and the IRAs) has a DIFFERENT basis per account; a symbol-only key cross-contaminated
-            # them (taxable SCHD got the rollover IRA's $127,953 → phantom -90% P&L). 2026-06-16 root fix.
-            def _bk(_p):
-                return ((_p.get("symbol") or _p.get("ticker") or "").upper(),
-                        _p.get("account") or _p.get("account_id") or _p.get("account_key") or "")
-            stored = {_bk(_p): (_p.get("cost_basis") or _p.get("avg_cost") or _p.get("average_price") or _p.get("basis"))
-                      for _p in _positions_of(json.load(open(HP)))}
+            # KEY BY (symbol, account) — NOT symbol alone (2026-06-16 + 2026-10-06 root fixes).
+            # cost_basis_truth=broker (operator 2026-10-05 "fix all"): the broker's cost wins, so a flagged
+            # row is REBASED to averagePrice × shares. Only `anchor` keeps the stored (manually repaired) basis.
+            truth = _cost_basis_truth()
+            stored = {_basis_key(_p): _p.get("cost_basis") for _p in _positions_of(json.load(open(HP)))}
+            fl = {(f["symbol"], f["account"]): f for f in flagged}
             for p in _positions_of(new_holdings):
-                k = _bk(p)
-                if k in stored and stored[k] and any(f["symbol"] == k[0] for f in flagged):
-                    p["cost_basis"] = stored[k]          # keep the manually-repaired basis (per account)
+                k = _basis_key(p)
+                if k not in fl:
+                    continue
+                if truth == "broker":
+                    p["_basis_rebased_from"] = stored.get(k)
+                    p["cost_basis"] = fl[k]["broker_total"]
+                    p["cost_basis_source"] = "broker_api"
+                    p.pop("_basis_divergence_flagged", None)
+                elif stored.get(k):
+                    p["cost_basis"] = stored[k]          # anchor: keep the manually-repaired basis
                     p["_basis_divergence_flagged"] = True
         except Exception:
             pass
@@ -499,6 +530,11 @@ def _build_account_rows(account_key, live, existing_by_key):
                     "broker_position_as_of": as_of})
         # Schwab's own P/L Day, with the mark it was computed at, so the repricer can check its
         # fill-aware day change against the broker at the SAME price (a later mark differs).
+        # The broker's own average cost per share for THIS account, so the basis check compares like with like.
+        if avg:
+            row["broker_avg_price"] = avg
+        else:
+            row.pop("broker_avg_price", None)
         _bdp = _f(p.get("day_pl"))
         if _bdp is not None:
             row.update({"broker_day_pl": round(_bdp, 2), "broker_day_pl_price": price, "broker_day_pl_at": now})
@@ -608,6 +644,18 @@ def sync_schwab_positions(account_key, dry_run=True):
             pass
         _record(account_key, "degraded_noop", f"live fetch unavailable: {reason}")
         return {"status": "degraded_noop", "reason": reason, "wrote": False}
+    if dry_run:
+        return _sync_rows(account_key, label, live, st, dry_run=True)
+    # Serialize the whole read-modify-write with the repricer and the other holdings writers
+    # (scripts/lib/holdings_write_lock.py). Without it a slower writer's stale copy can land on top of this
+    # sync's rows — the lost update that froze moomoo at 2026-09-28 (2026-10-06).
+    from lib.holdings_write_lock import holdings_write_lock
+    with holdings_write_lock():
+        return _sync_rows(account_key, label, live, st, dry_run=False)
+
+
+def _sync_rows(account_key, label, live, st, *, dry_run):
+    """Read holdings.json, replace this account's rows from the live positions, write (caller holds the lock)."""
     if not HOLDINGS_PATH.exists():
         return {"status": "no_holdings_file", "wrote": False}
     cur = json.loads(HOLDINGS_PATH.read_text())
@@ -626,7 +674,8 @@ def sync_schwab_positions(account_key, dry_run=True):
                 "live_positions": len(equity_rows), "added": added, "removed": removed,
                 "share_drift_events": drift_events, "wrote": False}
     cur["holdings"] = [r for r in hold if r.get("account") != label] + new_rows
-    res = protected_holdings_write(cur, source="schwab_position_sync", account_key=account_key, protect_basis=True)
+    res = protected_holdings_write(cur, source="schwab_position_sync", account_key=account_key, protect_basis=True,
+                                   basis_label=label)
     res.update({"added": added, "removed": removed})
     # Open approval tasks for DRIP-like share drift (non-fatal)
     if drift_events:

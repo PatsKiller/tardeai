@@ -10,6 +10,27 @@ positions:
   # operator 2026-10-05 "fix all": broker-reported cost basis wins (includes dividend-reinvested lots);
   # anchors only for accounts with no broker basis (Fidelity / manual). broker | anchor
   cost_basis_truth: broker
+  # operator 2026-10-06 "fix all of it": a broker's reinvestment-sized share increase is applied from broker
+  # data (logged as auto_drip, open drift task closed) instead of waiting for a click. false = old approval flow.
+  share_drift_drip_auto: true
+  # Portfolio table: non-cash rows below this value are hidden (were a hard-coded $50, which hid the moomoo
+  # NVDA 0.133 sh and Schwab fractional leftovers). 0 = show every position the broker reports.
+  table_hide_below_usd: 0
 closed:
   # trade_closed rows written by health probes (2026-08-07), not trades — excluded from REALIZED/TRADING
   test_accounts: [health, journal_check]
+
+# Positions store, phase 1 — shadow (scripts/positions_sync.py, the ONLY writer of the positions tables).
+# Plan: docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md; operator approved phase 1 2026-10-06.
+positions_sync:
+  # A run becomes positions_current only when all of these read OK (a partial run is never current).
+  required_accounts: [schwab_rollover_ira, schwab_roth_ira, schwab_taxable]
+  # Read when reachable; on failure the account keeps its last rows with their own as_of.
+  optional_accounts: [alpaca_taxable_live, moomoo_taxable_live]
+  # trade_transactions rows that are the broker ledger (lots + realized lots), by account prefix.
+  ledger_import_sources:
+    schwab_: [schwab_api]
+  stale_after_minutes_market: 30   # operator-proposed threshold (plan decision 3)
+  stale_after_hours_closed: 72
+  qty_tolerance: 0.001
+  basis_tolerance_usd: 1.0

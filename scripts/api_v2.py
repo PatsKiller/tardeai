@@ -3993,6 +3993,21 @@ def _pp_cfg_basis_truth() -> str:
         return "broker"
 
 
+def _pp_cfg_dust_usd() -> float:
+    """positions.table_hide_below_usd from config/portfolio_positions.yaml (default 50). Non-cash rows below it
+    are left out of the Portfolio table (they are still counted in account totals)."""
+    try:
+        import yaml
+
+        cfg = (
+            yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "portfolio_positions.yaml").read_text())
+            or {}
+        )
+        return float((cfg.get("positions") or {}).get("table_hide_below_usd", 50.0))
+    except Exception:
+        return 50.0
+
+
 def portfolio_holdings():
     h = _load_json(STATE_DIR / "holdings.json") or {}
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
@@ -4147,8 +4162,9 @@ def portfolio_holdings():
     except Exception:
         _latest_fidelity_trade = {}
     rows = []
+    _dust_usd = _pp_cfg_dust_usd()
     for p in holdings:
-        if (p.get("market_value") or 0) < 50 and not p.get("is_cash"):
+        if (p.get("market_value") or 0) < _dust_usd and not p.get("is_cash"):
             continue
         sym = p.get("symbol", "")
         _shares = float(p.get("shares") or 0)

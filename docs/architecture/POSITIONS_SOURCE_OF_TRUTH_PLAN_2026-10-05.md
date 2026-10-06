@@ -9,8 +9,8 @@ We will move portfolio truth from holdings.json to database tables with one brok
 
 | Phase | Status | Gate result | PR | Updated |
 | --- | --- | --- | --- | --- |
-| 0 — stop the bleeding | IN PROGRESS (price-truth agent, worktree tradeai-wt-pricetruth) | — | pending | 2026-10-05 |
-| 1 — build in shadow | NOT STARTED (awaits operator approval of this plan) | — | — | — |
+| 0 — stop the bleeding | DONE — LIVE c96bec23c (#1456/#1457); 2026-10-06 live Schwab check: values + cash match, 4 defects found and fixed in the phase 1 PR (docs/ops/POSITIONS_FIXES_2026-10-06.md) | 4 issues → fixed in phase 1 PR | #1456 | 2026-10-06 |
+| 1 — build in shadow | BUILT, PR open (operator approved 2026-10-06 "yes start phase 1 and fix all of it"); dry run read all 5 live accounts OK; awaits merge, migration, deploy and the cron grant | dry run green; first --apply run pending migration | wt/positions-phase1-20261006 | 2026-10-06 |
 | 2 — prove it (10 trading days) | NOT STARTED | day 0 of 10 | — | — |
 | 3 — switch reads in batches | NOT STARTED | batch 0 of 4 | — | — |
 | 4 — retire holdings.json as a store | NOT STARTED | — | — | — |
@@ -109,9 +109,9 @@ The nightly reconciliation report goes to the operator on Telegram each evening 
 
 ## Operator decisions
 
-- [ ] Approve the plan and the five-table design
+- [x] Approve the plan and the five-table design (2026-10-06, phase 1 start)
 - [ ] Approve the 10-trading-day proof as the gate for switching reads
-- [ ] Choose the stale threshold during market hours (proposed: 30 minutes)
+- [ ] Choose the stale threshold during market hours (proposed 30 minutes; set provisionally in config/portfolio_positions.yaml `positions_sync.stale_after_minutes_market`; operator may change it)
 - [ ] Approve each reader batch switch (four approvals across phase 3)
 - [ ] Approve retiring holdings.json as a store (phase 4)
 
