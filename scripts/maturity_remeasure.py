@@ -12,9 +12,9 @@ ALL present in the window. Absent evidence scores 1. Everything is measured over
 """
 NO_CONSUMER_REASON = (
     "MaturityScore@v1 rows are read by the Wave closeout and the Command Center maturity panel; lane maturity-remeasure "
-    "is declared NEVER_SCHEDULED until the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 cron grant appends its line"
+    "is ACTIVE (crontab line appended 2026-09-28 08:18 ET under the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 cron grant)"
 )
-SCHEDULED_ENTRYPOINT = "cron (after the cron grant): 40 6 * * 1 scripts/maturity_remeasure.py --write — NOT installed yet"
+SCHEDULED_ENTRYPOINT = "cron: 40 6 * * 1 scripts/maturity_remeasure.py --write — installed 2026-09-28 08:18 ET"
 
 import argparse
 import datetime as _dt

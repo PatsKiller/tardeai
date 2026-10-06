@@ -2719,11 +2719,11 @@
         "expression": "tradeai-contradiction-adjudicator.timer"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-09-27T23:20:00-04:00",
-      "state_reason": "unit files ship in config/systemd/user/; installation + enable is the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 service grant (item O-W3-3); flips to ACTIVE in the closeout PR once the timer is enabled from CURRENT",
+      "state": "ACTIVE",
+      "state_since": "2026-09-28T08:18:00-04:00",
+      "state_reason": "tradeai-contradiction-adjudicator.timer installed + enabled from CURRENT c1c531500 by the operator 2026-09-28 08:18 ET under the pkg …-80f2 service grant; first run 19:30 ET",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "scripts/contradiction_adjudicator.py on the Wave 3 tranche 1 branch; data/cio/contradiction_verdicts.jsonl does not exist in persistent-state, so no verdict has ever been written",
+      "reason_evidence": "systemctl --user list-timers shows the timer (next 19:30 EDT); SLA row seeded; the lane has not produced a verdict yet (first run pending)",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/contradiction_adjudicator_latest.json"
@@ -2739,11 +2739,11 @@
         "match": "maturity_remeasure.py"
       },
       "expected_cadence_hours": 168.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-09-28T00:20:00-04:00",
-      "state_reason": "crontab line ships in docs/ops/COGX_WAVE2_CRONTAB_LINES.txt (Waves 3–5 block); appending it is the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 cron grant (item O-W5-4)",
+      "state": "ACTIVE",
+      "state_since": "2026-09-28T08:18:00-04:00",
+      "state_reason": "crontab line appended by the operator 2026-09-28 08:18 ET under the pkg …-80f2 cron grant; first --write run from CURRENT c1c531500",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "scripts/maturity_remeasure.py on the Wave 5 tranche 1 branch; data/governance/maturity_scores.jsonl does not exist in persistent-state, so no score has ever been written by a lane",
+      "reason_evidence": "data/governance/maturity_latest.json written by the lane 2026-09-28 12:18Z: overall 2.89 (memory 3, cross_silo 3, knowledge_graph 4, agents 2, workers 3, continuous_research 3, model_routing 1, decision_intelligence 3, operational_reliability 4)",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/governance/maturity_latest.json"

@@ -219,6 +219,22 @@ Operator pasted a third-party "Bitemporal Memory Substrate v2" harness. It assum
 
 **Correction of my own earlier claim (2026-09-28 morning):** I reported "zero RLS policies on the four production views" and "views empty while base tables populated". Both were probe artifacts — views carry no policies by design (the base tables do, forced), and the rows were hidden because that session had not set `app.tenant_id`. The parity mode measures both correctly and finds nothing. The repo's own 200-case matrix (`tests/test_bitemporal_correctness.py`) passed 223/223 on the shadow the same morning.
 
+## Waves 3–5 · tranche 1 LIVE — closeout (branch wt/cogx-w35-closeout-20260928)
+
+Operator ran the handoff 2026-09-28 08:09–08:18 ET: #1326 merged `96901df65`, #1327 `cccb4c41f`, #1328 `c1c531500`; CURRENT = `c1c531500-main-exact-phase2-20260928-081744`. `[VERIFIED 08:22 ET]`
+
+| Proof | Value |
+|---|---|
+| Timers / cron | `tradeai-contradiction-adjudicator.timer` enabled (next 19:30 EDT); `tradeai-gir-projector.service` re-installed with `TRADEAI_GIR_DB_SOURCES=1`; crontab carries the `maturity_remeasure` and `sec_filings_feed` lines |
+| SLA rows | `seed_supervisor_sla --apply`: 155 rows (both new lanes covered) |
+| Lesson queue | first `enqueue --apply`: 633 rows QUEUED, 0 promoted — contexts unchanged until an operator reply |
+| GIR after `--apply` with the DB source on | 174,924 entities / 309,519 edges (was 142,872 / 252,694): DEC and ACT nodes now in the graph |
+| Conformance gate | first receipt on this promote: WARN (9 silos below the floor), promote allowed |
+| **Independent maturity score (lane-written)** | `maturity_latest.json` 12:18Z: **overall 2.89** — memory 3, cross_silo 3, knowledge_graph 4, agents 2, workers 3, continuous_research 3, model_routing 1, decision_intelligence 3, operational_reliability 4. Up from the 2.11 dry measurement because write-path receipts, the gate receipt and heartbeats now exist; agents stays 2 until the first checkpoint (next hourly wake), model_routing 1 until the chooser writes receipts |
+| Lane rows | `contradiction-adjudicator` and `maturity-remeasure` → ACTIVE in this PR |
+
+Open for the operator: the flips in `docs/ops/COGX_WAVES_3_5_OPERATOR_HANDOFF_2026-09-28.md` §5, items 7 (sudoers) and 9 (M2 cutover), flip 1 semantics, and the weekly lesson batch.
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.
