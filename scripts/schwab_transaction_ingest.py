@@ -80,7 +80,7 @@ def _fees(txn):
 
 
 def _row(date, action, sym, qty, price, amount, fees, desc, account, uid, ttime=None):
-    return {"trade_date": date, "action": action, "symbol": sym, "quantity": round(qty, 3), "price": price,
+    return {"trade_date": date, "action": action, "symbol": sym, "quantity": round(qty, 6), "price": price,
             "amount": round(amount, 2), "fees": fees, "description": desc[:120], "account": account, "uid": uid,
             "trade_time": ttime}
 
@@ -123,7 +123,11 @@ def _map_rows(account_key, txns):
                                  (leg["instrument"] or {}).get("symbol", ""), abs(amt), 0.0, net, 0.0,
                                  desc or "in-kind transfer", account_key, uid, x.get("time")))
                 continue
-            orders[(x.get("orderId"), (leg["instrument"] or {}).get("symbol"))].append((x, leg))
+            # Fills of one ORDER are aggregated. A fill with no orderId (dividend reinvestment) is its own
+            # event: keyed by its activityId. Before 2026-10-06 they all shared the key (None, symbol), so a
+            # year of V reinvestments became ONE 5.107-share "buy" dated at the first one.
+            oid = x.get("orderId") or f"act{x.get('activityId')}"
+            orders[(oid, (leg["instrument"] or {}).get("symbol"))].append((x, leg))
         elif typ == "DIVIDEND_OR_INTEREST":
             up = desc.upper()
             if "INTEREST" in up:
@@ -161,9 +165,12 @@ def _map_rows(account_key, txns):
         amount = round(sum(x.get("netAmount", 0) or 0 for x, _ in fills), 2)
         ttime = min((x.get("time") or x.get("tradeDate") or "") for x, _ in fills)
         date = (fills[0][0].get("tradeDate") or fills[0][0].get("time") or "")[:10]
-        rows.append({"trade_date": date, "action": action, "symbol": sym, "quantity": round(qty, 3),
+        rows.append({"trade_date": date, "action": action, "symbol": sym, "quantity": round(qty, 6),
                      "price": wprice, "amount": amount, "fees": fees,
-                     "description": f"order {oid}", "account": account_key, "uid": f"ord:{oid}", "trade_time": ttime})
+                     "description": (f"order {oid}" if not str(oid).startswith("act") else "reinvestment"),
+                     "account": account_key,
+                     "uid": (f"ord:{oid}" if not str(oid).startswith("act") else f"act:{oid[3:]}"),
+                     "trade_time": ttime})
     return rows
 
 
@@ -245,17 +252,28 @@ def run(apply=False, days=365):
         if apply:   # a manual dry run must not page the operator (false alarm 2026-10-06)
             _emit_health_alert(report)
         print(json.dumps(report, indent=2, default=str)); return report
-    # the actual window the API covered (don't delete older CSV the API can't replace)
-    window_start = min(r["trade_date"] for r in all_rows)
+    # Replace-in-window PER ACCOUNT that answered, from that account's own earliest returned date. Before
+    # 2026-10-06 the delete covered ALL accounts from one global start, so an account whose read failed lost its
+    # rows in the window until the next good run (and older pre-API rows of one account could be deleted by
+    # another account's earlier window).
+    windows = {}
+    for r in all_rows:
+        windows[r["account"]] = min(windows.get(r["account"], r["trade_date"]), r["trade_date"])
+    window_start = min(windows.values())
     report["window_start"] = window_start
-    cur.execute("""SELECT count(*) FROM trade_transactions WHERE account = ANY(%s) AND trade_date >= %s""",
-                (ACCOUNTS, window_start))
-    report["existing_in_window"] = cur.fetchone()[0]
+    report["windows"] = windows
+    existing = 0
+    for ak, ws in windows.items():
+        cur.execute("""SELECT count(*) FROM trade_transactions WHERE account = %s AND trade_date >= %s""", (ak, ws))
+        existing += cur.fetchone()[0]
+    report["existing_in_window"] = existing
     report["rows_total"] = len(all_rows)
     if apply:
-        cur.execute("""DELETE FROM trade_transactions WHERE account = ANY(%s) AND trade_date >= %s""",
-                    (ACCOUNTS, window_start))
-        report["deleted"] = cur.rowcount
+        deleted = 0
+        for ak, ws in windows.items():
+            cur.execute("""DELETE FROM trade_transactions WHERE account = %s AND trade_date >= %s""", (ak, ws))
+            deleted += cur.rowcount
+        report["deleted"] = deleted
         for r in all_rows:
             cur.execute("""INSERT INTO trade_transactions
                              (trade_date, action, symbol, quantity, price, amount, fees, description,

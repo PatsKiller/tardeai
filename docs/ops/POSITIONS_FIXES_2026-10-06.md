@@ -104,3 +104,17 @@ At 12:01, 13:01 and 14:00 ET, 22 of 25 held positions dropped to Oct 2 cached pr
 | BND Rollover | qty 3.22 vs 0.78 | The August sale of 375 shares included pre-ledger shares. Remaining value is about $54. Stays flagged, not guessed |
 
 **Backfill.** After deploy, run `schwab_transaction_ingest.py --apply --days 465` once. The ingest's replace-in-window path then rewrites every Schwab row from 2025-07-19 with the direction kept. The `*/15` cron keeps the last 365 days current from then on.
+
+### 7b. Two more ingest defects found before the backfill — lots now reproduce the broker exactly
+
+While checking the backfill dry run against the stored ledger, two more defects turned up. Both came from `schwab_transaction_ingest`.
+
+1. **Reinvestments were merged.** Fills were grouped by `(orderId, symbol)`, and dividend reinvestments have no order ID. So every reinvestment of a symbol returned in one fetch collapsed into a single row dated at the first one. For example, V Rollover showed one 5.107-share "buy" on 9/1. Each reinvestment is now its own row, with `uid act:<activityId>` and description `reinvestment`. Fractional quantities also keep broker precision now: a 0.0027-share reinvestment had been rounded to 0.003.
+2. **The replace window was global.** It deleted every account's rows from one shared start date, so an account whose read failed lost its rows until the next good run. Now each account that answered is replaced from its own earliest returned date.
+
+**Result.** A read-only rebuild from the full history (696 rows, 60 of them reinvestments) gives **0 lot gaps**. Ledger lots reproduce the broker's quantity and cost for every Schwab position.
+
+**The backfill also restores trades that were never stored.** The 365-day scheduled window never reached September 2025. Trades restored include MOGU, AGMH, SSKN, SLNH, LASE and SPRC.
+- The journal builder runs after each ingest, so the closed-trade journal and the TRADING / REALIZED tiles will change.
+- That change is the history becoming complete. It is not new trading.
+- The 33 sells with unknown basis still need the Realized Gain/Loss export.

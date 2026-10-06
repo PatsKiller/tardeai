@@ -1,7 +1,7 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.5.0
+Policy-Version:      1.5.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
@@ -9,7 +9,7 @@ Effective-Date:      2026-10-06
 Last-Reviewed:       2026-10-06T16:45:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.4.0
+Supersedes:          1.5.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -1646,8 +1646,8 @@ until the operator approves each phase-3 reader batch. The plan of record is
 
 **Known gaps, measured 2026-10-06 — do not paper over them:** the Schwab ingest dropped the direction of
 transfers and share journals until 2026-10-06 (fixed: `Security Transfer Out` / `Journaled Shares Out`; never
-take `abs()` of a broker leg again). Lots now reproduce the broker except 3 explained rows (lot-relief method
-on V Rollover and DIV; pre-ledger BND). The 33 sells whose basis came by ACATS ($901,194 proceeds) stay
+take `abs()` of a broker leg again). Reinvestments are separate rows (never grouped by a missing orderId) and keep
+broker precision; the replace window is per account. Ledger lots now reproduce the broker for every Schwab position. The 33 sells whose basis came by ACATS ($901,194 proceeds) stay
 out of REALIZED until the Schwab Realized Gain/Loss export is imported. Three surfaces still compute
 "today" three ways (header, Returns, Portfolio page); unifying them is a phase-3 reader batch.
 
@@ -3838,6 +3838,7 @@ superseded).
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.5.1 | 2026-10-06 | ACTIVE on merge | PATCH | §7A positions known-gaps measurement updated: reinvestments no longer merged by a missing orderId, broker precision kept, per-account replace window; ledger lots reproduce the broker for every Schwab position. No rule change. | Operator-directed 2026-10-06 ("fix the lot transfer direction gap now"). |
 | 1.5.0 | 2026-10-06 | ACTIVE on merge | MINOR | §7A positions "Known gaps" rewritten after the fix: the Schwab ingest dropped transfer/journal direction (abs() of the security leg); outflows are now `Security Transfer Out` / `Journaled Shares Out`, and agents must never take abs() of a broker leg. Lots reproduce the broker except 3 explained rows. Adds an obligation, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-06 ("fix the lot transfer direction gap now"; earlier "edit agents.md with correct source of truth"). |
 | 1.4.0 | 2026-10-06 | ACTIVE on merge | MINOR | §7A gains "Positions, cost basis and portfolio value — the source of truth": the truth per fact (shares/cash = broker read; basis = broker average × shares for the same account; price = data-broker quote at read time; realized = broker-matched sells), the shadow positions store and its single writer `scripts/positions_sync.py`, seven enforced rules (no new holdings.json writer; shared write lock; per (account, symbol) comparisons; broker basis applied not reverted; no hard-coded thresholds; read-only broker clients only; validate with `portfolio_reconcile.py`), the `config/portfolio_positions.yaml` rule table, and measured known gaps. Adds obligations, weakens nothing; §0, §2, §17 and role authority untouched. | **Operator-directed** 2026-10-06 ("edit agents.md with correct source of truth so no other agents changes and see the config rules"). |
 | 1.3.0 | 2026-09-27 | ACTIVE | MAJOR | §22 added: operator-directed resolution of the §0/§1 broker prohibition vs architecture v3.3 — authority hierarchy, five distinct authorities (coding, simulation, deployment, live activation, broker order authority), LLMs never hold live activation or order authority, `TradingSessionGrant@v1` verified at the broker mutation boundary (pure verifier + 26 negative tests; not wired until ratified), Stage 14 keeps its separate operator start, and AI_WORK_POLICY.md's push budget outranks the implementation program (v1.2). §0/§1/§2B/§17 text unchanged until ratification; replacement text in `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`. Adds companion `AGENT_OPERATING_STANDARDS_v1.md`, `REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`, `.github/CODEOWNERS` (advisory until code-owner review is required), `.github/pull_request_template.md`. | **RATIFIED 2026-09-27** — `APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173`; operator direction 2026-09-25 ("Yes, mine, draft it"); independent review confirmed by the operator 2026-09-27; ratification condition: A1/A2 on the execution file set only under an active per-task `execution-engineering` grant ("approve the amendment with a process of the approval to do when we need"). Ratifying edit: §0 rule 2 (and the four adapters), §1, §2B, §17, §22 status. |
