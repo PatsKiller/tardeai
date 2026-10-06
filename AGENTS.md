@@ -1614,7 +1614,7 @@ until the operator approves each phase-3 reader batch. The plan of record is
 **Rules, enforced by `tests/test_positions_store_phase1_20261006.py` and the registry gate:**
 
 1. **Do not add a writer of holdings.json or of the positions tables.** holdings.json is
-   `UNCONSOLIDATED` (seven writers, listed in the registry `_writer_note`); that count may only fall. A new
+   written by seven scripts today (listed in the registry `_writer_note` for `holdings_accounts`); that count may only fall. A new
    writer is an operator grant (§17), not a code change.
 2. **Every read-modify-write of holdings.json holds `lib/holdings_write_lock.py`** from the read to the
    write. moomoo's sync did not, and the repricer wrote its older copy over every moomoo write for eight

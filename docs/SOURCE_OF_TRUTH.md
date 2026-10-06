@@ -111,7 +111,6 @@ module every other writer must call.
 
 | Domain | Store | Writers today (ceiling) | Consolidation target | Hub direct reads (ceiling) |
 |---|---|---|---|---|
-| **holdings_accounts** | `None` | — | `scripts/positions_sync.py` | — |
 | **macro** | `fred_economic_series` | 2 | `scripts/external_market_data_ingest.py` | — |
 
 ## Providers
@@ -147,7 +146,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 
 - **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep** — 42 rows: provider `alpaca`, provider `schwab`, provider `yfinance`, provider `yahoo`, provider `finviz`, provider `sec_edgar`, provider `fred`, provider `alpha_vantage`, provider `brave`, provider `searxng`, provider `tavily`, provider `ollama`, provider `deepseek`, provider `stocktwits`, provider `reddit`, provider `google_news`, provider `moomoo`, provider `fidelity`, domain `quote_price`, domain `symbol_identity`, domain `analyst_opinion`, domain `catalyst_news`, domain `technicals`, domain `sector_momentum`, domain `industry_momentum`, domain `market_regime`, domain `earnings_date`, domain `holdings_accounts`, domain `options_iv`, domain `research_thesis`, domain `watch_directives`, domain `watch_discovery`, domain `web_search`, domain `private_company`, domain `dividends`, domain `macro`, domain `fundamentals`, domain `agent_opinion`, domain `agent_debate`, domain `ai_reports`, domain `redeploy_analytics`, domain `inverse_stoplights`
 - **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE** — 4 rows: provider `finnhub`, provider `polygon`, provider `fmp`, provider `newsapi`
-- **Positions Source of Truth plan phase 1 — operator 2026-10-06 'yes start phase 1 and fix all of it' (session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); plan docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md** — 1 rows: domain `positions_store`
+- **Positions Source of Truth plan phase 1 — operator 2026-10-06 'yes start phase 1 and fix all of it' (session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); plan PR #1449, docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md** — 1 rows: domain `positions_store`
 - **Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 ("yess reconect approved"); shipped in PR #998; the desk becomes a caller of the store's one write module** — 1 rows: domain `data_gaps`
 - **Operator asked in session on 2026-09-13 to connect chat memory recall per subject GUID ("yes connect chat memory recall per guid"); shipped in PR #1001 (branch feat/chat-memory-recall)** — 1 rows: domain `operator_conversation`
 - **ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304** — 7 rows: domain `intelligence_memory_contexts`, domain `intelligence_retrieval_receipts`, domain `supervisor_heartbeats`, domain `approval_packages`, domain `platform_conformance`, domain `intelligence_gir_projection`, domain `supervisor_breaches`
