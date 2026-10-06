@@ -33,7 +33,12 @@ positions_sync:
   # trade_transactions rows that are the broker ledger (lots + realized lots), by account prefix.
   ledger_import_sources:
     schwab_: [schwab_api]
-  stale_after_minutes_market: 30   # operator-proposed threshold (plan decision 3)
+  stale_after_minutes_market: 30   # operator APPROVED 2026-10-06 ("30 min threshold is fine")
   stale_after_hours_closed: 72
   qty_tolerance: 0.001
   basis_tolerance_usd: 1.0
+  # Phase 2 proof (operator 2026-10-06 "start phase 2"): 10 consecutive passing trading days from `start`,
+  # graded nightly by scripts/positions_proof_daily.py (ledger data/runtime/positions_proof_ledger.jsonl).
+  proof:
+    start: "2026-10-07"
+    days: 10

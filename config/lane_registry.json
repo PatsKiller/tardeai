@@ -3022,6 +3022,25 @@
         "kind": "file_mtime",
         "path": "data/runtime/positions_shadow_diff_latest.json"
       }
+    },
+    {
+      "lane_id": "positions-proof-daily",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 17 * * 1-5 cd $PROJ && flock -n /tmp/positions_proof.lock timeout 180 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_proof_daily.py --send\" >> logs/positions_proof.log 2>&1",
+        "match": "scripts/positions_proof_daily.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-06",
+      "state_reason": "Positions plan phase 2 (operator 2026-10-06 'start phase 2'; 30-min threshold approved): nightly grade of the day's positions_sync runs, heartbeat, shadow diff and lot gaps; ledger data/runtime/positions_proof_ledger.jsonl; one Telegram line 'day N of 10'. Read-only.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/positions_proof_ledger.jsonl"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md; tests/test_positions_proof_phase2_20261006.py."
     }
   ],
   "undeclared_baseline": [
