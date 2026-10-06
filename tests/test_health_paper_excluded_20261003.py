@@ -8,6 +8,7 @@ overall_score.
 """
 from __future__ import annotations
 
+import ast
 import json
 import sys
 import types
@@ -18,7 +19,28 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import health_agent as ha  # noqa: E402
+def _load_health_scoring():
+    # Execute the actual scoring and paper-filter functions without importing
+    # health_agent: its module initialization resolves CURRENT and loads .env.
+    path = ROOT / "scripts" / "health_agent.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    functions = {"_f", "_is_paper_finding", "_drop_paper_findings", "score_category",
+                 "_attach_cta", "_annotate", "compute"}
+    constants = {"PAPER_FINDING_TYPES", "PAPER_LOGS", "CATEGORIES", "WHY",
+                 "_CTA_BY_TYPE", "_CTA_BY_CATEGORY", "_NEVER_AUTO_DEFAULT"}
+    selected = [node for node in tree.body
+                if (isinstance(node, ast.FunctionDef) and node.name in functions)
+                or (isinstance(node, ast.Assign) and any(
+                    isinstance(target, ast.Name) and target.id in constants
+                    for target in node.targets))]
+    module = types.ModuleType("isolated_health_scoring")
+    module.COLLECTORS = []
+    module._POLICY = {}
+    exec(compile(ast.Module(body=selected, type_ignores=[]), str(path), "exec"), module.__dict__)
+    return module
+
+
+ha = _load_health_scoring()
 
 POLICY = {"penalties": {"critical": 40, "warning": 15, "info": 5}, "weights": {}}
 

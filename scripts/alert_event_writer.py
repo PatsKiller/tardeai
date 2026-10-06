@@ -233,6 +233,62 @@ def resolve_alert_events(
         return 0
 
 
+def resolve_alert_event_ids(
+    alert_ids: list[int],
+    *,
+    source_script: str,
+    resolved_by: str,
+    observed_before_or_at: datetime,
+) -> list[int]:
+    """Resolve only the reviewed active rows predating a recovery observation.
+
+    This bounded variant supports legacy rows without a condition_key. The
+    caller must prove exact condition recovery before calling; a returned empty
+    list means no rows changed. Database failures raise, never report recovery.
+    Acknowledged/resolved rows and evidence newer than the observation survive.
+    """
+    from datetime import timezone
+
+    if not isinstance(alert_ids, list) or len(alert_ids) > 200:
+        raise ValueError("recovery requires at most 200 explicit alert IDs")
+    if any(type(value) is not int or value <= 0 for value in alert_ids):
+        raise ValueError("recovery requires positive integer alert IDs")
+    if not isinstance(source_script, str) or not source_script.strip():
+        raise ValueError("recovery requires an exact source")
+    if not isinstance(resolved_by, str) or not resolved_by.strip():
+        raise ValueError("recovery requires attribution")
+    if (
+        not isinstance(observed_before_or_at, datetime)
+        or observed_before_or_at.tzinfo is None
+        or observed_before_or_at.utcoffset() is None
+        or observed_before_or_at > datetime.now(timezone.utc)
+    ):
+        raise ValueError("recovery requires a nonfuture timezone-aware observation")
+    if not alert_ids:
+        return []
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE alert_events
+                  SET lifecycle_state = 'resolved', resolved_at = now(), resolved_by = %s
+                WHERE id = ANY(%s)
+                  AND source_script = %s
+                  AND lifecycle_state = 'active'
+                  AND created_at < %s
+                RETURNING id""",
+            (resolved_by, sorted(set(alert_ids)), source_script, observed_before_or_at),
+        )
+        resolved = sorted(row[0] for row in (cur.fetchall() or []))
+        conn.commit()
+        return resolved
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 # ── Parsers ─────────────────────────────────────────────────────────
 
 def parse_stop_triggered_text(text: str) -> dict:

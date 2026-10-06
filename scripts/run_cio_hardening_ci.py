@@ -944,7 +944,14 @@ GATES = [
     # Health agent scores live data only: paper inputs never raise a critical or move the score (operator 2026-10-03).
     (
         "health_paper_siem_20261003",
-        ["tests/test_health_paper_excluded_20261003.py"],
+        [
+            "tests/test_health_paper_excluded_20261003.py",
+            "tests/test_siem_incident_visibility.py",
+            "tests/test_siem_health_identity.py",
+            "tests/test_siem_incident_identity.py",
+            "tests/test_stop_health_recovery_20261006.py",
+            "tests/test_alert_resolution_bounds_20261006.py",
+        ],
     ),
     # Blocked-idea counterfactual ledger + comms editor word-ticker / approval-request fix (2026-10-03).
     (

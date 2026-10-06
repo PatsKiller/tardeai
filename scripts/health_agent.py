@@ -1321,21 +1321,29 @@ def collect_risk_protection() -> list[dict]:
                               f"{len(_soc)} stop(s) above Street mean ({syms})", count=len(_soc)))
         except Exception:
             pass
-        # recent P0/P1 protection SIEM events — count DISTINCT unresolved issues, not duplicate
-        # re-alert rows. The log scraper (and others) can emit the same underlying error every cycle;
-        # counting raw rows let one stale-but-fixed traceback read as "26 P0/P1 alerts" and pinned
-        # risk_protection critical. We dedup by raw_text and exclude already-resolved alerts so the
-        # score reflects distinct open problems. (log_error_scraper now also offset-tails to stop the
-        # re-alert source at the root.)
-        p = _db("""SELECT COUNT(DISTINCT COALESCE(NULLIF(raw_text,''), alert_uid::text, id::text)) AS c
-                   FROM alert_events
-                   WHERE severity IN ('critical','urgent')
-                     AND created_at > now() - interval '24 hours'
-                     AND COALESCE(lifecycle_state,'active') NOT IN ('resolved','acknowledged')""",
-                fetch="one")
-        if p and p.get("c", 0) > 0:
-            out.append(_f("risk_protection", "siem_p0p1", "warning" if p["c"] < 5 else "critical",
-                          f"{p['c']} distinct P0/P1 SIEM issues open (24h)", count=p["c"]))
+        # Count stable unresolved source incidents across the full 24h dataset.
+        # Raw urgent/critical is not the dashboard's separate P0/P1 classifier.
+        # Preserve the existing escalation threshold and retain unknown evidence.
+        from lib.siem_incident_identity import incident_key
+        rows = _db("""SELECT id, alert_uid, source_script, alert_type, raw_text, parsed_payload
+                      FROM alert_events
+                      WHERE severity IN ('critical','urgent')
+                        AND created_at > now() - interval '24 hours'
+                        AND COALESCE(lifecycle_state,'active') NOT IN ('resolved','acknowledged')""",
+                   fetch="all")
+        if rows is None:
+            out.append(_f("risk_protection", "siem_check_unavailable", "warning",
+                          "SIEM unresolved-incident check unavailable"))
+        else:
+            try:
+                count = len({incident_key(row) for row in rows})
+            except (TypeError, ValueError, AttributeError):
+                out.append(_f("risk_protection", "siem_check_unavailable", "warning",
+                              "SIEM incident identity could not be verified"))
+            else:
+                if count:
+                    out.append(_f("risk_protection", "siem_p0p1", "warning" if count < 5 else "critical",
+                                  f"{count} distinct urgent/critical SIEM issues open (24h)", count=count))
     except Exception as e:
         out.append(_f("risk_protection", "collector_error", "info", f"risk check error: {e}"))
     return out
@@ -1624,7 +1632,7 @@ WHY = {
     "orphaned_stops": "Orphaned stop orders may not actually protect a live position — real risk exposure.",
     "unprotected_positions": "Open positions with no stop = unbounded downside risk.",
     "stop_alerts": "Stops in alert state may be mispriced or near trigger and need review.",
-    "siem_p0p1": "High-severity (P0/P1) protection/execution SIEM events are open and need review.",
+    "siem_p0p1": "Urgent/critical source SIEM incidents are unresolved and need review; dashboard priority uses its own classifier.",
     "local_llm_down": "The local LLM is the free-lane analysis brain; down means degraded intelligence or metered fallback.",
     "ensemble_failures": "Ensemble validation failures weaken proposal/decision confidence.",
     "ensemble_worker_stalled": "Aegis cannot claim jobs, so every options card shows 'validating…' forever and no ensemble verdict exists.",
