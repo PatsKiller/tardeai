@@ -100,19 +100,14 @@ def load_accounts(query, *, refresh=False, selected=None):
     Reading this function never starts 2FA or calls a broker mutation. Live readers
     are runtime-only and are replaced by fake adapters in engineering tests.
     """
-    import json
     from brokers.capability_gate import _caps
     from brokers.capabilities import CAPS
-    from lib.canonical_store_registry import production_state_root
+    from scripts.lib.portfolio_positions import load_store
     caps = _caps()
     rows = query("""SELECT account_key, display_name, broker, environment, account_type,
                             is_enabled, api_read_enabled, supports_options, last_sync_at
                      FROM broker_accounts ORDER BY display_name""", fetch="all") or []
-    try:
-        root = production_state_root()
-        holding = json.loads((root / "data/portfolios/state/holdings.json").read_text())
-    except (OSError, ValueError):
-        holding = {}
+    holding = load_store()
     summaries = holding.get("account_summaries") or {}
     for row in rows:
         key, broker = row["account_key"], str(row.get("broker") or "").lower()
