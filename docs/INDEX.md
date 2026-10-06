@@ -1788,7 +1788,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
 | `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) | review_required | MISSING HEADER | `ba46e3cd1f71` |
-| `docs/ops/POSITIONS_FIXES_2026-10-06.md` | Positions fixes and phase 1 — 2026-10-06 | review_required | MISSING HEADER | `dc7905786d83` |
+| `docs/ops/POSITIONS_FIXES_2026-10-06.md` | Positions fixes and phase 1 — 2026-10-06 | review_required | MISSING HEADER | `a7c8d388bd96` |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) | review_required | OK | `f8c764608410` |
 | `docs/ops/PROPOSED_INSTALL_CODE_MIRROR_DRIVE_CRON_2026-09-20.md` | APPROVED — code-mirror Drive cron + apply (AGENTS.md §9.3 / §17) | review_required | OK | `71b2e4f7012b` |
 | `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | CONFIRMED — host timers installed (AGENTS.md §9.3 overnight maturity cron grant) | review_required | OK | `0e9571d27421` |
