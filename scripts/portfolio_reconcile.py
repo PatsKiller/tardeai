@@ -51,6 +51,8 @@ UNVERIFIABLE_ACCOUNT_NOTE = {
     "alpaca_taxable": "Alpaca: read-only data account",
 }
 ACQUIRE = {"Buy"}
+# Outflows the Schwab ingest labels by direction since 2026-10-06 (before, every transfer read as an inflow).
+DISPOSE_NO_PROCEEDS = {"Transfer Out", "Security Transfer Out", "Journaled Shares Out"}
 ACQUIRE_UNKNOWN_BASIS = {"Transfer In", "Security Transfer", "Journaled Shares", "Reinvest Shares",
                          "Reinvested Dividend", "Journal"}
 
@@ -167,6 +169,15 @@ def fifo_sell_basis(txns: Iterable[dict]) -> dict:
             lots[sym].append([q, _f(t["price"])])
         elif act in ACQUIRE_UNKNOWN_BASIS:
             lots[sym].append([q, None])
+        elif act in DISPOSE_NO_PROCEEDS:
+            # Shares left by transfer/journal: they close lots FIFO but are not a sale (no REALIZED row).
+            need = q
+            while need > 1e-9 and lots[sym]:
+                take = min(need, lots[sym][0][0])
+                lots[sym][0][0] -= take
+                need -= take
+                if lots[sym][0][0] <= 1e-9:
+                    lots[sym].pop(0)
         elif act == "Sell":
             need, cost, known = q, 0.0, True
             while need > 1e-9 and lots[sym]:
