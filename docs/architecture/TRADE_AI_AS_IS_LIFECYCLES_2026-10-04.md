@@ -506,3 +506,14 @@ live fill or production acceptance. The final release record must identify the e
 merged SHA, passing CI, service pin and read-only UI/API observations. Natural provider
 quotes, authorized operator actions and reconciled evidence remain the basis of operational
 acceptance. Broad scan activation and execution-policy expansion remain outside this change.
+
+**Read-only deployment observation, 2026-10-06 15:20 UTC:** SHA
+`65fbeecf31161e0b51790d5761f7d3fc20c9ea7c` served the options source and frontend;
+source integrity and all four process-directory pins matched, and all seven exact-main
+CI workflows passed. Additive options migration preserved evidence counts. Saved
+proposals returned eight cards; canonical journal/lifecycle and manual backfill inventory
+were empty. Live browser controls showed quantity validation and DAY/GTC; journal strategy
+filtering reached the canonical API. No broker refresh, paid model, 2FA or order was invoked.
+A drill-down parameter mismatch found during inspection is corrected in source and pinned
+by a browser regression; its deployment must be checked separately. These observations
+establish served read paths, not live fills, account eligibility or final-quote timing.

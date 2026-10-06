@@ -9,7 +9,7 @@ export default function OptionsJournalPanel({ account, days }: { account?: strin
   const [spid, setSpid] = useState(() => new URLSearchParams(window.location.search).get('spid') || '')
   const [rollRoot, setRollRoot] = useState('')
   useEffect(() => setOffset(0), [account, days, strategy, status, symbol, spid, rollRoot])
-  const params = new URLSearchParams({ days: String(days), limit: '25', offset: String(offset), strategy, status, symbol, spid, roll_root: rollRoot })
+  const params = new URLSearchParams({ days: String(days), limit: '25', offset: String(offset), strategy, status, symbol, strategy_position_id: spid, roll_root: rollRoot })
   if (account) params.set('account', account)
   const q = `/api/v2/journal/options-summary?${params}`
   const { data } = useApi<any>(q, 120_000)

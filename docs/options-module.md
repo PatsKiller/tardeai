@@ -723,3 +723,20 @@ Verification is separated from operational acceptance:
 - Production: this source section establishes no live fill, provider timing or account
   eligibility. Engineers do not place an order to manufacture acceptance. Expanded scan
   activation, new statistical volume thresholds and broker permission changes are out of scope.
+
+Read-only production observations at 2026-10-06 15:20 UTC: the served release
+`65fbeecf31161e0b51790d5761f7d3fc20c9ea7c` passed source-pin integrity, all seven
+exact-main CI workflows and all four service process-directory checks. The additive
+options schema migration verified unchanged strategy/leg/event/fill evidence counts.
+The saved proposals API returned eight cards. The canonical journal and lifecycle APIs
+returned no strategies/positions; manual backfill inventory had no eligible or ambiguous
+rows. Empty journal totals, strategy filtering, modal quantity validation and DAY/GTC
+controls were observed in the served browser with unreviewed APIs blocked. No quote
+refresh, model request, authorization or order submission was performed.
+
+That browser inspection found a journal drill-down query mismatch. The UI now translates
+the navigation link's `spid` to the API's canonical `strategy_position_id`, including CSV
+export; the browser regression requires that exact parameter and checks clearing it.
+This correction is source/fixture evidence until its own release receipt is recorded.
+Populated journal/monitor transitions and submission behavior remain fixture evidence,
+not observed live fills or production execution acceptance.
