@@ -857,6 +857,7 @@ export default function OptionProposalCardV4({
         const ensembleRunning = /validat|pending|running/i.test(String((p as any).ensemble_status || (p as any).ensemble_state || ''))
         return (
           <div
+            onClick={e => e.stopPropagation()}
             title={oversight.cio_commentary || ''}
             style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? BB.red : BB.border}`, fontSize: 12, lineHeight: 1.45, color: BB.text2 }}
           >

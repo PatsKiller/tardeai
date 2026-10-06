@@ -88,6 +88,48 @@ test('account, quantity, TIF, what-if and review bind to the same revision', asy
   await expect(dialog).toHaveCount(0)
 })
 
+for (const input of ['pointer', 'keyboard'] as const) {
+  test(`proposal narratives expand by ${input} without opening order review`, async ({ page, context }) => {
+    const requests: string[] = []
+    await context.routeWebSocket('**/*', socket => socket.close())
+    await page.route('**/*', async route => {
+      const request = route.request(), url = new URL(request.url())
+      if (url.pathname.startsWith('/api/')) {
+        requests.push(`${request.method()} ${url.pathname}`)
+        let result: any = {}
+        if (url.pathname.endsWith('/options/proposals')) result = { proposals: [{ ...seed,
+          reasoning: 'Fixture narrative only',
+          recommendation_comparison: { stock_play: {}, options_play: {}, comparison: {}, oversight: {}, provenance: {} },
+          committee_memo: { classification_label: 'Fixture committee', research_status: 'complete', plain_summary: 'Fixture investment explanation' },
+          plain_english: { objective: 'Fixture objective', premium_line: 'Fixture premium', why_option: 'Fixture alternative',
+            cases: { best: 'Fixture best case', expected: 'Fixture expected case', worst: 'Fixture worst case' },
+            scenarios: [{ price: 167.78, option_pl: -1745 }] },
+        }], quality_gate: {}, queue_counts: {}, count: 1 }
+        if (url.pathname.endsWith('/options/overview')) result = { positions: {}, proposals: {} }
+        if (url.pathname.endsWith('/options/intents')) result = { intents: [] }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(result) })
+      }
+      if (!['127.0.0.1', 'localhost'].includes(url.hostname) || request.method() !== 'GET') return route.abort('blockedbyclient')
+      return route.continue()
+    })
+    await page.goto('/v3/trading?tab=Options&otab=Proposals&ui=v4')
+    const modal = page.getByRole('dialog', { name: 'Strategy Proposal' })
+    for (const testId of ['options-plain-english', 'options-committee-memo']) {
+      const details = page.getByTestId(testId), summary = details.locator(':scope > summary')
+      await expect(summary).toBeVisible()
+      if (input === 'pointer') await summary.click()
+      else { await summary.focus(); await page.keyboard.press('Enter') }
+      await expect(details).toHaveAttribute('open', '')
+      await expect(modal).toHaveCount(0)
+      await expect(details).toContainText(testId === 'options-plain-english' ? 'Fixture best case' : 'Fixture investment explanation')
+    }
+    await page.getByRole('button', { name: 'Review strategy · account, quantity and time in force' }).click()
+    await expect(modal).toBeVisible()
+    await expect(modal.getByLabel('Number of contracts')).toHaveValue('1')
+    expect(requests.filter(request => !request.startsWith('GET '))).toEqual([])
+  })
+}
+
 test('journal keeps strategy identities, filters and paginated totals', async ({ page }) => {
   const reads: string[] = []
   await page.route('**/api/**', async route => {
