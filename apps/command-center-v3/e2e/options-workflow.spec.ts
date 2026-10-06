@@ -103,9 +103,12 @@ test('journal keeps strategy identities, filters and paginated totals', async ({
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
-  await page.goto('/v3/journal?tab=Options')
+  await page.goto('/v3/journal?tab=Options&spid=1')
   const journal = page.getByRole('region', { name: 'Options TradeInView journal' })
   await expect(journal).toContainText('26 strategies')
+  await expect.poll(() => reads.some(r => new URL(r, 'http://fixture').searchParams.get('strategy_position_id') === '1')).toBe(true)
+  await journal.getByRole('button', { name: 'Show all identities' }).click()
+  await expect.poll(() => reads.some(r => new URL(r, 'http://fixture').searchParams.get('strategy_position_id') === '')).toBe(true)
   await journal.locator('summary').first().click()
   await expect(journal).toContainText('PARTIAL_FILL')
   await expect(journal.getByRole('link', { name: 'Open lifecycle' })).toBeVisible()

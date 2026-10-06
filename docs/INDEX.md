@@ -466,7 +466,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
 | `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `4272eddf89f6` |
 | `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` | Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture | review_required | OK | `cf4cbeb78077` |
-| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-10-04.md` | Trade AI Platform — AS-IS Lifecycles, 2026-10-04 (re-measurement) | review_required | OK | `917c99ea356d` |
+| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-10-04.md` | Trade AI Platform — AS-IS Lifecycles, 2026-10-04 (re-measurement) | review_required | OK | `8675042f4aa0` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `0b8d8c77a12c` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap | review_required | OK | `0705cb774b73` |
@@ -1894,7 +1894,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `8d2eb858f8d7` |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard | review_required | OK | `c3ec2b72146f` |
 | `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) | review_required | OK | `2a6783465455` |
-| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `6fffd7aa6edb` |
+| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `3e39243b44a2` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
 | `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
 | `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | Phase 179D: Statistical Readiness Thresholds | review_required | OK | `cebd18783641` |
