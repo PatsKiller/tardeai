@@ -1122,6 +1122,12 @@ GATES = [
         "positions_store_phase1_20261006",
         ["tests/test_positions_store_phase1_20261006.py"],
     ),
+    # Stale-price overwrites (2026-10-06): live monitor no longer writes holdings.json, repricer refuses a
+    # near-empty live fetch, health finding portfolio_stale_marks pages + auto-reprices.
+    (
+        "price_writer_fix_20261006",
+        ["tests/test_price_writer_fix_20261006.py"],
+    ),
     # Active Trader soul: "should have been" session review reproduces the operator's XNDU table;
     # automated mode is SIMULATION ONLY (one brain, sized to the ask supply, no live mode) (2026-10-05).
     (

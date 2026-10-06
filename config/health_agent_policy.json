@@ -156,7 +156,8 @@
     "snaptrade_cash_gap_min_dollars": 5000,
     "snaptrade_accounts": [
       "fidelity_rollover_ira"
-    ]
+    ],
+    "stale_marks_max": 3
   },
   "never_auto_remediate": [
     "unprotected_positions",
@@ -187,6 +188,7 @@
       "account_summary_drift",
       "snaptrade_cash_stale",
       "portfolio_repricer_stale",
+      "portfolio_stale_marks",
       "finviz_quote_cache_stale",
       "market_quotes_stale",
       "momentum_scalp_finviz_scan_stale",
@@ -318,6 +320,7 @@
     "options_proposals_stale": ".venv/bin/python scripts/run_options_monitor.py",
     "finviz_quote_cache_stale": ".venv/bin/python scripts/portfolio_repricer.py",
     "portfolio_repricer_stale": ".venv/bin/python scripts/portfolio_repricer.py",
+    "portfolio_stale_marks": ".venv/bin/python scripts/portfolio_repricer.py",
     "portfolio_totals_drift": ".venv/bin/python scripts/portfolio_repricer.py",
     "account_summary_drift": ".venv/bin/python scripts/portfolio_repricer.py",
     "snaptrade_cash_stale": ".venv/bin/python scripts/snaptrade_sync.py --apply",
