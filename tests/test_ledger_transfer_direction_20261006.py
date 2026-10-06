@@ -96,3 +96,31 @@ def test_a_dry_run_never_pages():
     src = (ROOT / "scripts" / "schwab_transaction_ingest.py").read_text()
     body = src[src.index("def run("):]
     assert body.count("_emit_health_alert(report)") == 2 and body.count("if apply") >= 2
+
+
+# ── reinvestments are separate events; per-account replace; full precision (2026-10-06, second fix) ──
+
+def _drip(aid, day, qty, px):
+    return {"type": "TRADE", "tradeDate": f"{day}T00:00:00+0000", "netAmount": -round(qty * px, 2), "activityId": aid,
+            "orderId": None, "description": "VISA INC CLASS A",
+            "transferItems": [{"instrument": {"assetType": "EQUITY", "symbol": "V"}, "amount": qty, "price": px}]}
+
+
+def test_reinvestments_without_an_order_id_are_not_merged():
+    rows = si._map_rows("schwab_rollover_ira", [_drip(11, "2025-09-02", 1.6889, 349.34548),
+                                                _drip(12, "2025-12-01", 2.0169, 332.74698)])
+    assert [(r["trade_date"], r["quantity"], r["uid"]) for r in rows] == [
+        ("2025-09-02", 1.6889, "act:11"), ("2025-12-01", 2.0169, "act:12")]
+    assert all(r["description"] == "reinvestment" for r in rows)
+
+
+def test_fractional_quantities_keep_broker_precision():
+    rows = si._map_rows("schwab_rollover_ira", [_drip(13, "2026-10-05", 0.0027, 69.93)])
+    assert rows[0]["quantity"] == 0.0027
+
+
+def test_replace_in_window_is_per_account_that_answered():
+    src = (ROOT / "scripts" / "schwab_transaction_ingest.py").read_text()
+    body = src[src.index("def run("):]
+    assert "DELETE FROM trade_transactions WHERE account = %s AND trade_date >= %s" in body
+    assert "account = ANY(%s) AND trade_date >= %s\"\"\",\n                    (ACCOUNTS, window_start)" not in body
