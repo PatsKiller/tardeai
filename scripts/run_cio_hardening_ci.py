@@ -1134,6 +1134,11 @@ GATES = [
         "positions_proof_phase2_20261006",
         ["tests/test_positions_proof_phase2_20261006.py"],
     ),
+    # Schwab ledger keeps transfer/journal direction; >1y fetch chunked; dry run never pages (2026-10-06).
+    (
+        "ledger_transfer_direction_20261006",
+        ["tests/test_ledger_transfer_direction_20261006.py"],
+    ),
     # Active Trader soul: "should have been" session review reproduces the operator's XNDU table;
     # automated mode is SIMULATION ONLY (one brain, sized to the ask supply, no live mode) (2026-10-05).
     (

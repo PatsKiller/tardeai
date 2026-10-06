@@ -83,3 +83,24 @@ At 12:01, 13:01 and 14:00 ET, 22 of 25 held positions dropped to Oct 2 cached pr
 - The live monitor no longer reprices or writes `holdings.json`. The `*/15` repricer is the only price writer.
 - The repricer refuses to write when, in market hours, fewer than `positions.reprice_min_live_coverage` (0.5) of held symbols get a live quote. The last good marks stand, and it exits 3.
 - The health agent raises `portfolio_stale_marks` (critical) when more than `portfolio_price_freshness.stale_marks_max` (3) held positions carry fallback marks in market hours. Its auto-remediation reruns `portfolio_repricer.py`, and tier-1 escalation pages the operator.
+
+## 7. Lot history: transfer direction restored
+
+**Root cause.** `schwab_transaction_ingest._sec()` stored `abs()` of the security leg. Schwab signs that amount: positive means shares came in, negative means they went out. So every `RECEIVE_AND_DELIVER` row and every share `JOURNAL` row read as an inflow. In the Rollover IRA, 21 of 55 transfers were actually outflows. Lots rebuilt from the ledger over-counted, for example SCHG at 12,000 shares against the broker's 2,000.
+
+**Fix.**
+- Outflows are now labelled `Security Transfer Out` and `Journaled Shares Out`. Quantities stay positive, so existing readers of `Security Transfer` keep reading inflows only.
+- `positions_sync.build_lots` treats the new outflow labels as dispositions.
+- `portfolio_reconcile.fifo_sell_basis` relieves lots on an outflow without recording a sale.
+- The ingest splits fetches into windows of 360 days or less, because Schwab refuses a request spanning more than a year.
+- A dry run no longer emits the "empty weekday ingest" alert. One such false alert was sent at about 16:20 ET today.
+
+**Result, read-only rebuild from the full history (2025-07-19 to today):** lot gaps went from 9 to 3. SCHG, SCHD, XAR, SPCX (both accounts) and CSWC now reproduce the broker exactly. The 3 that remain are all explained:
+
+| Position | Gap | Explanation |
+|---|---|---|
+| V Rollover | cost −$12 | Shares match. The broker's lot-relief method is not strict FIFO, and the broker's cost wins |
+| DIV Taxable | cost −$2 | Same as V Rollover |
+| BND Rollover | qty 3.22 vs 0.78 | The August sale of 375 shares included pre-ledger shares. Remaining value is about $54. Stays flagged, not guessed |
+
+**Backfill.** After deploy, run `schwab_transaction_ingest.py --apply --days 465` once. The ingest's replace-in-window path then rewrites every Schwab row from 2025-07-19 with the direction kept. The `*/15` cron keeps the last 365 days current from then on.

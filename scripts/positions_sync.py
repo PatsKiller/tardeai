@@ -60,7 +60,9 @@ _SYNC_DEFAULTS: dict = {
 ACQUIRE_KNOWN = {"Buy", "Reinvest Shares", "Reinvested Dividend"}
 ACQUIRE_UNKNOWN = {"Security Transfer", "Transfer In", "Journaled Shares", "Journal"}
 DISPOSE_SELL = {"Sell"}
-DISPOSE_NO_PROCEEDS = {"Transfer Out"}
+# Shares leaving the account without a sale. Since 2026-10-06 the Schwab ingest keeps the direction of transfers
+# and share journals (`Security Transfer Out`, `Journaled Shares Out`); before that every one read as an inflow.
+DISPOSE_NO_PROCEEDS = {"Transfer Out", "Security Transfer Out", "Journaled Shares Out"}
 # holdings.json names the Roth `schwab_roth`; the broker registry (broker_accounts) says `schwab_roth_ira`.
 HOLDINGS_ACCOUNT_ALIASES = {"schwab_roth": "schwab_roth_ira"}
 

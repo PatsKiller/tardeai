@@ -90,6 +90,15 @@ def _sec(x):
     return (leg["instrument"].get("symbol") if leg else None) or "CASH", (abs(leg.get("amount", 0) or 0) if leg else 0)
 
 
+def _sec_out(x) -> bool:
+    """True when the security leg LEAVES the account. Schwab signs the leg amount (+ in, - out); `_sec` keeps
+    the magnitude only, so before 2026-10-06 every RECEIVE_AND_DELIVER / share JOURNAL row read as an inflow
+    (rollover IRA: 8 of 21 transfers Jul-Oct 2025 were outflows) and lots rebuilt from the ledger over-counted
+    (SCHG 12,000 vs the broker's 2,000)."""
+    leg = _security_leg(x)
+    return bool(leg) and (leg.get("amount") or 0) < 0
+
+
 def _map_rows(account_key, txns):
     """Map raw Schwab txns → ledger rows. TRADE fills aggregated per order; everything else one row each,
     preserving sub-types (qualified dividend, interest, transfers). SMA_ADJUSTMENT skipped (margin accounting)."""
@@ -130,10 +139,12 @@ def _map_rows(account_key, txns):
             if any(k in up for k in ("SWEEP", "TRF FDS", "TRF FUNDS", "TYPE 1", "TYPE 2")):
                 continue  # internal cash sweep / margin type reclassification — noise, not a real transfer
             sym, qty = _sec(x)
-            rows.append(_row(date, "Journaled Shares" if sym != "CASH" else "Journal", sym, qty, 0.0, net, 0.0, desc, account_key, uid, x.get("time")))
+            action = "Journal" if sym == "CASH" else ("Journaled Shares Out" if _sec_out(x) else "Journaled Shares")
+            rows.append(_row(date, action, sym, qty, 0.0, net, 0.0, desc, account_key, uid, x.get("time")))
         elif typ == "RECEIVE_AND_DELIVER":
             sym, qty = _sec(x)
-            rows.append(_row(date, "Security Transfer", sym, qty, 0.0, net, 0.0, desc, account_key, uid, x.get("time")))
+            rows.append(_row(date, "Security Transfer Out" if _sec_out(x) else "Security Transfer", sym, qty, 0.0,
+                             net, 0.0, desc, account_key, uid, x.get("time")))
         elif typ == "CASH_RECEIPT":
             rows.append(_row(date, "Cash Receipt", "CASH", 0.0, 0.0, net, 0.0, desc, account_key, uid, x.get("time")))
         # SMA_ADJUSTMENT intentionally skipped (internal margin accounting; not a cash/trade event)
@@ -162,6 +173,29 @@ def _dedupe_key(r):
     return f"{r['trade_date']}|{r['action']}|{r['symbol']}|{r['quantity']:.3f}|{r['account']}|{r['uid']}"
 
 
+MAX_WINDOW_DAYS = 360   # Schwab refuses a transactions request spanning more than a year
+
+
+def _fetch_chunked(client, h, start, end):
+    """Transactions for [start, end] in windows the API accepts, oldest first. A non-list answer for any window
+    is returned as-is so the caller reports it exactly as before (no partial history passes as complete)."""
+    out, lo = [], start
+    while lo < end:
+        hi = min(end, lo + datetime.timedelta(days=MAX_WINDOW_DAYS))
+        part = client.get_transactions(h, start_date=lo, end_date=hi).json()
+        if not isinstance(part, list):
+            return part
+        out.extend(part)
+        lo = hi
+    seen, uniq = set(), []
+    for x in out:                       # a transaction on a window boundary can come back twice
+        k = x.get("activityId") or id(x)
+        if k not in seen:
+            seen.add(k)
+            uniq.append(x)
+    return uniq
+
+
 def run(apply=False, days=365):
     """Replace-in-window: the API is authoritative + complete (per-order, incl. slippage fills). Delete the
     Schwab ledger rows the API window covers and reload from the API; older pre-window CSV is kept."""
@@ -184,7 +218,7 @@ def run(apply=False, days=365):
                 pass
             continue
         try:
-            txns = client.get_transactions(h, start_date=start, end_date=now).json()
+            txns = _fetch_chunked(client, h, start, now)
         except Exception as e:
             err = str(e)
             try:
@@ -207,7 +241,9 @@ def run(apply=False, days=365):
         all_rows.extend(rows)
         report["accounts"][ak] = {"mapped": len(rows), "by_action": dict(collections.Counter(r["action"] for r in rows))}
     if not all_rows:
-        report["mode"] = "no rows"; _emit_health_alert(report)
+        report["mode"] = "no rows"
+        if apply:   # a manual dry run must not page the operator (false alarm 2026-10-06)
+            _emit_health_alert(report)
         print(json.dumps(report, indent=2, default=str)); return report
     # the actual window the API covered (don't delete older CSV the API can't replace)
     window_start = min(r["trade_date"] for r in all_rows)
@@ -233,7 +269,8 @@ def run(apply=False, days=365):
         report["inserted"] = len(all_rows)
         conn.commit()
     report["mode"] = "APPLIED" if apply else "DRY-RUN (no writes)"
-    _emit_health_alert(report)
+    if apply:
+        _emit_health_alert(report)
     print(json.dumps(report, indent=2, default=str))
     return report
 
