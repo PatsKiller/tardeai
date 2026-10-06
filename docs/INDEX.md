@@ -441,7 +441,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` | Platform Intelligence Due Diligence: Memory, Research, Agents, Workers (As-Is / To-Be) | review_required | OK | `235d5804d634` |
 | `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_2026-10-05.md` | Positions — one source of truth (design, 2026-10-05) | review_required | MISSING HEADER | `6a13be8e1b61` |
-| `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md` | Positions Source of Truth Plan | review_required | MISSING HEADER | `e780c3172ad8` |
+| `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md` | Positions Source of Truth Plan | review_required | MISSING HEADER | `dcb1f7069d4c` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
