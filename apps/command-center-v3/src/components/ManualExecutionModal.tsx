@@ -51,7 +51,10 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
           setF({
             account: d.account || seed.account || '',
             shares: rec.shares ?? '',
-            entry_price: rec.entry_price ?? '',
+            entry_price: rec.proposal_revision ? '' : rec.entry_price ?? '',
+            options_evidence_ref: '', options_executed_at: '',
+            options_fills: (rec.legs || []).map((l: any) => ({ occ_symbol: l.occ_symbol,
+              instruction: l.side === 'BUY' ? 'BTO' : 'STO', contracts: '', price: '', commission: '' })),
             stop_price: rec.stop_price ?? '',
             target_price: rec.target_price ?? '',
             strike: rec.strike ?? '',
@@ -84,6 +87,9 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
 
   const submit = async () => {
     if (!f.account) { setMsg('Select an account'); return }
+    if (isOption && data?.recommended?.proposal_revision && (!f.options_evidence_ref || !f.options_executed_at || !f.options_fills?.some((l: any) => Number(l.contracts) > 0 && l.price !== ''))) {
+      setMsg('Enter a unique broker order or document reference, execution time and actual per-leg fills.'); return
+    }
     setBusy(true); setMsg('')
     try {
       const endpoint = isOption ? '/api/v2/options/executions/log-manual' : '/api/v2/executions/log-manual'
@@ -104,11 +110,14 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
         expiration: f.expiration || undefined,
         risk_reward: f.risk_reward ? Number(f.risk_reward) : undefined,
         notes: f.notes || undefined,
-        adjusted_params: { modal: true, edited_fields: Object.keys(f) },
+        adjusted_params: { modal: true, edited_fields: Object.keys(f), options_evidence_ref: f.options_evidence_ref,
+          options_executed_at: f.options_executed_at ? new Date(f.options_executed_at).toISOString() : undefined,
+          options_fills: (f.options_fills || []).filter((l: any) => Number(l.contracts) > 0).map((l: any) => ({ ...l,
+            contracts: Number(l.contracts), price: l.price === '' ? null : Number(l.price), commission: l.commission === '' ? null : Number(l.commission) })) },
       }
       const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(x => x.json())
       if (r.ok) {
-        setMsg('✅ ' + (r.message || 'Logged'))
+        setMsg('✅ ' + (r.message || 'Logged') + (r.journal?.ok === false ? ` · Journal review required: ${r.journal.reason || r.journal.error}` : ''))
         onLogged?.(r)
         setTimeout(onClose, 1200)
       } else setMsg('⛔ ' + (r.error || r.message || 'failed'))
@@ -146,6 +155,17 @@ export default function ManualExecutionModal({ seed, onClose, onLogged }: Props)
               )}
             </div>
 
+            {data?.recommended?.proposal_revision && <section aria-label="Reviewed options order">
+              <p>Reviewed revision {data.recommended.proposal_revision.slice(0, 12)} · {data.account} · {data.recommended.contracts} contract(s)/spread(s) · limit {data.recommended.entry_price} · time in force {data.recommended.tif}</p>
+              {(data.recommended.legs || []).map((l: any, i: number) => <p key={i}>{l.side} {l.quantity} × {l.expiration} {l.strike} {l.option_type} · multiplier {l.multiplier ?? 'unknown'}</p>)}
+              <p>Enter actual execution evidence below. Logging an execution does not transmit an order.</p>
+              <label>Unique broker order / document reference<input style={inp} value={f.options_evidence_ref || ''} onChange={e => set('options_evidence_ref', e.target.value)} /></label>
+              <label>Execution time<input style={inp} type="datetime-local" value={f.options_executed_at || ''} onChange={e => set('options_executed_at', e.target.value)} /></label>
+              {(f.options_fills || []).map((l: any, i: number) => <fieldset key={i}><legend>{l.occ_symbol} · actual fill</legend>
+                {['contracts', 'price', 'commission'].map(k => <label key={k}>{k}<input style={inp} type="number" min="0" step={k === 'contracts' ? '1' : '0.01'} value={l[k]} onChange={e => set('options_fills', f.options_fills.map((v: any, j: number) => j === i ? { ...v, [k]: e.target.value } : v))} /></label>)}
+                <p>Leave unfilled legs and unknown commission blank.</p>
+              </fieldset>)}
+            </section>}
             {(data?.origins?.length > 0) && (
               <label style={{ display: 'block', marginBottom: 10 }}>
                 <span style={lbl}>Link to origin idea</span>

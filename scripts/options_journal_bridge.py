@@ -67,6 +67,8 @@ def ensure_bridge_tables(cur, conn):
                (SELECT json_agg(json_build_object(
                     'occ', l.occ_symbol, 'role', l.leg_role, 'side', l.side,
                     'contracts', l.contracts, 'strike', l.strike,
+                    'option_type', l.option_type, 'multiplier', l.multiplier, 'instruction', l.instruction,
+                    'broker_position_id', l.broker_position_id, 'quote_timestamp', l.quote_timestamp,
                     'expiration', l.expiration, 'opening_price', l.opening_price,
                     'opening_fees', l.opening_fees, 'closed_price', l.closed_price,
                     'status', l.status, 'basis_source', l.basis_source))
@@ -74,7 +76,8 @@ def ensure_bridge_tables(cur, conn):
                 WHERE l.strategy_position_id = p.strategy_position_id) AS legs,
                (SELECT json_agg(json_build_object('event', e.event, 'at', e.at,
                                                   'source', e.evidence_source,
-                                                  'ref', e.evidence_ref) ORDER BY e.event_id)
+                                                  'ref', e.evidence_ref, 'details', e.details, 'event_id', e.event_id,
+                                                  'identity_status', CASE WHEN NULLIF(e.evidence_ref,'') IS NULL THEN 'historical_review' ELSE 'evidence_referenced' END) ORDER BY e.event_id)
                 FROM options_journal_events e
                 WHERE e.strategy_position_id = p.strategy_position_id) AS events,
                o.realized_pnl,
@@ -90,9 +93,17 @@ def ensure_bridge_tables(cur, conn):
                CASE WHEN o.outcome_id IS NOT NULL THEN 'closed_outcome_recorded'
                     WHEN p.status = 'closed' THEN 'closed_no_outcome_row'
                     ELSE 'open' END AS outcome_validity,
-               ('options_strategy_positions:' || p.strategy_position_id) AS trade_uid
+               ('options_strategy_positions:' || p.strategy_position_id) AS trade_uid,
+               p.roll_parent_id, p.source, p.notes,
+               p.linked_share_symbol, p.linked_share_qty,
+               row_to_json(s) AS latest_snapshot,
+               (SELECT row_to_json(es) FROM options_position_snapshots es
+                WHERE es.strategy_position_id=p.strategy_position_id ORDER BY es.snapshot_id LIMIT 1) AS entry_snapshot,
+               CASE WHEN p.status IN ('closed','rolled','assigned','exercised','expired')
+                    THEN row_to_json(s) ELSE NULL END AS exit_snapshot
         FROM options_strategy_positions p
-        LEFT JOIN options_lifecycle_outcomes o USING (strategy_position_id)
+        LEFT JOIN LATERAL (SELECT outcome.* FROM options_lifecycle_outcomes outcome
+                           WHERE outcome.strategy_position_id=p.strategy_position_id ORDER BY outcome.outcome_id DESC LIMIT 1) o ON true
         LEFT JOIN options_position_snapshots s ON s.snapshot_id = p.latest_snapshot_id""")
     conn.commit()
 
@@ -103,10 +114,18 @@ def emit_event(cur, conn, spid: int, event: str, source: str, ref: str = "",
     cur.execute("SELECT roll_root_id FROM options_strategy_positions WHERE strategy_position_id=%s",
                 (spid,))
     r = cur.fetchone()
+    payload = details or {}
+    if payload.get("environment") == "dry_test" or payload.get("dry_run"):
+        raise ValueError("Dry-test receipts cannot enter the live options journal")
+    # Canonical fill-evidence writer installs uq_journal_event_evidence. Use its
+    # identity, including legacy rows; never mint a parallel event identity.
     cur.execute("""INSERT INTO options_journal_events
         (strategy_position_id, roll_root_id, event, evidence_source, evidence_ref, details)
-        VALUES (%s,%s,%s,%s,%s,%s)""",
-        (spid, r[0] if r else None, event, source, ref, json.dumps(details or {}, default=str)))
+        SELECT %s,%s,%s,%s,%s,%s::jsonb
+        WHERE NOT EXISTS (SELECT 1 FROM options_journal_events
+            WHERE strategy_position_id=%s AND event=%s AND COALESCE(evidence_ref,'')=%s)
+        ON CONFLICT DO NOTHING""",
+        (spid, r[0] if r else None, event, source, ref, json.dumps(payload, default=str), spid, event, ref))
     conn.commit()
 
 

@@ -2,8 +2,8 @@
 """options_lifecycle_intake.py — Phase 1: broker → canonical model reconciler.
 
 The broker is canonical (diagnosis §5). This intake reads every option leg the
-brokers report, groups legs per (broker, account, underlying) into ONE economic
-structure, classifies it, and reconciles against open canonical strategies:
+brokers report and reconciles exact legs against existing canonical identities.
+Unmatched broker aggregate legs remain unclassified for evidence review:
 
   NEW        broker legs with no canonical match → register (basis from broker
              avg_entry when present; NULL = UNKNOWN, never 0)
@@ -36,7 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from options_lifecycle_model import (ensure_tables, parse_occ, classify_strategy,
+from options_lifecycle_model import (ensure_tables, parse_occ,
                                      register_strategy, open_strategies)
 
 HOLDINGS = ROOT / "data" / "portfolios" / "state" / "holdings.json"
@@ -112,12 +112,47 @@ def fetch_broker_option_legs() -> tuple[list[dict], dict]:
     return legs, errors
 
 
+def reconcile_reviewed_entries(cur, conn):
+    """Existing intake cadence; exact locally submitted orders only, read adapters."""
+    import schwab_transport
+    from options_fill_evidence import record_option_order_readback
+    cur.execute("""SELECT DISTINCT po.account_key, po.broker_order_id FROM schwab_pilot_orders po
+        JOIN broker_order_intents i ON i.intent_id=po.intent_id
+        JOIN options_approval_queue q ON q.proposal_id=i.intent_json->'meta'->'signal_evidence'->>'proposal_id'
+        WHERE po.kind='options' AND po.broker_order_id IS NOT NULL
+          AND q.proposal_json->>'workflow_version'='1'
+          AND po.created_at>NOW()-interval '30 days'""")
+    known = cur.fetchall()
+    receipts = []
+    for account in sorted({r[0] for r in known}):
+        orders = schwab_transport.get_orders_raw(account)
+        if not isinstance(orders, list):
+            receipts.append({"account": account, "ok": False, "error": "Order evidence unavailable"})
+            continue
+        ids = {str(r[1]) for r in known if r[0] == account}
+        for order in orders:
+            if str(order.get("orderId")) not in ids or not order.get("orderActivityCollection"):
+                continue
+            try:
+                receipts.append(record_option_order_readback(cur, conn, account=account, order=order))
+            except Exception as exc:
+                conn.rollback()
+                receipts.append({"account": account, "order_id": order.get("orderId"),
+                                 "ok": False, "error": str(exc)[:200]})
+    return receipts
+
+
 def reconcile(dry: bool = False) -> dict:
     from db_adapter import _get_conn
     conn = _get_conn()
     cur = conn.cursor()
     ensure_tables(cur, conn)
     broker_legs, errors = fetch_broker_option_legs()
+    try:
+        entry_receipts = [] if dry else reconcile_reviewed_entries(cur, conn)
+    except Exception as exc:
+        conn.rollback()
+        entry_receipts = [{"ok": False, "error": str(exc)[:200]}]
 
     # group broker legs into candidate structures
     groups: dict[tuple, list[dict]] = {}
@@ -130,55 +165,57 @@ def reconcile(dry: bool = False) -> dict:
         canon_by_key.setdefault((("tradeai_automated" if s["broker"] == "tradeai_automated" else s["broker"]),
                                  s["account_key"], s["underlying"]), []).append(s)
 
-    report = {"new": [], "matched": [], "drifted": [], "vanished": [], "errors": errors}
+    report = {"new": [], "matched": [], "drifted": [], "vanished": [], "errors": errors,
+              "entry_receipts": entry_receipts}
 
     for key, legs in groups.items():
         broker, ak, und = key
-        occ_set = {(l["occ_symbol"], l["side"]) for l in legs}
-        matched = None
-        for s in canon_by_key.get(key, []):
-            s_occ = {(l["occ_symbol"], l["side"]) for l in s["legs"] if l["status"] == "open"}
-            if s_occ == occ_set:
-                matched = s
-                break
-        if matched:
-            drift = []
-            for bl in legs:
-                cl = next((x for x in matched["legs"]
-                           if x["occ_symbol"] == bl["occ_symbol"] and x["side"] == bl["side"]), None)
-                if cl and float(cl["contracts"]) != bl["contracts"]:
-                    drift.append(f"{bl['occ_symbol']}: canonical {cl['contracts']} vs broker {bl['contracts']}")
+        reported = {(l["occ_symbol"], l["side"]): l for l in legs}
+        known = canon_by_key.get(key, [])
+        # Existing strategy identities survive broker aggregation by symbol. A
+        # shared contract is reconciled only against the total known quantity;
+        # it never merges two independent strategies or invents fill allocation.
+        totals = {}
+        for strategy in known:
+            for leg in strategy["legs"]:
+                if leg["status"] == "open":
+                    ident = (leg["occ_symbol"], leg["side"])
+                    totals[ident] = totals.get(ident, 0) + float(leg["contracts"])
+        for strategy in known:
+            present = [l for l in strategy["legs"] if l["status"] == "open"
+                       and (l["occ_symbol"], l["side"]) in reported]
+            if not present:
+                continue
+            drift = [f"{l['occ_symbol']}: aggregate quantity requires fill reconciliation"
+                     for l in present if totals[(l["occ_symbol"], l["side"])] !=
+                     float(reported[(l["occ_symbol"], l["side"])]["contracts"])]
             if drift and not dry:
                 cur.execute("""UPDATE options_strategy_positions
-                               SET data_quality_status='unreconciled', updated_at=now()
-                               WHERE strategy_position_id=%s""", (matched["strategy_position_id"],))
-            (report["drifted"] if drift else report["matched"]).append(
-                {"strategy_position_id": matched["strategy_position_id"], "key": list(key),
-                 **({"drift": drift} if drift else {})})
-        else:
-            held = _held_shares(ak, und) if broker == "schwab" else 0.0
+                    SET data_quality_status='unreconciled', updated_at=now()
+                    WHERE strategy_position_id=%s""", (strategy["strategy_position_id"],))
+            report["drifted" if drift else "matched"].append({
+                "strategy_position_id": strategy["strategy_position_id"], "key": list(key), "drift": drift})
+        for leg in legs:
+            if (leg["occ_symbol"], leg["side"]) in totals:
+                continue
+            # A broker position proves holdings, not which strategy produced them.
+            # Preserve each unmatched aggregate leg for explicit identity review.
             if dry:
-                report["new"].append({"key": list(key), "legs": len(legs),
-                                      "would_classify": classify_strategy(
-                                          [{**l, "instruction": ""} for l in legs], held_shares=held)})
-            else:
-                for l in legs:
-                    l["instruction"] = ("STO" if l["side"] == "short" else "BTO")
-                spid = register_strategy(
-                    cur, conn, broker=broker, account_key=ak, underlying=und,
-                    legs=legs, source="broker_sync", held_shares=held,
-                    notes="registered by lifecycle intake reconciler")
-                # v1.1 P5: broker holding a position IS fill evidence — OPEN event + bridge
-                try:
-                    from options_journal_bridge import (ensure_bridge_tables, emit_event,
-                                                        upsert_trade_instance)
-                    ensure_bridge_tables(cur, conn)
-                    emit_event(cur, conn, spid, "OPEN", "broker_sync",
-                               ref=f"{broker}:{ak}", details={"legs": len(legs)})
-                    upsert_trade_instance(cur, conn, spid)
-                except Exception as _e:
-                    print(f"  [journal-bridge] non-blocking: {str(_e)[:120]}")
-                report["new"].append({"strategy_position_id": spid, "key": list(key), "legs": len(legs)})
+                report["new"].append({"key": list(key), "legs": 1,
+                                      "would_classify": "unknown_multi_leg", "identity_review_required": True})
+                continue
+            leg["instruction"] = "STO" if leg["side"] == "short" else "BTO"
+            spid = register_strategy(cur, conn, broker=broker, account_key=ak, underlying=und,
+                legs=[leg], source="broker_sync", held_shares=0,
+                notes="Broker aggregate holding; strategy identity requires evidence review. No inferred grouping.")
+            from options_journal_bridge import ensure_bridge_tables, emit_event, upsert_trade_instance
+            ensure_bridge_tables(cur, conn)
+            emit_event(cur, conn, spid, "OPEN", "broker_sync",
+                ref=f"{broker}:{ak}:{leg['occ_symbol']}:{leg['side']}",
+                details={"legs": 1, "identity_review_required": True})
+            upsert_trade_instance(cur, conn, spid)
+            report["new"].append({"strategy_position_id": spid, "key": list(key), "legs": 1,
+                                  "identity_review_required": True})
 
     # VANISHED: canonical open legs the broker no longer reports (skip errored accounts)
     for s in canon:

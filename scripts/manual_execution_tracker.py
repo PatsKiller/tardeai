@@ -152,6 +152,11 @@ def _account_broker(account: str) -> tuple:
 def _load_options_proposal(options_id: str) -> Optional[dict]:
     if not options_id:
         return None
+    # Existing queue owns prepared revisions; the scan cache may not contain them.
+    row = _db("SELECT proposal_json FROM options_approval_queue WHERE proposal_id=%s", (str(options_id),))
+    if row and row.get("proposal_json"):
+        value = row["proposal_json"]
+        return json.loads(value) if isinstance(value, str) else value
     cache = STATE_DIR / "options_proposals.json"
     try:
         data = json.loads(cache.read_text(encoding="utf-8"))
@@ -376,6 +381,8 @@ def prepare_manual_execution(
                 "contracts": contracts or op.get("contracts") or 1,
                 "entry_price": entry or op.get("premium"),
                 "option_side": op.get("side"),
+                "tif": op.get("tif", "DAY"), "legs": op.get("legs") or [],
+                "proposal_revision": op.get("revision"),
                 "risk_reward": risk_reward or op.get("risk_reward"),
             }
             base["origin_type"] = "options_proposal"
@@ -571,6 +578,13 @@ def log_manual_execution(
         return {"ok": False, "error": "database insert failed — run migration 20260622_manual_execution_lineage.sql"}
 
     row_id = int(row["id"])
+    journal = None
+    if execution_type == "option":
+        try:
+            journal = project_manual_options_entry({"id": row_id, "options_proposal_id": options_proposal_id,
+                "account": acct, "symbol": sym, "broker": broker, "adjusted_params": adjusted_params})
+        except Exception as exc:
+            journal = {"ok": False, "review_required": True, "reason": str(exc)[:200]}
     payload = {
         "symbol": sym, "account": acct, "broker": broker,
         "proposal_id": proposal_id, "options_proposal_id": options_proposal_id,
@@ -591,6 +605,7 @@ def log_manual_execution(
         "origin_confidence": conf,
         "origin_label": match.get("label"),
         "execution_type": execution_type,
+        "journal": journal,
         "message": f"Logged manual {execution_type} on {sym} → origin {otype}" + (f" #{oid}" if oid else ""),
     }
 
@@ -766,3 +781,22 @@ if __name__ == "__main__":
         print(json.dumps(get_tracking_metrics(), indent=2))
     else:
         p.print_help()
+
+def project_manual_options_entry(row):
+    """Exact proposal + explicit execution document only. Legacy ambiguity is retained."""
+    p = _load_options_proposal(row.get("options_proposal_id") or "")
+    params = row.get("adjusted_params") or {}
+    if isinstance(params, str):
+        params = json.loads(params)
+    if not p or not params.get("options_evidence_ref") or not params.get("options_fills"):
+        return {"ok": False, "review_required": True, "reason": "Exact proposal, execution reference and per-leg fills required"}
+    if p.get("account") != row.get("account") or p.get("symbol") != row.get("symbol"):
+        return {"ok": False, "review_required": True, "reason": "Execution account or symbol differs from proposal"}
+    fills = [{**f, "operator_evidence_ref": params["options_evidence_ref"], "operator_name": "operator",
+              "executed_at": f.get("executed_at") or params.get("options_executed_at")}
+             for f in params["options_fills"]]
+    from db_adapter import _get_conn
+    from options_fill_evidence import record_entry_evidence
+    conn = _get_conn()
+    return record_entry_evidence(conn.cursor(), conn, proposal=p, fills=fills, broker=row["broker"],
+        source_ref="manual:" + params["options_evidence_ref"], source="operator_manual")

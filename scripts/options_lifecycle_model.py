@@ -87,6 +87,7 @@ def ensure_tables(cur, conn) -> None:
         closed_price numeric,
         closed_at timestamptz,
         created_at timestamptz DEFAULT now())""")
+    cur.execute("ALTER TABLE options_strategy_legs ADD COLUMN IF NOT EXISTS original_contracts numeric")
     cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS uq_open_leg_identity
         ON options_strategy_legs (strategy_position_id, occ_symbol, side)
         WHERE status = 'open'""")
@@ -245,7 +246,7 @@ def register_strategy(cur, conn, *, broker: str, account_key: str, underlying: s
     """Create one strategy position + its legs atomically. Legs: dicts with
     option_type, side, instruction, contracts, strike, expiration, and optional
     opening_price/opening_fees/broker_position_id/occ_symbol/multiplier."""
-    stype = classify_strategy(legs, held_shares=held_shares)
+    stype = "unknown_multi_leg" if source == "broker_sync" else classify_strategy(legs, held_shares=held_shares)
     dq = "ok"
     if any(l.get("opening_price") is None for l in legs):
         dq = "incomplete_basis"
@@ -296,12 +297,14 @@ def strategy_with_legs(cur, spid: int) -> dict | None:
     pos = dict(zip(cols, r))
     cur.execute("""SELECT leg_id, occ_symbol, leg_role, option_type, instruction, side, contracts,
                           multiplier, strike, expiration, opening_price, opening_fees,
-                          current_mark, mark_source, quote_timestamp, status, closed_price, closed_at
+                          current_mark, mark_source, quote_timestamp, status, closed_price, closed_at, original_contracts
                    FROM options_strategy_legs WHERE strategy_position_id=%s ORDER BY leg_id""", (spid,))
     lcols = ["leg_id", "occ_symbol", "leg_role", "option_type", "instruction", "side", "contracts",
              "multiplier", "strike", "expiration", "opening_price", "opening_fees",
-             "current_mark", "mark_source", "quote_timestamp", "status", "closed_price", "closed_at"]
+             "current_mark", "mark_source", "quote_timestamp", "status", "closed_price", "closed_at", "original_contracts"]
     pos["legs"] = [dict(zip(lcols, x)) for x in cur.fetchall()]
+    for leg in pos["legs"]:
+        leg["filled_quantity"] = leg["contracts"]
     return pos
 
 

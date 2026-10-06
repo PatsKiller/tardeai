@@ -73,7 +73,7 @@ function line(r: Row): string {
   return `${r.exp} $${r.strike}C · ${usd(r.cost_per_contract)} vs ${usd(r.stock_cost_100)} stock · time value ${n(r.time_value_pct, 1)}% · Δ ${n(r.delta)} · OI ${r.oi ?? '—'}`
 }
 
-export default function StandingIntentsPanel({ data, onSelectSymbol, onSaved }: { data?: IntentFeed | null; onSelectSymbol?: (symbol: string) => void; onSaved?: () => void }) {
+export default function StandingIntentsPanel({ data, onSelectSymbol, onSaved, onSelectProposal }: { data?: IntentFeed | null; onSelectSymbol?: (symbol: string) => void; onSaved?: () => void; onSelectProposal?: (source: import('./StrategyProposalModal').ProposalSource) => void }) {
   const [showCreate, setShowCreate] = useState(false)
   const [saved, setSaved] = useState(false)
   const intents = data?.intents ?? []
@@ -117,11 +117,12 @@ export default function StandingIntentsPanel({ data, onSelectSymbol, onSaved }: 
                     : rows.slice(0, 3).map((r, i) => <div key={r.contract_guid || i} style={{ ...mono, color: 'var(--text-2)', marginBottom: 8 }}>
                         {line(r)}
                         <RiskReward row={r} spot={m.spot} />
+                        {onSelectProposal && <button type="button" disabled={!r.contract_guid} onClick={() => onSelectProposal({ directive_id: it.directive_id, play, contract_guid: r.contract_guid })}>Prepare strategy</button>}
                         <div style={muted}>Contract quoted: {r.quote_time ? new Date(r.quote_time).toLocaleString() : 'unknown'} · {r.desk_status === 'LINKED' ? 'Linked to an existing idea' : 'Not staged as an account-specific proposal'}</div>
                         <div style={muted}>{r.next_action || 'Account allocation and thesis review required.'}</div>
                         {(r.desk_links || []).map(link => <div key={link.proposal_id} style={muted}>
                           {link.relationship === 'same_strategy' ? 'Same strategy' : 'Same contract, different strategy'} · {link.account?.replace(/_/g, ' ')} · {link.options_thesis_pin || 'thesis unavailable'}
-                          {onSelectSymbol && <button onClick={() => onSelectSymbol(it.symbol)}>View linked idea</button>}
+                          {onSelectProposal ? <button onClick={() => onSelectProposal({ proposal_id: link.proposal_id })}>Review linked idea</button> : onSelectSymbol && <button onClick={() => onSelectSymbol(it.symbol)}>View linked idea</button>}
                         </div>)}
                       </div>)}
                 </div>

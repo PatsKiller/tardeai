@@ -7,6 +7,10 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from brokers.order_intent import OrderIntent
 
 OPTIONS_EXECUTION_MARKER = "OPTIONS_EXECUTION_1"
 
@@ -15,6 +19,7 @@ _INSTRUCTION = {
     "cash_secured_put": "SELL_TO_OPEN",
     "long_call": "BUY_TO_OPEN",
     "long_put": "BUY_TO_OPEN",
+    "protective_put": "BUY_TO_OPEN",
     "credit_spread_short": "SELL_TO_OPEN",
     "credit_spread_long": "BUY_TO_OPEN",
 }
@@ -116,10 +121,11 @@ def authorization_evidence(proposal: dict, *, buying_power: float | None = None,
         pin = ent.approval_pin(proposal)
     except Exception:  # noqa: BLE001
         pin = {"approved_strategy_guid": proposal.get("option_strategy_guid"), "approved_hash": None, "legs": None}
+    from scripts.lib import options_workflow as wf
     econ = proposal.get("economics") or {}
-    collateral = None
+    collateral = (proposal.get("workflow_economics") or {}).get("capital_required")
     for k in ("collateral", "cash_committed", "option_cost_total"):
-        if econ.get(k) is not None:
+        if collateral is None and econ.get(k) is not None:
             collateral = float(econ[k])
             break
     if collateral is None and proposal.get("strategy") == "credit_spread" and proposal.get("short_strike") and proposal.get("long_strike"):
@@ -129,7 +135,14 @@ def authorization_evidence(proposal: dict, *, buying_power: float | None = None,
         legs = [l for l in (proposal.get("legs_liquidity") or []) if isinstance(l, dict) and l.get("quote_time")]
         quotes_as_of = min((l["quote_time"] for l in legs), default=None) or proposal.get("quote_time")
     return {
+        "proposal_revision": proposal.get("revision"),
+        "approved_order_binding": wf.order_binding(proposal),
+        "analysis_binding": wf.analysis_binding(proposal),
+        "analysis_reference": (proposal.get("analysis") or {}).get("id"),
         "proposal_id": proposal.get("id"),
+        "source_proposal_id": proposal.get("source_proposal_id") or proposal.get("id"),
+        "directive_reference": proposal.get("directive_id"),
+        "directive_version": proposal.get("directive_version"),
         "proposal_pin": (proposal.get("options_thesis") or {}).get("pin") or proposal.get("thesis_version_at_decision"),
         "approved_strategy_guid": pin.get("approved_strategy_guid"),
         "approval_hash": pin.get("approved_hash"),
@@ -163,21 +176,17 @@ def build_intent(
     )
     strategy = proposal.get("strategy") or "covered_call"
     sym = proposal.get("underlying") or proposal.get("symbol")
-    contracts = int(proposal.get("contracts") or 1)
-    premium = float(proposal.get("premium") or 0)
-    legs = []
-    if strategy == "credit_spread":
-        legs = [
-            OptionLeg(sym, proposal.get("option_type", "put"), proposal.get("short_strike"),
-                      proposal.get("expiration"), "SELL", contracts).to_dict(),
-            OptionLeg(sym, proposal.get("option_type", "put"), proposal.get("long_strike"),
-                      proposal.get("expiration"), "BUY", contracts).to_dict(),
-        ]
-    else:
-        legs = [OptionLeg(sym, proposal.get("option_type", "call"), proposal.get("strike"),
-                          proposal.get("expiration"), "SELL" if "sell" in strategy or strategy == "covered_call" else "BUY",
-                          contracts).to_dict()]
-    notional = premium * 100 * contracts
+    from scripts.lib import options_workflow as wf
+    contracts = wf.quantity(proposal.get("contracts", 1))
+    if account_key != proposal.get("account"):
+        raise ValueError("Selected account differs from proposal account")
+    premium = wf.number(proposal.get("premium"))
+    if premium is None or premium <= 0:
+        raise ValueError("Positive finite limit required")
+    canonical = wf.proposal_legs(proposal)
+    legs = [OptionLeg(sym, l["option_type"], l["strike"], l["expiration"], l["side"], l["quantity"]).to_dict()
+            for l in canonical]
+    notional = premium * (wf.number(canonical[0].get("multiplier")) or 0) * contracts
     spread_w = None
     if strategy == "credit_spread" and proposal.get("short_strike") and proposal.get("long_strike"):
         spread_w = abs(float(proposal["short_strike"]) - float(proposal["long_strike"])) / max(float(proposal["short_strike"]), 1) * 100
@@ -214,7 +223,7 @@ def build_intent(
         quantity=Quantity(contracts=contracts),
         broker="schwab",
         account_key=account_key,
-        tif=TIF.DAY,
+        tif=TIF(proposal.get("tif", "DAY")),
         session=SessionPolicy.NORMAL,
         meta=meta,
         intent_id=str(uuid.uuid4()),
@@ -223,21 +232,20 @@ def build_intent(
 
 
 def build_order_spec(proposal: dict) -> dict:
-    strategy = proposal.get("strategy")
-    if strategy == "credit_spread":
-        return build_credit_spread_spec(
-            proposal["underlying"], proposal["expiration"], proposal.get("option_type", "put"),
-            float(proposal["short_strike"]), float(proposal["long_strike"]),
-            int(proposal.get("contracts") or 1),
-            net_credit=float(proposal.get("premium") or 0),
-        )
-    side = "SELL" if strategy in ("covered_call", "cash_secured_put") else "BUY"
-    strat_key = strategy
-    return build_single_leg_spec(
-        proposal["underlying"], proposal["expiration"], proposal.get("option_type", "call"),
-        float(proposal["strike"]), int(proposal.get("contracts") or 1), strat_key,
-        limit_price=float(proposal.get("premium") or 0),
-    )
+    from scripts.lib import options_workflow as wf
+    legs = wf.proposal_legs(proposal)
+    tif = proposal.get("tif", "DAY")
+    price = wf.number(proposal.get("premium"))
+    if tif not in wf.TIME_IN_FORCE or price is None or price <= 0:
+        raise ValueError("Supported time in force and positive finite limit required")
+    if Decimal(str(price)) != Decimal(str(price)).quantize(Decimal("0.01")):
+        raise ValueError("Limit must be an exact cent amount; review a representable price")
+    order_type = ("NET_CREDIT" if proposal["strategy"] == "credit_spread" else "NET_DEBIT") if len(legs) > 1 else "LIMIT"
+    return {"session": "NORMAL", "duration": tif, "orderType": order_type,
+            "price": str(Decimal(str(price)).quantize(Decimal("0.01"))), "orderStrategyType": "SINGLE",
+            "orderLegCollection": [{"instruction": l["side"] + "_TO_OPEN", "quantity": l["quantity"],
+                "instrument": {"symbol": _occ_symbol(l["symbol"], l["expiration"], l["option_type"], l["strike"]),
+                               "assetType": "OPTION"}} for l in legs]}
 
 
 def request_2fa(intent) -> dict:
@@ -297,6 +305,8 @@ def order_from_intent(intent) -> dict:
         "long_strike": (buys[0].get("strike") if (sells and buys) else None),
         "contracts": int(intent.quantity.contracts or 1),
         "premium": float(intent.entry.limit_price or 0),
+        "tif": getattr(intent.tif, "value", intent.tif),
+        "legs": [{**l, "ratio": l["quantity"] // int(intent.quantity.contracts or 1)} for l in legs],
     }
     return build_order_spec(proposal)
 
@@ -379,7 +389,7 @@ def _default_proposal_loader(proposal_id: str):
 
 
 def confirm_authorization(intent, *, now=None, buying_power_reader=None, proposal_loader=None,
-                          desk_gate=None, readiness_fn=None, bind_fn=None) -> dict:
+                          desk_gate=None, readiness_fn=None, bind_fn=None, workflow_gate=None) -> dict:
     """Order-authorization contract, run AFTER the operator's 2FA is fully approved and BEFORE
     submit (2026-09-27). Refuses, all reasons listed, when:
       * the proposal the desk holds now is missing, or its version (pin) differs from the one
@@ -399,6 +409,17 @@ def confirm_authorization(intent, *, now=None, buying_power_reader=None, proposa
     refusals: list[dict] = []
     proposal_id = ev.get("proposal_id")
     proposal = (proposal_loader or _default_proposal_loader)(proposal_id) if proposal_id else None
+    # Existing per-order approval is the sole authentication process. This
+    # options-only gate refreshes account truth then all quotes AFTER 2FA.
+    if proposal is not None:
+        try:
+            from scripts.lib.options_workflow_service import final_validation
+            final = (workflow_gate or final_validation)(intent, proposal)
+            if not final.get("ok"):
+                return {**final, "ok": False, "broker_submitted": False}
+            proposal = final.get("proposal") or proposal
+        except Exception as exc:
+            refusals.append({"code": "final_validation_unavailable", "reason": str(exc)[:160]})
     if not proposal_id:
         refusals.append({"code": "proposal_id_missing", "reason": "intent carries no proposal_id"})
     elif proposal is None:
@@ -420,7 +441,8 @@ def confirm_authorization(intent, *, now=None, buying_power_reader=None, proposa
             refusals.append({"code": "quantity_changed",
                              "reason": f"desk now sizes {cur_qty} contract(s); approved {int(intent.quantity.contracts or 1)}",
                              "approved": int(intent.quantity.contracts or 1), "current": cur_qty})
-        cur_limit = proposal.get("executable_credit") if proposal.get("executable_credit") is not None else proposal.get("premium")
+        cur_limit = (proposal.get("premium") if proposal.get("workflow_version") else
+                     proposal.get("executable_credit") if proposal.get("executable_credit") is not None else proposal.get("premium"))
         approved_limit = ev.get("limit_price", getattr(getattr(intent, "entry", None), "limit_price", None))
         try:
             tol_pct = float(_limit_tolerance_pct())

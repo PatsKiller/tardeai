@@ -82,18 +82,20 @@ def run(dry: bool = False) -> dict:
                 "data_quality_status": s["data_quality_status"],
                 "opened_at": str(s.get("opened_at") or ""),
                 "legs": [{k: str(v) if k == "expiration" else v for k, v in l.items()
-                          if k in ("occ_symbol", "leg_role", "side", "contracts", "strike",
+                          if k in ("leg_id", "occ_symbol", "leg_role", "option_type", "side", "contracts", "strike",
+                                   "multiplier", "opening_fees", "original_contracts", "filled_quantity",
                                    "expiration", "opening_price", "status")}
                          for l in s["legs"]],
                 "economics": {k: eco.get(k) for k in
                               ("dte_nearest", "underlying_price", "strategy_mark", "unrealized_pnl",
                                "pct_max_profit_captured", "max_profit_possible", "mfe", "mae",
                                "giveback", "extrinsic_value", "short_distance_pct", "short_delta",
-                               "max_spread_pct", "net", "flags")},
-                "decision": d, "alert": alert,
+                               "max_spread_pct", "net", "flags", "entry_value", "realized_pnl", "fees", "quote_timestamp", "early_assignment_probability",
+                               "legs_json", "earnings", "dividend")},
+                "decision": d, "alert": alert, "findings": findings,
                 "oversight": _oversight_line(cur, s["strategy_position_id"]),
                 "journal": {"trade_uid": f"options_strategy_positions:{s['strategy_position_id']}",
-                            "deep_link": "/v3/trade-in-view"},
+                            "deep_link": f"/v3/journal?tab=Options&spid={s['strategy_position_id']}"},
             })
         except Exception as e:
             out_positions.append({"strategy_position_id": s["strategy_position_id"],

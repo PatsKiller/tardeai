@@ -218,3 +218,23 @@ whatever account holds it, while the strategy instance is account-scoped.
 `expiration_guid` and `strike_guid` are deliberately **not** minted: strike and
 expiration are attributes of the contract key, not entities. This is the D2 (agentic
 memory gap, 2026-09-24) "explicitly reject" answer for those two.
+
+
+## Connected options workflow — 2026-10-06 candidate evidence
+
+The connected proposal, monitoring and TradeInView paths now share existing identities and evidence writers.
+
+Account eligibility, quantity and DAY/GTC selection, deterministic per-contract/position
+figures and the expiry what-if table use one Strategy Proposal modal. Required governed
+analysis, revision binding and three-second provider quotes feed the existing per-order
+2FA and submission router. Stop authentication is preserved. Ambiguous submissions require
+reconciliation. Canonical strategy journals retain exact account/roll identity, partial
+fills, full event evidence and explicit unknowns; manual Fidelity uses documented fills.
+
+The implementation and verification contract is documented in
+[Options module](options-module.md).
+Fixtures and isolated PostgreSQL tests demonstrate behavior; they do not establish a
+live fill or production acceptance. The final release record must identify the exact
+merged SHA, passing CI, service pin and read-only UI/API observations. Natural provider
+quotes, authorized operator actions and reconciled evidence remain the basis of operational
+acceptance. Broad scan activation and execution-policy expansion remain outside this change.

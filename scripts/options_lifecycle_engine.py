@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from options_lifecycle_model import ensure_tables, open_strategies
 
 POLICY_PATH = ROOT / "config" / "options_lifecycle_policy.json"
-DECISION_ENGINE_VERSION = "1.1.0"   # bump on any semantic change to decide()/reduce_decision()
+DECISION_ENGINE_VERSION = "1.1.1"   # bump on any semantic change to decide()/reduce_decision()
 REDUCER_VERSION = "reducer-1.0"
 
 
@@ -55,11 +55,11 @@ def _commit_sha() -> str:
 _CHAIN_CACHE: dict[tuple, dict] = {}   # (underlying, strike_count) → chain; per-run process cache
 
 
-def _fetch_chain(und: str, count: int) -> dict:
-    key = (und, count)
+def _fetch_chain(und: str, count: int, expiration=None) -> dict:
+    key = (und, count, expiration)
     if key not in _CHAIN_CACHE:
         import schwab_transport
-        _CHAIN_CACHE[key] = schwab_transport.get_option_chain(und, strike_count=count) or {}
+        _CHAIN_CACHE[key] = schwab_transport.get_option_chain(und, strike_count=count, expiration=expiration, all_strikes=bool(expiration)) or {}
     return _CHAIN_CACHE[key]
 
 
@@ -89,7 +89,7 @@ def quote_leg(leg: dict) -> dict:
     saw_exp_ever = False
     for count in windows:
         try:
-            chain = _fetch_chain(und, count)
+            chain = _fetch_chain(und, count, exp_key)
         except Exception as e:
             return {"ok": False, "error": str(e)[:120], "source": "schwab_chain",
                     "exact_match": False}
@@ -111,7 +111,16 @@ def quote_leg(leg: dict) -> dict:
                 except Exception:
                     pass
             continue
-        bid, ask = s.get("bid"), s.get("ask")
+        from scripts.lib.options_workflow import timestamp, number
+        quoted_at = timestamp(s.get("quote_time"))
+        received_at = datetime.now(timezone.utc)
+        max_age = float(policy()["quotes"]["max_quote_age_minutes"]) * 60
+        bid, ask = number(s.get("bid")), number(s.get("ask"))
+        if (quoted_at is None or not 0 <= (received_at - quoted_at).total_seconds() <= max_age
+                or bid is None or ask is None or bid <= 0 or ask < bid):
+            return {"ok": False, "error": "missing/stale provider timestamp or invalid bid/ask",
+                    "source": "schwab_chain", "exact_match": True, "ts": s.get("quote_time"),
+                    "received_at": received_at.isoformat()}
         mid = ((bid + ask) / 2 if bid is not None and ask is not None else s.get("last"))
         if mid is None:
             return {"ok": False, "error": "exact contract found but no two-sided quote or last",
@@ -119,10 +128,11 @@ def quote_leg(leg: dict) -> dict:
         spread_pct = (round((ask - bid) / mid * 100, 1) if bid and ask and mid else None)
         return {"ok": True, "bid": bid, "ask": ask, "mid": round(float(mid), 2),
                 "spread_pct": spread_pct, "delta": s.get("delta"), "gamma": s.get("gamma"),
-                "theta": s.get("theta"), "vega": s.get("vega"), "iv": s.get("iv"),
+                "theta": s.get("theta"), "vega": s.get("vega"), "rho": s.get("rho"), "iv": s.get("iv"),
+                "volume": s.get("volume"), "oi": s.get("oi"),
                 "underlying_price": chain.get("underlying_price"), "source": "schwab_chain",
                 "exact_match": True, "attempts_strike_window": count,
-                "ts": datetime.now(timezone.utc).isoformat()}
+                "ts": quoted_at.isoformat(), "received_at": received_at.isoformat()}
     return {"ok": False, "exact_match": False, "source": "schwab_chain",
             "error": f"exact contract not found after {windows[-1]}-strike scan"
                      + ("" if saw_exp_ever else f" (expiration {exp_key} never appeared)")}
@@ -144,8 +154,8 @@ def strategy_economics(s: dict, quotes: dict[int, dict]) -> dict:
     today = date.today()
     dte_nearest = min((l["expiration"] - today).days for l in legs)
     und_px = None
-    net = {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0}
-    net_ok = True
+    net = {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "rho": 0.0}
+    net_known = {k: True for k in net}
     mark_total = 0.0          # signed liquidation value of the structure ($)
     mark_ok = True
     entry_total = 0.0         # signed entry value ($); None-able
@@ -167,13 +177,14 @@ def strategy_economics(s: dict, quotes: dict[int, dict]) -> dict:
                 if q.get(g) is not None:
                     net[g] += _sgn(l) * float(q[g]) * n * mult
                 else:
-                    net_ok = False
+                    net_known[g] = False
             if und_px:
                 intrinsic = max(0.0, (und_px - float(l["strike"])) if l["option_type"] == "call"
                                 else (float(l["strike"]) - und_px))
                 extrinsic_total += _sgn(l) * max(0.0, mark - intrinsic) * n * mult
         else:
             mark_ok = False
+            net_known = {k: False for k in net}
             flags.append(f"no_quote:{l['occ_symbol']}:{q.get('error', 'missing')}")
         if l["opening_price"] is not None:
             entry_total += _sgn(l) * float(l["opening_price"]) * n * mult
@@ -184,7 +195,7 @@ def strategy_economics(s: dict, quotes: dict[int, dict]) -> dict:
             flags.append(f"unknown_basis:{l['occ_symbol']}")
         legs_snapshot.append({"leg_id": l["leg_id"], "occ": l["occ_symbol"], "side": l["side"],
                               "contracts": n, **{k: q.get(k) for k in
-                              ("bid", "ask", "mid", "spread_pct", "delta", "theta", "iv", "ts", "source")}})
+                              ("bid", "ask", "mid", "spread_pct", "delta", "gamma", "theta", "vega", "rho", "volume", "oi", "iv", "ts", "source")}})
     if not mark_ok:
         flags.append("mark_incomplete")
     if not entry_ok:
@@ -219,9 +230,13 @@ def strategy_economics(s: dict, quotes: dict[int, dict]) -> dict:
         qd = (quotes.get(ns["leg_id"]) or {}).get("delta")
         short_delta = abs(float(qd)) if qd is not None else None
 
-    return {"flags": flags, "dte_nearest": dte_nearest, "underlying_price": und_px,
+    quoted = [q.get("ts") for q in quotes.values() if q.get("ts")]
+    return {"quote_timestamp": min(quoted) if quoted else None,
+            "fees": sum(float(l["opening_fees"]) for l in legs) if all(l.get("opening_fees") is not None for l in legs) else None,
+            "early_assignment_probability": None,
+            "flags": flags, "dte_nearest": dte_nearest, "underlying_price": und_px,
             "legs_json": legs_snapshot, "strategy_mark": round(mark_total, 2) if mark_ok else None,
-            "max_spread_pct": max_spread, "net": {k: round(v, 2) for k, v in net.items()} if net_ok else None,
+            "max_spread_pct": max_spread, "net": {k: round(v, 2) if net_known[k] else None for k, v in net.items()},
             "unrealized_pnl": round(unrealized, 2) if (mark_ok and entry_ok) else None,
             "entry_value": round(entry_total, 2) if entry_ok else None,
             "max_profit_possible": round(max_profit, 2) if max_profit is not None else None,
@@ -256,6 +271,19 @@ def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:
                    FROM options_position_snapshots WHERE strategy_position_id=%s""", (spid,))
     prior = cur.fetchone() or (None, None)
     upl = eco.get("unrealized_pnl")
+    # Partial closes already have immutable allocations even before a terminal
+    # outcome exists. Missing or incomplete evidence must remain unknown.
+    cur.execute("SELECT to_regclass('options_close_allocations')")
+    allocations_exist = (cur.fetchone() or (None,))[0]
+    realized = None
+    if allocations_exist:
+        cur.execute("""SELECT count(*), count(realized), sum(realized)
+                       FROM options_close_allocations WHERE strategy_position_id=%s""", (spid,))
+        count, known, total = cur.fetchone()
+        if count and known == count:
+            realized = float(total)
+    eco = {**eco, "realized_pnl": realized}
+    total_pnl = round(upl + realized, 2) if upl is not None and realized is not None else None
     # DB numerics arrive as Decimal — coerce before any float arithmetic downstream
     p0 = float(prior[0]) if prior[0] is not None else None
     p1 = float(prior[1]) if prior[1] is not None else None
@@ -273,13 +301,13 @@ def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:
          pct_max_profit_captured, max_profit_possible, max_favorable_excursion,
          max_adverse_excursion, giveback_from_peak, extrinsic_value, assignment_flags,
          data_quality_flags)
-        VALUES (%s,%s,%s,%s,%s,now(),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING snapshot_id""",
         (spid, eco.get("underlying_price"), json.dumps(eco.get("legs_json") or []),
-         eco.get("strategy_mark"), "schwab_chain", eco.get("max_spread_pct"),
+         eco.get("strategy_mark"), "schwab_chain", eco.get("quote_timestamp"), eco.get("max_spread_pct"),
          (eco.get("net") or {}).get("delta"), (eco.get("net") or {}).get("gamma"),
          (eco.get("net") or {}).get("theta"), (eco.get("net") or {}).get("vega"),
-         eco.get("dte_nearest"), eco.get("short_distance_pct"), upl, None, upl,
+         eco.get("dte_nearest"), eco.get("short_distance_pct"), upl, realized, total_pnl,
          eco.get("pct_max_profit_captured"), eco.get("max_profit_possible"),
          mfe, mae, giveback, eco.get("extrinsic_value"),
          json.dumps(assignment_flags), json.dumps(eco.get("flags") or [])))
@@ -291,8 +319,8 @@ def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:
                ("stale" if any("no_quote" in f for f in eco["flags"]) else "incomplete_basis"))
     cur.execute("""UPDATE options_strategy_positions SET latest_snapshot_id=%s,
                    data_quality_status=CASE
-                     WHEN data_quality_status='provisional_basis' AND %s='ok'
-                       THEN 'provisional_basis'
+                     WHEN data_quality_status IN ('ambiguous','unreconciled') THEN data_quality_status
+                     WHEN data_quality_status='provisional_basis' AND %s='ok' THEN data_quality_status
                      ELSE %s END,
                    updated_at=now() WHERE strategy_position_id=%s""",
                 (snap_id, pricing, pricing, spid))
@@ -317,6 +345,10 @@ def decide(s: dict, eco: dict, pol: dict, defense_posture: dict | None = None) -
     held = _days_held(s)
     alt = []
 
+    if stype == "unknown_multi_leg" or s.get("data_quality_status") in {"ambiguous", "unreconciled"}:
+        return {"recommendation": "DATA_BLOCKED", "urgency": "amber", "confidence": "high",
+                "rationale": "Strategy identity or quantities require evidence reconciliation before a management recommendation.",
+                "alternatives": [{"action": "fix_data", "note": "Review exact order and fill identities"}]}
     if eco.get("flags"):
         blocked = [f for f in eco["flags"] if f.startswith(("no_quote", "unknown_basis"))]
         if blocked:

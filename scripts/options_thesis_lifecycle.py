@@ -170,6 +170,32 @@ def record_decision(res: dict) -> None:
             pass
 
 
+def record_analysis_disposition(proposal: dict, analysis: dict, note: str) -> dict:
+    """Record an operator's model-objection disposition on the existing CIO review.
+
+    This adds evidence to an existing APPROVE decision; it cannot create one or
+    override a REJECT/MORE_RESEARCH decision, risk block, desk approval or 2FA.
+    """
+    from db_adapter import _execute
+    from scripts.lib.options_workflow import analysis_binding
+    from scripts.lib.options_thesis import OptionsThesisStore
+    decision_id = (proposal.get("cio_decision") or {}).get("decision_guid")
+    if not decision_id or not note.strip() or analysis.get("status") != "completed":
+        return {"ok": False, "error": "Completed analysis, existing CIO decision and disposition note required"}
+    disposition = {"analysis_id": analysis["id"], "binding": analysis_binding(proposal),
+                   "cio_decision_ref": decision_id, "note": note.strip()[:2000],
+                   "recorded_by": "operator", "proposal_revision": proposal["revision"]}
+    row = _execute("""UPDATE cio_decisions SET metadata=COALESCE(metadata,'{}'::jsonb) || %s::jsonb
+                      WHERE decision_id=%s AND action='APPROVE'
+                        AND metadata->>'position_guid'=%s RETURNING decision_id""",
+                   (json.dumps({"options_analysis_disposition": disposition}), decision_id,
+                    proposal["option_strategy_guid"]), fetch="one")
+    if not row:
+        return {"ok": False, "error": "An existing CIO APPROVE review for this strategy is required"}
+    OptionsThesisStore().append_event(proposal["option_strategy_guid"], "OPTIONS_ANALYSIS_DISPOSITION", **disposition)
+    return {"ok": True, "disposition": disposition}
+
+
 def acquire_lifecycle_lock(path: str):
     """('acquired'|'inherited'|'held', fh). 'inherited' = an ancestor process (the crontab's
     `flock -n path cmd`) already holds the lock on a descriptor we inherited, so this run IS
@@ -222,6 +248,14 @@ def main(argv=None) -> int:
     except Exception as e:
         print(json.dumps({"ok": False, "error": f"proposals unreadable: {e}"}))
         return 1
+    # Prepared account/quantity revisions enter the existing lifecycle and budgets.
+    # This is not a new agent or cadence; the existing worker owns their review.
+    if a.apply:
+        from scripts.lib.options_workflow_service import active_proposals
+        prepared = active_proposals()
+        roots = {p.get("source_proposal_id") for p in prepared}
+        ids = {p["id"] for p in prepared}
+        proposals = [p for p in proposals if p.get("id") not in roots | ids] + prepared
     report = advance(
         proposals, OptionsThesisStore(), load_desk_config(),
         request_research=request_research, research_status=research_status,

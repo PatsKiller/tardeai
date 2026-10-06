@@ -102,7 +102,7 @@ def test_a_confirm_refuses_a_wrong_code_and_a_web_click_without_the_typed_ticker
 
 def test_a_api_confirm_returns_before_submit_when_not_fully_approved():
     """The /api/v2/options/confirm handler submits only on cr['fully_approved']; prove it structurally:
-    in the handler body the call to oop.submit is guarded by the fully_approved check (AST, not text)."""
+    in the handler body the shared submit router call is guarded by the fully_approved check (AST, not text)."""
     src = (ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     # Find the `if method == "POST" and base_path == "/api/v2/options/confirm":` block.
@@ -113,7 +113,7 @@ def test_a_api_confirm_returns_before_submit_when_not_fully_approved():
             break
     assert block is not None
     body_src = ast.get_source_segment(src, block)
-    submit_line = body_src.index("oop.submit(")
+    submit_line = body_src.index("submit_fully_approved(intent_id)")
     guard_line = body_src.index('if not cr.get("fully_approved")')
     twofa_line = body_src.index("approval_service.confirm(")
     assert twofa_line < guard_line < submit_line

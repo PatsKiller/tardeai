@@ -2859,7 +2859,8 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         try:
             from lib.options_economics import stamp_payoff
             _liq = (p.get("enterprise") or {}).get("liquidity") or {}
-            stamp_payoff(p, session=_SESSION.get("now"),
+            if not p.get("workflow_version"):
+                stamp_payoff(p, session=_SESSION.get("now"),
                          quote_issues=list(_liq.get("issues") or []) if _liq.get("pass") is False else None)
         except Exception:  # noqa: BLE001
             p["expected_value"] = None
@@ -3073,6 +3074,15 @@ def read_proposals() -> dict:
                                          "reason": "No completed options scan snapshot"}
     import options_desk_enterprise as ent
     cfg = _desk_cfg()
+    try:
+        from scripts.lib.options_workflow_service import active_proposals
+        prepared = active_proposals()
+        roots = {p.get("source_proposal_id") for p in prepared}
+        prepared_ids = {p["id"] for p in prepared}
+        data["proposals"] = [p for p in data.get("proposals", []) if p.get("id") not in roots | prepared_ids] + prepared
+        data["count"] = len(data["proposals"])
+    except Exception as exc:
+        data["workflow_read_error"] = type(exc).__name__
     for proposal in data.get("proposals", []):
         ent.stamp_freshness(proposal, now=_now(), session=_market_session_now())
         blocks = [b for b in ent.evaluate_hard_risk_blocks(proposal, mode="preflight", cfg=cfg)

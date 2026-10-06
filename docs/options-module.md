@@ -652,3 +652,74 @@ Central readiness: `scripts/brokers/execution_readiness.py`. State: `scripts/exe
 | Auto-execution | ✗ | operator-approved path (readiness + evidence + 2FA) | policy-driven |
 | Execution readiness | ✗ | central resolver + audit ledger | streaming |
 | Kill switches | ✗ | multi-level + circuit breakers | automated |
+
+## Connected options workflow — 2026-10-06 source implementation
+
+The shared **Strategy Proposal** dialog opens from a proposal card or a standing-plan
+contract match. It defaults to one contract (one spread for verticals), offers DAY/GTC,
+and retains the selected account, exact legs and limit through review. Changing these
+choices requires a new revision. Disabled account cards explain missing permissions,
+stale/unknown balances, unsupported routes and insufficient uncommitted cash or shares.
+Coverage is account-local; account names grant no options permission.
+
+The six core strategies, including LEAPs as long calls, use the same deterministic
+quantity/economics helpers. Existing debit-spread and collar research shapes remain
+supported. Existing live execution allowlists and risk limits are unchanged: a research
+shape or account card does not enable a broker permission. Adjusted deliverables and
+non-one-to-one ratios are explicitly blocked until their allocation is supported.
+
+Quotes are refreshed for all exact legs in one expiration-scoped chain read during
+preparation and again after existing per-order 2FA. Every executable bid/ask timestamp
+must be 0–3 seconds old at receipt and at the final transport boundary, including any
+rate-limiter delay. HTTP receipt time, last trade and OI publication time cannot replace
+bid/ask time. Missing/crossed prices, invalid volume, missing multipliers and existing
+liquidity/risk failures block the order. Existing price-movement thresholds apply.
+Material movement stages another revision and requires renewed review. No final refresh
+changes the authorized account, limit, quantity, legs or time in force.
+
+The existing selected LLM lane must have a completed, current, provenance-checked result.
+Explicit requests use the existing job/result store and provider budgets; renders and
+quote ticks do not request models. Objections require a recorded disposition attached
+to the existing CIO decision. Model output grants no execution authority. Arithmetic
+comes from deterministic code; narrative numbers must trace to supplied facts. The
+expiry what-if table includes flat, break-even, strike, target and optional user prices,
+option value, P&L, returns and shares comparison. Stock-plus-option outcomes are separate.
+POP is a model estimate with assumptions; delta is not assignment probability. Early
+assignment probability is unavailable; dividend/extrinsic risks remain visible.
+
+Per-order authentication and the shared intent submit router are reused. The existing
+protective-stop process is unchanged. Schwab uses the existing pilot ledger as the
+idempotency fence. An ambiguous response is **submission status unknown**, consumes the
+confirmation and requires reconciliation; a new intent or refresh cannot create an
+automatic second attempt. Dry fixtures replace quote, account, authorization and broker
+adapters and display **DRY RUN ONLY — no order transmitted.** Client dry flags never
+bypass live authentication and dry receipts cannot enter the fill/journal writers.
+
+TradeInView's Options tab now reads `v_options_journal`, preserving strategy/account
+identities and roll roots. Filters, pagination, drill-down and CSV export use complete
+filtered aggregates. Unknown basis/outcomes remain unknown. Exact known broker order
+IDs link opening/partial fills to the proposal, directive, thesis, analysis and approval
+references. The existing evidence ledger and projection outbox own these writes. Manual
+Fidelity fills require an explicit execution reference, time and per-leg prices for
+canonical projection; operator evidence remains provisional. Existing assignment,
+exercise and stock-basis transfer accounting is reused without adding premium again.
+Unfilled/rejected/cancelled proposals remain in the approval audit, outside completed
+trade counts. Unmatched imported aggregate legs remain unclassified for evidence review;
+existing independent strategies are not combined by symbol or date.
+
+`options_workflow_backfill.py` defaults to an evidence inventory. Its `--apply` mode
+replays only exact proposal + documented per-leg manual fills through the same writer.
+Repeated evidence is idempotent; conflicting executions stop for reconciliation. Ambiguous
+historical rows and the superseded legacy journal table remain intact. This tool does not
+contact a broker and is not permission to mutate production data.
+
+Verification is separated from operational acceptance:
+
+- Source/fixtures: `test_options_workflow*`, existing options authorization/gate and
+  protective-stop tests, PostgreSQL lifecycle migration/replay tests, and isolated
+  `e2e/options-workflow.spec.ts`. Frontend build, design and contrast checks apply.
+- Release checks: exact PR/main SHA CI, governed release, persistent-state mappings,
+  service pins, semantic UI/API checks and rollback remain required.
+- Production: this source section establishes no live fill, provider timing or account
+  eligibility. Engineers do not place an order to manufacture acceptance. Expanded scan
+  activation, new statistical volume thresholds and broker permission changes are out of scope.

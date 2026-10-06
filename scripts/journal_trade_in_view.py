@@ -364,65 +364,10 @@ def _parse_occ(sym: str) -> dict:
     return {"underlying": und, "option_type": "call" if cp == "C" else "put", "strike": float(strike) / 1000.0}
 
 
-def options_journal_summary(account=None, days=365):
-    """P5: closed option trades + open legs + book greeks."""
-    params: list[Any] = [int(days)]
-    acct = ""
-    if account:
-        acct = " AND account = %s"
-        params.append(account)
-    rows = _q(f"""
-        SELECT symbol, trade_type, pnl, close_date::text, account, shares, buy_price, sell_price
-        FROM trade_closed
-        WHERE close_date > now() - (%s || ' days')::interval {acct}
-          AND (trade_type ILIKE '%%option%%' OR symbol ~ '[0-9]{{6}}[CP][0-9]')
-        ORDER BY close_date DESC LIMIT 200
-    """, params)
-
-    groups: dict[str, dict] = {}
-    for r in rows:
-        parsed = _parse_occ(r.get("symbol") or "")
-        und = parsed.get("underlying") or (r.get("symbol") or "")[:6]
-        gk = f"{und}:{r.get('close_date')}:{r.get('account')}"
-        g = groups.setdefault(gk, {"underlying": und, "close_date": r.get("close_date"),
-                                   "account": r.get("account"), "legs": [], "net_pnl": 0.0})
-        g["legs"].append({**r, **parsed})
-        g["net_pnl"] += float(r.get("pnl") or 0)
-
-    open_legs = []
-    book_greeks = {}
-    try:
-        import options_engine as oe
-        open_legs = oe._fetch_schwab_option_positions()
-        if account:
-            open_legs = [p for p in open_legs if p.get("account_key") == account]
-        try:
-            import options_desk_enterprise as ode
-            book_greeks = ode.aggregate_book_greeks(open_legs, {}) or {}
-        except Exception:
-            book_greeks = {}
-    except Exception:
-        pass
-
-    by_moneyness: dict[str, list] = defaultdict(list)
-    for p in open_legs:
-        und = p.get("underlying") or ""
-        spot = p.get("strike") or 0
-        m = "ATM"
-        if p.get("option_type") == "call":
-            m = "ITM" if (p.get("side") == "long" and spot) else "OTM"
-        by_moneyness[m].append(p)
-
-    return {
-        "ok": True,
-        "options_trades": len(rows),
-        "trades": rows,
-        "multileg_groups": list(groups.values())[:50],
-        "open_legs": open_legs[:40],
-        "book_greeks": book_greeks,
-        "by_moneyness_open": {k: len(v) for k, v in by_moneyness.items()},
-        **_agg(rows),
-    }
+def options_journal_summary(account=None, days=365, **filters):
+    """Canonical strategy-level options journal; never equity trade_closed groups."""
+    from scripts.lib.options_journal_read import summary
+    return summary(_q, account, days, **filters)
 
 
 def monte_carlo(account=None, days=365, simulations=500, trades_per_path=0, include_curves=True):

@@ -34,7 +34,7 @@ import { runJournalAsk } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'By Ticker', 'Costs', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Import'] as const
+const TABS = ['Trades', 'By Ticker', 'Costs', 'Tagging Queue', 'Analytics', 'Exit Intel', 'Behavioral', 'Session', 'Advanced', 'Lessons', 'Protection', 'Backtesting', 'Real Accounts', 'Options', 'Import'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -186,13 +186,13 @@ export default function JournalHub({ onDrill }: Props) {
   const [searchParams] = useSearchParams()
   const deepSymbol = (searchParams.get('symbol') || '').trim().toUpperCase()
   const [chartTrade, setChartTrade] = useState<any>(null)
-  const [tab, setTab] = useState<typeof TABS[number]>('Trades')
+  const [tab, setTab] = useState<typeof TABS[number]>(searchParams.get('tab') === 'Options' ? 'Options' : 'Trades')
   const [critiqueQuery, setCritiqueQuery] = useState('')
   useEffect(() => {
     try {
       const storedTab = sessionStorage.getItem('journal_tab') as typeof TABS[number] | null
       const storedQ = sessionStorage.getItem('journal_critique_q') || ''
-      if (storedTab && (TABS as readonly string[]).includes(storedTab)) setTab(storedTab)
+      if (!searchParams.get('tab') && storedTab && (TABS as readonly string[]).includes(storedTab)) setTab(storedTab)
       if (storedQ) setCritiqueQuery(storedQ)
       sessionStorage.removeItem('journal_tab')
       sessionStorage.removeItem('journal_critique_q')
@@ -1120,11 +1120,12 @@ export default function JournalHub({ onDrill }: Props) {
       {/* ════════ REAL ACCOUNTS (Schwab) — API-authoritative round-trips, separate from paper ════════ */}
       {tab === 'Real Accounts' && <SchwabJournal />}
 
+      {tab === 'Options' && <OptionsJournalPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />}
       {tab === 'Import' && (
         <div style={{ display: 'grid', gap: 14 }}>
           <CsvImportPanel />
           <ManualEntryPanel />
-          <OptionsJournalPanel account={acctFilter || undefined} days={_edgeDays[timeRange] ?? 365} />
+
         </div>
       )}
     </div>
