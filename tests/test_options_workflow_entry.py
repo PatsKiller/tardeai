@@ -79,3 +79,30 @@ def test_backfill_never_infers_legacy_strategy():
     assert dry["review_required"][0]["manual_execution_id"] == 1
     applied = replay(lambda *a, **k: rows, project, apply=True)
     assert writes == [2] and len(applied["review_required"]) == 1
+
+
+def test_monitoring_realized_pnl_uses_partial_close_evidence(ephemeral_db):
+    from options_lifecycle_engine import persist_snapshot
+    from options_lifecycle_model import strategy_with_legs
+    conn = ephemeral_db
+    cur = _build_all(conn)
+    p = proposal()
+    result = record(conn, p, [fill(p)])
+    spid = result["strategy_position_id"]
+    s = strategy_with_legs(cur, spid)
+    eco = {"flags": [], "legs_json": [], "unrealized_pnl": 40}
+    _, first = persist_snapshot(cur, conn, s, eco)
+    assert first["realized_pnl"] is None
+    leg = s["legs"][0]
+    cur.execute("""INSERT INTO options_close_allocations
+        (strategy_position_id,ticket_id,leg_id,occ_symbol,contracts,vwap,realized)
+        VALUES (%s,101,%s,%s,1,2.5,50)""", (spid,leg["leg_id"],leg["occ_symbol"]))
+    conn.commit()
+    sid, second = persist_snapshot(cur, conn, s, eco)
+    assert second["realized_pnl"] == 50
+    cur.execute("SELECT realized_pnl,total_strategy_pnl FROM options_position_snapshots WHERE snapshot_id=%s", (sid,))
+    assert tuple(map(float,cur.fetchone())) == (50,90)
+    cur.execute("UPDATE options_close_allocations SET realized=NULL WHERE strategy_position_id=%s", (spid,))
+    conn.commit()
+    _, unknown = persist_snapshot(cur, conn, s, eco)
+    assert unknown["realized_pnl"] is None

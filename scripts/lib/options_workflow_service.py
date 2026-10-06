@@ -120,7 +120,7 @@ def directive_refusals(p):
         reasons.append(wf.refusal("directive_range", "Delta falls below the recorded stock-substitute minimum"))
     if directive.get("avoid_earnings_cross") and play != "leap_call":
         earnings = (p.get("enterprise") or {}).get("earnings") or {}
-        date = earnings.get("earnings_date") or directive.get("earnings_estimate")
+        date = earnings.get("next_earnings") or earnings.get("event_date") or earnings.get("earnings_date") or directive.get("earnings_estimate")
         if not date or str(p["expiration"])[:10] >= str(date)[:10]:
             reasons.append(wf.refusal("directive_earnings", "Expiration crosses the recorded earnings date, or that date is unknown"))
     return reasons

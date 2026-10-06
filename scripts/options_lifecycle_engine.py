@@ -271,6 +271,19 @@ def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:
                    FROM options_position_snapshots WHERE strategy_position_id=%s""", (spid,))
     prior = cur.fetchone() or (None, None)
     upl = eco.get("unrealized_pnl")
+    # Partial closes already have immutable allocations even before a terminal
+    # outcome exists. Missing or incomplete evidence must remain unknown.
+    cur.execute("SELECT to_regclass('options_close_allocations')")
+    allocations_exist = (cur.fetchone() or (None,))[0]
+    realized = None
+    if allocations_exist:
+        cur.execute("""SELECT count(*), count(realized), sum(realized)
+                       FROM options_close_allocations WHERE strategy_position_id=%s""", (spid,))
+        count, known, total = cur.fetchone()
+        if count and known == count:
+            realized = float(total)
+    eco = {**eco, "realized_pnl": realized}
+    total_pnl = round(upl + realized, 2) if upl is not None and realized is not None else None
     # DB numerics arrive as Decimal — coerce before any float arithmetic downstream
     p0 = float(prior[0]) if prior[0] is not None else None
     p1 = float(prior[1]) if prior[1] is not None else None
@@ -294,7 +307,7 @@ def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:
          eco.get("strategy_mark"), "schwab_chain", eco.get("quote_timestamp"), eco.get("max_spread_pct"),
          (eco.get("net") or {}).get("delta"), (eco.get("net") or {}).get("gamma"),
          (eco.get("net") or {}).get("theta"), (eco.get("net") or {}).get("vega"),
-         eco.get("dte_nearest"), eco.get("short_distance_pct"), upl, None, upl,
+         eco.get("dte_nearest"), eco.get("short_distance_pct"), upl, realized, total_pnl,
          eco.get("pct_max_profit_captured"), eco.get("max_profit_possible"),
          mfe, mae, giveback, eco.get("extrinsic_value"),
          json.dumps(assignment_flags), json.dumps(eco.get("flags") or [])))
