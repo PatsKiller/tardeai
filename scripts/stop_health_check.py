@@ -11,7 +11,7 @@ through the SAME surfaces the rest of the system uses:
 Alert conditions (per the engine's health=alert): ORPHANED (a live stop with no matching holding —
 on trigger it could short / reject), OVERSIZED (stop qty > shares held — a GTC stop does NOT auto-resize
 when you trim), FILLED/TRIGGERED (the stop fired — the position may be flat now), and NEAR-TRIGGER within
-0.75% (about to fire). Dedup: one Telegram per (symbol, condition) per 2h via the SIEM event history.
+0.75% (about to fire). Dedup: one alert per account/order/symbol/condition per 2h via SIEM history.
 
 Run on cron during market hours (read-only on the broker side):
   python3 scripts/stop_health_check.py [--quiet]
@@ -124,17 +124,315 @@ def _pl_line(pl: dict | None) -> str:
 
 
 def _recently_alerted(symbol: str, condition: str, hours: int = 2) -> bool:
-    """Dedup via alert_events: True if the same (symbol, condition) fired in the last `hours`."""
+    """Dedup a stable stop incident; retain the portfolio guard's existing route."""
     try:
         from db_adapter import _get_conn
         cur = _get_conn().cursor()
-        cur.execute("""SELECT 1 FROM alert_events
-                       WHERE source_script=%s AND symbol=%s AND raw_text LIKE %s
-                         AND created_at > NOW() - INTERVAL '%s hours' LIMIT 1""",
-                    (_COMPONENT, symbol, f"%{condition}%", hours))
+        if condition.startswith("siem:v1:"):
+            cur.execute("""SELECT 1 FROM alert_events
+                           WHERE source_script=%s AND parsed_payload->>'condition_key'=%s
+                             AND COALESCE(lifecycle_state,'active') <> 'resolved'
+                             AND created_at > NOW() - (%s * INTERVAL '1 hour') LIMIT 1""",
+                        (_COMPONENT, condition, hours))
+        else:
+            cur.execute("""SELECT 1 FROM alert_events
+                           WHERE source_script=%s AND symbol=%s AND raw_text LIKE %s
+                             AND created_at > NOW() - INTERVAL '%s hours' LIMIT 1""",
+                        (_COMPONENT, symbol, f"%{condition}%", hours))
         return cur.fetchone() is not None
     except Exception:
         return False   # fail open ⇒ we alert (better a dup than a miss on a safety signal)
+
+
+def _stop_condition_key(payload: dict) -> str | None:
+    """Only complete structured stop identities may acquire a recovery key."""
+    from lib.siem_incident_identity import incident_key
+    for field in ("account", "order_id", "symbol", "condition"):
+        value = payload.get(field)
+        if not ((isinstance(value, str) and value.strip()) or type(value) is int):
+            return None
+    return incident_key({"source_script": _COMPONENT, "alert_type": "strategic_alert",
+                         "parsed_payload": payload})
+
+
+def _recovery_time(value):
+    from datetime import datetime
+    try:
+        value = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return value if value.tzinfo is not None and value.utcoffset() is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _recovery_number(value):
+    import math
+    try:
+        number = float(value) if value is not None and not isinstance(value, bool) else None
+        return number if number is not None and math.isfinite(number) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _recovery_payload(value):
+    import json
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _stop_observation_key(stop: dict) -> str:
+    """Opaque fingerprint linking this scan's exact facts to its persisted row."""
+    import hashlib
+    import json
+    flags = stop.get("flags")
+    if isinstance(flags, str):
+        flags = json.loads(flags)
+    facts = {field: stop.get(field) for field in
+             ("account", "order_id", "symbol", "status", "lifecycle", "health", "coverage")}
+    facts.update(qty=_recovery_number(stop.get("qty")), held_qty=_recovery_number(stop.get("held_qty")),
+                 flags=sorted(flags) if isinstance(flags, list) else None)
+    return hashlib.sha256(json.dumps(facts, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _read_stop_recovery_rows(alert_ids: list[int]) -> list[dict]:
+    """Read exact saved identities and promoted position evidence; never scan brokers."""
+    from db_adapter import _get_conn
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT a.id AS alert_id, a.created_at, a.lifecycle_state,
+                       a.symbol, a.parsed_payload,
+                       sl.account AS stop_account, sl.symbol AS stop_symbol,
+                       sl.order_id AS stop_order_id, sl.status AS stop_status,
+                       sl.lifecycle AS stop_lifecycle, sl.health AS stop_health,
+                       sl.flags AS stop_flags, sl.coverage AS stop_coverage,
+                       sl.qty AS stop_qty, sl.held_qty AS stop_held_qty,
+                       sl.snapshot_at AS stop_snapshot_at,
+                       pc.qty AS position_qty, pc.as_of AS position_as_of,
+                       pc.source AS position_source, pc.sync_run_id,
+                       psr.status AS sync_status, psr.promoted AS sync_promoted,
+                       psr.finished_at AS sync_finished_at,
+                       (a.parsed_payload->>'account') = ANY(psr.accounts_ok) AS account_sync_ok
+                FROM alert_events a
+                LEFT JOIN stop_lifecycle sl
+                  ON sl.account = a.parsed_payload->>'account'
+                 AND sl.order_id = a.parsed_payload->>'order_id'
+                 AND sl.symbol = a.parsed_payload->>'symbol'
+                LEFT JOIN positions_current pc
+                  ON pc.account_key = a.parsed_payload->>'account'
+                 AND pc.symbol = a.parsed_payload->>'symbol'
+                LEFT JOIN positions_sync_runs psr ON psr.run_id = pc.sync_run_id
+                WHERE a.id = ANY(%s) AND a.source_script=%s
+                ORDER BY a.id""", (alert_ids, _COMPONENT))
+            columns = [description[0] for description in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    finally:
+        # End this read transaction without closing db_adapter's shared connection.
+        conn.rollback()
+
+
+def _recovery_reason(row: dict, *, now, sync_cfg: dict, filled_alert_hours: float,
+                     minimum_snapshot_at=None) -> tuple[str | None, str]:
+    """Positive recovery proof for one exact order; absence is never recovery."""
+    import json
+    import math
+    from positions_sync import freshness
+    payload = _recovery_payload(row.get("parsed_payload"))
+    if not _stop_condition_key(payload):
+        return None, "incomplete_identity"
+    if row.get("lifecycle_state") != "active":
+        return None, "not_active"
+    for field in ("account", "symbol", "order_id"):
+        if str(row.get("stop_" + field) or "") != str(payload[field]):
+            return None, "missing_exact_stop_observation"
+    if row.get("symbol") != payload["symbol"]:
+        return None, "conflicting_alert_symbol"
+    created = _recovery_time(row.get("created_at"))
+    observed = _recovery_time(row.get("stop_snapshot_at"))
+    if not created or not observed or not created < observed <= now:
+        return None, "observation_not_newer"
+    if minimum_snapshot_at is not None and observed < minimum_snapshot_at:
+        return None, "scan_not_persisted"
+    if freshness(observed, sync_cfg, now)["stale"]:
+        return None, "stale_stop_observation"
+    flags = row.get("stop_flags")
+    if isinstance(flags, str):
+        try:
+            flags = json.loads(flags)
+        except (TypeError, ValueError):
+            flags = None
+    if not isinstance(flags, list) or not all(isinstance(flag, str) for flag in flags):
+        return None, "missing_condition_observation"
+    if row.get("stop_health") != "ok":
+        return None, "stop_still_unhealthy"
+    condition = payload["condition"]
+    if condition not in {"ORPHANED", "OVERSIZED", "TRIGGERED", "NEAR_TRIGGER"}:
+        return None, "unsupported_condition"
+    status, lifecycle, coverage = (row.get("stop_" + field) for field in ("status", "lifecycle", "coverage"))
+    if status in {"canceled", "cancelled", "rejected", "expired", "replaced"}:
+        if lifecycle == "cancelled" and coverage == "closed" and not flags:
+            return "terminal_stop_observed", ""
+        return None, "conflicting_terminal_observation"
+    if status == "filled":
+        # The monitor already applies its existing fill-age policy. The older
+        # alert itself must also predate that window when closeTime is not saved.
+        if (lifecycle == "filled" and coverage == "closed" and flags == ["filled_stale"]
+                and (observed - created).total_seconds() > filled_alert_hours * 3600):
+            return "filled_alert_window_elapsed", ""
+        return None, "fill_not_proven_stale"
+    if condition not in {"ORPHANED", "OVERSIZED"}:
+        return None, "fresh_price_or_terminal_evidence_required"
+    if status not in {"working", "open", "new", "accepted"} or lifecycle != "working" or coverage != "full" or flags:
+        return None, "incomplete_working_observation"
+    qty = _recovery_number(row.get("stop_qty"))
+    held = _recovery_number(row.get("stop_held_qty"))
+    position = _recovery_number(row.get("position_qty"))
+    if any(value is None or value <= 0 for value in (qty, held, position)):
+        return None, "missing_positive_position"
+    if row.get("sync_status") != "complete" or row.get("sync_promoted") is not True or row.get("account_sync_ok") is not True:
+        return None, "position_sync_incomplete"
+    position_at = _recovery_time(row.get("position_as_of"))
+    finished = _recovery_time(row.get("sync_finished_at"))
+    if (not position_at or not finished or not row.get("sync_run_id") or not row.get("position_source")
+            or not created < position_at <= finished <= observed):
+        return None, "position_observation_not_coherent"
+    if freshness(position_at, sync_cfg, now)["stale"] or freshness(finished, sync_cfg, now)["stale"]:
+        return None, "stale_position_observation"
+    tolerance = _recovery_number(sync_cfg.get("qty_tolerance"))
+    if tolerance is None or tolerance < 0 or abs(held - position) > tolerance or qty > math.ceil(position):
+        return None, "position_quantity_conflict"
+    return "fresh_exact_position_confirms_coverage", ""
+
+
+def plan_stop_recovery(alert_ids: list[int], *, max_ids: int, minimum_snapshot_at=None) -> dict:
+    """Read-only, capped recovery plan for explicit IDs, including legacy rows.
+
+    It only reads existing stores. Calling this function can never reach an
+    alert writer, monitor scan, broker reader, notification or model.
+    """
+    from datetime import datetime, timezone
+    from positions_sync import load_sync_config
+    from stop_lifecycle_monitor import _FILLED_ALERT_HOURS
+    if type(max_ids) is not int or not 0 < max_ids <= 200:
+        raise ValueError("max_ids must be between 1 and the writer's 200-ID cap")
+    if (not isinstance(alert_ids, list) or len(alert_ids) > max_ids
+            or any(type(value) is not int or value <= 0 for value in alert_ids)
+            or len(set(alert_ids)) != len(alert_ids)):
+        raise ValueError("recovery requires distinct positive explicit alert IDs within the cap")
+    minimum = _recovery_time(minimum_snapshot_at) if minimum_snapshot_at is not None else None
+    if minimum_snapshot_at is not None and minimum is None:
+        raise ValueError("minimum_snapshot_at must be timezone-aware")
+    now = datetime.now(timezone.utc)
+    result = {"ok": True, "dry_run": True, "requested_ids": list(alert_ids), "max_ids": max_ids,
+              "minimum_snapshot_at": minimum.isoformat() if minimum else None,
+              "candidates": [], "blocked": [], "planned_at": now.isoformat()}
+    rows = _read_stop_recovery_rows(alert_ids) if alert_ids else []
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row["alert_id"], []).append(row)
+    cfg = load_sync_config()
+    for alert_id in alert_ids:
+        matches = grouped.get(alert_id, [])
+        if len(matches) != 1:
+            result["blocked"].append({"alert_id": alert_id, "reason": "missing_or_conflicting_observations"})
+            continue
+        row = matches[0]
+        reason, blocked = _recovery_reason(row, now=now, sync_cfg=cfg, filled_alert_hours=_FILLED_ALERT_HOURS,
+                                            minimum_snapshot_at=minimum)
+        if not reason:
+            result["blocked"].append({"alert_id": alert_id, "reason": blocked})
+            continue
+        payload = _recovery_payload(row["parsed_payload"])
+        result["candidates"].append({"alert_id": alert_id, "condition_key": _stop_condition_key(payload),
+                                     "condition": payload["condition"], "reason": reason,
+                                     "observation_key": _stop_observation_key({
+                                         field: row.get("stop_" + field) for field in
+                                         ("account", "order_id", "symbol", "status", "lifecycle", "health",
+                                          "coverage", "flags", "qty", "held_qty")}),
+                                     "observed_at": _recovery_time(row["stop_snapshot_at"]).isoformat()})
+    return result
+
+
+def apply_stop_recovery(plan: dict, *, max_ids: int, resolved_by: str) -> dict:
+    """Revalidate a reviewed plan, then resolve only its still-proven exact IDs.
+
+    This is the separately authorized apply boundary. A dry run never calls it.
+    Neither a supplied plan nor elapsed time substitutes for fresh revalidation.
+    """
+    if not isinstance(plan, dict) or plan.get("ok") is not True or plan.get("dry_run") is not True:
+        raise ValueError("a successful dry-run recovery plan is required")
+    if not isinstance(resolved_by, str) or not resolved_by.strip():
+        raise ValueError("recovery attribution is required")
+    reviewed = {candidate["alert_id"]: candidate for candidate in plan["candidates"]}
+    if len(reviewed) != len(plan["candidates"]) or not set(reviewed).issubset(plan["requested_ids"]):
+        raise ValueError("invalid candidate IDs")
+    refreshed = plan_stop_recovery(list(reviewed), max_ids=max_ids,
+                                  minimum_snapshot_at=plan.get("minimum_snapshot_at"))
+    result = {"ok": True, "dry_run": False, "resolved_ids": [], "blocked": list(refreshed["blocked"])}
+    from alert_event_writer import resolve_alert_event_ids
+    for candidate in refreshed["candidates"]:
+        prior = reviewed[candidate["alert_id"]]
+        prior_observation = _recovery_time(prior.get("observed_at"))
+        if (candidate["condition_key"] != prior.get("condition_key") or prior_observation is None
+                or candidate["observation_key"] != prior.get("observation_key")
+                or _recovery_time(candidate["observed_at"]) < prior_observation):
+            result["blocked"].append({"alert_id": candidate["alert_id"], "reason": "reviewed_evidence_changed"})
+            continue
+        try:
+            changed = resolve_alert_event_ids([candidate["alert_id"]], source_script=_COMPONENT,
+                         resolved_by=resolved_by, observed_before_or_at=_recovery_time(candidate["observed_at"]))
+            result["resolved_ids"].extend(changed)
+        except Exception as exc:
+            result.update(ok=False, error=f"recovery_write_failed:{type(exc).__name__}")
+            break
+    return result
+
+
+def _recover_current_scan(scan: dict, started_at) -> dict:
+    """Automatically recover keyed incidents only after this scan persisted evidence."""
+    stops = scan.get("stops")
+    generated = _recovery_time(scan.get("generated_at"))
+    if (not isinstance(stops, list) or not stops or generated is None or generated < started_at
+            or scan.get("ok") is False or scan.get("errors")
+            or (scan.get("summary") or {}).get("total") != len(stops)):
+        return {"ok": False, "resolved_ids": [], "reason": "incomplete_scan"}
+    try:
+        observations = {}
+        for stop in stops:
+            identity = _stop_condition_key({**stop, "condition": "OBSERVATION_IDENTITY"})
+            if identity:
+                observations.setdefault(identity, []).append(stop)
+        fingerprints = {_stop_observation_key(matches[0]) for matches in observations.values()
+                        if len(matches) == 1 and matches[0].get("health") == "ok"}
+        if not fingerprints:
+            return {"ok": True, "resolved_ids": [], "reason": "no_complete_healthy_stop_observation"}
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT id FROM alert_events WHERE source_script=%s AND lifecycle_state='active'
+                               AND parsed_payload->>'condition_key' IS NOT NULL ORDER BY id LIMIT 201""", (_COMPONENT,))
+                ids = [row[0] for row in cur.fetchall()]
+        finally:
+            conn.rollback()
+        if not ids:
+            return {"ok": True, "resolved_ids": []}
+        plan = plan_stop_recovery(ids, max_ids=200, minimum_snapshot_at=started_at)
+        matching = []
+        for candidate in plan["candidates"]:
+            if candidate["observation_key"] in fingerprints:
+                matching.append(candidate)
+            else:
+                plan["blocked"].append({"alert_id": candidate["alert_id"], "reason": "scan_observation_conflict"})
+        plan["candidates"] = matching
+        result = apply_stop_recovery(plan, max_ids=200, resolved_by="auto:stop_health_verified_observation")
+        result["blocked"] = plan["blocked"] + result["blocked"]
+        return result
+    except Exception as exc:
+        return {"ok": False, "resolved_ids": [], "reason": f"recovery_unverified:{type(exc).__name__}"}
 
 
 def _hermes_finding(symbol: str, condition: str, line: str, payload: dict) -> None:
@@ -235,7 +533,9 @@ def _portfolio_drawdown_guard() -> dict | None:
 
 
 def run(quiet: bool = False) -> dict:
+    from datetime import datetime, timezone
     import stop_lifecycle_monitor as slm
+    scan_started_at = datetime.now(timezone.utc)
     res = slm.scan(persist=True)
     summary, alerts = res["summary"], res["alerts"]
     fired = []
@@ -264,9 +564,12 @@ def run(quiet: bool = False) -> dict:
                    **{k: r.get(k) for k in
                    ("account", "symbol", "broker", "order_id", "order_type", "stop_price", "qty",
                     "held_qty", "current_price", "proximity_pct", "coverage", "lifecycle", "health")}}
-        # dedup ALL persistence (SIEM + Telegram + Hermes) to one per (symbol,condition) per 2h — the cron
-        # runs every 10 min, so without this a single stop-out would write a row every run for hours.
-        if not _recently_alerted(sym, cond):
+        # Account/order identity prevents one account's alert suppressing another.
+        condition_key = _stop_condition_key(payload)
+        if condition_key:
+            payload["condition_key"] = condition_key
+        # Missing identity is never sufficient evidence to suppress a safety alert.
+        if not condition_key or not _recently_alerted(sym, condition_key):
             batch_alert_event_ids.append(
                 _siem(sym, sev, f"[stop-health] {cond} · {sym}@{acct} · {line}", payload))
             _hermes_finding(sym, cond, line, payload)   # enter Hermes' research stream (deduped via the same 2h window)
@@ -292,6 +595,9 @@ def run(quiet: bool = False) -> dict:
     if dd and dd.get("level") in ("warning", "critical"):
         fired.append(f"PORTFOLIO:{dd['condition']}")
     summary["portfolio_drawdown"] = dd
+    summary["incident_recovery"] = _recover_current_scan(res, scan_started_at)
+    if not summary["incident_recovery"].get("ok"):
+        print("stop_health: incident recovery unverified; alerts remain open", file=sys.stderr)
     _log_health_event(ok=(not alerts), summary=summary)
     if not quiet:
         print(f"stop_health: {summary['total']} stops · health {summary['by_health']} · "

@@ -32695,6 +32695,7 @@ def _system_siem_dashboard():
     """GET /api/v2/system/siem — SIEM-lite alert dashboard with live normalization."""
     import json as _jsiem
     from datetime import datetime as _dtsiem, timezone as _tzsiem, timedelta as _tdsiem
+    from lib.siem_incident_identity import incident_key
 
     cutoff = _dtsiem.now(_tzsiem.utc) - _tdsiem(days=14)
 
@@ -32703,7 +32704,7 @@ def _system_siem_dashboard():
         _db_query(
             """
         SELECT id, alert_type, symbol, severity, source_script,
-               LEFT(raw_text, 200) as raw_text, created_at, lifecycle_state
+               raw_text, parsed_payload, created_at, lifecycle_state
         FROM alert_events WHERE created_at > %s AND COALESCE(lifecycle_state,'active') <> 'resolved'
         ORDER BY created_at DESC LIMIT 200
     """,
@@ -32794,7 +32795,32 @@ def _system_siem_dashboard():
 
     events = []
     for r in ae_rows:
-        etype, esev = _classify(r.get("raw_text", "") + " " + (r.get("alert_type") or ""))
+        etype, esev = _classify((r.get("raw_text") or "") + " " + (r.get("alert_type") or ""))
+        stop_condition = None
+        if r.get("source_script") == "stop_health":
+            payload = r.get("parsed_payload")
+            if isinstance(payload, str):
+                try:
+                    payload = _jsiem.loads(payload)
+                except (ValueError, TypeError):
+                    payload = None
+            if isinstance(payload, dict):
+                stop_condition = payload.get("condition")
+            # Conditions are producer facts: "on trigger" in orphaned-stop
+            # advice is not evidence that the order actually triggered.
+            stop_types = {
+                "ORPHANED": ("STOP_ORPHANED", "P1"),
+                "OVERSIZED": ("STOP_OVERSIZED", "P1"),
+                "TRIGGERED": ("STOP_TRIGGERED", "P1"),
+                "NEAR_TRIGGER": ("STOP_NEAR_TRIGGER", "P2"),
+            }
+            if isinstance(stop_condition, str) and stop_condition in stop_types:
+                etype, esev = stop_types[stop_condition]
+                if r.get("severity") in {"critical", "urgent"}:
+                    esev = "P1"
+            else:
+                etype = "STOP_HEALTH"
+                esev = {"critical": "P1", "urgent": "P1", "warning": "P2"}.get(r.get("severity"), "P3")
         events.append(
             {
                 "id": f"ae-{r['id']}",
@@ -32804,9 +32830,13 @@ def _system_siem_dashboard():
                 "severity": esev,
                 "symbol": r.get("symbol"),
                 "component": r.get("source_script"),
-                "message": r.get("raw_text", "")[:150],
+                "message": (r.get("raw_text") or "")[:150],
                 "lifecycle_state": r.get("lifecycle_state") or "active",
-                "dedupe_key": f"{etype}:{r.get('symbol', 'sys')}:{r.get('source_script', '?')}",
+                "dedupe_key": (
+                    incident_key(r)
+                    if r.get("source_script") == "stop_health"
+                    else f"{etype}:{r.get('symbol', 'sys')}:{r.get('source_script', '?')}"
+                ),
             }
         )
     for r in she_rows:
@@ -32883,7 +32913,9 @@ def _system_siem_dashboard():
 
     events.sort(key=lambda e: e.get("timestamp") or "", reverse=True)
 
-    # Dedupe analysis
+    # Dedupe analysis. Keep the highest severity observed in each open group;
+    # a newer, lower-severity row is not evidence that the incident recovered.
+    _rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     dedupe = {}
     for e in events:
         dk = e["dedupe_key"]
@@ -32897,45 +32929,39 @@ def _system_siem_dashboard():
                 "last": e["timestamp"],
             }
         dedupe[dk]["count"] += 1
+        if _rank.get(e["severity"], 9) < _rank.get(dedupe[dk]["severity"], 9):
+            dedupe[dk]["severity"] = e["severity"]
         # events are sorted newest-first, so track true earliest/latest explicitly
         # (ISO8601 strings share a fixed tz offset → lexical min/max is chronological).
         dedupe[dk]["first"] = min(dedupe[dk]["first"], e["timestamp"])
         dedupe[dk]["last"] = max(dedupe[dk]["last"], e["timestamp"])
 
+    # Collapse duplicate rows, never the entire incident. The newest evidence
+    # represents each group, with its full repeat count and highest severity.
+    collapsed = {}
     for e in events:
-        g = dedupe[e["dedupe_key"]]
+        dk = e["dedupe_key"]
+        g = dedupe[dk]
         e["repeat_count"] = g["count"]
-        e["suppressed"] = g["count"] > 3
-
-    # Severity summary
-    sev = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
-    for e in events:
+        e["suppressed"] = dk in collapsed
         if not e["suppressed"]:
-            sev[e["severity"]] = sev.get(e["severity"], 0) + 1
+            collapsed[dk] = {**e, "severity": g["severity"]}
 
-    # Type summary
+    # Severity totals count visible groups once, regardless of repeat volume.
+    sev = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+    for e in collapsed.values():
+        sev[e["severity"]] = sev.get(e["severity"], 0) + 1
+
+    # Type totals retain all source rows as repeat evidence.
     type_counts = {}
     for e in events:
         t = e["event_type"]
         type_counts[t] = type_counts.get(t, 0) + 1
 
-    suppressed_count = sum(1 for e in events if e["suppressed"])
-    immediate_count = sum(1 for e in events if not e["suppressed"] and e["severity"] in ("P0", "P1"))
+    suppressed_count = len(events) - len(collapsed)
+    immediate_count = sev["P0"] + sev["P1"]
 
-    # Collapse events by dedupe_key — show latest per group with count
-    collapsed = {}
-    for e in events:
-        dk = e["dedupe_key"]
-        if dk not in collapsed:
-            collapsed[dk] = e.copy()
-        else:
-            # Keep the most recent one
-            if (e.get("timestamp") or "") > (collapsed[dk].get("timestamp") or ""):
-                old_count = collapsed[dk]["repeat_count"]
-                collapsed[dk] = e.copy()
-                collapsed[dk]["repeat_count"] = old_count
     # Critical-first: severity rank (P0..P3), then most-recent.
-    _rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
     for e in collapsed.values():
         g = dedupe[e["dedupe_key"]]
         e["first_seen"] = g["first"]
