@@ -38111,10 +38111,18 @@ def _journal_options_summary(query=None):
     g = lambda k: (q.get(k) or [None])[0] if isinstance(q.get(k), list) else q.get(k)
     import journal_trade_in_view as tiv
 
-    return tiv.options_journal_summary(g("account"), int(g("days") or 365),
-        limit=g("limit") or 25, offset=g("offset") or 0, strategy=g("strategy"),
-        status=g("status"), symbol=g("symbol"), spid=g("strategy_position_id"),
-        roll_root=g("roll_root"), export=str(g("export") or "") == "1")
+    return tiv.options_journal_summary(
+        g("account"),
+        int(g("days") or 365),
+        limit=g("limit") or 25,
+        offset=g("offset") or 0,
+        strategy=g("strategy"),
+        status=g("status"),
+        symbol=g("symbol"),
+        spid=g("strategy_position_id"),
+        roll_root=g("roll_root"),
+        export=str(g("export") or "") == "1",
+    )
 
 
 def _journal_export_csv(query=None):
@@ -40573,7 +40581,11 @@ def _options_proposals(query=None):
         combo = row.get("combined_exposure") or {}
         if combo:
             captured_combos[row.get("symbol")] = combo
-        if not row.get("workflow_version") and row.get("data_source") == "schwab_chain" and row.get("economics_revision") != "coherent_quote_v1":
+        if (
+            not row.get("workflow_version")
+            and row.get("data_source") == "schwab_chain"
+            and row.get("economics_revision") != "coherent_quote_v1"
+        ):
             liq = (row.get("enterprise") or {}).get("liquidity") or {}
             stamp_payoff(
                 row,
@@ -54707,9 +54719,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
-    if method == "POST" and base_path in ("/api/v2/options/proposal/prepare", "/api/v2/options/proposal/analysis", "/api/v2/options/proposal/review", "/api/v2/options/proposal/preview", "/api/v2/options/proposal/disposition"):
+    if method == "POST" and base_path in (
+        "/api/v2/options/proposal/prepare",
+        "/api/v2/options/proposal/analysis",
+        "/api/v2/options/proposal/review",
+        "/api/v2/options/proposal/preview",
+        "/api/v2/options/proposal/disposition",
+    ):
         try:
             from scripts.lib import options_workflow_service as workflow
+
             b = body if isinstance(body, dict) else {}
             if b.get("dry_run"):
                 return 400, {"ok": False, "error": "Dry tests use isolated adapters; this is a live review route"}
@@ -54720,31 +54739,54 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not p:
                     return 404, {"ok": False, "error": "Proposal not found"}
                 from scripts.lib import options_workflow as wf
-                draft = {**p, "contracts": wf.quantity(b.get("contracts", 1)), "tif": b.get("tif", "DAY"),
-                         "account": b.get("account_key"), "premium": b.get("limit_price") or p["premium"],
-                         "scenario_prices": b.get("scenario_prices") or []}
+
+                draft = {
+                    **p,
+                    "contracts": wf.quantity(b.get("contracts", 1)),
+                    "tif": b.get("tif", "DAY"),
+                    "account": b.get("account_key"),
+                    "premium": b.get("limit_price") or p["premium"],
+                    "scenario_prices": b.get("scenario_prices") or [],
+                }
                 return 200, _json_clean({"ok": True, "economics": wf.economics(draft), "requires_new_review": True})
             if not p or p.get("revision") != b.get("revision"):
                 return 409, {"ok": False, "error": "Proposal revision changed; refresh and review"}
             if base_path.endswith("/disposition"):
                 from options_thesis_lifecycle import record_analysis_disposition
-                return 200, _json_clean(record_analysis_disposition(p, workflow.analysis_result(p), str(b.get("note") or "")))
+
+                return 200, _json_clean(
+                    record_analysis_disposition(p, workflow.analysis_result(p), str(b.get("note") or ""))
+                )
             if base_path.endswith("/analysis"):
-                result = workflow.request_analysis(p) if b.get("request") else {"ok": True, "analysis": workflow.analysis_result(p)}
+                result = (
+                    workflow.request_analysis(p)
+                    if b.get("request")
+                    else {"ok": True, "analysis": workflow.analysis_result(p)}
+                )
                 return 200, _json_clean(result)
             reasons = workflow.check_review(p, b.get("revision"), account_key=b.get("account_key"))
             if reasons:
                 return 200, {"ok": False, "refusals": reasons}
             import options_desk_enterprise as ent
+
             analysis_id = p["analysis"]["id"]
-            bound = workflow.query("""UPDATE options_approval_queue
+            bound = workflow.query(
+                """UPDATE options_approval_queue
                 SET proposal_json=proposal_json || %s::jsonb, updated_at=NOW()
                 WHERE proposal_id=%s AND proposal_json->>'revision'=%s AND status<>'rejected'
                 RETURNING proposal_id""",
-                (workflow.json.dumps({"reviewed_analysis_id": analysis_id, "analysis": p["analysis"]}, default=str), p["id"], p["revision"]), fetch="one")
+                (
+                    workflow.json.dumps({"reviewed_analysis_id": analysis_id, "analysis": p["analysis"]}, default=str),
+                    p["id"],
+                    p["revision"],
+                ),
+                fetch="one",
+            )
             if not bound:
                 return 409, {"ok": False, "error": "Proposal changed before review; prepare again"}
-            return 200, _json_clean(ent.resolve_approval(p["id"], "approve", note="Reviewed options workflow revision " + p["revision"]))
+            return 200, _json_clean(
+                ent.resolve_approval(p["id"], "approve", note="Reviewed options workflow revision " + p["revision"])
+            )
         except ValueError as e:
             return 400, {"ok": False, "error": str(e)}
         except Exception as e:
@@ -54764,6 +54806,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not ok_ap:
                 return 200, {"ok": False, "mode": "blocked", "error": ap_reason, "gate": "desk_approval"}
             from scripts.lib.options_workflow_service import load_proposal, check_review
+
             proposal = load_proposal(proposal_id)
             if not proposal:
                 return 404, {"ok": False, "error": "proposal not found"}
@@ -54778,12 +54821,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # Only freshness-only failures permit this read-only repair. Every
             # original gate is rerun before intent creation or existing 2FA.
             stale_only = {"quote_stale", "option_chain_stale", "validation_stale"}
-            if (proposal.get("workflow_version") and not gate.get("ok")
-                    and gate.get("refusals") and all(r.get("code") in stale_only for r in gate["refusals"])):
+            if (
+                proposal.get("workflow_version")
+                and not gate.get("ok")
+                and gate.get("refusals")
+                and all(r.get("code") in stale_only for r in gate["refusals"])
+            ):
                 refusal = check_review(proposal, b.get("revision"), account_key=b.get("account_key"))
                 if refusal:
                     return 200, {"ok": False, "refusals": refusal}
                 from scripts.lib.options_workflow_service import refresh_review_quotes
+
                 refreshed = refresh_review_quotes(proposal)
                 if not refreshed.get("ok"):
                     return 200, _json_clean(refreshed)
@@ -54843,7 +54891,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": False, "mode": "blocked", "error": dec.reason, "proposal": proposal}
             req = oop.request_2fa(intent)
             if not req.get("ok"):
-                return 200, {"ok": False, "stage": "approval", "approval": req, "error": req.get("reason") or req.get("error")}
+                return 200, {
+                    "ok": False,
+                    "stage": "approval",
+                    "approval": req,
+                    "error": req.get("reason") or req.get("error"),
+                }
             spec = oop.order_from_intent(intent)
             return 200, {
                 "ok": True,
@@ -54882,6 +54935,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not cr.get("fully_approved"):
                 return 200, {"ok": True, "stage": "confirm", "fully_approved": False}
             from brokers.intent_submit_router import submit_fully_approved
+
             return 200, submit_fully_approved(intent_id)
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}

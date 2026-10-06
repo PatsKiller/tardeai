@@ -126,7 +126,7 @@ def directive_refusals(p):
     return reasons
 
 
-def analysis_prompt(p):
+def analysis_facts(p):
     # Public per-unit contract facts only: no account identity, holdings or portfolio
     # amounts leave the process. The opaque binding still covers reviewed sizing.
     unit = {**p, "contracts": 1}
@@ -148,6 +148,12 @@ def analysis_prompt(p):
          for k in ("option_return_pct", "stock_return_pct")}
         for row in unit_economics["scenarios"]
     ]
+    return facts
+
+
+def analysis_prompt(p):
+    # A fresh executable quote does not rewrite the facts the operator reviewed.
+    facts = p.get("analysis_facts") or analysis_facts(p)
     return ("Write a plain-language narrative: how this strategy works, cash required per contract compared with shares, "
             "expiry breakeven, target and downside scenarios, opportunity costs, dividend/extrinsic assignment risks, "
             "and uncertainties. Explain strategy fit, qualitative risk and alternatives. "
@@ -260,6 +266,7 @@ def prepare(body):
         raise ValueError("Canonical strategy identity unavailable")
     ent.enterprise_enrich_proposal(p, contract=p["legs"][0], cfg=ent.load_desk_config())
     oe._attach_options_thesis([p])
+    p["analysis_facts"] = analysis_facts(p)
     p["revision"] = wf.revision(p)
     p["source_proposal_id"] = p.get("source_proposal_id") or p["id"]
     p["id"] = p["source_proposal_id"] + ":r:" + p["revision"][:24]
@@ -364,6 +371,7 @@ def stage_reassessment(p, refreshed, eligible):
     stamp_proposal_identity(revised)
     ent.enterprise_enrich_proposal(revised, contract=revised["legs"][0], cfg=ent.load_desk_config())
     oe._attach_options_thesis([revised])
+    revised["analysis_facts"] = analysis_facts(revised)
     revised["revision"] = wf.revision(revised)
     revised["id"] = revised["source_proposal_id"] + ":r:" + revised["revision"][:24]
     revised["material_changes"] = refreshed["material_changes"]

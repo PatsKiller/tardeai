@@ -212,12 +212,21 @@ def test_model_wait_quote_refresh_keeps_reviewed_order_and_analysis(monkeypatch)
     monkeypatch.setattr(service, "refresh_exact", lambda value, **k: refresh_exact(value, **k, clock=lambda: NOW))
     monkeypatch.setattr(thesis, "OptionsThesisStore", lambda: SimpleNamespace(append_event=lambda *a, **k: events.append(k)))
     p["option_strategy_guid"] = "fixture-guid"
+    p["analysis_facts"] = service.analysis_facts(p)
+    original_prompt = service.analysis_prompt(p)
     p["revision"] = w.revision(p)
     refreshed = service.refresh_review_quotes(p)
     assert refreshed["ok"] and events
     assert refreshed["proposal"]["revision"] == w.revision(p)
     assert w.analysis_binding(refreshed["proposal"]) == w.analysis_binding(p)
     assert pilot.build_order_spec(refreshed["proposal"]) == pilot.build_order_spec(p)
+    refreshed["proposal"]["legs"][0].update(bid=2.01, ask=2.03, delta=.51)
+    refreshed["proposal"]["underlying_price"] += .01
+    assert service.analysis_prompt(refreshed["proposal"]) == original_prompt
+    assert w.analysis_binding(refreshed["proposal"]) == w.analysis_binding(p)
+    revised = copy.deepcopy(p)
+    revised["analysis_facts"]["underlying_price"] += 1
+    assert w.analysis_binding(revised) != w.analysis_binding(p)
 
 
 def test_subcent_limit_is_never_silently_changed():

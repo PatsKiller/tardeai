@@ -142,12 +142,12 @@ def order_binding(p: dict) -> dict:
 
 
 def revision(p: dict) -> str:
-    return digest({"order": order_binding(p), "economics": p.get("workflow_economics"), "lane": p.get("analysis_lane"), "generation": p.get("revision_generation")})
+    return digest({"order": order_binding(p), "economics": p.get("workflow_economics"), "lane": p.get("analysis_lane"), "generation": p.get("revision_generation"), "analysis_facts": p.get("analysis_facts")})
 
 
 def analysis_binding(p: dict) -> str:
     return digest({"order": order_binding(p), "economics": p.get("workflow_economics"),
-                   "lane": p.get("analysis_lane")})
+                   "lane": p.get("analysis_lane"), "analysis_facts": p.get("analysis_facts")})
 
 
 def analysis_refusals(p, result, *, now, max_age_seconds=86400):
