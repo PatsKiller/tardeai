@@ -2984,6 +2984,44 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md; scripts/portfolio_reconcile.py (read-only); tests/test_portfolio_price_truth_20261005.py."
+    },
+    {
+      "owner": "portfolio",
+      "state": "ACTIVE",
+      "state_since": "2026-10-06",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1460 (merged 65fbeecf3, live 2026-10-06); docs/ops/POSITIONS_FIXES_2026-10-06.md; tests/test_positions_store_phase1_20261006.py.",
+      "lane_id": "positions-sync",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "9,24,39,54 9-16 * * 1-5 cd $PROJ && flock -n /tmp/positions_sync.lock timeout 240 bash -c \"set -a; . ./.env; set +a; GIT_SHA=$(basename $(readlink -f $PROJ) | cut -d- -f1) $PY scripts/positions_sync.py --apply\" >> logs/positions_sync.log 2>&1",
+        "match": "scripts/positions_sync.py --apply"
+      },
+      "expected_cadence_hours": 0.25,
+      "state_reason": "Positions store phase 1 (shadow): the ONLY writer of position_snapshots/positions_current/position_lots/realized_lots/positions_sync_runs; read-only broker reads (Schwab, Alpaca live, moomoo). Operator approved phase 1 2026-10-06 ('yes start phase 1 and fix all of it') and 'merge push live'; cron grant approved via Telegram 2026-10-06. Heartbeat of record is positions_sync_runs (positions_sync.py --check-fresh); the log mtime is the registry's signal.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/positions_sync.log"
+      }
+    },
+    {
+      "owner": "portfolio",
+      "state": "ACTIVE",
+      "state_since": "2026-10-06",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1460 (merged 65fbeecf3, live 2026-10-06); docs/ops/POSITIONS_FIXES_2026-10-06.md; tests/test_positions_store_phase1_20261006.py.",
+      "lane_id": "positions-shadow-diff",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 17 * * 1-5 cd $PROJ && flock -n /tmp/positions_sync.lock timeout 120 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_sync.py --diff\" >> logs/positions_sync.log 2>&1",
+        "match": "scripts/positions_sync.py --diff"
+      },
+      "expected_cadence_hours": 24,
+      "state_reason": "Phase 2 evidence: nightly shadow diff of positions_current vs holdings.json plus the freshness contract; writes data/runtime/positions_shadow_diff_latest.json. Read-only toward brokers and holdings.json.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/positions_shadow_diff_latest.json"
+      }
     }
   ],
   "undeclared_baseline": [
