@@ -1115,6 +1115,13 @@ GATES = [
         "portfolio_price_truth_20261005",
         ["tests/test_portfolio_price_truth_20261005.py"],
     ),
+    # Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:
+    # per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment
+    # drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06).
+    (
+        "positions_store_phase1_20261006",
+        ["tests/test_positions_store_phase1_20261006.py"],
+    ),
     # Active Trader soul: "should have been" session review reproduces the operator's XNDU table;
     # automated mode is SIMULATION ONLY (one brain, sized to the ask supply, no live mode) (2026-10-05).
     (

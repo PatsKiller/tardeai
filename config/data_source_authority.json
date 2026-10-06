@@ -1,7 +1,7 @@
 {
   "schema": "DataSourceAuthority@v2",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-09-28T00:20:00-04:00",
+  "as_of": "2026-10-06T11:00:00-04:00",
   "_why": "One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.",
   "_rules": [
     "Every domain has exactly one writer. Anything else that writes the store is a defect.",
@@ -1099,7 +1099,53 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "_writer_note": "MEASURED 2026-10-06: holdings.json has several writers, not one — schwab_position_sync.py (*/15 shares+cash), sync_basis_from_broker.py (16:33 basis), portfolio_repricer.py (*/15 marks), alpaca_live_read_sync.py, moomoo_live_read_sync.py, holdings_reconcile.py, share_reconciliation.py (operator drift approvals), all through protected_holdings_write and (since 2026-10-06) the shared lock lib/holdings_write_lock.py. Two of them racing without the lock froze moomoo at 2026-09-28; the basis check comparing accounts against each other showed PL at +944%. The registry's writer field names the loader; the gate's UNCONSOLIDATED ceiling is table-only, so the count is recorded here instead. Target: positions_store (scripts/positions_sync.py) becomes the one writer; holdings.json becomes its read-only export (plan phase 4). Until then no NEW writer of holdings.json may be added."
+    },
+    {
+      "domain": "positions_store",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-06",
+        "reference": "Positions Source of Truth plan phase 1 — operator 2026-10-06 'yes start phase 1 and fix all of it' (session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); plan PR #1449, docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md",
+        "scope": "Broker-reported positions only (qty, cost basis, broker market value, cash) for the live Schwab, Alpaca live and moomoo accounts, plus FIFO lots/realized lots from the broker ledger; no market price is stored as truth. SHADOW: no reader until each phase-3 batch is approved."
+      },
+      "store": {
+        "table": "positions_current"
+      },
+      "writer": "scripts/positions_sync.py",
+      "cadence": "*/15 09:30-16:00 Mon-Fri once installed (cron after the deploy grant); heartbeat = positions_sync_runs",
+      "stale_after_hours": 0.5,
+      "stale_after_hours_closed": 72,
+      "projection": null,
+      "required_fields": [
+        "account_key",
+        "symbol",
+        "qty",
+        "cost_basis_total",
+        "as_of",
+        "sync_run_id"
+      ],
+      "primary_provider": "schwab",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "per_account_state_never_zero",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Tables position_snapshots (append-only), positions_current, position_lots, realized_lots, positions_sync_runs — migrations/2026_10_06_positions_store_phase1.sql. One writer, enforced by tests/test_positions_store_phase1_20261006.py. A run is promoted to positions_current only when every required account (the three Schwab accounts) read OK. Readers: none in phase 1 (shadow); phase 3 moves readers to it through lib/portfolio_positions.py in four operator-approved batches."
     },
     {
       "domain": "options_iv",

@@ -126,7 +126,21 @@ def main():
     lots = {(r[0], r[1].upper()): (float(r[2] or 0), float(r[3] or 0)) for r in cur.fetchall()}
 
     txn_hist, recent_xfer = _txn_history(cur)
+    try:
+        import yaml
+        basis_truth = str(((yaml.safe_load((PROJECT_ROOT / "config" / "portfolio_positions.yaml")
+                                           .read_text(encoding="utf-8")) or {}).get("positions") or {})
+                          .get("cost_basis_truth") or "broker")
+    except Exception:
+        basis_truth = "broker"
 
+    if a.apply:
+        # Hold the shared holdings write lock from this read to the write below, so the repricer cannot
+        # land an older copy on top of the basis fix (lost update, 2026-10-06). Released at process exit.
+        import contextlib
+        from lib.holdings_write_lock import holdings_write_lock
+        _lock = contextlib.ExitStack()
+        _lock.enter_context(holdings_write_lock())
     h = json.loads(HJ.read_text())
     changes = []
     for x in h.get("holdings", []):
@@ -140,9 +154,13 @@ def main():
         lot = lots.get((ak, sym))
         p = api.get((ak, sym))
         new_basis = new_src = None
-        if lot and qty and abs(lot[0] - qty) / qty <= 0.01:
+        have_api = bool(p and float(p["avg_entry_price"] or 0) > 0)
+        # cost_basis_truth=broker (operator 2026-10-05): a CSV lot matching within 1% must not outrank the
+        # broker. V Roth kept the April CSV lot ($39,951.37, 130 sh) after a 0.4985-sh DRIP the broker counts
+        # ($40,125.75) — 2026-10-06. The lot tier now only answers when the broker reports no average price.
+        if lot and qty and abs(lot[0] - qty) / qty <= 0.01 and not (basis_truth == "broker" and have_api):
             new_basis, new_src = lot[1], "csv_lot"                       # tier 1: true tax lots
-        elif p and float(p["avg_entry_price"] or 0) > 0:
+        elif have_api:
             new_basis, new_src = round(float(p["avg_entry_price"]) * qty, 2), "broker_api"   # tier 2
             # tier 1.5 — ACATS partial-basis guard: fresh transfer + complete purchase history
             # + broker basis provably short → the ledger's average cost is the truth.

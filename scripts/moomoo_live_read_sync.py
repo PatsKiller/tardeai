@@ -111,6 +111,20 @@ def _to_holdings_rows(snap: dict) -> list[dict]:
 
 
 def _merge(rows: list[dict], *, dry_run: bool, preserve_prior_cash: bool) -> dict:
+    """Replace only this account's rows, under the shared holdings write lock.
+
+    2026-10-06: this read-modify-write ran WITHOUT scripts/lib/holdings_write_lock.py while the repricer
+    (same */15 minute, ~60 s cycle) held it, so the repricer wrote back its older copy and every moomoo
+    write since 2026-09-28 was lost — the account froze at 09-28, which drove the CC "⚠ STALE" badge.
+    The Alpaca read sync has taken this lock since 2026-09-08."""
+    if dry_run:
+        return _merge_locked(rows, dry_run=True, preserve_prior_cash=preserve_prior_cash)
+    from lib.holdings_write_lock import holdings_write_lock
+    with holdings_write_lock():
+        return _merge_locked(rows, dry_run=False, preserve_prior_cash=preserve_prior_cash)
+
+
+def _merge_locked(rows: list[dict], *, dry_run: bool, preserve_prior_cash: bool) -> dict:
     """Replace only this account's rows; every other account is untouched."""
     if not HOLDINGS_PATH.exists():
         return {"ok": False, "error": "holdings.json missing"}

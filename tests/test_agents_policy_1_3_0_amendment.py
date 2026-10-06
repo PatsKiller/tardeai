@@ -31,7 +31,8 @@ def _section(title_prefix: str) -> str:
 
 
 def test_1_3_0_is_active_and_dated():
-    assert _control("Policy-Version") == "1.3.0"
+    # 1.3.0 or a later version that keeps its text (1.4.0, 2026-10-06, adds §7A positions rules only).
+    assert tuple(int(x) for x in _control("Policy-Version").split(".")) >= (1, 3, 0)
     assert _control("Status") == "ACTIVE"
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date"))
 

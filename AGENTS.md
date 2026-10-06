@@ -1,17 +1,19 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.3.0
+Policy-Version:      1.4.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-09-27
-Last-Reviewed:       2026-09-27T20:00:00-04:00
+Effective-Date:      2026-10-06
+Last-Reviewed:       2026-10-06T11:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.2.7
+Supersedes:          1.3.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**1.4.0 (2026-10-06, MINOR, operator-directed)** adds the positions source-of-truth rules to §7A ("Positions, cost basis and portfolio value"). Nothing else changes; the 1.3.0 text below still governs.
 
 **1.3.0 is ACTIVE from 2026-09-27 — MAJOR.** Ratified by the operator 2026-09-27
 (`APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173`, amendment reviewed,
@@ -1530,6 +1532,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `market_regime` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` | operator 2026-09-13 |
 | **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | — | fmp | `UNKNOWN_blocks_options_gate` | operator 2026-09-13 |
 | **holdings_accounts** | ingested | `portfolios/state/holdings.json` | `scripts/portfolio_loader.py` | broker sync + */15 repricer | 24h | `portfolio_snapshot` | schwab | alpaca | — | `per_account_state_never_zero` | operator 2026-09-13 |
+| **positions_store** | ingested | `positions_current` | `scripts/positions_sync.py` | */15 09:30-16:00 Mon-Fri once installed (cron after the deploy grant); heartbeat = positions_sync_runs | 0.5h | — | schwab | — | — | `per_account_state_never_zero` | operator 2026-10-06 |
 | **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | `option_chain` | schwab | — | — | `call_out_at_read_time` | operator 2026-09-13 |
 | **research_thesis** | native | `hermes_research_intelligence` | `scripts/lib/writers/hermes_research_writer.py` | 8 scheduled lanes | 168h | `research_card` | internal | research_insights, governed_pull:brave>searxng | — | `say_so_queue_only_if_producer_exists` | operator 2026-09-13 |
 | **watch_directives** | native | `watch_directives` | `scripts/lib/writers/watch_directives_writer.py` | 3 scheduled | 48h | `watch_intelligence` | internal | — | — | `say_so` | operator 2026-09-13 |
@@ -1579,6 +1582,73 @@ rule (snapshots: newer wins, loser archived; append-only ledgers: line-level uni
 nothing deleted). The receipt is `persistent-state/data/runtime/served_copy_reconcile_receipt.json`;
 the archive is `/home/johnclaw/trade-ai-releases/archive/served_copy_split_20260913/` and any
 reference to that path from live code, cron or a unit file trips the split monitor.
+
+## Positions, cost basis and portfolio value — the source of truth `[VERIFIED]` 2026-10-06
+
+The operator's instruction, verbatim (2026-10-06): *"fix all of it, document fixes, edit agents.md with
+correct source of truth so no other agents changes and see the config rules."* This subsection is that
+rule. It was written after the Command Center was checked line by line against a live, read-only Schwab
+pull (10:15 ET): account values and cash matched to the cent, but PL showed 1,000 shares at a $1,766 cost
+(+944%; the broker says $18,398), V in the Roth kept a stale basis, PFLT waited four days for a
+reinvestment click, and moomoo had been frozen at 2026-09-28. Every one of those came from a writer
+changing a position it did not own, or two writers racing.
+
+**What is the truth for each fact — today (plan phase 1, shadow):**
+
+| Fact | Truth | Where an agent reads it | Never |
+|---|---|---|---|
+| Shares, cash | The broker's own read (Schwab trader API, Alpaca live, moomoo OpenD), written by the account's read sync | `scripts/lib/portfolio_positions.py` (`load_store`) → holdings.json rows | a number from a report, a chat, a CSV, or another account |
+| Cost basis | **The broker's average cost × shares, for that same account** (`positions.cost_basis_truth: broker`) | the row's `cost_basis` with `cost_basis_source` | a CSV lot or "manual repair" that disagrees with the broker; a symbol's basis from another account |
+| Price, value, day change, P&L | The data-broker quote at read time, with its `as_of` (`resolve_mark` / `value_and_pl`) | `lib/portfolio_positions.py` | a stored `current_price`; any price without an age |
+| Realized P&L | Broker sells matched to broker buys (`trade_closed`); unknown basis stays unknown | `/api/v2/journal`, `scripts/portfolio_reconcile.py` | a guessed zero cost for a transferred lot |
+| Account labels | `broker_accounts.account_key` (`schwab_roth_ira`); holdings.json still says `schwab_roth` | map through the alias, never by string guess | — |
+
+**What was fixed and why:** `docs/ops/POSITIONS_FIXES_2026-10-06.md`.
+
+**The positions store (phase 1, shadow).** Tables `position_snapshots`, `positions_current`,
+`position_lots`, `realized_lots`, `positions_sync_runs` (`migrations/2026_10_06_positions_store_phase1.sql`)
+have exactly one writer, `scripts/positions_sync.py`; registry domain `positions_store`. Nothing reads them
+until the operator approves each phase-3 reader batch. The plan of record is
+`docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md`; read it first and update its Status table.
+
+**Rules, enforced by `tests/test_positions_store_phase1_20261006.py` and the registry gate:**
+
+1. **Do not add a writer of holdings.json or of the positions tables.** holdings.json is
+   written by seven scripts today (listed in the registry `_writer_note` for `holdings_accounts`); that count may only fall. A new
+   writer is an operator grant (§17), not a code change.
+2. **Every read-modify-write of holdings.json holds `lib/holdings_write_lock.py`** from the read to the
+   write. moomoo's sync did not, and the repricer wrote its older copy over every moomoo write for eight
+   days.
+3. **Compare and repair per (account, symbol), never per symbol.** The basis check keyed by symbol
+   compared V Roth with V Rollover and then *reverted* PL's correct new basis.
+4. **When `cost_basis_truth` is `broker`, the broker's basis is applied, not "protected" against.** Only
+   `anchor` keeps a stored basis over the broker's.
+5. **No hard-coded thresholds in position surfaces.** They live in `config/portfolio_positions.yaml`.
+6. **Broker data is read only through the existing read clients** (`schwab_transport` read functions,
+   `brokers/alpaca_read_client.py` GET-only, `moomoo.client.MoomooTradeReader`), by scheduled jobs or at
+   the operator's explicit request. Nothing in this subsection grants any order, stop or account change.
+7. **Validate before you claim.** `scripts/portfolio_reconcile.py` (read-only) compares every position
+   and every closed sale with the broker. Quote its output; "looks right" is not evidence.
+
+**The config rules — `config/portfolio_positions.yaml`.** Changing any of these keys is an operator decision.
+
+| Key | Value | Means |
+|---|---|---|
+| `positions.cost_basis_truth` | `broker` | the broker's cost wins (operator 2026-10-05); `anchor` only for accounts with no broker basis |
+| `positions.share_drift_drip_auto` | `true` | a reinvestment-sized share increase is applied from broker data and logged `auto_drip` (operator 2026-10-06) |
+| `positions.table_hide_below_usd` | `0` | Portfolio table hides nothing the broker reports (was a hard-coded $50) |
+| `positions.price_stale_after_s` | `21600` | a mark older than 6 h shows as stale |
+| `positions.*_tolerance*` | `1.0` / `0.001` | reconciliation tolerances (price %, value $, basis $, qty) |
+| `positions_sync.required_accounts` | the three Schwab accounts | a run is promoted only when all of them read OK |
+| `positions_sync.optional_accounts` | Alpaca live, moomoo | read when reachable; a failure keeps their last rows with their own `as_of` |
+| `positions_sync.stale_after_minutes_market` | `30` | the freshness contract (`positions_sync.py --check-fresh`) |
+| `closed.test_accounts` | `health`, `journal_check` | probe rows, never trades |
+
+**Known gaps, measured 2026-10-06 — do not paper over them:** Schwab's ledger stores transfer quantities
+without a direction, so lots rebuilt from it over-count (SCHG 12,000 vs the broker's 2,000); lots stay
+evidence only until phase 2 resolves that. The 33 sells whose basis came by ACATS ($901,194 proceeds) stay
+out of REALIZED until the Schwab Realized Gain/Loss export is imported. Three surfaces still compute
+"today" three ways (header, Returns, Portfolio page); unifying them is a phase-3 reader batch.
 
 ---
 
@@ -3767,6 +3837,7 @@ superseded).
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.4.0 | 2026-10-06 | ACTIVE on merge | MINOR | §7A gains "Positions, cost basis and portfolio value — the source of truth": the truth per fact (shares/cash = broker read; basis = broker average × shares for the same account; price = data-broker quote at read time; realized = broker-matched sells), the shadow positions store and its single writer `scripts/positions_sync.py`, seven enforced rules (no new holdings.json writer; shared write lock; per (account, symbol) comparisons; broker basis applied not reverted; no hard-coded thresholds; read-only broker clients only; validate with `portfolio_reconcile.py`), the `config/portfolio_positions.yaml` rule table, and measured known gaps. Adds obligations, weakens nothing; §0, §2, §17 and role authority untouched. | **Operator-directed** 2026-10-06 ("edit agents.md with correct source of truth so no other agents changes and see the config rules"). |
 | 1.3.0 | 2026-09-27 | ACTIVE | MAJOR | §22 added: operator-directed resolution of the §0/§1 broker prohibition vs architecture v3.3 — authority hierarchy, five distinct authorities (coding, simulation, deployment, live activation, broker order authority), LLMs never hold live activation or order authority, `TradingSessionGrant@v1` verified at the broker mutation boundary (pure verifier + 26 negative tests; not wired until ratified), Stage 14 keeps its separate operator start, and AI_WORK_POLICY.md's push budget outranks the implementation program (v1.2). §0/§1/§2B/§17 text unchanged until ratification; replacement text in `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`. Adds companion `AGENT_OPERATING_STANDARDS_v1.md`, `REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`, `.github/CODEOWNERS` (advisory until code-owner review is required), `.github/pull_request_template.md`. | **RATIFIED 2026-09-27** — `APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173`; operator direction 2026-09-25 ("Yes, mine, draft it"); independent review confirmed by the operator 2026-09-27; ratification condition: A1/A2 on the execution file set only under an active per-task `execution-engineering` grant ("approve the amendment with a process of the approval to do when we need"). Ratifying edit: §0 rule 2 (and the four adapters), §1, §2B, §17, §22 status. |
 | 1.2.7 | 2026-09-24 | ACTIVE — merged PR #1227 `756eb977e` 2026-09-24T21:31:15-04:00 | PATCH | §13.4 corrected to what shipped in PRs #1223/#1225/#1226 (live 2026-09-24 as `7a9dcec26`): `InstrumentRecord@v1` gains the shipped `beliefs[]` block (`InstrumentBelief@v1`, written only by `cio_belief_writer` through `apply_belief`, read by the research gate / L3 question / `default_decide`) and retires the `priors` / `scored_lessons[]` SPECIFIED lines; `last_outcome` documented as the research-gate route; subject-key namespace records `INDUSTRY:`/`THEME:` tags-only by policy (`is_mintable` → `tags_only_by_policy`) and `SECTOR:` mintable-with-no-producer; narrative-subject table gains `OPTION_CONTRACT` (a `security_guid`, `share_class="option"`, no options id prefix; `expiration_guid`/`strike_guid` not minted). Lanes `commitment-outcome-sweep` (18:20) and `instrument-belief-writer` (18:50) installed under an operator cron grant and declared ACTIVE. No rule added, nothing weakened; §0/§2/§17 untouched. | Rides `APPROVE_AGENTS_POLICY_1_2_0` (sections outside §0/§2/§17) |
 | 1.2.6 | 2026-09-20 | ACTIVE — merged PR #1145 2026-09-20T15:13:47-04:00 (amended by PR #1153, 19:18:34-04:00, no bump) | MINOR | §6: a dry run must not be able to REACH the mutation — `--dry-run` called `claim_due()` and stranded the row it previewed (PR #1143) — and anything that claims work owes a reclaimer. §12: `should_scheduled_skip` superseded by `lib/llm_deferral`; out-of-window paid work is queued in `llm_deferred_requests` and drained by lane `llm-deferred-drain`; three operator-set caller tiers; `LLM_DEFER_OFFPEAK` arming; measured 21% (965/4,590) blast radius of arming globally (PR #1134), and records that the process-boundary wrapper (25 active crontab lines) still DROPS. §9.3: a refused scheduled call is queued not dropped; `llm-deferred-drain` and `llm-provider-health` declared. No change to §0, §2, §17 or role authority. **Amendment (PR #1153, same version):** Research lanes + §13.4 dark list: `hermes_advisory_event_enqueue` → **RETIRED** after Operator-Token `APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE` (PR #1151) and follow-on `lane_registry` row `hermes-advisory-event-enqueue` (EXPECTED_SILENT; manual CLI retained; no archive). No change to §0, §2, §17 or role authority. | **Operator-directed** 2026-09-20 ("update documentation agents.md"). MINOR — adds proof obligations, weakens nothing; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
