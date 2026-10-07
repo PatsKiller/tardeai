@@ -14,6 +14,20 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _resolve_log(log_file: str) -> Path:
+    """Where the job writes. Jobs that run as systemd units with StandardOutput=append: write under the
+    persistent state root (TRADEAI_STATE_ROOT, or <releases>/persistent-state next to the served tree),
+    not under the code tree's logs/. 2026-10-07: the telegram handler became tradeai-telegram-callback-
+    poller.service and its log moved there; the agent kept looking in logs/telegram_commands.log, reported
+    MISSING forever and 'retried' it twice a day (exit 127: .venv/bin/python is not in the served tree)."""
+    code = PROJECT_ROOT / "logs" / log_file
+    if code.exists() or not log_file:
+        return code
+    root = os.getenv("TRADEAI_STATE_ROOT") or str(PROJECT_ROOT.parent.parent / "persistent-state")
+    state = Path(root) / "logs" / log_file
+    return state if state.exists() else code
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from dotenv import load_dotenv
@@ -117,12 +131,17 @@ MONITORED_COMPONENTS = [
     {"component": "aegis_morning_brief", "display": "Aegis Morning Brief",
      "schedule": "5 8 * * 1-5", "log_file": "aegis_brief.log",
      "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/aegis_morning_brief_delivery.py",
+     "retired": "2026-09-14 operator decision: one 07:30 ET brief (lane morning-brief-0730); the 08:05 "
+                "aegis_morning_brief_delivery lane is RETIRED in config/lane_registry.json. The agent kept "
+                "it MISSING and retried the retired sender twice a day until 2026-10-07 (exit 127 only "
+                "because .venv/bin/python is absent from the served tree).",
      "downstream": "daily brief delivery"},
-    {"component": "telegram_command_handler", "display": "Telegram Bot Daemon",
-     "schedule": "*/2 * * * *", "log_file": "telegram_commands.log",
+    {"component": "telegram_command_handler", "display": "Telegram callback poller (systemd)",
+     # 2026-10-07: the handler is tradeai-telegram-callback-poller.service (lane telegram-callback-poller,
+     # Restart=always, RestartSec=5) logging every ~25 s to <state root>/logs/telegram_callback_poller.log.
+     # No retry_cmd: launching a second --poll process would duplicate getUpdates polling; systemd restarts it.
+     "schedule": "*/2 * * * *", "log_file": "telegram_callback_poller.log",
      "max_age_min": 5, "max_runtime_sec": 60, "critical": True,
-     "retry_cmd": ".venv/bin/python scripts/telegram_command_handler.py --poll",
      "downstream": "operator commands, approval buttons"},
 
     # ── Cleanup & Governance ──
@@ -624,7 +643,7 @@ def _check_log_freshness(log_file, max_age_min, prev_fire=None, now=None, grace_
     job is not scheduled to run (e.g. weekday-only jobs flagged STALE on weekends).
     Falls back to the fixed `max_age_min` threshold when no schedule context is given.
     """
-    log_path = PROJECT_ROOT / "logs" / log_file
+    log_path = _resolve_log(log_file)
     if not log_path.exists():
         return {"status": "MISSING", "age_min": None, "last_line": None}
     try:
@@ -663,7 +682,7 @@ def check_youtube_transcript_freshness(conn=None, *, now=None, max_db_age_hours:
     when conn/log path are mocked. Does not invent data.
     """
     now = now or datetime.now(timezone.utc)
-    log_path = PROJECT_ROOT / "logs" / log_file
+    log_path = _resolve_log(log_file)
     result = {
         "component": "youtube_transcripts",
         "status": "MISSING",
@@ -773,7 +792,7 @@ def _check_output_validity(component, log_file, error_signatures=None, success_s
     success_signatures: markers of a good run; a failure signature is only honored when it is MORE RECENT
     than the last success marker, so a stale error earlier in the log window doesn't flag a run that has
     since recovered."""
-    log_path = PROJECT_ROOT / "logs" / log_file
+    log_path = _resolve_log(log_file)
     if not log_path.exists():
         return {"valid": False, "reason": "log_missing"}
     try:
@@ -808,7 +827,10 @@ def _attempt_retry(comp, conn):
         return False
     component = comp["component"]
 
-    # Check retry count today
+    # Check retry count today. Default FIRST: when the shared connection is closed or aborted the
+    # SELECT raises, and the name must still exist below (2026-10-07: 1,082 UnboundLocalError
+    # tracebacks in logs/system_health_agent.log; every --apply run died at the first retry).
+    retries_today = 0
     try:
         cur = conn.cursor()
         cur.execute("""SELECT COUNT(*) FROM system_health_events
@@ -1142,6 +1164,15 @@ def run_health_check(dry_run=True, verbose=False):
     for comp in MONITORED_COMPONENTS:
         if comp.get("retired"):
             continue  # a disabled lane is neither checked nor retried
+        if conn is None or getattr(conn, "closed", 0):
+            # db_adapter hands out one shared connection; another helper may have closed and
+            # replaced it mid-run (2026-10-07: "Failed to log event: connection already closed"
+            # from the aegis check onward, then the retry crashed). Re-fetch, never run blind.
+            conn = _get_conn()
+            if conn is None:
+                log.error("DB connection lost mid-run and could not be re-established")
+                report["error"] = "db_lost"
+                break
         component = comp["component"]
         log_file = comp.get("log_file", "")
 
