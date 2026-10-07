@@ -113,3 +113,16 @@ def walk_to_artifact(client: GatewayClient, idempotency_key: str, artifact_ref: 
 
 def _brief(r: Mapping[str, Any]) -> dict:
     return {"state": r.get("state"), "reason": r.get("reason"), "durable": r.get("durable")}
+
+
+def ack_keyboard(idempotency_key: str, *, label: str = "Acknowledge") -> dict:
+    """Inline keyboard for an operator ack on a coordination event (Telegram callback_data ≤ 64 bytes).
+
+    Senders remain the existing chokepoints; this only shapes the button. The callback is handled by
+    scripts/telegram_callback_handler.py (`ack:<idempotency_key>`), which records a consumer receipt
+    and nothing else.
+    """
+    data = f"ack:{idempotency_key}"
+    if len(data.encode("utf-8")) > 64:
+        raise ValueError("callback_data exceeds Telegram's 64-byte limit")
+    return {"inline_keyboard": [[{"text": label, "callback_data": data}]]}
