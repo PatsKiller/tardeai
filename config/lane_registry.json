@@ -3041,6 +3041,22 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md; tests/test_positions_proof_phase2_20261006.py."
+    },
+    {
+      "lane_id": "approval-reminder-reconcile",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "12 * * * * cd $PROJ && TRADEAI_SERVED_SHA=$(cat $PROJ/GIT_SHA) flock -n /tmp/tradeai_approval_reconcile.lock $PY scripts/approval_reminder_reconcile.py --write >> $HOME/trade-ai-releases/persistent-state/logs/approval_reminder_reconcile.log 2>&1",
+        "match": "scripts/approval_reminder_reconcile.py --write"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/approval_reminder_reconcile_last.json"
+      },
+      "note": "Operator 2026-10-07: schedule the reconciler. Runs 7 min after approval-package-reminder (minute 5); reads the reminder's run receipt + data/runtime/approval_reminder_transport.jsonl (provider message ids the transport returned, recorded by the reminder since this change) and is the ONLY writer of DELIVERY_OBSERVED. Never sends. Installed on the host after promotion of this tree."
     }
   ],
   "undeclared_baseline": [
