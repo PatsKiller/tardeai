@@ -311,19 +311,29 @@ def test_dry_run_sends_nothing(capture_transport, monkeypatch, tmp_path):
 def test_the_monitor_is_scheduled_and_declared_as_a_lane():
     """An alarm nobody runs is the outage it was written for, one level up.
 
-    The lane must also be discoverable: `scheduler.match` is what
-    `lib.lane_registry._scheduler_present` looks for inside a crontab line.
+    2026-10-07: the hourly cron line was absorbed by the health tick (cron consolidation rank 3), so the
+    lane row is RETIRED and names its successor; the schedule must then be provable on the successor's
+    step table, not assumed. The durable artifact is unchanged either way.
     """
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
-    lane = next((l for l in reg["lanes"] if l["lane_id"] == "llm-provider-health"), None)
+    lanes = {l["lane_id"]: l for l in reg["lanes"]}
+    lane = lanes.get("llm-provider-health")
     assert lane, "config/lane_registry.json must declare llm-provider-health"
-    assert lane["state"] == "ACTIVE"
-    assert lane["scheduler"]["kind"] == "cron"
-    assert "check_llm_provider_health.py" in lane["scheduler"]["match"]
     # A lane is verified by a durable artifact, never by an exit code.
     assert lane["output_signal"]["kind"] == "file_mtime"
     assert lane["output_signal"]["path"] == "data/runtime/llm_provider_health.json"
     assert lane["expected_cadence_hours"] <= 3
+    if lane["state"] == "ACTIVE":
+        assert lane["scheduler"]["kind"] == "cron"
+        assert "check_llm_provider_health.py" in lane["scheduler"]["match"]
+        return
+    assert lane["state"] == "RETIRED" and lane.get("superseded_by"), lane["state"]
+    successor = lanes[lane["superseded_by"]]
+    assert successor["state"] == "ACTIVE", "the successor of a retired alarm lane must itself be scheduled"
+    steps = json.loads((ROOT / "config" / "health_tick_steps.json").read_text())["steps"]
+    step = next((st for st in steps if any("check_llm_provider_health.py" in str(a) for a in st["command"])), None)
+    assert step, "the health tick step table must carry check_llm_provider_health.py"
+    assert step["cadence_minutes"] <= 180
 
 
 def test_an_undeliverable_alert_is_recorded_not_just_logged(monkeypatch, tmp_path):
