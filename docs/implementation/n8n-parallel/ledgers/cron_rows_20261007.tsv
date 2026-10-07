@@ -1,0 +1,484 @@
+schedule	script	tree	registry	command_head
+45 7,10,12,13,16 * * 1-5	run_scheduled_quote_refresh.sh	CURRENT	ub	/usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-ser
+*/15 10-20 * * *	run_watchlist_agent_jobs_offpeak.sh	CURRENT	ub	/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_watchlist_agent_jobs_offpeak.sh >> /home
+*/30 9-15 * * 1-5	run_automated_trade_proposal_revalidation.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+*/5 9-15 * * 1-5	run_scheduled_quote_refresh.sh	CURRENT	ub	/usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-ser
+*/2 9-16 * * 1-5	paper_trade_monitor.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> log
+*/5 9-16 * * 1-5	paper_execution_sweep.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_sweep.lock bash scripts/market_day_gate.sh $PY scripts
+0 10 * * 0	multi_tier_trade_reviewer.py	CURRENT	ub	cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> l
+0 10 * * 1-5	cleanup_stale_proposals.py	CURRENT	ub	cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1
+0 10 * * 1-5	finviz_screener_runner.py	CURRENT	ub	cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_scre
+0 10 1 * *	youtube_channel_discovery.py	CURRENT	ub	cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1
+0 10-15 * * 1-5	agent_router_cron.sh	releases-other	ub	$PROJ/scripts/agent_router_cron.sh light
+0 10-16 * * 1-5	alpaca_paper_adapter.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/alpaca_recon.lock $PY scripts/alpaca_paper_adapter.py --sync
+0 10-16 * * 1-5	data_gap_resolver.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/data_gap_resolver.py >> logs/data_
+0 11 1 * *	multi_tier_trade_reviewer.py	CURRENT	ub	cd $PROJ && flock -n /tmp/monthly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier monthly >>
+0 9 * * 1-5	trade_ai_orchestrator.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-
+0 10 * * 1-5	trade_ai_orchestrator.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-
+0 12 * * 1-5	trade_ai_orchestrator.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-
+0 13 * * 1-5	finviz_enrichment.py	CURRENT	ub	cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1
+0 14 * * 1-5	trade_ai_orchestrator.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-
+0 16 * * 1-5	trade_ai_orchestrator.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-
+0 16 * * 1-5	send_alert_digest.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash scripts/market_day_gate.sh $PY scripts/se
+0 18 * * *	rescan_tickets.py	CURRENT	ub	cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/rescan_tickets.py >> logs/rescan.log 2>&1
+0 18 * * 1-5	data_gap_resolver.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/data_gap_resolver.py --pre-overnig
+0 19 * * 1-5	youtube_transcript_ingest.py	CURRENT	ub	cd $PROJ && $PY scripts/youtube_transcript_ingest.py --all-channels >> logs/youtube_ingest.log 2>&1
+0 20 * * 1-5	sec_data_ingest.py	CURRENT	ub	cd $PROJ && $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1
+0 20 * * 1-5	run_scheduled_atp2_research_cycle.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_atp2_research_cycle.sh
+0 20 * * 6	run_pipeline.py	CURRENT	ub	cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py >> logs/pipeline.log 2>&1
+0 21 * * 0	generate_weekly_docx.py	CURRENT	ub	cd $PROJ && flock -n /tmp/weekly_docx.lock $PY scripts/generate_weekly_docx.py >> logs/weekly_docx.log 2>&1
+0 20 * * 1-5	auto_research.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- $PY scripts/auto_research.py --ch
+0 3 * * *	strategy_config_loader.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/strategy_config_loader.py --sync-d
+0 3 1 * *	cd	CURRENT	ub	cd $PROJ && $PY -c "import sys; sys.path.insert(0,'scripts'); from transcript_processor import set_purge_dates
+0 4 * * 1-5	run_scheduled_atp2_research_cycle.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deeps
+0 6 * * 1-5	telegram_smart_alerts.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/telegram_smart_alerts.py --check-all --telegram >> log
+0 6 1 * *	backup_verify.py	CURRENT	ub	cd $PROJ && flock -n /tmp/backup_verify.lock $PY scripts/backup_verify.py >> logs/backup_verify.log 2>&1
+0 7,8,9,10,11,12,13,14,15,16,17 * * 1-5	incubator_proposal_promoter.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/incubator_promoter.lock $PY scripts/incubator_proposal_promo
+0 8 * * 0	agent_intelligence_cron.sh	releases-other	ub	$PROJ/scripts/agent_intelligence_cron.sh deep
+0 8 * * 0	data_gap_resolver.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/data_gap_resolver.py --weekly-audi
+0 8 * * 1	external_market_data_ingest.py	CURRENT	ub	cd $PROJ && $PY scripts/external_market_data_ingest.py --fundamentals >> logs/market_data.log 2>&1
+0 8 * * 1-5	iterate_research_topics.py	CURRENT	ub	cd $PROJ && $PY scripts/iterate_research_topics.py --telegram >> logs/research_iterate.log 2>&1
+0 8 * * 1-5	send_alert_digest.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash scripts/market_day_gate.sh $PY scripts/se
+30 7 * * 1-5	send_morning_brief.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash scripts/market_day_gate.sh $PY scripts/se
+0 8,20 * * 1-5	paper_performance_governance.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/paper_performance_governance.py --
+0 9 * * 1-5	run_scheduled_atp2_research_cycle.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_atp2_research_cycle.sh
+10 12,15 * * 1-5	system_health_alerts.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/system_health_alerts.py >> logs/system_health_alerts_c
+10 16 * * 1-5	run_scheduled_stale_proposal_sweeper.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n -E 99 /tmp/tradeai_stale_proposal_swe
+15 6 * * 1-5	agent_router_cron.sh	releases-other	ub	$PROJ/scripts/agent_router_cron.sh full
+15 7 * * 1-5	external_market_data_ingest.py	CURRENT	ub	cd $PROJ && $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1
+15 7 * * 1-5	write_state_freshness_history.py	CURRENT	ub	cd $PROJ && $PY scripts/write_state_freshness_history.py >> logs/state_freshness_db_cron.log 2>&1
+15 7 * * 1-5	portfolio_orchestrator.py	CURRENT	reg	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_orch.lock $PY scripts/portfolio_orchestrator.py >>
+15 8 * * 1-5	run_scheduled_stale_proposal_sweeper.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n -E 99 /tmp/tradeai_stale_proposal_swe
+20 7 * * 1-5	price_db_sync.py	CURRENT	ub	cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1
+20 7 * * 1-5	llm_intelligence_enrichment.py	CURRENT	ub	cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichmen
+20 16 * * 1-5	llm_intelligence_enrichment.py	CURRENT	ub	cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichmen
+20 12 * * 1-5	llm_intelligence_enrichment.py	CURRENT	ub	cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichmen
+25 6 * * 1-5	agent_intelligence_cron.sh	releases-other	ub	$PROJ/scripts/agent_intelligence_cron.sh daily
+25 8 * * 1-5	run_scheduled_stale_proposal_sweeper.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n -E 99 /tmp/tradeai_stale_proposal_swe
+30 0 * * 2-6	run_scheduled_atp2_research_cycle.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_atp2_research_cycle.sh
+30 10 * * 0	rebalance_verifier.py	CURRENT	ub	cd $PROJ && flock -n /tmp/rebalance_verify.lock $PY scripts/rebalance_verifier.py >> logs/rebalance_verifier.l
+30 11 * * 1-5	run_scheduled_watchpool_alerts.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_watchpool_alerts.sh --
+30 11,14 * * 1-5	agent_intelligence_cron.sh	releases-other	ub	$PROJ/scripts/agent_intelligence_cron.sh intraday
+30 12 * * 1-5	news_ingestion.py	CURRENT	ub	cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1
+30 13 * * 1-5	run_scheduled_watchpool_alerts.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_watchpool_alerts.sh --
+30 16 * * 1-5	run_closed_trade_digest_cron.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_closed_trade_digest_cron.sh >> l
+30 17 * * 1-5	trade_ai_orchestrator.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-
+30 17 * * 1-5	run_afterhours_candidate_preparation.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_afterhours_candidate_preparation
+30 2 * * *	populate_performance_context.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/populate_performance_context.py --
+30 20 * * 1-5	feedback_loop_processor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 
+30 6 * * 1-5	market_regime_collector.py	CURRENT	ub	cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1
+30 7 * * 0	agent_router_cron.sh	releases-other	ub	$PROJ/scripts/agent_router_cron.sh deep
+30 7 * * 1-5	alert_missing_conditions.py	CURRENT	ub	cd $PROJ && flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py >> logs/alert_missing.log
+30 9 * * 0	watchlist_hygiene.py	CURRENT	ub	cd $PROJ && $PY scripts/watchlist_hygiene.py --telegram >> logs/watchlist_hygiene.log 2>&1
+35 6 * * 1-5	classify_candidates.py	CURRENT	ub	cd $PROJ && $PY scripts/classify_candidates.py >> logs/classify_candidates_cron.log 2>&1
+35 6 * * 1-5	market_regime_classifier.py	CURRENT	ub	cd $PROJ && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
+35 9 * * 1-5	alpaca_paper_reconciler.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/alpaca_paper_reconciler.py --fix >
+40 12 * * 1-5	intel_auto_discovery.py	CURRENT	ub	cd $PROJ && $PY scripts/intel_auto_discovery.py --telegram >> logs/intel_discovery.log 2>&1
+40 7 * * 1-5	portfolio_level_qa.py	CURRENT	ub	cd $PROJ && $PY scripts/portfolio_level_qa.py >> logs/portfolio_qa.log 2>&1
+45 6 * * 1-5	sync_watchlist_items_to_db.py	CURRENT	ub	cd $PROJ && $PY scripts/sync_watchlist_items_to_db.py >> logs/watchlist_sync.log 2>&1
+5 16 * * 1-5	market_regime_collector.py	CURRENT	ub	cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/ma
+5 16 * * 1-5	run_scheduled_atp2_research_cycle.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_atp2_research_cycle.sh
+5 7 * * 1-5	sync_dividend_data.py	CURRENT	ub	cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1
+*/30 6-16 * * 1-5	materialize_watchlist_strategy_cards.py	CURRENT	ub	cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/w
+50 7 * * 1-5	record_decision_outcome.py	CURRENT	ub	cd $PROJ && $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1
+55 6 * * 1-5	materialize_income_engine.py	CURRENT	ub	cd $PROJ && $PY scripts/materialize_income_engine.py >> logs/income_engine.log 2>&1
+55 7 * * 1-5	classifier_health_check.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/monitoring/classifier_health_check
+15 8 * * 1-5	daily_incubator_refresh.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/daily_incubator_refresh.py --apply
+0 19 * * 0	weekly_incubator_builder.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/weekly_incubator_builder.py --run-
+*/2 9-16 * * 1-5	send_telegram_proposal_alert.py	CURRENT	ub	cd $PROJ && set -a && . .env && set +a && bash scripts/market_day_gate.sh .venv/bin/python scripts/send_telegr
+*/5 * * * *	telegram_poller_watchdog_current.sh	home-other	ub	bash /home/johnclaw/.config/tradeai/bin/telegram_poller_watchdog_current.sh
+*/5 * * * *	cleanup_stale_locks.sh	CURRENT	ub	bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/cleanup_stale_locks.sh
+5 16 * * 1-5	eod_open_trade_alert.py	CURRENT	ub	cd $PROJ && set -a && . .env && set +a && bash scripts/market_day_gate.sh .venv/bin/python scripts/eod_open_tr
+*/10 4-19 * * 1-5	auto_enrichment_runner.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/auto_enrichment_runner.py --limit 
+*/15 4-19 * * 1-5	atm_auto_approver.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_atm.lock bash scripts/market_day_gate.sh $PY scripts
+*/3 9-16 * * 1-5	unified_stop_supervisor.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/unified_stop_supervisor.lock bash scripts/market_day_gate.sh
+0 6 * * 1-5	social_ingest.py	CURRENT	ub	cd $PROJ && $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1
+30 8,10,13 * * 1-5	social_ingest.py	CURRENT	ub	cd $PROJ && $PY scripts/social_ingest.py --source stocktwits --discover >> logs/social_ingest.log 2>&1
+0,30 6-9 * * 1-5	social_scalp_scanner.py	CURRENT	ub	cd $PROJ && flock -n /tmp/social_scalp.lock $PY scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.l
+15 6 * * *	fred_data_ingest.py	CURRENT	ub	cd $PROJ && $PY scripts/fred_data_ingest.py --ingest >> logs/fred_data_ingest.log 2>&1
+30 7 * * 1-5	symbol_enrichment.py	CURRENT	ub	cd $PROJ && $PY scripts/symbol_enrichment.py --limit 50 >> logs/symbol_enrichment.log 2>&1
+0 */4 * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && timeout 5m $PY scripts/rag_indexer.py >> logs/rag_inde
+45 5 * * 1-5	indicator_cache_refresh.py	CURRENT	reg	cd $PROJ && flock -n /tmp/indicator_cache_refresh.lock $PY scripts/indicator_cache_refresh.py >> logs/indicato
+0 8 * * 1-5	indicator_engine.py	CURRENT	ub	cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1
+*/15 7-9 * * 1-5	premarket_watcher.py	CURRENT	ub	cd $PROJ && $PY scripts/premarket_watcher.py >> logs/premarket_watcher.log 2>&1
+0 7 * * *	agent_watchlist_engine.py	CURRENT	ub	cd $PROJ && $PY scripts/agent_watchlist_engine.py --status >> logs/agent_watchlist_engine.log 2>&1
+0 */2 * * *	pipeline_watchdog.py	CURRENT	ub	cd $PROJ && $PY scripts/pipeline_watchdog.py >> logs/pipeline_watchdog.log 2>&1
+0 10 * * 1-5	incubator_rolloff_engine.py	CURRENT	ub	cd $PROJ && $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1
+*/10 4-19 * * 1-5	proposal_enrichment_loop.py	CURRENT	ub	cd $PROJ && timeout 10m $PY scripts/proposal_enrichment_loop.py --run --limit 15 >> logs/proposal_enrichment.l
+*/30 9-16 * * 1-5	proposal_lifecycle.py	CURRENT	ub	cd $PROJ && $PY scripts/proposal_lifecycle.py >> logs/proposal_lifecycle.log 2>&1
+0 9-16 * * 1-5	risk_gate.py	CURRENT	ub	cd $PROJ && $PY scripts/risk_gate.py --test >> logs/risk_gate.log 2>&1
+0 11 * * 0	agent_outcome_scorer.py	CURRENT	ub	cd $PROJ && $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1
+30 10 * * 0	strategy_weekly_review.py	CURRENT	ub	cd $PROJ && $PY scripts/strategy_weekly_review.py >> logs/strategy_weekly_review.log 2>&1
+30 8,16 * * *	alert_dispatcher_unified.py	CURRENT	ub	cd $PROJ && $PY scripts/alert_dispatcher_unified.py >> logs/alert_dispatcher.log 2>&1
+0 11,15 * * 1-5	aegis_social_sentiment.py	CURRENT	ub	cd $PROJ && timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1
+0 9 * * 1-5	aegis_transcript_discovery.py	CURRENT	ub	cd $PROJ && timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1
+30 9,13 * * *	topic_curator.py	CURRENT	ub	cd $PROJ && flock -n /tmp/topic_curator.lock $PY scripts/topic_curator.py >> logs/topic_curator.log 2>&1
+30 18 * * *	topic_curator.py	CURRENT	ub	cd $PROJ && flock -n /tmp/topic_curator.lock $PY scripts/topic_curator.py --ensemble >> logs/topic_curator.log
+0 20 * * *	aegis_synthesis.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- $PY scripts/aegis_synthesis.py >>
+0 19 * * *	aegis_nightly_ingestion.py	CURRENT	ub	cd $PROJ && $PY scripts/aegis_nightly_ingestion.py >> logs/aegis_nightly.log 2>&1
+0 12 * * 0	agent_calibration_engine.py	CURRENT	ub	cd $PROJ && $PY scripts/agent_calibration_engine.py --apply >> logs/agent_calibration.log 2>&1
+*/30 * * * *	agent_event_router.py	CURRENT	ub	cd $PROJ && timeout 5m $PY scripts/agent_event_router.py >> logs/agent_event_router.log 2>&1
+0 11 * * 1-5	agent_outcome_linker.py	CURRENT	ub	cd $PROJ && $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1
+30 8 * * 1-5	agent_recommendation_normalizer.py	CURRENT	ub	cd $PROJ && $PY scripts/agent_recommendation_normalizer.py --apply >> logs/agent_rec_normalizer.log 2>&1
+*/30 9-16 * * 1-5	auto_proposal_generator.py	CURRENT	ub	cd $PROJ && AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCA
+*/10 6-11 * * 1-5	auto_proposal_generator.py	CURRENT	ub	cd $PROJ && AUTO_PROPOSAL_STRATEGIES=momentum_scalp flock -n /tmp/auto_proposal_momentum_scalp.lock timeout 5m
+0 7,9,12,16,20 * * 1-5	event_detector.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/event_detector.py >> logs/event_detector.log 2>&1
+30 16 * * 1-5	paper_execution_quality_analyzer.py	CURRENT	ub	cd $PROJ && $PY scripts/paper_execution_quality_analyzer.py --recent --apply >> logs/tca_analyzer.log 2>&1
+0 17 * * 1-5	paper_execution_quality.py	CURRENT	ub	cd $PROJ && $PY scripts/paper_execution_quality.py --all-open --apply >> logs/tca_events.log 2>&1
+*/5 9-20 * * 1-5	system_health_agent.py	CURRENT	ub	cd $PROJ && $PY scripts/system_health_agent.py --apply --verbose >> logs/system_health_agent.log 2>&1
+*/15 9-16 * * 1-5	atm_position_reconciler.py	CURRENT	ub	cd $PROJ && bash scripts/safe_flock.sh /tmp/atm_position_reconciler.lock $PY scripts/atm_position_reconciler.p
+45 16 * * 1-5	atm_position_reconciler.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash scripts/safe_flock.sh /tmp/atm_position_r
+*/10 * * * *	claude_escalation_handler.py	CURRENT	ub	cd $PROJ && flock -n /tmp/tradeai_escalation_handler.lock $PY scripts/claude_escalation_handler.py --tier1-onl
+30 20 * * 1-5	health_agent_llm_review.py	CURRENT	ub	cd $PROJ && $PY scripts/health_agent_llm_review.py >> logs/health_llm_review.log 2>&1
+35 6 * * 1	overnight_batch.py	CURRENT	ub	cd $PROJ && flock -n /tmp/tax_sweep.lock $PY scripts/overnight_batch.py --tax-sweep >> logs/tax_sweep.log 2>&1
+0 22 * * 0	enterprise_backtester.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/enterprise_backtester.lock $PY scripts/enterprise_backtester
+0 6 * * 1-5	strategy_backtester.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/strategy_backtester.lock $PY scripts/strategy_backtester.py 
+0 23 * * 0	trade_close_llm_analyzer.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/llm_backtest_review.lock $PY scripts/trade_close_llm_analyze
+0 6 * * 0	check_system_versions.sh	CURRENT	ub	/bin/bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/check_system_versions.sh >> /home/
+*/30 9-16 * * 1-5	run_protection_pipeline.sh	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipelin
+30 20 * * 1-5	run_protection_pipeline.sh	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipelin
+10 6 * * 1-5	backtest_history_snapshot.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/bt_history_snapshot.lock $PY scripts/backtest_history_snapsh
+30 18 * * 1-5	trade_backtest_engine.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/trade_backtest_engine.lock $PY scripts/trade_backtest_engine
+0 20 * * 1-5	trade_close_llm_analyzer.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- env ALPACA_MODE=paper bash $PROJ/
+0 22 * * *	setup_quality_prior.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/setup_quality_prior.lock $PY scripts/setup_quality_prior.py 
+0 7 3 6 *	morning_eval_check.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/morning_eval_check.sh >> logs/morning_eval_check_cron.log 2>&1
+*/15 * * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_coordinat
+30 23 * * *	hermes_source_curation.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- bash $PROJ/scripts/saf
+*/2 * * * *	portfolio_server_watchdog.sh	CURRENT	ub	bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/portfolio_server_watchdog.sh
+*/30 4-9 * * 1-5	catalyst_momentum_engine.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine
+30 9-15 * * 1-5	catalyst_momentum_engine.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py 
+0 18,22 * * *	catalyst_momentum_engine.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_overnight.lock $PY scripts/catalyst_momentum_engine
+15 7 * * 1-5	holdings_llm_refresh.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/holdings_llm_refresh.lock env AGENT_DECISION_PAYLOAD=1 $PY s
+*/20 9-16 * * 1-5	portfolio_live_monitor.py	CURRENT	reg	cd $PROJ && flock -n /tmp/portfolio_live_monitor.lock $PY scripts/portfolio_live_monitor.py >> logs/portfolio_
+5 * * * *	sync-docs-to-drive.sh	CURRENT	ub	bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/safe_flock.sh /tmp/drive_sync.lock bash
+30 8,20 * * *	job_coverage_monitor.py	CURRENT	ub	cd $PROJ && $PY scripts/job_coverage_monitor.py >> logs/job_coverage_monitor.log 2>&1
+20 7 * * *	iris_proposal_curator.py	CURRENT	ub	cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1
+0 14 * * 1-5	hermes_youtube_discovery.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_yt_discovery.lock $PY scripts/hermes_youtube_discover
+45 19 * * *	youtube_cookie_health_check.py	CURRENT	ub	cd $PROJ && $PY scripts/youtube_cookie_health_check.py >> logs/youtube_cookie_health.log 2>&1
+10 3 * * *	siem_retention_purge.py	CURRENT	ub	cd $PROJ && $PY scripts/siem_retention_purge.py >> logs/siem_retention_purge.log 2>&1
+*/20 * * * *	log_error_scraper.py	CURRENT	ub	cd $PROJ && $PY scripts/log_error_scraper.py >> logs/log_error_scraper.log 2>&1
+*/15 * * * *	siem_critical_notify.py	CURRENT	ub	cd $PROJ && $PY scripts/siem_critical_notify.py >> logs/siem_critical_notify.log 2>&1
+*/15 9-16 * * 1-5	trade_integrity_audit.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/trade_integrity_audit.lock $PY scripts/trade_integrity_audit
+30 22 * * 1-5	multi_tier_trade_reviewer.py	CURRENT	ub	cd $PROJ && flock -n /tmp/overnight_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier overnigh
+45 6,12,18 * * *	news_to_catalyst.py	CURRENT	ub	cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2
+30 5 * * *	catalyst_calibration.py	CURRENT	ub	cd $PROJ && flock -n /tmp/catalyst_calibration.lock $PY scripts/catalyst_calibration.py >> logs/catalyst_calib
+0 7,13 * * 1-5	signal_fusion.py	CURRENT	ub	cd $PROJ && flock -n /tmp/signal_fusion.lock timeout 20m $PY scripts/signal_fusion.py --full >> logs/signal_fu
+*/30 4-16 * * 1-5	signal_fusion.py	CURRENT	ub	cd $PROJ && flock -n /tmp/signal_fusion_active.lock $PY scripts/signal_fusion.py --active >> logs/signal_fusio
+40 6,12,18 * * *	hermes_news_bridge.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge
+*/20 * * * *	system_freshness_monitor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/system_freshness_monitor.lock $PY scripts/system_freshness_monitor.py --send --auto-
+*/30 * * * *	freshness_watchdog_heartbeat.py	CURRENT	ub	cd $PROJ && flock -n /tmp/freshness_watchdog_heartbeat.lock $PY scripts/freshness_watchdog_heartbeat.py --send
+50 6,12,18 * * *	research_insight_extractor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/research_insight_extractor.lock $PY scripts/research_insight_extractor.py >> logs/re
+30 7 * * *	hermes_topic_monitor_bridge.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_topic_monitor_bridge.lock $PY scripts/hermes_topic_monitor_bridge.py --apply 
+0 20 * * 1-5	update_agent_performance.py	CURRENT	ub	cd $PROJ && $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1
+30 3 * * 0	run_profit_capture_refresh.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash scripts/safe_flock.sh /tmp/tradeai_profit
+45 5 * * *	source_outcome_attribution.py	CURRENT	ub	cd $PROJ && flock -n /tmp/source_maturity.lock bash -c "$PY scripts/source_outcome_attribution.py && $PY scrip
+0 6 * * *	source_attribution_monitor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py >> logs/so
+40 5 * * *	catalyst_calibration_monitor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/catalyst_calibration_monitor.lock $PY scripts/catalyst_calibration_monitor.py >> log
+10 6 * * *	pro_analyst_fetch.py	CURRENT	ub	cd $PROJ && flock -n /tmp/pro_analyst.lock bash -c "$PY scripts/pro_analyst_fetch.py --max 250; $PY scripts/bu
+*/15 9-16 * * 1-5	external_market_data_ingest.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/mkt_quotes_intraday.lock $PY scripts/external_market_data_in
+0 7 * * *	llm_retry_monitor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/llm_retry_monitor.lock $PY scripts/llm_retry_monitor.py >> logs/llm_retry_monitor.lo
+*/30 9-16 * * 1-5	watch_directives_service.py	CURRENT	ub	cd $PROJ && CURATION_AUTO_APPLY=1 flock -n /tmp/watch_directives_service.lock env AGENT_DECISION_PAYLOAD=1 $PY
+20 6 * * *	watch_directives_monitor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/watch_directives_monitor.lock $PY scripts/watch_directives_monitor.py >> logs/watch_
+10 16 * * 1-5	portfolio_repricer.py	CURRENT	reg	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_repricer.lock $PY scripts/portfolio_repricer.py &&
+*/30 9-15 * * 1-5	watchlist_enrichment_sweep.py	CURRENT	ub	cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchl
+15 16 * * 1-5	watchlist_enrichment_sweep.py	CURRENT	ub	cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchl
+*/30 * * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_directive_discovery.lock $PY scri
+*/15 * * * *	hermes_watchlist_scorer.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scor
+15,45 * * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_alerts.lock $PY scripts/hermes_sc
+35 11 * * *	hermes_outcome_learning.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- bash $PROJ/scripts/safe_flock.sh 
+5 */2 * * *	hermes_top20_external_intel.py	CURRENT	reg	cd $PROJ && flock -n /tmp/hermes_top20.lock $PY scripts/hermes_top20_external_intel.py --top 20 --lanes grok,c
+*/30 9-16 * * 1-5	hermes_subject_enhance.py	CURRENT	ub	cd $PROJ && flock -n /tmp/enh_scalp.lock $PY scripts/hermes_subject_enhance.py --type scalp --lanes grok,chatg
+*/20 9-16 * * 1-5	hermes_subject_enhance.py	CURRENT	ub	cd $PROJ && flock -n /tmp/enh_prop.lock $PY scripts/hermes_subject_enhance.py --type proposal --lanes grok,cha
+20 */2 * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_pos.lock $PY scripts/hermes_subject_
+25 11,14 * * 1-5	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_sec.lock $PY scripts/hermes_subject_
+40 16 * * 1-5	hermes_subject_enhance.py	CURRENT	ub	cd $PROJ && flock -n /tmp/enh_ct.lock $PY scripts/hermes_subject_enhance.py --type closed_trade --lanes grok,c
+0 8,20 * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_report.lock $PY scripts/hermes_subje
+20 10 * * 1-5	generate_max_hold_exit_proposals.py	CURRENT	ub	cd $PROJ && flock -n /tmp/maxhold_exit.lock $PY scripts/generate_max_hold_exit_proposals.py --apply >> logs/ma
+15 18 * * 1-5	schwab_transaction_ingest.py	CURRENT	ub	cd $PROJ && flock -n /tmp/schwab_ingest.lock bash -c "$PY scripts/schwab_transaction_ingest.py --apply && $PY 
+3,18,33,48 9-16 * * 1-5	schwab_transaction_ingest.py	CURRENT	ub	cd $PROJ && flock -n /tmp/schwab_intraday.lock bash -c "sleep $((RANDOM \% 15)); $PY scripts/schwab_transactio
+30 18 * * 1-5	journal_review_builder.py	CURRENT	ub	cd $PROJ && flock -n /tmp/journal_review.lock $PY scripts/journal_review_builder.py >> logs/journal_review.log
+45 18 * * *	ingest_tos_watchlists.py	CURRENT	ub	cd $PROJ && flock -n /tmp/tos_ingest.lock $PY scripts/ingest_tos_watchlists.py --apply >> logs/tos_ingest.log 
+31 9 * * 1-5	schwab_stream_daemon.py	CURRENT	ub	cd $PROJ && flock -n /tmp/schwab_stream.lock bash -c "set -a; . ./.env; set +a; $PY scripts/schwab_stream_daem
+15 7-17/2 * * 1-5	pipeline_freshness_slo.py	CURRENT	ub	cd $PROJ && $PY scripts/pipeline_freshness_slo.py --telegram >> logs/freshness_slo.log 2>&1
+10 18 * * 1-5	compute_source_weights.py	CURRENT	ub	cd $PROJ && $PY scripts/compute_source_weights.py --apply >> logs/source_weights.log 2>&1
+0 3 * * 0	docs_retention.sh	CURRENT	ub	cd $PROJ && bash scripts/docs_retention.sh >> logs/docs_retention.log 2>&1
+45 2 * * *	nightly_integrity_sweep.py	CURRENT	ub	cd $PROJ && $PY scripts/nightly_integrity_sweep.py --telegram >> logs/integrity_sweep.log 2>&1
+33 16 * * 1-5	sync_basis_from_broker.py	CURRENT	ub	cd $PROJ && flock -n /tmp/basis_sync.lock bash -c "set -a; . ./.env; set +a; $PY scripts/sync_basis_from_broke
+35 16 * * 1-5	audit_position_basis.py	CURRENT	ub	cd $PROJ && flock -n /tmp/basis_audit.lock bash -c "set -a; . ./.env; set +a; $PY scripts/audit_position_basis
+5 17 * * 1-5	holding_protection_advisor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/protection_advisor.lock $PY scripts/holding_protection_advisor.py >> logs/protection
+10 8 1 * *	monthly_protection_meta_review.py	CURRENT	ub	cd $PROJ && flock -n /tmp/protection_meta.lock $PY scripts/monthly_protection_meta_review.py >> logs/protectio
+30 16 * * 1-5	technicals_gap_backfill.py	CURRENT	ub	cd $PROJ && flock -n /tmp/tech_gap.lock $PY scripts/technicals_gap_backfill.py --alert >> logs/technicals_gap.
+20 17 * * 1	holding_protection_advisor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/protection_advisor_grok.lock $PY scripts/holding_protection_advisor.py --lane grok >
+45 16 * * 1-5	audit_enrichment_coverage.py	CURRENT	ub	cd $PROJ && flock -n /tmp/enrich_coverage.lock $PY scripts/audit_enrichment_coverage.py --alert >> logs/enrich
+35 17 * * 1-5	watchlist_entry_planner.py	CURRENT	ub	cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap
+45 17 * * 1-5	watchlist_entry_planner.py	CURRENT	ub	cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> 
+0 19 * * 0	build_symbol_profiles.py	CURRENT	ub	cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.lo
+50 9 * * 1-5	snaptrade_sync.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/snaptrade_sync.lock $PY scripts/snaptrade_sync.py --
+35 17 * * 1-5	snaptrade_sync.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/snaptrade_sync.lock $PY scripts/snaptrade_sync.py --
+20 7 * * 1-6	snaptrade_activity_ingest.py	CURRENT	ub	cd $PROJ && flock -n /tmp/snaptrade_activity_ingest.lock $PY scripts/snaptrade_activity_ingest.py --apply >> l
+40 7 * * 1-5	portfolio_lookthrough_themes.py	CURRENT	ub	cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/l
+*/30 8-18 * * 1-5	ask_alerts.py	CURRENT	ub	cd $PROJ && flock -n /tmp/ask_alerts.lock $PY scripts/ask_alerts.py --check >> logs/ask_alerts.log 2>&1
+15 8 * * *	ipo_lockup_alert.py	CURRENT	ub	cd $PROJ && flock -n /tmp/lockup_alert.lock $PY scripts/ipo_lockup_alert.py >> logs/lockup_alert.log 2>&1
+18 8 * * *	update_lockup_earnings_dates.py	CURRENT	ub	cd $PROJ && flock -n /tmp/lockup_earnings.lock $PY scripts/update_lockup_earnings_dates.py >> logs/lockup_earn
+*/10 9-16 * * 1-5	stop_health_check.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/stop_health_check.py --quiet >> logs/stop_health_cron.
+5 10,15 * * 1-5	grok_stop_review.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/grok_stop_review.py --apply >> logs/grok_stop_review_c
+7-59/20 9-16 * * 1-5	alpaca_stop_manager.py	CURRENT	reg	cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock bash scripts/market_day_gate.sh $PY scripts/alpaca_
+7,22,37,52 9-16 * * 1-5	schwab_position_sync.py	CURRENT	ub	cd $PROJ && flock -n /tmp/schwab_pos_sync.lock bash -c "sleep $((RANDOM \% 20)); set -a; . ./.env; set +a; $PY
+0 18 * * 0	rotation_rebalance_digest.py	CURRENT	ub	cd $PROJ && flock -n /tmp/rotation_digest.lock $PY scripts/rotation_rebalance_digest.py >> logs/rotation_diges
+*/30 * * * *	oauth_lane_keepalive.py	CURRENT	ub	cd $PROJ && flock -n /tmp/oauth_keepalive.lock $PY scripts/oauth_lane_keepalive.py >> logs/oauth_lane_keepaliv
+40 6 * * 1-5	refresh_symbol_cards.py	CURRENT	ub	cd $PROJ && flock -n /tmp/refresh_cards.lock $PY scripts/refresh_symbol_cards.py >> logs/refresh_symbol_cards.
+10 7 * * *	recommendation_intelligence_engine.py	CURRENT	ub	cd $PROJ && flock -n /tmp/rec_intel.lock $PY scripts/recommendation_intelligence_engine.py >> logs/recommendat
+30 6 * * 6	classify_instruments.py	CURRENT	ub	cd $PROJ && flock -n /tmp/classify_instr.lock $PY scripts/classify_instruments.py >> logs/classify_instruments
+0 7 * * 6	etf_analyst_enrich.py	CURRENT	ub	cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>
+30 21 * * *	rerun_cio_dual_consensus.py	CURRENT	ub	cd $PROJ && flock -n /tmp/cio_dual_rerun.lock $PY scripts/rerun_cio_dual_consensus.py 1000 --skip-done >> logs
+45 6 * * 1-5	build_symbol_profiles.py	CURRENT	ub	cd $PROJ && flock -n /tmp/symprofiles_wl.lock $PY scripts/build_symbol_profiles.py --watchlist-top 300 >> logs
+*/8 * * * *	warm_caches.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/warm_caches.lock bash -c "set -a
+25 16 * * 1-5	strategy_tilt.py	CURRENT	ub	cd $PROJ && flock -n /tmp/strategy_tilt.lock $PY scripts/strategy_tilt.py >> logs/strategy_tilt.log 2>&1
+13 23 * * *	commit_hermes_daily.sh	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- bash scripts/commit_he
+25,55 * * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/directive_kw_enhancer.lock $PY scripts/d
+15 7 * * 6	etf_performance_enrich.py	CURRENT	ub	cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.l
+30 9,11,13,15 * * 1-5	finviz_proactive_research.py	CURRENT	ub	cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-
+15 10,16 * * 1-5	finviz_sector_research.py	CURRENT	ub	cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2
+50 6 * * *	crawl_v3_dashboard.py	CURRENT	ub	cd $PROJ && flock -n /tmp/crawl_v3.lock $PY scripts/crawl_v3_dashboard.py --telegram >> logs/crawl_v3_dashboar
+0 8 * * 1-5	run_inference_cycle.sh	CURRENT	ub	cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_preopen >> logs/inference_cron.log 2>&1
+0 13 * * 1-5	run_inference_cycle.sh	CURRENT	ub	cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_midday >> logs/inference_cron.log 2>&1
+30 16 * * 1-5	run_inference_cycle.sh	CURRENT	ub	cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_postclose >> logs/inference_cron.log 2>&1
+50 23 * * *	backup_generated_docs.sh	CURRENT	ub	cd $PROJ && bash linux_launchers/backup_generated_docs.sh >> logs/docs_backup.log 2>&1
+*/3 * * * *	run_ensemble_worker.sh	CURRENT	ub	cd $PROJ && bash linux_launchers/run_ensemble_worker.sh
+25 7 * * 1	fee_efficiency_analyzer.py	CURRENT	ub	cd $PROJ && flock -n /tmp/fee_efficiency.lock bash -c "set -a; . ./.env; set +a; $PY scripts/fee_efficiency_an
+40 7 1 * *	validate_expense_ratios.py	CURRENT	ub	cd $PROJ && flock -n /tmp/expense_ratio_validate.lock bash -c "set -a; . ./.env; set +a; $PY scripts/validate_
+35 6 * * 1-5	earnings_enrich.py	CURRENT	ub	cd $PROJ && flock -n /tmp/earnings_enrich.lock bash -c "set -a; . ./.env; set +a; $PY scripts/earnings_enrich.
+38 6 * * 1-5	fund_technicals_enrich.py	CURRENT	ub	cd $PROJ && flock -n /tmp/fund_technicals.lock bash -c "set -a; . ./.env; set +a; $PY scripts/fund_technicals_
+42 6 * * 1-5	distributions_enrich.py	CURRENT	ub	cd $PROJ && flock -n /tmp/distributions_enrich.lock bash -c "set -a; . ./.env; set +a; $PY scripts/distributio
+0 9-18/3 * * 1-5	coder_dispatch.py	CURRENT	ub	cd $PROJ && flock -n /tmp/tradeai_coder_dispatch.lock $PY scripts/coder_dispatch.py --from-queue --apply >> lo
+45 15 * * 1-5	options_iv_snapshot.py	CURRENT	ub	cd $PROJ && flock -n /tmp/tradeai_options_iv.lock $PY scripts/options_iv_snapshot.py --run --symbols-from-univ
+*/15 4-16 * * 1-5	run_rotation_autopilot.sh	CURRENT	reg	cd $PROJ && bash $PROJ/linux_launchers/run_rotation_autopilot.sh cron >> logs/rotation_autopilot.log 2>&1
+*/15 9-16 * * 1-5	portfolio_repricer.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+*/15 * * * *	health_agent.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/health_agent.lock $PY s
+*/5 9-16 * * 1-5	run_broker_queue_autocal.sh	CURRENT	ub	/usr/bin/flock -n /tmp/tradeai_broker_autocal.lock /usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-se
+0,30 9-16 * * 1-5	run_broker_proposal_curator.sh	CURRENT	ub	/usr/bin/flock -n /tmp/tradeai_broker_curator.lock /usr/bin/bash /home/johnclaw/trade-ai-releases/portfolio-se
+30 7 * * 1-5	generate_analyst_daily_digest.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/analyst_daily_digest.lock $PY sc
+35 7 * * 1-5	analyst_urgent_refresh.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/analyst_urgent.lock $PY scripts/
+15 21 * * 0	generate_analyst_reports_autonomous.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/analyst_reports_weekly.lock $PY 
+30 21 1 * *	generate_analyst_reports_autonomous.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/analyst_reports_monthly_oversigh
+*/15 6-17 * * 1-5	cd	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/eligible_prewarm.lock $PY -c "im
+*/8 6-17 * * 1-5	cd	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && curl -s -m 30 -o /dev/null "http://127.0.0.1:7
+20 10,16 * * 1-5	hermes_think_tank.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/think_tank.lock $PY scripts/herm
+45 7,15 * * *	hermes_pipeline_health.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/hermes_pipeline_health.lock $PY 
+0 17 * * *	hermes_autonomous_self_tune.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/hermes_self_tune.lock $PY script
+5 9 * * 1-5	research_scheduler.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tm
+0 10-16 * * 1-5	llm_priority_guard.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+30 20 * * 1-5	research_scheduler.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tm
+0 19 * * 0	research_scheduler.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tm
+0 17 * * 0	claude_challenger_curator.py	CURRENT	ub	cd $PROJ && flock -n /tmp/claude_challenger.lock $PY scripts/claude_challenger_curator.py --apply >> logs/clau
+40 5 * * *	register_analyst_sources.py	CURRENT	ub	cd $PROJ && $PY scripts/register_analyst_sources.py --apply >> logs/analyst_sources.log 2>&1
+15 */2 * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_canon_status.lock $PY scripts/bui
+20 */4 * * *	pipeline_freshness_monitor.py	CURRENT	ub	cd $PROJ && flock -n /tmp/pipeline_freshness.lock $PY scripts/pipeline_freshness_monitor.py --send >> logs/pip
+40 5 * * *	overnight_batch.py	CURRENT	ub	cd $PROJ && flock -n /tmp/overnight_outcomes.lock $PY scripts/overnight_batch.py --outcomes >> logs/overnight_
+15 8 * * 1-5	llm_intelligence_enrichment.py	CURRENT	ub	cd $PROJ && flock -n /tmp/llm_synth_heavy.lock bash -c 'for s in morning_synthesis recovery_analysis prospect_
+*/3 * * * *	process_reaper.py	CURRENT	ub	cd $PROJ && flock -n /tmp/process_reaper.lock $PY scripts/process_reaper.py >> logs/process_reaper.log 2>&1
+15 */6 * * *	paper_trade_advisory.py	CURRENT	ub	cd $PROJ && flock -n /tmp/paper_advisory.lock $PY scripts/paper_trade_advisory.py --apply --limit 6 >> logs/pa
+30 */6 * * *	wire_advisory_lessons.py	CURRENT	ub	cd $PROJ && flock -n /tmp/wire_lessons.lock $PY scripts/wire_advisory_lessons.py >> logs/wire_advisory_lessons
+20 6 * * 1-5	backtest_results_aggregator.py	CURRENT	ub	cd $PROJ && flock -n /tmp/bt_aggregator.lock $PY scripts/backtest_results_aggregator.py >> logs/backtest_resul
+5 10-15/2 * * 1-5	proposal_backtest_engine.py	CURRENT	ub	cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply
+15 */2 * * *	enrich_proposal_technicals.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/enrich_proposal_tech.lo
+*/20 13-21 * * 1-5	compute_intraday_vwap.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/intraday_vwap.lock $PY 
+*/30 9-16 * * 1-5	reclassify_momentum_proposals.py	CURRENT	ub	cd $PROJ && flock -n /tmp/reclassify_momentum.lock $PY scripts/reclassify_momentum_proposals.py --apply >> log
+10 3 * * *	sync-memory-to-drive.sh	home-other	ub	flock -n /tmp/claude_memsync.lock /home/johnclaw/.claude/sync-memory-to-drive.sh >> /home/johnclaw/.claude/log
+40 16 * * 1-5	run_pullback_macd_screener.sh	CURRENT	ub	cd $PROJ && bash linux_launchers/run_pullback_macd_screener.sh
+*/30 10-15 * * 1-5	watchlist_proposal_bridge.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_wl_bridge.lock bash scripts/market_day_gate.sh $PY s
+35 9-15 * * 1-5	run_pullback_macd_monitor.sh	CURRENT	ub	cd $PROJ && bash linux_launchers/run_pullback_macd_monitor.sh >> logs/pullback_macd_monitor.log 2>&1
+*/15 9-16 * * 1-5	protection_atm_pass.py	CURRENT	ub	cd $PROJ && /usr/bin/flock -n /tmp/tradeai_protection_pass.lock $PY scripts/protection_atm_pass.py >> logs/pro
+30 16 * * 1-5	proposal_monitor.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/proposal_monitor.py --pending --ap
+5 17 * * 1-5	run_scheduled_strategy_audits.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+30 23 * * 1-5	journal_annotation_reminder.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/journal_annotation_reminder.py >> 
+0 12 * * 1-5	journal_tilt_morning_hook.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/journal_tilt_morning_hook.py >> /h
+*/2 6-11 * * 1-5	momentum_scalp_validation_fast_path.py	CURRENT	ub	cd $PROJ && flock -n /tmp/momentum_scalp_validation_fp.lock $PY scripts/momentum_scalp_validation_fast_path.py
+*/5 6-11 * * 1-5	run_finviz_momentum_scalp_scan.py	CURRENT	reg	cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=2
+45 5 * * 1-5	run_sec_form4_momentum_context.py	CURRENT	ub	cd $PROJ && flock -n /tmp/tradeai_sec_form4_ctx.lock $PY scripts/run_sec_form4_momentum_context.py --apply >> 
+*/10 6-20 * * 1-5	hermes_governance_api.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY
+35 17 * * 1-5	stop_drift_alert.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/stop_drift_alert.lock $PY scripts/stop_drift_alert.p
+30 0 * * *	news_ingestion.py	CURRENT	ub	cd $PROJ && flock -n /tmp/news_priority_overnight.lock timeout 45m $PY scripts/news_ingestion.py --priority >>
+0 10,14,18 * * 0,6	news_ingestion.py	CURRENT	ub	cd $PROJ && flock -n /tmp/news_tail_rotate.lock timeout 90m $PY scripts/news_ingestion.py --tail-rotate >> log
+40 11 * * *	hermes_score_history_retention.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- flock -n /tmp/hermes_score_retent
+7,37 * * * *	hermes_scope_governor.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor
+*/5 * * * *	hermes_score_event_feeder.py	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feed
+50 10 * * *	hermes_outcome_grader.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- bash $PROJ/scripts/safe_flock.sh 
+25 11 * * *	hermes_outcome_feedback_agent.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- bash $PROJ/scripts/safe_flock.sh 
+5 11 * * *	hermes_tag_engine.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- bash $PROJ/scripts/safe_flock.sh 
+45 11 * * *	hermes_config_governor.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" -- flock -n /tmp/hermes_config_gover
+20 7 * * *	hermes_maturity_gates.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_maturity_gates.lock $PY scripts/hermes_maturity_gates.py --snapshot >> logs/h
+25 17 * * 1-5	plan_drift_revalidator.py	CURRENT	ub	cd $PROJ && flock -n /tmp/plan_drift_reval.lock $PY scripts/plan_drift_revalidator.py --apply >> logs/plan_dri
+0 10 * * 1-5	plan_drift_revalidator.py	CURRENT	ub	cd $PROJ && flock -n /tmp/plan_drift_reval_am.lock $PY scripts/plan_drift_revalidator.py --apply >> logs/plan_
+0 13 * * 1-5	plan_drift_revalidator.py	CURRENT	ub	cd $PROJ && flock -n /tmp/plan_drift_reval_mid.lock $PY scripts/plan_drift_revalidator.py --apply >> logs/plan
+15 1 * * *	rotate_runtime_logs.sh	CURRENT	ub	cd $PROJ && flock -n /tmp/tradeai_rotate_logs.lock bash scripts/rotate_runtime_logs.sh >> logs/rotate_runtime_
+*/15 4-10 * * 1-5	alpaca_stop_manager.py	CURRENT	reg	cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock $PY scripts/alpaca_stop_manager.py --repair-oco --a
+*/30 6-19 * * 1-5	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/proposal_llm_review_worker.lock timeout 
+0 */2 * * *	hermes_discovery_ingestors.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_discovery_ingest.lock $PY scripts/hermes_discovery_ingestors.py --scheduled -
+15 */3 * * *	hermes_entity_spike_discovery.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_entity_spike.lock $PY scripts/hermes_entity_spike_discovery.py --run --json >
+50 3 * * *	hermes_tag_lift_discovery.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- flock -n /tmp/hermes_t
+20 */3 * * *	hermes_analyst_signal_discovery.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_analyst_signal.lock $PY scripts/hermes_analyst_signal_discovery.py --run --js
+25 4 * * *	hermes_industry_novelty_discovery.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- flock -n /tmp/hermes_i
+*/30 9-16 * * 1-5	cloud_consensus_verdict.py	CURRENT	ub	cd $PROJ && flock -n /tmp/cloud_consensus_verdict.lock $PY scripts/cloud_consensus_verdict.py --run >> logs/cl
+5 * * * *	hermes_research_worker_pool.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_worker_pool.lock $PY scripts/hermes_research_worker_pool.py --run --json >> l
+*/10 12-15 * * 1-5	run_options_monitor.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+5 16 * * 1-5	run_options_monitor.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+0 10-15 * * 1-5	reconcile_alpaca_paper_options.sh	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/
+10 17 * * 1-5	run_options_paper_position_monitor.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+40 13 * * 1-5	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash -c 'bash $PROJ/scripts/llm_priority_guard.sh && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_
+25 6-18/3 * * 1-5	finviz_health_check.py	CURRENT	ub	cd $PROJ && timeout 2m $PY scripts/finviz_health_check.py >> logs/finviz_health_check.log 2>&1
+40 18 * * 1-5	trade_thesis_review_engine.py	CURRENT	ub	cd $PROJ && flock -n /tmp/thesis_review_engine.lock $PY scripts/trade_thesis_review_engine.py --apply --json >
+25 6-15 * * 1-5	hermes_momentum_catalyst_researcher.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researche
+5 10 * * 1-5	fidelity_stop_sync.py	CURRENT	ub	cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/fidelity_stop_sync.lock $PY scripts/fidelity_stop_sy
+30 13 * * 1	run_warrior_weekly_audit.sh	CURRENT	ub	/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/linux_port/launchers/run_warrior_weekly_audit.sh
+10 10 * * 1-5	deploy_detect.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/deploy_detect.py --apply --trading
+15 10 * * 1-5	deploy_recompute.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/deploy_recompute.py --apply --limi
+20 10 * * 1-5	deploy_monitor.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/deploy_monitor.py --apply --limit 
+45 6 * * 1-5	volatility_tier_refresh.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/volatility_tier_refresh.py --quiet
+30 20 * * 1-5	non_trading_hours_gate.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+15 2 * * *	non_trading_hours_gate.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deeps
+15 5 * * *	non_trading_hours_gate.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deeps
+20 * * * *	non_trading_hours_gate.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+45 20 * * 1-5	non_trading_hours_gate.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+45 2 * * *	non_trading_hours_gate.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deeps
+50 21 * * *	non_trading_hours_gate.sh	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deeps
+45 16 * * 1-5	research_intelligence_queue.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_research_queue_cron.lock $PY 
+40 2 * * *	research_intelligence_queue.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deeps
+40 17 * * 1-5	holdings_gain_guardian.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/gain_guardian.lock $PY scripts/h
+0 9 * * 0	reconcile_exit_advisory_outcomes.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/r
+35 6 * * *	research_intelligence_materialize.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_materialize_cron.lock $PY scr
+30 10 * * 0	watch_directive_hygiene.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/wd_hygiene.lock $PY scripts/watc
+45 9 * * 0	reconcile_pullback_outcomes.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scrip
+50 9 * * 0	reconcile_watch_outcomes.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_outcomes.lock $PY scripts/
+*/20 9-16 * * 1-5	watch_alerts_eval.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_alerts.lock env AGENT_DECI
+20 2 * * *	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- bash $PROJ/scripts/llm
+20 17 * * 1-5	sector_rs_daily.py	CURRENT	ub	cd $PROJ && $PY scripts/sector_rs_daily.py >> logs/sector_rs_daily.log 2>&1
+55 17 * * 1-5	alert_daily_digest.py	CURRENT	ub	cd $PROJ && $PY scripts/alert_daily_digest.py >> logs/alert_daily_digest.log 2>&1
+*/5 * * * *	(	releases-other	ub	( curl -s -m 60 -H "Accept-Encoding: gzip" -o /dev/null "http://127.0.0.1:7777/api/v2/trade-ai" ; curl -s -m 6
+40 20 * * *	system_rollup_snapshot.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/system_rollup_snapshot.lock bash
+*/15 6-16 * * 1-5	finviz_market_movers.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -
+25 17 * * 1-5	sector_momentum_engine.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/sector_momentum.lock bash -c "se
+30 12 * * 1-5	finviz_industry_groups.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/industry_momentum.lock bash -c "
+18 16 * * 1-5	finviz_industry_groups.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/industry_momentum.lock bash -c "
+35 17 * * 1-5	options_chain_snapshot.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/chain_snapshot.lock bash -c "set
+50 17 * * 1-5	defense_recommendations.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/defense_recs.lock bash -c "set -
+*/10 9-16 * * 1-5	cd	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/defense_fills.lock bash -c "set 
+15 18 * * 5	defense_weekly_paid_review.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/weekly_paid_review.lock bash -c 
+0 8 * * 6	oversight_weekly_digest.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/oversight_weekly.lock bash -c "s
+0 10 * * 1-5	options_chain_snapshot.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/chain_snapshot.lock bash -c "set
+10 10 * * 1-5	defense_recommendations.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/defense_recs.lock bash -c "set -
+*/20 9-16 * * 1-5	options_lifecycle_run.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/options_lifecycle.lock bash -c "
+5 8 * * 1-5	options_lifecycle_digest.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/options_lc_digest.lock bash -c "
+5 17 * * 1-5	investment_costs.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c "set -a; 
+35 18 * * 1-5	schwab_econfirm_reconcile.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/econfirm.lock bash -c "set -a; .
+55 17 * * 1-5	defense_inverse_stoplights.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_stoplights.lock bash -c "set
+0 10 * * 0	iris_taxonomy_agent.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/iris_taxonomy_agent.py >> logs/iri
+0 7 * * *	iris_taxonomy_agent.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/iris_taxonomy_agent.py --gaps >> l
+30 7 * * *	iris_taxonomy_agent.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/iris_taxonomy_agent.py --freshness
+12 6 * * 1-5	broker_stop_reconcile.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/broker_stop_reconcile.lock bash 
+10 8 * * 1-5	incubator_llm_screener.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/incubator_llm_screener.lock $PY 
+0 9 1 * *	pattern_extractor.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scrip
+30 3 * * 1-5	opening_intelligence.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash "$HOME/.config/tradeai/bin/run_with_deeps
+0 7 * * 1-5	opening_intelligence.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/o
+15 9 * * 1-5	opening_intelligence.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/o
+15 9 * * 1-5	shadow_batch_generator.py	CURRENT	ub	cd $PROJ && export $(grep -E "^[A-Za-z_][A-Za-z0-9_]*=" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(g
+15 10 * * 0	shadow_batch_generator.py	CURRENT	ub	cd $PROJ && export $(grep -E "^[A-Za-z_][A-Za-z0-9_]*=" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(g
+*/15 9-16 * * 1-5	alpaca_live_read_sync.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfoli
+*/15 7-16 * * 1-5	watch_decision_scheduler.py	CURRENT	ub	cd $PROJ && flock -n /tmp/watch_sched.lock $PY scripts/watch_decision_scheduler.py --run >> logs/watch_decisio
+47 6 * * *	watch_valuation_backfill.py	CURRENT	ub	cd $PROJ && flock -n /tmp/watch_valuation_backfill.lock $PY scripts/watch_valuation_backfill.py --limit 400 >>
+30 20 * * 1-5	run_scalp_volume_profile_refresh.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/run_scalp_volume_profile_refresh.sh >> logs/scalp_volume_profile.log 2>&1
+*/5 6-11 * * 1-5	run_scalp_shadow_logger.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/run_scalp_shadow_logger.sh >> logs/scalp_shadow_logger.log 2>&1
+*/5 6-17 * * 1-5	opend_health.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/moomoo_opend_health.lock $PY scr
+@reboot	sleep	CURRENT	ub	sleep 60 && cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && systemctl --user start trade-ai-la
+*/15 9-16 * * 1-5	moomoo_live_read_sync.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/moomoo_live_read.lock timeout --
+45 7 * * *	hermes_research_agenda.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_agenda.lock $PY scripts/hermes_research_agenda.py --apply --json >> logs/herm
+15 18 * * 1-5	hermes_research_agenda.py	CURRENT	ub	cd $PROJ && flock -n /tmp/hermes_agenda.lock $PY scripts/hermes_research_agenda.py --apply --json >> logs/herm
+20 6 * * 1,4	llm_priority_guard.sh	CURRENT	ub	cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_synthesizer.lock timeout 20m $PY 
+45 3 * * *	hermes_discovery_yield_builder.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- flock -n /tmp/hermes_y
+5 16 * * 1,3,5	run_watch_review_workers.py	CURRENT	reg	cd $PROJ && TRADEAI_RUNTIME_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime PYTHON
+20 16 * * 1,3,5	run_watch_review_workers.py	CURRENT	reg	cd $PROJ && TRADEAI_RUNTIME_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime PYTHON
+30 5 * * *	hermes_discovery_scorecard.py	CURRENT	ub	cd $PROJ && bash "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh" --official -- $PY scripts/hermes_dis
+15 6 * * *	siem_to_hermes_backlog.py	CURRENT	ub	cd $PROJ && $PY scripts/siem_to_hermes_backlog.py --apply --max 5 >> logs/siem_to_hermes_backlog.log 2>&1
+0 18 * * *	ops_daily_digest.py	openclaw	ub	$PY /home/johnclaw/.openclaw/skills/tradeai-health-inspect/scripts/ops_daily_digest.py >> /home/johnclaw/.open
+30 9 * * 0	ops_weekly_learning_report.py	openclaw	ub	$PY /home/johnclaw/.openclaw/skills/tradeai-health-inspect/scripts/ops_weekly_learning_report.py >> /home/john
+0 5 * * 1-5	cd	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && python3 -c 'from scripts.lib.cio_event_detecto
+0 8 * * 0	cd	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && python3 -c 'from scripts.lib.cio_event_detecto
+0 9 1 * *	cd	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && python3 -c 'from scripts.lib.cio_event_detecto
+*/5 * * * *	cio_wake_dispatch_entrypoint.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && WAKE_L3_JUDGMENT=1 WAKE_L3_ALLOW_LIVE_PROVIDER
+50 15 * * 1-5	run_scheduled_two_way_curation.sh	CURRENT	ub	cd $PROJ && flock -n /tmp/two_way_options_edge.lock bash scripts/run_scheduled_two_way_curation.sh options-edg
+20 10 * * 1-5	run_scheduled_two_way_curation.sh	CURRENT	ub	cd $PROJ && flock -n /tmp/two_way_desk_emit.lock bash scripts/run_scheduled_two_way_curation.sh desk-emit
+0 7 * * 1-5	research_watchlist_discovery.py	CURRENT	ub	cd $PROJ && $PY scripts/research_watchlist_discovery.py --apply >> logs/research_watchlist_discovery.log 2>&1
+30 11,15 * * 1-5	sync_social_to_intelligence.py	CURRENT	ub	cd $PROJ && $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1
+15 11,15 * * 1-5	hermes_social_sentiment.py	CURRENT	ub	cd $PROJ && $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1
+15 6 * * 1-5	candidate_discovery_orchestrator.py	CURRENT	ub	cd $PROJ && $PY scripts/candidate_discovery_orchestrator.py --apply >> logs/candidate_discovery.log 2>&1
+0 6 * * 1-5	drain_discovery_backlog.py	CURRENT	ub	cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1
+0 8 * * 1-5	desk_suggestions_digest.py	CURRENT	ub	cd $PROJ && $PY scripts/desk_suggestions_digest.py >> logs/desk_suggestions_digest.log 2>&1
+*/15 6-20 * * 1-5	cron_self_heal.py	CURRENT	ub	cd $PROJ && $PY scripts/cron_self_heal.py --apply >> logs/cron_self_heal.log 2>&1
+17 17 * * 1-5	run_governed_symbol_thesis_acquisition.sh	CURRENT	ub	/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_governed_symbol_thesis_acquisition.sh >>
+*/30 * * * *	pipeline_liveness_report.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/pipeline_liveness_report.py --fail
+15 */4 * * *	cio_lineage_completion_report.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/cio_lineage_completion_report.py -
+20 * * * *	resolve_due_checkpoints.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_PENDING_DATA_APPLY=1 $PY scripts/resol
+40 6 * * *	build_lesson_candidates.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/build_lesson_candidates.py --apply
+50 5 * * 1-5	mint_identity_registry.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/mint_identity_registry.py --apply 
+30 3 * * 6	sweep_schwab_instruments.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_schwab_instruments.py --appl
+45 19 * * *	aegis_evening_packet.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/po
+5 */6 * * *	refresh_operator_product.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/refresh_operator_product.py >> log
+52 6 * * *	cio_draft_plan_hygiene.py	CURRENT	ub	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_ROOT=/home/johnclaw/trade-ai-releases/
+0 */4 * * *	p1_digest_sender.py	CURRENT	reg	cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/p1_digest.lock $PY scripts/p1_digest_sender.py --send >> log
+25 * * * *	backfill_document_mentions.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock 
+40 4 * * *	prune_document_mentions.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_prune.lock tim
+10 4 * * *	db_retention.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/db_retention.lock timeout 30m $P
+*/30 * * * *	backfill_subject_identity.py	CURRENT	reg	cd $PROJ && flock -n /tmp/identity_sweep.lock $PY scripts/backfill_subject_identity.py --all --apply >> logs/i
+*/30 * * * *	material_change_detector.py	CURRENT	reg	cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/
+7-59/15 * * * *	notify_material_change.py	CURRENT	reg	cd $PROJ && MATERIAL_CHANGE_GATEWAY_NOTICE=1 COMMS_GATEWAY_MODE=CANARY COMMS_GATEWAY_CANARY_CLASSES=ops flock 
+15 * * * *	hermes_external_feedback_loop.py	CURRENT	reg	cd $PROJ && LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/usefulness_backfill.lock bash scripts/run_with_deepsee
+*/20 * * * *	due_diligence_questions.py	CURRENT	reg	cd $PROJ && LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/ddq.lock bash scripts/run_with_deepseek_offpeak.sh --s
+*/2 * * * *	run_telegram_callback_poller_current.sh	home-other	ub	bash /home/johnclaw/.config/tradeai/bin/run_telegram_callback_poller_current.sh
+55 * * * *	wake_selection_feed.py	releases-other	reg	CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && $PY /home/johnclaw/trade-ai-ca
+0 * * * *	run_persistent_wake.py	CURRENT	reg	CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd "$CUR" && set -a; . "$TRADE
+45 * * * *	run_governed_research_producer.py	CURRENT	reg	CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd "$CUR" && set -a && . ./.en
+*/15 9-16 * * 1-5	screener_go_alerts.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/screener_go_alerts.lock $PY scri
+5 7 * * *	llm_spend_report.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/llm_spend_daily.lock $PY scripts
+10 7 * * 1	llm_spend_report.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/llm_spend_weekly.lock $PY script
+15 7 1 * *	llm_spend_report.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/llm_spend_monthly.lock $PY scrip
+*/5 * * * *	cio_bridge_watchdog.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/cio_bridge_watchdog.lock $PY scr
+50 * * * *	deepseek_balance_snapshot.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/deepseek_balance_snapshot.lock b
+20 7,12,17 * * 1-5	catalyst_symbol_impact_writer.py	CURRENT	reg	cd $PROJ && flock -n /tmp/catalyst_symbol_impact.lock $PY scripts/catalyst_symbol_impact_writer.py --apply >> 
+*/10 9-16 * * 1-5	cio_entry_state_runner.py	CURRENT	reg	cd $PROJ && bash -c 'set -a; . "/run/user/$(id -u)/tradeai/env" 2>/dev/null; . "$HOME/.config/tradeai/cio-tele
+40 8,12,16 * * 1-5	watch_goods_consistency_check.py	CURRENT	reg	cd $PROJ && flock -n /tmp/watch_goods_consistency.lock $PY scripts/watch_goods_consistency_check.py --apply-pr
+10 6 * * 1-5	build_catalyst_graph.py	CURRENT	reg	cd $PROJ && flock -n /tmp/build_catalyst_graph.lock $PY scripts/build_catalyst_graph.py --apply >> logs/build_
+20 * * * *	report_goal_loop_baseline.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai
+35 * * * *	cio_gate_measurement_bridge.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai
+40 * * * *	run_goal_pilot_material_change.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai
+50 * * * *	run_dormant_lane_consumers.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . "/run/user/$(id -u)/tradeai
+25 3 * * *	hermes_universe_history_retention.py	CURRENT	reg	cd $PROJ && flock -n /tmp/hermes_universe_history_retention.lock $PY scripts/hermes_universe_history_retention
+20 * * * *	check_llm_provider_health.py	CURRENT	reg	cd $PROJ && $PY scripts/check_llm_provider_health.py >> logs/llm_provider_health.log 2>&1
+10 10,13,16,19 * * *	drain_llm_deferred.py	CURRENT	reg	cd $PROJ && $PY scripts/drain_llm_deferred.py >> logs/llm_deferred_drain.log 2>&1
+35 * * * *	sync_code_mirror_to_drive.sh	CURRENT	reg	bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/safe_flock.sh /tmp/code_mirror_drive_sy
+20 7,19 * * 1-5	drain_cio_stance_classification.py	CURRENT	reg	cd $PROJ && bash -c 'set -a; . "/run/user/$(id -u)/tradeai/env" 2>/dev/null; set +a; exec flock -n /tmp/cio_st
+15 16 * * *	notify_material_change.py	CURRENT	reg	cd $PROJ && MATERIAL_CHANGE_GATEWAY_NOTICE=1 COMMS_GATEWAY_MODE=CANARY COMMS_GATEWAY_CANARY_CLASSES=ops flock 
+20 18 * * *	sweep_commitment_outcomes.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --app
+50 18 * * *	write_instrument_beliefs.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --appl
+7,22,37,52 * * * *	options_thesis_lifecycle.py	CURRENT	reg	cd $PROJ && flock -n /tmp/options_thesis_lifecycle.lock bash -c 'set -a; . /run/user/$(id -u)/tradeai/env; set
+9,24,39,54 * * * *	options_memory_projector.py	CURRENT	reg	cd $PROJ && flock -n /tmp/options_memory_projector.lock bash -c 'set -a; . /run/user/$(id -u)/tradeai/env; set
+3 * * * *	export_options_runtime_snapshot.py	CURRENT	reg	cd $PROJ && flock -n /tmp/options_runtime_export.lock $PY scripts/export_options_runtime_snapshot.py --apply >
+*/20 * * * *	crontab	persistent-state	NONE	crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/nu
+27 * * * *	symbol_news_curation_monitor.py	CURRENT	reg	cd $PROJ && flock -n /tmp/symbol_news_curation_monitor.lock $PY scripts/symbol_news_curation_monitor.py --appl
+30 21 * * *	sec_fundamentals_ingest.py	CURRENT	reg	cd $PROJ && flock -n /tmp/sec_fundamentals_ingest.lock $PY scripts/sec_fundamentals_ingest.py --apply >> logs/
+30 2 * * *	report_platform_conformance.py	CURRENT	reg	cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state TRADEAI_RELEASE_SHA=$(cat $PROJ/GIT_SH
+5 * * * *	approval_package_reminder.py	CURRENT	reg	cd $PROJ && TRADEAI_SERVED_SHA=$(cat $PROJ/GIT_SHA) flock -n /tmp/tradeai_approval_reminder.lock $PY scripts/a
+12 * * * *	approval_reminder_reconcile.py	CURRENT	reg	cd $PROJ && TRADEAI_SERVED_SHA=$(cat $PROJ/GIT_SHA) flock -n /tmp/tradeai_approval_reconcile.lock $PY scripts/
+20 8,12,17,21 * * 1-5	sec_filings_feed.py	CURRENT	reg	CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd "$CUR" && set -a && . /run/
+40 6 * * 1	maturity_remeasure.py	CURRENT	reg	CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd "$CUR" && flock -n /tmp/tra
+40 18 * * *	report_agent_number_grounding.py	CURRENT	reg	cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/report_agent_number_grounding.py -
+*/5 6-9 * * 1-5	premarket_watch.py	CURRENT	reg	cd $PROJ && flock -n /tmp/at_premarket.lock timeout 240 $PY scripts/active_trader/premarket_watch.py --apply >
+0 6 * * 1-5	microstructure_recorder.py	CURRENT	reg	cd $PROJ && flock -n /tmp/at_micro_recorder_pm.lock $PY scripts/active_trader/microstructure_recorder.py --app
+28 9 * * 1-5	microstructure_recorder.py	CURRENT	reg	cd $PROJ && flock -n /tmp/at_micro_recorder.lock $PY scripts/active_trader/microstructure_recorder.py --apply 
+5 12 * * 1-5	session_review.py	CURRENT	reg	cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --app
+10 16 * * 1-5	session_review.py	CURRENT	reg	cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --app
+10 12 * * 1-5	signal_calibration.py	CURRENT	reg	cd $PROJ && $PY scripts/active_trader/signal_calibration.py --apply >> logs/at_signal_calibration.log 2>&1
+15,45 9-15 * * 1-5	options_intent_matcher.py	CURRENT	reg	cd $PROJ && flock -n /tmp/options_intent_matcher.lock timeout 240 $PY scripts/options_intent_matcher.py --appl
+30 20 * * 1-5	portfolio_reconcile.py	CURRENT	reg	cd $PROJ && flock -n /tmp/portfolio_reconcile.lock timeout 300 $PY scripts/portfolio_reconcile.py --json data/
+9,24,39,54 9-16 * * 1-5	positions_sync.py	CURRENT	reg	cd $PROJ && flock -n /tmp/positions_sync.lock timeout 240 bash -c "set -a; . ./.env; set +a; GIT_SHA=$(basenam
+20 17 * * 1-5	positions_sync.py	CURRENT	reg	cd $PROJ && flock -n /tmp/positions_sync.lock timeout 120 bash -c "set -a; . ./.env; set +a; $PY scripts/posit
+25 17 * * 1-5	positions_proof_daily.py	CURRENT	reg	cd $PROJ && flock -n /tmp/positions_proof.lock timeout 180 bash -c "set -a; . ./.env; set +a; $PY scripts/posi
