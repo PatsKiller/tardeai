@@ -209,6 +209,10 @@
     {
       "url": "/v3/watchpool",
       "path": "watchpool"
+    },
+    {
+      "url": "/v3/coordination",
+      "path": "coordination"
     }
   ],
   "spa_routes": [
@@ -359,6 +363,9 @@
     },
     {
       "route": "/v3/watchpool"
+    },
+    {
+      "route": "/v3/coordination"
     }
   ],
   "apis": [

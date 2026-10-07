@@ -31,6 +31,7 @@ import RedeployDeskIntegrated from './pages/RedeployDeskIntegrated'
 import HealthHub from './pages/HealthHub'
 import CommunicationsHub from './pages/CommunicationsHub'
 import ConsumptionHub from './pages/ConsumptionHub'
+import CoordinationPage from './pages/CoordinationPage'
 import SchwabReauthHub from './pages/SchwabReauthHub'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import FinvizCookieBanner from './components/FinvizCookieBanner'
@@ -227,6 +228,7 @@ function Shell() {
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
+          <Route path="coordination" element={<RouteErrorBoundary route="/v3/coordination"><CoordinationPage /></RouteErrorBoundary>} />
             <Route path="system" element={<RouteErrorBoundary route="/v3/system"><SystemHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="system/schwab-reauth" element={<RouteErrorBoundary route="/v3/system/schwab-reauth"><SchwabReauthHub /></RouteErrorBoundary>} />
             {/* Shadow control-plane namespace. Does not replace live routes. */}

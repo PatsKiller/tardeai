@@ -173,6 +173,37 @@ def handle_callback_query(cb):
         return
 
     # ── Approval packages (pkgapprove:<pkg>[:items] / pkgdeny:<pkg>[:items] / pkgshow:<pkg>) ──
+    # ── Coordination acknowledgement (ack:<idempotency_key>) — roadmap Phase 1, 2026-10-07 ──
+    # The tap records an OPERATOR consumer receipt on a coordination event (an open incident
+    # or a pilot artifact). It is not an approval and carries no authority: the gateway moves
+    # only ARTIFACT_WRITTEN → CONSUMED and refuses every other transition. No send, no order,
+    # no grant, no secret: the HMAC key stays in the rendered env of this process.
+    if action == "ack":
+        if user_id not in _allowed_from_ids():
+            answer_callback(cb_id, "Not authorized (from_id)", show_alert=True)
+            return
+        idem = parts[1] if len(parts) > 1 else ""
+        if len(idem) < 8 or len(idem) > 48:
+            answer_callback(cb_id, "Invalid ack target")
+            return
+        try:
+            from scripts.lib.n8n_gateway_client import GatewayClient
+        except ImportError:
+            from lib.n8n_gateway_client import GatewayClient  # type: ignore
+        client = GatewayClient(caller_id="tradeai-telegram-ack")
+        res = client.transition("consumer_ack", idem,
+                                consumer_receipt={"consumer": f"operator-telegram:{user_id}", "receipt_id": f"cb-{cb_id}"})
+        state, reason = res.get("state"), res.get("reason")
+        if state == "CONSUMED":
+            answer_callback(cb_id, f"Acknowledged {now_short}")
+            try:
+                edit_message(chat_id, message_id, (cb["message"].get("text") or "")[:3800] + f"\n\n✓ acknowledged by {user_name} {now_short}")
+            except Exception:
+                pass
+        else:
+            answer_callback(cb_id, f"Not acknowledged: {state} {reason or ''}"[:190], show_alert=True)
+        return
+
     # One consolidated package per wave (docs/architecture/cognitive_transformation_20260927/13).
     # Wave 1 tranche 1: the decision is RECORDED in the hash-chained ledger with the sender's
     # from_id verified against the operator allowlist (item 10, "mine"); per-package guard
