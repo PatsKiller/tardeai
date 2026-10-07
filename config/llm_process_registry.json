@@ -2,7 +2,7 @@
   "version": 5,
   "default_mode": "manual",
   "lane_policies": {
-    "grok_only": "Grok only \u2014 single lane",
+    "grok_only": "Grok only — single lane",
     "chatgpt_only": "ChatGPT only",
     "either": "Operator picks Grok OR ChatGPT (one is enough)",
     "both_preferred": "Best with both lanes; either alone still useful",
@@ -36,7 +36,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix \u2014 max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED. | 2026-09-14: shared callers split onto their own ids (cio_operator_reply, cio_plan_enrichment, cio_prompt_judge, research_circle_analyzer, hermes_cloud_json, hermes_usefulness_score, cio_hermes_research, hermes_golden_judge); this id now carries the advisory opinion engine only."
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05→0.20→0.30 and daily_soft_cap 80→200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed — DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000→600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix — max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED. | 2026-09-14: shared callers split onto their own ids (cio_operator_reply, cio_plan_enrichment, cio_prompt_judge, research_circle_analyzer, hermes_cloud_json, hermes_usefulness_score, cio_hermes_research, hermes_golden_judge); this id now carries the advisory opinion engine only."
     },
     {
       "id": "advisory_desk_synthesis",
@@ -64,7 +64,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.03\u21920.06\u21920.10 \u2014 a single Pro synthesis projects $0.0168 (32000 input \u00d7 1.15 headroom), so the old cap blocked the daily synthesis after ~1 call (COST_CAP_EXCEEDED \u2192 degraded)."
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.03→0.06→0.10 — a single Pro synthesis projects $0.0168 (32000 input × 1.15 headroom), so the old cap blocked the daily synthesis after ~1 call (COST_CAP_EXCEEDED → degraded)."
     },
     {
       "id": "aegis_steph_review",
@@ -88,7 +88,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO complex escalation \u2014 deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
+      "description": "Alex CIO complex escalation — deterministic-reason-gated, thinking-enabled DeepSeek V4 Pro for multi-agent reconciliation and critical decisions. PRO_THINK requires a deterministic escalation reason (specialist_disagreement, conflicting_evidence, unresolved_contradictions, material_risk, or insufficient_evidence). Operator confirmation is NOT required for PRO_THINK.",
       "allowed_lanes": [
         "pro_think"
       ],
@@ -124,7 +124,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Alex CIO autonomous advisory synthesis \u2014 platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
+      "description": "Alex CIO autonomous advisory synthesis — platform-wide portfolio/wealth CIO reasoning via governed DeepSeek V4 Pro",
       "allowed_lanes": [
         "pro",
         "deepseek-flash"
@@ -145,7 +145,7 @@
       "circuit_breaker": true,
       "registered_by": "P-1.2A",
       "registered_at": "2026-08-08T13:48:00Z",
-      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02\u21920.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15\u21920.40 / soft 80\u2192100 so a Pro synthesis (~$0.0324/call at 32000\u00d716384) is no longer capped to ~4 calls/day."
+      "notes": " | 2026-08-11 P2b soak: raised daily_cost_cap_usd 0.02→0.15 for plan enrichment under global 0.25 | 2026-08-12: raised 0.15→0.40 / soft 80→100 so a Pro synthesis (~$0.0324/call at 32000×16384) is no longer capped to ~4 calls/day."
     },
     {
       "id": "architecture_review",
@@ -167,7 +167,7 @@
       "name": "Broker Proposal Cloud Oversight",
       "category": "Trading",
       "lane_policy": "both_preferred",
-      "description": "Per-proposal second opinion \u2014 pick Grok, ChatGPT, or both via card buttons"
+      "description": "Per-proposal second opinion — pick Grok, ChatGPT, or both via card buttons"
     },
     {
       "id": "cloud_consensus_verdict",
@@ -182,7 +182,7 @@
       "category": "Hermes",
       "lane_policy": "both_preferred",
       "default_mode": "automated",
-      "description": "Reviews local LLM output \u2014 auto uses both when available"
+      "description": "Reviews local LLM output — auto uses both when available"
     },
     {
       "id": "deepseek_flash_operator_smoke",
@@ -226,7 +226,7 @@
       "max_input_tokens": 2000,
       "max_output_tokens": 600,
       "daily_soft_cap": 30,
-      "daily_cost_cap_usd": 0.10,
+      "daily_cost_cap_usd": 0.1,
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true
@@ -252,7 +252,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Guardian risk critique \u2014 deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
+      "description": "Guardian risk critique — deterministic-first risk analysis reading Trade AI risk data. Read-only. No risk limit changes, no stop modifications, no execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-flash"
@@ -315,14 +315,14 @@
       "circuit_breaker": true,
       "registered_by": "telegram-noise-suppression",
       "registered_at": "2026-08-13T12:00:00Z",
-      "notes": "2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost. | 2026-08-22 P1: max_output_tokens 1024->4096 so living theses survive write-path slices; dollar caps unchanged $0.30 / $0.50. daily_soft_cap stays 600. | 2026-09-09: max_input_tokens 8000->16000 \u2014 the on-demand held-name challenger path (POST /hermes/curate-symbol lane=deepseek) builds ~9.5-11k-token evidence packs (research_prompt_context + legacy safe context), which 8000 rejected with INPUT_LIMIT_EXCEEDED. 16000 gives headroom; dollar/soft caps unchanged (600 calls / $0.30 daily still bound cost)."
+      "notes": "2026-08-13: research lane migrated from free ChatGPT OAuth (gpt-5.4) to governed DeepSeek V4 Flash. Small payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Holdings (T0) refresh several times/day, so a 120-call soft cap / $0.30 daily cap is ample and bounds the daily desk cross-check cost. | 2026-08-22 P1: max_output_tokens 1024->4096 so living theses survive write-path slices; dollar caps unchanged $0.30 / $0.50. daily_soft_cap stays 600. | 2026-09-09: max_input_tokens 8000->16000 — the on-demand held-name challenger path (POST /hermes/curate-symbol lane=deepseek) builds ~9.5-11k-token evidence packs (research_prompt_context + legacy safe context), which 8000 rejected with INPUT_LIMIT_EXCEEDED. 16000 gives headroom; dollar/soft caps unchanged (600 calls / $0.30 daily still bound cost)."
     },
     {
       "id": "hermes_scalp_review",
       "name": "Hermes Scalp Post-Trade Review",
       "category": "Trading",
       "lane_policy": "either",
-      "description": "OAuth enrichment \u2014 grok preferred"
+      "description": "OAuth enrichment — grok preferred"
     },
     {
       "id": "hermes_tag_engine",
@@ -369,7 +369,7 @@
       "name": "Journal Ask",
       "category": "Journal",
       "lane_policy": "either",
-      "description": "Q&A \u2014 Grok or ChatGPT",
+      "description": "Q&A — Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -420,7 +420,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Ledger tax/account-constraint critique \u2014 deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
+      "description": "Ledger tax/account-constraint critique — deterministic-first constraint validation reading Trade AI account data. Flags wash-sale proximity, IRA limits, account-type mismatches. Read-only. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-flash"
@@ -455,7 +455,7 @@
       "category": "CIO",
       "lane_policy": "either",
       "default_mode": "automated",
-      "description": "Maria research critique \u2014 deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
+      "description": "Maria research critique — deterministic-first fundamental and catalyst analysis reading Trade AI research data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-flash",
@@ -484,7 +484,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Morgan wealth synthesis \u2014 deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
+      "description": "Morgan wealth synthesis — deterministic-first multi-account wealth and goal-tracking analysis reading Trade AI portfolio/income/retirement data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "fast",
         "deepseek-flash"
@@ -565,7 +565,7 @@
       ],
       "output_schema": "pipeline_diagnosis.v1",
       "fallback": "DETERMINISTIC_DIAGNOSIS",
-      "description": "Health narrative \u2014 Fast default; deterministic fallback on model failure"
+      "description": "Health narrative — Fast default; deterministic fallback on model failure"
     },
     {
       "id": "portfolio_ai_analyst",
@@ -588,7 +588,7 @@
       "name": "Portfolio Ask",
       "category": "Portfolio",
       "lane_policy": "either",
-      "description": "Q&A \u2014 Grok or ChatGPT",
+      "description": "Q&A — Grok or ChatGPT",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -654,7 +654,7 @@
       "circuit_breaker": true,
       "registered_by": "P-2-reflective-migration",
       "registered_at": "2026-08-12T21:15:00Z",
-      "notes": "2026-08-12: reflective critics migrated from local Ollama gemma3 to governed DeepSeek Flash. Tiny payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Cap $0.10/day covers ~66 calls/day \u2014 far above the event-driven volume these critics actually receive."
+      "notes": "2026-08-12: reflective critics migrated from local Ollama gemma3 to governed DeepSeek Flash. Tiny payloads (~8000 in x ~512-1024 out, ~$0.0015/call). Cap $0.10/day covers ~66 calls/day — far above the event-driven volume these critics actually receive."
     },
     {
       "id": "reporting_grok_editorial",
@@ -675,7 +675,7 @@
       "name": "Rotation Independent Oversight",
       "category": "Rotation",
       "lane_policy": "ensemble",
-      "description": "Grok + ChatGPT oversight on rotation engine \u2014 run both for full picture"
+      "description": "Grok + ChatGPT oversight on rotation engine — run both for full picture"
     },
     {
       "id": "steph_allocation_review",
@@ -683,7 +683,7 @@
       "category": "CIO",
       "lane_policy": "deepseek_only",
       "default_mode": "manual",
-      "description": "Steph allocation and wealth planning \u2014 deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
+      "description": "Steph allocation and wealth planning — deterministic-first portfolio/wealth analysis reading Trade AI holdings and allocation data. Read-only advisory. No execution.",
       "allowed_lanes": [
         "pro",
         "fast",
@@ -719,7 +719,7 @@
       "name": "Strategy Planner",
       "category": "Strategy",
       "lane_policy": "either",
-      "description": "What-if planning \u2014 Grok default, ChatGPT ok",
+      "description": "What-if planning — Grok default, ChatGPT ok",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -819,7 +819,7 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "manual",
-      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run",
+      "description": "CIO view — Grok primary + ChatGPT reconcile when both run",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
         "PRO",
@@ -838,7 +838,7 @@
       "category": "Watch",
       "lane_policy": "ensemble",
       "default_mode": "automated",
-      "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run | automated organic Flash voter (soak)",
+      "description": "CIO view — Grok primary + ChatGPT reconcile when both run | automated organic Flash voter (soak)",
       "deepseek_default_policy": "FAST_THINK",
       "deepseek_allowed_policies": [
         "FAST_THINK",
@@ -896,7 +896,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "watch_narrative.v1",
-      "notes": " | 2026-08-20: daily_soft_cap 120\u2192240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session."
+      "notes": " | 2026-08-20: daily_soft_cap 120→240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session."
     },
     {
       "id": "watchlist_maria_priority",
@@ -905,7 +905,7 @@
       "lane_policy": "either",
       "default_mode": "automated",
       "daily_soft_cap": 80,
-      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh \u2014 ~30-80 calls/day",
+      "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh — ~30-80 calls/day",
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
@@ -945,7 +945,7 @@
         "FAST"
       ],
       "max_input_tokens": 8000,
-      "notes": "2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60\u2192220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls \u2248 $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day \u00a712 cap unchanged).",
+      "notes": "2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60→220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls ≈ $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged).",
       "max_output_tokens": 800,
       "daily_soft_cap": 220,
       "daily_cost_cap_usd": 1.0,
@@ -959,7 +959,7 @@
       "category": "Watch",
       "lane_policy": "deepseek_only",
       "default_mode": "automated",
-      "description": "Governed cio_synthesis via exact deepseek-flash FAST only \u2014 Pro/PRO_* forbidden on this path (issue #283).",
+      "description": "Governed cio_synthesis via exact deepseek-flash FAST only — Pro/PRO_* forbidden on this path (issue #283).",
       "allowed_lanes": [
         "deepseek-flash",
         "deepseek-flash",
@@ -977,7 +977,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "cio_synthesis.v1",
-      "notes": "2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40\u2192180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls \u2248 $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day \u00a712 cap unchanged)."
+      "notes": "2026-08-20: max_output_tokens 800→1600 — living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40→180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls ≈ $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged)."
     },
     {
       "id": "cio_operator_reply",
@@ -1256,7 +1256,35 @@
       "circuit_breaker": true,
       "registered_by": "cogx-wave3-t1",
       "registered_at": "2026-09-28T03:05:00Z",
-      "notes": "11 \u00a7B-1: \u2264 $0.50/day inside the $2 Tier-2 cap. ~4k in \u00d7 ~300 out per pair \u2248 $0.001; the lane judges at most 60 pairs/day, newest subjects first (research_contradiction_consumer.digest)."
+      "notes": "11 §B-1: ≤ $0.50/day inside the $2 Tier-2 cap. ~4k in × ~300 out per pair ≈ $0.001; the lane judges at most 60 pairs/day, newest subjects first (research_contradiction_consumer.digest)."
+    },
+    {
+      "id": "n8n_material_digest_draft",
+      "name": "n8n coordination: material-change digest DRAFT (Flash)",
+      "category": "N8nCoordination",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Plan tranche D (2026-10-07): nonfinancial digest DRAFT of already-detected material changes, requested through the n8n coordination gateway and run by scripts/lib/n8n_model_job.py. Output validated against config/schemas/n8n_model_job_outputs.json (material_change_digest_draft/v1); recommendation must be NONE; never a send. READ_ONLY_ADVISORY. Must route through cio_governed_model_bridge (8766).",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 16000,
+      "max_output_tokens": 2048,
+      "daily_soft_cap": 24,
+      "daily_cost_cap_usd": 0.1,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "n8n-parallel-tranche-D",
+      "registered_at": "2026-10-07T04:30:00Z",
+      "notes": "Not called by any lane yet (CALLER_PROCESS_MAP entry 'n8n_model_job' lands with the gateway model_job operation). Cap $0.10/day, 24 calls/day soft cap; raise only with evidence from the job receipts."
     }
   ],
   "default_deepseek_policy": "FAST",
