@@ -3056,73 +3056,98 @@
       "lane_id": "n8n-pilot-dispatch",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_pilot_dispatch.py --apply",
+        "match": "scripts/n8n_pilot_dispatch.py"
       },
       "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Roadmap Phase 1 dispatcher (scripts/n8n_pilot_dispatch.py --apply). Not scheduled: needs the coordination gateway unit (service grant) and a cron grant for `*/15 * * * *`. Flip to ACTIVE with scheduler.kind=cron in the SAME change that installs the line, or `--state-drift` fails.",
+      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_pilot_dispatch_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/implementation/n8n-parallel/proposals/phase1-install-commands.md; gateway unit config/systemd/user/tradeai-n8n-coordination-gateway.service is PROPOSAL ONLY",
+      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48",
       "note": "Mirrors the five pilots' real receipts into the coordination ledger; no send, no charge, no production write."
     },
     {
       "lane_id": "n8n-incident-fanin",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "*/5 * * * * n8n_incident_fanin.py --apply",
+        "match": "scripts/n8n_incident_fanin.py"
       },
       "expected_cadence_hours": 0.1,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Roadmap Phase 1 incident fan-in (scripts/n8n_incident_fanin.py --apply). Needs the gateway running with --allow-lane incident-fanin and a cron grant for `*/5 * * * *`.",
+      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_incident_fanin_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/implementation/n8n-parallel/proposals/phase1-install-commands.md",
+      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48",
       "note": "Reads breach detector rows (48h), --alert receipts, watchdogs and the lab backup receipt; one event per open finding; auto-closes on recovery."
     },
     {
       "lane_id": "n8n-lab-backup",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "30 3 * * * n8n_lab_backup.sh --apply",
+        "match": "scripts/n8n_lab_backup.sh"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Nightly pg_dump of the n8n LAB database (scripts/n8n_lab_backup.sh --apply). First manual run 2026-10-07T14:40Z wrote the receipt; needs a cron grant for `30 3 * * *`.",
+      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "backups/n8n/n8n_lab_backup_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "persistent-state/backups/n8n/n8n_lab_backup_last.json (N8nLabBackupReceipt@v1, 157 TOC entries)",
+      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48",
       "note": "Lab only. Encryption key is not in the dump (escrow in Bitwarden SM)."
     },
     {
       "lane_id": "n8n-lab-restore-drill",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "0 4 * * 0 n8n_lab_restore_drill.sh --apply",
+        "match": "scripts/n8n_lab_restore_drill.sh"
       },
       "expected_cadence_hours": 168.0,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Weekly restore of the newest lab dump into a throwaway DB inside the lab container (scripts/n8n_lab_restore_drill.sh --apply). First manual run 2026-10-07T14:40Z: 157/157 tables, 4 workflows. Needs a cron grant for `0 4 * * 0`.",
+      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "backups/n8n/n8n_lab_restore_drill_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "persistent-state/backups/n8n/n8n_lab_restore_drill_last.json (N8nLabRestoreDrill@v1 counts_equal true)",
+      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48",
       "note": "Never touches production Postgres or the live n8n database."
+    },
+    {
+      "lane_id": "n8n-lab-watchdog",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-n8n-lab-watchdog.timer (5m)",
+        "match": "tradeai-n8n-lab-watchdog.timer"
+      },
+      "expected_cadence_hours": 0.1,
+      "state": "ACTIVE",
+      "state_since": "2026-10-07",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_lab_watchdog_last.json"
+      },
+      "note": "Host-side probe of the n8n lab /healthz every 5 min (installed 2026-10-07 under config-write grant 113fa7d3b2344284). Replaces the two in-n8n monitor workflows, which lost their targets when S1/S2 bound the API and DOF to loopback. Receipt consumed by n8n_incident_fanin."
     }
   ],
   "undeclared_baseline": [
