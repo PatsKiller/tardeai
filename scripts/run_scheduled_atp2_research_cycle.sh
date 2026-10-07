@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # ATP-2: Scheduled research cycle wrapper. No trades. No orders.
 set -euo pipefail
-PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# 2026-10-07 (cron tranche B step 1): default to the tree this script lives in — the cron line already
+# does `cd CURRENT`, yet the hardcoded dev-tree path made the served line execute dev-tree code.
+PROJ="${PROJ:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 set -a; source "$PROJ/.env"; set +a
-PY="$PROJ/.venv/bin/python"
+PY="${PY:-$PROJ/.venv/bin/python}"   # the crontab exports PY (shared venv); the served tree has no .venv
+[ -x "$PY" ] || { echo "run_scheduled_atp2_research_cycle: PY not executable: $PY (export PY as the crontab does)" >&2; exit 78; }
 LOG="$PROJ/logs/atp2_research_cycle.log"
 TS=$(date '+%Y-%m-%d %H:%M:%S')
 CYCLE="${1:---cycle}"
