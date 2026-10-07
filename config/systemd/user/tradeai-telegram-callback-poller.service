@@ -1,0 +1,36 @@
+# Cron tranche A rank 2 (2026-10-07). Replaces the cron pair that emulated Restart=always:
+#   */2 * * * * run_telegram_callback_poller_current.sh   (launcher: flock + pidfile + exec)
+#   */5 * * * * telegram_poller_watchdog_current.sh       (cwd==CURRENT check + recycle)
+# 1,008 firings/day for a process that is normally already running. systemd owns the
+# lifecycle instead: one instance (the unit IS the lock), Restart=always, and the cwd
+# problem the watchdog solved is handled by restarting this unit after every promote
+# (add it to the post-promote restart list next to tradeai-cio-telegram.service).
+# The pid/lock files the launcher used are not written; nothing else reads them except
+# the watchdog, which is retired with the cron line.
+# Secrets: the same host env files the launcher sourced. Code path: CURRENT at start.
+[Unit]
+Description=Trade AI Telegram callback poller (CURRENT release; one instance; was cron */2 + */5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-%h/.config/tradeai/cio-telegram.env
+EnvironmentFile=-%h/.config/tradeai/phase8-safe-canary.env
+EnvironmentFile=-%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
+Environment=COMMS_INBOUND_SENDER_ALLOWLIST=8797974247,6993102664
+Environment=COMMS_GATEWAY_CANARY_CHATS=8797974247,6993102664
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -u %h/trade-ai-releases/portfolio-server/CURRENT/scripts/run_telegram_callback_poller.py --daemon
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+Nice=5
+MemoryMax=512M
+StandardOutput=append:%h/trade-ai-releases/persistent-state/logs/telegram_callback_poller.log
+StandardError=append:%h/trade-ai-releases/persistent-state/logs/telegram_callback_poller.log
+
+[Install]
+WantedBy=default.target
