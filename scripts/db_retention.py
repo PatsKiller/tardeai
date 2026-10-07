@@ -163,6 +163,64 @@ POLICIES = [
 ]
 # Note: market_quotes already in MEDIUM tier (90d) above.
 
+# ── Declarative registry (2026-10-07) ─────────────────────────────
+# config/data_retention_policy.json is the governed source of truth (CI gate:
+# scripts/check_retention_policy.py). POLICIES above is retained as documentation of the
+# inherited list; the run loop uses the registry. KEEP_FOREVER rows are never deleted;
+# ARCHIVE_THEN_DELETE rows are copied to persistent-state/archive/db_retention/<table>/
+# as jsonl.gz BEFORE the delete, and the delete runs only when the archived row count
+# equals the matching count. A missing or malformed registry stops the run loudly.
+REGISTRY_PATH = _os.getenv("TRADEAI_RETENTION_REGISTRY") or str(
+    __import__("pathlib").Path(__file__).resolve().parent.parent / "config" / "data_retention_policy.json")
+
+
+def load_registry(path: str | None = None) -> dict:
+    import json as _json
+    from pathlib import Path as _P
+    doc = _json.loads(_P(path or REGISTRY_PATH).read_text(encoding="utf-8"))
+    if doc.get("schema") != "DataRetentionPolicy@v1" or not isinstance(doc.get("policies"), list):
+        raise SystemExit("ERROR: retention registry malformed (schema DataRetentionPolicy@v1 required)")
+    return doc
+
+
+def enforced_policies(doc: dict) -> list[tuple[str, str, int, bool]]:
+    """(table, column, days, archive_first) for rows the run loop may delete from."""
+    out = []
+    for r in doc["policies"]:
+        cls = r.get("class")
+        if cls in ("KEEP_FOREVER", "EXTERNAL_POLICY"):
+            continue
+        if cls not in ("DELETE", "ARCHIVE_THEN_DELETE"):
+            raise SystemExit(f"ERROR: registry row {r.get('table')} has unknown class {cls!r}")
+        out.append((r["table"], r["ts_column"], int(r["window_days"]), cls == "ARCHIVE_THEN_DELETE"))
+    return out
+
+
+def archive_root() -> "pathlib.Path":
+    from pathlib import Path as _P
+    base = _os.getenv("TRADEAI_STATE_ROOT")
+    root = _P(base) if base else _P.home() / "trade-ai-releases" / "persistent-state"
+    return root / "archive" / "db_retention"
+
+
+def archive_rows(cur, table: str, col: str, days: int, guard: str) -> tuple[int, str]:
+    """Write the rows about to be deleted to <archive>/<table>/<UTC date>.jsonl.gz. Returns (rows, path)."""
+    import gzip, json as _json
+    from datetime import timezone as _tz
+    d = archive_root() / table
+    d.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = d / f"{stamp}.jsonl.gz"
+    cur.execute(f"SELECT row_to_json(t) FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
+    n = 0
+    with gzip.open(path, "wt", encoding="utf-8") as fh:
+        for (row,) in cur:
+            fh.write(_json.dumps(row, default=str) + "\n")
+            n += 1
+    if n == 0:
+        path.unlink(missing_ok=True)
+    return n, str(path)
+
 
 def fk_guard(cur, table: str) -> str:
     """SQL that keeps rows another table still references out of the purge.
@@ -233,7 +291,12 @@ def run(dry_run: bool = False):
     print(f"{'Table':<45} {'Column':<18} {'Days':>5}  {'Deleted':>8}")
     print("-" * 82)
 
-    for table, col, days in POLICIES:
+    registry = load_registry()
+    enforced = enforced_policies(registry)
+    kept = [r["table"] for r in registry["policies"] if r.get("class") == "KEEP_FOREVER"]
+    print(f"  registry {REGISTRY_PATH}: {len(enforced)} enforced, {len(kept)} KEEP_FOREVER ({', '.join(kept)})")
+    archived_total = 0
+    for table, col, days, archive_first in enforced:
         try:
             # Check table exists
             cur.execute("SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=%s", (table,))
@@ -247,10 +310,16 @@ def run(dry_run: bool = False):
                 continue
 
             guard = fk_guard(cur, table)
+            cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
+            matching = cur.fetchone()[0]
             if dry_run:
-                cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
-                count = cur.fetchone()[0]
+                count = matching
             else:
+                if archive_first and matching > 0:
+                    n_arch, path = archive_rows(cur, table, col, days, guard)
+                    if n_arch != matching:
+                        raise RuntimeError(f"archived {n_arch} != matching {matching}; delete refused (archive {path})")
+                    archived_total += n_arch
                 cur.execute(f"DELETE FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
                 count = cur.rowcount
                 conn.commit()
@@ -264,7 +333,7 @@ def run(dry_run: bool = False):
             print(f"  ERROR: {table}: {e}")
 
     print("-" * 82)
-    print(f"  Total {'would delete' if dry_run else 'deleted'}: {total_deleted:,} rows")
+    print(f"  Total {'would delete' if dry_run else 'deleted'}: {total_deleted:,} rows; archived first: {archived_total:,}")
     cur.close()
     conn.close()
 
