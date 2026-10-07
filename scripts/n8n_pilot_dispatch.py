@@ -39,6 +39,10 @@ from scripts.lib.n8n_pilot_contracts import PILOT_IDS, evaluate_pilot  # noqa: E
 from scripts.lib.n8n_pilot_observations import BUILDERS, event_reference, served_sha, state_root  # noqa: E402
 
 SCHEMA = "N8nPilotDispatchRun@v1"
+NO_CONSUMER_REASON = (
+    "Roadmap Phase 1 dispatcher. Its receipt is read by scripts/n8n_incident_fanin.py (lab backup age) and the "
+    "coordination projection; no cron line exists until the operator installs it (lane n8n-pilot-dispatch, NEVER_SCHEDULED)."
+)
 AUTHORITY = "READ_ONLY_ADVISORY"
 
 

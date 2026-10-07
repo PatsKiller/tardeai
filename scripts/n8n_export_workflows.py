@@ -24,6 +24,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = ROOT / "docs" / "implementation" / "n8n-parallel" / "workflows"
+NO_CONSUMER_REASON = (
+    "Operator-run export; n8n Community has no Git source control so the repo copy IS the consumer. "
+    "Run by hand after each lab workflow change."
+)
 SQL = ("select json_agg(json_build_object('id', id, 'name', name, 'active', active, "
        "'createdAt', \"createdAt\", 'updatedAt', \"updatedAt\", 'nodes', nodes, "
        "'connections', connections, 'settings', settings, 'versionId', \"versionId\")) "

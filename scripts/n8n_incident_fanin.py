@@ -35,6 +35,10 @@ from scripts.lib.n8n_gateway_client import GatewayClient, walk_to_artifact  # no
 from scripts.lib.n8n_pilot_observations import served_sha, state_root  # noqa: E402
 
 SCHEMA = "N8nIncidentFanin@v1"
+NO_CONSUMER_REASON = (
+    "Roadmap Phase 1 incident fan-in. Consumed by the coordination projection route once the gateway runs; "
+    "no cron line exists until the operator installs it (lane n8n-incident-fanin, NEVER_SCHEDULED)."
+)
 LANE = "incident-fanin"
 AUTHORITY = "READ_ONLY_ADVISORY"
 SEV = {"NO_OUTPUT": "P2", "SILENT": "P2", "HUNG": "P1", "FAILING": "P1", "BACKLOG": "P2", "MEMORY_UNREACHABLE": "P1",
