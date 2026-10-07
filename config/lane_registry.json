@@ -3199,7 +3199,7 @@
       "expected_cadence_hours": 0.25,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-07",
-      "state_reason": "Cron consolidation tranche C rank 13 — PROPOSED, not installed. One line replacing the options-thesis-lifecycle, options-memory-projector and options-runtime-export crontab lines (lifecycle -> projector every tick, export on the :52 tick; same locks, env, argv and per-step logs). Those three lanes stay ACTIVE until the operator installs this line under a cron grant, observes two receipts, and deletes the old lines; then they flip to RETIRED (superseded by options-tick) and this row to ACTIVE.",
+      "state_reason": "Cron consolidation tranche C rank 13 — PROPOSED, not installed. One line replacing the options-thesis-lifecycle, options-memory-projector and options-runtime-export crontab lines (lifecycle -> projector every tick, export on the :52 tick; same locks, env, argv and per-step logs). Those three lanes stay ACTIVE until the operator installs this line under a cron grant, observes two receipts, and deletes the old lines; then they flip to RETIRED (absorbed by options-tick) and this row to ACTIVE.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l 2026-10-07 lines 1036/1038/1040 (verbatim in the proposal); scripts/options_tick.py; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md",
       "output_signal": {
@@ -3246,7 +3246,7 @@
       "expected_cadence_hours": 1.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-07",
-      "state_reason": "Cron consolidation tranche C rank 18 — PROPOSED, not installed. One line running the :05 docs sync and the :35 code-mirror sync in sequence (same safe_flock locks, scripts, argv and logs; per-step timeout and a receipt added). code-mirror-drive-sync stays ACTIVE until cutover, then flips to RETIRED (superseded by drive-syncs-hourly); the docs-sync line leaves the 2026-09-28 inherited tranche when deleted. The 03:10 ~/.claude memory sync is unaffected.",
+      "state_reason": "Cron consolidation tranche C rank 18 — PROPOSED, not installed. One line running the :05 docs sync and the :35 code-mirror sync in sequence (same safe_flock locks, scripts, argv and logs; per-step timeout and a receipt added). code-mirror-drive-sync stays ACTIVE until cutover, then flips to RETIRED (absorbed by drive-syncs-hourly); the docs-sync line leaves the 2026-09-28 inherited tranche when deleted. The 03:10 ~/.claude memory sync is unaffected.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l 2026-10-07 lines 405/1026 (verbatim in the proposal); scripts/run_drive_syncs.sh; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md",
       "output_signal": {
