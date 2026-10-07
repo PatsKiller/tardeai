@@ -34,7 +34,8 @@ SCHEMA = "DbTrimReceipt@v1"
 PROTECTED = re.compile(r"^(trade_transactions|trade_closed|portfolio_snapshots|dividend_history|tax_|memory_|journal_|options_|ticker_prices|price_cache|market_)")
 DROPPABLE_NAME = re.compile(r"^(bak_|_bak_|_backup_|backup_|.*_bak_r\d+_\d{8}$|.*_backup_\d{8}.*|.*_legacy$|.*_dirfix_backup_\d{8}$|trade_closed_archived_probe$)")
 QUEUE_RULES = {
-    # table: (where-clause template, required columns)
+    # table: (where-clause template, required columns); ORDER MATTERS for FK children
+    "deep_overnight_llm_results": ("TRUE", []),      # child of the queue (FK queue_id); retired lane
     "deep_overnight_llm_queue": ("TRUE", []),
     "inference_ensemble_jobs": ("status = 'expired'", ["status"]),
     "watch_decision_refresh_jobs": ("created_at < now() - interval '30 days' AND stage NOT IN ('RUNNING','QUEUED')", ["created_at", "stage"]),
@@ -55,7 +56,7 @@ def dsn_env() -> dict:
     env.setdefault("PGDATABASE", env.get("DB_NAME", "trade_ai"))
     if env.get("DB_PASSWORD"):
         env["PGPASSWORD"] = env["DB_PASSWORD"]
-    env["PGOPTIONS"] = "-c statement_timeout=600s"
+    env["PGOPTIONS"] = "-c statement_timeout=600s -c lock_timeout=120s"
     return env
 
 
@@ -177,11 +178,20 @@ def act_drop_dup_indexes(apply: bool, stamp: str) -> dict:
         for p in plan:
             ddl = psql(f"SELECT pg_get_indexdef('{p['drop']}'::regclass)")
             fh.write(f"-- {p['table']} twin of {p['keep']}\n{ddl};\n")
-            try:
-                psql(f"DROP INDEX CONCURRENTLY IF EXISTS {p['drop']}")
+            dropped = False
+            for attempt in range(3):                      # lock_timeout under a busy writer: retry, then report
+                try:
+                    psql(f"DROP INDEX CONCURRENTLY IF EXISTS {p['drop']}")
+                    dropped = True
+                    break
+                except RuntimeError as e:
+                    last = str(e)
+                    if "lock timeout" not in last:
+                        break
+            if dropped:
                 receipt["dropped"].append(p["drop"])
-            except RuntimeError as e:
-                receipt["errors"].append({"index": p["drop"], "error": str(e)})
+            else:
+                receipt["errors"].append({"index": p["drop"], "error": last})
     tripwire([{"kind": "index", "name": p["drop"], "ddl_file": str(ddl_path), "stamp": stamp} for p in plan])
     receipt["ddl_file"] = str(ddl_path)
     return receipt
