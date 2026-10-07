@@ -12,7 +12,6 @@ After=network.target
 [Service]
 Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
-EnvironmentFile=-%t/tradeai/env
 ExecStart=/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence weekly --apply
 Nice=10
 TimeoutStartSec=6h
