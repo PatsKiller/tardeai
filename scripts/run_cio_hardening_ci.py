@@ -3377,6 +3377,11 @@ GATES = [
             "tests/test_n8n_model_job_20261007.py",
             "tests/test_n8n_model_job_operation_20261007.py",
             "tests/test_n8n_phase1_dispatch_20261007.py",
+            # Cron consolidation RANK 3: the 5-minute health tick that absorbs 17
+            # monitor crontab lines. Hermetic (fake steps, tmp locks/state); it
+            # pins due-phase arithmetic, lock skip, timeout = failure, receipt
+            # shape and that dry-run writes nothing. Timer stays NEVER_SCHEDULED.
+            "tests/test_health_tick_20261007.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
             "tests/test_maturity_score_independent_20261007.py",
