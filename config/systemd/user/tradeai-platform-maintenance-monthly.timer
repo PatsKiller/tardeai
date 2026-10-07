@@ -1,0 +1,16 @@
+# PROPOSAL ONLY. Not installed. Do not systemctl enable without a config-write / scheduler grant.
+# Cron consolidation RANK 4 — replaces the 2 monthly (1st) platform-maintenance crontab lines
+# (06:00 backup_verify, 03:00 inline transcript purge) with one serial run at 06:00.
+# Install: docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md
+
+[Unit]
+Description=Trade AI platform maintenance monthly (1st 06:00, proposal only, not installed)
+
+[Timer]
+OnCalendar=*-*-01 06:00:00
+AccuracySec=1min
+Persistent=true
+Unit=tradeai-platform-maintenance-monthly.service
+
+[Install]
+WantedBy=timers.target

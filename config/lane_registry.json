@@ -3148,6 +3148,60 @@
         "path": "data/runtime/n8n_lab_watchdog_last.json"
       },
       "note": "Host-side probe of the n8n lab /healthz every 5 min (installed 2026-10-07 under config-write grant 113fa7d3b2344284). Replaces the two in-n8n monitor workflows, which lost their targets when S1/S2 bound the API and DOF to loopback. Receipt consumed by n8n_incident_fanin."
+    },
+    {
+      "lane_id": "platform-maintenance-nightly",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Pending config-write grant. Absorbs crontab lines (crontab -l 2026-10-07, by line number): 713 rotate_runtime_logs.sh (01:15, flock /tmp/tradeai_rotate_logs.lock); 207 populate_performance_context.py --apply (02:30); 1045 report_platform_conformance.py --write with TRADEAI_STATE_ROOT + TRADEAI_RELEASE_SHA (02:30, flock /tmp/tradeai_platform_conformance.lock); 495 nightly_integrity_sweep.py --telegram (02:45); 162 strategy_config_loader.py --sync-db (03:00); 417 siem_retention_purge.py (03:10); 1023 hermes_universe_history_retention.py --apply (03:25, flock); 1076 n8n_lab_backup.sh --apply (03:30); 961 db_retention.py (04:10, flock /tmp/db_retention.lock, timeout 30m); 957 prune_document_mentions.py --apply (04:40, flock /tmp/document_mentions_prune.lock, timeout 20m); plus NEW report_db_hygiene.py --write (04:50, guarded on the file existing). Kept OUT: 645 ~/.claude/sync-memory-to-drive.sh (different tree), 405/1026 hourly Drive syncs (rank 18).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/platform_maintenance_nightly_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "The absorbed lines are still live in the crontab; the runner takes each step's original /tmp lock so a leftover line cannot double-run a step during cutover. Lanes hermes-universe-history-retention, db-retention, document-mentions-prune, platform-conformance-audit and n8n-lab-backup become superseded_by this lane at install time, in the same change that deletes their crontab lines (AGENTS.md §9.3).",
+      "note": "Cron consolidation RANK 4. Runner scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence nightly (dry-run default; --apply is the scheduled form). Proposed scheduler: config/systemd/user/tradeai-platform-maintenance-nightly.timer (daily 01:15), PROPOSAL ONLY, not installed. Declared NEVER_SCHEDULED pending the operator's config-write grant to install the units and delete the absorbed crontab lines (see docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md). The summary file is written only by --apply and only after every step has been attempted; a failed step is recorded in failed_steps, not hidden."
+    },
+    {
+      "lane_id": "platform-maintenance-weekly",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Pending config-write grant. Absorbs crontab lines (crontab -l 2026-10-07): 494 docs_retention.sh (Sun 03:00); 1077 n8n_lab_restore_drill.sh --apply (Sun 04:00); 372 check_system_versions.sh (Sun 06:00). Kept OUT: 919 sweep_schwab_instruments.py --apply (Sat 03:30, broker-adjacent; keeps its own line).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/platform_maintenance_weekly_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Lane n8n-lab-restore-drill becomes superseded_by this lane at install time, in the same change that deletes its crontab line. docs_retention and check_system_versions have no lane of their own today (undeclared_baseline).",
+      "note": "Cron consolidation RANK 4. Runner scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence weekly (dry-run default; --apply is the scheduled form). Proposed scheduler: config/systemd/user/tradeai-platform-maintenance-weekly.timer (Sun 03:00), PROPOSAL ONLY, not installed. Declared NEVER_SCHEDULED pending the operator's config-write grant to install the units and delete the absorbed crontab lines (see docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md). The summary file is written only by --apply and only after every step has been attempted; a failed step is recorded in failed_steps, not hidden."
+    },
+    {
+      "lane_id": "platform-maintenance-monthly",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 744.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Pending config-write grant. Absorbs crontab lines (crontab -l 2026-10-07): 166 backup_verify.py (1st 06:00, flock /tmp/backup_verify.lock); 163 the inline two-program youtube_transcripts purge (1st 03:00), now scripts/purge_youtube_transcripts.py --apply which also writes data/runtime/youtube_transcript_purge_last.json.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/platform_maintenance_monthly_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Both absorbed lines sit in undeclared_baseline today; the inline purge produced no durable artifact, the wrapper does.",
+      "note": "Cron consolidation RANK 4. Runner scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence monthly (dry-run default; --apply is the scheduled form). Proposed scheduler: config/systemd/user/tradeai-platform-maintenance-monthly.timer (1st 06:00), PROPOSAL ONLY, not installed. Declared NEVER_SCHEDULED pending the operator's config-write grant to install the units and delete the absorbed crontab lines (see docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md). The summary file is written only by --apply and only after every step has been attempted; a failed step is recorded in failed_steps, not hidden."
     }
   ],
   "undeclared_baseline": [
