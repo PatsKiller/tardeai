@@ -58,6 +58,8 @@ CALLER_PROCESS_MAP: dict[str, str] = {
     "ledger": "ledger_tax_critique",
     "morgan": "morgan_wealth_synthesis",
     "advisory_desk": "advisory_desk_opinion",
+    # n8n coordination model job (plan tranche D, 2026-10-07): one caller, one small-cap process.
+    "n8n_model_job": "n8n_material_digest_draft",
 }
 
 # Task-type overrides for multi-policy callers (server-side only).

@@ -220,7 +220,65 @@ def handle_request(
         return _transition(operation, request, claim, idempotency_store, peer)
     if operation == "list":
         return _list(request, claim, idempotency_store, peer)
+    if operation == "model_job":
+        return _model_job(request, claim, idempotency_store, peer, now=now)
     return _refused(None, "unknown_operation", peer_ignored=peer)
+
+
+#: Injected by tests; production uses n8n_model_job.bridge_governed_call (loopback HTTP to the governed bridge).
+MODEL_JOB_GOVERNED_CALL = None
+MODEL_JOB_FIELDS = frozenset({"process_id", "artifact_ref", "correlation_id", "deadline", "output_schema_id"})
+
+
+def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
+    """Run a governed model job for an event that is STARTED. The gateway never chooses the model
+    or holds a credential: Trade AI resolves the artifact and calls its own governed bridge. The
+    result is an artifact REFERENCE on the receipt (ARTIFACT_WRITTEN) or a typed refusal."""
+    found = _find(request, claim, store)
+    if isinstance(found, dict) and found.get("state") == "REFUSED":
+        return found
+    slot, receipt = found
+    if receipt["state"] != "STARTED":
+        return _refused(None, f"illegal_transition:{receipt['state']}->ARTIFACT_WRITTEN", peer_ignored=peer)
+    job = request.get("job")
+    if not isinstance(job, Mapping) or set(job) - MODEL_JOB_FIELDS or not all(k in job for k in MODEL_JOB_FIELDS):
+        return _refused(None, "malformed_event", peer_ignored=peer)
+    try:
+        _reject_secret_material(job)
+    except GatewayError as exc:
+        return _refused(None, exc.reason, peer_ignored=peer)
+    if str(job.get("correlation_id")) != str(receipt.get("idempotency_key")) and str(job.get("correlation_id")) != str(receipt.get("event_id")):
+        return _refused(None, "project_mismatch", peer_ignored=peer)
+    try:
+        from scripts.lib import n8n_model_job as MJ  # type: ignore
+    except ImportError:
+        import n8n_model_job as MJ  # type: ignore
+    call = MODEL_JOB_GOVERNED_CALL or MJ.bridge_governed_call
+    result = MJ.run_model_job(job, governed_call=call, now=now if isinstance(now, datetime) else datetime.fromtimestamp(_unix(now), timezone.utc))
+    updated = dict(receipt)
+    updated["effects"] = []
+    updated["outbound"] = "blocked"
+    updated["mutation"] = "blocked"
+    updated["durable"] = bool(getattr(store, "durable", False))
+    updated["model_job"] = {k: result.get(k) for k in ("state", "reason", "detail", "cost", "started_at", "ended_at", "output_schema_id")}
+    if result.get("state") == "ARTIFACT_WRITTEN":
+        try:
+            out_path = MJ.write_receipt(result)
+            ref = {"store": "data/runtime", "ref": f"n8n_model_jobs/{out_path.name}", "sha256": result["artifact_out"]["sha256"],
+                   "as_of": result.get("ended_at")}
+        except OSError as exc:
+            updated["state"] = "FAILED"
+            updated["reason"] = "typed_refusal:receipt_write_failed"
+            updated["model_job"]["detail"] = type(exc).__name__
+            slot["receipt"] = updated
+            return dict(updated)
+        updated["state"] = "ARTIFACT_WRITTEN"
+        updated["artifact_ref"] = ref
+    else:
+        updated["state"] = "REFUSED"
+        updated["reason"] = f"typed_refusal:{result.get('reason')}"
+    slot["receipt"] = updated
+    return dict(updated)
 
 
 def _list(request, claim, store, peer) -> dict[str, Any]:

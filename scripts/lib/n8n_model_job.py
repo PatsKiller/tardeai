@@ -244,6 +244,37 @@ def run_model_job(job: Mapping[str, Any], *, governed_call: Callable[..., dict[s
     return receipt
 
 
+BRIDGE_URL_ENV = "TRADEAI_GOVERNED_BRIDGE_URL"
+BRIDGE_CALLER = "n8n_model_job"
+
+
+def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, response_format: Optional[dict] = None,
+                         request_id: Optional[str] = None, timeout_s: float = 60.0) -> dict[str, Any]:
+    """Loopback HTTP to the running governed bridge (cio-governed-bridge.service, 127.0.0.1:8766).
+
+    The bridge maps the caller header to the process server-side (CALLER_PROCESS_MAP); the job's
+    process_id is checked against what the bridge reports, never sent as an instruction. No key
+    lives here: the bridge holds the provider credential. A transport failure is a provider_outage."""
+    import urllib.error
+    import urllib.request
+    url = os.environ.get(BRIDGE_URL_ENV) or "http://127.0.0.1:8766/v1/chat/completions"
+    body = json.dumps({"model": "tradeai_governed", "messages": messages, "response_format": response_format or {"type": "json_object"},
+                       "max_tokens": 2048, "request_id": request_id}).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json",
+                                                                          "X-TradeAI-Agent": BRIDGE_CALLER,
+                                                                          "X-TradeAI-Task-Type": "model_job"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            return json.loads(exc.read().decode("utf-8"))
+        except ValueError:
+            return {"error": {"code": "PROVIDER_HTTP_ERROR", "status": exc.code, "message": str(exc)[:120]}, "governance_pass": False}
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return {"error": {"code": "PROVIDER_TIMEOUT", "status": 504, "message": type(exc).__name__}, "governance_pass": False}
+
+
 def write_receipt(receipt: Mapping[str, Any], *, root: Optional[Path] = None) -> Path:
     """Durable job receipt under data/runtime/n8n_model_jobs/<correlation_id>.json (atomic)."""
     root = root or state_root()
