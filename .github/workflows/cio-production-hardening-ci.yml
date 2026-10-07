@@ -90,6 +90,12 @@ jobs:
       - name: Dark contract guard (no new uncalled versioned schema)
         run: python3 scripts/check_dark_contracts.py --fail-on-new
 
+      # 2026-10-07: retention is a governed surface. The four tax/brokerage tables sat on a
+      # 180-day DELETE policy for months; the registry makes KEEP_FOREVER explicit and this
+      # gate refuses a registry that deletes them, lacks a window, or carries unresolved rows.
+      - name: Retention policy registry gate
+        run: python3 scripts/check_retention_policy.py --fail-on-new
+
       # A "preserve CRLF" helper double-converted an already-CRLF file on
       # 2026-08-27: \r\n became \r\r\n across 783 lines. Python parsed it and
       # the tests passed; the only symptom was an implausible insertion count.

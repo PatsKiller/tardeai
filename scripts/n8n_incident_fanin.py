@@ -125,6 +125,13 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
     if doc and doc.get("ok") is False:
         out.append({"source": "n8n_lab_watchdog", "item": "healthz", "severity": "P2", "detail": str(doc.get("reason") or doc.get("status")),
                     "artifact_rel": "data/runtime/n8n_lab_watchdog_last.json", "store": "data/runtime", "detected_at": doc.get("as_of")})
+    # 3b. database hygiene (report_db_hygiene.py, nightly): every finding stays open until fixed
+    doc = _load(rt / "db_hygiene_last.json")
+    if doc:
+        for f in doc.get("findings") or []:
+            out.append({"source": "db_hygiene", "item": f"{f.get('code')}:{f.get('item')}", "severity": str(f.get("severity") or "P3"),
+                        "detail": str(f.get("detail") or "")[:160], "artifact_rel": "data/runtime/db_hygiene_last.json",
+                        "store": "data/runtime", "detected_at": doc.get("as_of")})
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:

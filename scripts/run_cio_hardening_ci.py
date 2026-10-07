@@ -3379,6 +3379,7 @@ GATES = [
             "tests/test_n8n_phase1_dispatch_20261007.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
+            "tests/test_retention_registry_20261007.py",
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",
             "tests/test_n8n_coordination_ledger_20261007.py",
