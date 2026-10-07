@@ -36,7 +36,7 @@ The incumbent remains systemd, cron, flock, and the existing outboxes. Self-host
 
 ## Pilot contracts
 
-All five are DESIGN_ONLY. Shadow owner: none. No workflow JSON was imported. No send, no model call, no canonical write. Rollback of this phase is to leave the crontab and timers as they were, which is what this pass did.
+All five are WIRED_UNPROVEN as of `c5de69ee9` (library served, no caller; earlier text said DESIGN_ONLY). Shadow owner: none. No workflow JSON was imported. No send, no model call, no canonical write. Rollback of this phase is to leave the crontab and timers as they were, which is what this pass did.
 
 Shared rules:
 

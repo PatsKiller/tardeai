@@ -40,7 +40,8 @@
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
     "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
-    "pilot_status": "IMPLEMENTED_MUTED",
+    "pilot_status": "WIRED_UNPROVEN",
+    "pilot_status_note": "2026-10-07: library served on c5de69ee9; no production caller, no workflow, no consumer receipt (was IMPLEMENTED_MUTED)",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -94,7 +95,8 @@
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
     "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
-    "pilot_status": "IMPLEMENTED_MUTED",
+    "pilot_status": "WIRED_UNPROVEN",
+    "pilot_status_note": "2026-10-07: library served on c5de69ee9; no production caller, no workflow, no consumer receipt (was IMPLEMENTED_MUTED)",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -152,7 +154,8 @@
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
     "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
-    "pilot_status": "IMPLEMENTED_MUTED",
+    "pilot_status": "WIRED_UNPROVEN",
+    "pilot_status_note": "2026-10-07: library served on c5de69ee9; no production caller, no workflow, no consumer receipt (was IMPLEMENTED_MUTED)",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -210,7 +213,8 @@
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
     "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
-    "pilot_status": "IMPLEMENTED_MUTED",
+    "pilot_status": "WIRED_UNPROVEN",
+    "pilot_status_note": "2026-10-07: library served on c5de69ee9; no production caller, no workflow, no consumer receipt (was IMPLEMENTED_MUTED)",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -264,7 +268,8 @@
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
     "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
-    "pilot_status": "IMPLEMENTED_MUTED",
+    "pilot_status": "WIRED_UNPROVEN",
+    "pilot_status_note": "2026-10-07: library served on c5de69ee9; no production caller, no workflow, no consumer receipt (was IMPLEMENTED_MUTED)",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {

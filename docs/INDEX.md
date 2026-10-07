@@ -1414,9 +1414,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
-| `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `11658a7f2b58` |
+| `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |
 | `docs/implementation/n8n-parallel/00-fact-reconciliation.md` | Fact reconciliation | review_required | MISSING HEADER | `f0da125c7130` |
-| `docs/implementation/n8n-parallel/01-disposition-and-pilots.md` | Phase 1 — disposition and five pilot contracts | review_required | MISSING HEADER | `48fa3bc907bd` |
+| `docs/implementation/n8n-parallel/01-disposition-and-pilots.md` | Phase 1 — disposition and five pilot contracts | review_required | MISSING HEADER | `91f823ffb010` |
 | `docs/implementation/n8n-parallel/01-scheduler-truth.md` | Scheduler truth | review_required | MISSING HEADER | `7b1d7b63dc40` |
 | `docs/implementation/n8n-parallel/02-approval-receipts.md` | Approval reminder receipts | review_required | MISSING HEADER | `bddaf67776d3` |
 | `docs/implementation/n8n-parallel/02-feature-matrix.md` | Phase 1D — features on the installed n8n | review_required | MISSING HEADER | `bcc8763607c7` |
@@ -1424,10 +1424,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/03-lab-topology-and-cost.md` | Phase 2 — lab topology, credentials, and cost | review_required | MISSING HEADER | `50cdbe4c1377` |
 | `docs/implementation/n8n-parallel/04-pilot-contracts.md` | Five muted pilot contracts | review_required | MISSING HEADER | `ed162b23b17c` |
 | `docs/implementation/n8n-parallel/04-risk-and-access.md` | Access gaps and risk register | review_required | MISSING HEADER | `a9ffcd1fd24e` |
-| `docs/implementation/n8n-parallel/05-phase-gate.md` | Phase gate — muted gateway, not a cutover | review_required | MISSING HEADER | `e0f28134f135` |
+| `docs/implementation/n8n-parallel/05-phase-gate.md` | Phase gate — muted gateway, not a cutover | review_required | MISSING HEADER | `59495b78821e` |
 | `docs/implementation/n8n-parallel/05-watchdog.md` | n8n lab watchdog | review_required | MISSING HEADER | `781b77a5e529` |
 | `docs/implementation/n8n-parallel/06-findings-and-gateway.md` | Findings corrected, and the muted coordination gateway | review_required | MISSING HEADER | `31dde27048da` |
-| `docs/implementation/n8n-parallel/07-release-packet.md` | Release packet and access block | review_required | MISSING HEADER | `43f7295386b8` |
+| `docs/implementation/n8n-parallel/07-release-packet.md` | Release packet and access block | review_required | MISSING HEADER | `b64b44aff295` |
 | `docs/implementation/n8n-parallel/08-install-and-doc-audit.md` | n8n lab install and documentation audit | review_required | MISSING HEADER | `456df34c6b88` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
 | `docs/implementation/sot/phase9_hermes_research_notes.md` | Phase 9 — one write module for `hermes_research_intelligence` | review_required | MISSING HEADER | `089989d1da1b` |

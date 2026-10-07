@@ -1,6 +1,21 @@
 # Release packet and access block
 
-Dated 2026-10-07. This is not a promotion and not a merged pull request.
+Dated 2026-10-07. Written before the merge; see the status update below for the served state.
+
+## Status update 2026-10-07 (after merge and promotion)
+
+Written 2026-10-07 03:40Z on served `c5de69ee9`. The rows below supersede the "none / 18a27ff28" values in this file; the original text is kept as the record of what was true when the packet was written.
+
+| Field | Value | Label |
+| --- | --- | --- |
+| Merged SHA | `c5de69ee94ea556fbec66acb8acf42ca2e573743` (PR #1469, merged 2026-10-07T02:53:23Z) | OBSERVED_SOURCE |
+| Served SHA | `c5de69ee94ea556fbec66acb8acf42ca2e573743`; CURRENT `c5de69ee9-main-exact-phase2-20261006-225405`, promoted 2026-10-06 23:09:20 ET; `GET /v3/build-meta.json` git_sha matches | OBSERVED_SERVED |
+| Next served SHA | `6b9a6226c` (PR #1470: reminder transport rows + reconciler lane) prepared 23:36 ET; promotion pending the push-to-main checks | WIRED_UNPROVEN |
+| Pilot vocabulary | one label from here on: the five contracts are **WIRED_UNPROVEN** (library served, no production caller, no workflow, no consumer receipt). `IMPLEMENTED_MUTED`, `LOCAL_FIXED` and `DESIGN_ONLY` in older rows mean the same thing | — |
+| Approval receipt | first receipt-writing natural run is 2026-10-07 00:05 ET (the 23:05 run was on the previous release); reconcile lane at minute 12 ships in #1470 | NOT_YET_DUE |
+| Scheduler truth | `contradiction-adjudicator` timer enabled (last fire 2026-10-06 19:30 ET), `maturity-remeasure` cron line present (last write 2026-10-05 06:40 ET); both still NEVER_SCHEDULED in the served registry; flipped to ACTIVE in this PR as a registry correction, with a `--state-drift` gate so this class of drift fails CI | OBSERVED_SERVED |
+| Conformance | the nightly report was writing into the release directory (`TRADEAI_ROOT=$PROJ`), so the promote gate read a 2026-09-27 file; crontab line corrected 2026-10-06 23:2x ET to `TRADEAI_STATE_ROOT` + `TRADEAI_RELEASE_SHA`; first persistent-state report 03:23Z on `c5de69ee9`: 11 of 14 silos below the 0.80 floor | OBSERVED_SERVED |
+
 
 ## ACCESS_BLOCKED
 

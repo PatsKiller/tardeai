@@ -1,0 +1,135 @@
+{
+ "schema": "LaneFireLedger@v1",
+ "authority": "READ_ONLY_ADVISORY",
+ "as_of": "2026-10-07T03:42:34.557653+00:00",
+ "window_days": 7,
+ "since": "2026-10-04T01:00:01.429089-04:00",
+ "window_hours": 70.7,
+ "journal_covers_from": "2026-10-04T01:00:01.429089-04:00",
+ "journal_lines": 26848,
+ "served_sha": "c5de69ee94ea556fbec66acb8acf42ca2e573743",
+ "source_sha": "6b9a6226c1006f51a513c948f7145c2115918a05",
+ "lanes": [
+  {
+   "lane_id": "material-change-digest",
+   "declared_state": "ACTIVE",
+   "scheduler": "cron",
+   "match": "notify_material_change.py --digest",
+   "expected_cadence_hours": 24.0,
+   "expected": 2,
+   "expected_basis": "window_hours // cadence_hours (calendar-exact NOT_MEASURED: no croniter)",
+   "fired": 3,
+   "fired_basis": "journal CRON CMD lines carrying the lane's match",
+   "last_fires": [
+    "2026-10-04T16:15:01.084740-04:00",
+    "2026-10-05T16:15:01.714615-04:00",
+    "2026-10-06T16:15:01.838166-04:00"
+   ],
+   "artifact": "NOT_MEASURED",
+   "artifact_last_output_at": null,
+   "artifact_detail": "no db_query supplied",
+   "consumed": {
+    "status": "NOT_MEASURED",
+    "reason": "no consumer receipt store for this lane"
+   },
+   "missed_fire_rate": 0.0
+  },
+  {
+   "lane_id": "morning-brief-0730",
+   "declared_state": "ACTIVE",
+   "scheduler": "cron",
+   "match": "scripts/send_morning_brief.py",
+   "expected_cadence_hours": 24.0,
+   "expected": 2,
+   "expected_basis": "window_hours // cadence_hours (calendar-exact NOT_MEASURED: no croniter)",
+   "fired": 2,
+   "fired_basis": "journal CRON CMD lines carrying the lane's match",
+   "last_fires": [
+    "2026-10-05T07:30:01.354931-04:00",
+    "2026-10-06T07:30:01.651868-04:00"
+   ],
+   "artifact": "IN_WINDOW",
+   "artifact_last_output_at": "2026-10-06T11:30:03.607975+00:00",
+   "artifact_detail": "/home/johnclaw/trade-ai-releases/persistent-state/logs/morning_brief.log",
+   "consumed": {
+    "status": "NOT_MEASURED",
+    "reason": "no consumer receipt store for this lane"
+   },
+   "missed_fire_rate": 0.0
+  },
+  {
+   "lane_id": "llm-spend-report-daily",
+   "declared_state": "ACTIVE",
+   "scheduler": "cron",
+   "match": "scripts/llm_spend_report.py --period daily",
+   "expected_cadence_hours": 24.0,
+   "expected": 2,
+   "expected_basis": "window_hours // cadence_hours (calendar-exact NOT_MEASURED: no croniter)",
+   "fired": 3,
+   "fired_basis": "journal CRON CMD lines carrying the lane's match",
+   "last_fires": [
+    "2026-10-04T07:05:01.966484-04:00",
+    "2026-10-05T07:05:01.253765-04:00",
+    "2026-10-06T07:05:01.302172-04:00"
+   ],
+   "artifact": "IN_WINDOW",
+   "artifact_last_output_at": "2026-10-06T11:05:05.483547+00:00",
+   "artifact_detail": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/llm_spend_report_last_daily.json",
+   "consumed": {
+    "status": "NOT_MEASURED",
+    "reason": "no consumer receipt store for this lane"
+   },
+   "missed_fire_rate": 0.0
+  },
+  {
+   "lane_id": "research-scheduler-holdings",
+   "declared_state": "ACTIVE",
+   "scheduler": "cron",
+   "match": "research_scheduler.py --mode holdings",
+   "expected_cadence_hours": 24.0,
+   "expected": 2,
+   "expected_basis": "window_hours // cadence_hours (calendar-exact NOT_MEASURED: no croniter)",
+   "fired": 2,
+   "fired_basis": "journal CRON CMD lines carrying the lane's match",
+   "last_fires": [
+    "2026-10-05T09:05:01.062819-04:00",
+    "2026-10-06T09:05:01.024436-04:00"
+   ],
+   "artifact": "IN_WINDOW",
+   "artifact_last_output_at": "2026-10-07T00:32:29.649124+00:00",
+   "artifact_detail": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/research_trigger_ledger.jsonl",
+   "consumed": {
+    "status": "NOT_MEASURED",
+    "reason": "no consumer receipt store for this lane"
+   },
+   "missed_fire_rate": 0.0
+  },
+  {
+   "lane_id": "approval-package-reminder",
+   "declared_state": "ACTIVE",
+   "scheduler": "cron",
+   "match": "approval_package_reminder.py",
+   "expected_cadence_hours": 1.0,
+   "expected": 70,
+   "expected_basis": "window_hours // cadence_hours (calendar-exact NOT_MEASURED: no croniter)",
+   "fired": 71,
+   "fired_basis": "journal CRON CMD lines carrying the lane's match",
+   "last_fires": [
+    "2026-10-06T19:05:01.809890-04:00",
+    "2026-10-06T20:05:01.064526-04:00",
+    "2026-10-06T21:05:01.138968-04:00",
+    "2026-10-06T22:05:01.353651-04:00",
+    "2026-10-06T23:05:01.699203-04:00"
+   ],
+   "artifact": "ABSENT",
+   "artifact_last_output_at": null,
+   "artifact_detail": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/approval_package_reminder_last.json (absent)",
+   "consumed": {
+    "status": "NOT_MEASURED",
+    "reason": "no reconcile receipt yet",
+    "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/approval_reminder_reconcile_last.json"
+   },
+   "missed_fire_rate": 0.0
+  }
+ ]
+}
