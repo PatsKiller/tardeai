@@ -1435,6 +1435,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/12-database-knowledge-design-review-20261007.md` | Critical design review — database health, RAG and embeddings, research retention, pruning, knowledge architecture | review_required | MISSING HEADER | `2aa1e28a6a93` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
 | `docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md` | Proposal S2 — DOF app exposure and database role | review_required | OK | `df85877b88a0` |
+| `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `77196f9bf014` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md` | Cron consolidation — tranche C, low-risk part (ranks 13, 14, 18, 9), 2026-10-07 | review_required | MISSING HEADER | `459432353f4a` |
 | `docs/implementation/n8n-parallel/proposals/phase1-install-commands.md` | Phase 1 install commands (operator), 2026-10-07 | review_required | MISSING HEADER | `d491f8368e49` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |

@@ -3381,8 +3381,14 @@ GATES = [
             # slot wrapper, drive syncs runner, hermes subject dispatcher. Proposals only; no
             # cron line is installed by listing them here.
             "tests/test_cron_tranche_c_lowrisk_20261007.py",
+            # Cron consolidation RANK 3: the 5-minute health tick that absorbs 17
+            # monitor crontab lines. Hermetic (fake steps, tmp locks/state); it
+            # pins due-phase arithmetic, lock skip, timeout = failure, receipt
+            # shape and that dry-run writes nothing. Timer stays NEVER_SCHEDULED.
+            "tests/test_health_tick_20261007.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
+            "tests/test_retention_registry_20261007.py",
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",
             "tests/test_n8n_coordination_ledger_20261007.py",
