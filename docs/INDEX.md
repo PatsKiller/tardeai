@@ -1431,6 +1431,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/08-install-and-doc-audit.md` | n8n lab install and documentation audit | review_required | MISSING HEADER | `456df34c6b88` |
 | `docs/implementation/n8n-parallel/09-live-audit-20261007.md` | n8n live audit — installation, parity, capability, migration, security, execution plan | review_required | MISSING HEADER | `82f4d2135e25` |
 | `docs/implementation/n8n-parallel/10-eligibility-and-secrets-20261007.md` | Follow-up audit — n8n workload eligibility and secret-management review | review_required | MISSING HEADER | `2f678ae3cf6a` |
+| `docs/implementation/n8n-parallel/11-target-state-blueprint-20261007.md` | n8n target-state blueprint — baseline status, gap analysis, process inventory, operating model | archive_legacy_blueprint | MISSING HEADER | `c9b1b64f4b1a` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
 | `docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md` | Proposal S2 — DOF app exposure and database role | review_required | OK | `df85877b88a0` |
 | `docs/implementation/n8n-parallel/proposals/phase1-install-commands.md` | Phase 1 install commands (operator), 2026-10-07 | review_required | MISSING HEADER | `d491f8368e49` |
