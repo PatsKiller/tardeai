@@ -3156,6 +3156,7 @@ GATES = [
         [
             "tests/test_drive_sync_purge_20260926.py",
             "tests/test_options_runtime_export_20260926.py",
+            "tests/test_options_runtime_export_url_digits_20261007.py",
         ],
     ),
     (

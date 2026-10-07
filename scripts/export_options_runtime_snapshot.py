@@ -69,6 +69,16 @@ MONEY_PHRASE_RE = re.compile(
     re.IGNORECASE,
 )
 MASKED_ACCOUNT_RE = re.compile(r"(?:[xX*]{2,}|\.{3}|#)\s?\d{3,6}\b")
+# 2026-10-07: a news URL in a thesis catalyst carried an 8-digit article id; account_number_re read it as an
+# account number and the whole export refused to write for ~130 hourly runs (the CC options snapshot went
+# stale). A digit run inside a URL is an identifier of the page, never of an account: neutralise it in the
+# redactor, keep the guard itself unchanged (a bare 8-digit run still refuses the export).
+URL_RE = re.compile(r"https?://[^\s)>\]]+")
+URL_DIGIT_RUN_RE = re.compile(r"\d{4,}")
+
+
+def _redact_url(m: "re.Match[str]") -> str:
+    return URL_DIGIT_RUN_RE.sub("[n]", m.group(0))
 CHANGE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z _]*?)\s+-?[\d.,]+\s*->\s*-?[\d.,]+\s*(\([^)]*\))?\s*$")
 
 
@@ -141,6 +151,7 @@ class Redactor:
         s = MONEY_PHRASE_RE.sub(lambda m: f"{m.group(1)}{m.group(2) or ''} [redacted]", s)
         if self.term_re is not None:
             s = self.term_re.sub("[account]", s)
+        s = URL_RE.sub(_redact_url, s)
         s = MASKED_ACCOUNT_RE.sub("[redacted]", s)
         n = int(self.cfg["text_max_chars"])
         if n > 0 and len(s) > n:
