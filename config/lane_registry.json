@@ -747,12 +747,16 @@
         "expression": "hermes-momentum-catalyst-morning.timer"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/catalyst_momentum_last_run.json"
       },
-      "note": "Morning momentum catalyst research lane."
+      "note": "Morning momentum catalyst research lane.",
+      "state_since": "2026-10-07",
+      "reason_confidence": "ESTABLISHED",
+      "state_reason": "Operator decision D2 (2026-10-07): timer ran the DEV tree every 15 min 08:00–15:45 (32/day) while a cron line ran the same researcher from CURRENT 10/day; timer disabled, cron line kept. superseded_by hermes-momentum-catalyst-scalp.",
+      "superseded_by": "hermes-momentum-catalyst-scalp"
     },
     {
       "lane_id": "portfolio-backup-cadence",
@@ -3237,6 +3241,67 @@
         4
       ],
       "note": "Cron tranche A rank 1 (2026-10-07): the non-scalp proposal generator line gained the lock it was missing (/tmp/auto_proposal_general.lock); it is complementary to momentum-scalp-advisory-alerts (*/10 6-11, momentum_scalp only), not a duplicate."
+    },
+    {
+      "lane_id": "atm-position-reconciler",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "RETIRED",
+      "state_since": "2026-10-07",
+      "state_reason": "Operator decision D5 (2026-10-07): both cron lines (*/15 9-16 and 16:45) had never executed since their log directory logs/atm_position_reconciliation/ disappeared (243 firings in 11 days, 0 runs, latest.json never written). Removed rather than revived: broker-adjacent; revive only on the ATM owner's request with the directory restored.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atm_position_reconciliation/latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "cron study 2026-10-07 §5; syslog CMD count vs missing redirect target"
+    },
+    {
+      "lane_id": "hermes-momentum-catalyst-scalp",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 6-15 * * 1-5 hermes_momentum_catalyst_researcher.py --source scalp --apply",
+        "match": "scripts/hermes_momentum_catalyst_researcher.py"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-07",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/catalyst_momentum_last_run.json"
+      },
+      "note": "Operator decision D2 (2026-10-07): the CURRENT-tree cron line is the single scheduler for the momentum catalyst researcher (10 runs/day); the dev-tree timer is retired."
+    },
+    {
+      "lane_id": "hermes-external-feedback-nightly",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-external-feedback.timer (04:00, --model deepseek-v4-flash) — DISABLED",
+        "match": "hermes-external-feedback.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "state_since": "2026-10-07",
+      "state_reason": "Operator decision D3 (2026-10-07): the hourly cron line (hermes-usefulness-backfill, LLM_GLOBAL_DAILY_USD_CAP=2.00, off-peak wrapper) is the single scheduler; the nightly timer was disabled (unit file kept on disk, not enabled).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_external_feedback.log"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "systemctl --user is-enabled hermes-external-feedback.timer → disabled (2026-10-07 13:05 ET)",
+      "superseded_by": "hermes-usefulness-backfill"
     }
   ],
   "undeclared_baseline": [
@@ -3263,9 +3328,7 @@
     "*/15 6-17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/eligible_prewarm.lock .venv/bin/python -c \"import sys;sys.path.insert(0,'scripts');import reporting_engine as r;r.eligible_report_payload(use_cache=False)\" >> logs/eligible_prewarm.log 2>&1  # R0: pre-warm analyst /eligible cache out of request path",
     "*/15 6-19 * * 1-5 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_governed_agent_flash_market.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/governed_agent_flash_market.log 2>&1 # TRADEAI_GOVERNED_WORKER market-15m-v2",
     "*/15 6-20 * * 1-5 cd $PROJ && $PY scripts/cron_self_heal.py --apply >> logs/cron_self_heal.log 2>&1",
-    "*/15 7-16 * * 1-5 cd $PROJ && flock -n /tmp/watch_sched.lock $PY scripts/watch_decision_scheduler.py --run >> logs/watch_decision_scheduler.log 2>&1",
     "*/15 7-9 * * 1-5 cd $PROJ && $PY scripts/premarket_watcher.py >> logs/premarket_watcher.log 2>&1",
-    "*/15 9-16 * * 1-5 bash scripts/safe_flock.sh /tmp/atm_position_reconciler.lock .venv/bin/python scripts/atm_position_reconciler.py --audit-only --write-audit --json-out logs/atm_position_reconciliation/latest.json >> logs/atm_position_reconciliation/cron.log 2>&1",
     "*/15 9-16 * * 1-5 cd $PROJ && /usr/bin/flock -n /tmp/tradeai_protection_pass.lock $PY scripts/protection_atm_pass.py >> logs/protection_atm_pass.log 2>&1",
     "*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/mkt_quotes_intraday.lock $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1  # intraday live quotes (Alpaca primary)",
     "*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/trade_integrity_audit.lock $PY scripts/trade_integrity_audit.py >> logs/trade_integrity_audit.log 2>&1",
@@ -3635,7 +3698,6 @@
     "45 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- flock -n /tmp/hermes_config_governor.lock $PY scripts/hermes_config_governor.py --apply >> logs/hermes_config_governor.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:40 ET Peak B",
     "45 15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_options_iv.lock $PY scripts/options_iv_snapshot.py --run --symbols-from-universe >> logs/options_iv_snapshot.log 2>&1  # scanner universe; legacy captured 0 rows (fixed 2026-07-05)",
     "45 16 * * 1-5 cd $PROJ && flock -n /tmp/enrich_coverage.lock $PY scripts/audit_enrichment_coverage.py --alert >> logs/enrichment_coverage.log 2>&1  # agent: audits every enrichment surface vs canonical watch universe (operator 2026-06-12)",
-    "45 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash scripts/safe_flock.sh /tmp/atm_position_reconciler_eod.lock .venv/bin/python scripts/atm_position_reconciler.py --audit-only --write-audit --json-out logs/atm_position_reconciliation/eod_$(date +\\%Y\\%m\\%d).json >> logs/atm_position_reconciliation/cron.log 2>&1",
     "45 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/ri_research_queue_cron.lock .venv/bin/python scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1",
     "45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)",
     "45 18 * * * cd $PROJ && flock -n /tmp/tos_ingest.lock $PY scripts/ingest_tos_watchlists.py --apply >> logs/tos_ingest.log 2>&1  # ToS watchlist import (inbound imports/tos_watchlists/)",
@@ -3704,7 +3766,6 @@
     "hermes-backlog-health-check.timer",
     "hermes-deep-research-local.timer",
     "hermes-embedding-promotion-review.timer",
-    "hermes-external-feedback.timer",
     "hermes-librarian-backlog-loop.timer",
     "hermes-observation-check.timer",
     "hermes-shadow-scorer.timer",
@@ -3763,7 +3824,6 @@
         "*/15 10-20 * * * /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_watchlist_agent_jobs_offpeak.sh >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/watchlist_agent_jobs_offpeak.log 2>&1  # TRADEAI_BULK_DEEPSEEK 10:00-20:59 America/New_York",
         "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min — premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window",
         "*/15 6-17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/eligible_prewarm.lock $PY -c \"import sys;sys.path.insert(0,'scripts');import reporting_engine as r;r.eligible_report_payload(use_cache=False)\" >> logs/eligible_prewarm.log 2>&1  # R0: pre-warm analyst /eligible cache out of request path",
-        "*/15 9-16 * * 1-5 cd $PROJ && bash scripts/safe_flock.sh /tmp/atm_position_reconciler.lock $PY scripts/atm_position_reconciler.py --audit-only --write-audit --json-out logs/atm_position_reconciliation/latest.json >> logs/atm_position_reconciliation/cron.log 2>&1",
         "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/safe_flock.sh /tmp/alpaca_live_read_sync.lock $PY scripts/alpaca_live_read_sync.py >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/alpaca_live_read_sync.log 2>&1",
         "*/20 13-21 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/intraday_vwap.lock $PY scripts/compute_intraday_vwap.py >> logs/intraday_vwap.log 2>&1",
         "*/20 9-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/options_lifecycle.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/options_lifecycle_run.py\" >> logs/options_lifecycle.log 2>&1",
@@ -3842,7 +3902,6 @@
         "40 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/gain_guardian.lock $PY scripts/holdings_gain_guardian.py --apply >> logs/gain_guardian.log 2>&1",
         "40 2 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1",
         "40 20 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/system_rollup_snapshot.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/system_rollup_snapshot.py\" >> logs/system_rollup_snapshot.log 2>&1  # Reports v3 WS-B: nightly system rollup snapshot + Daily System Digest",
-        "45 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash scripts/safe_flock.sh /tmp/atm_position_reconciler_eod.lock $PY scripts/atm_position_reconciler.py --audit-only --write-audit --json-out logs/atm_position_reconciliation/eod_$(date +\\%Y\\%m\\%d).json >> logs/atm_position_reconciliation/cron.log 2>&1",
         "45 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1",
         "45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1",
         "45 2 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14 >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/topic_ingestion.log 2>&1",
