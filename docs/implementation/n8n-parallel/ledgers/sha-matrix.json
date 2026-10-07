@@ -1,0 +1,128 @@
+{
+  "observed_at_utc": "2026-10-07T00:49:34+00:00",
+  "observed_at_et": "2026-10-06T20:49:34-04:00",
+  "hostname": "ms01-openclaw",
+  "served": {
+    "label": "OBSERVED_SERVED",
+    "git_sha": "18a27ff288894c4e428151d5f385e68522ecd47b",
+    "build_sha": "18a27ff28889",
+    "built_at": "2026-10-06T22:08:40.117Z",
+    "branch": "main",
+    "release_label": "main-exact-phase2",
+    "ui_version": "3.14+mux8d5sp",
+    "http": "200",
+    "working_directory": "/home/johnclaw/trade-ai-releases/portfolio-server/18a27ff28-main-exact-phase2-20261006-180747",
+    "current_symlink_realpath": "/home/johnclaw/trade-ai-releases/portfolio-server/18a27ff28-main-exact-phase2-20261006-180747",
+    "portfolio_server": "active running"
+  },
+  "origin_main": "18a27ff288894c4e428151d5f385e68522ecd47b",
+  "worktree": {
+    "path": "/home/johnclaw/tradeai-wt-n8n-parallel-20261007",
+    "branch": "wt/n8n-parallel-20261007",
+    "head": "18a27ff288894c4e428151d5f385e68522ecd47b"
+  },
+  "primary_checkout": {
+    "head": "18a27ff288894c4e428151d5f385e68522ecd47b",
+    "branch": "HEAD",
+    "dirty_count": 2,
+    "note": "Detached at the served SHA with unrelated local edits. This program did not use that checkout."
+  },
+  "dof": {
+    "label": "OBSERVED_SERVED",
+    "head": "1f3186d563076da62c38c4294321b0c65086be50",
+    "branch": "master",
+    "dirty_count": 0,
+    "remote": "https://github.com/PatsKiller/nyc-dof-auction.git",
+    "working_directory": "/home/johnclaw/nyc-dof-auction",
+    "dashboard": "active running",
+    "run_scope_http": "200",
+    "run_scope": {
+      "limited": true,
+      "location_count": 1,
+      "locations": [
+        "Bronx"
+      ]
+    },
+    "llm_router_tracked": true
+  },
+  "n8n": {
+    "label": "OBSERVED_LAB",
+    "health_http": "200",
+    "openapi_http": "200",
+    "workflows_api_http": "401",
+    "docker": {
+      "db": "running postgres:16.15-alpine {}",
+      "image": "sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c [\"n8nio/n8n@sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c\"]",
+      "n8n": "running n8nio/n8n:2.43.0 {\"5678/tcp\":[{\"HostIp\":\"127.0.0.1\",\"HostPort\":\"5678\"}]} 805306368"
+    },
+    "db": {
+      "counts": {
+        "api_keys": 0,
+        "credentials": 0,
+        "executions": 66,
+        "packages": 0,
+        "users": 1,
+        "variables": 0,
+        "webhooks": 0,
+        "workflows": 4
+      },
+      "error": "",
+      "ok": true,
+      "workflows": [
+        {
+          "active": false,
+          "name": "n8n-bench-error"
+        },
+        {
+          "active": false,
+          "name": "n8n-bench-nodes"
+        },
+        {
+          "active": true,
+          "name": "n8n-monitor-dof"
+        },
+        {
+          "active": true,
+          "name": "n8n-monitor-trade-ai"
+        }
+      ]
+    }
+  },
+  "file_hashes": {
+    "adr": "6a667c1ea1f07d9f2db0be45165808fd44120c0d7f70d036e8b98180f6c2fd7b",
+    "agents": "1bdd111aed9235a1b419c38adc7d4927f6c53a80c5def271aaa3e3bf8e192394",
+    "data_source_authority": "958d93f72b9abedb03d8282b52a2d69602b044b3b56e43764b2574cb46b8a768",
+    "deepseek_client": "7e4ee9e02a8a26efe00ccab2e5fc7f37d047d2a76e1c51320ae85f773198e337",
+    "lane_registry": "970b48520074a5050bf2cb1c1f465f2dbfda4193ad4b1f2ba34f83c1d64485e0",
+    "llm_model_registry": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072",
+    "llm_process_registry": "d766f3913f96e0bb4cae3947c94f565bf67c6d6a7f657969e754d317777f4074",
+    "portfolio_server": "41e119ce7fb99ba929dde9f9ac8742cd3ed06e324e36baa28fe7b1ab8111adb9"
+  },
+  "listeners": {
+    "listeners": {
+      "5432": [
+        "127.0.0.1:5432"
+      ],
+      "5433": [
+        "127.0.0.1:5433"
+      ],
+      "55432": [
+        "127.0.0.1:55432"
+      ],
+      "5678": [
+        "127.0.0.1:5678"
+      ],
+      "7776": [
+        "0.0.0.0:7776"
+      ],
+      "7777": [
+        "0.0.0.0:7777"
+      ],
+      "8766": [
+        "127.0.0.1:8766"
+      ]
+    },
+    "status": "OBSERVED"
+  },
+  "database_schema_version": "NOT_MEASURED"
+}

@@ -1,0 +1,280 @@
+[
+  {
+    "lane_id": "material-change-digest",
+    "declared_owner": "cio",
+    "declared_state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "match": "notify_material_change.py --digest",
+    "scripts": [
+      "notify_material_change.py"
+    ],
+    "modes": [],
+    "periods": [],
+    "units": [],
+    "expected_cadence_hours": 24.0,
+    "host_presence": "ONE_HOST_HIT",
+    "host_hits": 1,
+    "host_hits_detail": [
+      {
+        "schedule": "15 16 * * *",
+        "sha256": "834e34a0fd674b3ba63b07a63b6569b4ddd92e2a132634239d4ee4779fb18925",
+        "scripts": [
+          "notify_material_change.py"
+        ],
+        "modes": [],
+        "periods": [],
+        "has_proj": true,
+        "has_dev_tree": false
+      }
+    ],
+    "conflict": null,
+    "conflict_note": null,
+    "output_signal_kind": "db_max",
+    "artifact_status": "NOT_MEASURED",
+    "artifact_age_hours": null,
+    "artifact_lateness": "NOT_MEASURED",
+    "fired": "NOT_MEASURED",
+    "accepted": "NOT_MEASURED",
+    "consumed": "NOT_MEASURED",
+    "failed": "NOT_MEASURED",
+    "suppressed": "NOT_MEASURED",
+    "disposition": "N8N_COORDINATION_PILOT",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
+    "high_frequency": false,
+    "financial_effect": false,
+    "scores": {
+      "api_suitability": "NOT_MEASURED",
+      "benefit": "high",
+      "data_sensitivity": "mixed",
+      "frequency": "daily",
+      "host_failure": "shadow_only_incumbent_continues",
+      "rollback": "do_not_activate_shadow",
+      "time_sensitivity": "routine"
+    }
+  },
+  {
+    "lane_id": "morning-brief-0730",
+    "declared_owner": "comms",
+    "declared_state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "match": "scripts/send_morning_brief.py",
+    "scripts": [
+      "send_morning_brief.py"
+    ],
+    "modes": [],
+    "periods": [],
+    "units": [],
+    "expected_cadence_hours": 24.0,
+    "host_presence": "ONE_HOST_HIT",
+    "host_hits": 1,
+    "host_hits_detail": [
+      {
+        "schedule": "30 7 * * 1-5",
+        "sha256": "c0808c4a926918be4a424ca0eb56163446ab947d624a52efcb9c4ed33dc63eb5",
+        "scripts": [
+          "send_morning_brief.py"
+        ],
+        "modes": [],
+        "periods": [],
+        "has_proj": true,
+        "has_dev_tree": false
+      }
+    ],
+    "conflict": null,
+    "conflict_note": null,
+    "output_signal_kind": "file_mtime",
+    "artifact_status": "OBSERVED",
+    "artifact_age_hours": 13.33,
+    "artifact_lateness": "WITHIN_2X_CADENCE",
+    "fired": "NOT_MEASURED",
+    "accepted": "NOT_MEASURED",
+    "consumed": "NOT_MEASURED",
+    "failed": "NOT_MEASURED",
+    "suppressed": "NOT_MEASURED",
+    "disposition": "N8N_COORDINATION_PILOT",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
+    "high_frequency": false,
+    "financial_effect": false,
+    "scores": {
+      "api_suitability": "NOT_MEASURED",
+      "benefit": "high",
+      "data_sensitivity": "mixed",
+      "frequency": "daily",
+      "host_failure": "shadow_only_incumbent_continues",
+      "rollback": "do_not_activate_shadow",
+      "time_sensitivity": "routine"
+    }
+  },
+  {
+    "lane_id": "llm-spend-report-daily",
+    "declared_owner": "comms",
+    "declared_state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "match": "scripts/llm_spend_report.py --period daily",
+    "scripts": [
+      "llm_spend_report.py"
+    ],
+    "modes": [],
+    "periods": [
+      "daily"
+    ],
+    "units": [],
+    "expected_cadence_hours": 24,
+    "host_presence": "ONE_HOST_HIT",
+    "host_hits": 1,
+    "host_hits_detail": [
+      {
+        "schedule": "5 7 * * *",
+        "sha256": "ad99b1bfe87e4df637925b352ba5faa3220d0a89069868755943707016d04e9c",
+        "scripts": [
+          "llm_spend_report.py"
+        ],
+        "modes": [],
+        "periods": [
+          "daily"
+        ],
+        "has_proj": true,
+        "has_dev_tree": false
+      }
+    ],
+    "conflict": null,
+    "conflict_note": null,
+    "output_signal_kind": "file_mtime",
+    "artifact_status": "OBSERVED",
+    "artifact_age_hours": 13.74,
+    "artifact_lateness": "WITHIN_2X_CADENCE",
+    "fired": "NOT_MEASURED",
+    "accepted": "NOT_MEASURED",
+    "consumed": "NOT_MEASURED",
+    "failed": "NOT_MEASURED",
+    "suppressed": "NOT_MEASURED",
+    "disposition": "N8N_COORDINATION_PILOT",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
+    "high_frequency": false,
+    "financial_effect": false,
+    "scores": {
+      "api_suitability": "NOT_MEASURED",
+      "benefit": "high",
+      "data_sensitivity": "mixed",
+      "frequency": "daily",
+      "host_failure": "shadow_only_incumbent_continues",
+      "rollback": "do_not_activate_shadow",
+      "time_sensitivity": "routine"
+    }
+  },
+  {
+    "lane_id": "research-scheduler-holdings",
+    "declared_owner": "research",
+    "declared_state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "match": "research_scheduler.py --mode holdings",
+    "scripts": [
+      "research_scheduler.py"
+    ],
+    "modes": [
+      "holdings"
+    ],
+    "periods": [],
+    "units": [],
+    "expected_cadence_hours": 24,
+    "host_presence": "ONE_HOST_HIT",
+    "host_hits": 1,
+    "host_hits_detail": [
+      {
+        "schedule": "5 9 * * 1-5",
+        "sha256": "f32ba934a2e47073868a4550e362abdfe6c7659012dc7b008a8d9c20460d3815",
+        "scripts": [
+          "research_scheduler.py"
+        ],
+        "modes": [
+          "holdings"
+        ],
+        "periods": [],
+        "has_proj": true,
+        "has_dev_tree": false
+      }
+    ],
+    "conflict": null,
+    "conflict_note": null,
+    "output_signal_kind": "file_mtime",
+    "artifact_status": "OBSERVED",
+    "artifact_age_hours": 0.29,
+    "artifact_lateness": "WITHIN_2X_CADENCE",
+    "fired": "NOT_MEASURED",
+    "accepted": "NOT_MEASURED",
+    "consumed": "NOT_MEASURED",
+    "failed": "NOT_MEASURED",
+    "suppressed": "NOT_MEASURED",
+    "disposition": "N8N_COORDINATION_PILOT",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
+    "high_frequency": false,
+    "financial_effect": false,
+    "scores": {
+      "api_suitability": "NOT_MEASURED",
+      "benefit": "high",
+      "data_sensitivity": "mixed",
+      "frequency": "daily",
+      "host_failure": "shadow_only_incumbent_continues",
+      "rollback": "do_not_activate_shadow",
+      "time_sensitivity": "routine"
+    }
+  },
+  {
+    "lane_id": "approval-package-reminder",
+    "declared_owner": "platform",
+    "declared_state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "match": "approval_package_reminder.py",
+    "scripts": [
+      "approval_package_reminder.py"
+    ],
+    "modes": [],
+    "periods": [],
+    "units": [],
+    "expected_cadence_hours": 1,
+    "host_presence": "ONE_HOST_HIT",
+    "host_hits": 1,
+    "host_hits_detail": [
+      {
+        "schedule": "5 * * * *",
+        "sha256": "bd1b0daa51c704003d67ec39c77adfb2524db0dd433afa2c6b1aba0dbb57a8bd",
+        "scripts": [
+          "approval_package_reminder.py"
+        ],
+        "modes": [],
+        "periods": [],
+        "has_proj": true,
+        "has_dev_tree": false
+      }
+    ],
+    "conflict": null,
+    "conflict_note": null,
+    "output_signal_kind": "file_mtime",
+    "artifact_status": "OBSERVED",
+    "artifact_age_hours": 189.74,
+    "artifact_lateness": "LATE_FILE",
+    "fired": "NOT_MEASURED",
+    "accepted": "NOT_MEASURED",
+    "consumed": "NOT_MEASURED",
+    "failed": "NOT_MEASURED",
+    "suppressed": "NOT_MEASURED",
+    "disposition": "N8N_COORDINATION_PILOT",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
+    "high_frequency": false,
+    "financial_effect": false,
+    "scores": {
+      "api_suitability": "NOT_MEASURED",
+      "benefit": "high",
+      "data_sensitivity": "high",
+      "frequency": "daily",
+      "host_failure": "shadow_only_incumbent_continues",
+      "rollback": "do_not_activate_shadow",
+      "time_sensitivity": "high"
+    }
+  }
+]

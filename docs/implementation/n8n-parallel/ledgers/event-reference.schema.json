@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trade-ai.local/n8n-parallel/event-reference/v0",
+  "title": "event reference v0",
+  "description": "Shape checked by scripts/lib/n8n_coordination_gateway.py. This file is not a server and is not served. A matching payload is not authority and must not send, trade, grant, or write a canonical record. Localhost is not authentication.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "source_project",
+    "lane_id",
+    "schema_version",
+    "origin_sha",
+    "subject_key",
+    "source_timestamp",
+    "deadline",
+    "artifact_ref",
+    "authority_class",
+    "correlation_id",
+    "idempotency_key"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "minLength": 8},
+    "source_project": {"enum": ["trade-ai", "nyc-dof-auction"]},
+    "lane_id": {"type": "string", "minLength": 1},
+    "schema_version": {"const": "event-reference/v0"},
+    "origin_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "subject_key": {"type": "string", "minLength": 1},
+    "source_timestamp": {"type": "string", "format": "date-time"},
+    "deadline": {"type": "string", "format": "date-time"},
+    "artifact_ref": {"type": "string", "minLength": 1},
+    "authority_class": {"const": "coordination_read"},
+    "correlation_id": {"type": "string", "minLength": 8},
+    "idempotency_key": {"type": "string", "minLength": 8}
+  }
+}

@@ -1,0 +1,426 @@
+{
+  "observed_at_utc": "2026-10-07T00:49:34+00:00",
+  "coverage": "PARTIAL_STRING_LITERALS",
+  "coverage_note": "Routes are quoted path strings in scripts/portfolio_server.py and scripts/control_plane_api.py, plus Flask routes in the DOF server. Verb, authentication, idempotency, rate limit, timeout, and caller are NOT_MEASURED except the auth-exempt prefixes recorded here. The August 26 inventory is historical and is not this served release.",
+  "auth_exempt_prefixes_source": [
+    "/v2/",
+    "/v3/",
+    "/v3-next/",
+    "/data/",
+    "/archive/",
+    "/reports/",
+    "/assets/",
+    "/api/health"
+  ],
+  "august_inventory": {
+    "path": "docs/_evidence/r21/CONTROL_PLANE_API_INVENTORY.json",
+    "captured_at": "2026-08-26",
+    "source_sha": "e683e90f9a24b9cd56399054da33cc6c3b4ba8bb",
+    "authority": "READ_ONLY_ADVISORY",
+    "existing_canonical_read_routes": 8,
+    "existing_v3_cio_routes": 9,
+    "proposed_contracts": 12,
+    "proposed_read_only_routes": 12,
+    "contract_gaps": 9
+  },
+  "trade_ai_literal_routes": [
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1619,
+      "route": "/api/"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2142,
+      "route": "/api/approvals/pending"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2498,
+      "route": "/api/clear-pending"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2046,
+      "route": "/api/db/health"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2203,
+      "route": "/api/env/read"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2685,
+      "route": "/api/env/write"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2690,
+      "route": "/api/env/write is retired. Use System \u2192 Admin \u2192 API Keys & Secrets "
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2020,
+      "route": "/api/freshness"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 1523,
+      "route": "/api/health"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2380,
+      "route": "/api/import"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2468,
+      "route": "/api/import-transactions"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2068,
+      "route": "/api/notifications/recent"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2188,
+      "route": "/api/personal/as_of/"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2193,
+      "route": "/api/personal/history/"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2198,
+      "route": "/api/personal/read"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2616,
+      "route": "/api/personal/write"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2084,
+      "route": "/api/reports/catalog"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2546,
+      "route": "/api/run-aegis"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2573,
+      "route": "/api/run-pipeline"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2502,
+      "route": "/api/run-portfolio"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 2907,
+      "route": "/api/run-portfolio  /api/run-trade-ai  /api/run-pipeline  /api/health"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2535,
+      "route": "/api/run-recovery-review"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2557,
+      "route": "/api/run-reprice"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 2518,
+      "route": "/api/run-trade-ai"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1756,
+      "route": "/api/v2/"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2746,
+      "route": "/api/v2/health"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1767,
+      "route": "/api/v2/hermes"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2752,
+      "route": "/api/v2/live-trading-gate"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2747,
+      "route": "/api/v2/overview"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 2753,
+      "route": "/api/v2/paper-trade-readiness"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2084,
+      "route": "/api/v2/reports/catalog"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2751,
+      "route": "/api/v2/risk-regime/latest"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 2748,
+      "route": "/api/v2/trade-ai"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 2750,
+      "route": "/api/v2/trade-ai/scanner"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 2749,
+      "route": "/api/v2/trade-ai/summary"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 712,
+      "route": "/api/v3/"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 834,
+      "route": "/api/v3/active-trader"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 954,
+      "route": "/api/v3/active-trader/session-drafts"
+    },
+    {
+      "effect_heuristic": "MUTATION_OR_SEND_HEURISTIC",
+      "line": 954,
+      "route": "/api/v3/active-trader/sessions"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 833,
+      "route": "/api/v3/agent-maturity"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2757,
+      "route": "/api/v3/agent-maturity/"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 832,
+      "route": "/api/v3/agent-runtime"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1739,
+      "route": "/api/v3/control-plane"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 2161,
+      "route": "/api/watchlist/read"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2620,
+      "route": "/api/watchlist/write"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 2695,
+      "route": "/api/yaml-apply"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1802,
+      "route": "/v2"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1802,
+      "route": "/v2/"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1907,
+      "route": "/v3"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1847,
+      "route": "/v3-next"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1847,
+      "route": "/v3-next/"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1907,
+      "route": "/v3/"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "line": 1813,
+      "route": "/v3/build-meta.json"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1810,
+      "route": "/v3/cc-boot.js"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1877,
+      "route": "/v3/go/cio/"
+    },
+    {
+      "effect_heuristic": "UNKNOWN",
+      "line": 1797,
+      "route": "/v3/redeploy"
+    }
+  ],
+  "trade_ai_effect_heuristic_counts": {
+    "MUTATION_OR_SEND_HEURISTIC": 9,
+    "READ_HEURISTIC": 10,
+    "UNKNOWN": 37
+  },
+  "dof_routes": [
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/summary"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/run-scope"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "POST",
+      "route": "/api/run-scope"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/locations"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/auction-dates"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/vehicles"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/vehicle/<int:vehicle_id>"
+    },
+    {
+      "effect_heuristic": "MUTATION_HEURISTIC",
+      "method": "POST",
+      "route": "/api/vehicle/<int:vehicle_id>/promote"
+    },
+    {
+      "effect_heuristic": "MUTATION_HEURISTIC",
+      "method": "DELETE",
+      "route": "/api/vehicle/<int:vehicle_id>/promote"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/overrides"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/unscored"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/pipeline"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/manual-queue"
+    },
+    {
+      "effect_heuristic": "MUTATION_HEURISTIC",
+      "method": "POST",
+      "route": "/api/vehicle/<int:vehicle_id>/target"
+    },
+    {
+      "effect_heuristic": "EXPORT_HEURISTIC",
+      "method": "GET",
+      "route": "/api/export/csv"
+    },
+    {
+      "effect_heuristic": "EXPORT_HEURISTIC",
+      "method": "GET",
+      "route": "/api/export/xlsx"
+    },
+    {
+      "effect_heuristic": "EXPORT_HEURISTIC",
+      "method": "GET",
+      "route": "/api/export/pdf"
+    },
+    {
+      "effect_heuristic": "MUTATION_HEURISTIC",
+      "method": "POST",
+      "route": "/api/enrichment/queue"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/enrichment/status"
+    },
+    {
+      "effect_heuristic": "MUTATION_HEURISTIC",
+      "method": "POST",
+      "route": "/api/enrichment/run"
+    },
+    {
+      "effect_heuristic": "READ_HEURISTIC",
+      "method": "GET",
+      "route": "/api/vehicle/<int:vehicle_id>/history"
+    }
+  ],
+  "side_effect_of_read_routes": "NOT_MEASURED"
+}

@@ -503,7 +503,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |
 | `docs/architecture/cio/ADR_DURABLE_STATE_EVENT_SOURCING.md` | ADR: Durable State Event Sourcing | review_required | OK | `ce708501d377` |
-| `docs/architecture/cio/ADR_LLM_GOVERNANCE_BOUNDARY.md` | ADR: LLM Governance Boundary | review_required | OK | `6a667c1ea1f0` |
+| `docs/architecture/cio/ADR_LLM_GOVERNANCE_BOUNDARY.md` | ADR: LLM Governance Boundary | review_required | OK | `c214adbd5000` |
 | `docs/architecture/cio/ADR_OWNERSHIP_BOUNDARIES.md` | ADR: Platform Ownership Boundaries | review_required | OK | `6306c02ec5a3` |
 | `docs/architecture/cio/ADR_SCHEDULER_OWNERSHIP.md` | ADR: Scheduler Ownership | review_required | OK | `ce6bbb93b073` |
 | `docs/architecture/cio/ADR_SPECIALIST_CALCULATION_POLICY.md` | ADR: Specialist Calculation Policy | review_required | OK | `6fb1d320fe1e` |
@@ -612,6 +612,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
+| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `abb8b122b790` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
@@ -1413,6 +1414,21 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
+| `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `11658a7f2b58` |
+| `docs/implementation/n8n-parallel/00-fact-reconciliation.md` | Fact reconciliation | review_required | MISSING HEADER | `f0da125c7130` |
+| `docs/implementation/n8n-parallel/01-disposition-and-pilots.md` | Phase 1 — disposition and five pilot contracts | review_required | MISSING HEADER | `48fa3bc907bd` |
+| `docs/implementation/n8n-parallel/01-scheduler-truth.md` | Scheduler truth | review_required | MISSING HEADER | `7b1d7b63dc40` |
+| `docs/implementation/n8n-parallel/02-approval-receipts.md` | Approval reminder receipts | review_required | MISSING HEADER | `bddaf67776d3` |
+| `docs/implementation/n8n-parallel/02-feature-matrix.md` | Phase 1D — features on the installed n8n | review_required | MISSING HEADER | `bcc8763607c7` |
+| `docs/implementation/n8n-parallel/03-durable-ledger.md` | Durable coordination ledger | review_required | MISSING HEADER | `c7adbc29349d` |
+| `docs/implementation/n8n-parallel/03-lab-topology-and-cost.md` | Phase 2 — lab topology, credentials, and cost | review_required | MISSING HEADER | `50cdbe4c1377` |
+| `docs/implementation/n8n-parallel/04-pilot-contracts.md` | Five muted pilot contracts | review_required | MISSING HEADER | `ed162b23b17c` |
+| `docs/implementation/n8n-parallel/04-risk-and-access.md` | Access gaps and risk register | review_required | MISSING HEADER | `a9ffcd1fd24e` |
+| `docs/implementation/n8n-parallel/05-phase-gate.md` | Phase gate — muted gateway, not a cutover | review_required | MISSING HEADER | `e0f28134f135` |
+| `docs/implementation/n8n-parallel/05-watchdog.md` | n8n lab watchdog | review_required | MISSING HEADER | `781b77a5e529` |
+| `docs/implementation/n8n-parallel/06-findings-and-gateway.md` | Findings corrected, and the muted coordination gateway | review_required | MISSING HEADER | `31dde27048da` |
+| `docs/implementation/n8n-parallel/07-release-packet.md` | Release packet and access block | review_required | MISSING HEADER | `43f7295386b8` |
+| `docs/implementation/n8n-parallel/08-install-and-doc-audit.md` | n8n lab install and documentation audit | review_required | MISSING HEADER | `456df34c6b88` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
 | `docs/implementation/sot/phase9_hermes_research_notes.md` | Phase 9 — one write module for `hermes_research_intelligence` | review_required | MISSING HEADER | `089989d1da1b` |
 | `docs/implementation/sot/phase9_news_articles_notes.md` | Phase 9 — `news_articles`: one write module | review_required | OK | `4faa0228c5d1` |
