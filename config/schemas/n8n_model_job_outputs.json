@@ -1,0 +1,27 @@
+{
+  "schema": "N8nModelJobOutputSchemas@v1",
+  "as_of": "2026-10-07",
+  "note": "Output contracts for governed model jobs coordinated through n8n. Validated by scripts/lib/n8n_model_job.py with a built-in structural check (required keys, types, enums, max lengths); no jsonschema dependency on this host. A model answer that fails validation is a typed refusal, never a fallback.",
+  "schemas": {
+    "material_change_digest_draft/v1": {
+      "description": "Nonfinancial digest DRAFT of already-detected material changes. The detector and eligibility stay in code; this text is never a send.",
+      "required": ["headline", "items", "sources_cited", "confidence_note"],
+      "properties": {
+        "headline": {"type": "string", "max_length": 160},
+        "items": {"type": "array", "max_items": 12, "items": {
+          "required": ["symbol", "change_guid", "summary"],
+          "properties": {
+            "symbol": {"type": "string", "max_length": 12},
+            "change_guid": {"type": "string", "max_length": 64},
+            "summary": {"type": "string", "max_length": 400},
+            "why_it_matters": {"type": "string", "max_length": 400}
+          }
+        }},
+        "sources_cited": {"type": "array", "max_items": 40, "items": {"type": "string", "max_length": 200}},
+        "confidence_note": {"type": "string", "max_length": 300},
+        "recommendation": {"type": "string", "enum": ["NONE"]}
+      },
+      "forbidden_keys": ["buy", "sell", "size", "order", "price_target", "position"]
+    }
+  }
+}
