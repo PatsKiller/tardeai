@@ -37,3 +37,7 @@ The first pilot uses none of the rows marked NOT_USED or BLOCKED_POLICY.
 | External secrets | Enterprise, no Bitwarden provider | Yes | Cannot satisfy the Bitwarden rule | Not a workaround | Blocked | BLOCKED_POLICY |
 
 Excluded nodes remain Execute Command, SSH, FTP, email send (including tool variants), and Local File Trigger. `NODES_EXCLUDE` is a JSON array. Community package install is off. Those constraints were not loosened.
+
+## Correction 2026-10-07T02:14Z
+
+The 00:49Z counts above stay as that read. A later count on the same containers: 4 workflows, 0 credentials, 0 API keys, 0 rows in `webhook_entity`, 0 variables, 0 installed packages, 0 installed nodes, 1 project, 1 user, and 100 execution rows. Those rows are 48 successes for `n8n-monitor-trade-ai`, 48 successes for `n8n-monitor-dof`, 2 successes and 1 error for `n8n-bench-nodes`, and 1 success for `n8n-bench-error`. The inactive bench workflow still contains a webhook node with path `n8n-bench-nodes`. That node is not a registered webhook row. `GET /healthz` returned `{"status":"ok"}`. Workflow `updatedAt` values were unchanged by a workflow-only export. The full install read is `08-install-and-doc-audit.md`.

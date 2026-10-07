@@ -6,6 +6,8 @@ Dated 2026-10-07. This is not a promotion and not a merged pull request.
 
 Push needs a git-push grant whose reason names branch `wt/n8n-parallel-20261007` and the exact commit that contains this file. At the 2026-10-07T01:46:08Z read every local grant scope was expired. The expired git-push scope named a different branch and a different commit. The expired release-write scope named the already-served SHA `18a27ff288894c4e428151d5f385e68522ecd47b`. Neither grant authorizes this branch. No approval code is stored in this file. Push was not attempted.
 
+The commit that contains this file is `761bdbd7b0fdfdde67acf8a6000f91c877070d29`, parent `fe6a607b13c72e6a94219cca2b76885c8896eda7`. It is local only. At 2026-10-07T02:13Z every listed grant scope was still expired. Push was still not attempted.
+
 A later push grant would still not authorize promotion, a crontab edit, enabling `tradeai-n8n-lab-watchdog.timer`, flipping the two registry rows, or a DOF GRANT.
 
 ## Promotion packet, for a later decision

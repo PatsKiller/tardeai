@@ -2,6 +2,8 @@
 
 Measured 2026-10-07T01:46:08Z (2026-10-06 21:46:08 ET). This file records that read. It is not a deployment receipt. Nothing in the local branch `wt/n8n-parallel-20261007` is served.
 
+A later local read on 2026-10-07T02:14Z is in `08-install-and-doc-audit.md`. Trade AI HEAD is now `761bdbd7b0fdfdde67acf8a6000f91c877070d29`. The DOF policy tip is now `47f1749b8ed9369d918b5eba76aba30ed9b205c8`. The tables below stay the 01:46Z read.
+
 ## Pins
 
 | Item | Observed |
