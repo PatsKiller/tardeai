@@ -3133,6 +3133,27 @@
       "note": "Never touches production Postgres or the live n8n database."
     },
     {
+      "lane_id": "health-tick",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-health-tick.timer (*:0/5)",
+        "match": "tradeai-health-tick.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "pending config-write grant; replaces 16 cron lines listed (17 crontab entries, lines 178,277,344,403,419,420,437,439,491,598,628,842,901,909,1007,1024,1042 of crontab -l 2026-10-07): system_health_agent --apply --verbose, moomoo/opend_health --alert, cio_bridge_watchdog --apply, health_agent, cron_self_heal --apply, siem_critical_notify, log_error_scraper, system_freshness_monitor --send --auto-fix, portfolio_live_monitor, freshness_watchdog_heartbeat --send, pipeline_liveness_report --fail-on-finding, pipeline_watchdog, pipeline_freshness_monitor --send, pipeline_freshness_slo --telegram, check_llm_provider_health, symbol_news_curation_monitor --apply, market_day_gate.sh system_health_alerts. Unit files ship in config/systemd/user/tradeai-health-tick.{service,timer} (PROPOSAL ONLY); install plan docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md. The absorbed lines stay in undeclared_baseline until the install PR removes them in the same step that deletes them from the crontab.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/health_tick_last.json",
+        "key": "as_of"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Cron consolidation RANK 3 (2026-10-07): scripts/health_tick.py + config/health_tick_steps.json (HealthTickSteps@v1) reproduce the 17 lines' cadences exactly (planner week count 7402 == hand count from crontab); tests/test_health_tick_20261007.py. Not installed: no systemctl enable, no crontab edit in this PR.",
+      "note": "One 5-minute timer runs the health/monitor cadence table sequentially under each line's own /tmp flock and a per-step timeout, appends to each line's original logs/ file, and writes HealthTickReceipt@v1. Safety nets stay in cron: portfolio_server_watchdog.sh (*/2), process_reaper.py (*/3), cleanup_stale_locks.sh (*/5); resolve_due_checkpoints.py and the @reboot moomoo line also stay. Declared lanes portfolio-live-monitor, cio-bridge-watchdog, llm-provider-health and symbol-news-curation-monitor keep their rows; the install PR re-points their scheduler to this timer."
+    },
+    {
       "lane_id": "n8n-lab-watchdog",
       "owner": "platform",
       "scheduler": {

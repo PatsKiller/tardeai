@@ -1,0 +1,34 @@
+# PROPOSAL ONLY. Not installed. Do not systemctl enable without a production
+# scheduler (config-write) grant. Enabling this before the served tree contains
+# scripts/health_tick.py + config/health_tick_steps.json would fail closed on a
+# missing file. Cron consolidation RANK 3: this one unit replaces 17 crontab
+# health/monitor lines (docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md);
+# the crontab lines must be removed in the SAME operator step or every step runs twice.
+# The three safety nets (portfolio_server_watchdog.sh, process_reaper.py,
+# cleanup_stale_locks.sh), resolve_due_checkpoints.py and the @reboot moomoo line stay in cron.
+
+[Unit]
+Description=Trade AI health tick: runs the health/monitor cadence table (proposal only, not installed)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+# The crontab header the absorbed lines ran under (crontab -l lines 2-13), reproduced:
+Environment=PROJ=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+Environment=TRADEAI_PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+Environment=LLM_DEFER_OFFPEAK=1
+Environment=TRADEAI_ENV=%t/tradeai/env
+Environment=BLIND_REVIEW_LANES=deepseek-flash,grok,chatgpt
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+# Rendered secrets file (same path the crontab names in TRADEAI_ENV); absent file is not an error.
+EnvironmentFile=-%t/tradeai/env
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply
+Nice=10
+# Steps are bounded individually (timeout_s) and as a tick (tick_budget_s=280); this is the backstop.
+TimeoutStartSec=330
+KillMode=control-group
+
+[Install]
+WantedBy=default.target
