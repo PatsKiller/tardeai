@@ -3362,6 +3362,25 @@ GATES = [
         "wake_operator_turn_selection_20261005",
         ["tests/test_wake_operator_turn_selection_20261005.py"],
     ),
+    (
+        # 2026-10-07 — n8n lab coordination is local code. These tests pin the
+        # muted pilots, the receipt vocabulary, and the unenabled watchdog.
+        # Listing them here does not enable a timer or promote the branch.
+        "n8n_parallel_20261007",
+        [
+            "tests/test_approval_reminder_receipt_20261007.py",
+            "tests/test_approval_reminder_reconcile_20261007.py",
+            "tests/test_llm_adr_model_id_20261007.py",
+            "tests/test_maturity_score_independent_20261007.py",
+            "tests/test_n8n_coordination_gateway_20261007.py",
+            "tests/test_n8n_coordination_ledger_20261007.py",
+            "tests/test_n8n_gateway_http_20261007.py",
+            "tests/test_n8n_lab_watchdog_20261007.py",
+            "tests/test_n8n_lane_host_conflict_20261007.py",
+            "tests/test_n8n_pilot_compare_20261007.py",
+            "tests/test_n8n_pilot_contracts_20261007.py",
+        ],
+    ),
 ]
 
 
