@@ -3370,6 +3370,7 @@ GATES = [
         [
             "tests/test_approval_reminder_receipt_20261007.py",
             "tests/test_approval_reminder_reconcile_20261007.py",
+            "tests/test_approval_reminder_reconcile_lane_20261007.py",
             "tests/test_llm_adr_model_id_20261007.py",
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",

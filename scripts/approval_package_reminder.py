@@ -33,6 +33,45 @@ NO_CONSUMER_REASON = (
 )
 
 
+def transport_path(explicit: str | None = None) -> Path:
+    """Where each send's provider message id is recorded beside its run_id (one row per message).
+
+    2026-10-07: the reconciler could match a transport row on run_id + provider_message_id, but
+    nothing ever wrote such a row, so DELIVERY_OBSERVED could not occur naturally. The row holds
+    ids only: no text, no token, no package id."""
+    if explicit:
+        return Path(explicit)
+    env = os.environ.get("TRADEAI_APPROVAL_REMINDER_TRANSPORT")
+    if env:
+        return Path(env)
+    return PROJ / "data" / "runtime" / "approval_reminder_transport.jsonl"
+
+
+def record_transport_rows(path: Path, *, run_id: str, provider_message_ids: list[str], now: _dt.datetime) -> int:
+    """Append one ApprovalReminderTransport@v1 row per provider message id. Returns rows written."""
+    rows = [str(m).strip() for m in provider_message_ids if str(m or "").strip()]
+    if not rows:
+        return 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        for mid in rows:
+            f.write(json.dumps({"schema": "ApprovalReminderTransport@v1", "run_id": run_id,
+                                "provider_message_id": mid, "channel": "telegram_cio",
+                                "at": now.isoformat()}, sort_keys=True) + "\n")
+    return len(rows)
+
+
+def _last_provider_message_ids() -> list[str]:
+    """Message ids the transport reported for the LAST send; [] when it reported none or was held."""
+    try:
+        import telegram_alert  # type: ignore
+        if telegram_alert.last_held_chunks():
+            return []
+        return [str(m) for m in telegram_alert.last_message_ids()]
+    except Exception:  # noqa: BLE001 — absence of an id is "unmeasured", never an error
+        return []
+
+
 def receipt_path(explicit: str | None = None) -> Path:
     if explicit:
         return Path(explicit)
@@ -252,10 +291,11 @@ def record(ledger: Ledger, actions: list[dict], *, sent: bool) -> None:
             ledger.append({"event": "NOTE", "package_id": a["package_id"], "note": a["kind"], "sent": sent, "text": a["text"]})
 
 
-def main(argv: list[str] | None = None, *, sender=None) -> int:
+def main(argv: list[str] | None = None, *, sender=None, provider_ids=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ledger")
     ap.add_argument("--receipt", help="run receipt path; default data/runtime/approval_package_reminder_last.json under this tree")
+    ap.add_argument("--transport", help="transport rows path; default data/runtime/approval_reminder_transport.jsonl under this tree")
     ap.add_argument("--send", action="store_true", help="send reminders via telegram_alert (router bypassed); default dry run")
     ap.add_argument("--record", action="store_true", help="record NOTE/EXPIRED rows even without sending")
     a = ap.parse_args(argv)
@@ -273,11 +313,18 @@ def main(argv: list[str] | None = None, *, sender=None) -> int:
     attempts = 0
     refused = 0
     deliver = sender or send_reminder_text
+    ids_after_send = provider_ids or _last_provider_message_ids
+    transport_rows = 0
     if a.send and actions:
         try:
             for x in actions:
                 attempts += 1
                 deliver(x["text"])
+                try:
+                    transport_rows += record_transport_rows(transport_path(a.transport), run_id=run_id,
+                                                            provider_message_ids=ids_after_send(), now=now)
+                except OSError as exc:
+                    print(f"transport row write failed: {type(exc).__name__}", file=sys.stderr)
             sent = True
         except (TimeoutError, UncertainSend) as exc:
             error_class = "sender_timeout"
@@ -313,6 +360,8 @@ def main(argv: list[str] | None = None, *, sender=None) -> int:
         send_attempt_count=attempts,
         refused_count=refused,
     )
+    # Ids written, not delivery: the reconciler lane turns them into DELIVERY_OBSERVED later.
+    receipt["transport_rows_written"] = transport_rows
     try:
         write_run_receipt(receipt_path(a.receipt), receipt)
     except (OSError, ValueError) as exc:

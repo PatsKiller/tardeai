@@ -8,9 +8,22 @@ DELIVERY_UNMEASURED. Adapter success is not a receipt.
 """
 from __future__ import annotations
 
+import argparse
+import datetime as _dt
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Mapping
+
+PROJ = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJ / "scripts"))
+
+NO_CONSUMER_REASON = (
+    "hourly lane body (minute 12, after the minute-5 reminder): reads the reminder's run receipt and "
+    "its transport rows, writes the reconciled receipt and data/runtime/approval_reminder_reconcile_last.json. "
+    "Never sends; a transport row without a provider message id leaves delivery DELIVERY_UNMEASURED."
+)
 
 
 def reconcile(receipt: Mapping[str, object], transport_rows: list[Mapping[str, object]]) -> dict:
@@ -60,3 +73,78 @@ def reconcile_files(receipt_path: Path, transport_path: Path, *, out_path: Path 
         tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         tmp.replace(out_path)
     return updated
+
+
+def reconcile_receipt_path(explicit: str | None = None) -> Path:
+    if explicit:
+        return Path(explicit)
+    env = os.environ.get("TRADEAI_APPROVAL_RECONCILE_RECEIPT")
+    if env:
+        return Path(env)
+    return PROJ / "data" / "runtime" / "approval_reminder_reconcile_last.json"
+
+
+def _rows_for_run(transport: Path, run_id: str) -> list[dict]:
+    if not transport.is_file():
+        return []
+    rows = []
+    for line in transport.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and str(row.get("run_id") or "") == run_id:
+            rows.append(row)
+    return rows
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Reconcile the latest reminder receipt. Dry run prints; --write replaces the receipt atomically."""
+    from approval_package_reminder import receipt_path, transport_path, write_run_receipt  # type: ignore
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--receipt", help="reminder run receipt (default: the reminder's own path)")
+    ap.add_argument("--transport", help="transport rows jsonl (default: the reminder's own path)")
+    ap.add_argument("--out", help="reconcile run receipt (default data/runtime/approval_reminder_reconcile_last.json)")
+    ap.add_argument("--write", action="store_true", help="replace the reminder receipt with the reconciled one and write the run receipt")
+    a = ap.parse_args(argv)
+    now = _dt.datetime.now(_dt.timezone.utc)
+    rpath = receipt_path(a.receipt)
+    tpath = transport_path(a.transport)
+    run = {"schema": "ApprovalReminderReconcileRun@v1", "as_of": now.isoformat(), "receipt": str(rpath),
+           "transport": str(tpath), "written": False}
+    if not rpath.is_file():
+        run["status"] = "NO_RECEIPT"
+        print(json.dumps(run, indent=1))
+        return 0
+    try:
+        receipt = json.loads(rpath.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        run["status"] = f"RECEIPT_UNREADABLE:{type(exc).__name__}"
+        print(json.dumps(run, indent=1))
+        return 1
+    run_id = str(receipt.get("run_id") or "")
+    rows = _rows_for_run(tpath, run_id)
+    before = receipt.get("delivery_status")
+    updated = reconcile(receipt, rows)
+    run.update({"status": "RECONCILED", "run_id": run_id, "transport_rows": len(rows),
+                "delivery_status_before": before, "delivery_status": updated.get("delivery_status"),
+                "delivery_receipt_count": updated.get("delivery_receipt_count"),
+                "reconciled_at": now.isoformat()})
+    if a.write:
+        updated["reconciled_at"] = now.isoformat()
+        write_run_receipt(rpath, updated)
+        out = reconcile_receipt_path(a.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        run["written"] = True
+        tmp = out.with_suffix(out.suffix + ".tmp")
+        tmp.write_text(json.dumps(run, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(out)
+    print(json.dumps(run, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
