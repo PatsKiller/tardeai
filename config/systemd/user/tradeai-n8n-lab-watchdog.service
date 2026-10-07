@@ -1,0 +1,20 @@
+# PROPOSAL ONLY. Not installed. Do not systemctl enable without a production
+# scheduler grant. Enabling this before the served tree contains
+# scripts/n8n_lab_watchdog.py would fail closed on a missing file.
+# A timer on this host cannot detect this host's total outage.
+
+[Unit]
+Description=Trade AI n8n lab watchdog (proposal only, not installed)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=/usr/bin/flock -n /tmp/tradeai-n8n-lab-watchdog.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_lab_watchdog.py --url http://127.0.0.1:5678/healthz --receipt %h/trade-ai-releases/persistent-state/data/runtime/n8n_lab_watchdog_last.json --timeout 3
+Nice=15
+MemoryMax=128M
+CPUQuota=10%
+TimeoutStartSec=20
+
+[Install]
+WantedBy=default.target

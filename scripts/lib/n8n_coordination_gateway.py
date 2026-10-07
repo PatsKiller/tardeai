@@ -163,6 +163,7 @@ def handle_request(
     idempotency_store: dict[str, dict[str, Any]],
     expected_origin_sha: str,
     lane_allowlist: frozenset[str] | set[str] | None = None,
+    previous_key: bytes | None = None,
 ) -> dict[str, Any]:
     """Authenticate and accept, or return a typed refusal. Never sends."""
     peer = request.get("peer")
@@ -172,7 +173,13 @@ def handle_request(
         return _refused(None, f"forbidden_route:{blocked}", peer_ignored=peer)
 
     try:
-        claim = _verify_claim(request, key=key, now=now, nonce_store=nonce_store)
+        claim = _verify_claim(
+            request,
+            key=key,
+            now=now,
+            nonce_store=nonce_store,
+            previous_key=previous_key,
+        )
     except GatewayError as exc:
         return _refused(None, exc.reason, peer_ignored=peer)
 
@@ -329,8 +336,17 @@ def _validate_event(event: Mapping[str, Any], *, expected_origin_sha: str, allow
     _parse_time(event["deadline"])
 
 
-def _verify_claim(request, *, key: bytes, now, nonce_store: dict[str, float]) -> dict[str, Any]:
+def _verify_claim(
+    request,
+    *,
+    key: bytes,
+    now,
+    nonce_store: dict[str, float],
+    previous_key: bytes | None = None,
+) -> dict[str, Any]:
     _require_key(key)
+    if previous_key is not None:
+        _require_key(previous_key)
     claim = request.get("claim")
     signature = request.get("signature")
     if not isinstance(claim, Mapping) or not isinstance(signature, str) or not signature:
@@ -356,8 +372,14 @@ def _verify_claim(request, *, key: bytes, now, nonce_store: dict[str, float]) ->
     if iat > instant + MAX_SKEW_S or exp < instant:
         raise GatewayError("claim_expired")
     signed = {k: claim[k] for k in CLAIM_FIELDS}
-    expected = hmac.new(key, canonical(signed), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, signature.lower()):
+    keys = [key] if previous_key is None else [key, previous_key]
+    signature_ok = False
+    for candidate in keys:
+        expected = hmac.new(candidate, canonical(signed), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected, signature.lower()):
+            signature_ok = True
+            break
+    if not signature_ok:
         raise GatewayError("bad_signature")
     nonce = claim["nonce"]
     prior = nonce_store.get(nonce)

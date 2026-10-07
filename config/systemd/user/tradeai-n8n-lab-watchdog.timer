@@ -1,0 +1,15 @@
+# PROPOSAL ONLY. Not installed. Do not systemctl enable without a production
+# scheduler grant. This timer is outside the n8n process.
+
+[Unit]
+Description=Trade AI n8n lab watchdog every 5 minutes (proposal only, not installed)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=tradeai-n8n-lab-watchdog.service
+
+[Install]
+WantedBy=timers.target

@@ -127,3 +127,41 @@ def test_approval_refuses_the_ledger_mtime_until_a_run_receipt_exists():
     assert receipt["reason"] == "no_consumer_receipt"
     sent = _eval("approval-package-reminder", {"send": True, "run_receipt": {"actions": 1}}, "ap-0003")
     assert sent["reason"] == "send_blocked"
+
+
+def test_served_schema_fixtures_keep_the_same_refusals():
+    """Shapes taken from the served producers. Values are synthetic."""
+    morning = _eval(
+        "morning-brief-0730",
+        {"schema": "cron_cmd_line", "signal_kind": "syslog", "syslog_cmd_lines": 1},
+        "fix-morning-01",
+    )
+    assert morning["reason"] == "command_line_is_not_a_receipt"
+    holdings = _eval(
+        "research-scheduler-holdings",
+        {"schema": "ResearchLedger@v1", "mode": "research", "hermes_run_id": "not-holdings"},
+        "fix-holdings-01",
+    )
+    assert holdings["reason"] == "shared_ledger_not_mode_proof"
+    material = _eval(
+        "material-change-digest",
+        {"schema": "MaterialChange@v1", "muted": False, "detector_event_id": "det-served"},
+        "fix-material-01",
+    )
+    assert material["reason"] == "live_notifier_stays_in_code"
+    spend = _eval(
+        "llm-spend-report-daily",
+        {"schema": "LlmSpendDigest@v1", "period": "daily", "amount_usd": True, "provider_charge_requested": True},
+        "fix-llm-spend-1",
+    )
+    assert spend["reason"] == "provider_charge_blocked"
+    approval = _eval(
+        "approval-package-reminder",
+        {
+            "schema": "ApprovalPackagesLedger@v1",
+            "signal": "data/governance/approval_packages.jsonl",
+            "signal_kind": "ledger_mtime",
+        },
+        "fix-appr",
+    )
+    assert approval["reason"] == "wrong_signal"
