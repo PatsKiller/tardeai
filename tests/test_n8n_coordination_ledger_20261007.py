@@ -37,7 +37,7 @@ def test_restart_refuses_replay_and_keeps_one_effect(tmp_path):
     first = CoordinationLedger(path)
     row = _accept(first)
     assert row["duplicate"] is False
-    assert row["durable"] is False
+    assert row["durable"] is True and row["durable_scope"] == "sqlite_commit_returned"   # 2026-10-07: the COMMIT returned
     assert row["external_delivery"] == "NOT_CLAIMED"
     assert first.effect_count() == 1
     first.close()
