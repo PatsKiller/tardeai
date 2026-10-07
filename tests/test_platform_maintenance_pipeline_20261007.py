@@ -260,14 +260,17 @@ def test_proposal_units_point_at_runner_and_are_marked_proposal_only():
         assert f"run_platform_maintenance_pipeline.sh --cadence {cadence} --apply" in service
 
 
-def test_registry_declares_the_three_lanes_never_scheduled():
+def test_registry_declares_the_three_lanes_as_installed_timers():
+    """2026-10-07 19:56Z: the three timers were enabled under config-write grant b4d4c9b070c87d4f, so the
+    rows flipped NEVER_SCHEDULED/none -> ACTIVE/systemd in the same PR that pruned the absorbed cron lines."""
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     lanes = {l["lane_id"]: l for l in reg["lanes"]}
     for cadence in ("nightly", "weekly", "monthly"):
         lane = lanes[f"platform-maintenance-{cadence}"]
-        assert lane["state"] == "NEVER_SCHEDULED" and lane["scheduler"]["kind"] == "none"
+        assert lane["state"] == "ACTIVE" and lane["scheduler"]["kind"] == "systemd"
+        assert lane["scheduler"]["match"] == f"tradeai-platform-maintenance-{cadence}.timer"
         assert lane["output_signal"]["path"] == f"data/runtime/platform_maintenance_{cadence}_last.json"
-        assert "grant" in lane["state_reason"]
+        assert "grant" in lane["state_reason"] and lane["state_since"] == "2026-10-07"
 
 
 # --- purge wrapper (crontab line 163) against a fake connection ----------------------------------
