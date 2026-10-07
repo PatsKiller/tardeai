@@ -1,0 +1,20 @@
+# PROPOSAL ONLY. Not installed. Do not systemctl enable without a config-write / scheduler grant.
+# Cron consolidation RANK 4. Runs from the served CURRENT tree (AGENTS.md §9.3: by path, pinned
+# release). The runner takes its own pipeline lock AND each step's original /tmp lock, so a crontab
+# line left behind during cutover cannot double-run a step. The run summary
+# data/runtime/platform_maintenance_monthly_last.json is the lane's output_signal; exit 0 on a
+# degraded night is deliberate (failed-unit timer churn, AGENTS.md 2026-09-18 lesson).
+
+[Unit]
+Description=Trade AI platform maintenance monthly pipeline (proposal only, not installed)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence monthly --apply
+Nice=10
+TimeoutStartSec=6h
+
+[Install]
+WantedBy=default.target

@@ -3377,8 +3377,19 @@ GATES = [
             "tests/test_n8n_model_job_20261007.py",
             "tests/test_n8n_model_job_operation_20261007.py",
             "tests/test_n8n_phase1_dispatch_20261007.py",
+            "tests/test_platform_maintenance_pipeline_20261007.py",
+            # 2026-10-07 cron consolidation tranche C (low-risk): options tick, orchestrator
+            # slot wrapper, drive syncs runner, hermes subject dispatcher. Proposals only; no
+            # cron line is installed by listing them here.
+            "tests/test_cron_tranche_c_lowrisk_20261007.py",
+            # Cron consolidation RANK 3: the 5-minute health tick that absorbs 17
+            # monitor crontab lines. Hermetic (fake steps, tmp locks/state); it
+            # pins due-phase arithmetic, lock skip, timeout = failure, receipt
+            # shape and that dry-run writes nothing. Timer stays NEVER_SCHEDULED.
+            "tests/test_health_tick_20261007.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
+            "tests/test_retention_registry_20261007.py",
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",
             "tests/test_n8n_coordination_ledger_20261007.py",
@@ -3390,6 +3401,19 @@ GATES = [
             "tests/test_n8n_lane_host_conflict_20261007.py",
             "tests/test_n8n_pilot_compare_20261007.py",
             "tests/test_n8n_pilot_contracts_20261007.py",
+        ],
+    ),
+    (
+        # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial
+        # stage runner for the post-close, premarket and Hermes chains. Hermetic: the tests drive
+        # the runner with true/false/sleep manifests against a scratch project root, prove that
+        # --dry-run (the default) executes nothing, that --apply with an empty stage executes
+        # nothing, per-step timeout + continue-on-error + receipts, and that the four committed
+        # manifests are verbatim crontab slices with every broker/stop/order/market_day_gate line
+        # excluded. Listing them here schedules nothing: the runners are NEVER_SCHEDULED lanes.
+        "cron_tranche_b_20261007",
+        [
+            "tests/test_pipeline_manifest_runner_20261007.py",
         ],
     ),
 ]

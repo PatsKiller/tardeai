@@ -765,7 +765,7 @@ write_expected_release_pin() {
 # activeness is the one signal that cannot detect this.
 restart_root_frozen_units() {
   local dir="$1"
-  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service}"
+  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service}"
   local u pid cwd
   for u in $units; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
