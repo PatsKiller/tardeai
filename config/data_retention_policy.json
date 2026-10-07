@@ -444,6 +444,26 @@
    "since": "2026-10-07"
   },
   {
+   "table": "deep_overnight_llm_queue",
+   "ts_column": "created_at",
+   "class": "KEEP_FOREVER",
+   "window_days": null,
+   "archive": false,
+   "owner": "cio",
+   "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
+   "since": "2026-10-07"
+  },
+  {
+   "table": "deep_overnight_llm_results",
+   "ts_column": "created_at",
+   "class": "KEEP_FOREVER",
+   "window_days": null,
+   "archive": false,
+   "owner": "cio",
+   "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
+   "since": "2026-10-07"
+  },
+  {
    "table": "deploy_plans",
    "ts_column": "created_at",
    "class": "ARCHIVE_THEN_DELETE",
@@ -792,6 +812,16 @@
    "archive": true,
    "owner": "options",
    "reason": "chain snapshots; 1 y hot",
+   "since": "2026-10-07"
+  },
+  {
+   "table": "overnight_actionable_outcomes",
+   "ts_column": "created_at",
+   "class": "KEEP_FOREVER",
+   "window_days": null,
+   "archive": false,
+   "owner": "cio",
+   "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
    "since": "2026-10-07"
   },
   {

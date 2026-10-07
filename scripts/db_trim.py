@@ -35,8 +35,8 @@ PROTECTED = re.compile(r"^(trade_transactions|trade_closed|portfolio_snapshots|d
 DROPPABLE_NAME = re.compile(r"^(bak_|_bak_|_backup_|backup_|.*_bak_r\d+_\d{8}$|.*_backup_\d{8}.*|.*_legacy$|.*_dirfix_backup_\d{8}$|trade_closed_archived_probe$)")
 QUEUE_RULES = {
     # table: (where-clause template, required columns); ORDER MATTERS for FK children
-    "deep_overnight_llm_results": ("TRUE", []),      # child of the queue (FK queue_id); retired lane
-    "deep_overnight_llm_queue": ("TRUE", []),
+    # deep_overnight_llm_queue/results/overnight_actionable_outcomes: retired family, ~5 MB total,
+    # no growth since 2026-05, still read by an api_v2 route → KEEP (registry KEEP_FOREVER), not purged.
     "inference_ensemble_jobs": ("status = 'expired'", ["status"]),
     "watch_decision_refresh_jobs": ("created_at < now() - interval '30 days' AND stage NOT IN ('RUNNING','QUEUED')", ["created_at", "stage"]),
     "proposal_llm_review_queue": ("(status = 'EXPIRED') OR (status = 'PROCESSING' AND created_at < now() - interval '30 days')", ["status", "created_at"]),
