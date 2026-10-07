@@ -1,0 +1,16 @@
+# PROPOSAL ONLY. Not installed. Do not systemctl enable without a config-write / scheduler grant.
+# Cron consolidation RANK 4 — replaces the 3 weekly (Sunday) platform-maintenance crontab lines
+# (03:00 docs_retention, 04:00 n8n_lab_restore_drill, 06:00 check_system_versions) with one serial run at 03:00.
+# Install: docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md
+
+[Unit]
+Description=Trade AI platform maintenance weekly (Sun 03:00, proposal only, not installed)
+
+[Timer]
+OnCalendar=Sun *-*-* 03:00:00
+AccuracySec=1min
+Persistent=true
+Unit=tradeai-platform-maintenance-weekly.service
+
+[Install]
+WantedBy=timers.target
