@@ -8,9 +8,11 @@
 
 set -euo pipefail
 
-PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# 2026-10-07 (cron tranche B step 1): default to the tree this script lives in, env PROJ still wins.
+PROJ="${PROJ:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 set -a; source "$PROJ/.env"; set +a
-PY="$PROJ/.venv/bin/python"
+PY="${PY:-$PROJ/.venv/bin/python}"   # the crontab exports PY (shared venv); the served tree has no .venv
+[ -x "$PY" ] || { echo "run_scheduled_stale_proposal_sweeper: PY not executable: $PY (export PY as the crontab does)" >&2; exit 78; }
 LOG="$PROJ/logs/stale_proposal_sweeper.log"
 LOCK="/tmp/tradeai_stale_proposal_sweeper.lock"
 MODE="${1:---dry-run}"

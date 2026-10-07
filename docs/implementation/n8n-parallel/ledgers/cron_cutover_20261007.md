@@ -34,3 +34,11 @@ Delete the 17 old lines (3 options, 6 orchestrator, 2 drive, 6 H-enh) plus the d
 ## Host note
 
 `journalctl --user -u tradeai-health-tick`: "Failed to add control inotify watch descriptor … No space left on device" at unit start — the user manager is at the inotify instance limit (`fs.inotify.max_user_instances` = 128). The unit still ran; the limit is a host setting, not a tick defect.
+
+## Step 3 — tranche C old lines deleted (22:40Z, cron grant 69093b20b90691d1)
+
+Backup `crontab-20261007T224010Z-pre-tranche-c-step3.txt`; 459 → 441 non-comment lines. Deleted: 3 options lines, 6 `trade_ai_orchestrator --run-label` lines, the :05 docs-sync and :35 code-mirror lines, 6 `hermes_subject_enhance --type` lines, and the duplicate `db_retention.py` 04:10 line (nightly pipeline step 9 owns it). Second-cycle receipts that justified it: options tick 20:22Z and 20:37Z OK; dispatcher 20:20Z / 20:30Z / 20:40Z OK (old lines held the locks, as designed); drive syncs 21:05Z both steps RAN; 17:30 orchestrator slot report created with one `safe_flock` skip. Registry: options-thesis-lifecycle, options-memory-projector, options-runtime-export → options-tick; code-mirror-drive-sync → drive-syncs-hourly; db-retention → platform-maintenance-nightly (all RETIRED, `superseded_by`); 12 baseline entries pruned (the :05 docs-sync line stays in the pinned 2026-09-28 tranche).
+
+## Tranche B day 0 — eight stage lines in `--dry-run` (22:40Z, same grant)
+
+Backup `crontab-20261007T224010Z-pre-tranche-b-day0.txt`; 441 → 449. Lines: after_close close-capture 16:05 / broker-truth 17:25 / planning 17:35 (weekdays), premarket 05:45, hermes learn 10:50, tune 17:00, night 02:20, close 23:13 (the overnight pair passes `--manifest config/pipelines/hermes_overnight.json`). Each wrote its `PipelineRun@v1` summary from a served-tree dry run at 21:09Z (13 / 2 / 14 / 40 / 6 / 1 / 7 / 2 steps). Nothing executes in `--dry-run`; absorbed lines untouched. Registry: the eight stage lanes → ACTIVE with `scheduler.kind=cron`; `premarket-data-pipeline` output_signal corrected to `pipeline_premarket_premarket_last.json` (the runner's actual filename). Next: compare summaries with the old lines' receipts, then cut over stage by stage (`14-execution-week-20261008.md`).
