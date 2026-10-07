@@ -10,6 +10,9 @@ Labels used below: OBSERVED_SERVED, OBSERVED_LAB, WIRED_UNPROVEN, DESIGN_ONLY, B
 
 ## Served pin and scope
 
+Update 2026-10-07: served pin is now `c5de69ee94ea556fbec66acb8acf42ca2e573743` (promoted 2026-10-06 23:09 ET). The rows below are the pre-merge baseline and are kept as measured.
+
+
 | Source | Identity | Label |
 |---|---|---|
 | Trade AI build meta `GET /v3/build-meta.json` | HTTP 200, git_sha `18a27ff288894c4e428151d5f385e68522ecd47b`, built_at `2026-10-06T22:08:40.117Z`, branch `main`, release_label `main-exact-phase2`, ui `3.14+mux8d5sp` | OBSERVED_SERVED |

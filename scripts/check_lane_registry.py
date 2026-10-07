@@ -54,6 +54,12 @@ def main() -> int:
                          "crontab and no systemd, so live discovery returns empty "
                          "there and a gate that can only pass would look correct.")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--state-drift", action="store_true",
+                    help="also classify each lane's declared state against the host (timer enabled? cron line "
+                         "present?). 2026-10-07: two NEVER_SCHEDULED rows were running and this gate said clean.")
+    ap.add_argument("--host-state-json", default=None,
+                    help="captured {\"timers\": {unit: {unit_file_state, sub_state, next_elapse, recurring}}} for "
+                         "CI and tests; without it and without systemd, systemd lanes are NOT_MEASURED")
     args = ap.parse_args()
 
     try:
@@ -102,8 +108,22 @@ def main() -> int:
     correlated = [r["lane_id"] for r in rows
                   if str(r.get("reason_confidence") or "") == "CORRELATED"]
 
+    drift_rows: list = []
+    drift_conflicts: list = []
+    if args.state_drift:
+        from scripts.lib.lane_state_drift import classify_lanes, conflicts, timer_state
+        host_state = None
+        if args.host_state_json:
+            host_state = json.loads(Path(args.host_state_json).read_text(encoding="utf-8"))
+        drift_rows = classify_lanes(rows, cron_rows=found.get("cron") or [],
+                                    timer_state_fn=None if args.host_state_json else timer_state,
+                                    host_state=host_state)
+        drift_conflicts = conflicts(drift_rows)
+
     if args.json:
         print(json.dumps({"declared": len(rows), "active": active,
+                          "state_drift": drift_rows if args.state_drift else None,
+                          "state_drift_conflicts": [r["lane_id"] for r in drift_conflicts],
                           "errors": errors, "undeclared": undeclared,
                           "unknown_reason_lanes": unknown,
                           "correlated_reason_lanes": correlated}, indent=2))
@@ -124,9 +144,19 @@ def main() -> int:
         print(f"undeclared (NEW)        : {len(undeclared)}")
         for u in undeclared:
             print(f"    ✗ {u['kind']}: {u['expression'][:110]}")
-        if not errors and not undeclared:
+        if args.state_drift:
+            nm = sum(1 for r in drift_rows if r["code"] == "NOT_MEASURED")
+            print(f"state drift conflicts   : {len(drift_conflicts)}  ({nm} NOT_MEASURED)")
+            for r in drift_conflicts:
+                print(f"    ✗ {r['lane_id']}: declared {r['declared_state']} but {r['code']} {r['evidence']}")
+        if not errors and not undeclared and not drift_conflicts:
             print("lane registry: clean")
 
+    if args.fail_on_new and drift_conflicts:
+        print("\nA lane's declared state must match the host: a RETIRED or NEVER_SCHEDULED row\n"
+              "whose timer is enabled or whose cron line is present is a false registry. Flip the\n"
+              "row (with state_since and evidence) or retire the job — never leave both.", file=sys.stderr)
+        return EXIT_VIOLATION
     if args.fail_on_new and (errors or undeclared):
         print("\nA scheduled job must be declared in config/lane_registry.json.\n"
               "Add a row with an output_signal naming the durable artifact that\n"

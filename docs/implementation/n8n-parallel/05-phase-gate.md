@@ -6,9 +6,13 @@ As of 2026-10-07, phases 0, 1, and 2 are the measured record. The coordination g
 
 - Served Trade AI pin, DOF checkout, and the n8n lab were measured and written down.
 - All 173 lanes have one declared registry owner. Host conflicts are explicit in `ledgers/lane-ledger.json` rather than scored as a pass.
-- Five pilot contracts exist and are DESIGN_ONLY.
+- Five pilot contracts exist and are WIRED_UNPROVEN (served as a library since `c5de69ee9`; no caller, no workflow, no consumer receipt).
 - The installed n8n edition was compared with the feature list. Secret-bearing integrations are BLOCKED_POLICY.
 - The lab already has its own database, a localhost port, a prior restore drill, and no queue mode.
+
+## Update 2026-10-07
+
+PR #1469 merged (`c5de69ee9`) and was promoted 2026-10-06 23:09 ET. "Not served" below is now "served as a muted library": the code is on CURRENT, nothing calls it, and `durable` is still false. The two NEVER_SCHEDULED rows are flipped to ACTIVE in the packet-refresh PR because the host already runs them (see `01-scheduler-truth.md`).
 
 ## What is not true
 
