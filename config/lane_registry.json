@@ -3165,6 +3165,78 @@
         "path": "logs/telegram_callback_poller.log"
       },
       "note": "Cron tranche A rank 2 (2026-10-07): the Telegram callback poller is a systemd service (one instance, Restart=always) instead of a cron launcher every 2 min plus a cwd watchdog every 5 min (1,008 firings/day). Must be restarted after every promote (TRADEAI_CURRENT_BOUND_UNITS)."
+    },
+    {
+      "lane_id": "watchlist-enrichment-sweep",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 9-16 * * 1-5 watchlist_enrichment_sweep.py --once",
+        "match": "scripts/watchlist_enrichment_sweep.py"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-07",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/watchlist_sweep.log"
+      },
+      "note": "Cron tranche A rank 1 (2026-10-07): intraday + post-close sweep merged into one line (was */30 9-15 plus 16:15).",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "lane_id": "plan-drift-revalidator",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 10,13 * * 1-5 plan_drift_revalidator.py --apply",
+        "match": "scripts/plan_drift_revalidator.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-07",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/plan_drift_revalidator.log"
+      },
+      "note": "Cron tranche A rank 1 (2026-10-07): 10:00 and 13:00 runs merged into one line; the 17:25 run keeps its own baseline line.",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "lane_id": "auto-proposal-general",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 9-16 * * 1-5 auto_proposal_generator.py --today --apply (AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp)",
+        "match": "AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-07",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/auto_proposal.log"
+      },
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "note": "Cron tranche A rank 1 (2026-10-07): the non-scalp proposal generator line gained the lock it was missing (/tmp/auto_proposal_general.lock); it is complementary to momentum-scalp-advisory-alerts (*/10 6-11, momentum_scalp only), not a duplicate."
     }
   ],
   "undeclared_baseline": [
@@ -3222,11 +3294,9 @@
     "*/30 6-16 * * 1-5 cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1",
     "*/30 6-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/proposal_llm_review_worker.lock timeout 25m $PY scripts/proposal_llm_review_worker.py --run --limit 4 >> logs/proposal_llm_review_worker.log 2>&1  # stage-2b LLM review queue drain (was UNSCHEDULED — rows sat PENDING for days; added 2026-07-04)",
     "*/30 8-18 * * 1-5 cd $PROJ && flock -n /tmp/ask_alerts.lock $PY scripts/ask_alerts.py --check >> logs/ask_alerts.log 2>&1  # fire ask-box alerts (IPO news / price) to Telegram",
-    "*/30 9-15 * * 1-5 cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment",
     "*/30 9-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/tradeai_atp2_reval.lock bash scripts/market_day_gate.sh .venv/bin/python scripts/run_automated_trade_proposal_revalidation.py --apply --limit 50 >> logs/atp2_proposal_revalidation_cron.log 2>&1",
     "*/30 9-16 * * 1-5 cd $PROJ && $PY scripts/proposal_lifecycle.py >> logs/proposal_lifecycle.log 2>&1",
     "*/30 9-16 * * 1-5 cd $PROJ && CURATION_AUTO_APPLY=1 flock -n /tmp/watch_directives_service.lock env AGENT_DECISION_PAYLOAD=1 $PY scripts/watch_directives_service.py --apply >> logs/watch_directives_service.log 2>&1",
-    "*/30 9-16 * * 1-5 cd $PROJ && AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1 timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1",
     "*/30 9-16 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection-learning pipeline",
     "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/cloud_consensus_verdict.lock $PY scripts/cloud_consensus_verdict.py --run >> logs/cloud_consensus_verdict.log 2>&1  # cloud dual-consensus advisory verdicts, market hours only per EXTERNAL_LLM_USAGE_POLICY (installed 2026-07-05)",
     "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/enh_scalp.lock $PY scripts/hermes_subject_enhance.py --type scalp --lanes grok,chatgpt --apply --limit 10 >> logs/hermes_enh.log 2>&1  # H-enh scalp (Grok+ChatGPT)",
@@ -3252,7 +3322,6 @@
     "0 10 * * 1-5 cd $PROJ && $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1",
     "0 10 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1000 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1  # RESTORED 2026-06-12",
     "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1",
-    "0 10 * * 1-5 cd $PROJ && flock -n /tmp/plan_drift_reval_am.lock $PY scripts/plan_drift_revalidator.py --apply >> logs/plan_drift_revalidator.log 2>&1",
     "0 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/chain_snapshot.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/options_chain_snapshot.py\" >> logs/chain_snapshot.log 2>&1",
     "0 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/opening_intel.lock .venv/bin/python scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1",
     "0 10 1 * * cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1",
