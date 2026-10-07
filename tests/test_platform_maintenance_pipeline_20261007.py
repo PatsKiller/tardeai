@@ -256,7 +256,7 @@ def test_proposal_units_point_at_runner_and_are_marked_proposal_only():
         assert "PROPOSAL ONLY" in timer and "PROPOSAL ONLY" in service
         assert f"OnCalendar={oncal}" in timer
         assert "WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT" in service
-        assert "EnvironmentFile=-%t/tradeai/env" in service
+        assert "EnvironmentFile=-%t/tradeai/env" not in service  # review 2026-10-07: no secrets env to the unit
         assert f"run_platform_maintenance_pipeline.sh --cadence {cadence} --apply" in service
 
 
