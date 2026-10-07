@@ -1,4 +1,5 @@
 # PROPOSAL ONLY. Not installed. Do not systemctl enable without a production
+# Review 2026-10-07: no EnvironmentFile of the rendered secrets — cron never gave these monitors the broker env; each script loads what it needs itself.
 # scheduler (config-write) grant. Enabling this before the served tree contains
 # scripts/health_tick.py + config/health_tick_steps.json would fail closed on a
 # missing file. Cron consolidation RANK 3: this one unit replaces 17 crontab
@@ -23,7 +24,6 @@ Environment=TRADEAI_ENV=%t/tradeai/env
 Environment=BLIND_REVIEW_LANES=deepseek-flash,grok,chatgpt
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 # Rendered secrets file (same path the crontab names in TRADEAI_ENV); absent file is not an error.
-EnvironmentFile=-%t/tradeai/env
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/health_tick.py --apply
 Nice=10
 # Steps are bounded individually (timeout_s) and as a tick (tick_budget_s=280); this is the backstop.
