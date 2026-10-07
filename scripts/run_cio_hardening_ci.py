@@ -3377,6 +3377,10 @@ GATES = [
             "tests/test_n8n_model_job_20261007.py",
             "tests/test_n8n_model_job_operation_20261007.py",
             "tests/test_n8n_phase1_dispatch_20261007.py",
+            # 2026-10-07 cron consolidation tranche C (low-risk): options tick, orchestrator
+            # slot wrapper, drive syncs runner, hermes subject dispatcher. Proposals only; no
+            # cron line is installed by listing them here.
+            "tests/test_cron_tranche_c_lowrisk_20261007.py",
             # Cron consolidation RANK 3: the 5-minute health tick that absorbs 17
             # monitor crontab lines. Hermetic (fake steps, tmp locks/state); it
             # pins due-phase arithmetic, lock skip, timeout = failure, receipt

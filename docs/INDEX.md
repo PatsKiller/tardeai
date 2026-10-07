@@ -1439,6 +1439,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `77196f9bf014` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-a-decisions.md` | Cron tranche A — operator decisions (2026-10-07) | review_required | MISSING HEADER | `cff41e44423f` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md` | Cron tranche B — post-close, premarket and Hermes chains: measurements, fit, manifests (2026-10-07) | review_required | OK | `37fb7b08b80c` |
+| `docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md` | Cron consolidation — tranche C, low-risk part (ranks 13, 14, 18, 9), 2026-10-07 | review_required | MISSING HEADER | `459432353f4a` |
 | `docs/implementation/n8n-parallel/proposals/phase1-install-commands.md` | Phase 1 install commands (operator), 2026-10-07 | review_required | MISSING HEADER | `d491f8368e49` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
 | `docs/implementation/sot/phase9_hermes_research_notes.md` | Phase 9 — one write module for `hermes_research_intelligence` | review_required | MISSING HEADER | `089989d1da1b` |

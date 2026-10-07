@@ -3496,6 +3496,95 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "commit 0.1 s (PAM exact, VERIFIED); source curation 274 s median (safe_flock, 2 of 7 firings completed through the lock — the other 5 were lock_skips or no receipt). Window to 23:59."
+    },
+    {
+      "lane_id": "options-tick",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "7,22,37,52 * * * * options_tick.py --apply",
+        "match": "scripts/options_tick.py"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron consolidation tranche C rank 13 — PROPOSED, not installed. One line replacing the options-thesis-lifecycle, options-memory-projector and options-runtime-export crontab lines (lifecycle -> projector every tick, export on the :52 tick; same locks, env, argv and per-step logs). Those three lanes stay ACTIVE until the operator installs this line under a cron grant, observes two receipts, and deletes the old lines; then they flip to RETIRED (absorbed by options-tick) and this row to ACTIVE.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l 2026-10-07 lines 1036/1038/1040 (verbatim in the proposal); scripts/options_tick.py; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/options_tick_last.json"
+      },
+      "note": "OptionsTickReceipt@v1 under $TRADEAI_STATE_ROOT. Proposal only; see docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md"
+    },
+    {
+      "lane_id": "orchestrator-slot",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 9,10,12,14,16 * * 1-5 + 30 17 * * 1-5 run_orchestrator_slot.sh",
+        "match": "scripts/run_orchestrator_slot.sh"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron consolidation tranche C rank 14 — PROPOSED, not installed. Two lines replacing the six trade_ai_orchestrator lines (0900/1000/1200/1400/1600 and 1730); the wrapper derives --run-label from the clock against the schedule table and execs exactly the old safe_flock command. The six old lines are in undeclared_baseline and are removed from it at cutover.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l 2026-10-07 lines 142/144/145/147/148/205 (verbatim in the proposal); scripts/run_orchestrator_slot.sh; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/screener_pm.log"
+      },
+      "note": "Same log as the six lines it replaces. Proposal only; see docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md"
+    },
+    {
+      "lane_id": "drive-syncs-hourly",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 * * * * run_drive_syncs.sh --apply",
+        "match": "scripts/run_drive_syncs.sh"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron consolidation tranche C rank 18 — PROPOSED, not installed. One line running the :05 docs sync and the :35 code-mirror sync in sequence (same safe_flock locks, scripts, argv and logs; per-step timeout and a receipt added). code-mirror-drive-sync stays ACTIVE until cutover, then flips to RETIRED (absorbed by drive-syncs-hourly); the docs-sync line leaves the 2026-09-28 inherited tranche when deleted. The 03:10 ~/.claude memory sync is unaffected.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l 2026-10-07 lines 405/1026 (verbatim in the proposal); scripts/run_drive_syncs.sh; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/drive_syncs_last.json",
+        "key": "ended_at"
+      },
+      "note": "DriveSyncsReceipt@v1 under $TRADEAI_STATE_ROOT. Proposal only; see docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md"
+    },
+    {
+      "lane_id": "hermes-subject-enhance-dispatch",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0,20,25,30,40 * * * * hermes_subject_enhance_dispatch.py --apply",
+        "match": "scripts/hermes_subject_enhance_dispatch.py"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron consolidation tranche C rank 9 — PROPOSED, not installed. One line replacing the six hermes_subject_enhance lines (scalp, proposal, position, sector, closed_trade, report) with a due-table dispatcher that keeps every cadence, minute phase, window, lock, guard and argv but runs due subjects sequentially — removing the 65 same-minute collisions/week on the grok/chatgpt OAuth lanes. The six old lines are in undeclared_baseline and are removed from it at cutover.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l 2026-10-07 lines 477-482 (verbatim in the proposal); scripts/hermes_subject_enhance_dispatch.py --stats; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes_subject_enhance_dispatch_last.json",
+        "key": "as_of"
+      },
+      "note": "HermesSubjectEnhanceDispatchReceipt@v1 under $TRADEAI_STATE_ROOT. Proposal only; see docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md"
     }
   ],
   "undeclared_baseline": [
