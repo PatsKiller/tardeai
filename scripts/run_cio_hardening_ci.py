@@ -3392,6 +3392,19 @@ GATES = [
             "tests/test_n8n_pilot_contracts_20261007.py",
         ],
     ),
+    (
+        # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial
+        # stage runner for the post-close, premarket and Hermes chains. Hermetic: the tests drive
+        # the runner with true/false/sleep manifests against a scratch project root, prove that
+        # --dry-run (the default) executes nothing, that --apply with an empty stage executes
+        # nothing, per-step timeout + continue-on-error + receipts, and that the four committed
+        # manifests are verbatim crontab slices with every broker/stop/order/market_day_gate line
+        # excluded. Listing them here schedules nothing: the runners are NEVER_SCHEDULED lanes.
+        "cron_tranche_b_20261007",
+        [
+            "tests/test_pipeline_manifest_runner_20261007.py",
+        ],
+    ),
 ]
 
 

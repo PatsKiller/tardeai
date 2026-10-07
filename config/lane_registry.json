@@ -3148,6 +3148,142 @@
         "path": "data/runtime/n8n_lab_watchdog_last.json"
       },
       "note": "Host-side probe of the n8n lab /healthz every 5 min (installed 2026-10-07 under config-write grant 113fa7d3b2344284). Replaces the two in-n8n monitor workflows, which lost their targets when S1/S2 bound the API and DOF to loopback. Receipt consumed by n8n_incident_fanin."
+    },
+    {
+      "lane_id": "after-close-pipeline-close-capture",
+      "owner": "tradeai-core",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_after_close_pipeline.sh --stage close-capture is a manifest-driven serial stage that would absorb 13 post-close capture lines (L224 L225 L1061 L469 L179 L793 L194 L549 L502 L341 L562 L504 L771); proposed line `5 16 * * 1-5`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_after_close_close-capture_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "window_runtimes_20261007: serial sum of medians 1163 s (ends 16:24, budget to 16:33 basis sync); p95 sum 3730 s does NOT fit because 8/13 steps carry only PAM-group upper bounds — instrument during the parallel-run week before cutover. Broker/stop/order/market_day_gate lines and the staggered syncs are excluded by manifest (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS)."
+    },
+    {
+      "lane_id": "after-close-pipeline-broker-truth",
+      "owner": "tradeai-core",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_after_close_pipeline.sh --stage broker-truth is a manifest-driven serial stage that would absorb 2 READ-ONLY broker-truth consumers (L499 audit_position_basis, L805 investment_costs); proposed line `25 17 * * 1-5`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_after_close_broker-truth_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "The study's 16:30 slot precedes the 16:33 basis sync, the 16:48/16:52 intraday Schwab syncs and the 17:20 positions_sync; 17:25 is the earliest slot after positions_sync (+120 s timeout). Serial sum 198 s median / 325 s p95 (upper bounds), budget 600 s. positions_proof_daily (L1072) stays on its own line while the operator's 10-day phase-2 proof runs."
+    },
+    {
+      "lane_id": "after-close-pipeline-planning",
+      "owner": "tradeai-core",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_after_close_pipeline.sh --stage planning is a manifest-driven serial stage that would absorb 14 planning lines (L656 L342 L785 L791 L708 L206 L505 L506 L795 L807 L493 L153 L381 L740); proposed line `35 17 * * 1-5`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_after_close_planning_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Serial sum of medians 1287 s (ends 17:56, window to 18:40); p95 sum 6480 s is dominated by PAM-group upper bounds (12/14 unverified; L740's 3561 s p95 is the 18:40 group's daily grounding report, not the step). journal_review_builder (L486) stays separate: it depends on the 18:15 schwab_transaction_ingest."
+    },
+    {
+      "lane_id": "premarket-data-pipeline",
+      "owner": "tradeai-core",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_premarket_data_pipeline.sh --stage premarket is a manifest-driven serial stage that would absorb 40 premarket producer lines 05:30-07:20 (daily lines keep weekends via per-step dow filters); proposed line `45 5 * * *`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_premarket_data_pipeline_premarket_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Serial sum of medians 2989 s (ends 06:35) and p95 5615 s (ends 07:19) both finish before the 07:30 morning brief (budget to 07:25 = 6000 s); 32/40 steps are PAM-group upper bounds, so the p95 figure is conservative. portfolio_orchestrator (970 s median / 2289 s p95, VERIFIED) and holdings_llm_refresh (356 s, LLM lane) stay parallel; broker_stop_reconcile and snaptrade_activity_ingest are excluded."
+    },
+    {
+      "lane_id": "hermes-learning-pipeline-learn",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_hermes_pipeline.sh --manifest config/pipelines/hermes_learning.json --stage learn is a manifest-driven serial stage that would absorb the 10:50 -> 11:45 learning chain (L692 L702 L696 L475 L684 L705); proposed line `50 10 * * *`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_hermes_learning_learn_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Serial sum 466 s median / 568 s p95 (4/6 VERIFIED via safe_flock: grader 6 s, tag engine 245 s, feedback 4 s, outcome learning 2 s). Each step keeps its run_with_deepseek_offpeak.sh wrapper verbatim; the runner never wraps the stage."
+    },
+    {
+      "lane_id": "hermes-learning-pipeline-tune",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_hermes_pipeline.sh --manifest config/pipelines/hermes_learning.json --stage tune is a manifest-driven serial stage that would absorb L610 hermes_autonomous_self_tune (17:00); proposed line `0 17 * * *`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_hermes_learning_tune_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Upper bound 123 s median / 824 s p95 (PAM group, NOT VERIFIED); kept as its own stage so the 17:00 timing survives."
+    },
+    {
+      "lane_id": "hermes-overnight-pipeline-night",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_hermes_pipeline.sh --manifest config/pipelines/hermes_overnight.json --stage night is a manifest-driven serial stage that would absorb the 02:20 -> 06:15 discovery chain (L783 L1023 L861 L719 L721 L869 L872); proposed line `20 2 * * *`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_hermes_overnight_night_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Serial sum 212 s median / 526 s p95 (PAM-group upper bounds; backlog_drain is bounded by its own --max-runtime 3000); window 02:20-06:15 = 14100 s. Every --official off-peak wrapper stays inside its step."
+    },
+    {
+      "lane_id": "hermes-overnight-pipeline-close",
+      "owner": "hermes",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Cron tranche B skeleton (ranks 5-7 of 13-cron-consolidation): scripts/pipelines/run_hermes_pipeline.sh --manifest config/pipelines/hermes_overnight.json --stage close is a manifest-driven serial stage that would absorb L550 commit_hermes_daily (23:13) and L392 hermes_source_curation (23:30); proposed line `13 23 * * *`. Nothing calls it: installing it is the operator's cron grant after the parallel-run week in docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md (old lines stay, the stage runs --dry-run, then one stage cuts over at a time). --dry-run is the runner's default and executes nothing; --apply runs only manifest steps, each verbatim with its own lock/timeout/wrapper.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/pipeline_hermes_overnight_close_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "commit 0.1 s (PAM exact, VERIFIED); source curation 274 s median (safe_flock, 2 of 7 firings completed through the lock — the other 5 were lock_skips or no receipt). Window to 23:59."
     }
   ],
   "undeclared_baseline": [

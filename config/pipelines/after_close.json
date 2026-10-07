@@ -1,0 +1,1878 @@
+{
+  "schema": "PipelineManifest@v1",
+  "pipeline": "after_close",
+  "generated": "2026-10-07",
+  "source": "docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md",
+  "note": "Cron tranche B rank 5. Commands are VERBATIM crontab commands (line numbers refer to `crontab -l` on ms01-openclaw as of 2026-10-07 12:39 ET, the file the parent holds). Every step keeps its own lock/timeout/env. Broker, stop, order, market_day_gate lines and the staggered broker syncs are listed under \"excluded\" and are never steps.",
+  "runner": "scripts/pipelines/run_after_close_pipeline.sh --stage <stage>",
+  "stages": {
+    "close-capture": {
+      "proposed_schedule": "5 16 * * 1-5",
+      "window": "16:05-16:30",
+      "must_finish_before": "16:33 sync_basis_from_broker (own line)",
+      "steps": [
+        {
+          "id": "regime_collector_pm",
+          "cron_line": 224,
+          "cron_schedule": "5 16 * * 1-5",
+          "cron_time": "16:05",
+          "command": "$PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply",
+          "log": "logs/regime_classifier.log",
+          "timeout": "30m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 204.4,
+            "upper_bound_p95_s": 730.3,
+            "bound_source": "pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "atp2_research_eod",
+          "cron_line": 225,
+          "cron_schedule": "5 16 * * 1-5",
+          "cron_time": "16:05",
+          "command": "./scripts/run_scheduled_atp2_research_cycle.sh --cycle eod",
+          "log": "logs/atp2_research_cycle_cron.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "5 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle eod >> logs/atp2_research_cycle_cron.log 2>&1",
+          "measured": {
+            "verified": true,
+            "source": "pipeline_runs",
+            "runs": 5,
+            "firings": 5,
+            "median_s": 0.6,
+            "p95_s": 0.9,
+            "max_s": 0.9
+          },
+          "flags": [
+            "DEV_TREE_WRAPPER: the wrapper hardcodes /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild (study §1); runs verbatim today, repoint to CURRENT before cutover"
+          ]
+        },
+        {
+          "id": "at_session_review",
+          "cron_line": 1061,
+          "cron_schedule": "10 16 * * 1-5",
+          "cron_time": "16:10",
+          "command": "flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply",
+          "log": "logs/at_session_review.log",
+          "timeout": "600s",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 1,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 39.9,
+            "upper_bound_p95_s": 39.9,
+            "bound_source": "pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "repricer_reconcile_lookthrough",
+          "cron_line": 469,
+          "cron_schedule": "10 16 * * 1-5",
+          "cron_time": "16:10",
+          "command": "bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_repricer.lock $PY scripts/portfolio_repricer.py && $PY scripts/holdings_reconcile.py --apply && flock -n /tmp/lookthrough_resolver.lock $PY scripts/phase3_lookthrough_resolver.py --project-root $PROJ",
+          "log": "logs/portfolio_repricer_postclose.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "10 16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_repricer.lock $PY scripts/portfolio_repricer.py && $PY scripts/holdings_reconcile.py --apply && flock -n /tmp/lookthrough_resolver.lock $PY scripts/phase3_lookthrough_resolver.py --project-root $PROJ >> logs/portfolio_repricer_postclose.log 2>&1  # +phase3 look-through allocation: DAILY auto-refresh from settled holdings (2026-06-18)",
+          "measured": {
+            "verified": true,
+            "source": "safe_flock",
+            "runs": 5,
+            "firings": 5,
+            "median_s": 25.0,
+            "p95_s": 55.8,
+            "max_s": 62.0
+          },
+          "wrappers_kept_verbatim": [
+            "safe_flock.sh"
+          ],
+          "note": "three-command chain kept verbatim; safe_flock receipt covers only the repricer (holdings_reconcile + lookthrough resolver unmeasured)",
+          "cron_comment": "# +phase3 look-through allocation: DAILY auto-refresh from settled holdings (2026-06-18)"
+        },
+        {
+          "id": "stale_proposal_sweeper_report",
+          "cron_line": 179,
+          "cron_schedule": "10 16 * * 1-5",
+          "cron_time": "16:10",
+          "command": "flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --report-only",
+          "log": "logs/stale_proposal_sweeper.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "10 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --report-only >> logs/stale_proposal_sweeper.log 2>&1",
+          "measured": {
+            "verified": true,
+            "source": "pipeline_runs",
+            "runs": 5,
+            "firings": 5,
+            "median_s": 0.5,
+            "p95_s": 0.8,
+            "max_s": 0.9
+          },
+          "flags": [
+            "DEV_TREE_WRAPPER: the wrapper hardcodes /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild (study §1); runs verbatim today, repoint to CURRENT before cutover"
+          ]
+        },
+        {
+          "id": "finviz_industry_groups",
+          "cron_line": 793,
+          "cron_schedule": "18 16 * * 1-5",
+          "cron_time": "16:18",
+          "command": "flock -n /tmp/industry_momentum.lock bash -c \"set -a; . ./.env >/dev/null 2>/dev/null; set +a; $PY scripts/finviz_industry_groups.py --close\"",
+          "log": "logs/industry_momentum.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "18 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/industry_momentum.lock bash -c \"set -a; . ./.env >/dev/null 2>/dev/null; set +a; $PY scripts/finviz_industry_groups.py --close\" >> logs/industry_momentum.log 2>&1  # Defense v2 B2: close capture (states+debounce+alerts), 2x/day per budget",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 14.8,
+            "upper_bound_p95_s": 15.7,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# Defense v2 B2: close capture (states+debounce+alerts), 2x/day per budget"
+        },
+        {
+          "id": "llm_intelligence_enrichment_pm",
+          "cron_line": 194,
+          "cron_schedule": "20 16 * * 1-5",
+          "cron_time": "16:20",
+          "command": "flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py",
+          "log": "logs/llm_enrichment.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "20 16 * * 1-5 cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichment.log 2>&1  # flash intel PM",
+          "measured": {
+            "verified": true,
+            "source": "log_end",
+            "runs": 5,
+            "firings": 5,
+            "median_s": 81.0,
+            "p95_s": 87.8,
+            "max_s": 89.0
+          },
+          "note": "no LLM wrapper or cap on the cron line today; folding changes no cap accounting",
+          "cron_comment": "# flash intel PM"
+        },
+        {
+          "id": "strategy_tilt",
+          "cron_line": 549,
+          "cron_schedule": "25 16 * * 1-5",
+          "cron_time": "16:25",
+          "command": "flock -n /tmp/strategy_tilt.lock $PY scripts/strategy_tilt.py",
+          "log": "logs/strategy_tilt.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "25 16 * * 1-5 cd $PROJ && flock -n /tmp/strategy_tilt.lock $PY scripts/strategy_tilt.py >> logs/strategy_tilt.log 2>&1  # per-strategy allocation tilt refresh (post-close)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 0.7,
+            "upper_bound_p95_s": 1.6,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# per-strategy allocation tilt refresh (post-close)"
+        },
+        {
+          "id": "technicals_gap_backfill",
+          "cron_line": 502,
+          "cron_schedule": "30 16 * * 1-5",
+          "cron_time": "16:30",
+          "command": "flock -n /tmp/tech_gap.lock $PY scripts/technicals_gap_backfill.py --alert",
+          "log": "logs/technicals_gap.log",
+          "timeout": "30m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "30 16 * * 1-5 cd $PROJ && flock -n /tmp/tech_gap.lock $PY scripts/technicals_gap_backfill.py --alert >> logs/technicals_gap.log 2>&1  # missing-technicals checker+backfill (operator 2026-06-12)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 212.9,
+            "upper_bound_p95_s": 1054.0,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# missing-technicals checker+backfill (operator 2026-06-12)"
+        },
+        {
+          "id": "paper_execution_quality_analyzer",
+          "cron_line": 341,
+          "cron_schedule": "30 16 * * 1-5",
+          "cron_time": "16:30",
+          "command": "$PY scripts/paper_execution_quality_analyzer.py --recent --apply",
+          "log": "logs/tca_analyzer.log",
+          "timeout": "30m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "30 16 * * 1-5 cd $PROJ && $PY scripts/paper_execution_quality_analyzer.py --recent --apply >> logs/tca_analyzer.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "log_span(lower)+pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": 1.0,
+            "upper_bound_median_s": 212.9,
+            "upper_bound_p95_s": 1054.0,
+            "bound_source": "log_span(lower)+pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "inference_cycle_pm",
+          "cron_line": 562,
+          "cron_schedule": "30 16 * * 1-5",
+          "cron_time": "16:30",
+          "command": "bash linux_launchers/run_inference_cycle.sh cron_postclose",
+          "log": "logs/inference_cron.log",
+          "timeout": "15m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "30 16 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_postclose >> logs/inference_cron.log 2>&1",
+          "measured": {
+            "verified": true,
+            "source": "log_end",
+            "runs": 5,
+            "firings": 5,
+            "median_s": 218.0,
+            "p95_s": 243.4,
+            "max_s": 246.0
+          }
+        },
+        {
+          "id": "audit_enrichment_coverage",
+          "cron_line": 504,
+          "cron_schedule": "45 16 * * 1-5",
+          "cron_time": "16:45",
+          "command": "flock -n /tmp/enrich_coverage.lock $PY scripts/audit_enrichment_coverage.py --alert",
+          "log": "logs/enrichment_coverage.log",
+          "timeout": "15m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "45 16 * * 1-5 cd $PROJ && flock -n /tmp/enrich_coverage.lock $PY scripts/audit_enrichment_coverage.py --alert >> logs/enrichment_coverage.log 2>&1  # agent: audits every enrichment surface vs canonical watch universe (operator 2026-06-12)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 76.1,
+            "upper_bound_p95_s": 222.9,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# agent: audits every enrichment surface vs canonical watch universe (operator 2026-06-12)"
+        },
+        {
+          "id": "research_intelligence_queue_drain",
+          "cron_line": 771,
+          "cron_schedule": "45 16 * * 1-5",
+          "cron_time": "16:45",
+          "command": "flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10",
+          "log": "logs/ri_research_queue.log",
+          "timeout": "15m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "45 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 76.1,
+            "upper_bound_p95_s": 222.9,
+            "bound_source": "pam_group_max(upper)"
+          }
+        }
+      ]
+    },
+    "broker-truth": {
+      "proposed_schedule": "25 17 * * 1-5",
+      "window": "17:25-17:35",
+      "depends_on_own_lines": "sync_basis_from_broker 16:33 (L498), schwab_position_sync last 16:52 (L531), positions_sync 17:20 timeout 120s (L1070) — all stay as their own lines; this stage only READS their outputs",
+      "note": "The study proposed 16:30 for this stage; 16:30 precedes the 16:33 basis sync, the 16:48/16:52 intraday Schwab syncs and the 17:20 positions_sync, so it cannot be the broker-truth stage. 17:25 is the earliest slot after positions_sync (17:20 + 120 s timeout).",
+      "steps": [
+        {
+          "id": "audit_position_basis",
+          "cron_line": 499,
+          "cron_schedule": "35 16 * * 1-5",
+          "cron_time": "16:35",
+          "command": "flock -n /tmp/basis_audit.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/audit_position_basis.py --alert\"",
+          "log": "logs/position_basis_audit.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "35 16 * * 1-5 cd $PROJ && flock -n /tmp/basis_audit.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/audit_position_basis.py --alert\" >> logs/position_basis_audit.log 2>&1  # basis drift alarm (holdings vs broker)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 2.3,
+            "upper_bound_p95_s": 2.6,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "note": "READ-ONLY cross-source basis audit",
+          "cron_comment": "# basis drift alarm (holdings vs broker)"
+        },
+        {
+          "id": "investment_costs_ledger",
+          "cron_line": 805,
+          "cron_schedule": "5 17 * * 1-5",
+          "cron_time": "17:05",
+          "command": "flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\"",
+          "log": "logs/investment_costs.log",
+          "timeout": "20m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 196.0,
+            "upper_bound_p95_s": 322.2,
+            "bound_source": "pam_group_max(upper)"
+          }
+        }
+      ]
+    },
+    "planning": {
+      "proposed_schedule": "35 17 * * 1-5",
+      "window": "17:35-18:40",
+      "steps": [
+        {
+          "id": "strategy_audits",
+          "cron_line": 656,
+          "cron_schedule": "5 17 * * 1-5",
+          "cron_time": "17:05",
+          "command": "bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_scheduled_strategy_audits.sh",
+          "log": null,
+          "timeout": "20m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_scheduled_strategy_audits.sh",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 196.0,
+            "upper_bound_p95_s": 322.2,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "flags": [
+            "DEV_TREE_WRAPPER: the wrapper hardcodes /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild (study §1); runs verbatim today, repoint to CURRENT before cutover"
+          ]
+        },
+        {
+          "id": "paper_execution_quality_events",
+          "cron_line": 342,
+          "cron_schedule": "0 17 * * 1-5",
+          "cron_time": "17:00",
+          "command": "$PY scripts/paper_execution_quality.py --all-open --apply",
+          "log": "logs/tca_events.log",
+          "timeout": "30m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "0 17 * * 1-5 cd $PROJ && $PY scripts/paper_execution_quality.py --all-open --apply >> logs/tca_events.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "log_span(lower)+pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": 0.0,
+            "upper_bound_median_s": 123.2,
+            "upper_bound_p95_s": 909.2,
+            "bound_source": "log_span(lower)+pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "sector_rs_daily",
+          "cron_line": 785,
+          "cron_schedule": "20 17 * * 1-5",
+          "cron_time": "17:20",
+          "command": "$PY scripts/sector_rs_daily.py",
+          "log": "logs/sector_rs_daily.log",
+          "timeout": "20m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "20 17 * * 1-5 cd $PROJ && $PY scripts/sector_rs_daily.py >> logs/sector_rs_daily.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 76.7,
+            "upper_bound_p95_s": 339.6,
+            "bound_source": "pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "sector_momentum_engine",
+          "cron_line": 791,
+          "cron_schedule": "25 17 * * 1-5",
+          "cron_time": "17:25",
+          "command": "flock -n /tmp/sector_momentum.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/sector_momentum_engine.py\"",
+          "log": "logs/sector_momentum.log",
+          "timeout": "20m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "25 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/sector_momentum.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/sector_momentum_engine.py\" >> logs/sector_momentum.log 2>&1  # Defense Desk WS-A: nightly sector momentum states + transition alerts",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 184.3,
+            "upper_bound_p95_s": 342.7,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# Defense Desk WS-A: nightly sector momentum states + transition alerts"
+        },
+        {
+          "id": "plan_drift_revalidator_pm",
+          "cron_line": 708,
+          "cron_schedule": "25 17 * * 1-5",
+          "cron_time": "17:25",
+          "command": "flock -n /tmp/plan_drift_reval.lock $PY scripts/plan_drift_revalidator.py --apply",
+          "log": "logs/plan_drift_revalidator.log",
+          "timeout": "20m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "25 17 * * 1-5 cd $PROJ && flock -n /tmp/plan_drift_reval.lock $PY scripts/plan_drift_revalidator.py --apply >> logs/plan_drift_revalidator.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 184.3,
+            "upper_bound_p95_s": 342.7,
+            "bound_source": "pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "afterhours_candidate_preparation",
+          "cron_line": 206,
+          "cron_schedule": "30 17 * * 1-5",
+          "cron_time": "17:30",
+          "command": "./scripts/run_afterhours_candidate_preparation.sh",
+          "log": "logs/afterhours_candidate_preparation.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "30 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_afterhours_candidate_preparation.sh >> logs/afterhours_candidate_preparation.log 2>&1",
+          "measured": {
+            "verified": true,
+            "source": "pipeline_runs",
+            "runs": 5,
+            "firings": 5,
+            "median_s": 2.5,
+            "p95_s": 2.7,
+            "max_s": 2.8
+          }
+        },
+        {
+          "id": "watchlist_entry_planner",
+          "cron_line": 505,
+          "cron_schedule": "35 17 * * 1-5",
+          "cron_time": "17:35",
+          "command": "flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400",
+          "log": "logs/entry_planner.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "35 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400 >> logs/entry_planner.log 2>&1  # daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 52.2,
+            "upper_bound_p95_s": 92.6,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)"
+        },
+        {
+          "id": "watchlist_entry_planner_proposals",
+          "cron_line": 506,
+          "cron_schedule": "45 17 * * 1-5",
+          "cron_time": "17:45",
+          "command": "flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals",
+          "log": "logs/entry_planner.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "45 17 * * 1-5 cd $PROJ && flock -n /tmp/entry_planner_prop.lock $PY scripts/watchlist_entry_planner.py --scope proposals >> logs/entry_planner.log 2>&1  # daily proposal entry validation (advisory)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 119.5,
+            "upper_bound_p95_s": 156.4,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# daily proposal entry validation (advisory)"
+        },
+        {
+          "id": "defense_recommendations",
+          "cron_line": 795,
+          "cron_schedule": "50 17 * * 1-5",
+          "cron_time": "17:50",
+          "command": "flock -n /tmp/defense_recs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/defense_recommendations.py\"",
+          "log": "logs/defense_recs.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "50 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/defense_recs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/defense_recommendations.py\" >> logs/defense_recs.log 2>&1  # Defense v3 WS-R: recommendations after sector 17:25 + radar 17:35",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 100.0,
+            "upper_bound_p95_s": 126.5,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# Defense v3 WS-R: recommendations after sector 17:25 + radar 17:35"
+        },
+        {
+          "id": "defense_inverse_stoplights",
+          "cron_line": 807,
+          "cron_schedule": "55 17 * * 1-5",
+          "cron_time": "17:55",
+          "command": "flock -n /tmp/inv_stoplights.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/defense_inverse_stoplights.py\"",
+          "log": "logs/inverse_stoplights.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "55 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_stoplights.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/defense_inverse_stoplights.py\" >> logs/inverse_stoplights.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 1.9,
+            "upper_bound_p95_s": 2.2,
+            "bound_source": "pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "compute_source_weights",
+          "cron_line": 493,
+          "cron_schedule": "10 18 * * 1-5",
+          "cron_time": "18:10",
+          "command": "$PY scripts/compute_source_weights.py --apply",
+          "log": "logs/source_weights.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "10 18 * * 1-5 cd $PROJ && $PY scripts/compute_source_weights.py --apply >> logs/source_weights.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 1.3,
+            "upper_bound_p95_s": 19.1,
+            "bound_source": "pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "data_gap_resolver_pre_overnight",
+          "cron_line": 153,
+          "cron_schedule": "0 18 * * 1-5",
+          "cron_time": "18:00",
+          "command": "$PY scripts/data_gap_resolver.py --pre-overnight",
+          "log": "logs/data_gap_resolver_pre_overnight.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "0 18 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/data_gap_resolver.py --pre-overnight >> logs/data_gap_resolver_pre_overnight.log 2>&1",
+          "measured": {
+            "verified": false,
+            "source": "log_span(lower)+pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": 9.0,
+            "upper_bound_median_s": 83.4,
+            "upper_bound_p95_s": 126.1,
+            "bound_source": "log_span(lower)+pam_group_max(upper)"
+          }
+        },
+        {
+          "id": "trade_backtest_engine",
+          "cron_line": 381,
+          "cron_schedule": "30 18 * * 1-5",
+          "cron_time": "18:30",
+          "command": "bash $PROJ/scripts/safe_flock.sh /tmp/trade_backtest_engine.lock $PY scripts/trade_backtest_engine.py",
+          "log": "logs/trade_backtest_engine.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "30 18 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/trade_backtest_engine.lock $PY scripts/trade_backtest_engine.py >> logs/trade_backtest_engine.log 2>&1",
+          "measured": {
+            "verified": true,
+            "source": "safe_flock",
+            "runs": 5,
+            "firings": 5,
+            "median_s": 116.0,
+            "p95_s": 136.6,
+            "max_s": 137.0
+          },
+          "wrappers_kept_verbatim": [
+            "safe_flock.sh"
+          ]
+        },
+        {
+          "id": "trade_thesis_review_engine",
+          "cron_line": 740,
+          "cron_schedule": "40 18 * * 1-5",
+          "cron_time": "18:40",
+          "command": "flock -n /tmp/thesis_review_engine.lock $PY scripts/trade_thesis_review_engine.py --apply --json",
+          "log": "logs/trade_thesis_review_engine.log",
+          "timeout": "30m",
+          "continue_on_error": true,
+          "dow": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "cron_line_verbatim": "40 18 * * 1-5 cd $PROJ && flock -n /tmp/thesis_review_engine.lock $PY scripts/trade_thesis_review_engine.py --apply --json >> logs/trade_thesis_review_engine.log 2>&1  # scored thesis review -> journal-learning (idempotent safety-net)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 5,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 45.2,
+            "upper_bound_p95_s": 3561.0,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "cron_comment": "# scored thesis review -> journal-learning (idempotent safety-net)"
+        }
+      ]
+    }
+  },
+  "deferred": [
+    {
+      "cron_line": 148,
+      "cron_schedule": "0 16 * * 1-5",
+      "cron_time": "16:00",
+      "basename": "trade_ai_orchestrator.py",
+      "category": "DEFERRED_PARALLEL_LANE",
+      "reason": "VERIFIED too slow for a serial stage: trade_ai_orchestrator --run-label 1600 median 1260 s / p95 1261 s (safe_flock). Stays its own 16:00 line; a serial stage would push every later step by 21 min.",
+      "measured": {
+        "verified": true,
+        "source": "safe_flock",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 1260.0,
+        "p95_s": 1260.8,
+        "max_s": 1261.0
+      }
+    },
+    {
+      "cron_line": 205,
+      "cron_schedule": "30 17 * * 1-5",
+      "cron_time": "17:30",
+      "basename": "trade_ai_orchestrator.py",
+      "category": "DEFERRED_PARALLEL_LANE",
+      "reason": "VERIFIED too slow for a serial stage: trade_ai_orchestrator --run-label 1730 median 719 s / p95 801 s. Stays its own 17:30 line.",
+      "measured": {
+        "verified": true,
+        "source": "safe_flock",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 719.0,
+        "p95_s": 800.8,
+        "max_s": 805.0
+      }
+    },
+    {
+      "cron_line": 556,
+      "cron_schedule": "15 10,16 * * 1-5",
+      "cron_time": "10:15 (15 10,16)",
+      "basename": "finviz_sector_research.py",
+      "category": "DEFERRED_PARALLEL_LANE",
+      "reason": "NOT VERIFIED and the 16:15 group upper bound is loose (median 832 s, p95 1080 s); the line also fires at 10:15. Instrument with a receipt during the parallel-run week, then decide.",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 831.6,
+        "upper_bound_p95_s": 1079.7,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 647,
+      "cron_schedule": "40 16 * * 1-5",
+      "cron_time": "16:40",
+      "basename": "run_pullback_macd_screener.sh",
+      "category": "DEFERRED_PARALLEL_LANE",
+      "reason": "NOT VERIFIED; 16:40 group upper bound 886 s median shared with the paid hermes_subject_enhance closed_trade line. No log on the cron line. Instrument first.",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 885.9,
+        "upper_bound_p95_s": 1130.7,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 864,
+      "cron_schedule": "5 16 * * 1,3,5",
+      "cron_time": "16:05",
+      "basename": "run_watch_review_workers.py",
+      "category": "DEFERRED_PARALLEL_LANE",
+      "reason": "run_watch_review_workers (Maria, Mon/Wed/Fri, timeout 45m): LLM review lane, too long for a serial stage; stays parallel.",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 3,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 204.4,
+        "upper_bound_p95_s": 394.7,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 866,
+      "cron_schedule": "20 16 * * 1,3,5",
+      "cron_time": "16:20",
+      "basename": "run_watch_review_workers.py",
+      "category": "DEFERRED_PARALLEL_LANE",
+      "reason": "run_watch_review_workers (CIO, Mon/Wed/Fri, timeout 45m): LLM review lane; stays parallel.",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 3,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 86.0,
+        "upper_bound_p95_s": 346.7,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    }
+  ],
+  "excluded": [
+    {
+      "cron_line": 149,
+      "cron_schedule": "0 16 * * 1-5",
+      "cron_time": "16:00",
+      "basename": "send_alert_digest.py",
+      "category": "MARKET_DAY_GATE",
+      "reason": "market_day_gate line (alert digest send) — excluded by rule; also a Telegram send (rank 10 digest scheduler)",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 293.4,
+        "upper_bound_p95_s": 843.7,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 243,
+      "cron_schedule": "5 16 * * 1-5",
+      "cron_time": "16:05",
+      "basename": "eod_open_trade_alert.py",
+      "category": "MARKET_DAY_GATE",
+      "reason": "market_day_gate line (eod_open_trade_alert) — excluded by rule; NOTE: the gate falls back to the dev venv because CURRENT has no .venv (log shows the probe error on every run)",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 204.4,
+        "upper_bound_p95_s": 730.3,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 339,
+      "cron_schedule": "0 7,9,12,16,20 * * 1-5",
+      "cron_time": "07:00 (0 7,9,12,16,20)",
+      "basename": "event_detector.py",
+      "category": "MARKET_DAY_GATE",
+      "reason": "market_day_gate line (event detector 7,9,12,16,20) — excluded by rule",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 10,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 2.0,
+        "upper_bound_median_s": 154.9,
+        "upper_bound_p95_s": 697.1,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 677,
+      "cron_schedule": "35 17 * * 1-5",
+      "cron_time": "17:35",
+      "basename": "stop_drift_alert.py",
+      "category": "BROKER_STOP",
+      "reason": "market_day_gate line + stop drift alert — broker/stop",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 52.2,
+        "upper_bound_p95_s": 92.6,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 512,
+      "cron_schedule": "35 17 * * 1-5",
+      "cron_time": "17:35",
+      "basename": "snaptrade_sync.py",
+      "category": "BROKER_SYNC",
+      "reason": "market_day_gate line + snaptrade_sync — staggered broker sync stays its own line",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 52.2,
+        "upper_bound_p95_s": 92.6,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 531,
+      "cron_schedule": "7,22,37,52 9-16 * * 1-5",
+      "cron_time": "09:07 (7,22,37,52 9-16)",
+      "basename": "schwab_position_sync.py",
+      "category": "BROKER_SYNC",
+      "reason": "schwab_position_sync 7,22,37,52 9-16 — staggered broker sync with its own lock and minute offset",
+      "measured": {
+        "verified": false,
+        "source": "no_firing",
+        "runs": 0,
+        "firings": 0,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": null,
+        "upper_bound_p95_s": null,
+        "bound_source": "no_firing"
+      }
+    },
+    {
+      "cron_line": 485,
+      "cron_schedule": "3,18,33,48 9-16 * * 1-5",
+      "cron_time": "09:03 (3,18,33,48 9-16)",
+      "basename": "schwab_transaction_ingest.py",
+      "category": "BROKER_SYNC",
+      "reason": "schwab_transaction_ingest 3,18,33,48 9-16 — staggered broker sync",
+      "measured": {
+        "verified": false,
+        "source": "no_firing",
+        "runs": 0,
+        "firings": 0,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": null,
+        "upper_bound_p95_s": null,
+        "bound_source": "no_firing"
+      }
+    },
+    {
+      "cron_line": 484,
+      "cron_schedule": "15 18 * * 1-5",
+      "cron_time": "18:15",
+      "basename": "schwab_transaction_ingest.py",
+      "category": "BROKER_SYNC",
+      "reason": "schwab_transaction_ingest 18:15 — broker sync",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 89.0,
+        "upper_bound_p95_s": 715.7,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1070,
+      "cron_schedule": "20 17 * * 1-5",
+      "cron_time": "17:20",
+      "basename": "positions_sync.py",
+      "category": "BROKER_SYNC",
+      "reason": "positions_sync 17:20 (timeout 120) — broker sync; the broker-truth stage is placed AFTER it",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 1,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 338.4,
+        "upper_bound_p95_s": 338.4,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1072,
+      "cron_schedule": "25 17 * * 1-5",
+      "cron_time": "17:25",
+      "basename": "positions_proof_daily.py",
+      "category": "OPERATOR_PROOF_IN_FLIGHT",
+      "reason": "positions_proof_daily 17:25 --send — the operator-approved positions phase-2 proof (10 trading days, nightly \"day N of 10\" from 2026-10-07) is RUNNING on this line; do not move it until the proof completes, then revisit as a broker-truth step",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 1,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 343.6,
+        "upper_bound_p95_s": 343.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 498,
+      "cron_schedule": "33 16 * * 1-5",
+      "cron_time": "16:33",
+      "basename": "sync_basis_from_broker.py",
+      "category": "BROKER_SYNC",
+      "reason": "sync_basis_from_broker 16:33 — broker read sync (writes basis from the broker API); stays its own line",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 8.2,
+        "upper_bound_p95_s": 16.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 348,
+      "cron_schedule": "45 16 * * 1-5",
+      "cron_time": "16:45",
+      "basename": "atm_position_reconciler.py",
+      "category": "BROKER_ADJACENT",
+      "reason": "atm_position_reconciler (safe_flock, log directory missing — never executes; tranche A decision D5 pending) — broker-adjacent",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 76.1,
+        "upper_bound_p95_s": 222.9,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 806,
+      "cron_schedule": "35 18 * * 1-5",
+      "cron_time": "18:35",
+      "basename": "schwab_econfirm_reconcile.py",
+      "category": "BROKER_ADJACENT",
+      "reason": "schwab_econfirm_reconcile 18:35 — Schwab eConfirm (Gmail) vs broker ledger reconcile; broker-adjacent read",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 2.2,
+        "upper_bound_p95_s": 2.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 794,
+      "cron_schedule": "35 17 * * 1-5",
+      "cron_time": "17:35",
+      "basename": "options_chain_snapshot.py",
+      "category": "BROKER_ADJACENT",
+      "reason": "options_chain_snapshot 17:35 — Schwab option-chain API read; options family (rank 13), broker-adjacent",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 52.2,
+        "upper_bound_p95_s": 92.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 733,
+      "cron_schedule": "5 16 * * 1-5",
+      "cron_time": "16:05",
+      "basename": "run_options_monitor.sh",
+      "category": "OPTIONS_FAMILY",
+      "reason": "run_options_monitor.sh 16:05 — options family (rank 13), operator-requested lines merge only as ordered steps with cadence unchanged; wrapper header empty",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 204.4,
+        "upper_bound_p95_s": 730.3,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 735,
+      "cron_schedule": "10 17 * * 1-5",
+      "cron_time": "17:10",
+      "basename": "run_options_paper_position_monitor.sh",
+      "category": "OPTIONS_FAMILY",
+      "reason": "run_options_paper_position_monitor.sh 17:10 — options family (rank 13)",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 1.9,
+        "upper_bound_p95_s": 2.4,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 500,
+      "cron_schedule": "5 17 * * 1-5",
+      "cron_time": "17:05",
+      "basename": "holding_protection_advisor.py",
+      "category": "STOP_ADVISORY",
+      "reason": "holding_protection_advisor 17:05 — LLM stop / trailing-stop advisory for the REAL account: stop-adjacent, keep failure isolation",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 196.0,
+        "upper_bound_p95_s": 322.2,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 503,
+      "cron_schedule": "20 17 * * 1",
+      "cron_time": "17:20",
+      "basename": "holding_protection_advisor.py",
+      "category": "STOP_ADVISORY",
+      "reason": "holding_protection_advisor (grok, Mon 17:20) — stop-adjacent + paid lane",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 1,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 340.0,
+        "upper_bound_p95_s": 340.0,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 774,
+      "cron_schedule": "40 17 * * 1-5",
+      "cron_time": "17:40",
+      "basename": "holdings_gain_guardian.py",
+      "category": "STOP_ADVISORY",
+      "reason": "holdings_gain_guardian 17:40 — exit/trim intelligence on the LIVE book (SHADOW); stop-adjacent",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 36.0,
+        "upper_bound_p95_s": 40.4,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 204,
+      "cron_schedule": "30 16 * * 1-5",
+      "cron_time": "16:30",
+      "basename": "run_closed_trade_digest_cron.sh",
+      "category": "OPERATOR_SEND",
+      "reason": "closed_trade_digest 16:30 — operator send; digest scheduler is rank 10 (also a dev-tree wrapper)",
+      "measured": {
+        "verified": true,
+        "source": "pipeline_runs",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 4.2,
+        "p95_s": 5.6,
+        "max_s": 6.0
+      }
+    },
+    {
+      "cron_line": 787,
+      "cron_schedule": "55 17 * * 1-5",
+      "cron_time": "17:55",
+      "basename": "alert_daily_digest.py",
+      "category": "OPERATOR_SEND",
+      "reason": "alert_daily_digest 17:55 — operator send; rank 10",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 1.9,
+        "upper_bound_p95_s": 2.2,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1028,
+      "cron_schedule": "15 16 * * *",
+      "cron_time": "16:15",
+      "basename": "notify_material_change.py",
+      "category": "OPERATOR_SEND",
+      "reason": "notify_material_change 16:15 daily — operator send; rank 10",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 789.0,
+        "upper_bound_p95_s": 1079.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 481,
+      "cron_schedule": "40 16 * * 1-5",
+      "cron_time": "16:40",
+      "basename": "hermes_subject_enhance.py",
+      "category": "HERMES_OWNED",
+      "reason": "hermes_subject_enhance closed_trade 16:40 (grok+chatgpt paid lanes) — rank 9 dispatcher",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 885.9,
+        "upper_bound_p95_s": 1130.7,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 608,
+      "cron_schedule": "20 10,16 * * 1-5",
+      "cron_time": "10:20 (20 10,16)",
+      "basename": "hermes_think_tank.py",
+      "category": "HERMES_OWNED",
+      "reason": "hermes_think_tank 10:20/16:20 — Hermes deep synthesis; rank 7/8",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 89.2,
+        "upper_bound_p95_s": 370.1,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 859,
+      "cron_schedule": "15 18 * * 1-5",
+      "cron_time": "18:15",
+      "basename": "hermes_research_agenda.py",
+      "category": "HERMES_OWNED",
+      "reason": "hermes_research_agenda 18:15 — Hermes; rank 8",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 89.0,
+        "upper_bound_p95_s": 715.7,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 610,
+      "cron_schedule": "0 17 * * *",
+      "cron_time": "17:00",
+      "basename": "hermes_autonomous_self_tune.py",
+      "category": "HERMES_OWNED",
+      "reason": "hermes_autonomous_self_tune 17:00 — absorbed by config/pipelines/hermes_learning.json stage tune, not here",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 123.2,
+        "upper_bound_p95_s": 823.7,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 655,
+      "cron_schedule": "30 16 * * 1-5",
+      "cron_time": "16:30",
+      "basename": "proposal_monitor.py",
+      "category": "PROPOSAL_LIFECYCLE",
+      "reason": "proposal_monitor 16:30 — proposal lifecycle worker is rank 11",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 5.0,
+        "upper_bound_median_s": 212.9,
+        "upper_bound_p95_s": 1054.0,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 486,
+      "cron_schedule": "30 18 * * 1-5",
+      "cron_time": "18:30",
+      "basename": "journal_review_builder.py",
+      "category": "DEPENDS_ON_LATER_BROKER_SYNC",
+      "reason": "journal_review_builder 18:30 — depends on the 18:15 schwab_transaction_ingest; no stage runs after 18:15 inside the window, so it stays its own line",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 361.0,
+        "upper_bound_p95_s": 404.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 902,
+      "cron_schedule": "17 17 * * 1-5",
+      "cron_time": "17:17",
+      "basename": "run_governed_symbol_thesis_acquisition.sh",
+      "category": "BROKEN_WRAPPER",
+      "reason": "run_governed_symbol_thesis_acquisition 17:17 — wrapper exits before logging (dev-tree default path; study §2); fix the tree first",
+      "measured": {
+        "verified": true,
+        "source": "pam_exact",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 81.0,
+        "p95_s": 258.0,
+        "max_s": 300.1
+      }
+    },
+    {
+      "cron_line": 878,
+      "cron_schedule": "0 18 * * *",
+      "cron_time": "18:00",
+      "basename": "ops_daily_digest.py",
+      "category": "OTHER_TREE",
+      "reason": "ops_daily_digest 18:00 — OpenClaw tree, other operator surface",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 83.4,
+        "upper_bound_p95_s": 122.5,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 397,
+      "cron_schedule": "0 18,22 * * *",
+      "cron_time": "18:00 (0 18,22)",
+      "basename": "catalyst_momentum_engine.py",
+      "category": "CADENCE_MISMATCH",
+      "reason": "catalyst_momentum_engine overnight 18:00,22:00 daily — daily cadence incl. weekends and a second firing; not a weekday stage member",
+      "measured": {
+        "verified": true,
+        "source": "safe_flock",
+        "runs": 7,
+        "firings": 7,
+        "median_s": 3.0,
+        "p95_s": 4.0,
+        "max_s": 4.0
+      }
+    },
+    {
+      "cron_line": 314,
+      "cron_schedule": "30 18 * * *",
+      "cron_time": "18:30",
+      "basename": "topic_curator.py",
+      "category": "CADENCE_MISMATCH",
+      "reason": "topic_curator 18:30 daily — daily cadence incl. weekends",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 360.4,
+        "upper_bound_p95_s": 402.1,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 151,
+      "cron_schedule": "0 18 * * *",
+      "cron_time": "18:00",
+      "basename": "rescan_tickets.py",
+      "category": "CADENCE_MISMATCH",
+      "reason": "rescan_tickets 18:00 daily — daily cadence; log file never created (NOT VERIFIED that it runs)",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 83.4,
+        "upper_bound_p95_s": 122.5,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1032,
+      "cron_schedule": "20 18 * * *",
+      "cron_time": "18:20",
+      "basename": "sweep_commitment_outcomes.py",
+      "category": "CADENCE_MISMATCH",
+      "reason": "sweep_commitment_outcomes 18:20 daily — CIO lane, daily cadence",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 20.2,
+        "upper_bound_p95_s": 391.3,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1052,
+      "cron_schedule": "40 18 * * *",
+      "cron_time": "18:40",
+      "basename": "report_agent_number_grounding.py",
+      "category": "CADENCE_MISMATCH",
+      "reason": "report_agent_number_grounding 18:40 daily — governance report, daily cadence",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 6,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 42.3,
+        "upper_bound_p95_s": 3341.4,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 797,
+      "cron_schedule": "15 18 * * 5",
+      "cron_time": "18:15",
+      "basename": "defense_weekly_paid_review.py",
+      "category": "CADENCE_MISMATCH",
+      "reason": "defense_weekly_paid_review Fri 18:15 — weekly + paid lane",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 1,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 55.6,
+        "upper_bound_p95_s": 55.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1049,
+      "cron_schedule": "20 8,12,17,21 * * 1-5",
+      "cron_time": "08:20 (20 8,12,17,21)",
+      "basename": "sec_filings_feed.py",
+      "category": "PASS_THROUGH",
+      "reason": "sec_filings_feed 8,12,17,21 — multi-hour line passing through the window",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 76.7,
+        "upper_bound_p95_s": 339.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1011,
+      "cron_schedule": "20 7,12,17 * * 1-5",
+      "cron_time": "07:20 (20 7,12,17)",
+      "basename": "catalyst_symbol_impact_writer.py",
+      "category": "PASS_THROUGH",
+      "reason": "catalyst_symbol_impact_writer 7,12,17 — multi-hour line passing through",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 10,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 77.4,
+        "upper_bound_p95_s": 339.3,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 1013,
+      "cron_schedule": "40 8,12,16 * * 1-5",
+      "cron_time": "08:40 (40 8,12,16)",
+      "basename": "watch_goods_consistency_check.py",
+      "category": "PASS_THROUGH",
+      "reason": "watch_goods_consistency_check 8,12,16 — multi-hour line passing through",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 5,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 885.9,
+        "upper_bound_p95_s": 1130.7,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 92,
+      "cron_schedule": "45 7,10,12,13,16 * * 1-5",
+      "cron_time": "07:45 (45 7,10,12,13,16)",
+      "basename": "run_scheduled_quote_refresh.sh",
+      "category": "PASS_THROUGH",
+      "reason": "run_scheduled_quote_refresh incubator 7,10,12,13,16 — multi-hour line (quote refresh; shares a lock with the */5 line — study §3)",
+      "measured": {
+        "verified": true,
+        "source": "pipeline_runs",
+        "runs": 10,
+        "firings": 10,
+        "median_s": 29.4,
+        "p95_s": 38.0,
+        "max_s": 38.8
+      }
+    }
+  ]
+}

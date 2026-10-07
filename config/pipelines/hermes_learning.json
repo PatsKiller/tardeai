@@ -1,0 +1,272 @@
+{
+  "schema": "PipelineManifest@v1",
+  "pipeline": "hermes_learning",
+  "generated": "2026-10-07",
+  "source": "docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md",
+  "note": "Cron tranche B rank 7a: the Hermes learning chain (today 10:50 → 11:45, then 17:00) as two serial stages. Each step keeps its own run_with_deepseek_offpeak.sh / llm_priority_guard.sh wrapper and cap env verbatim; the runner never wraps a stage in one guard (study §5).",
+  "runner": "scripts/pipelines/run_hermes_pipeline.sh --manifest config/pipelines/hermes_learning.json --stage <stage>",
+  "stages": {
+    "learn": {
+      "proposed_schedule": "50 10 * * *",
+      "window": "10:50-11:50",
+      "steps": [
+        {
+          "id": "outcome_grader",
+          "cron_line": 692,
+          "cron_schedule": "50 10 * * *",
+          "cron_time": "10:50",
+          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_grader.lock $PY scripts/hermes_outcome_grader.py --apply --max-rows 10000",
+          "log": "logs/hermes_outcome_grader.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "50 10 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_grader.lock $PY scripts/hermes_outcome_grader.py --apply --max-rows 10000 >> logs/hermes_outcome_grader.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 02:50 ET Peak B",
+          "measured": {
+            "verified": true,
+            "source": "safe_flock",
+            "runs": 7,
+            "firings": 7,
+            "median_s": 6.0,
+            "p95_s": 7.0,
+            "max_s": 7.0
+          },
+          "wrappers_kept_verbatim": [
+            "run_with_deepseek_offpeak.sh",
+            "safe_flock.sh"
+          ],
+          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 02:50 ET Peak B"
+        },
+        {
+          "id": "tag_engine",
+          "cron_line": 702,
+          "cron_schedule": "5 11 * * *",
+          "cron_time": "11:05",
+          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_tag_engine.lock $PY scripts/hermes_tag_engine.py --apply",
+          "log": "logs/hermes_tag_engine.log",
+          "timeout": "15m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "5 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_tag_engine.lock $PY scripts/hermes_tag_engine.py --apply >> logs/hermes_tag_engine.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:05 ET Peak B",
+          "measured": {
+            "verified": true,
+            "source": "safe_flock",
+            "runs": 7,
+            "firings": 7,
+            "median_s": 245.0,
+            "p95_s": 251.5,
+            "max_s": 253.0
+          },
+          "wrappers_kept_verbatim": [
+            "run_with_deepseek_offpeak.sh",
+            "safe_flock.sh"
+          ],
+          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:05 ET Peak B"
+        },
+        {
+          "id": "outcome_feedback_agent",
+          "cron_line": 696,
+          "cron_schedule": "25 11 * * *",
+          "cron_time": "11:25",
+          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_feedback.lock $PY scripts/hermes_outcome_feedback_agent.py --apply",
+          "log": "logs/hermes_outcome_feedback.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "25 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_feedback.lock $PY scripts/hermes_outcome_feedback_agent.py --apply >> logs/hermes_outcome_feedback.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:25 ET Peak B",
+          "measured": {
+            "verified": true,
+            "source": "safe_flock",
+            "runs": 7,
+            "firings": 7,
+            "median_s": 4.0,
+            "p95_s": 6.7,
+            "max_s": 7.0
+          },
+          "wrappers_kept_verbatim": [
+            "run_with_deepseek_offpeak.sh",
+            "safe_flock.sh"
+          ],
+          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:25 ET Peak B"
+        },
+        {
+          "id": "outcome_learning",
+          "cron_line": 475,
+          "cron_schedule": "35 11 * * *",
+          "cron_time": "11:35",
+          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_learning.lock $PY scripts/hermes_outcome_learning.py --apply",
+          "log": "logs/hermes_outcome_learning.log",
+          "timeout": "5m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "35 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- bash $PROJ/scripts/safe_flock.sh /tmp/hermes_outcome_learning.lock $PY scripts/hermes_outcome_learning.py --apply >> logs/hermes_outcome_learning.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B",
+          "measured": {
+            "verified": true,
+            "source": "safe_flock",
+            "runs": 7,
+            "firings": 7,
+            "median_s": 2.0,
+            "p95_s": 2.0,
+            "max_s": 2.0
+          },
+          "wrappers_kept_verbatim": [
+            "run_with_deepseek_offpeak.sh",
+            "safe_flock.sh"
+          ],
+          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B"
+        },
+        {
+          "id": "score_history_retention",
+          "cron_line": 684,
+          "cron_schedule": "40 11 * * *",
+          "cron_time": "11:40",
+          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- flock -n /tmp/hermes_score_retention.lock $PY scripts/hermes_score_history_retention.py --apply --days 21",
+          "log": "logs/hermes_score_retention.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "40 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- flock -n /tmp/hermes_score_retention.lock $PY scripts/hermes_score_history_retention.py --apply --days 21 >> logs/hermes_score_retention.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 7,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 71.5,
+            "upper_bound_p95_s": 133.3,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "wrappers_kept_verbatim": [
+            "run_with_deepseek_offpeak.sh"
+          ],
+          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B"
+        },
+        {
+          "id": "config_governor",
+          "cron_line": 705,
+          "cron_schedule": "45 11 * * *",
+          "cron_time": "11:45",
+          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- flock -n /tmp/hermes_config_governor.lock $PY scripts/hermes_config_governor.py --apply",
+          "log": "logs/hermes_config_governor.log",
+          "timeout": "10m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "45 11 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- flock -n /tmp/hermes_config_governor.lock $PY scripts/hermes_config_governor.py --apply >> logs/hermes_config_governor.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 03:40 ET Peak B",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 7,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 137.6,
+            "upper_bound_p95_s": 167.4,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "wrappers_kept_verbatim": [
+            "run_with_deepseek_offpeak.sh"
+          ],
+          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:40 ET Peak B"
+        }
+      ]
+    },
+    "tune": {
+      "proposed_schedule": "0 17 * * *",
+      "window": "17:00-17:15",
+      "steps": [
+        {
+          "id": "autonomous_self_tune",
+          "cron_line": 610,
+          "cron_schedule": "0 17 * * *",
+          "cron_time": "17:00",
+          "command": "flock -n /tmp/hermes_self_tune.lock $PY scripts/hermes_autonomous_self_tune.py --apply",
+          "log": "logs/hermes_self_tune.log",
+          "timeout": "30m",
+          "continue_on_error": true,
+          "cron_line_verbatim": "0 17 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/hermes_self_tune.lock $PY scripts/hermes_autonomous_self_tune.py --apply >> logs/hermes_self_tune.log 2>&1  # Hermes self-learning auto-graft + self-purge (autonomous, no human touch)",
+          "measured": {
+            "verified": false,
+            "source": "pam_group_max(upper)",
+            "runs": 0,
+            "firings": 7,
+            "median_s": null,
+            "p95_s": null,
+            "max_s": null,
+            "lower_bound_median_s": null,
+            "upper_bound_median_s": 123.2,
+            "upper_bound_p95_s": 823.7,
+            "bound_source": "pam_group_max(upper)"
+          },
+          "note": "no wrapper on the cron line today (flock only)",
+          "cron_comment": "# Hermes self-learning auto-graft + self-purge (autonomous, no human touch)"
+        }
+      ]
+    }
+  },
+  "deferred": [],
+  "excluded": [
+    {
+      "cron_line": 737,
+      "cron_schedule": "40 13 * * 1-5",
+      "cron_time": "13:40",
+      "basename": "hermes_analyst_coverage.py",
+      "category": "HERMES_OTHER",
+      "reason": "hermes_analyst_coverage 13:40 (llm_priority_guard + safe_flock + read-model build) — not part of the 10:50→17:00 learning chain; rank 8",
+      "measured": {
+        "verified": true,
+        "source": "safe_flock",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 101.0,
+        "p95_s": 135.4,
+        "max_s": 140.0
+      }
+    },
+    {
+      "cron_line": 897,
+      "cron_schedule": "15 11,15 * * 1-5",
+      "cron_time": "11:15 (15 11,15)",
+      "basename": "hermes_social_sentiment.py",
+      "category": "HERMES_OTHER",
+      "reason": "hermes_social_sentiment 11:15/15:15 — not part of the learning chain",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 10,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 129.3,
+        "upper_bound_p95_s": 214.1,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 985,
+      "cron_schedule": "15 * * * *",
+      "cron_time": "*:15",
+      "basename": "hermes_external_feedback_loop.py",
+      "category": "HERMES_OTHER",
+      "reason": "hermes_external_feedback_loop hourly (LLM_GLOBAL_DAILY_USD_CAP=2.00) — hourly cadence with its own cap; tranche A decision D3",
+      "measured": {
+        "verified": false,
+        "source": "log_span(lower)+pam_group_max(upper)",
+        "runs": 0,
+        "firings": 35,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": 0.0,
+        "upper_bound_median_s": 88.0,
+        "upper_bound_p95_s": 1121.3,
+        "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    }
+  ]
+}
