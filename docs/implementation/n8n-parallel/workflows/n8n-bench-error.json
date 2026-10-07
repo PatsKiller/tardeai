@@ -1,0 +1,52 @@
+{
+ "active": false,
+ "connections": {
+  "Error Trigger": {
+   "main": [
+    [
+     {
+      "index": 0,
+      "node": "Record error",
+      "type": "main"
+     }
+    ]
+   ]
+  }
+ },
+ "createdAt": "2026-10-06T22:30:03.995+00:00",
+ "id": "Bi002YOPSpZOQpEo",
+ "name": "n8n-bench-error",
+ "nodes": [
+  {
+   "id": "bench-error-trigger",
+   "name": "Error Trigger",
+   "parameters": {},
+   "position": [
+    240,
+    300
+   ],
+   "type": "n8n-nodes-base.errorTrigger",
+   "typeVersion": 1
+  },
+  {
+   "id": "bench-error-record",
+   "name": "Record error",
+   "parameters": {
+    "jsCode": "const item = $input.first().json;\nconst message = (item.execution && item.execution.error && item.execution.error.message) || 'seen';\nconst name = (item.workflow && item.workflow.name) || null;\nreturn [{ json: { recorded: true, workflow: name, message: String(message).slice(0, 200) } }];\n",
+    "language": "javaScript",
+    "mode": "runOnceForAllItems"
+   },
+   "position": [
+    520,
+    300
+   ],
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2
+  }
+ ],
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "updatedAt": "2026-10-07T00:08:46.669+00:00",
+ "versionId": "adb965c1-57da-438e-8dde-e3248bfe00e0"
+}

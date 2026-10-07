@@ -1,0 +1,56 @@
+{
+ "schema": "N8nWorkflowExport@v1",
+ "as_of": "2026-10-07T14:38:57.293322+00:00",
+ "container": "m8m-n8n-db",
+ "count": 4,
+ "workflows": [
+  {
+   "file": "n8n-monitor-dof.json",
+   "id": "GXwhbRkwsGcYZxgn",
+   "name": "n8n-monitor-dof",
+   "active": true,
+   "node_types": [
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.scheduleTrigger"
+   ],
+   "updatedAt": "2026-10-07T00:08:46.669+00:00"
+  },
+  {
+   "file": "n8n-bench-error.json",
+   "id": "Bi002YOPSpZOQpEo",
+   "name": "n8n-bench-error",
+   "active": false,
+   "node_types": [
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.errorTrigger"
+   ],
+   "updatedAt": "2026-10-07T00:08:46.669+00:00"
+  },
+  {
+   "file": "n8n-bench-nodes.json",
+   "id": "2yPuOGW9yYtJsoYk",
+   "name": "n8n-bench-nodes",
+   "active": false,
+   "node_types": [
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.if",
+    "n8n-nodes-base.webhook"
+   ],
+   "updatedAt": "2026-10-07T00:12:00.857+00:00"
+  },
+  {
+   "file": "n8n-monitor-trade-ai.json",
+   "id": "s57KBllvqf6Jb5xF",
+   "name": "n8n-monitor-trade-ai",
+   "active": true,
+   "node_types": [
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.scheduleTrigger"
+   ],
+   "updatedAt": "2026-10-07T00:08:46.669+00:00"
+  }
+ ]
+}

@@ -1,0 +1,106 @@
+# PROPOSAL ONLY (2026-10-07, roadmap Phase 1). Not applied. Source of the running lab is
+# /home/johnclaw/m8m-bakeoff-lab/docker-compose.n8n.yml (not a git repo; operator-owned).
+# Diff against the running file, in order of effect:
+#   1. n8n container healthcheck (today: none; only the db has one)
+#   2. execution payload retention: SAVE_ON_SUCCESS=none, SAVE_ON_ERROR=all, prune 168h
+#      (today: all payloads kept 336h — a pilot's execution input would persist in n8n)
+#   3. N8N_WEBHOOK_URL replaces deprecated WEBHOOK_URL; N8N_RUNNERS_MODE stays internal
+#      (external runner needs a sidecar; defer), N8N_PUBLIC_API_DISABLED=true (0 API keys today)
+#   4. explicit host alias `tradeai-host` for the ONE host service the monitors read; the
+#      network stays `internal: false` because an internal network has no route to the host at
+#      all — the LAN/host reachability control is an iptables DOCKER-USER rule (operator; the
+#      firewall state was NOT VERIFIED without sudo)
+#   5. Postgres 17 image on the next RECREATE (n8n logs PG16 as compatibility-only). A major
+#      upgrade needs dump → new volume → restore (scripts/n8n_lab_backup.sh + restore drill);
+#      it is NOT an in-place image swap. Keep `n8n-pg` as is until that drill passes.
+#   6. non-superuser application role: the official image makes POSTGRES_USER a superuser.
+#      init/01-n8n-app-role.sql (below) creates `n8n_app` owning the schema; DB_POSTGRESDB_USER
+#      then points at it. Only valid on a FRESH volume (init scripts run once) — pair with 5.
+# Secrets stay in the operator's 0600 .env (N8N_PG_PASSWORD, N8N_ENCRYPTION_KEY, N8N_OWNER_PASSWORD);
+# the roadmap moves N8N_ENCRYPTION_KEY escrow and the owner password into Bitwarden SM.
+name: m8m-n8n
+
+networks:
+  lab:
+    internal: false
+
+volumes:
+  n8n-pg17:
+  n8n-data:
+
+services:
+  n8n-db:
+    image: postgres:17-alpine            # (5) on recreate only
+    container_name: m8m-n8n-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${N8N_PG_PASSWORD}
+      N8N_APP_PASSWORD: ${N8N_APP_PASSWORD}   # (6) new SM key for the app role
+    volumes:
+      - n8n-pg17:/var/lib/postgresql/data
+      - ./init/01-n8n-app-role.sh:/docker-entrypoint-initdb.d/01-n8n-app-role.sh:ro
+    networks: [lab]
+    mem_limit: 256m
+    pids_limit: 128
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d n8n -U n8n"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  n8n:
+    image: n8nio/n8n:2.43.0
+    container_name: m8m-n8n
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: n8n-db
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n_app                     # (6)
+      DB_POSTGRESDB_PASSWORD: ${N8N_APP_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_HOST: 127.0.0.1
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_LISTEN_ADDRESS: 0.0.0.0
+      N8N_WEBHOOK_URL: http://127.0.0.1:5678/         # (3)
+      N8N_PUBLIC_API_DISABLED: "true"                  # (3)
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_HIRING_BANNER_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_COMMUNITY_PACKAGES_ENABLED: "false"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
+      N8N_PYTHON_ENABLED: "false"
+      GENERIC_TIMEZONE: America/New_York
+      NODES_EXCLUDE: '["n8n-nodes-base.executeCommand","n8n-nodes-base.executeCommandTool","n8n-nodes-base.ssh","n8n-nodes-base.ftp","n8n-nodes-base.emailSend","n8n-nodes-base.emailSendTool","n8n-nodes-base.emailSendHitlTool","n8n-nodes-base.localFileTrigger"]'
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none            # (2)
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+    extra_hosts:
+      - "tradeai-host:host-gateway"                    # (4)
+    volumes:
+      - n8n-data:/home/node/.n8n
+    ports:
+      - "127.0.0.1:5678:5678"
+    networks: [lab]
+    depends_on:
+      n8n-db:
+        condition: service_healthy
+    healthcheck:                                       # (1)
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    mem_limit: 768m
+    pids_limit: 256
+    security_opt: ["no-new-privileges:true"]

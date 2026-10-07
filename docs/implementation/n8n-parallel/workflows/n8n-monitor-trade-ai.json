@@ -1,0 +1,99 @@
+{
+ "active": true,
+ "connections": {
+  "Every 5 minutes": {
+   "main": [
+    [
+     {
+      "index": 0,
+      "node": "GET build-meta",
+      "type": "main"
+     }
+    ]
+   ]
+  },
+  "GET build-meta": {
+   "main": [
+    [
+     {
+      "index": 0,
+      "node": "Require HTTP 200",
+      "type": "main"
+     }
+    ]
+   ]
+  }
+ },
+ "createdAt": "2026-10-06T22:18:21.002+00:00",
+ "id": "s57KBllvqf6Jb5xF",
+ "name": "n8n-monitor-trade-ai",
+ "nodes": [
+  {
+   "id": "sched-m8m-monitor-trade-ai",
+   "name": "Every 5 minutes",
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "position": [
+    240,
+    300
+   ],
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2
+  },
+  {
+   "id": "http-m8m-monitor-trade-ai",
+   "name": "GET build-meta",
+   "onError": "stopWorkflow",
+   "parameters": {
+    "authentication": "none",
+    "method": "GET",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": false
+      }
+     },
+     "timeout": 8000
+    },
+    "url": "http://172.19.0.1:7777/v3/build-meta.json"
+   },
+   "position": [
+    520,
+    300
+   ],
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2
+  },
+  {
+   "id": "check-m8m-monitor-trade-ai",
+   "name": "Require HTTP 200",
+   "onError": "stopWorkflow",
+   "parameters": {
+    "jsCode": "const item = $input.first();\nconst status = item.json.statusCode;\nif (status !== 200) {\n  throw new Error('expected HTTP 200, got ' + String(status));\n}\nreturn [item];\n",
+    "language": "javaScript",
+    "mode": "runOnceForAllItems"
+   },
+   "position": [
+    800,
+    300
+   ],
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2
+  }
+ ],
+ "settings": {
+  "executionOrder": "v1",
+  "timezone": "America/New_York"
+ },
+ "updatedAt": "2026-10-07T00:08:46.669+00:00",
+ "versionId": "dd9dd637-841f-4265-91ba-dee14947d4cf"
+}
