@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://trade-ai.local/n8n-parallel/event-reference/v0",
-  "title": "DESIGN_ONLY event reference",
-  "description": "Not served. Not authenticated. A payload that matches this file is not authority and must not be used to send, trade, grant, or write a canonical record.",
+  "title": "event reference v0",
+  "description": "Shape checked by scripts/lib/n8n_coordination_gateway.py. This file is not a server and is not served. A matching payload is not authority and must not send, trade, grant, or write a canonical record. Localhost is not authentication.",
   "type": "object",
   "additionalProperties": false,
   "required": [

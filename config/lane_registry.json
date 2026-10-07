@@ -2661,9 +2661,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/governance/approval_packages.jsonl"
+        "path": "data/runtime/approval_package_reminder_last.json"
       },
-      "note": "approval reminders at +4h/+12h and expiry (13 §6) — body lands in Wave 1 tranche 2 INSTALLED 2026-09-27 ~20:00 ET under pkg-20260927-cogx-w1-d9e1 (cron lines appended; timers enabled from CURRENT f65da1f66)."
+      "note": "approval reminders at +4h/+12h and expiry (13 §6) — body lands in Wave 1 tranche 2 INSTALLED 2026-09-27 ~20:00 ET under pkg-20260927-cogx-w1-d9e1 (cron lines appended; timers enabled from CURRENT f65da1f66). 2026-10-07: the package ledger data/governance/approval_packages.jsonl is written only when a run has actions, so its mtime is the wrong hourly signal. The run receipt above is written on every run, including an empty plan. A crontab line is not a consumer receipt. Served CURRENT keeps the old signal until this tree is promoted."
     },
     {
       "lane_id": "edge-fanout-consumer",

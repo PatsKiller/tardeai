@@ -2,6 +2,8 @@
 
 Status: measured record. Not a cutover, not a production grant, and not proof that n8n owns any Trade AI or DOF job.
 
+> Correction 2026-10-07: two "enabled while retired" rows were spent one-shots, not a second owner. The approval ledger age is explained, the `dof_*` role was queried, and the gateway, ADR correction, and watchdog are in `06-findings-and-gateway.md`. The census figures below are the original measurement. Syslog CMD lines are still not a missed-fire rate and not a consumer receipt.
+
 Census time: 2026-10-07T00:49:34Z (2026-10-06T20:49:34-04:00). Journal day buckets were recounted a few minutes later from the same host journal. Machine-readable copies are in `ledgers/`.
 
 Labels used below: OBSERVED_SERVED, OBSERVED_LAB, WIRED_UNPROVEN, DESIGN_ONLY, BLOCKED, FAILED, EXPECTED_SILENT, NOT_MEASURED.
@@ -20,7 +22,7 @@ Labels used below: OBSERVED_SERVED, OBSERVED_LAB, WIRED_UNPROVEN, DESIGN_ONLY, B
 
 n8n is running on this host as a lab. It is not the production orchestrator. The discovery note that ms01 was unreachable, and that n8n was not known to be installed, does not describe this machine at the census time.
 
-Database schema version was not read. Production Postgres on `127.0.0.1:5432` was not queried. Label: NOT_MEASURED.
+Database schema version was not read during this census. A later read-only metadata query is recorded in `06-findings-and-gateway.md`. Label for this census section: NOT_MEASURED.
 
 ## Policy read
 

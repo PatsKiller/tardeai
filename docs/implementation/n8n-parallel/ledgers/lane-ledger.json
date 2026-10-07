@@ -2725,8 +2725,8 @@
         "unit_file_state": "enabled"
       }
     ],
-    "conflict": "ENABLED_WHILE_DECLARED_RETIRED",
-    "conflict_note": "Unit file is enabled while the lane registry does not declare it active. This census did not disable it.",
+    "conflict": null,
+    "conflict_note": "2026-10-07 remeasure: UnitFileState=enabled, ActiveState=active, SubState=elapsed, NextElapse empty, Persistent=no. That is the spent one-shot the registry already declares. The earlier ENABLED_WHILE_DECLARED_RETIRED label was a classifier miss. The timer was not disabled.",
     "output_signal_kind": "none",
     "artifact_status": "NOT_MEASURED",
     "artifact_age_hours": null,
@@ -2772,8 +2772,8 @@
         "unit_file_state": "enabled"
       }
     ],
-    "conflict": "ENABLED_WHILE_DECLARED_RETIRED",
-    "conflict_note": "Unit file is enabled while the lane registry does not declare it active. This census did not disable it.",
+    "conflict": null,
+    "conflict_note": "2026-10-07 remeasure: UnitFileState=enabled, ActiveState=active, SubState=elapsed, NextElapse empty, Persistent=no. That is the spent one-shot the registry already declares. The earlier ENABLED_WHILE_DECLARED_RETIRED label was a classifier miss. The timer was not disabled.",
     "output_signal_kind": "none",
     "artifact_status": "NOT_MEASURED",
     "artifact_age_hours": null,
@@ -3835,8 +3835,8 @@
     "failed": "NOT_MEASURED",
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
-    "disposition_reason": "named first-five candidate; shadow contract only; not wired",
-    "pilot_status": "DESIGN_ONLY",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -4354,8 +4354,8 @@
     "failed": "NOT_MEASURED",
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
-    "disposition_reason": "named first-five candidate; shadow contract only; not wired",
-    "pilot_status": "DESIGN_ONLY",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -4976,8 +4976,8 @@
     "failed": "NOT_MEASURED",
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
-    "disposition_reason": "named first-five candidate; shadow contract only; not wired",
-    "pilot_status": "DESIGN_ONLY",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -5150,8 +5150,8 @@
     "failed": "NOT_MEASURED",
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
-    "disposition_reason": "named first-five candidate; shadow contract only; not wired",
-    "pilot_status": "DESIGN_ONLY",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -7613,10 +7613,7 @@
       }
     ],
     "conflict": null,
-    "conflict_note": null,
-    "output_signal_kind": "file_mtime",
-    "artifact_status": "OBSERVED",
-    "artifact_age_hours": 189.74,
+    "conflict_note": "2026-10-07: crontab flags are --send and --record. The package ledger is appended only when plan() has actions, so a 189h mtime plus hourly CMD lines is consistent with an empty plan. It is not a run receipt and not a consumer receipt. No receipt file existed. The script was not run against the live ledger.",
     "artifact_lateness": "LATE_FILE",
     "fired": "NOT_MEASURED",
     "accepted": "NOT_MEASURED",
@@ -7624,8 +7621,8 @@
     "failed": "NOT_MEASURED",
     "suppressed": "NOT_MEASURED",
     "disposition": "N8N_COORDINATION_PILOT",
-    "disposition_reason": "named first-five candidate; shadow contract only; not wired",
-    "pilot_status": "DESIGN_ONLY",
+    "disposition_reason": "muted library contract; cron remains the owner; no consumer receipt",
+    "pilot_status": "IMPLEMENTED_MUTED",
     "high_frequency": false,
     "financial_effect": false,
     "scores": {
@@ -7761,7 +7758,7 @@
       }
     ],
     "conflict": "ENABLED_WHILE_DECLARED_NEVER_SCHEDULED",
-    "conflict_note": "Unit file is enabled while the lane registry does not declare it active. This census did not disable it.",
+    "conflict_note": "2026-10-07 remeasure: timer waiting, last trigger 2026-10-06 19:30 EDT, next 2026-10-07 19:30 EDT, service Result=success. Registry reason_evidence said contradiction_verdicts.jsonl did not exist; the file is present. State left NEVER_SCHEDULED because the registry names a closeout PR for the flip. Timer not disabled. Verdict text not read.",
     "output_signal_kind": "file_mtime",
     "artifact_status": "OBSERVED",
     "artifact_age_hours": 1.3,
@@ -7815,7 +7812,7 @@
       }
     ],
     "conflict": "CRON_PRESENT_WHILE_DECLARED_NEVER_SCHEDULED",
-    "conflict_note": "An active crontab line matched this lane's script tokens. The registry does not declare the lane active. This census did not edit crontab.",
+    "conflict_note": "2026-10-07 remeasure: crontab 40 6 * * 1 maturity_remeasure.py --write is active. maturity_latest.json mtime 2026-10-05T10:40:02Z (Monday 06:40 ET). Registry left NEVER_SCHEDULED. Crontab not edited. Score contents not read.",
     "output_signal_kind": "file_mtime",
     "artifact_status": "OBSERVED",
     "artifact_age_hours": 38.16,

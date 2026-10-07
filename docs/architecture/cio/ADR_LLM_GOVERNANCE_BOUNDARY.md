@@ -6,6 +6,21 @@
 **Phase:** P-1.0 — Phase -1 Architecture Freeze
 **Canonical Reference:** `CIO_PHASE_MINUS_1_PLAN_CORRECTED.md` v3.3 (23 corrections)
 
+## Correction 2026-10-07 (documentation only)
+
+The 2026-08-08 freeze text named `deepseek-v4-flash` and `deepseek-v4-pro` as the exact model ids. That naming is historical. This section does not change a live model, an environment override, or a provider setting.
+
+Source observed on 2026-10-07:
+
+- `scripts/lib/llm_model_registry.py` sets `EXACT_DEEPSEEK_MODELS` to `deepseek-flash` only.
+- The same module puts `deepseek-v4-flash` and `deepseek-v4-pro` in `LEGACY_DEEPSEEK_MODELS`. `reject_legacy_model_id` rejects those ids. They are not callable model ids.
+- `resolve_lane_alias` still maps the legacy strings `deepseek-v4-flash` and `deepseek-v4-pro` onto the logical policies FAST and PRO. A lane alias is not a model id.
+- `scripts/lib/deepseek_client.py` records the 2026-09-09 provider migration to `deepseek-flash` and rejects the old ids.
+- `scripts/lib/agent_flash_governance.py` sets `FLASH_MODEL = deepseek_model_id("FAST")`. This correction does not edit that line.
+- `config/llm_process_registry.json` measured 72 process entries and 1264 lines. The "29 registered processes" and "424 lines" sentences below are the 2026-08-08 snapshot.
+
+No model was called to write this correction.
+
 ## Decision
 
 Freeze exactly one governed paid-model boundary for production financial agents. All financial-agent LLM calls route through Trade AI's governed gateway. No financial agent may use direct OpenClaw DeepSeek as fallback.
@@ -18,12 +33,14 @@ This is the canonical LLM gateway module. It provides a governed path for DeepSe
 
 ### Core Structure
 
+The 2026-08-08 freeze wrote `FLASH_MODEL = "deepseek-v4-flash"`. The running module does not. It sets `FLASH_MODEL = deepseek_model_id("FAST")`, and the exact id behind that call is `deepseek-flash`.
+
 ```python
-FLASH_MODEL = "deepseek-v4-flash"
+FLASH_MODEL = deepseek_model_id("FAST")  # exact id: deepseek-flash
 FLASH_POLICY = "FAST"
 FLASH_THINK_POLICY = "FAST_THINK"
 
-LEGACY_MODEL_IDS = frozenset({"deepseek-chat", "deepseek-reasoner", "deepseek-v4", "deepseek_v4", "v4"})
+LEGACY_MODEL_IDS = frozenset({"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4", "deepseek_v4", "v4"})
 
 TASK_TO_PROCESS: dict[str, str] = {
     "agent_narrative": "watchlist_maria_flash_narrative",
@@ -70,7 +87,7 @@ has no registered pool and shares risk's. No cap was changed.
 5. **Output limit enforcement** (per-process max_output_tokens clamped)
 6. **Deduplication** (SHA-256 evidence hash, 6h TTL, persistent cache)
 7. **Pre-flight cost reservation** (projected cost against aggregate + per-process run caps)
-8. **Model ID verification** (exact `deepseek-v4-flash`; returned model mismatch → circuit trip)
+8. **Model ID verification** (exact `deepseek-flash`; a returned id other than that exact id trips the circuit. `deepseek-v4-flash` and `deepseek-v4-pro` are rejected.)
 9. **Fallback prohibition** (provider fallback → circuit trip, no silent routing)
 10. **Provenance** (process_id, run_id, model, policy, evidence_hash, cost_estimate, tokens)
 
@@ -97,11 +114,11 @@ CIRCUIT_COOLDOWN_SEC = int(os.environ.get("AGENT_FLASH_CIRCUIT_COOLDOWN_SEC", "9
 
 **Path:** `config/llm_model_registry.json` + `scripts/lib/llm_model_registry.py`
 
-Resolves logical policies (FAST, FAST_THINK, PRO, PRO_THINK, PRO_MAX) to exact provider model IDs. Validates against `EXACT_DEEPSEEK_MODELS = {"deepseek-v4-flash", "deepseek-v4-pro"}`. Rejects legacy model IDs (`deepseek-chat`, `deepseek-reasoner`). Fail-closed on unknown policies, disabled providers/models, or missing operator cost confirmation.
+Resolves logical policies (FAST, FAST_THINK, PRO, PRO_THINK, PRO_MAX) to exact provider model IDs. Validates against `EXACT_DEEPSEEK_MODELS = {"deepseek-flash"}`. Rejects legacy model IDs (`deepseek-chat`, `deepseek-reasoner`, `deepseek-v4-flash`, `deepseek-v4-pro`). Fail-closed on unknown policies, disabled providers/models, or missing operator cost confirmation. The 2026-08-08 freeze text listed the two V4 ids in that set; the 2026-10-07 correction above replaces that claim.
 
 ### Process Registry
 
-**Path:** `config/llm_process_registry.json` (424 lines, 29 registered processes)
+**Path:** `config/llm_process_registry.json` (1264 lines and 72 process entries on 2026-10-07; the 2026-08-08 freeze said 424 lines and 29 processes)
 
 Contains registered process definitions with per-process policies:
 - `lane_policy`, `allowed_lanes`, `deepseek_default_policy`, `deepseek_allowed_policies`
@@ -174,7 +191,7 @@ Trade AI LLM Gateway (agent_flash_governance.py)
   ├─ 11. Deduplication marking (mark_completed)
   │
   ▼
-deepseek-v4-flash (or deepseek-v4-pro for governed escalation)
+deepseek-flash (logical policy FAST, or PRO for governed escalation; the V4 ids are rejected)
 ```
 
 ## LAB Exception (Non-Financial Only)

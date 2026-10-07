@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,9 +23,42 @@ sys.path.insert(0, str(PROJ / "scripts" / "lib"))
 sys.path.insert(0, str(PROJ / "scripts"))
 
 NO_CONSUMER_REASON = (
-    "hourly lane body; its outputs are ledger NOTE/DECIDED rows read by approval_package_cli show and the "
-    "Command Center governance panel (Wave 2); lane declared NEVER_SCHEDULED until the pkg cron grant"
+    "hourly lane body; NOTE/DECIDED rows are package-ledger events, not a run receipt. "
+    "data/governance/approval_packages.jsonl stays unchanged when the plan is empty, so its mtime "
+    "is not proof the hour ran. A crontab command line is not proof a person received the reminder. "
+    "The run receipt is data/runtime/approval_package_reminder_last.json."
 )
+
+
+def receipt_path(explicit: str | None = None) -> Path:
+    if explicit:
+        return Path(explicit)
+    env = os.environ.get("TRADEAI_APPROVAL_REMINDER_RECEIPT")
+    if env:
+        return Path(env)
+    return PROJ / "data" / "runtime" / "approval_package_reminder_last.json"
+
+
+def build_run_receipt(actions: list[dict], *, now: _dt.datetime, send_requested: bool, recorded: bool, sent: bool) -> dict:
+    """Counts only. Reminder text can carry an operator instruction and stays out of this file."""
+    return {
+        "schema": "ApprovalReminderReceipt@v1",
+        "as_of": now.isoformat(),
+        "actions": len(actions),
+        "kinds": sorted({str(a.get("kind")) for a in actions}),
+        "send_requested": bool(send_requested),
+        "recorded": bool(recorded),
+        "sent": bool(sent),
+        "consumer_receipt": None,
+        "package_ledger_is_run_receipt": False,
+    }
+
+
+def write_run_receipt(path: Path, receipt: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
 
 from approval_package import Ledger, REMINDERS_HOURS, ledger_path  # noqa: E402
 
@@ -82,12 +116,13 @@ def record(ledger: Ledger, actions: list[dict], *, sent: bool) -> None:
             ledger.append({"event": "NOTE", "package_id": a["package_id"], "note": a["kind"], "sent": sent, "text": a["text"]})
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ledger")
+    ap.add_argument("--receipt", help="run receipt path; default data/runtime/approval_package_reminder_last.json under this tree")
     ap.add_argument("--send", action="store_true", help="send reminders via telegram_alert (router bypassed); default dry run")
     ap.add_argument("--record", action="store_true", help="record NOTE/EXPIRED rows even without sending")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     led = Ledger(Path(a.ledger) if a.ledger else ledger_path())
     now = _dt.datetime.now(_dt.timezone.utc)
     actions = plan(led, now=now)
@@ -108,13 +143,22 @@ def main() -> int:
             led.append({"event": "SEND_FAILED", "error": f"{type(exc).__name__}: {str(exc)[:200]}",
                         "actions": len(actions), "at": now.isoformat()})
             print(f"send failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+    recorded = False
     if (a.send or a.record) and actions:
         record(led, actions, sent=sent)
+        recorded = True
         print(f"recorded {len(actions)} action(s); sent={sent}")
     elif not actions:
         print("nothing due")
     else:
         print("dry run: nothing recorded or sent (add --record and/or --send)")
+    receipt = build_run_receipt(actions, now=now, send_requested=a.send, recorded=recorded, sent=sent)
+    try:
+        write_run_receipt(receipt_path(a.receipt), receipt)
+    except OSError as exc:
+        print(f"receipt write failed: {type(exc).__name__}", file=sys.stderr)
+        if not sent:
+            return 1
     return 0
 
 
