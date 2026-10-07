@@ -1434,7 +1434,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/11-target-state-blueprint-20261007.md` | n8n target-state blueprint — baseline status, gap analysis, process inventory, operating model | archive_legacy_blueprint | MISSING HEADER | `c9b1b64f4b1a` |
 | `docs/implementation/n8n-parallel/12-database-knowledge-design-review-20261007.md` | Critical design review — database health, RAG and embeddings, research retention, pruning, knowledge architecture | review_required | MISSING HEADER | `2aa1e28a6a93` |
 | `docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md` | Cron consolidation — the 487 lines, what overlaps, what to merge, what to leave alone | review_required | MISSING HEADER | `054270f4802e` |
-| `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `6fff3667e273` |
+| `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `3b1a0da9579d` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
 | `docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md` | Proposal S2 — DOF app exposure and database role | review_required | OK | `df85877b88a0` |
