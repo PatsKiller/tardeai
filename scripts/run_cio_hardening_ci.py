@@ -2141,6 +2141,7 @@ GATES = [
             "tests/test_health_decision_store_integrity_20260915.py",
             "tests/test_watchlist_bridge_recreate_cooldown_20260915.py",
             "tests/test_system_health_retired_component_20260915.py",
+            "tests/test_system_health_agent_conn_and_retired_20261007.py",
             "tests/test_agent_auto_queue_valid_symbols_20260915.py",
         ],
     ),
