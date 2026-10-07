@@ -66,12 +66,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             g = rec.get("gates") or {}
             sb = rec.get("scoreboard") or {}
+            refusal = g.get("typed_refusal") or {}
+            refusal_code = refusal.get("code") or "none"
             print(
                 f"session {rec.get('session_id')} pass={g.get('session_pass')} "
                 f"live={g.get('live_llm')} spend=${g.get('spend_usd')} "
                 f"changed={((rec.get('metrics') or {}).get('changed_rows'))} "
                 f"progress={sb.get('sessions_passed')}/{sb.get('target')} "
-                f"specialists_ok={((rec.get('specialists') or {}).get('ok'))}"
+                f"specialists_ok={((rec.get('specialists') or {}).get('ok'))} "
+                f"refusal={refusal_code} count={refusal.get('count', 0)}"
             )
         return 0 if (rec.get("gates") or {}).get("session_pass") else 1
 

@@ -99,6 +99,19 @@ def _hash_set_from_rows(rows: list[dict[str, Any]]) -> set[str]:
     return {str(r.get("advisory_row_hash") or "") for r in rows if r.get("advisory_row_hash")}
 
 
+def typed_refusal(meta: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Name a failed validation gate without treating that failure as a pass."""
+    meta = meta or {}
+    if bool(meta.get("validation_ok")):
+        return None
+    errors = [str(item) for item in (meta.get("validation_errors") or [])]
+    return {
+        "code": "validation_failed",
+        "count": len(errors),
+        "errors": errors[:8],
+    }
+
+
 def run_shadow_session(
     *,
     live_llm: bool | None = None,
@@ -159,6 +172,7 @@ def run_shadow_session(
         "budget_usd": budget_usd,
         "spend_within_budget": spend <= budget_usd + 1e-9,
         "live_llm": bool(live_llm),
+        "typed_refusal": typed_refusal(meta),
     }
     gates["session_pass"] = (
         gates["validation_ok"]
