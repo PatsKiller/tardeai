@@ -756,7 +756,8 @@
       "state_since": "2026-10-07",
       "reason_confidence": "ESTABLISHED",
       "state_reason": "Operator decision D2 (2026-10-07): timer ran the DEV tree every 15 min 08:00–15:45 (32/day) while a cron line ran the same researcher from CURRENT 10/day; timer disabled, cron line kept. superseded_by hermes-momentum-catalyst-scalp.",
-      "superseded_by": "hermes-momentum-catalyst-scalp"
+      "superseded_by": "hermes-momentum-catalyst-scalp",
+      "reason_evidence": "systemctl --user is-enabled hermes-momentum-catalyst-morning.timer → disabled (2026-10-07 13:05 ET); unit WorkingDirectory was the dev tree; crontab line '25 6-15 * * 1-5 hermes_momentum_catalyst_researcher.py --source scalp --apply' runs from CURRENT"
     },
     {
       "lane_id": "portfolio-backup-cadence",
@@ -1453,7 +1454,7 @@
       "output_signal": {
         "kind": "none"
       },
-      "note": "Same shape as document-mentions-prune: a retention pass whose only effect is deletion writes no durable artifact. Needs a run receipt."
+      "note": "Same shape as document-mentions-prune: a retention pass whose only effect is deletion writes no durable artifact. Needs a run receipt. 2026-10-07: reads config/data_retention_policy.json (CI gate check_retention_policy.py); KEEP_FOREVER rows never deleted; ARCHIVE_THEN_DELETE rows archived to persistent-state/archive/db_retention/<table>/ before each delete."
     },
     {
       "lane_id": "hermes-top20-external-intel",
@@ -3137,6 +3138,27 @@
       "note": "Never touches production Postgres or the live n8n database."
     },
     {
+      "lane_id": "health-tick",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-health-tick.timer (*:0/5)",
+        "match": "tradeai-health-tick.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "pending config-write grant; replaces 16 cron lines listed (17 crontab entries, lines 178,277,344,403,419,420,437,439,491,598,628,842,901,909,1007,1024,1042 of crontab -l 2026-10-07): system_health_agent --apply --verbose, moomoo/opend_health --alert, cio_bridge_watchdog --apply, health_agent, cron_self_heal --apply, siem_critical_notify, log_error_scraper, system_freshness_monitor --send --auto-fix, portfolio_live_monitor, freshness_watchdog_heartbeat --send, pipeline_liveness_report --fail-on-finding, pipeline_watchdog, pipeline_freshness_monitor --send, pipeline_freshness_slo --telegram, check_llm_provider_health, symbol_news_curation_monitor --apply, market_day_gate.sh system_health_alerts. Unit files ship in config/systemd/user/tradeai-health-tick.{service,timer} (PROPOSAL ONLY); install plan docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md. The absorbed lines stay in undeclared_baseline until the install PR removes them in the same step that deletes them from the crontab.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/health_tick_last.json",
+        "key": "as_of"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Cron consolidation RANK 3 (2026-10-07): scripts/health_tick.py + config/health_tick_steps.json (HealthTickSteps@v1) reproduce the 17 lines' cadences exactly (planner week count 7402 == hand count from crontab); tests/test_health_tick_20261007.py. Not installed: no systemctl enable, no crontab edit in this PR.",
+      "note": "One 5-minute timer runs the health/monitor cadence table sequentially under each line's own /tmp flock and a per-step timeout, appends to each line's original logs/ file, and writes HealthTickReceipt@v1. Safety nets stay in cron: portfolio_server_watchdog.sh (*/2), process_reaper.py (*/3), cleanup_stale_locks.sh (*/5); resolve_due_checkpoints.py and the @reboot moomoo line also stay. Declared lanes portfolio-live-monitor, cio-bridge-watchdog, llm-provider-health and symbol-news-curation-monitor keep their rows; the install PR re-points their scheduler to this timer."
+    },
+    {
       "lane_id": "n8n-lab-watchdog",
       "owner": "platform",
       "scheduler": {
@@ -3152,6 +3174,24 @@
         "path": "data/runtime/n8n_lab_watchdog_last.json"
       },
       "note": "Host-side probe of the n8n lab /healthz every 5 min (installed 2026-10-07 under config-write grant 113fa7d3b2344284). Replaces the two in-n8n monitor workflows, which lost their targets when S1/S2 bound the API and DOF to loopback. Receipt consumed by n8n_incident_fanin."
+    },
+    {
+      "lane_id": "db-hygiene-nightly",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Durable control from the 2026-10-07 design review (scripts/report_db_hygiene.py --write): nightly census → data/runtime/db_hygiene_last.json → incident fan-in. Needs a cron grant for `50 4 * * *` (after db_retention at 04:10 and the mentions prune at 04:40).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/db_hygiene_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "first manual --write 2026-10-07: 93 findings (33 UNCOVERED_TABLE, 26 DUPLICATE_INDEX, 14 BACKUP_NAMED_TABLE, 15 STALE_WINDOW, SIZE_BUDGET, 2 TABLE_BUDGET, DEAD_QUEUE, RETENTION_SCHEDULERS)",
+      "note": "Keeps the trim from being one-time: every uncovered table, duplicate index, backup-named table, budget breach, stale window, dead queue and second retention scheduler stays an open incident until fixed."
     },
     {
       "lane_id": "telegram-callback-poller",
@@ -3841,6 +3881,7 @@
         "*/15 10-20 * * * /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_watchlist_agent_jobs_offpeak.sh >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/watchlist_agent_jobs_offpeak.log 2>&1  # TRADEAI_BULK_DEEPSEEK 10:00-20:59 America/New_York",
         "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min — premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window",
         "*/15 6-17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/eligible_prewarm.lock $PY -c \"import sys;sys.path.insert(0,'scripts');import reporting_engine as r;r.eligible_report_payload(use_cache=False)\" >> logs/eligible_prewarm.log 2>&1  # R0: pre-warm analyst /eligible cache out of request path",
+        "*/15 9-16 * * 1-5 cd $PROJ && bash scripts/safe_flock.sh /tmp/atm_position_reconciler.lock $PY scripts/atm_position_reconciler.py --audit-only --write-audit --json-out logs/atm_position_reconciliation/latest.json >> logs/atm_position_reconciliation/cron.log 2>&1",
         "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/safe_flock.sh /tmp/alpaca_live_read_sync.lock $PY scripts/alpaca_live_read_sync.py >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/alpaca_live_read_sync.log 2>&1",
         "*/20 13-21 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/intraday_vwap.lock $PY scripts/compute_intraday_vwap.py >> logs/intraday_vwap.log 2>&1",
         "*/20 9-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/options_lifecycle.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/options_lifecycle_run.py\" >> logs/options_lifecycle.log 2>&1",
@@ -3919,6 +3960,7 @@
         "40 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/gain_guardian.lock $PY scripts/holdings_gain_guardian.py --apply >> logs/gain_guardian.log 2>&1",
         "40 2 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1",
         "40 20 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/system_rollup_snapshot.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/system_rollup_snapshot.py\" >> logs/system_rollup_snapshot.log 2>&1  # Reports v3 WS-B: nightly system rollup snapshot + Daily System Digest",
+        "45 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash scripts/safe_flock.sh /tmp/atm_position_reconciler_eod.lock $PY scripts/atm_position_reconciler.py --audit-only --write-audit --json-out logs/atm_position_reconciliation/eod_$(date +\\%Y\\%m\\%d).json >> logs/atm_position_reconciliation/cron.log 2>&1",
         "45 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1",
         "45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1",
         "45 2 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries --max-topics 14 >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/topic_ingestion.log 2>&1",
