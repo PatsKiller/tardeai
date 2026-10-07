@@ -1429,6 +1429,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/06-findings-and-gateway.md` | Findings corrected, and the muted coordination gateway | review_required | MISSING HEADER | `31dde27048da` |
 | `docs/implementation/n8n-parallel/07-release-packet.md` | Release packet and access block | review_required | MISSING HEADER | `b64b44aff295` |
 | `docs/implementation/n8n-parallel/08-install-and-doc-audit.md` | n8n lab install and documentation audit | review_required | MISSING HEADER | `456df34c6b88` |
+| `docs/implementation/n8n-parallel/09-live-audit-20261007.md` | n8n live audit — installation, parity, capability, migration, security, execution plan | review_required | MISSING HEADER | `82f4d2135e25` |
+| `docs/implementation/n8n-parallel/10-eligibility-and-secrets-20261007.md` | Follow-up audit — n8n workload eligibility and secret-management review | review_required | MISSING HEADER | `2f678ae3cf6a` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
 | `docs/implementation/sot/phase9_hermes_research_notes.md` | Phase 9 — one write module for `hermes_research_intelligence` | review_required | MISSING HEADER | `089989d1da1b` |
 | `docs/implementation/sot/phase9_news_articles_notes.md` | Phase 9 — `news_articles`: one write module | review_required | OK | `4faa0228c5d1` |
