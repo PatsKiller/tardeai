@@ -228,3 +228,29 @@ def test_cio_has_first_class_cognition_learning_and_coverage_views():
     assert 'section="cognition"' in source
     assert 'section="learning"' in source
     assert 'section="coverage"' in source
+
+
+def test_large_append_only_projection_reads_recent_window_and_exposes_version(tmp_path):
+    from scripts.lib import cio_operator_evidence as evidence
+
+    path = tmp_path / "large.jsonl"
+    rows = [{"result_id": f"row-{index}", "created_at": "2026-10-01T10:00:00Z", "padding": "x" * 2400} for index in range(600)]
+    _write(path, rows)
+
+    projected = evidence._bounded_rows(path, max_bytes=256 * 1024, max_rows=50)
+    assert len(projected) == 50
+    assert projected[-1]["result_id"] == "row-599"
+    assert projected[0]["result_id"] != "row-0"
+
+    meta = evidence._source_meta(path, projected)
+    assert meta["source_version"].startswith("mtime_ns:")
+    assert meta["source_as_of"] == "2026-10-01T10:00:00Z"
+
+
+def test_source_sha_is_not_rehashed_for_large_runtime_store(tmp_path):
+    from scripts.lib import cio_operator_evidence as evidence
+
+    path = tmp_path / "runtime.jsonl"
+    path.write_text("{" + "\"value\":\"" + ("x" * (evidence._SOURCE_HASH_MAX_BYTES + 1)) + "\"}\n")
+    assert evidence._source_sha(path) is None
+    assert evidence._source_version(path).startswith("mtime_ns:")

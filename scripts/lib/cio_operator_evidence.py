@@ -27,6 +27,12 @@ def _now() -> str:
 
 
 _DECISION_LOOKUP_TAIL_BYTES = 8 * 1024 * 1024
+_PROJECTION_TAIL_BYTES = 1 * 1024 * 1024
+_PROJECTION_MAX_ROWS = 500
+_RESEARCH_PROJECTION_TAIL_BYTES = 8 * 1024 * 1024
+_RESEARCH_PROJECTION_MAX_ROWS = 5_000
+_SOURCE_HASH_MAX_BYTES = 2 * 1024 * 1024
+_SOURCE_HASH_CACHE: dict[tuple[str, int, int], str | None] = {}
 
 
 def _row_matches_decision(row: dict[str, Any], decision_id: str) -> bool:
@@ -82,6 +88,29 @@ def _rows(path: Path, *, decision_id: str | None = None) -> list[dict[str, Any]]
         return _parse_rows(handle, predicate=predicate)
 
 
+def _bounded_rows(path: Path, *, max_bytes: int = _PROJECTION_TAIL_BYTES,
+                  max_rows: int = _PROJECTION_MAX_ROWS) -> list[dict[str, Any]]:
+    """Read a recent projection window from an append-only canonical store.
+
+    Operator panels need current evidence, not an unbounded replay of every
+    historical event. Exact decision lookups continue to use ``_rows`` so this
+    optimization cannot substitute a neighboring historical decision.
+    """
+    if not path.is_file():
+        return []
+    try:
+        with path.open("rb") as handle:
+            size = handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, size - max_bytes))
+            if handle.tell() > 0:
+                handle.readline()  # discard a partial first line
+            lines = handle.read().decode("utf-8", errors="replace").splitlines()
+        rows = _parse_rows(lines)
+        return rows[-max_rows:]
+    except OSError:
+        return []
+
+
 def _stamp(row: dict[str, Any] | None) -> str | None:
     if not isinstance(row, dict):
         return None
@@ -100,13 +129,41 @@ def _latest_stamp(rows: Iterable[dict[str, Any]]) -> str | None:
 def _source_sha(path: Path) -> str | None:
     if not path.is_file():
         return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    key = (str(path), int(stat.st_size), int(stat.st_mtime_ns))
+    if key in _SOURCE_HASH_CACHE:
+        return _SOURCE_HASH_CACHE[key]
+    # Large append-only stores expose a truthful version below; hashing them on
+    # every dashboard request is the latency regression this projection avoids.
+    if stat.st_size > _SOURCE_HASH_MAX_BYTES:
+        _SOURCE_HASH_CACHE[key] = None
+        return None
+    try:
+        value = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        value = None
+    _SOURCE_HASH_CACHE[key] = value
+    return value
+
+
+def _source_version(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return f"mtime_ns:{stat.st_mtime_ns}:size:{stat.st_size}"
 
 
 def _source_meta(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "source_ref": str(path),
         "source_sha": _source_sha(path),
+        "source_version": _source_version(path),
         "source_as_of": _latest_stamp(rows),
         "row_count": len(rows),
         "evidence_class": "DURABLE_RUNTIME_ARTIFACT" if path.is_file() else "UNAVAILABLE",
@@ -316,7 +373,14 @@ def _research_provenance(root: Path, *, decision_id: str | None = None) -> dict[
         # Research artifacts can be shared by several exact decisions.  Keep
         # the full artifact merge so reverse links retain every decision ref;
         # the public builder filters the merged result by decision_id below.
-        rows = _rows(path)
+        # Merge shared artifact rows before the exact decision filter is
+        # applied by build_research_provenance; otherwise a shared artifact
+        # loses its reverse link to the other decision.
+        rows = _bounded_rows(
+            path,
+            max_bytes=_RESEARCH_PROJECTION_TAIL_BYTES,
+            max_rows=_RESEARCH_PROJECTION_MAX_ROWS,
+        )
         sources.append({"source": path.name, **_source_meta(path, rows)})
         for row in list(_research_rows(path, rows))[-250:]:
             artifact = _research_artifact(row, source_name=path.name)
@@ -396,7 +460,7 @@ def _cognition(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
     for kind, path in paths.items():
-        rows = _rows(path, decision_id=decision_id)
+        rows = _rows(path, decision_id=decision_id) if decision_id else _bounded_rows(path)
         sources.append({"source": path.name, **_source_meta(path, rows)})
         for row in rows[-100:]:
             retrieved = kind in {"memory_retrieval", "memory_context", "research_lineage"} and bool(
@@ -468,7 +532,10 @@ def _learning(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
         "operator_learning": root / "cio_operator_learning.jsonl",
         "instrument_records": root / "cio_instrument_records.jsonl",
     }
-    rows_by_kind = {kind: _rows(path, decision_id=decision_id) for kind, path in paths.items()}
+    rows_by_kind = {
+        kind: (_rows(path, decision_id=decision_id) if decision_id else _bounded_rows(path))
+        for kind, path in paths.items()
+    }
     sources = [{"source": path.name, **_source_meta(path, rows_by_kind[kind])} for kind, path in paths.items()]
     outcomes = rows_by_kind["outcomes"]
     settled_statuses = {"OUTCOME_EVALUATED", "SETTLED", "SETTLED_OUTCOME", "CONFIRMED", "REFUTED", "EXPIRED"}
@@ -575,8 +642,8 @@ def _capability_coverage(root: Path, *, composition_as_of: str | None = None) ->
     repo_root = Path(__file__).resolve().parents[2]
     for capability, producer, producer_name, consumer_names in specs:
         producer_path = root / producer_name
-        producer_rows = _rows(producer_path)
-        consumer_rows_by_path = {name: _rows(root / name) for name in consumer_names}
+        producer_rows = _bounded_rows(producer_path)
+        consumer_rows_by_path = {name: _bounded_rows(root / name) for name in consumer_names}
         consumer_rows = [row for values in consumer_rows_by_path.values() for row in values]
         # A consumer row counts as direct only when it carries an explicit
         # producer/source/artifact reference.  Store existence alone is not a
