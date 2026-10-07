@@ -236,7 +236,12 @@ def test_consumer_ack_requires_a_receipt_and_does_not_send():
 
     assert step("claim", "nonce-ack-2")["state"] == "CLAIMED"
     assert step("start", "nonce-ack-3")["state"] == "STARTED"
-    assert step("artifact", "nonce-ack-4")["state"] == "ARTIFACT_WRITTEN"
+    # 2026-10-07: an artifact is a REFERENCE (store + ref + sha256), never bytes
+    assert step("artifact", "nonce-ack-4a")["reason"] == "artifact_ref_required"
+    assert step("artifact", "nonce-ack-4b", artifact_ref={"store": "x", "ref": "y"}, content="...")["reason"] == "artifact_bytes_refused"
+    written = step("artifact", "nonce-ack-4", artifact_ref={"store": "data/runtime", "ref": "approval_package_reminder_last.json",
+                                                            "sha256": "a" * 64, "as_of": "2026-10-07T04:05:00+00:00"})
+    assert written["state"] == "ARTIFACT_WRITTEN" and written["artifact_ref"]["ref"].endswith("last.json")
     missing = step("consumer_ack", "nonce-ack-5")
     assert missing["reason"] == "no_consumer_receipt"
     status = step("status", "nonce-ack-6")
@@ -275,7 +280,7 @@ def test_bind_guard_and_loopback_server():
         port = httpd.server_address[1]
         health = urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=3)
         assert health.status == 200
-        assert json.loads(health.read().decode()) == {"ok": True}
+        assert json.loads(health.read().decode())["ok"] is True   # 2026-10-07: healthz also reports durable + ledger
         claim, signature = _claim("nonce-http-1")
         payload = json.dumps(
             {

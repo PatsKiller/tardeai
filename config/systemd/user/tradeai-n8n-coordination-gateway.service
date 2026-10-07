@@ -1,0 +1,29 @@
+# PROPOSAL ONLY. Not installed. Do not systemctl enable without a production
+# service grant (plan tranche B, 2026-10-07). The HMAC key is NOT in this file:
+# the operator generates it into Bitwarden and writes the env file below
+# (mode 0600) from there. Without that file the gateway refuses to bind.
+#
+#   TRADEAI_N8N_GATEWAY_HMAC_KEY=<>=32 bytes>
+#   TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS=<optional, for weekly rotation>
+#
+# Loopback only; port 18091 is outside the gateway's blocked set and no other
+# Trade AI, DOF, Postgres or n8n service listens there.
+
+[Unit]
+Description=Trade AI n8n coordination gateway on 127.0.0.1:18091 (proposal only, not installed)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=%h/.config/tradeai/n8n-gateway.env
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+ExecStart=/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_coordination_gateway_run.sh
+Restart=on-failure
+RestartSec=10
+Nice=10
+MemoryMax=256M
+CPUQuota=20%
+
+[Install]
+WantedBy=default.target

@@ -5,10 +5,10 @@ communication_deliveries. Those stores record operator notifications or CIO
 actions, including telegram channels. Putting a coordination nonce in them
 would couple a lab claim to a live send path.
 
-The default gateway process does not open this file. durable=false stays on
-the gateway receipt until a served process passes a restart and a consumer
-test. A row here can prove exactly-once acceptance inside this file. It does
-not prove exactly-once delivery to n8n or to an operator.
+2026-10-07 (plan tranche B): the gateway process opens this file by default
+(`--ledger`), through the dict-like adapters below, so nonces, receipts and
+artifact references survive a restart. ``durable`` on a row means the SQLite
+COMMIT returned; it still does not prove delivery to n8n or to an operator.
 
 No HMAC seed is stored. A reference token is returned once and only its hash
 is kept.
@@ -16,6 +16,7 @@ is kept.
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import sqlite3
 from datetime import datetime, timezone
@@ -23,8 +24,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 NO_CONSUMER_REASON = (
-    "Source-side lab ledger for blocked n8n pilots. No production job imports it. "
-    "Tests are not a consumer. durable stays false until a served path passes a restart and a consumer test."
+    "Source-side coordination ledger. Opened by scripts/n8n_coordination_gateway.py (--ledger) and read by the "
+    "Command Center projection (scripts/lib/n8n_coordination_projection.py); neither is a scheduled lane yet."
 )
 
 LEDGER_SCHEMA = "N8nCoordinationLedgerRow@v1"
@@ -38,6 +39,17 @@ class LedgerError(ValueError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+def _load_edges() -> dict[str, set[str]]:
+    try:
+        from scripts.lib.n8n_coordination_gateway import EDGES  # type: ignore
+    except ImportError:
+        from n8n_coordination_gateway import EDGES  # type: ignore
+    return EDGES
+
+
+_EDGES = _load_edges()
 
 
 def _iso(now: float) -> str:
@@ -93,6 +105,23 @@ class CoordinationLedger:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 caller_id TEXT NOT NULL,
                 at_unix REAL NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS receipts (
+                store_key TEXT PRIMARY KEY,
+                payload_hash TEXT,
+                receipt_json TEXT NOT NULL,
+                project TEXT,
+                lane_id TEXT,
+                state TEXT,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS artifact_refs (
+                store_key TEXT NOT NULL,
+                store TEXT NOT NULL,
+                ref TEXT NOT NULL,
+                sha256 TEXT,
+                as_of TEXT,
+                recorded_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS reference_tokens (
                 token_hash TEXT PRIMARY KEY,
@@ -255,6 +284,10 @@ class CoordinationLedger:
             ).fetchone()
             if current is None:
                 raise LedgerError("unknown_event")
+            # 2026-10-07: the gateway's transition table applies here too; before this any terminal
+            # state could follow any other (CONSUMED straight from ACCEPTED, FAILED after CONSUMED).
+            if state not in _EDGES.get(str(current["state"]), set()):
+                raise LedgerError(f"illegal_transition:{current['state']}->{state}")
             self._conn.execute(
                 """
                 UPDATE events
@@ -298,7 +331,8 @@ class CoordinationLedger:
         body["schema"] = LEDGER_SCHEMA
         body["duplicate"] = duplicate
         body["persistence"] = "sqlite_file"
-        body["durable"] = False
+        body["durable"] = True          # the COMMIT returned; see module docstring for what that does not prove
+        body["durable_scope"] = "sqlite_commit_returned"
         body["exactly_once_scope"] = "source_side_file_only"
         body["external_delivery"] = "NOT_CLAIMED"
         return body
@@ -308,3 +342,99 @@ def payload_too_large(event: Mapping[str, Any]) -> bool:
     import json
 
     return len(json.dumps(event).encode("utf-8")) > MAX_PAYLOAD_BYTES
+
+
+# ── dict-like adapters so the gateway library (which only knows dict stores) persists here ──
+
+
+class LedgerNonceStore:
+    """nonce -> exp, backed by the nonces table. Expired rows are pruned lazily."""
+
+    durable = True
+
+    def __init__(self, ledger: CoordinationLedger) -> None:
+        self._l = ledger
+
+    def get(self, nonce: str, default=None):
+        row = self._l._conn.execute("SELECT exp FROM nonces WHERE nonce = ?", (nonce,)).fetchone()
+        return float(row["exp"]) if row is not None else default
+
+    def __setitem__(self, nonce: str, exp: float) -> None:
+        now = datetime.now(timezone.utc).timestamp()
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._l._conn.execute("DELETE FROM nonces WHERE exp < ?", (now - 3600,))
+            self._l._conn.execute("INSERT OR REPLACE INTO nonces (nonce, exp, consumed_at) VALUES (?, ?, ?)",
+                                  (nonce, float(exp), _iso(now)))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+
+    def __contains__(self, nonce: str) -> bool:
+        return self.get(nonce) is not None
+
+
+class _Slot(dict):
+    """{payload_hash, receipt}: assigning `receipt` writes through to the receipts table."""
+
+    def __init__(self, store: "LedgerReceiptStore", key: str, payload_hash: str | None, receipt: dict) -> None:
+        super().__init__(payload_hash=payload_hash, receipt=receipt)
+        self._store, self._key = store, key
+
+    def __setitem__(self, name: str, value) -> None:
+        super().__setitem__(name, value)
+        if name == "receipt":
+            self._store._write(self._key, self.get("payload_hash"), value)
+
+
+class LedgerReceiptStore:
+    """``project:idempotency_key`` -> slot, backed by the receipts table. Durable: a slot is readable
+    only after its INSERT committed, so a restart replays what was accepted, nothing more."""
+
+    durable = True
+
+    def __init__(self, ledger: CoordinationLedger) -> None:
+        self._l = ledger
+
+    def _write(self, key: str, payload_hash: str | None, receipt: Mapping[str, Any]) -> None:
+        now = datetime.now(timezone.utc)
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._l._conn.execute(
+                "INSERT OR REPLACE INTO receipts (store_key, payload_hash, receipt_json, project, lane_id, state, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (key, payload_hash, json.dumps(dict(receipt), sort_keys=True, default=str),
+                 receipt.get("source_project"), receipt.get("lane_id"), receipt.get("state"), now.isoformat()))
+            ref = receipt.get("artifact_ref")
+            if isinstance(ref, Mapping) and receipt.get("state") == "ARTIFACT_WRITTEN":
+                self._l._conn.execute(
+                    "INSERT INTO artifact_refs (store_key, store, ref, sha256, as_of, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (key, str(ref.get("store")), str(ref.get("ref")), ref.get("sha256"), ref.get("as_of"), now.isoformat()))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+
+    def get(self, key: str, default=None):
+        row = self._l._conn.execute("SELECT payload_hash, receipt_json FROM receipts WHERE store_key = ?", (key,)).fetchone()
+        if row is None:
+            return default
+        return _Slot(self, key, row["payload_hash"], json.loads(row["receipt_json"]))
+
+    def __setitem__(self, key: str, slot: Mapping[str, Any]) -> None:
+        self._write(key, slot.get("payload_hash"), slot["receipt"])
+
+    def iter_receipts(self, *, project: str | None = None, lane_id: str | None = None, state: str | None = None,
+                      since: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+        sql, args = "SELECT receipt_json FROM receipts WHERE 1=1", []
+        if project:
+            sql += " AND project = ?"; args.append(project)
+        if lane_id:
+            sql += " AND lane_id = ?"; args.append(lane_id)
+        if state:
+            sql += " AND state = ?"; args.append(state)
+        if since:
+            sql += " AND updated_at >= ?"; args.append(since)
+        sql += " ORDER BY updated_at DESC LIMIT ?"; args.append(int(limit))
+        return [json.loads(r["receipt_json"]) for r in self._l._conn.execute(sql, args).fetchall()]

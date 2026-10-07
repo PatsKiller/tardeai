@@ -117,6 +117,25 @@ EDGES = {
 }
 
 
+#: Every refusal reason the gateway can emit. A reason outside this set is a bug, not a new state;
+#: tests/test_n8n_gateway_durable_20261007.py scans the source for literals. ``illegal_transition:A->B``
+#: and ``typed_refusal:<code>`` are prefixed families.
+REFUSAL_REASONS = frozenset({
+    "missing_signature", "malformed_claim", "bad_scope", "unknown_project", "claim_lifetime", "claim_expired",
+    "bad_signature", "replayed_nonce", "missing_gateway_key", "naive_clock", "malformed_event", "unexpected_field",
+    "bad_schema_version", "authority_refused", "unknown_lane", "malformed_sha", "stale_origin_sha", "secret_material",
+    "forbidden_route", "project_mismatch", "idempotency_conflict", "unknown_operation", "missing_idempotency_key",
+    "unknown_event", "no_consumer_receipt", "missing_refusal_reason", "artifact_ref_required", "artifact_bytes_refused",
+    "artifact_ref_too_large", "list_unsupported", "bad_time",
+})
+REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
+ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
+ARTIFACT_BYTES_KEYS = frozenset({"content", "bytes", "body", "data", "base64", "payload"})
+MAX_ARTIFACT_REF_BYTES = 4096
+LIST_SCHEMA = "N8nCoordinationList@v1"
+MAX_LIST = 200
+
+
 class GatewayError(ValueError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -199,7 +218,42 @@ def handle_request(
         )
     if operation in {"claim", "start", "artifact", "consumer_ack", "refuse", "cancel"}:
         return _transition(operation, request, claim, idempotency_store, peer)
+    if operation == "list":
+        return _list(request, claim, idempotency_store, peer)
     return _refused(None, "unknown_operation", peer_ignored=peer)
+
+
+def _list(request, claim, store, peer) -> dict[str, Any]:
+    """Receipts for the caller's project, newest first; filters lane_id / state / since. Read-only."""
+    lane = request.get("lane_id")
+    state = request.get("state")
+    since = request.get("since")
+    if since is not None:
+        try:
+            _parse_time(since)
+        except GatewayError:
+            return _refused(None, "bad_time", peer_ignored=peer)
+    items: list[dict[str, Any]]
+    if hasattr(store, "iter_receipts"):
+        items = store.iter_receipts(project=claim["project"], lane_id=lane, state=state, since=since, limit=MAX_LIST)
+    elif isinstance(store, dict):
+        items = []
+        for slot in store.values():
+            r = slot.get("receipt") or {}
+            if r.get("source_project") != claim["project"]:
+                continue
+            if lane and r.get("lane_id") != lane:
+                continue
+            if state and r.get("state") != state:
+                continue
+            if since and str(r.get("recorded_at") or "") < str(since):
+                continue
+            items.append(dict(r))
+        items = sorted(items, key=lambda r: str(r.get("recorded_at") or ""), reverse=True)[:MAX_LIST]
+    else:
+        return _refused(None, "list_unsupported", peer_ignored=peer)
+    return {"schema": LIST_SCHEMA, "state": "OK", "project": claim["project"], "count": len(items), "items": items,
+            "durable": bool(getattr(store, "durable", False)), "peer_used_as_auth": False}
 
 
 def _accept(
@@ -232,7 +286,8 @@ def _accept(
         replay["duplicate"] = True
         return replay
     receipt = _receipt(event, state="ACCEPTED", reason=None, at=now)
-    store[key] = {"payload_hash": digest, "receipt": receipt}
+    receipt["durable"] = bool(getattr(store, "durable", False))
+    store[key] = {"payload_hash": digest, "receipt": receipt}   # a ledger store commits here or raises
     return dict(receipt)
 
 
@@ -267,8 +322,27 @@ def _transition(
             return _refused(None, exc.reason, peer_ignored=peer)
     if operation == "refuse" and not request.get("reason"):
         return _refused(None, "missing_refusal_reason", peer_ignored=peer)
+    artifact_ref = None
+    if operation == "artifact":
+        ref = request.get("artifact_ref")
+        if not isinstance(ref, Mapping) or not ref.get("store") or not ref.get("ref"):
+            return _refused(None, "artifact_ref_required", peer_ignored=peer)
+        if set(ref) - ARTIFACT_REF_FIELDS or any(k in ARTIFACT_BYTES_KEYS for k in request):
+            return _refused(None, "artifact_bytes_refused", peer_ignored=peer)
+        if len(canonical(ref)) > MAX_ARTIFACT_REF_BYTES:
+            return _refused(None, "artifact_ref_too_large", peer_ignored=peer)
+        sha = ref.get("sha256")
+        if sha is not None and not re.fullmatch(r"[0-9a-f]{64}", str(sha)):
+            return _refused(None, "artifact_ref_required", peer_ignored=peer)
+        try:
+            _reject_secret_material(ref)
+        except GatewayError as exc:
+            return _refused(None, exc.reason, peer_ignored=peer)
+        artifact_ref = {k: ref.get(k) for k in ("store", "ref", "sha256", "as_of")}
     updated = dict(receipt)
     updated["state"] = target
+    if artifact_ref is not None:
+        updated["artifact_ref"] = artifact_ref
     updated["reason"] = request.get("reason") if target == "REFUSED" else receipt.get("reason")
     if target == "CONSUMED":
         updated["consumer"] = str(request["consumer_receipt"].get("consumer"))
@@ -276,6 +350,7 @@ def _transition(
     updated["effects"] = []
     updated["outbound"] = "blocked"
     updated["mutation"] = "blocked"
+    updated["durable"] = bool(getattr(store, "durable", False))
     slot["receipt"] = updated
     return dict(updated)
 
@@ -421,6 +496,8 @@ def _receipt(event: Mapping[str, Any], *, state: str, reason: str | None, at: fl
 
 
 def _refused(event: Mapping[str, Any] | None, reason: str, *, peer_ignored: Any) -> dict[str, Any]:
+    if reason not in REFUSAL_REASONS and not reason.startswith(REFUSAL_PREFIXES):
+        raise GatewayError("unknown_refusal_reason:" + reason)   # a reason outside the enum is a bug
     body = event if isinstance(event, Mapping) else {}
     receipt = _receipt(body, state="REFUSED", reason=reason, at=datetime.now(timezone.utc).timestamp())
     receipt["peer_ignored"] = peer_ignored is not None

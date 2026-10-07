@@ -3,9 +3,12 @@
 
 Refuses to bind unless TRADEAI_N8N_GATEWAY_HMAC_KEY is present and the
 address is 127.0.0.1 on a port that is not a live Trade AI, DOF, Postgres,
-or n8n port. The process store is memory only. Loopback is a bind constraint,
-not a caller identity. Proxy headers are ignored. It is not installed as a
-service by this module.
+or n8n port. Since 2026-10-07 the store is the SQLite coordination ledger
+(``--ledger``, default under the persistent-state governance dir): nonces,
+receipts and artifact references survive a restart and ``durable`` on a
+receipt means the COMMIT returned. ``--no-ledger`` keeps the old memory-only
+mode for tests. Loopback is a bind constraint, not a caller identity. Proxy
+headers are ignored. The unit file in config/systemd/user/ is a proposal.
 """
 from __future__ import annotations
 
@@ -24,6 +27,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.lib.n8n_coordination_gateway import handle_request  # noqa: E402
+from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerNonceStore, LedgerReceiptStore  # noqa: E402
 
 KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY"
 PREVIOUS_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS"
@@ -65,6 +69,15 @@ def load_previous_key(environ: dict[str, str] | None = None) -> bytes | None:
     return key
 
 
+def default_ledger_path(environ: dict[str, str] | None = None) -> Path:
+    source = environ if environ is not None else os.environ
+    explicit = source.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    if explicit:
+        return Path(explicit)
+    root = source.get("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
+    return Path(root) / "data" / "governance" / "n8n_coordination_ledger.sqlite"
+
+
 def canonical_path(target: str) -> str | None:
     """Accept only the two exact paths. Decoding must not reveal another path."""
     if not isinstance(target, str) or "\x00" in target or "\\" in target:
@@ -86,19 +99,21 @@ def dispatch_http(
     *,
     key: bytes,
     expected_origin_sha: str,
-    nonce_store: dict[str, float],
-    idempotency_store: dict[str, dict],
+    nonce_store: Any,
+    idempotency_store: Any,
     now: datetime | None = None,
     previous_key: bytes | None = None,
     max_body: int = MAX_BODY_BYTES,
+    ledger_path: Path | None = None,
 ) -> tuple[int, dict]:
     """One HTTP decision. Proxy headers are not copied into the claim check."""
     del headers  # identity is the HMAC claim; forwarded headers are not read
     path = canonical_path(target)
     if path is None:
         return 404, {"ok": False, "reason": "not_found", "proxy_headers_used_as_auth": False}
+    durable = bool(getattr(idempotency_store, "durable", False))
     if method == "GET" and path == "/healthz":
-        return 200, {"ok": True}
+        return 200, {"ok": True, "durable": durable, "ledger": str(ledger_path) if ledger_path else None}
     if method != "POST" or path != "/v1/coordination":
         if method not in {"GET", "POST"}:
             return 405, {"state": "REFUSED", "reason": "unknown_method", "proxy_headers_used_as_auth": False}
@@ -125,14 +140,18 @@ def dispatch_http(
         previous_key=previous_key,
     )
     result["proxy_headers_used_as_auth"] = False
-    result["durable"] = False
+    if result.get("state") == "REFUSED":
+        result["durable"] = False            # nothing was written for a refusal
+    else:
+        result["durable"] = durable and bool(result.get("durable", durable))
     status = 403 if result.get("state") == "REFUSED" else 200
     return status, result
 
 
-def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | None = None):
-    nonce_store: dict[str, float] = {}
-    idempotency_store: dict[str, dict] = {}
+def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | None = None,
+                 ledger: CoordinationLedger | None = None, ledger_path: Path | None = None):
+    nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
+    idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -174,6 +193,7 @@ def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | Non
                 nonce_store=nonce_store,
                 idempotency_store=idempotency_store,
                 previous_key=previous_key,
+                ledger_path=ledger_path,
             )
             self._send(status, payload)
 
@@ -195,13 +215,16 @@ def serve(
     key: bytes,
     expected_origin_sha: str,
     previous_key: bytes | None = None,
+    ledger_path: Path | None = None,
 ) -> ThreadingHTTPServer:
     guard_bind(host, port)
     if len(key) < MIN_KEY_BYTES:
         raise BindRefused("refusing to bind without a gateway key")
     if not expected_origin_sha:
         raise BindRefused("refusing to bind without an expected origin sha")
-    httpd = ThreadingHTTPServer((host, port), make_handler(key, expected_origin_sha, previous_key))
+    ledger = CoordinationLedger(ledger_path) if ledger_path is not None else None
+    httpd = ThreadingHTTPServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path))
+    httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
     return httpd
 
 
@@ -210,11 +233,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--ledger", default=None, help="SQLite coordination ledger (default: persistent-state governance dir)")
+    parser.add_argument("--no-ledger", action="store_true", help="memory-only store; receipts are never durable")
     args = parser.parse_args(argv)
     try:
         key = load_key()
         previous = load_previous_key()
-        httpd = serve(args.host, args.port, key=key, expected_origin_sha=args.expected_sha, previous_key=previous)
+        ledger_path = None if args.no_ledger else (Path(args.ledger) if args.ledger else default_ledger_path())
+        httpd = serve(args.host, args.port, key=key, expected_origin_sha=args.expected_sha, previous_key=previous,
+                      ledger_path=ledger_path)
+        print(json.dumps({"bound": f"{args.host}:{httpd.server_address[1]}", "durable": ledger_path is not None,
+                          "ledger": str(ledger_path) if ledger_path else None}), flush=True)
     except BindRefused as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -224,6 +253,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     finally:
         httpd.server_close()
+        if getattr(httpd, "coordination_ledger", None) is not None:
+            httpd.coordination_ledger.close()  # type: ignore[attr-defined]
     return 0
 
 

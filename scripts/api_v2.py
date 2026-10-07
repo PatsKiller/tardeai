@@ -53867,6 +53867,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # n8n coordination ledger projection (plan tranche B, 2026-10-07): waiting / in progress /
+    # artifact / consumed / refused / failed in plain language. Read-only SQLite; never opens n8n.
+    if base_path == "/api/v2/coordination/events":
+        try:
+            from lib.n8n_coordination_projection import project as _coord_project
+
+            q = query or {}
+            return 200, {
+                "ok": True,
+                "data": _coord_project(
+                    lane_id=q.get("lane") or q.get("lane_id") or None,
+                    state=q.get("state") or None,
+                    limit=int(q.get("limit") or 100),
+                ),
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
     # alternatives (per unit), portfolio facts and the CIO review — read-only.
     if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):
