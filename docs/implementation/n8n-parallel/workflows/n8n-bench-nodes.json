@@ -1,0 +1,224 @@
+{
+ "active": false,
+ "connections": {
+  "GET build-meta": {
+   "main": [
+    [
+     {
+      "index": 0,
+      "node": "Keep status",
+      "type": "main"
+     }
+    ]
+   ]
+  },
+  "Probe is boom": {
+   "main": [
+    [
+     {
+      "index": 0,
+      "node": "Throw",
+      "type": "main"
+     }
+    ],
+    [
+     {
+      "index": 0,
+      "node": "Refuse",
+      "type": "main"
+     }
+    ]
+   ]
+  },
+  "Probe is health": {
+   "main": [
+    [
+     {
+      "index": 0,
+      "node": "GET build-meta",
+      "type": "main"
+     }
+    ],
+    [
+     {
+      "index": 0,
+      "node": "Probe is boom",
+      "type": "main"
+     }
+    ]
+   ]
+  },
+  "Webhook": {
+   "main": [
+    [
+     {
+      "index": 0,
+      "node": "Probe is health",
+      "type": "main"
+     }
+    ]
+   ]
+  }
+ },
+ "createdAt": "2026-10-06T22:30:04.213+00:00",
+ "id": "2yPuOGW9yYtJsoYk",
+ "name": "n8n-bench-nodes",
+ "nodes": [
+  {
+   "id": "bench-webhook",
+   "name": "Webhook",
+   "parameters": {
+    "httpMethod": "POST",
+    "options": {},
+    "path": "n8n-bench-nodes",
+    "responseMode": "lastNode"
+   },
+   "position": [
+    240,
+    300
+   ],
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2.1
+  },
+  {
+   "id": "bench-if-health",
+   "name": "Probe is health",
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "conditions": [
+      {
+       "id": "probe-health",
+       "leftValue": "={{ $json.body.probe }}",
+       "operator": {
+        "operation": "equals",
+        "type": "string"
+       },
+       "rightValue": "health"
+      }
+     ],
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     }
+    }
+   },
+   "position": [
+    480,
+    300
+   ],
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2
+  },
+  {
+   "id": "bench-http",
+   "name": "GET build-meta",
+   "onError": "stopWorkflow",
+   "parameters": {
+    "authentication": "none",
+    "method": "GET",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": false
+      }
+     },
+     "timeout": 8000
+    },
+    "url": "http://172.19.0.1:7777/v3/build-meta.json"
+   },
+   "position": [
+    740,
+    160
+   ],
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2
+  },
+  {
+   "id": "bench-js-ok",
+   "name": "Keep status",
+   "parameters": {
+    "jsCode": "const status = $input.first().json.statusCode;\nif (status !== 200) {\n  throw new Error('expected HTTP 200, got ' + String(status));\n}\nreturn [{ json: { ok: true, statusCode: status } }];\n",
+    "language": "javaScript",
+    "mode": "runOnceForAllItems"
+   },
+   "position": [
+    980,
+    160
+   ],
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2
+  },
+  {
+   "id": "bench-if-boom",
+   "name": "Probe is boom",
+   "parameters": {
+    "conditions": {
+     "combinator": "and",
+     "conditions": [
+      {
+       "id": "probe-boom",
+       "leftValue": "={{ $json.body.probe }}",
+       "operator": {
+        "operation": "equals",
+        "type": "string"
+       },
+       "rightValue": "boom"
+      }
+     ],
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     }
+    }
+   },
+   "position": [
+    740,
+    420
+   ],
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2
+  },
+  {
+   "id": "bench-js-boom",
+   "name": "Throw",
+   "parameters": {
+    "jsCode": "throw new Error('bench boom');\n",
+    "language": "javaScript",
+    "mode": "runOnceForAllItems"
+   },
+   "position": [
+    980,
+    340
+   ],
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2
+  },
+  {
+   "id": "bench-js-refuse",
+   "name": "Refuse",
+   "parameters": {
+    "jsCode": "return [{ json: { ok: false, reason: 'refused' } }];\n",
+    "language": "javaScript",
+    "mode": "runOnceForAllItems"
+   },
+   "position": [
+    980,
+    520
+   ],
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2
+  }
+ ],
+ "settings": {
+  "errorWorkflow": "Bi002YOPSpZOQpEo",
+  "executionOrder": "v1"
+ },
+ "updatedAt": "2026-10-07T00:12:00.857+00:00",
+ "versionId": "257ee2a5-3b61-44d4-8b2e-e2c8b290e2c4"
+}

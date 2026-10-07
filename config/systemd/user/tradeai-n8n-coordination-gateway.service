@@ -1,10 +1,11 @@
 # PROPOSAL ONLY. Not installed. Do not systemctl enable without a production
-# service grant (plan tranche B, 2026-10-07). The HMAC key is NOT in this file:
-# the operator generates it into Bitwarden and writes the env file below
-# (mode 0600) from there. Without that file the gateway refuses to bind.
-#
-#   TRADEAI_N8N_GATEWAY_HMAC_KEY=<>=32 bytes>
-#   TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS=<optional, for weekly rotation>
+# service grant (plan tranche B, 2026-10-07). The HMAC key is NOT in this file.
+# 2026-10-07 roadmap Phase 1: the key is created in Bitwarden SM (project
+# trade-ai-prod) as TRADEAI_N8N_GATEWAY_HMAC_KEY (and _PREVIOUS for rotation);
+# scripts/secrets/render_env.py already delivers every shell-exportable SM key
+# to %t/tradeai/env (0600, tmpfs, re-rendered every 4h), so no second render
+# path and no hand-written env file. The optional ~/.config/tradeai/n8n-gateway.env
+# stays as an override for a lab-only key. Without a key the gateway refuses to bind.
 #
 # Loopback only; port 18091 is outside the gateway's blocked set and no other
 # Trade AI, DOF, Postgres or n8n service listens there.
@@ -16,7 +17,8 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
-EnvironmentFile=%h/.config/tradeai/n8n-gateway.env
+EnvironmentFile=-%t/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/n8n-gateway.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 ExecStart=/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_coordination_gateway_run.sh
 Restart=on-failure

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.lib.brief_semantic_dedupe import claim, session_date
+from scripts.lib.brief_semantic_dedupe import claim, record_send, session_date
 from scripts.lib.cio_operator_product import build_operator_product
 from scripts.lib.operator_human_renderer import render_decision, render_product
 from scripts.lib.research_intelligence_summary import from_research_result, render_human as render_research
@@ -546,6 +546,7 @@ def deliver_morning(*, root: Path | str, supplemental_bundle: dict[str, Any] | N
         try:
             from telegram_alert import send_telegram
             sent = bool(send_telegram(text, bypass_router=True))
+            record_send(kind="MORNING", key=claim_res.get("key"), sent=sent, root=root)  # 2026-10-07 persist send flag
         except Exception as exc:
             return {
                 "handled": True,
@@ -587,6 +588,7 @@ def deliver_eod(*, root: Path | str, send: bool = False, now: datetime | None = 
         try:
             from telegram_alert import send_telegram
             sent = bool(send_telegram(text, bypass_router=True))
+            record_send(kind="EOD", key=claim_res.get("key"), sent=sent, root=root)  # 2026-10-07 persist send flag
         except Exception:
             sent = False
     return {

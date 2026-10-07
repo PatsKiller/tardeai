@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.lib.n8n_coordination_gateway import handle_request  # noqa: E402
+from scripts.lib.n8n_coordination_gateway import PILOT_LANES, handle_request  # noqa: E402
 from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerNonceStore, LedgerReceiptStore  # noqa: E402
 
 KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY"
@@ -105,6 +105,7 @@ def dispatch_http(
     previous_key: bytes | None = None,
     max_body: int = MAX_BODY_BYTES,
     ledger_path: Path | None = None,
+    lane_allowlist: frozenset[str] | None = None,
 ) -> tuple[int, dict]:
     """One HTTP decision. Proxy headers are not copied into the claim check."""
     del headers  # identity is the HMAC claim; forwarded headers are not read
@@ -138,6 +139,7 @@ def dispatch_http(
         idempotency_store=idempotency_store,
         expected_origin_sha=expected_origin_sha,
         previous_key=previous_key,
+        lane_allowlist=lane_allowlist,
     )
     result["proxy_headers_used_as_auth"] = False
     if result.get("state") == "REFUSED":
@@ -149,7 +151,8 @@ def dispatch_http(
 
 
 def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | None = None,
-                 ledger: CoordinationLedger | None = None, ledger_path: Path | None = None):
+                 ledger: CoordinationLedger | None = None, ledger_path: Path | None = None,
+                 lane_allowlist: frozenset[str] | None = None):
     nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
     idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
 
@@ -194,6 +197,7 @@ def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | Non
                 idempotency_store=idempotency_store,
                 previous_key=previous_key,
                 ledger_path=ledger_path,
+                lane_allowlist=lane_allowlist,
             )
             self._send(status, payload)
 
@@ -216,6 +220,7 @@ def serve(
     expected_origin_sha: str,
     previous_key: bytes | None = None,
     ledger_path: Path | None = None,
+    extra_lanes: frozenset[str] | set[str] | None = None,
 ) -> ThreadingHTTPServer:
     guard_bind(host, port)
     if len(key) < MIN_KEY_BYTES:
@@ -223,7 +228,11 @@ def serve(
     if not expected_origin_sha:
         raise BindRefused("refusing to bind without an expected origin sha")
     ledger = CoordinationLedger(ledger_path) if ledger_path is not None else None
-    httpd = ThreadingHTTPServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path))
+    # 2026-10-07 roadmap: non-pilot lanes (incident-fanin) are allowed ONLY when named on the
+    # command line; the five pilot lanes stay allowed. Nothing widens the forbidden-route list.
+    allow = frozenset(PILOT_LANES) | frozenset(extra_lanes or ())
+    httpd = ThreadingHTTPServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path,
+                                                           lane_allowlist=allow))
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
     return httpd
 
@@ -235,13 +244,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-sha", required=True)
     parser.add_argument("--ledger", default=None, help="SQLite coordination ledger (default: persistent-state governance dir)")
     parser.add_argument("--no-ledger", action="store_true", help="memory-only store; receipts are never durable")
+    parser.add_argument("--allow-lane", action="append", default=[],
+                        help="additional lane_id accepted besides the five pilots (e.g. incident-fanin); repeatable")
     args = parser.parse_args(argv)
     try:
         key = load_key()
         previous = load_previous_key()
         ledger_path = None if args.no_ledger else (Path(args.ledger) if args.ledger else default_ledger_path())
         httpd = serve(args.host, args.port, key=key, expected_origin_sha=args.expected_sha, previous_key=previous,
-                      ledger_path=ledger_path)
+                      ledger_path=ledger_path, extra_lanes=frozenset(args.allow_lane))
         print(json.dumps({"bound": f"{args.host}:{httpd.server_address[1]}", "durable": ledger_path is not None,
                           "ledger": str(ledger_path) if ledger_path else None}), flush=True)
     except BindRefused as exc:

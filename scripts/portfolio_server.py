@@ -2844,7 +2844,9 @@ if __name__ == "__main__":
 
     install_shutdown_logging()
     try:
-        server = ReusableHTTPServer(("", PORT), PortfolioHandler)
+        # 2026-10-07 (audit S1): bind host is env-driven; default "" (all interfaces) is UNCHANGED until the
+        # operator sets PORTFOLIO_SERVER_BIND=127.0.0.1 in a drop-in (tailscale serve proxies localhost:7777).
+        server = ReusableHTTPServer((os.environ.get("PORTFOLIO_SERVER_BIND", ""), PORT), PortfolioHandler)
     except OSError as e:
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")

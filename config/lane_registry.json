@@ -3051,6 +3051,78 @@
         "path": "data/runtime/approval_reminder_reconcile_last.json"
       },
       "note": "Operator 2026-10-07: schedule the reconciler. Runs 7 min after approval-package-reminder (minute 5); reads the reminder's run receipt + data/runtime/approval_reminder_transport.jsonl (provider message ids the transport returned, recorded by the reminder since this change) and is the ONLY writer of DELIVERY_OBSERVED. Never sends. Installed on the host after promotion of this tree."
+    },
+    {
+      "lane_id": "n8n-pilot-dispatch",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Roadmap Phase 1 dispatcher (scripts/n8n_pilot_dispatch.py --apply). Not scheduled: needs the coordination gateway unit (service grant) and a cron grant for `*/15 * * * *`. Flip to ACTIVE with scheduler.kind=cron in the SAME change that installs the line, or `--state-drift` fails.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_pilot_dispatch_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/implementation/n8n-parallel/proposals/phase1-install-commands.md; gateway unit config/systemd/user/tradeai-n8n-coordination-gateway.service is PROPOSAL ONLY",
+      "note": "Mirrors the five pilots' real receipts into the coordination ledger; no send, no charge, no production write."
+    },
+    {
+      "lane_id": "n8n-incident-fanin",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.1,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Roadmap Phase 1 incident fan-in (scripts/n8n_incident_fanin.py --apply). Needs the gateway running with --allow-lane incident-fanin and a cron grant for `*/5 * * * *`.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_incident_fanin_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/implementation/n8n-parallel/proposals/phase1-install-commands.md",
+      "note": "Reads breach detector rows (48h), --alert receipts, watchdogs and the lab backup receipt; one event per open finding; auto-closes on recovery."
+    },
+    {
+      "lane_id": "n8n-lab-backup",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Nightly pg_dump of the n8n LAB database (scripts/n8n_lab_backup.sh --apply). First manual run 2026-10-07T14:40Z wrote the receipt; needs a cron grant for `30 3 * * *`.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "backups/n8n/n8n_lab_backup_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "persistent-state/backups/n8n/n8n_lab_backup_last.json (N8nLabBackupReceipt@v1, 157 TOC entries)",
+      "note": "Lab only. Encryption key is not in the dump (escrow in Bitwarden SM)."
+    },
+    {
+      "lane_id": "n8n-lab-restore-drill",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Weekly restore of the newest lab dump into a throwaway DB inside the lab container (scripts/n8n_lab_restore_drill.sh --apply). First manual run 2026-10-07T14:40Z: 157/157 tables, 4 workflows. Needs a cron grant for `0 4 * * 0`.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "backups/n8n/n8n_lab_restore_drill_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "persistent-state/backups/n8n/n8n_lab_restore_drill_last.json (N8nLabRestoreDrill@v1 counts_equal true)",
+      "note": "Never touches production Postgres or the live n8n database."
     }
   ],
   "undeclared_baseline": [

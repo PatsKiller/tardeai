@@ -106,3 +106,23 @@ def immediate_material(*, generation_id: str, prior_generation_id: str | None, m
     if prior_generation_id and prior_generation_id == generation_id:
         return {"send": False, "reason": "same_semantic_state", "authority": AUTHORITY, "financial_action": False}
     return {"send": True, "reason": "new_material_generation", "authority": AUTHORITY, "financial_action": False}
+
+
+def record_send(*, kind: str, key: str | None, sent: bool, root: Path | str, now: datetime | None = None) -> dict[str, Any]:
+    """Persist the send outcome next to the claim (2026-10-07).
+
+    `deliver_morning` returned `sent` but never wrote it, so the n8n pilot observation
+    had to report `send_receipt=NOT_MEASURED`. This records {sent, sent_at} on the
+    claimed key with the same atomic write `claim()` uses. Missing key: nothing written.
+    """
+    if not key:
+        return {"recorded": False, "reason": "no_key"}
+    path = _state_path(Path(root), kind.lower())
+    state = _load_state(path)
+    rec = state.setdefault("published", {}).get(key)
+    if not isinstance(rec, dict):
+        return {"recorded": False, "reason": "unclaimed_key"}
+    rec["sent"] = bool(sent)
+    rec["sent_at"] = (now or datetime.now(timezone.utc)).isoformat()
+    atomic_write_json(path, state)
+    return {"recorded": True, "key": key, "sent": bool(sent), "path": str(path)}

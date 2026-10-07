@@ -78,7 +78,7 @@ def morning_brief(root: Optional[Path] = None, *, session_date: Optional[str] = 
     obs.update({"session_date": day, "publish_claims": len(todays),
                 "claimed_at": max((v.get("claimed_at") or "" for v in todays), default=None),
                 "signal_kind": "publish_claim", "artifact_status": "OBSERVED" if todays else "ABSENT",
-                "send_receipt": "NOT_MEASURED (deliver_morning does not persist its sent flag)"})
+                "send_receipt": ("OBSERVED" if any(isinstance(e, dict) and "sent" in e for e in todays) else "NOT_MEASURED (no sent flag persisted for this session)"), "sent": any(bool(e.get("sent")) for e in todays if isinstance(e, dict)), "sent_at": max((str(e.get("sent_at") or "") for e in todays if isinstance(e, dict)), default=None) or None})
     return obs
 
 

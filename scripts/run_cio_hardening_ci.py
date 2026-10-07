@@ -3376,6 +3376,8 @@ GATES = [
             "tests/test_llm_adr_model_id_20261007.py",
             "tests/test_n8n_model_job_20261007.py",
             "tests/test_n8n_model_job_operation_20261007.py",
+            "tests/test_n8n_phase1_dispatch_20261007.py",
+            "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",
             "tests/test_n8n_coordination_ledger_20261007.py",
