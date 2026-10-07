@@ -1449,7 +1449,7 @@
       "output_signal": {
         "kind": "none"
       },
-      "note": "Same shape as document-mentions-prune: a retention pass whose only effect is deletion writes no durable artifact. Needs a run receipt."
+      "note": "Same shape as document-mentions-prune: a retention pass whose only effect is deletion writes no durable artifact. Needs a run receipt. 2026-10-07: reads config/data_retention_policy.json (CI gate check_retention_policy.py); KEEP_FOREVER rows never deleted; ARCHIVE_THEN_DELETE rows archived to persistent-state/archive/db_retention/<table>/ before each delete."
     },
     {
       "lane_id": "hermes-top20-external-intel",
@@ -3133,6 +3133,27 @@
       "note": "Never touches production Postgres or the live n8n database."
     },
     {
+      "lane_id": "health-tick",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-health-tick.timer (*:0/5)",
+        "match": "tradeai-health-tick.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "pending config-write grant; replaces 16 cron lines listed (17 crontab entries, lines 178,277,344,403,419,420,437,439,491,598,628,842,901,909,1007,1024,1042 of crontab -l 2026-10-07): system_health_agent --apply --verbose, moomoo/opend_health --alert, cio_bridge_watchdog --apply, health_agent, cron_self_heal --apply, siem_critical_notify, log_error_scraper, system_freshness_monitor --send --auto-fix, portfolio_live_monitor, freshness_watchdog_heartbeat --send, pipeline_liveness_report --fail-on-finding, pipeline_watchdog, pipeline_freshness_monitor --send, pipeline_freshness_slo --telegram, check_llm_provider_health, symbol_news_curation_monitor --apply, market_day_gate.sh system_health_alerts. Unit files ship in config/systemd/user/tradeai-health-tick.{service,timer} (PROPOSAL ONLY); install plan docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md. The absorbed lines stay in undeclared_baseline until the install PR removes them in the same step that deletes them from the crontab.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/health_tick_last.json",
+        "key": "as_of"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Cron consolidation RANK 3 (2026-10-07): scripts/health_tick.py + config/health_tick_steps.json (HealthTickSteps@v1) reproduce the 17 lines' cadences exactly (planner week count 7402 == hand count from crontab); tests/test_health_tick_20261007.py. Not installed: no systemctl enable, no crontab edit in this PR.",
+      "note": "One 5-minute timer runs the health/monitor cadence table sequentially under each line's own /tmp flock and a per-step timeout, appends to each line's original logs/ file, and writes HealthTickReceipt@v1. Safety nets stay in cron: portfolio_server_watchdog.sh (*/2), process_reaper.py (*/3), cleanup_stale_locks.sh (*/5); resolve_due_checkpoints.py and the @reboot moomoo line also stay. Declared lanes portfolio-live-monitor, cio-bridge-watchdog, llm-provider-health and symbol-news-curation-monitor keep their rows; the install PR re-points their scheduler to this timer."
+    },
+    {
       "lane_id": "n8n-lab-watchdog",
       "owner": "platform",
       "scheduler": {
@@ -3148,6 +3169,24 @@
         "path": "data/runtime/n8n_lab_watchdog_last.json"
       },
       "note": "Host-side probe of the n8n lab /healthz every 5 min (installed 2026-10-07 under config-write grant 113fa7d3b2344284). Replaces the two in-n8n monitor workflows, which lost their targets when S1/S2 bound the API and DOF to loopback. Receipt consumed by n8n_incident_fanin."
+    },
+    {
+      "lane_id": "db-hygiene-nightly",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-07",
+      "state_reason": "Durable control from the 2026-10-07 design review (scripts/report_db_hygiene.py --write): nightly census → data/runtime/db_hygiene_last.json → incident fan-in. Needs a cron grant for `50 4 * * *` (after db_retention at 04:10 and the mentions prune at 04:40).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/db_hygiene_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "first manual --write 2026-10-07: 93 findings (33 UNCOVERED_TABLE, 26 DUPLICATE_INDEX, 14 BACKUP_NAMED_TABLE, 15 STALE_WINDOW, SIZE_BUDGET, 2 TABLE_BUDGET, DEAD_QUEUE, RETENTION_SCHEDULERS)",
+      "note": "Keeps the trim from being one-time: every uncovered table, duplicate index, backup-named table, budget breach, stale window, dead queue and second retention scheduler stays an open incident until fixed."
     },
     {
       "lane_id": "platform-maintenance-nightly",
