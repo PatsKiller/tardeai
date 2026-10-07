@@ -22,6 +22,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+NO_CONSUMER_REASON = (
+    "Source-side lab ledger for blocked n8n pilots. No production job imports it. "
+    "Tests are not a consumer. durable stays false until a served path passes a restart and a consumer test."
+)
+
 LEDGER_SCHEMA = "N8nCoordinationLedgerRow@v1"
 REFERENCE_SCOPE = "coordination_read"
 MAX_PAYLOAD_BYTES = 65536

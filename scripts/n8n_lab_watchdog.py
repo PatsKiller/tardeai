@@ -24,6 +24,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+NO_CONSUMER_REASON = (
+    "Proposal only. The host timer is not installed and this script is not scheduled. "
+    "A local receipt is not a production alert."
+)
+
 DEFAULT_URL = "http://127.0.0.1:5678/healthz"
 RECEIPT_SCHEMA = "N8nLabWatchdogReceipt@v1"
 HOST_FAILURE_LIMITATION = "a probe on this host cannot observe this host's total outage"

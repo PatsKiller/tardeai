@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+NO_CONSUMER_REASON = (
+    "Read-only compare for blocked n8n pilots. No production job imports it. "
+    "A green n8n execution is not a consumer."
+)
+
 NOT_MEASURED = "NOT_MEASURED"
 
 

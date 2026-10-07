@@ -12,6 +12,11 @@ from typing import Any, Mapping
 
 from scripts.lib.n8n_coordination_gateway import handle_request
 
+NO_CONSUMER_REASON = (
+    "Five blocked coordination pilots. No production job imports this module. "
+    "Nothing here sends, charges a provider, or writes a production ledger."
+)
+
 PILOT_IDS = (
     "morning-brief-0730",
     "research-scheduler-holdings",
