@@ -23,7 +23,7 @@ This document says what n8n changes for THIS estate, in terms of files and recei
 
 Schedules were read on 2026-10-08 from `crontab -l` (1,045 lines), `systemctl --user cat <timer>` and `config/lane_registry.json` `scheduler.expression`, then frozen into the generator's `LANES` table so CI does not depend on the host it runs on. For the 18 lanes with an ACTIVE `kind: cron` registry row the test `test_registry_cron_rows_agree_with_the_table` proves the table equals the registry; for systemd lanes the `OnCalendar` → cron conversion is pinned by `test_oncalendar_conversion`.
 
-Workflow shape (fixed; `test_node_type_allowlist_and_chain_shape` refuses anything else):
+Workflow shape for an ungated lane (fixed; `test_node_type_allowlist_and_chain_shape` refuses anything else). The four N2 edges in §9 insert a predecessor gate and are the only workflows that add If and Wait:
 
 ```
 Schedule Trigger (cron, America/New_York)
@@ -75,7 +75,7 @@ Each row names the mechanism and the file or receipt that proves it. "Today" is 
 | today | with n8n as scheduler-of-record | evidence |
 |---|---|---|
 | A crontab line that fails leaves a log line nobody reads; the lane monitor notices only when the `output_signal` goes stale past `expected_cadence_hours` (lane registry) | Every fire is an n8n execution with a status; a non-200 or non-REQUESTED answer fails the execution with `[<lane>/<mode>]` in the error (Code node). The executor's `RunReceipt` records exit code, duration and `output_signal` mtime before/after independently of the log | `generated/<lane>.json` Code node; `data/runtime/n8n_runs/*.json` |
-| Minute-offset "implicit dependencies" between pipeline stages (`after-close` 16:05 → 17:25 → 17:35; `hermes-overnight` 23:13 → 02:20) are invisible and un-gated (doc 16 §4.2, citing Codex §7.3) | Day 0–1: the same offsets, one workflow per stage, serialised by the lane lock. Day 1 work (not in this PR): gate stage N on the `RunReceipt` of stage N-1 via the projection, which n8n can poll — the generator records `pipeline` and `stage_order` in `INDEX.json` for that | `INDEX.json` rows with `pipeline` |
+| Minute-offset "implicit dependencies" between pipeline stages (`after-close` 16:05 → 17:25 → 17:35; `hermes-overnight` 23:13 → 02:20) are invisible and un-gated (doc 16 §4.2, citing Codex §7.3) | The four N2 edges in §9 gate stage k on `GET /runs/<stage k-1>/last` (`RUN_DONE` on the same America/New_York calendar day). The lane lock still serialises a double fire. Schedules are unchanged | §9; `INDEX.json` rows with `after` |
 | A re-fire (manual + scheduled) runs twice unless the script locks | The gateway's idempotency key makes a re-fire answer `duplicate: true`, which the Code node accepts without creating a second run | plan §B "run operation … idempotency key"; Code node `duplicate === true` |
 
 ### 3.2 Visibility
@@ -121,7 +121,7 @@ Each row names the mechanism and the file or receipt that proves it. "Today" is 
 
 - **It never runs a command.** `NODES_EXCLUDE` at the instance and the four-node allowlist in the generator both refuse it; the executor is the only process that spawns, on the host, from the allowlist.
 - **It is not the source of truth for "ran".** The `RunReceipt` and the lane's `output_signal` are.
-- **No DAG gating yet.** Pipeline stages fire by time offset exactly as cron does today; gating on the prior stage's receipt is Day 1 work (§3.1).
+- **DAG gating is the four edges in §9, and nothing else.** Every other lane still fires by its cron offset alone. The gate is generated; it is not imported or activated by this change.
 - **Cron OR-semantics.** `portfolio-lookthrough-cadence` (`OnCalendar=Sun *-*-01..07`, first Sunday) becomes `30 6 1-7 * 0`, which Vixie-style cron and n8n evaluate as (day 1–7) OR (Sunday) — extra fires. `openclaw-claude-plan-reminder-last-day` (`0 9 L * *`) becomes the 28th. Both are flagged `APPROXIMATE` in `INDEX.json` with the alternative (keep that one entry where it is).
 - **One-shots.** The two OpenClaw `at` jobs (SuperGrok 2026-10-20, SentinelOne 2026-12-07) are generated as yearly crons flagged `ONE_SHOT`; deactivate after they fire.
 - **Retired lanes.** `n8n-lab-backup` and `n8n-lab-restore-drill` are RETIRED (steps of `platform-maintenance-nightly/weekly` since 2026-10-07) and generated only so the N5 list is complete; do not activate them.
@@ -218,7 +218,38 @@ Rollback = `python3 scripts/pipelines/cutover/_cutover.py rollback --lane <id> -
 1. Relay address: placeholder until the operator grants the bind; §5.2 is the substitution step.
 2. 29 generated lanes have no registry row (`INDEX.json` says which); D's tranche PRs create them. No lane is cut over without its row.
 3. `lane-governance-packet-weekly` is NEVER_SCHEDULED; n8n would be its first scheduler — the registry state change is part of its cutover PR.
-4. DAG gating for N2 stages on the prior `RunReceipt` (Day 1).
+4. Activating the §9 gate (import is still an operator step). The overnight edge accepts the previous evening; see §9.
 5. Moving N2–N6 out of `pending/` is one line per tranche (`COMMITTED_TRANCHES`) in the generator plus a regeneration, in that tranche's PR.
 6. The two `APPROXIMATE` schedules and the two `ONE_SHOT` reminders need an operator choice at import (§4).
 7. `n8n_export_workflows.py` strips `credentials` from nodes; after the first import, the exported copy of a generated workflow will differ from the generated one by that key only. A later PR can teach the export to keep the credential *name* (no secret) so the two copies compare equal.
+
+---
+
+## 9. N2 DAG gate
+
+Stage k of a pipeline fires only after stage k−1's newest run row is `RUN_DONE` for the same America/New_York calendar day, or for the previous day when the predecessor's single fire is later in the ET day than this lane's. Four edges, and only these, carry `after` (on the lane in `config/n8n_migration_tranches.json` tranche N2 and on the matching `LANES` row). `premarket-data-pipeline`, `platform-maintenance-*`, `governance-pipeline`, the portfolio cadence lanes, and `portfolio-backup-cadence` (counted in N5 by the tranche note, generated with the N2 rows) have no predecessor.
+
+| stage | fires only after |
+|---|---|
+| `after-close-pipeline-broker-truth` | `after-close-pipeline-close-capture` |
+| `after-close-pipeline-planning` | `after-close-pipeline-broker-truth` |
+| `hermes-learning-pipeline-tune` | `hermes-learning-pipeline-learn` |
+| `hermes-overnight-pipeline-night` | `hermes-overnight-pipeline-close` |
+
+The relay route is read-only `GET /runs/<lane_id>/last` (bearer, the same check as `GET /status`; a bad bearer is `relay_bad_bearer` / 401). The lane id is letters, digits, and `.` `_` `-` only; any other path, including an extra segment, is `relay_bad_path` / 404. The handler calls the coordination projection `project_runs(path, lane_id=..., limit=1)` and returns that newest row. It does not run an allowlist command and it does not POST to the gateway. A missing ledger or a lane with no row is HTTP 200 with `last: null` and the projection's `status`. The body stays within 1024 bytes.
+
+Both the shadow workflow and the live workflow for a gated lane are:
+
+```
+Schedule → Set relay constants
+  → HTTP GET {{ $json.TRADEAI_N8N_RUN_URL }}/runs/<after>/last   (Header Auth credential tradeai-run-relay)
+  → Code: state == RUN_DONE and finished_at falls on the same America/New_York calendar day
+         as new Date() at execution (the day is not written into the JSON). When the predecessor's
+         single minute-of-day is later than this lane's, the previous America/New_York date counts too.
+  → IF gate_ok → POST /run → Assert REQUESTED
+  → else Wait 60 seconds and GET again
+```
+
+`MAX_GATE_RETRIES` is 5: that many failed waits, then the Code node throws, and the message includes the lane id. Ungated workflows stay Schedule, Set, POST, Assert.
+
+`hermes-overnight-pipeline-close` is 23:13 ET and `hermes-overnight-pipeline-night` is 02:20 ET. The generator does not name that pair. It compares the two crons: when the predecessor's single minute-of-day is later than this lane's, `CROSSES_MIDNIGHT` is true and a `RUN_DONE` from the previous America/New_York calendar day satisfies the gate, as does one from today. The other three N2 edges fire later in the same day, so they stay on today only. A cron that is not one hour and one minute does not cross.

@@ -6,13 +6,19 @@ One template, two workflows per lane:
     <lane_id>-shadow   mode=dry_run   (imported inactive; activated first, cron line still live)
     <lane_id>          mode=live      (imported inactive; activated at canary, cron retired at cutover)
 
-Node chain (fixed; a test pins the node-type set):
+Node chain for an ungated lane (fixed; a test pins the node-type set):
 
     Schedule Trigger  →  Set "Relay constants"  →  HTTP Request v4.2  →  Code "Assert REQUESTED"
     (cron expression,     (TRADEAI_N8N_RUN_URL,     POST {url}/run,        status 200 and
      America/New_York)     placeholder host)        Header Auth credential  state REQUESTED
                                                     `tradeai-run-relay`,    or duplicate:true,
                                                     10 s, fullResponse)     else throw(lane id)
+
+A lane with `after` (four N2 edges only) inserts a gate between Set and POST: HTTP GET
+{url}/runs/<after>/last, a Code node that requires state RUN_DONE on the same America/New_York
+calendar day as the execution, an IF, and on the false branch a Wait of GATE_RETRY_WAIT_S seconds
+that retries the GET. After MAX_GATE_RETRIES failed waits the Code node throws with the lane id.
+Ungated lanes keep the four-node chain above; their node types and ids do not change.
 
 Why a Set node and not `$env`: the lab compose sets `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`
 (`docker-compose.n8n.yml`), so `{{ $env.X }}` throws inside the container. The relay host
@@ -63,12 +69,16 @@ CREDENTIAL_NAME = "tradeai-run-relay"
 RELAY_URL_PLACEHOLDER = "http://RELAY_HOST:18092"
 RELAY_URL_VAR = "TRADEAI_N8N_RUN_URL"
 HTTP_TIMEOUT_MS = 10_000
+# Failed predecessor checks wait this long, then GET /runs/<after>/last again.
+GATE_RETRY_WAIT_S = 60
+# How many of those waits are allowed. The next failure throws. Pinned by the generator test.
+MAX_GATE_RETRIES = 5
 TRANCHES = ("N1", "N2", "N3", "N4", "N5", "N6")
 # Tranches committed under generated/ directly; the rest land under generated/pending/.
 COMMITTED_TRANCHES = ("N1",)
 
-# The only node types a generated workflow may contain. tests pin this set.
-ALLOWED_NODE_TYPES = frozenset(
+# Ungated workflows are exactly these four. Gated workflows may also use IF and Wait.
+UNGATED_NODE_TYPES = frozenset(
     {
         "n8n-nodes-base.scheduleTrigger",
         "n8n-nodes-base.set",
@@ -76,6 +86,22 @@ ALLOWED_NODE_TYPES = frozenset(
         "n8n-nodes-base.code",
     }
 )
+# The only node types a generated workflow may contain. tests pin this set.
+ALLOWED_NODE_TYPES = UNGATED_NODE_TYPES | frozenset(
+    {
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.wait",
+    }
+)
+_AFTER_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+N_SCHED = "Schedule"
+N_SET = "Relay constants"
+N_GET = "GET predecessor last"
+N_GATE = "Evaluate predecessor"
+N_IF = "Predecessor ready"
+N_WAIT = "Wait retry"
+N_POST = "POST relay /run"
+N_ASSERT = "Assert REQUESTED"
 
 _UUID_NS = uuid.UUID("6f2c0a1e-5c7b-4d3a-9e1f-0a8b7c6d5e4f")
 
@@ -177,6 +203,7 @@ LANES: list[dict] = [
         "source": "crontab: 25 17 * * 1-5 run_after_close_pipeline.sh --stage broker-truth (registry kind cron)",
         "pipeline": "after_close",
         "stage_order": 2,
+        "after": "after-close-pipeline-close-capture",
     },
     {
         "lane_id": "after-close-pipeline-planning",
@@ -186,6 +213,7 @@ LANES: list[dict] = [
         "source": "crontab: 35 17 * * 1-5 run_after_close_pipeline.sh --stage planning (registry kind cron)",
         "pipeline": "after_close",
         "stage_order": 3,
+        "after": "after-close-pipeline-broker-truth",
     },
     {
         "lane_id": "hermes-learning-pipeline-learn",
@@ -204,6 +232,7 @@ LANES: list[dict] = [
         "source": "crontab: 0 17 * * * run_hermes_pipeline.sh --stage tune (registry kind cron)",
         "pipeline": "hermes_learning",
         "stage_order": 2,
+        "after": "hermes-learning-pipeline-learn",
     },
     {
         "lane_id": "hermes-overnight-pipeline-close",
@@ -222,6 +251,7 @@ LANES: list[dict] = [
         "source": "crontab: 20 2 * * * run_hermes_pipeline.sh --manifest hermes_overnight.json --stage night (registry kind cron)",
         "pipeline": "hermes_overnight",
         "stage_order": 2,
+        "after": "hermes-overnight-pipeline-close",
     },
     {
         "lane_id": "platform-maintenance-nightly",
@@ -722,91 +752,324 @@ def _assert_js(lane_id: str, mode: str) -> str:
     )
 
 
+def _single_minute_of_day(cron_exprs: list) -> int | None:
+    """Minute-of-day when every expression is one hour and one minute. Otherwise None."""
+    found: list[int] = []
+    for expr in cron_exprs or []:
+        parts = str(expr).split()
+        if len(parts) < 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            return None
+        minute, hour = int(parts[0]), int(parts[1])
+        if minute > 59 or hour > 23:
+            return None
+        found.append(hour * 60 + minute)
+    if len(set(found)) != 1:
+        return None
+    return found[0]
+
+
+def predecessor_crosses_midnight(lane: dict, after: str) -> bool:
+    """True when the predecessor's single fire is later in the ET day than this lane's.
+
+    hermes-overnight-pipeline-close is 23:13 and hermes-overnight-pipeline-night is
+    02:20, so that evening RUN_DONE belongs to the previous America/New_York date.
+    A cron that is not a single hour and minute does not cross.
+    """
+    pred = next((row for row in LANES if row.get("lane_id") == after), None)
+    if pred is None:
+        return False
+    pred_minute = _single_minute_of_day(pred.get("cron") or [])
+    lane_minute = _single_minute_of_day(lane.get("cron") or [])
+    if pred_minute is None or lane_minute is None:
+        return False
+    return pred_minute > lane_minute
+
+
+def _gate_js(lane_id: str, after: str, mode: str, *, crosses_midnight: bool) -> str:
+    """Predecessor check. The ET day is taken at execution time, never baked into the JSON."""
+    crosses = "true" if crosses_midnight else "false"
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py — do not edit in n8n.",
+            f"const MAX_GATE_RETRIES = {MAX_GATE_RETRIES};",
+            f"const LANE = {json.dumps(lane_id)};",
+            f"const MODE = {json.dumps(mode)};",
+            f"const AFTER = {json.dumps(after)};",
+            f"const CROSSES_MIDNIGHT = {crosses};",
+            "const TZ = 'America/New_York';",
+            "function etDay(value) {",
+            "  const d = new Date(value);",
+            "  if (Number.isNaN(d.getTime())) return '';",
+            "  return new Intl.DateTimeFormat('en-CA', {",
+            "    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit'",
+            "  }).format(d);",
+            "}",
+            "function previousEtDay(value) {",
+            "  const day = etDay(value);",
+            "  const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(day);",
+            "  if (!m) return '';",
+            "  const anchor = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 17, 0, 0));",
+            "  return etDay(new Date(anchor.getTime() - 86400000).toISOString());",
+            "}",
+            "const item = $input.first().json;",
+            "const status = item.statusCode;",
+            "const body = (item.body && typeof item.body === 'object') ? item.body : {};",
+            "const last = (body.last && typeof body.last === 'object') ? body.last : null;",
+            "const finished = last && last.finished_at ? String(last.finished_at) : '';",
+            "const nowIso = new Date().toISOString();",
+            "const today = etDay(nowIso);",
+            "const finishedDay = finished !== '' ? etDay(finished) : '';",
+            "const dayOk = finishedDay !== '' && (finishedDay === today ||",
+            "  (CROSSES_MIDNIGHT && finishedDay === previousEtDay(nowIso)));",
+            "const ok = status === 200 && !!last && last.state === 'RUN_DONE' && dayOk;",
+            "let attempt = 1;",
+            "try {",
+            '  attempt = $("Wait retry").all().length + 1;',
+            "} catch (e) {",
+            "  attempt = 1;",
+            "}",
+            f'const relayUrl = $("Relay constants").first().json.{RELAY_URL_VAR};',
+            "if (!ok && attempt > MAX_GATE_RETRIES) {",
+            "  const windowText = CROSSES_MIDNIGHT",
+            "    ? 'the America/New_York day or the previous evening'",
+            "    : 'the America/New_York day';",
+            "  throw new Error('[' + LANE + '/' + MODE + '] predecessor ' + AFTER +",
+            "    ' not RUN_DONE for ' + windowText + ' after ' + String(attempt) +",
+            "    ' attempts (MAX_GATE_RETRIES=' + String(MAX_GATE_RETRIES) + ')');",
+            "}",
+            "return [{ json: {",
+            f"  gate_ok: ok, gate_attempt: attempt, {RELAY_URL_VAR}: relayUrl,",
+            "  predecessor_state: last ? (last.state || null) : null,",
+            "  predecessor_finished_at: finished || null",
+            "} }];",
+            "",
+        ]
+    )
+
+
+def _schedule_node(name: str, lane: dict) -> dict:
+    return {
+        "id": _node_id(name, "schedule"),
+        "name": N_SCHED,
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [240, 300],
+        "parameters": {
+            "rule": {"interval": [{"field": "cronExpression", "expression": c} for c in lane["cron"]]},
+        },
+    }
+
+
+def _set_node(name: str, relay_url: str) -> dict:
+    return {
+        "id": _node_id(name, "set"),
+        "name": N_SET,
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [480, 300],
+        "parameters": {
+            "assignments": {
+                "assignments": [
+                    {
+                        "id": _node_id(name, "set:url"),
+                        "name": RELAY_URL_VAR,
+                        "type": "string",
+                        "value": relay_url,
+                    }
+                ]
+            },
+            "includeOtherFields": False,
+            "options": {},
+        },
+    }
+
+
+def _post_node(name: str, lane_id: str, mode: str, *, position: list[int]) -> dict:
+    # The relay derives the idempotent run id from workflow_id + execution_id
+    # and refuses a body without them (relay_bad_run_id). n8n fills both at
+    # execution time, so the body is an expression, not a literal.
+    json_body = (
+        "={{ JSON.stringify({ lane_id: "
+        + json.dumps(lane_id)
+        + ", mode: "
+        + json.dumps(mode)
+        + ", requested_by: "
+        + json.dumps(name)
+        + ", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}"
+    )
+    return {
+        "id": _node_id(name, "http"),
+        "name": N_POST,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": position,
+        "onError": "stopWorkflow",
+        "credentials": {"httpHeaderAuth": {"id": CREDENTIAL_NAME, "name": CREDENTIAL_NAME}},
+        "parameters": {
+            "method": "POST",
+            "url": "={{ $json." + RELAY_URL_VAR + " }}/run",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "sendBody": True,
+            "specifyBody": "json",
+            "jsonBody": json_body,
+            "options": {
+                "timeout": HTTP_TIMEOUT_MS,
+                # neverError: the Code node is the single assertion point, so a 4xx/5xx
+                # fails the workflow with the lane id in the message, not a generic HTTP error.
+                "response": {"response": {"fullResponse": True, "neverError": True}},
+            },
+        },
+    }
+
+
+def _assert_node(name: str, lane_id: str, mode: str, *, position: list[int]) -> dict:
+    return {
+        "id": _node_id(name, "code"),
+        "name": N_ASSERT,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": position,
+        "onError": "stopWorkflow",
+        "parameters": {"language": "javaScript", "mode": "runOnceForAllItems", "jsCode": _assert_js(lane_id, mode)},
+    }
+
+
+def _link(src: str, dst: str) -> dict:
+    return {src: {"main": [[{"node": dst, "type": "main", "index": 0}]]}}
+
+
+def _plain_chain(lane: dict, mode: str, name: str, relay_url: str) -> tuple[list[dict], dict]:
+    lane_id = lane["lane_id"]
+    nodes = [
+        _schedule_node(name, lane),
+        _set_node(name, relay_url),
+        _post_node(name, lane_id, mode, position=[720, 300]),
+        _assert_node(name, lane_id, mode, position=[960, 300]),
+    ]
+    connections = {}
+    connections.update(_link(N_SCHED, N_SET))
+    connections.update(_link(N_SET, N_POST))
+    connections.update(_link(N_POST, N_ASSERT))
+    return nodes, connections
+
+
+def _get_last_node(name: str, after: str) -> dict:
+    return {
+        "id": _node_id(name, "http-get"),
+        "name": N_GET,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [720, 300],
+        "onError": "stopWorkflow",
+        "credentials": {"httpHeaderAuth": {"id": CREDENTIAL_NAME, "name": CREDENTIAL_NAME}},
+        "parameters": {
+            "method": "GET",
+            "url": "={{ $json." + RELAY_URL_VAR + " }}/runs/" + after + "/last",
+            "authentication": "genericCredentialType",
+            "genericAuthType": "httpHeaderAuth",
+            "options": {
+                "timeout": HTTP_TIMEOUT_MS,
+                "response": {"response": {"fullResponse": True, "neverError": True}},
+            },
+        },
+    }
+
+
+def _gated_chain(lane: dict, mode: str, name: str, relay_url: str, after: str) -> tuple[list[dict], dict]:
+    lane_id = lane["lane_id"]
+    nodes = [
+        _schedule_node(name, lane),
+        _set_node(name, relay_url),
+        _get_last_node(name, after),
+        {
+            "id": _node_id(name, "code-gate"),
+            "name": N_GATE,
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [960, 300],
+            "onError": "stopWorkflow",
+            "parameters": {
+                "language": "javaScript",
+                "mode": "runOnceForAllItems",
+                "jsCode": _gate_js(lane_id, after, mode, crosses_midnight=predecessor_crosses_midnight(lane, after)),
+            },
+        },
+        {
+            "id": _node_id(name, "if"),
+            "name": N_IF,
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2.2,
+            "position": [1200, 300],
+            "parameters": {
+                "conditions": {
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "id": _node_id(name, "if:gate_ok"),
+                            "leftValue": "={{ $json.gate_ok }}",
+                            "operator": {"type": "boolean", "operation": "true", "singleValue": True},
+                            "rightValue": True,
+                        }
+                    ],
+                    "options": {
+                        "caseSensitive": True,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 2,
+                    },
+                }
+            },
+        },
+        {
+            "id": _node_id(name, "wait"),
+            "name": N_WAIT,
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1.1,
+            "position": [1440, 480],
+            "parameters": {"amount": GATE_RETRY_WAIT_S, "unit": "seconds"},
+        },
+        _post_node(name, lane_id, mode, position=[1440, 180]),
+        _assert_node(name, lane_id, mode, position=[1680, 180]),
+    ]
+    connections = {}
+    connections.update(_link(N_SCHED, N_SET))
+    connections.update(_link(N_SET, N_GET))
+    connections.update(_link(N_GET, N_GATE))
+    connections.update(_link(N_GATE, N_IF))
+    connections[N_IF] = {
+        "main": [
+            [{"node": N_POST, "type": "main", "index": 0}],
+            [{"node": N_WAIT, "type": "main", "index": 0}],
+        ]
+    }
+    connections.update(_link(N_WAIT, N_GET))
+    connections.update(_link(N_POST, N_ASSERT))
+    return nodes, connections
+
+
 def build_workflow(lane: dict, mode: str, relay_url: str = RELAY_URL_PLACEHOLDER) -> dict:
     """One n8n workflow (import shape for n8n 2.43.0) for a lane in a run mode."""
     assert mode in ("dry_run", "live"), mode
     lane_id = lane["lane_id"]
     name = f"{lane_id}-shadow" if mode == "dry_run" else lane_id
-    # The relay derives the idempotent run id from workflow_id + execution_id (scripts/n8n_run_relay.py
-    # _derived_run_id) and refuses a body without them (relay_bad_run_id, measured 2026-10-08 17:00Z on the
-    # first live shadow fire). n8n fills both at execution time, so the body is an expression, not a literal.
-    json_body = (
-        "={{ JSON.stringify({ lane_id: " + json.dumps(lane_id) + ", mode: " + json.dumps(mode)
-        + ", requested_by: " + json.dumps(name)
-        + ", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}"
-    )
-    n_sched, n_set, n_http, n_code = "Schedule", "Relay constants", "POST relay /run", "Assert REQUESTED"
-    nodes = [
-        {
-            "id": _node_id(name, "schedule"),
-            "name": n_sched,
-            "type": "n8n-nodes-base.scheduleTrigger",
-            "typeVersion": 1.2,
-            "position": [240, 300],
-            "parameters": {
-                "rule": {"interval": [{"field": "cronExpression", "expression": c} for c in lane["cron"]]},
-            },
-        },
-        {
-            "id": _node_id(name, "set"),
-            "name": n_set,
-            "type": "n8n-nodes-base.set",
-            "typeVersion": 3.4,
-            "position": [480, 300],
-            "parameters": {
-                "assignments": {
-                    "assignments": [
-                        {
-                            "id": _node_id(name, "set:url"),
-                            "name": RELAY_URL_VAR,
-                            "type": "string",
-                            "value": relay_url,
-                        }
-                    ]
-                },
-                "includeOtherFields": False,
-                "options": {},
-            },
-        },
-        {
-            "id": _node_id(name, "http"),
-            "name": n_http,
-            "type": "n8n-nodes-base.httpRequest",
-            "typeVersion": 4.2,
-            "position": [720, 300],
-            "onError": "stopWorkflow",
-            "credentials": {"httpHeaderAuth": {"id": CREDENTIAL_NAME, "name": CREDENTIAL_NAME}},
-            "parameters": {
-                "method": "POST",
-                "url": "={{ $json." + RELAY_URL_VAR + " }}/run",
-                "authentication": "genericCredentialType",
-                "genericAuthType": "httpHeaderAuth",
-                "sendBody": True,
-                "specifyBody": "json",
-                "jsonBody": json_body,
-                "options": {
-                    "timeout": HTTP_TIMEOUT_MS,
-                    # neverError: the Code node is the single assertion point, so a 4xx/5xx
-                    # fails the workflow with the lane id in the message, not a generic HTTP error.
-                    "response": {"response": {"fullResponse": True, "neverError": True}},
-                },
-            },
-        },
-        {
-            "id": _node_id(name, "code"),
-            "name": n_code,
-            "type": "n8n-nodes-base.code",
-            "typeVersion": 2,
-            "position": [960, 300],
-            "onError": "stopWorkflow",
-            "parameters": {"language": "javaScript", "mode": "runOnceForAllItems", "jsCode": _assert_js(lane_id, mode)},
-        },
-    ]
-    connections = {
-        n_sched: {"main": [[{"node": n_set, "type": "main", "index": 0}]]},
-        n_set: {"main": [[{"node": n_http, "type": "main", "index": 0}]]},
-        n_http: {"main": [[{"node": n_code, "type": "main", "index": 0}]]},
+    after = lane.get("after")
+    if after is not None and (not isinstance(after, str) or not _AFTER_RE.fullmatch(after)):
+        raise ValueError(f"bad after on {lane_id}: {after!r}")
+    if after:
+        nodes, connections = _gated_chain(lane, mode, name, relay_url, after)
+    else:
+        nodes, connections = _plain_chain(lane, mode, name, relay_url)
+    meta = {
+        "generator": "scripts/n8n_workflow_templates.py",
+        "lane_id": lane_id,
+        "mode": mode,
+        "tranche": lane["tranche"],
+        "schedule_source": lane["source"],
+        "schedule_fidelity": lane["fidelity"],
     }
+    if after:
+        meta["after"] = after
     return {
         "id": _wf_id(name),
         "name": name,
@@ -814,14 +1077,7 @@ def build_workflow(lane: dict, mode: str, relay_url: str = RELAY_URL_PLACEHOLDER
         "nodes": nodes,
         "connections": connections,
         "settings": {"executionOrder": "v1", "timezone": TIMEZONE, "saveManualExecutions": True},
-        "meta": {
-            "generator": "scripts/n8n_workflow_templates.py",
-            "lane_id": lane_id,
-            "mode": mode,
-            "tranche": lane["tranche"],
-            "schedule_source": lane["source"],
-            "schedule_fidelity": lane["fidelity"],
-        },
+        "meta": meta,
     }
 
 
@@ -876,7 +1132,7 @@ def build_index(lanes: list[dict], generated_at: str) -> dict:
             "shadow_workflow_id": _wf_id(f"{lane['lane_id']}-shadow"),
             "live_workflow_id": _wf_id(lane["lane_id"]),
         }
-        for key in ("note", "pipeline", "stage_order"):
+        for key in ("note", "pipeline", "stage_order", "after"):
             if key in lane:
                 row[key] = lane[key]
         rows.append(row)
