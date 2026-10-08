@@ -1443,6 +1443,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `77196f9bf014` |
 | `docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md` | Cron consolidation RANK 4 — platform maintenance pipeline (PROPOSAL) | review_required | OK | `91ba4c978d19` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-a-decisions.md` | Cron tranche A — operator decisions (2026-10-07) | review_required | MISSING HEADER | `cff41e44423f` |
+| `docs/implementation/n8n-parallel/proposals/cron-tranche-b-cutover-plan-20261008.md` | Cron tranche B — cutover readiness and compressed plan (2026-10-08) | review_required | OK | `335afbe4b093` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md` | Cron tranche B — post-close, premarket and Hermes chains: measurements, fit, manifests (2026-10-07) | review_required | OK | `37fb7b08b80c` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md` | Cron consolidation — tranche C, low-risk part (ranks 13, 14, 18, 9), 2026-10-07 | review_required | MISSING HEADER | `459432353f4a` |
 | `docs/implementation/n8n-parallel/proposals/phase1-install-commands.md` | Phase 1 install commands (operator), 2026-10-07 | review_required | MISSING HEADER | `d491f8368e49` |
