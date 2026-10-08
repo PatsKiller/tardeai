@@ -259,6 +259,61 @@ def fixture_call(mode: str) -> Callable[..., dict[str, Any]]:
     return call
 
 
+OPS_TASK_TYPE = "ops_summary"   # X-TradeAI-Task-Type: the bridge maps caller n8n_model_job + this task type to OPS_PROCESS_ID
+
+
+def live_call() -> Callable[..., dict[str, Any]]:
+    """The governed bridge, with the ops-summary task type so the server picks n8n_ops_summary_draft."""
+    import functools
+    return functools.partial(_mj.bridge_governed_call, task_type=OPS_TASK_TYPE)
+
+
+def plan_ops_summary(*, root: Path, period: str, key: str, now: _dt.datetime,
+                     schemas: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """Live-path preflight WITHOUT a provider call: resolve the caller→process mapping, the registry entry,
+    the model policy, the caps, and the prompt size exactly as the bridge would, then stop. Nothing written."""
+    out: dict[str, Any] = {"mode": "plan", "process_id": OPS_PROCESS_ID, "task_type": OPS_TASK_TYPE, "schema_id": OPS_SCHEMA_ID,
+                           "would_call": False}
+    try:
+        from scripts.lib.cio_governed_model_bridge import resolve_caller, resolve_model_policy
+        mapped = resolve_caller(_mj.BRIDGE_CALLER, task_type=OPS_TASK_TYPE)
+        out["caller_maps_to"] = mapped
+        out["caller_map_ok"] = mapped == OPS_PROCESS_ID
+        pol = resolve_model_policy(OPS_PROCESS_ID, OPS_TASK_TYPE)
+        out["policy"] = None if pol is None else {k: pol.get(k) for k in ("provider", "model_id", "requested_policy", "thinking")}
+    except Exception as exc:  # noqa: BLE001 — a missing bridge module is a plan finding, not a crash
+        out["bridge_import_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+    try:
+        from scripts.lib.llm_consumption import get_process_config
+        cfg = get_process_config(OPS_PROCESS_ID)
+        out["registered"] = bool(cfg.get("registered"))
+        out["caps"] = {k: cfg.get(k) for k in ("daily_cost_cap_usd", "daily_soft_cap", "max_input_tokens", "max_output_tokens",
+                                                "allowed_lanes", "deepseek_allowed_policies")}
+    except Exception as exc:  # noqa: BLE001
+        out["registry_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+    rp = root / RECEIPT_REL
+    if rp.exists():
+        raw = rp.read_bytes()
+        try:
+            schema = (schemas if schemas is not None else _mj.load_schemas()).get(OPS_SCHEMA_ID)
+            if schema is None:
+                raise KeyError(OPS_SCHEMA_ID)
+            job = {"process_id": OPS_PROCESS_ID, "output_schema_id": OPS_SCHEMA_ID, "correlation_id": f"corr-ops-{period}-{key}"}
+            artifact = {"path": str(rp), "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
+                        "body": json.loads(raw.decode("utf-8"))}   # the shape resolve_artifact() hands build_messages()
+            msgs = _mj.build_messages(OPS_SCHEMA_ID, schema, artifact, job)
+            chars = sum(len(str(mm.get("content") or "")) for mm in msgs)
+            out["prompt"] = {"messages": len(msgs), "chars": chars, "est_tokens": chars // 4,
+                             "fits_max_input": (out.get("caps") or {}).get("max_input_tokens") is None or chars // 4 <= int((out.get("caps") or {}).get("max_input_tokens") or 0)}
+        except Exception as exc:  # noqa: BLE001
+            out["prompt_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+    else:
+        out["prompt"] = None
+        out["receipt_missing"] = str(rp)
+    out["ready"] = bool(out.get("caller_map_ok") and out.get("registered") and out.get("policy") and (out.get("prompt") or {}).get("fits_max_input"))
+    return out
+
+
 def draft_ops_summary(*, root: Path, period: str, key: str, now: _dt.datetime, governed_call: Callable[..., dict[str, Any]],
                       schemas: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
     rp = root / RECEIPT_REL
@@ -297,7 +352,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     g.add_argument("--dry-run", action="store_true", help="print the section counts, write nothing (default)")
     g.add_argument("--write", action="store_true", help="write packet json + md and the receipt under the state root")
     ap.add_argument("--draft", action="store_true", help="after --write, run the governed ops-summary model job on the receipt")
-    ap.add_argument("--draft-mode", default="live", help="live (governed bridge) or fixture:<valid|invalid_json|over_cap|outage|schema_invalid>")
+    ap.add_argument("--draft-mode", default="live", help="live (governed bridge, task type ops_summary), plan (resolve governance/caps/prompt size, no call), or fixture:<valid|invalid_json|over_cap|outage|schema_invalid>")
     ap.add_argument("--root", type=Path, default=None, help="state root (default TRADEAI_STATE_ROOT)")
     ap.add_argument("--registry", type=Path, default=None)
     ap.add_argument("--ledger", type=Path, default=None)
@@ -322,10 +377,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     paths = write_packet(packet, root=root)
     print(json.dumps({"written": paths}))
     if args.draft:
+        if args.draft_mode == "plan":
+            print(json.dumps({"ops_summary_plan": plan_ops_summary(root=root, period=args.period, key=packet["period_key"], now=now)},
+                             default=str, indent=1))
+            return 0
         if args.draft_mode.startswith("fixture:"):
             call = fixture_call(args.draft_mode.split(":", 1)[1])
         else:
-            call = _mj.bridge_governed_call
+            call = live_call()
         out = draft_ops_summary(root=root, period=args.period, key=packet["period_key"], now=now, governed_call=call)
         print(json.dumps({"ops_summary": {k: out[k] for k in ("state", "reason", "artifact", "note")}}, default=str))
     return 0

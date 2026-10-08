@@ -64,6 +64,12 @@ CALLER_PROCESS_MAP: dict[str, str] = {
 
 # Task-type overrides for multi-policy callers (server-side only).
 CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
+    # 2026-10-08 (Phase 2 G1): the n8n model-job caller has two small-cap processes, chosen by task type
+    # server-side; an unknown task type falls back to the digest (cannot escalate — tested).
+    "n8n_model_job": {
+        "model_job": "n8n_material_digest_draft",
+        "ops_summary": "n8n_ops_summary_draft",
+    },
     "advisory_desk": {
         "advisory_opinion": "advisory_desk_opinion",
         "advisory_synthesis": "advisory_desk_synthesis",
@@ -320,6 +326,11 @@ def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]
         "hermes_usefulness_score": "FAST",
         "cio_hermes_research": "FAST",
         "hermes_golden_judge": "FAST",
+        # 2026-10-08 (Phase 2 G1): both n8n model-job processes were registered in llm_process_registry.json
+        # but absent here, so Step 3 answered UNKNOWN_PROCESS for a registered process — the digest job
+        # could never have run live. Flash only; allowed_lanes/caps stay in the registry.
+        "n8n_material_digest_draft": "FAST",
+        "n8n_ops_summary_draft": "FAST",
     }
     policy_name = process_policy_map.get(process_id)
     try:  # Wave 4 O-W4-3: the ONE chooser observes (shadow) — disagreement with this map is a receipt, not a change
