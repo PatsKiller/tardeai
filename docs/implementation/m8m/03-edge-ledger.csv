@@ -1,0 +1,16 @@
+edge_id,project,producer,consumer,status,evidence,observed_at_utc
+E-TA-001,TRADE_AI,portfolio-server ExecStart on freeze pin,HTTP /v3/build-meta.json git_sha,OBSERVED,sha 65fbeecf31161e0b51790d5761f7d3fc20c9ea7c matches CURRENT and process cwd,2026-10-06T15:00:04Z
+E-TA-002,TRADE_AI,GET /api/v2/health,this read-only client,OBSERVED,200 status=healthy score=86 mode=advisory captured_at=2026-10-06T15:01:34Z,2026-10-06T15:01:34Z
+E-TA-003,TRADE_AI,tradeai-portfolio-backup-cadence.timer 02:30 ET,file trade_ai_20261006_023000.sql.gz,OBSERVED,timer last trigger 2026-10-06 02:30 ET; file 2972023720 bytes mtime 06:50:44Z; log retention 1,2026-10-06T06:50:44Z
+E-TA-004,TRADE_AI,pg dump script exclude flags,intelligence.* and memory_r10_m2.* row data,NOT_MEASURED,served script excludes that data; gzip was not scanned,2026-10-06T15:10:00Z
+E-TA-005,TRADE_AI,dump file,isolated restore,NOT_MEASURED,restore was not run,2026-10-06T15:10:00Z
+E-TA-006,TRADE_AI,public.options_chain_snapshots,options lifecycle outcome tables,NOT_MEASURED,chain max captured_at 2026-10-06 08:12 ET count 48374; options_lifecycle_outcomes count 0,2026-10-06T15:12:00Z
+E-TA-007,TRADE_AI,public.agent_wake_receipts,a later CIO judgment,STALE,max observed_at 2026-09-07; no consumer receipt on this pin,2026-10-06T15:12:00Z
+E-TA-008,TRADE_AI,public.communication_outbox,an external delivery receipt,NOT_MEASURED,max created_at 2026-10-06 11:13 ET count 72680; delivery not read,2026-10-06T15:12:00Z
+E-TA-009,TRADE_AI,tradeai-advisory-shadow-session.timer,advisory_shadow_session.py exit,FAILED,oneshot exit 1 at 2026-10-06 09:23 ET; log tail pass=False live=False spend=0,2026-10-06T13:23:37Z
+E-TA-010,TRADE_AI,tradeai-active-trader-motion.service,served release 65fbeecf,FAILED,MainPID 2581033 cwd is deployment 306f817993707a99129633a8555352277bc6d05f,2026-10-06T15:15:00Z
+E-DOF-001,DOF,cron 0 18 * * * rescan_tickets.py,Postgres role trade_ai,FAILED,log mtime 2026-10-05T22:00:01Z; password authentication failed; 150 auth failures in the last 80KB,2026-10-05T22:00:01Z
+E-DOF-002,DOF,cron 0 20 * * 6 run_pipeline.py,stage artifacts,FAILED,pipeline log 2026-10-03 20:00:03 ET stages with errors 1-6 each exit 1,2026-10-04T00:00:03Z
+E-DOF-003,DOF,dof-dashboard.service,HTTP :7776,OBSERVED,200 title NYC DOF Auction Intelligence; body hash in baseline,2026-10-06T15:05:44Z
+E-DOF-004,DOF,dof-dashboard.service,git commit 5d3c39e,FAILED,on-disk dof_server.py sha256 differs from the commit copy,2026-10-06T15:05:44Z
+E-SHARED-001,BOTH,role trade_ai on database trade_ai,DOF public.dof_* tables and Trade AI tables,OBSERVED,one database; role is not superuser and not bypassrls; no dof role,2026-10-06T15:12:00Z
