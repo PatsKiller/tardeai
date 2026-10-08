@@ -43,7 +43,7 @@ def _wire(monkeypatch, tmp_path, rows, *, n8n_cadence=1.0, executor_finished=Non
     monkeypatch.delenv("TRADEAI_FANIN_RUNS", raising=False)
     monkeypatch.setenv("TRADEAI_N8N_COORDINATION_LEDGER", str(_ledger(tmp_path / "l.sqlite", rows)))
     if executor_finished:
-        p = tmp_path / "data/runtime/n8n_runs/n8n_run_executor_last.json"
+        p = tmp_path / "data/runtime/n8n_run_executor_last.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps({"schema": "RunReceipt@v1", "finished_at": executor_finished}))
 
@@ -103,10 +103,10 @@ def test_a_stalled_executor_is_a_p1_against_the_shortest_n8n_cadence(monkeypatch
           n8n_cadence=0.5, executor_finished="2026-10-08T11:30:00+00:00")   # 1.5 h old > 2 x 0.5 h
     found = _runs(fanin.collect(tmp_path, NOW))
     assert [(f["item"], f["severity"]) for f in found] == [("executor:stalled", "P1")]
-    assert found[0]["artifact_rel"] == "data/runtime/n8n_runs/n8n_run_executor_last.json" and found[0]["detected_at"] == "2026-10-08T00:00:00+00:00"
+    assert found[0]["artifact_rel"] == "data/runtime/n8n_run_executor_last.json" and found[0]["detected_at"] == "2026-10-08T00:00:00+00:00"
     assert "age_h=1.5" in found[0]["detail"]
     # fresh executor: nothing
-    (tmp_path / "data/runtime/n8n_runs/n8n_run_executor_last.json").write_text(json.dumps({"finished_at": "2026-10-08T12:30:00+00:00"}))
+    (tmp_path / "data/runtime/n8n_run_executor_last.json").write_text(json.dumps({"finished_at": "2026-10-08T12:30:00+00:00"}))
     assert _runs(fanin.collect(tmp_path, NOW)) == []
 
 

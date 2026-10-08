@@ -34,6 +34,11 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib.n8n_gateway_client import GatewayClient, walk_to_artifact  # noqa: E402
 from scripts.lib.n8n_pilot_observations import served_sha, state_root  # noqa: E402
 
+# Source of truth: scripts/n8n_run_executor.py LAST_REL (the heartbeat sits beside, not inside, n8n_runs/).
+# Kept as a literal so this reader does not import the executor entrypoint; the drift test
+# tests/test_n8n_migration_board_20261008.py asserts executor, board and fan-in agree.
+EXECUTOR_LAST_REL = "data/runtime/n8n_run_executor_last.json"
+
 SCHEMA = "N8nIncidentFanin@v1"
 NO_CONSUMER_REASON = (
     "Roadmap Phase 1 incident fan-in. Consumed by the coordination projection route once the gateway runs; "
@@ -214,7 +219,7 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                               "detail": f"run {it.get('run_id')} {it.get('mode')} exit={it.get('exit_code')} duration_s={it.get('duration_s')}"[:160],
                               "artifact_rel": str(it.get("receipt_ref") or f"{RUNS_RECEIPT_DIR}/{it.get('run_id')}.json"),
                               "store": "data/runtime", "detected_at": it.get("finished_at") or it.get("requested_at")})
-        exec_rel = f"{RUNS_RECEIPT_DIR}/n8n_run_executor_last.json"
+        exec_rel = EXECUTOR_LAST_REL
         exec_doc = _load(root / exec_rel)
         cadences = [float(r["expected_cadence_hours"]) for r in n8n_lanes.values() if r.get("expected_cadence_hours")]
         if exec_doc and cadences:
