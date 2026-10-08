@@ -48,7 +48,10 @@ TRANCHES_PATH = ROOT / "config" / "n8n_migration_tranches.json"
 BOARD_REL = "data/runtime/n8n_migration_board_last.json"
 CUTOVER_DIR_REL = "data/runtime/n8n_cutover"
 READINESS_REL = "data/runtime/n8n_lane_readiness_last.json"
-EXECUTOR_LAST_REL = f"{RUNS_RECEIPT_DIR}/n8n_run_executor_last.json"
+# Source of truth: scripts/n8n_run_executor.py LAST_REL (the heartbeat sits beside, not inside, n8n_runs/).
+# Kept as a literal so this reader does not import the executor entrypoint; the drift test
+# tests/test_n8n_migration_board_20261008.py asserts executor, board and fan-in agree.
+EXECUTOR_LAST_REL = "data/runtime/n8n_run_executor_last.json"
 PHASES = ("NOT_STARTED", "SHADOW", "CANARY", "CUT_OVER", "ROLLED_BACK")
 RUN_FAILURE_STATES = {"RUN_FAILED", "RUN_TIMEOUT"}
 STALE_FACTOR = 2.0          # output signal older than 2x cadence = rollback trigger (plan §Rollback triggers)
