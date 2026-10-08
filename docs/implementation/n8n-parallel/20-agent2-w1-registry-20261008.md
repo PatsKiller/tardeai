@@ -1,6 +1,6 @@
 # Agent 2 W1 — registry and safe run contracts
 
-Status: W1 source validated; updated-main acceptance and supervisor review pending.
+Status: source content accepted by Agent A; final update acceptance pending.
 Owner: platform (Agent 2; Agent A reviews).
 as_of: 2026-10-08.
 Measured at: original W1 head `5e78c00811f8850086019d692543f0b1324c8f09`.
@@ -119,6 +119,19 @@ merged lane-monitor rendering and migration-board suites. New-file Ruff,
 coverage and host-path gates pass. Our diff against main has no whitespace
 errors; a whole-merge staged check reports existing generated Markdown hard
 line-break whitespace from main, which is preserved rather than edited.
+
+Full acceptance on `085d85552f8ce45e663131345b96d732f0d69c8c`: exit 0;
+17/17 release steps, all registered CIO gates (334 parallel units, 20 serial
+gates; wall 650 seconds), docs integrity and authority checks passed. Agent A's
+GitHub review accepts the source content after an independent 75-test run,
+byte-exact registry round-trip and zero state-drift conflicts. Its three review
+conditions are addressed in the final correction: merge current main locally,
+list all still-pending lane reasons in the PR body, and rename this document
+from 19 to 20 to avoid the N1 packet's number. Regenerate INDEX after staging.
+The final document-only correction still receives a fresh full acceptance
+before push; the preceding candidate's green result is not relabeled as proof
+for a different HEAD. W2's document will take the next available number when
+it is updated on the reviewed W1 branch.
 
 Supervisor review must resolve or explicitly accept the receipt, lock and
 never-list limitations before activation. These are not a declaration that
