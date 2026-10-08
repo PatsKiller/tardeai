@@ -2810,6 +2810,34 @@
         }
       ],
       "_writer_note": "Freshness contract 15 s (stale_after_hours 0.00417): a consumer that sees an older snapshot fails closed (no alert, symbol marked stale). Bars are start-normalized (moomoo labels 1-min bars by END time, verified 2026-10-05). Read by lib/data_broker/microstructure.py only."
+    },
+    {
+      "domain": "opportunity_assessment",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-08",
+        "reference": "Investment Command Center plan approved 2026-10-08 (/plan; session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md",
+        "scope": "Curated OpportunityAssessment@v1 per symbol (levels, R:R, six factor scores, conviction, rank, type, stance) in CIO memory; derived from existing broker stores, zero provider calls."
+      },
+      "store": {
+        "file": "data/cio/cio_opportunity_projection.json"
+      },
+      "writer": "scripts/cio_opportunity_curator.py",
+      "cadence": "*/30 09:00-16:00 Mon-Fri + 17:50 once the cron is granted",
+      "stale_after_hours": 26,
+      "projection": "opportunity",
+      "required_fields": [
+        "conviction",
+        "coverage",
+        "risk_reward",
+        "rank",
+        "as_of"
+      ],
+      "primary_provider": "derived",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so"
     }
   ]
 }

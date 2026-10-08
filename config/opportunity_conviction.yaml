@@ -32,6 +32,7 @@ scoring:
   analyst_upside_full_pct: 40
   analyst_mean_weight: 0.6
   analyst_min_count: 3          # fewer analysts → the factor is dropped
+  analyst_upside_sanity_pct: 150  # upside above this is flagged (stale or penny-stock target) and not scored
   # momentum: 50 ± change, plus relative volume
   momentum_1m_mult: 1.2
   momentum_1w_mult: 2.0
@@ -95,3 +96,14 @@ material_change:
   conviction_delta: 5
   rank_band_size: 25            # rank 1-25, 26-50, … a band change is material
   level_delta_pct: 2.0          # entry / invalidation / T1 moved by more than this %
+
+# Telegram resonance (operator 2026-10-08: "make sure these changes resonate in telegram alerts also").
+# telegram_alert.send_telegram appends ONE line from the CIO opportunity projection to alerts whose Communications
+# category is listed and which name a curated symbol: conviction, rank, R:R, upside, stance + a link that opens the
+# opportunity view. Read-only, never raises, never sends anything new; skipped when the projection is older than
+# max_projection_age_hours (a stale number is worse than none).
+telegram:
+  enabled: true
+  categories: [re_entry, reward, high_conviction_opportunity, risk, threat, watchlist_candidate]
+  max_symbols: 2
+  max_projection_age_hours: 26

@@ -198,6 +198,8 @@ def factors(ctx: dict[str, Any], rr: dict[str, Any]) -> dict[str, dict[str, Any]
     tm = _f(an.get("target_mean"))
     upside = round((tm - last) / last * 100, 2) if tm and last else _f(an.get("upside_pct"))
     rmean = _f(an.get("recommendation_mean"))
+    if upside is not None and upside > float(sc.get("analyst_upside_sanity_pct") or 150):
+        upside = None  # implausible target (stale or penny stock) — flagged in assess(), never scored
     if cnt >= float(sc.get("analyst_min_count") or 3) and (rmean is not None or upside is not None):
         w = float(sc.get("analyst_mean_weight") or 0.6)
         parts, ws = [], []
@@ -376,6 +378,7 @@ def assess(symbol: str, ctx: dict[str, Any], *, now: Optional[datetime] = None) 
     last = _f((ctx.get("quote") or {}).get("price"))
     tm = _f(an.get("target_mean"))
     w = load_config().get("factors") or {}
+    up = round((tm - last) / last * 100, 2) if tm and last else _f(an.get("upside_pct"))
     return {
         "schema": SCHEMA,
         "symbol": symbol,
@@ -387,7 +390,10 @@ def assess(symbol: str, ctx: dict[str, Any], *, now: Optional[datetime] = None) 
                     for k, v in fx.items()},
         "factors_missing": [k for k in w if k not in fx],
         "risk_reward": rr,
-        "upside_pct": round((tm - last) / last * 100, 2) if tm and last else _f(an.get("upside_pct")),
+        "upside_pct": up,
+        "upside_flag": ("implausible target — check freshness" if up is not None and up > float(
+            (load_config().get("scoring") or {}).get("analyst_upside_sanity_pct") or 150) else (
+            "analyst data stale" if an.get("stale") else None)),
         "momentum_score": (fx.get("momentum") or {}).get("score"),
         **cls,
         "sector": (ctx.get("profile") or {}).get("sector"),
@@ -450,7 +456,8 @@ def sort_items(items: list[dict[str, Any]], sort: str) -> list[dict[str, Any]]:
             return (a.get("rank") is None, a.get("rank") or 0)
         if sort == "risk_pct":
             return (rr.get("risk_pct") is None, rr.get("risk_pct") or 0)  # lowest risk first
-        v = {"conviction": a.get("conviction"), "rr": rr.get("rr"), "upside": a.get("upside_pct"),
+        v = {"conviction": a.get("conviction"), "rr": rr.get("rr"),
+             "upside": None if (a.get("upside_flag") or "").startswith("implausible") else a.get("upside_pct"),
              "reward_pct": rr.get("reward_pct"), "momentum": a.get("momentum_score")}.get(sort, a.get("conviction"))
         return (v is None, -(v or 0), -(a.get("conviction") or 0))
 

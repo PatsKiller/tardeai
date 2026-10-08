@@ -3780,6 +3780,25 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/COMMS_HUB_2026-10-07.md; tests/test_comms_hub_20261007.py."
+    },
+    {
+      "lane_id": "cio-opportunity-curator",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/cio_opportunity_curator.lock timeout 600 $PY scripts/cio_opportunity_curator.py --apply >> logs/cio_opportunity_curator.log 2>&1  # TRADEAI_LANE cio-opportunity-curator",
+        "match": "scripts/cio_opportunity_curator.py"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-08",
+      "state_reason": "Investment Command Center (operator plan approved 2026-10-08): deterministic curator (zero LLM, zero provider calls) assesses ~1,400 symbols (risk/reward ladder, six factor scores, conviction, rank, type, stance) and persists them in CIO memory: data/cio/cio_opportunity_assessments.jsonl (a version only on material change) + cio_opportunity_projection.json (read by /api/v3/opportunities and the Telegram opportunity line). Runs every 30 min 09:00-16:30 ET weekdays (host clock is America/New_York).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/cio_opportunity_curator_latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md; tests/test_investment_command_center_20261008.py; live dry run 2026-10-08: 1,412 symbols, 1,332 rankable, 8.5 s."
     }
   ],
   "undeclared_baseline": [

@@ -53459,6 +53459,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # Investment Command Center (operator 2026-10-08): curated opportunities from CIO memory — read-only
+    if method == "GET" and (base_path == "/api/v3/opportunities" or base_path.startswith("/api/v3/opportunities/")):
+        try:
+            import api_v3_opportunities as _opp
+
+            rest = base_path[len("/api/v3/opportunities") :].strip("/")
+            if not rest:
+                return 200, _opp.get_list(query or {})
+            if "/" not in rest:
+                return 200, _opp.get_detail(rest.upper())
+            return 404, {"ok": False, "error": "not_found"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # Canonical Data Broker — catalog + Watch Intelligence (read-only)
     # Catalog: GET /api/v3/data-broker  and  GET /api/v3/data-broker/catalog
     if method == "GET" and (base_path == "/api/v3/data-broker" or base_path.startswith("/api/v3/data-broker/")):
