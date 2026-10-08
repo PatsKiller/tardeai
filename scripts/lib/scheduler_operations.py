@@ -476,6 +476,10 @@ def build_projection(registry: dict[str, Any], observations: dict[str, Any], *, 
         row['output_at'] = iso(at) if isinstance(at, datetime) else None
         cadence_s = float(lane.get('expected_cadence_hours') or 0)*3600
         row['freshness_sla_s'] = cadence_s*2 if cadence_s else None
+        finished = timestamp(row['last_completed'])
+        run_age = (now-finished).total_seconds() if finished and finished <= now else None
+        row['run_age'] = run_age
+        row['run_freshness'] = ('FRESH' if run_age is not None and cadence_s and run_age <= cadence_s*2 else 'STALE' if run_age is not None and cadence_s else 'NOT_MEASURED')
         row['freshness'] = ('FRESH' if age is not None and age <= cadence_s else 'AGING' if age is not None and age <= cadence_s*2 else 'STALE' if age is not None else 'ABSENT' if signal.get('readable') else 'NOT_MEASURED')
         row['output_evidence_class'] = ('OBSERVED_DB' if sig.get('kind') == 'db_max' else 'OBSERVED_HOST') if signal.get('readable') else 'NOT_MEASURED'
         row['health_reason'] = row['health_reason'] or signal.get('detail')
@@ -500,7 +504,7 @@ def build_projection(registry: dict[str, Any], observations: dict[str, Any], *, 
             row['runtime_state'] = 'SILENT'
         elif row['freshness'] == 'AGING':
             row['runtime_state'] = 'SLOW'
-        elif row['freshness'] == 'FRESH' and row['run_proven'] and last_state == 'RUN_DONE':
+        elif row['freshness'] == 'FRESH' and row['run_proven'] and row['run_freshness'] == 'FRESH' and last_state == 'RUN_DONE':
             row['runtime_state'] = 'LIVE' if live_runs[-1].get('exit_code') == 0 else 'RUN_FAILED'
         else:
             row['runtime_state'] = 'NOT_MEASURED'

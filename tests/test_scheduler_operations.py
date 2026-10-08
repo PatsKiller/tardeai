@@ -274,3 +274,15 @@ def test_database_signal_keeps_database_evidence_class(tmp_path):
     result=build_projection({'lanes':[lane(signal={'kind':'db_max','table':'runtime_receipts','column':'finished_at'})]},observations('*/5 * * * * python scripts/test_lane.py'),root=tmp_path,now=NOW,db_query=lambda q: [(NOW,)])
     assert result['rows'][0]['output_evidence_class']=='OBSERVED_DB'
     assert row['output_evidence_class']=='NOT_MEASURED'
+
+
+def test_fresh_shared_output_cannot_mask_an_old_run_receipt(tmp_path):
+    import os
+    out=tmp_path/'data/result.json';out.parent.mkdir();out.write_text('{}')
+    os.utime(out,(NOW.timestamp(),NOW.timestamp()))
+    old='2026-10-01T22:00:00Z'
+    receipt={'schema':'RunReceipt@v1','run_id':'old','lane_id':'test-lane','mode':'live','state':'RUN_DONE','exit_code':0,'finished_at':old}
+    run={'run_id':'old','lane_id':'test-lane','mode':'live','state':'RUN_DONE','exit_code':0,'requested_at':old,'finished_at':old,'receipt':receipt}
+    row=project(tmp_path,[lane()],observations('*/5 * * * * python scripts/test_lane.py'),[run])['rows'][0]
+    assert row['runtime_state']!='LIVE'
+    assert row['run_freshness']=='STALE'
