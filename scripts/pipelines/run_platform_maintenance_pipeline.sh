@@ -106,8 +106,11 @@ build_nightly() {
   add_step rotate_runtime_logs "" /tmp/tradeai_rotate_logs.lock "" logs/rotate_runtime_logs.log "" \
     "bash scripts/rotate_runtime_logs.sh"
   # 207: 30 2 * * * cd CURRENT && $PY scripts/populate_performance_context.py --apply >> logs/perf_context.log
+  #      2026-10-08: the script reads DB_HOST/DB_USER/DB_PASSWORD from the environment and soft-fails
+  #      ("skipping performance context update … until the DB is reachable") without them; the cron line
+  #      never sourced the rendered env, so it had silently skipped every night. The step sources it.
   add_step populate_performance_context "" "" "" logs/perf_context.log "" \
-    "$PY scripts/populate_performance_context.py --apply"
+    "bash -c 'set -a; . /run/user/\$(id -u)/tradeai/env; set +a; $PY scripts/populate_performance_context.py --apply'"
   # 1045: 30 2 * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state TRADEAI_RELEASE_SHA=$(cat $PROJ/GIT_SHA)
   #       flock -n /tmp/tradeai_platform_conformance.lock $PY scripts/report_platform_conformance.py --write >> $HOME/trade-ai-releases/persistent-state/logs/platform_conformance.log
   add_step report_platform_conformance "" /tmp/tradeai_platform_conformance.lock "" "$STATE_ROOT/logs/platform_conformance.log" \

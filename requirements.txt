@@ -94,3 +94,4 @@ snaptrade-python-sdk>=11
 mplfinance==0.12.10b0
 Jinja2==3.1.6
 playwright==1.60.0
+\nruamel.yaml>=0.18  # populate_performance_context.py (nightly maintenance step); absent from the venv until 2026-10-08\n
