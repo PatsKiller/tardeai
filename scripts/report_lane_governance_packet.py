@@ -244,9 +244,12 @@ FIXTURE_ANSWER = {"headline": "Weekly ops summary draft (fixture)",
 
 def fixture_call(mode: str) -> Callable[..., dict[str, Any]]:
     """Held-out modes: valid | invalid_json | over_cap | outage | schema_invalid. Never a network call."""
-    def call(messages, *, process_id, response_format, request_id):
-        base = {"governance_pass": True, "process_id": process_id, "reservation_id": 0, "cost_estimate": 0.0,
-                "model_id": "fixture", "provider": "fixture", "mock": True, "usage": {"total_tokens": 0}}
+    def call(messages, *, process_id, response_format, request_id, task_type=None, **_named):
+        # 2026-10-08: the same nested `_tradeai` envelope the live bridge returns (cio_governed_model_bridge Step 10).
+        base = {"id": request_id, "object": "chat.completion", "model": "fixture", "usage": {"total_tokens": 0},
+                "_tradeai": {"governance_pass": True, "process_id": process_id, "reservation_id": 0, "cost_estimate": 0.0,
+                             "model_id": "fixture", "provider": "fixture", "mock": True, "request_id": request_id,
+                             "task_type_seen": task_type}}
         if mode == "over_cap":
             return {"error": {"code": "DAILY_CAP_EXCEEDED", "status": 429}, "governance_pass": False}
         if mode == "outage":
@@ -273,7 +276,21 @@ def plan_ops_summary(*, root: Path, period: str, key: str, now: _dt.datetime,
     """Live-path preflight WITHOUT a provider call: resolve the caller→process mapping, the registry entry,
     the model policy, the caps, and the prompt size exactly as the bridge would, then stop. Nothing written."""
     out: dict[str, Any] = {"mode": "plan", "process_id": OPS_PROCESS_ID, "task_type": OPS_TASK_TYPE, "schema_id": OPS_SCHEMA_ID,
-                           "would_call": False}
+                           "would_call": False, "governance_envelope": _mj.BRIDGE_ENVELOPE_KEY}
+    # 2026-10-08: run_model_job derives the task type from job.process_id (PROCESS_TASK_TYPE) and reads the bridge's
+    # governance fields from `_tradeai`; the plan is ready only when the derived type is the one the bridge maps back.
+    try:
+        out["task_type_derived"] = _mj.task_type_for(OPS_PROCESS_ID)
+        out["task_type_ok"] = out["task_type_derived"] == OPS_TASK_TYPE
+    except _mj.ModelJobRefused as exc:
+        out["task_type_derived"], out["task_type_ok"], out["task_type_refusal"] = None, False, exc.code
+    try:
+        templates = _mj.load_templates()
+        tid = _mj.default_template_id(OPS_PROCESS_ID, templates)
+        out["template"] = {"id": tid, "invalid": templates.get("_invalid"), "matches_inline_prompt": None}
+    except (OSError, ValueError) as exc:
+        templates, tid = {}, None
+        out["template"] = {"id": None, "error": f"{type(exc).__name__}: {str(exc)[:120]}", "matches_inline_prompt": None}
     try:
         from scripts.lib.cio_governed_model_bridge import resolve_caller, resolve_model_policy
         mapped = resolve_caller(_mj.BRIDGE_CALLER, task_type=OPS_TASK_TYPE)
@@ -302,6 +319,9 @@ def plan_ops_summary(*, root: Path, period: str, key: str, now: _dt.datetime,
             artifact = {"path": str(rp), "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
                         "body": json.loads(raw.decode("utf-8"))}   # the shape resolve_artifact() hands build_messages()
             msgs = _mj.build_messages(OPS_SCHEMA_ID, schema, artifact, job)
+            if tid:   # the server-rendered template must reproduce the inline prompt (carve-out groundwork, Day 0)
+                rendered = _mj.build_messages(OPS_SCHEMA_ID, schema, artifact, job, template_id=tid, templates=templates)
+                out["template"]["matches_inline_prompt"] = rendered == msgs
             chars = sum(len(str(mm.get("content") or "")) for mm in msgs)
             out["prompt"] = {"messages": len(msgs), "chars": chars, "est_tokens": chars // 4,
                              "fits_max_input": (out.get("caps") or {}).get("max_input_tokens") is None or chars // 4 <= int((out.get("caps") or {}).get("max_input_tokens") or 0)}
@@ -310,7 +330,8 @@ def plan_ops_summary(*, root: Path, period: str, key: str, now: _dt.datetime,
     else:
         out["prompt"] = None
         out["receipt_missing"] = str(rp)
-    out["ready"] = bool(out.get("caller_map_ok") and out.get("registered") and out.get("policy") and (out.get("prompt") or {}).get("fits_max_input"))
+    out["ready"] = bool(out.get("caller_map_ok") and out.get("registered") and out.get("policy") and (out.get("prompt") or {}).get("fits_max_input")
+                        and out.get("task_type_ok") and (out.get("template") or {}).get("id") and (out.get("template") or {}).get("matches_inline_prompt"))
     return out
 
 

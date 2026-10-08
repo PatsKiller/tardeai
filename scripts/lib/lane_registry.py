@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -168,6 +169,11 @@ def validate_row(row: dict[str, Any]) -> list[str]:
     elif sched.get("kind") != "none" and not sched.get("expression"):
         errs.append(f"{lane_id}: scheduler.expression is required for "
                     f"kind={sched.get('kind')}")
+    elif sched.get("kind") == SCHEDULER_N8N and not sched.get("match"):
+        # The workflow id alone cannot prove the host is clean: `match` keeps the retired cron
+        # command text (or timer unit) so the double-scheduler conflict stays detectable.
+        errs.append(f"{lane_id}: scheduler.match is required for kind=n8n (the retired cron "
+                    "command text or timer unit, kept for host-conflict detection)")
 
     if state == STATE_ACTIVE and not row.get("expected_cadence_hours"):
         errs.append(f"{lane_id}: expected_cadence_hours is required when ACTIVE")
@@ -210,7 +216,19 @@ def validate_row(row: dict[str, Any]) -> list[str]:
 #: the prose expression "emitted from the reactive cycle / heartbeat hooks".
 #: Matched against crontab it was never found, so the lane reported ORPHANED
 #: permanently while its output was 0.21h old against a 24h cadence.
-SCHEDULER_KINDS = ("cron", "systemd", "event", "none")
+#: "n8n" (2026-10-08, scheduler-of-record program): the lane is fired by an n8n workflow through
+#: the coordination gateway's run operation. Shape:
+#:
+#:   scheduler: {kind: "n8n", expression: "<n8n workflow id>",
+#:               match: "<retired cron command text or timer unit>", cadence: "<cron expr>"}
+#:
+#: `expression` is the workflow id (what the monitor labels "n8n:<id>"); `match` is kept so
+#: n8n_lane_host_conflict can flag the cron line / timer still being live beside the workflow
+#: (CRON_PRESENT_WHILE_SCHEDULER_N8N / TIMER_ENABLED_WHILE_SCHEDULER_N8N). Scheduler presence is
+#: proven by the run ledger / RunReceipt, never by n8n's own UI: a RUN_DONE (or RUN_SKIPPED_LOCK)
+#: row for the lane within expected_cadence_hours, see `n8n_last_run`.
+SCHEDULER_N8N = "n8n"
+SCHEDULER_KINDS = ("cron", "systemd", "event", "none", SCHEDULER_N8N)
 OUTPUT_SIGNAL_KINDS = ("file_mtime", "json_key", "db_max", "systemd_result", "none")
 
 
@@ -397,14 +415,32 @@ def discover_commented_cron(text: Optional[str] = None) -> list[dict[str, Any]]:
             # Not a schedule expression; look for an explicit retirement tag.
             if not _RETIRE_TAG.search(body):
                 continue
-        out.append({"kind": "cron_commented", "expression": body,
-                    "tags": sorted(set(_RETIRE_TAG.findall(body)))})
+        entry = {"kind": "cron_commented", "expression": body,
+                 "tags": sorted(set(_RETIRE_TAG.findall(body)))}
+        cut = n8n_cutover_tag(body)
+        if cut:
+            entry["retired_lane_id"] = cut["lane_id"]
+            entry["retired_on"] = cut["date"]
+        out.append(entry)
     return out
 
 
 _RETIRE_TAG = re.compile(
     r"(PHASE\d+-RETIRED|R9_DISABLED[A-Z_]*|RETIRED\s+\d{4}-\d{2}-\d{2}"
-    r"|OFFPEAK_SOAK|DISABLED)")
+    r"|n8n-cutover|OFFPEAK_SOAK|DISABLED)")
+
+#: `# RETIRED <date> n8n-cutover <lane_id> <original line>` — written by
+#: scripts/pipelines/cutover/_cutover.py --lane when a cron lane moves to n8n. The line is
+#: commented, never deleted (§0 rail 6); the tag names the lane so rollback can find exactly it.
+N8N_CUTOVER_TAG = re.compile(r"RETIRED\s+(\d{4}-\d{2}-\d{2})\s+n8n-cutover\s+(\S+)\s")
+
+
+def n8n_cutover_tag(line: str) -> Optional[dict[str, str]]:
+    """{date, lane_id} when a crontab line carries the n8n-cutover retirement tag, else None."""
+    m = N8N_CUTOVER_TAG.search(str(line or ""))
+    if not m:
+        return None
+    return {"date": m.group(1), "lane_id": m.group(2)}
 
 
 def discover_systemd() -> list[dict[str, Any]]:
@@ -437,7 +473,109 @@ def discover_all(*, cron_text: Optional[str] = None,
 
 # ── evaluating one lane ────────────────────────────────────────────────────
 
-def _scheduler_present(row: dict[str, Any], found: dict[str, Any]) -> bool:
+# ── n8n scheduler-of-record evidence ───────────────────────────────────────
+#
+# Shared contract with the run executor (scripts/n8n_run_executor.py, stream B): the ledger is
+# `$TRADEAI_STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite`, table `runs(run_id, lane_id,
+# mode, state, requested_by, caller_id, requested_at, started_at, finished_at, exit_code,
+# duration_s, receipt_json)`; receipts are `data/runtime/n8n_runs/<run_id>.json` (RunReceipt@v1:
+# lane_id, mode, exit_code, finished_at, state). Read-only here, always.
+
+N8N_LEDGER_REL = Path("data") / "governance" / "n8n_coordination_ledger.sqlite"
+N8N_RUNS_REL = Path("data") / "runtime" / "n8n_runs"
+N8N_RUN_STATES_PRESENT = ("RUN_DONE", "RUN_SKIPPED_LOCK")
+
+
+def n8n_ledger_path(root: Optional[Path] = None) -> Path:
+    explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    if explicit:
+        return Path(explicit)
+    return (Path(root) if root else state_root()) / N8N_LEDGER_REL
+
+
+def n8n_runs_dir(root: Optional[Path] = None) -> Path:
+    return (Path(root) if root else state_root()) / N8N_RUNS_REL
+
+
+def _n8n_last_run_from_ledger(lane_id: str, path: Path,
+                              states: Iterable[str]) -> Optional[dict[str, Any]]:
+    """Newest finished run for the lane in the given states, or None. Never raises, never writes."""
+    if not path.is_file():
+        return None
+    st = tuple(states)                   # empty = any state
+    try:
+        uri = f"file:{path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+        try:
+            conn.row_factory = sqlite3.Row
+            where = "lane_id = ? AND finished_at IS NOT NULL"
+            if st:
+                where += " AND state IN (%s)" % ",".join("?" * len(st))
+            q = ("SELECT run_id, lane_id, mode, state, finished_at, exit_code FROM runs "
+                 f"WHERE {where} ORDER BY finished_at DESC LIMIT 1")
+            row = conn.execute(q, (lane_id, *st)).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None                      # absent table / locked / not a db: fall back to receipts
+    if row is None:
+        return None
+    return {"run_id": row["run_id"], "mode": row["mode"], "state": row["state"],
+            "finished_at": row["finished_at"], "exit_code": row["exit_code"],
+            "source": "ledger", "detail": str(path)}
+
+
+def _n8n_last_run_from_receipts(lane_id: str, folder: Path,
+                                states: Iterable[str]) -> Optional[dict[str, Any]]:
+    st = set(states)
+    best: Optional[dict[str, Any]] = None
+    best_ts: Optional[datetime] = None
+    if not folder.is_dir():
+        return None
+    for p in folder.glob("*.json"):
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict) or str(doc.get("lane_id") or "") != lane_id:
+            continue
+        if st and str(doc.get("state") or "") not in st:
+            continue
+        ts = _parse_ts(doc.get("finished_at"))
+        if ts is None:
+            continue
+        if best_ts is None or ts > best_ts:
+            best_ts = ts
+            best = {"run_id": doc.get("run_id") or p.stem, "mode": doc.get("mode"),
+                    "state": doc.get("state"), "finished_at": doc.get("finished_at"),
+                    "exit_code": doc.get("exit_code"), "source": "receipt", "detail": str(p)}
+    return best
+
+
+def n8n_last_run(lane_id: str, *, root: Optional[Path] = None,
+                 states: Iterable[str] = N8N_RUN_STATES_PRESENT) -> Optional[dict[str, Any]]:
+    """The newest finished n8n run for a lane: the ledger first, else the newest RunReceipt file.
+
+    None when neither exists — the lane has no scheduler-of-record evidence and is ORPHANED.
+    """
+    states = tuple(states)
+    hit = _n8n_last_run_from_ledger(lane_id, n8n_ledger_path(root), states)
+    if hit is None:
+        hit = _n8n_last_run_from_receipts(lane_id, n8n_runs_dir(root), states)
+    return hit
+
+
+def scheduler_label(sched: Optional[dict[str, Any]]) -> str:
+    """`kind:expression` — what the lane monitor prints; an n8n lane reads `n8n:<workflow id>`."""
+    sched = sched or {}
+    kind = str(sched.get("kind") or "none")
+    expr = str(sched.get("expression") or "")
+    return f"{kind}:{expr}" if expr else kind
+
+
+def _scheduler_present(row: dict[str, Any], found: dict[str, Any], *,
+                       now: Optional[datetime] = None,
+                       root: Optional[Path] = None) -> bool:
     """Does this lane's declared scheduler still exist?
 
     ORPHANED — a registry row whose scheduler is gone — is the verdict that
@@ -447,6 +585,20 @@ def _scheduler_present(row: dict[str, Any], found: dict[str, Any]) -> bool:
     kind, expr = sched.get("kind"), str(sched.get("expression") or "")
     if kind == "none":
         return False
+    if kind == SCHEDULER_N8N:
+        # n8n is not on this host; its UI is not evidence. The scheduler "exists" when the run
+        # ledger (or a RunReceipt) shows it fired the lane within one cadence.
+        last = n8n_last_run(str(row.get("lane_id") or ""), root=root)
+        if last is None:
+            return False
+        ts = _parse_ts(last.get("finished_at"))
+        if ts is None:
+            return False
+        cadence_h = float(row.get("expected_cadence_hours") or 0) or None
+        if cadence_h is None:
+            return True
+        now = now or datetime.now(timezone.utc)
+        return (now - ts) <= timedelta(hours=cadence_h)
     if kind == "systemd":
         return any(u["expression"] == expr for u in found.get("systemd") or [])
     if kind == "cron":
@@ -505,7 +657,7 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
     cadence_h = float(row.get("expected_cadence_hours") or 0) or None
     age_h = round((now - last).total_seconds() / 3600.0, 2) if last else None
 
-    sched_ok = _scheduler_present(row, found)
+    sched_ok = _scheduler_present(row, found, now=now, root=root)
     try:
         in_window = _within_declared_days(row, now)
         days_err: Optional[str] = None
@@ -555,6 +707,7 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
         "ok": verdict not in FINDING_VERDICTS,
         "firing": [verdict] if verdict in FINDING_VERDICTS else [],
         "scheduler": row.get("scheduler"),
+        "scheduler_label": scheduler_label(row.get("scheduler")),
         "scheduler_present": sched_ok,
         "expected_cadence_hours": cadence_h,
         "last_output_at": last.isoformat() if last else None,
@@ -566,6 +719,10 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
     }
     if days_err is not None:
         out["active_days_error"] = days_err
+    if str((row.get("scheduler") or {}).get("kind")) == SCHEDULER_N8N:
+        # Any-state newest run too, so a RUN_FAILED lane reads as "n8n fired and failed" in the
+        # report rather than as a bare ORPHANED.
+        out["n8n_last_run"] = n8n_last_run(lane_id, root=root, states=())
     return out
 
 

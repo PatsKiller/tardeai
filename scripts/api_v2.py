@@ -54032,6 +54032,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     lane_id=q.get("lane") or q.get("lane_id") or None,
                     state=q.get("state") or None,
                     limit=int(q.get("limit") or 100),
+                    source=q.get("source") or None,
                 ),
             }
         except Exception as e:
@@ -54058,6 +54059,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.approval_board_projection import load_board as _board_load
 
             return 200, {"ok": True, "data": _board_load()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # Migration board (n8n scheduler-of-record program, stream G, 2026-10-08): per lane the
+    # scheduler of record, phase, last run, output-signal age, rollback readiness and risk flags, as
+    # written by scripts/n8n_migration_board.py --write. Serves the receipt file; computes nothing.
+    if base_path == "/api/v2/coordination/migration-board":
+        try:
+            from lib.n8n_pilot_observations import state_root as _mb_root
+
+            _mb = _mb_root() / "data" / "runtime" / "n8n_migration_board_last.json"
+            if not _mb.is_file():
+                return 200, {
+                    "ok": True,
+                    "data": {
+                        "schema": "N8nMigrationBoard@v1",
+                        "status": "NO_BOARD",
+                        "note": "scripts/n8n_migration_board.py --write has not run here",
+                        "lanes": [],
+                        "summary": {},
+                    },
+                }
+            return 200, {"ok": True, "data": json.loads(_mb.read_text(encoding="utf-8"))}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 

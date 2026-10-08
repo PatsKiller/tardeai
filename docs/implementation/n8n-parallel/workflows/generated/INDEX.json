@@ -1,0 +1,1033 @@
+{
+  "code_sha": "86c38602e48f",
+  "credential_name": "tradeai-run-relay",
+  "generated_at": "2026-10-08T12:59:49+00:00",
+  "generator": "scripts/n8n_workflow_templates.py",
+  "lane_count": 70,
+  "lanes": [
+    {
+      "committed": true,
+      "lane_id": "n8n-pilot-dispatch",
+      "live_file": "n8n-pilot-dispatch.json",
+      "live_workflow_id": "078e8fcbea0c5020",
+      "schedule": [
+        "*/15 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: */15 * * * * scripts/n8n_pilot_dispatch.py --apply (registry kind cron)",
+      "shadow_file": "n8n-pilot-dispatch-shadow.json",
+      "shadow_workflow_id": "baddad5487f9c288",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "n8n-incident-fanin",
+      "live_file": "n8n-incident-fanin.json",
+      "live_workflow_id": "722fac0e043ea5c4",
+      "schedule": [
+        "*/5 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: */5 * * * * scripts/n8n_incident_fanin.py --apply (registry kind cron)",
+      "shadow_file": "n8n-incident-fanin-shadow.json",
+      "shadow_workflow_id": "e511583d42831b8b",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "n8n-research-intake-consumer",
+      "live_file": "n8n-research-intake-consumer.json",
+      "live_workflow_id": "21fd15d5f8a4c4da",
+      "schedule": [
+        "*/15 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: */15 * * * * scripts/n8n_research_intake_consumer.py --apply (registry kind cron)",
+      "shadow_file": "n8n-research-intake-consumer-shadow.json",
+      "shadow_workflow_id": "577f9dfaede632f3",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "live_file": "crontab-snapshot-for-health-agent.json",
+      "live_workflow_id": "c0d4c7845e5c4fcc",
+      "schedule": [
+        "*/20 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: */20 * * * * crontab -l > .../crontab_snapshot.txt (registry kind cron)",
+      "shadow_file": "crontab-snapshot-for-health-agent-shadow.json",
+      "shadow_workflow_id": "5439cd4d82e1f305",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "n8n-lab-watchdog",
+      "live_file": "n8n-lab-watchdog.json",
+      "live_workflow_id": "54069d7c36598de8",
+      "schedule": [
+        "*/5 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-n8n-lab-watchdog.timer OnUnitActiveSec=5min (registry kind systemd)",
+      "shadow_file": "n8n-lab-watchdog-shadow.json",
+      "shadow_workflow_id": "9208ac827e514183",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "lane-governance-packet-weekly",
+      "live_file": "lane-governance-packet-weekly.json",
+      "live_workflow_id": "175e44ef2a1614a4",
+      "note": "No scheduler entry exists yet; n8n would be the first scheduler-of-record. Needs the registry row flipped from NEVER_SCHEDULED.",
+      "schedule": [
+        "20 6 * * 1"
+      ],
+      "schedule_fidelity": "PROPOSED",
+      "schedule_source": "registry row NEVER_SCHEDULED; proposed line '20 6 * * 1 report_lane_governance_packet.py --write --period weekly'",
+      "shadow_file": "lane-governance-packet-weekly-shadow.json",
+      "shadow_workflow_id": "e6f62397d5ae2aa2",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "maturity-remeasure",
+      "live_file": "maturity-remeasure.json",
+      "live_workflow_id": "e18d7849b4142927",
+      "schedule": [
+        "40 6 * * 1"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 40 6 * * 1 scripts/maturity_remeasure.py --write (registry kind cron)",
+      "shadow_file": "maturity-remeasure-shadow.json",
+      "shadow_workflow_id": "a26114588930ae9b",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "n8n-monitor-trade-ai",
+      "live_file": "n8n-monitor-trade-ai.json",
+      "live_workflow_id": "e10e7c19321c906a",
+      "note": "An n8n workflow of this NAME already exists (GET build-meta, target lost to loopback binding). Rename or deactivate it before import so the name is not duplicated.",
+      "schedule": [
+        "*/5 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "n8n workflow s57KBllvqf6Jb5xF 'Every 5 minutes' (workflows/INDEX.json)",
+      "shadow_file": "n8n-monitor-trade-ai-shadow.json",
+      "shadow_workflow_id": "4e8c571514edcfc2",
+      "tranche": "N1"
+    },
+    {
+      "committed": true,
+      "lane_id": "n8n-monitor-dof",
+      "live_file": "n8n-monitor-dof.json",
+      "live_workflow_id": "e10087387b964e87",
+      "note": "An n8n workflow of this NAME already exists (GET run-scope). Rename or deactivate it before import.",
+      "schedule": [
+        "*/5 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "n8n workflow GXwhbRkwsGcYZxgn 'Every 5 minutes' (workflows/INDEX.json)",
+      "shadow_file": "n8n-monitor-dof-shadow.json",
+      "shadow_workflow_id": "7b7392a0cfa5cdde",
+      "tranche": "N1"
+    },
+    {
+      "committed": false,
+      "lane_id": "premarket-data-pipeline",
+      "live_file": "pending/premarket-data-pipeline.json",
+      "live_workflow_id": "4befcbb3f91d4143",
+      "schedule": [
+        "45 5 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 45 5 * * * run_premarket_data_pipeline.sh --stage premarket (registry kind cron)",
+      "shadow_file": "pending/premarket-data-pipeline-shadow.json",
+      "shadow_workflow_id": "f4553ff360e21a9f",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "after-close-pipeline-close-capture",
+      "live_file": "pending/after-close-pipeline-close-capture.json",
+      "live_workflow_id": "c3d4c049431eb43f",
+      "pipeline": "after_close",
+      "schedule": [
+        "5 16 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 5 16 * * 1-5 run_after_close_pipeline.sh --stage close-capture (registry kind cron)",
+      "shadow_file": "pending/after-close-pipeline-close-capture-shadow.json",
+      "shadow_workflow_id": "aac827ce00ff8ae4",
+      "stage_order": 1,
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "after-close-pipeline-broker-truth",
+      "live_file": "pending/after-close-pipeline-broker-truth.json",
+      "live_workflow_id": "77a473aea9df8833",
+      "pipeline": "after_close",
+      "schedule": [
+        "25 17 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 25 17 * * 1-5 run_after_close_pipeline.sh --stage broker-truth (registry kind cron)",
+      "shadow_file": "pending/after-close-pipeline-broker-truth-shadow.json",
+      "shadow_workflow_id": "0d48d2951cdc0cd0",
+      "stage_order": 2,
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "after-close-pipeline-planning",
+      "live_file": "pending/after-close-pipeline-planning.json",
+      "live_workflow_id": "02709b160025d4ea",
+      "pipeline": "after_close",
+      "schedule": [
+        "35 17 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 35 17 * * 1-5 run_after_close_pipeline.sh --stage planning (registry kind cron)",
+      "shadow_file": "pending/after-close-pipeline-planning-shadow.json",
+      "shadow_workflow_id": "19e0ed9711cfb320",
+      "stage_order": 3,
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "hermes-learning-pipeline-learn",
+      "live_file": "pending/hermes-learning-pipeline-learn.json",
+      "live_workflow_id": "2706b09e7b38661a",
+      "pipeline": "hermes_learning",
+      "schedule": [
+        "50 10 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 50 10 * * * run_hermes_pipeline.sh --stage learn (registry kind cron)",
+      "shadow_file": "pending/hermes-learning-pipeline-learn-shadow.json",
+      "shadow_workflow_id": "a33cd415e30d6f01",
+      "stage_order": 1,
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "hermes-learning-pipeline-tune",
+      "live_file": "pending/hermes-learning-pipeline-tune.json",
+      "live_workflow_id": "9d53936aacec05f0",
+      "pipeline": "hermes_learning",
+      "schedule": [
+        "0 17 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 17 * * * run_hermes_pipeline.sh --stage tune (registry kind cron)",
+      "shadow_file": "pending/hermes-learning-pipeline-tune-shadow.json",
+      "shadow_workflow_id": "c7dc5a8273bf6f44",
+      "stage_order": 2,
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "hermes-overnight-pipeline-close",
+      "live_file": "pending/hermes-overnight-pipeline-close.json",
+      "live_workflow_id": "09356c50dc9d4e80",
+      "pipeline": "hermes_overnight",
+      "schedule": [
+        "13 23 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 13 23 * * * run_hermes_pipeline.sh --manifest hermes_overnight.json --stage close (registry kind cron)",
+      "shadow_file": "pending/hermes-overnight-pipeline-close-shadow.json",
+      "shadow_workflow_id": "128dfb29e4faec7f",
+      "stage_order": 1,
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "hermes-overnight-pipeline-night",
+      "live_file": "pending/hermes-overnight-pipeline-night.json",
+      "live_workflow_id": "4e66cb561681065f",
+      "pipeline": "hermes_overnight",
+      "schedule": [
+        "20 2 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 20 2 * * * run_hermes_pipeline.sh --manifest hermes_overnight.json --stage night (registry kind cron)",
+      "shadow_file": "pending/hermes-overnight-pipeline-night-shadow.json",
+      "shadow_workflow_id": "0a170db6744afd7f",
+      "stage_order": 2,
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "platform-maintenance-nightly",
+      "live_file": "pending/platform-maintenance-nightly.json",
+      "live_workflow_id": "16076223b5a85c1a",
+      "schedule": [
+        "15 1 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-platform-maintenance-nightly.timer OnCalendar=*-*-* 01:15:00 (registry kind systemd)",
+      "shadow_file": "pending/platform-maintenance-nightly-shadow.json",
+      "shadow_workflow_id": "8a9162783109e7bb",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "platform-maintenance-weekly",
+      "live_file": "pending/platform-maintenance-weekly.json",
+      "live_workflow_id": "68c4230652661677",
+      "schedule": [
+        "0 3 * * 0"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-platform-maintenance-weekly.timer OnCalendar=Sun *-*-* 03:00:00 (registry kind systemd)",
+      "shadow_file": "pending/platform-maintenance-weekly-shadow.json",
+      "shadow_workflow_id": "4b11eabaa6735a90",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "platform-maintenance-monthly",
+      "live_file": "pending/platform-maintenance-monthly.json",
+      "live_workflow_id": "8bbd5b4db9349bba",
+      "schedule": [
+        "0 6 1 * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-platform-maintenance-monthly.timer OnCalendar=*-*-01 06:00:00 (registry kind systemd)",
+      "shadow_file": "pending/platform-maintenance-monthly-shadow.json",
+      "shadow_workflow_id": "18b20ea58617ffc2",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "governance-pipeline",
+      "live_file": "pending/governance-pipeline.json",
+      "live_workflow_id": "7f93377a2eae573b",
+      "schedule": [
+        "40 7 * * 1-5",
+        "0 18 * * 0"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-governance-pipeline.timer OnCalendar=Mon-Fri 07:40 + OnCalendar=Sun 18:00 (registry kind systemd; runs from the dev tree, re-pin pending)",
+      "shadow_file": "pending/governance-pipeline-shadow.json",
+      "shadow_workflow_id": "bcbcc68b9c8c5e56",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "portfolio-daily-cadence",
+      "live_file": "pending/portfolio-daily-cadence.json",
+      "live_workflow_id": "efe083774ee43184",
+      "schedule": [
+        "30 7 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-portfolio-daily-cadence.timer OnCalendar=Mon-Fri *-*-* 07:30:00 (registry kind systemd; dev tree, re-pin pending)",
+      "shadow_file": "pending/portfolio-daily-cadence-shadow.json",
+      "shadow_workflow_id": "6c04dc250b7d6a04",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "portfolio-weekly-cadence",
+      "live_file": "pending/portfolio-weekly-cadence.json",
+      "live_workflow_id": "4cf5edd66a7d29c7",
+      "schedule": [
+        "30 20 * * 0"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-portfolio-weekly-cadence.timer OnCalendar=Sun *-*-* 20:30:00 (registry kind systemd; dev tree, re-pin pending)",
+      "shadow_file": "pending/portfolio-weekly-cadence-shadow.json",
+      "shadow_workflow_id": "ae61fa66dba00c9f",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "portfolio-monthly-cadence",
+      "live_file": "pending/portfolio-monthly-cadence.json",
+      "live_workflow_id": "1f01214b9b6d40de",
+      "schedule": [
+        "35 7 1 * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-portfolio-monthly-cadence.timer OnCalendar=*-*-01 07:35:00 (registry kind systemd; dev tree, re-pin pending)",
+      "shadow_file": "pending/portfolio-monthly-cadence-shadow.json",
+      "shadow_workflow_id": "a8b8cbf625caebb0",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "portfolio-lookthrough-cadence",
+      "live_file": "pending/portfolio-lookthrough-cadence.json",
+      "live_workflow_id": "e183713ef0992eab",
+      "note": "systemd means the FIRST Sunday of the month. Vixie-style cron (and n8n's scheduler) ORs day-of-month with day-of-week, so '30 6 1-7 * 0' also fires on the 1st-7th and on every Sunday. Operator decision: accept the extra fires (the runner is idempotent per its receipt) or keep this one lane on its timer.",
+      "schedule": [
+        "30 6 1-7 * 0"
+      ],
+      "schedule_fidelity": "APPROXIMATE",
+      "schedule_source": "systemd: tradeai-portfolio-lookthrough-cadence.timer OnCalendar=Sun *-*-01..07 06:30:00 (registry kind systemd; dev tree, re-pin pending)",
+      "shadow_file": "pending/portfolio-lookthrough-cadence-shadow.json",
+      "shadow_workflow_id": "4a447dec9837c273",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "portfolio-backup-cadence",
+      "live_file": "pending/portfolio-backup-cadence.json",
+      "live_workflow_id": "a47fd8befe0d4b59",
+      "note": "Doc 16 §4.2 lists this lane under both N2 ('portfolio cadences x5') and N5; it is generated once, here. The unique lane count is therefore 70, not 71.",
+      "schedule": [
+        "30 2 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-portfolio-backup-cadence.timer OnCalendar=*-*-* 02:30:00 (registry kind systemd; dev tree, re-pin pending)",
+      "shadow_file": "pending/portfolio-backup-cadence-shadow.json",
+      "shadow_workflow_id": "d58dceed7dd37a06",
+      "tranche": "N2"
+    },
+    {
+      "committed": false,
+      "lane_id": "llm-spend-report-daily",
+      "live_file": "pending/llm-spend-report-daily.json",
+      "live_workflow_id": "9cdaee27ad234a2e",
+      "schedule": [
+        "5 7 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 5 7 * * * scripts/llm_spend_report.py --period daily --send (registry kind cron)",
+      "shadow_file": "pending/llm-spend-report-daily-shadow.json",
+      "shadow_workflow_id": "9f4e2228176a3815",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "llm-spend-report-weekly",
+      "live_file": "pending/llm-spend-report-weekly.json",
+      "live_workflow_id": "1bc38431befd7e55",
+      "schedule": [
+        "10 7 * * 1"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 10 7 * * 1 scripts/llm_spend_report.py --period weekly --send (registry kind cron)",
+      "shadow_file": "pending/llm-spend-report-weekly-shadow.json",
+      "shadow_workflow_id": "c302cf1b2b3f1d6e",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "llm-spend-report-monthly",
+      "live_file": "pending/llm-spend-report-monthly.json",
+      "live_workflow_id": "6b364e9a05c1d78d",
+      "schedule": [
+        "15 7 1 * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 15 7 1 * * scripts/llm_spend_report.py --period monthly --send (registry kind cron)",
+      "shadow_file": "pending/llm-spend-report-monthly-shadow.json",
+      "shadow_workflow_id": "60bca82c261e910e",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "material-change-digest",
+      "live_file": "pending/material-change-digest.json",
+      "live_workflow_id": "9525e7df36b89271",
+      "schedule": [
+        "15 16 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 15 16 * * * scripts/notify_material_change.py --digest --apply (registry kind cron)",
+      "shadow_file": "pending/material-change-digest-shadow.json",
+      "shadow_workflow_id": "1c15e96a1db54742",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "alert-daily-digest",
+      "live_file": "pending/alert-daily-digest.json",
+      "live_workflow_id": "33b2628fcf145af3",
+      "schedule": [
+        "55 17 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 55 17 * * 1-5 scripts/alert_daily_digest.py (no registry row; needs --receipt)",
+      "shadow_file": "pending/alert-daily-digest-shadow.json",
+      "shadow_workflow_id": "897071cf5b29bf98",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "ops-daily-digest",
+      "live_file": "pending/ops-daily-digest.json",
+      "live_workflow_id": "0bac5a78dbe44dc3",
+      "schedule": [
+        "0 18 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 18 * * * ~/.openclaw/skills/tradeai-health-inspect/scripts/ops_daily_digest.py (no registry row; needs --receipt)",
+      "shadow_file": "pending/ops-daily-digest-shadow.json",
+      "shadow_workflow_id": "44dcc0e8f8aa77b1",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "ops-weekly-learning-report",
+      "live_file": "pending/ops-weekly-learning-report.json",
+      "live_workflow_id": "ccbb6e6df4b1dd95",
+      "schedule": [
+        "30 9 * * 0"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 30 9 * * 0 ~/.openclaw/skills/tradeai-health-inspect/scripts/ops_weekly_learning_report.py (no registry row)",
+      "shadow_file": "pending/ops-weekly-learning-report-shadow.json",
+      "shadow_workflow_id": "c76a827cd5d91624",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "system-rollup-snapshot",
+      "live_file": "pending/system-rollup-snapshot.json",
+      "live_workflow_id": "4aee8ff64e5b0f9d",
+      "schedule": [
+        "40 20 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 40 20 * * * scripts/system_rollup_snapshot.py (no registry row)",
+      "shadow_file": "pending/system-rollup-snapshot-shadow.json",
+      "shadow_workflow_id": "9c13c70626706c31",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "generate-weekly-docx",
+      "live_file": "pending/generate-weekly-docx.json",
+      "live_workflow_id": "840f097c0d873e0e",
+      "schedule": [
+        "0 21 * * 0"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 21 * * 0 scripts/generate_weekly_docx.py (no registry row)",
+      "shadow_file": "pending/generate-weekly-docx-shadow.json",
+      "shadow_workflow_id": "593d4a2dc10b17a8",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "generate-analyst-daily-digest",
+      "live_file": "pending/generate-analyst-daily-digest.json",
+      "live_workflow_id": "dc86c60c3b2975dd",
+      "schedule": [
+        "30 7 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 30 7 * * 1-5 scripts/generate_analyst_daily_digest.py --format docx (no registry row)",
+      "shadow_file": "pending/generate-analyst-daily-digest-shadow.json",
+      "shadow_workflow_id": "ffa6bbfa93ad4056",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "desk-suggestions-digest",
+      "live_file": "pending/desk-suggestions-digest.json",
+      "live_workflow_id": "8b2fb4cc33a1658f",
+      "schedule": [
+        "0 8 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 8 * * 1-5 scripts/desk_suggestions_digest.py (no registry row; needs --receipt)",
+      "shadow_file": "pending/desk-suggestions-digest-shadow.json",
+      "shadow_workflow_id": "350e0f34590f9348",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "rotation-rebalance-digest",
+      "live_file": "pending/rotation-rebalance-digest.json",
+      "live_workflow_id": "d01ef7e5a2c3283f",
+      "schedule": [
+        "0 18 * * 0"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 18 * * 0 scripts/rotation_rebalance_digest.py (no registry row)",
+      "shadow_file": "pending/rotation-rebalance-digest-shadow.json",
+      "shadow_workflow_id": "54468142f257bdc4",
+      "tranche": "N3"
+    },
+    {
+      "committed": false,
+      "lane_id": "expected-services-audit",
+      "live_file": "pending/expected-services-audit.json",
+      "live_workflow_id": "2b54d65972996e52",
+      "schedule": [
+        "12 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-expected-services.timer OnCalendar=*-*-* *:12:00 RandomizedDelaySec=60 (registry kind systemd)",
+      "shadow_file": "pending/expected-services-audit-shadow.json",
+      "shadow_workflow_id": "b511af35f153ea6d",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "data-source-health-audit",
+      "live_file": "pending/data-source-health-audit.json",
+      "live_workflow_id": "ec5500a71f2937c9",
+      "schedule": [
+        "27 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-data-source-health.timer OnCalendar=*-*-* *:27:00 RandomizedDelaySec=60 (registry kind systemd)",
+      "shadow_file": "pending/data-source-health-audit-shadow.json",
+      "shadow_workflow_id": "75d27efc89c0213d",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "served-copy-split-audit",
+      "live_file": "pending/served-copy-split-audit.json",
+      "live_workflow_id": "a7cd9c1241611dd1",
+      "schedule": [
+        "42 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-served-copy-split.timer OnCalendar=*-*-* *:42:00 RandomizedDelaySec=60 (registry kind systemd)",
+      "shadow_file": "pending/served-copy-split-audit-shadow.json",
+      "shadow_workflow_id": "97b87e0d67d6d3c0",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "data-plausibility-audit",
+      "live_file": "pending/data-plausibility-audit.json",
+      "live_workflow_id": "27b92a800c33a42b",
+      "schedule": [
+        "20 6 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-data-plausibility.timer OnCalendar=*-*-* 06:20:00 RandomizedDelaySec=120 (registry kind systemd)",
+      "shadow_file": "pending/data-plausibility-audit-shadow.json",
+      "shadow_workflow_id": "7220ff909acbb4ee",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "gap-resolution-audit",
+      "live_file": "pending/gap-resolution-audit.json",
+      "live_workflow_id": "12123c6edca96c9b",
+      "schedule": [
+        "7,37 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-gap-resolution.timer OnCalendar=*-*-* *:07,37:00 RandomizedDelaySec=60 (registry kind systemd)",
+      "shadow_file": "pending/gap-resolution-audit-shadow.json",
+      "shadow_workflow_id": "385db731cadc1e6d",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "source-litmus-vs-yahoo",
+      "live_file": "pending/source-litmus-vs-yahoo.json",
+      "live_workflow_id": "f497a8fd0a27457d",
+      "schedule": [
+        "45 7 * * 2-6"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-source-litmus.timer OnCalendar=Tue..Sat *-*-* 07:45:00 RandomizedDelaySec=120 (registry kind systemd)",
+      "shadow_file": "pending/source-litmus-vs-yahoo-shadow.json",
+      "shadow_workflow_id": "ea0d6699fbc5927a",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "finviz-view-contracts",
+      "live_file": "pending/finviz-view-contracts.json",
+      "live_workflow_id": "f186f33818018b7e",
+      "schedule": [
+        "5 6 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-finviz-view-contracts.timer OnCalendar=Mon..Fri *-*-* 06:05:00 RandomizedDelaySec=120 (registry kind systemd)",
+      "shadow_file": "pending/finviz-view-contracts-shadow.json",
+      "shadow_workflow_id": "2c725c7dfd4ac62f",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "operator-answer-quality-audit",
+      "live_file": "pending/operator-answer-quality-audit.json",
+      "live_workflow_id": "9cb97144baeddbcc",
+      "schedule": [
+        "22,52 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-operator-answer-quality.timer OnCalendar=*-*-* *:22,52:00 RandomizedDelaySec=60 (registry kind systemd)",
+      "shadow_file": "pending/operator-answer-quality-audit-shadow.json",
+      "shadow_workflow_id": "aff3c305e317d83f",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "research-lane-health",
+      "live_file": "pending/research-lane-health.json",
+      "live_workflow_id": "d08d238a772e5dd8",
+      "schedule": [
+        "*/15 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-research-lane-health.timer OnUnitActiveSec=15min (registry kind systemd)",
+      "shadow_file": "pending/research-lane-health-shadow.json",
+      "shadow_workflow_id": "f08dc0f945279776",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "agent-runtime-health",
+      "live_file": "pending/agent-runtime-health.json",
+      "live_workflow_id": "cc2e84da4a552b30",
+      "schedule": [
+        "*/5 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "systemd: tradeai-agent-runtime-health.timer OnUnitActiveSec=5min (registry kind systemd)",
+      "shadow_file": "pending/agent-runtime-health-shadow.json",
+      "shadow_workflow_id": "16a81cea927c4542",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "job-coverage-monitor",
+      "live_file": "pending/job-coverage-monitor.json",
+      "live_workflow_id": "2bb7ea47111564d8",
+      "schedule": [
+        "30 8,20 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 30 8,20 * * * scripts/job_coverage_monitor.py (no registry row; needs --receipt)",
+      "shadow_file": "pending/job-coverage-monitor-shadow.json",
+      "shadow_workflow_id": "33fec656d1b3fcd0",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "llm-retry-monitor",
+      "live_file": "pending/llm-retry-monitor.json",
+      "live_workflow_id": "8f2b7c0da60b14f1",
+      "schedule": [
+        "0 7 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 7 * * * scripts/llm_retry_monitor.py (no registry row)",
+      "shadow_file": "pending/llm-retry-monitor-shadow.json",
+      "shadow_workflow_id": "02cb2d0ad1d49927",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "catalyst-calibration-monitor",
+      "live_file": "pending/catalyst-calibration-monitor.json",
+      "live_workflow_id": "129228631abc05e4",
+      "schedule": [
+        "40 5 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 40 5 * * * scripts/catalyst_calibration_monitor.py (no registry row)",
+      "shadow_file": "pending/catalyst-calibration-monitor-shadow.json",
+      "shadow_workflow_id": "283ceeb030de5e66",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "source-attribution-monitor",
+      "live_file": "pending/source-attribution-monitor.json",
+      "live_workflow_id": "754fbf1133803631",
+      "schedule": [
+        "0 6 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 6 * * * scripts/source_attribution_monitor.py (no registry row)",
+      "shadow_file": "pending/source-attribution-monitor-shadow.json",
+      "shadow_workflow_id": "498d749165a93ff9",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "watch-directives-monitor",
+      "live_file": "pending/watch-directives-monitor.json",
+      "live_workflow_id": "9e9f8e0c19fbc7ce",
+      "schedule": [
+        "20 6 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 20 6 * * * scripts/watch_directives_monitor.py (no registry row)",
+      "shadow_file": "pending/watch-directives-monitor-shadow.json",
+      "shadow_workflow_id": "5966437c872aa18b",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "hermes-pipeline-health",
+      "live_file": "pending/hermes-pipeline-health.json",
+      "live_workflow_id": "8033f89338d8592e",
+      "schedule": [
+        "45 7,15 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 45 7,15 * * * scripts/hermes_pipeline_health.py --send (no registry row)",
+      "shadow_file": "pending/hermes-pipeline-health-shadow.json",
+      "shadow_workflow_id": "71ee32b20891133f",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "youtube-cookie-health-check",
+      "live_file": "pending/youtube-cookie-health-check.json",
+      "live_workflow_id": "6b7c0fa22a70ee1a",
+      "schedule": [
+        "45 19 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 45 19 * * * scripts/youtube_cookie_health_check.py (no registry row; needs --receipt)",
+      "shadow_file": "pending/youtube-cookie-health-check-shadow.json",
+      "shadow_workflow_id": "0980fe865273c8a3",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "finviz-health-check",
+      "live_file": "pending/finviz-health-check.json",
+      "live_workflow_id": "99dd2453ba816211",
+      "schedule": [
+        "25 6-18/3 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 25 6-18/3 * * 1-5 timeout 2m scripts/finviz_health_check.py (no registry row)",
+      "shadow_file": "pending/finviz-health-check-shadow.json",
+      "shadow_workflow_id": "b9f03303bbfcfae0",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "crawl-v3-dashboard",
+      "live_file": "pending/crawl-v3-dashboard.json",
+      "live_workflow_id": "c440cf81be20f0b9",
+      "schedule": [
+        "50 6 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 50 6 * * * scripts/crawl_v3_dashboard.py --telegram (no registry row)",
+      "shadow_file": "pending/crawl-v3-dashboard-shadow.json",
+      "shadow_workflow_id": "458ef4449ccf6ba3",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "alert-missing-conditions",
+      "live_file": "pending/alert-missing-conditions.json",
+      "live_workflow_id": "797a14db922d4331",
+      "schedule": [
+        "30 7 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 30 7 * * 1-5 scripts/alert_missing_conditions.py (no registry row)",
+      "shadow_file": "pending/alert-missing-conditions-shadow.json",
+      "shadow_workflow_id": "224aef8b75a74b75",
+      "tranche": "N4"
+    },
+    {
+      "committed": false,
+      "lane_id": "drive-syncs-hourly",
+      "live_file": "pending/drive-syncs-hourly.json",
+      "live_workflow_id": "ab9c502a54dfd342",
+      "schedule": [
+        "5 * * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 5 * * * * scripts/run_drive_syncs.sh --apply (registry kind cron)",
+      "shadow_file": "pending/drive-syncs-hourly-shadow.json",
+      "shadow_workflow_id": "1c5b6ca1017714c9",
+      "tranche": "N5"
+    },
+    {
+      "committed": false,
+      "lane_id": "backup-generated-docs",
+      "live_file": "pending/backup-generated-docs.json",
+      "live_workflow_id": "84f83ee264187d3b",
+      "schedule": [
+        "50 23 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 50 23 * * * linux_launchers/backup_generated_docs.sh (no registry row)",
+      "shadow_file": "pending/backup-generated-docs-shadow.json",
+      "shadow_workflow_id": "0fb93c6de23cf143",
+      "tranche": "N5"
+    },
+    {
+      "committed": false,
+      "lane_id": "sync-memory-to-drive",
+      "live_file": "pending/sync-memory-to-drive.json",
+      "live_workflow_id": "a2293e487df03750",
+      "schedule": [
+        "10 3 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 10 3 * * * ~/.claude/sync-memory-to-drive.sh (no registry row; outside the repo)",
+      "shadow_file": "pending/sync-memory-to-drive-shadow.json",
+      "shadow_workflow_id": "cc039d818479fe0a",
+      "tranche": "N5"
+    },
+    {
+      "committed": false,
+      "lane_id": "commit-hermes-daily",
+      "live_file": "pending/commit-hermes-daily.json",
+      "live_workflow_id": "56dfa81f0fd6a535",
+      "schedule": [
+        "13 23 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 13 23 * * * run_with_deepseek_offpeak.sh --official -- scripts/commit_hermes_daily.sh (no registry row)",
+      "shadow_file": "pending/commit-hermes-daily-shadow.json",
+      "shadow_workflow_id": "99544b56d7284e56",
+      "tranche": "N5"
+    },
+    {
+      "committed": false,
+      "lane_id": "n8n-lab-backup",
+      "live_file": "pending/n8n-lab-backup.json",
+      "live_workflow_id": "c718d3c0931010b7",
+      "note": "Already a step of platform-maintenance-nightly (N2). Generated for completeness; recommend NOT activating — moving the parent lane moves this one.",
+      "schedule": [
+        "30 3 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "registry row RETIRED 2026-10-07 (was crontab 30 3 * * * scripts/n8n_lab_backup.sh --apply); superseded_by platform-maintenance-nightly",
+      "shadow_file": "pending/n8n-lab-backup-shadow.json",
+      "shadow_workflow_id": "fe3d41f8e1de24f8",
+      "tranche": "N5"
+    },
+    {
+      "committed": false,
+      "lane_id": "n8n-lab-restore-drill",
+      "live_file": "pending/n8n-lab-restore-drill.json",
+      "live_workflow_id": "5d0853e8faad04f1",
+      "note": "Already a step of platform-maintenance-weekly (N2). Generated for completeness; recommend NOT activating.",
+      "schedule": [
+        "0 4 * * 0"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "registry row RETIRED 2026-10-07 (was crontab 0 4 * * 0 scripts/n8n_lab_restore_drill.sh --apply); superseded_by platform-maintenance-weekly",
+      "shadow_file": "pending/n8n-lab-restore-drill-shadow.json",
+      "shadow_workflow_id": "bb1c7c433c2d7c72",
+      "tranche": "N5"
+    },
+    {
+      "committed": false,
+      "lane_id": "dof-auction-pipeline",
+      "live_file": "pending/dof-auction-pipeline.json",
+      "live_workflow_id": "2c85f62381e1a624",
+      "schedule": [
+        "0 20 * * 6"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 20 * * 6 ~/nyc-dof-auction scripts/run_pipeline.py (six stages in one line; no registry row; needs dof_reader + allowlist entry)",
+      "shadow_file": "pending/dof-auction-pipeline-shadow.json",
+      "shadow_workflow_id": "6dc36b2906b65c38",
+      "tranche": "N6"
+    },
+    {
+      "committed": false,
+      "lane_id": "dof-rescan-tickets",
+      "live_file": "pending/dof-rescan-tickets.json",
+      "live_workflow_id": "aba5e361399aa9ef",
+      "schedule": [
+        "0 18 * * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: 0 18 * * * ~/nyc-dof-auction scripts/rescan_tickets.py (no registry row; needs dof_reader + allowlist entry)",
+      "shadow_file": "pending/dof-rescan-tickets-shadow.json",
+      "shadow_workflow_id": "a2b3bc70258652b6",
+      "tranche": "N6"
+    },
+    {
+      "committed": false,
+      "lane_id": "openclaw-claude-plan-reminder-week-before",
+      "live_file": "pending/openclaw-claude-plan-reminder-week-before.json",
+      "live_workflow_id": "a9b4aece7a8b7c95",
+      "note": "Delivery stays in OpenClaw; the allowlist entry must call the OpenClaw reminder path, not a Trade AI sender.",
+      "schedule": [
+        "0 9 24 * *"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "OpenClaw cron 676c2212 'Claude plan reminder, about a week before month end' 0 9 24 * * (jobs.json)",
+      "shadow_file": "pending/openclaw-claude-plan-reminder-week-before-shadow.json",
+      "shadow_workflow_id": "aefe7f7ff6be8033",
+      "tranche": "N6"
+    },
+    {
+      "committed": false,
+      "lane_id": "openclaw-claude-plan-reminder-last-day",
+      "live_file": "pending/openclaw-claude-plan-reminder-last-day.json",
+      "live_workflow_id": "1675d3c97ed9a3d6",
+      "note": "Standard 5-field cron has no portable 'L' (last day). Moved to the 28th; operator may prefer to leave this reminder in OpenClaw.",
+      "schedule": [
+        "0 9 28 * *"
+      ],
+      "schedule_fidelity": "APPROXIMATE",
+      "schedule_source": "OpenClaw cron 0775cd6b 'Claude plan reminder, last day of month' 0 9 L * * (jobs.json)",
+      "shadow_file": "pending/openclaw-claude-plan-reminder-last-day-shadow.json",
+      "shadow_workflow_id": "7c0804ac0d2c0bad",
+      "tranche": "N6"
+    },
+    {
+      "committed": false,
+      "lane_id": "openclaw-supergrok-promo-expiry",
+      "live_file": "pending/openclaw-supergrok-promo-expiry.json",
+      "live_workflow_id": "c08d72aee9fba3c1",
+      "note": "One-shot. Deactivate the workflow after it fires or it repeats yearly.",
+      "schedule": [
+        "0 10 20 10 *"
+      ],
+      "schedule_fidelity": "ONE_SHOT",
+      "schedule_source": "OpenClaw at-job 9a26d34d 'SuperGrok promo expiry reminder' at 2026-10-20T14:00:00Z (= 10:00 ET)",
+      "shadow_file": "pending/openclaw-supergrok-promo-expiry-shadow.json",
+      "shadow_workflow_id": "a4749a4c0af46afb",
+      "tranche": "N6"
+    },
+    {
+      "committed": false,
+      "lane_id": "openclaw-sentinelone-earnings-reminder",
+      "live_file": "pending/openclaw-sentinelone-earnings-reminder.json",
+      "live_workflow_id": "d28ad5e4adcb021a",
+      "note": "One-shot. Deactivate the workflow after it fires or it repeats yearly.",
+      "schedule": [
+        "0 8 7 12 *"
+      ],
+      "schedule_fidelity": "ONE_SHOT",
+      "schedule_source": "OpenClaw at-job a9c337e0 'SentinelOne (S) earnings reminder' at 2026-12-07T13:00:00Z (= 08:00 ET)",
+      "shadow_file": "pending/openclaw-sentinelone-earnings-reminder-shadow.json",
+      "shadow_workflow_id": "940f8c1a4c49549f",
+      "tranche": "N6"
+    }
+  ],
+  "lanes_by_tranche": {
+    "N1": 9,
+    "N2": 17,
+    "N3": 12,
+    "N4": 20,
+    "N5": 6,
+    "N6": 6
+  },
+  "node_types": [
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.scheduleTrigger",
+    "n8n-nodes-base.set"
+  ],
+  "relay_url_placeholder": "http://RELAY_HOST:18092",
+  "relay_url_var": "TRADEAI_N8N_RUN_URL",
+  "schema": "N8nWorkflowSet@v1",
+  "timezone": "America/New_York"
+}

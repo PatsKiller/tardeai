@@ -3394,6 +3394,18 @@ GATES = [
         ["tests/test_wake_operator_turn_selection_20261005.py"],
     ),
     (
+        # 2026-10-08 — lane registry scheduler kind `n8n` (scheduler-of-record program):
+        # validation, ledger/receipt-proven presence, the double-scheduler conflicts,
+        # the per-line `_cutover.py --lane` cutover/rollback against a fake crontab, and
+        # the per-lane readiness verdicts. Hermetic; no registry row is flipped here.
+        "N8N_LANE_KIND",
+        [
+            "tests/test_lane_registry_n8n_kind_20261008.py",
+            "tests/test_n8n_lane_cutover_20261008.py",
+            "tests/test_n8n_lane_readiness_20261008.py",
+        ],
+    ),
+    (
         # 2026-10-07 — n8n lab coordination is local code. These tests pin the
         # muted pilots, the receipt vocabulary, and the unenabled watchdog.
         # Listing them here does not enable a timer or promote the branch.
@@ -3451,6 +3463,23 @@ GATES = [
         ],
     ),
     (
+        # N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n
+        # scheduler-of-record workflow generator and the per-lane cutover checklist. The tests
+        # pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set
+        # and the INDEX shape; the checklist renders from receipts under tmp_path only. Listing
+        # them imports nothing into n8n and retires no cron line.
+        "n8n_workflow_gen_20261008",
+        [
+            "tests/test_n8n_workflow_templates_20261008.py",
+            "tests/test_n8n_cutover_checklist_20261008.py",
+        ],
+    ),
+    (
+        # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
+        "N8N_RUN_RELAY",
+        ["tests/test_n8n_run_relay_20261008.py"],
+    ),
+    (
         # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial
         # stage runner for the post-close, premarket and Hermes chains. Hermetic: the tests drive
         # the runner with true/false/sleep manifests against a scratch project root, prove that
@@ -3461,6 +3490,33 @@ GATES = [
         "cron_tranche_b_20261007",
         [
             "tests/test_pipeline_manifest_runner_20261007.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MIGRATION_BOARD — n8n scheduler-of-record program, stream G (2026-10-08):
+        # the `runs` source on the coordination projection (tmp sqlite), the incident fan-in
+        # `runs` source (P2 RUN_FAILED/RUN_TIMEOUT, P1 executor stalled, self-closing on RUN_DONE,
+        # TRADEAI_FANIN_RUNS=0 opt-out) and scripts/n8n_migration_board.py (phases, risk flags,
+        # rollback readiness, --write/--markdown) from fixture receipts. Hermetic; no host path,
+        # no crontab read, no ledger write. Listing them here schedules nothing.
+        "n8n_migration_board_20261008",
+        [
+            "tests/test_n8n_coordination_runs_projection_20261008.py",
+            "tests/test_n8n_incident_fanin_runs_20261008.py",
+            "tests/test_n8n_migration_board_20261008.py",
+        ],
+    ),
+    (
+        # 2026-10-08 — n8n model job, live shape (workstream C, Day 0). Pins the bridge's nested
+        # `_tradeai` governance envelope, request_id -> provider_cost client_request_id, the
+        # server-side PROCESS_TASK_TYPE map (unknown process = process_not_registered before any
+        # call) and server-rendered prompt templates that reproduce the inline prompt byte for
+        # byte. Hermetic: injected governed call, stubbed HTTP, scratch state root; no provider.
+        "N8N_MODEL_JOB_SHAPE",
+        [
+            "tests/test_n8n_model_job_20261007.py",
+            "tests/test_n8n_model_job_operation_20261007.py",
+            "tests/test_ops_summary_model_job_live_wiring_20261008.py",
         ],
     ),
 ]

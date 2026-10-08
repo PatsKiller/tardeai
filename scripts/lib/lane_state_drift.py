@@ -21,6 +21,9 @@ CONFLICT_CODES = frozenset({
     HC.ENABLED_WHILE_DECLARED_RETIRED,
     HC.ENABLED_WHILE_DECLARED_NEVER_SCHEDULED,
     HC.CRON_PRESENT_WHILE_DECLARED_NEVER_SCHEDULED,
+    # 2026-10-08: a kind=n8n lane whose retired cron line / timer is still live (double scheduler).
+    HC.CRON_PRESENT_WHILE_SCHEDULER_N8N,
+    HC.TIMER_ENABLED_WHILE_SCHEDULER_N8N,
 })
 NOT_MEASURED = "NOT_MEASURED"
 
@@ -76,6 +79,24 @@ def classify_lanes(lanes: list[dict[str, Any]], *, cron_rows: list[dict[str, Any
             present = bool(marker) and marker in cron_text
             row["code"] = HC.classify_cron(declared_state=declared, command_present=present)
             row["evidence"] = {"match": marker, "command_present": present}
+        elif kind == HC.SCHEDULER_N8N:
+            # `match` names the RETIRED host scheduler: a timer unit, or the cron command text.
+            marker = str(sched.get("match") or "")
+            if marker.endswith(".timer"):
+                st = timers.get(marker) if marker in timers else (timer_state_fn(marker) if timer_state_fn else None)
+                if not st:
+                    row["code"] = NOT_MEASURED
+                    row["evidence"] = {"unit": marker, "reason": "timer state unavailable"}
+                else:
+                    row["code"] = HC.classify_timer(declared_state=declared, unit_file_state=st.get("unit_file_state", ""),
+                                                    sub_state=st.get("sub_state", ""), next_elapse=st.get("next_elapse"),
+                                                    recurring=bool(st.get("recurring", True)), scheduler_kind=kind)
+                    row["evidence"] = {"unit": marker, "workflow_id": sched.get("expression"),
+                                       **{k: st.get(k) for k in ("unit_file_state", "sub_state", "next_elapse")}}
+            else:
+                present = bool(marker) and marker in cron_text
+                row["code"] = HC.classify_cron(declared_state=declared, command_present=present, scheduler_kind=kind)
+                row["evidence"] = {"match": marker, "command_present": present, "workflow_id": sched.get("expression")}
         out.append(row)
     return out
 

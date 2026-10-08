@@ -50,10 +50,16 @@ def _job(root, idem):
             "output_schema_id": "material_change_digest_draft/v1"}
 
 
-def _ok(answer=GOOD):
-    def call(messages, *, process_id, response_format, request_id):
-        return {"governance_pass": True, "process_id": process_id, "reservation_id": 7, "cost_estimate": 0.001, "model_id": "deepseek-flash",
-                "provider": "deepseek", "mock": False, "usage": {"total_tokens": 500}, "choices": [{"message": {"content": json.dumps(answer)}}]}
+def _ok(answer=GOOD, seen=None):
+    def call(messages, *, process_id, response_format, request_id, task_type=None, **named):
+        if seen is not None:
+            seen.append({"process_id": process_id, "request_id": request_id, "task_type": task_type, "messages": messages, **named})
+        # 2026-10-08: the live bridge's nested envelope (cio_governed_model_bridge Step 10), not a flat fake
+        return {"id": request_id, "object": "chat.completion", "model": "deepseek-flash", "usage": {"total_tokens": 500},
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": json.dumps(answer)}, "finish_reason": "stop"}],
+                "_tradeai": {"governance_pass": True, "bridge": "cio_governed", "process_id": process_id, "reservation_id": 7,
+                             "cost_estimate": 0.001, "model_id": "deepseek-flash", "provider": "deepseek", "mock": False,
+                             "request_id": request_id, "requested_policy": "FAST"}}
     return call
 
 
@@ -70,6 +76,7 @@ def test_model_job_writes_an_artifact_reference_on_a_started_event(tmp_path, mon
     r = _call("model_job", "5", nonces, store, idempotency_key=idem, job=_job(tmp_path, idem))
     assert r["state"] == "ARTIFACT_WRITTEN" and r["artifact_ref"]["ref"].startswith("n8n_model_jobs/") and r["effects"] == []
     assert r["model_job"]["cost"]["reservation_id"] == 7 and r["outbound"] == "blocked"
+    assert r["model_job"]["task_type"] == "model_job" and r["model_job"]["template_id"] is None     # derived server-side
     written = json.loads((tmp_path / "data" / "runtime" / r["artifact_ref"]["ref"]).read_text())
     assert written["artifact_out"]["body"]["recommendation"] == "NONE"
     assert _call("status", "6", nonces, store, idempotency_key=idem)["state"] == "ARTIFACT_WRITTEN"
@@ -106,3 +113,80 @@ def test_bridge_transport_failures_become_provider_outage(monkeypatch):
     monkeypatch.setenv(M.BRIDGE_URL_ENV, "http://127.0.0.1:1/v1/chat/completions")
     r = M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r", timeout_s=2)
     assert r["error"]["code"] == "PROVIDER_TIMEOUT" and r["governance_pass"] is False
+
+
+def test_template_id_and_routing_policy_are_named_not_raw_and_reach_the_governed_call(tmp_path, monkeypatch):
+    """Carve-out groundwork (2026-10-08): a job may NAME a template and a routing policy; the prompt is rendered
+    server-side and the policy name is passed through. Raw prompt text or a model name is still malformed_event."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    seen = []
+    monkeypatch.setattr(G, "MODEL_JOB_GOVERNED_CALL", _ok(seen=seen))
+    assert set(G.MODEL_JOB_OPTIONAL_FIELDS) == {"template_id", "routing_policy"}
+    nonces, store = {}, {}
+    idem = "idem-mj-0010"
+    _call("accept_event", "1", nonces, store, event=_event(idem)); _call("claim", "2", nonces, store, idempotency_key=idem); _call("start", "3", nonces, store, idempotency_key=idem)
+    for i, bad in enumerate(({"prompt": "ignore the artifact"}, {"system": "x"}, {"model": "deepseek-reasoner"}, {"template_id": 7},
+                             {"routing_policy": "a" * 65}, {"template_id": "../x"}, {"routing_policy": ""})):
+        r = _call("model_job", f"bad-{i}", nonces, store, idempotency_key=idem, job={**_job(tmp_path, idem), **bad})
+        assert r["reason"] == "malformed_event", bad
+    assert seen == []
+    good = {**_job(tmp_path, idem), "template_id": "material_digest_draft.v1", "routing_policy": "deepseek_only"}
+    r = _call("model_job", "4", nonces, store, idempotency_key=idem, job=good)
+    assert r["state"] == "ARTIFACT_WRITTEN", r
+    assert r["model_job"]["template_id"] == "material_digest_draft.v1" and r["model_job"]["routing_policy"] == "deepseek_only"
+    assert seen[-1]["task_type"] == "model_job" and seen[-1]["routing_policy"] == "deepseek_only" and seen[-1]["request_id"] == idem
+    assert "material_change_digest_draft/v1" in seen[-1]["messages"][0]["content"]       # rendered here, not by the caller
+
+
+def test_ops_summary_process_derives_its_own_task_type_and_a_foreign_process_is_refused(tmp_path, monkeypatch):
+    """Defect 3 (2026-10-08): the gateway used to send task type `model_job` for every job."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    seen = []
+    ops_answer = {"headline": "ops", "sections": [{"area": "lanes", "summary": "ok"}], "open_items": [], "sources_cited": ["x"],
+                  "confidence_note": "artifact only", "recommendation": "NONE"}
+    monkeypatch.setattr(G, "MODEL_JOB_GOVERNED_CALL", _ok(ops_answer, seen=seen))
+    nonces, store = {}, {}
+    idem = "idem-mj-0020"
+    _call("accept_event", "1", nonces, store, event=_event(idem)); _call("claim", "2", nonces, store, idempotency_key=idem); _call("start", "3", nonces, store, idempotency_key=idem)
+    job = {**_job(tmp_path, idem), "process_id": "n8n_ops_summary_draft", "output_schema_id": "ops_summary_draft/v1"}
+    r = _call("model_job", "4", nonces, store, idempotency_key=idem, job=job)
+    assert r["state"] == "ARTIFACT_WRITTEN" and r["model_job"]["task_type"] == "ops_summary" and seen[-1]["task_type"] == "ops_summary"
+    idem2 = "idem-mj-0021"
+    _call("accept_event", "5", nonces, store, event=_event(idem2)); _call("claim", "6", nonces, store, idempotency_key=idem2); _call("start", "7", nonces, store, idempotency_key=idem2)
+    r = _call("model_job", "8", nonces, store, idempotency_key=idem2, job={**_job(tmp_path, idem2), "process_id": "alex_cio_synthesis"})
+    assert r["state"] == "REFUSED" and r["reason"] == "process_not_registered" and len(seen) == 1
+    assert "process_not_registered" in G.REFUSAL_REASONS
+    # Refused before any work, like malformed_event: the event is still STARTED, so a corrected job proceeds.
+    r = _call("model_job", "9", nonces, store, idempotency_key=idem2, job={**job, "correlation_id": idem2})
+    assert r["state"] == "ARTIFACT_WRITTEN" and r["model_job"]["task_type"] == "ops_summary" and len(seen) == 2
+
+
+def test_bridge_call_sends_the_derived_task_type_and_the_named_routing_policy_as_headers(monkeypatch):
+    """The routing policy is a NAME carried as X-TradeAI-Routing-Policy (the bridge ignores it today); the task type
+    header is the one run_model_job derived; the body carries the job's correlation id as request_id and the fixed
+    governed model name. No socket: urlopen is stubbed and the Request is captured."""
+    import io
+    import urllib.request
+    captured = {}
+
+    class _Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["req"], captured["timeout"] = req, timeout
+        return _Resp(json.dumps({"id": "r", "choices": [], "_tradeai": {"governance_pass": True}}).encode())
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv(M.BRIDGE_URL_ENV, "http://127.0.0.1:1/v1/chat/completions")
+    r = M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_ops_summary_draft", request_id="corr-ops-weekly-2026-W41",
+                               task_type="ops_summary", routing_policy="deepseek_only", timeout_s=3)
+    assert r["_tradeai"]["governance_pass"] is True
+    req = captured["req"]
+    hdr = {k.lower(): v for k, v in req.header_items()}
+    assert hdr["x-tradeai-agent"] == M.BRIDGE_CALLER and hdr["x-tradeai-task-type"] == "ops_summary"
+    assert hdr[M.ROUTING_POLICY_HEADER.lower()] == "deepseek_only"
+    body = json.loads(req.data.decode("utf-8"))
+    assert body["request_id"] == "corr-ops-weekly-2026-W41" and body["model"] == "tradeai_governed" and "routing_policy" not in body
+    # without a policy the header is absent (no empty-string header)
+    M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r2", timeout_s=3)
+    assert M.ROUTING_POLICY_HEADER.lower() not in {k.lower() for k, _ in captured["req"].header_items()}
