@@ -1,0 +1,16 @@
+Id=ollama.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/etc/systemd/system/ollama.service
+UnitFileState=enabled
+ActiveEnterTimestamp=Sat 2026-09-12 17:02:32 EDT
+Restart=always
+RestartUSec=3s
+TimeoutStartUSec=1min 30s
+Result=success
+ExecStart={ path=/usr/local/bin/ollama ; argv[]=/usr/local/bin/ollama serve ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+CPUQuotaPerSecUSec=infinity
+MemoryHigh=infinity
+MemoryMax=infinity
+WorkingDirectory=

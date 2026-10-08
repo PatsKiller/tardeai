@@ -1,0 +1,1257 @@
+{
+  "as_of": "2026-10-08T22:58:21.899126+00:00",
+  "evidence_class": "OBSERVED_HOST",
+  "processes": [
+    {
+      "pid": 2151,
+      "ppid": 1,
+      "command": "avahi-daemon: running [ms01-openclaw.local]",
+      "cwd": null,
+      "exe": null,
+      "ancestry": [
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 18112,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_relay.py --host 172.19.0.1 --port 18092",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3549125b7-main-exact-phase2-20261008-154128",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 19784,
+      "ppid": 19697,
+      "command": "n8n",
+      "cwd": null,
+      "exe": "/usr/bin/node",
+      "ancestry": [
+        {
+          "pid": 19697,
+          "command": "tini -- /docker-entrypoint.sh"
+        },
+        {
+          "pid": 19672,
+          "command": "/usr/bin/containerd-shim-runc-v2 -namespace moby -id 8e64a8847b612eda36a9e34569b8dc9ed8dffd5e117f0843f014e7f1c0348b68 -address /run/containerd/containerd.sock"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 20115,
+      "ppid": 19784,
+      "command": "n8n task-runner",
+      "cwd": null,
+      "exe": "/usr/bin/node",
+      "ancestry": [
+        {
+          "pid": 19784,
+          "command": "n8n"
+        },
+        {
+          "pid": 19697,
+          "command": "tini -- /docker-entrypoint.sh"
+        },
+        {
+          "pid": 19672,
+          "command": "/usr/bin/containerd-shim-runc-v2 -namespace moby -id 8e64a8847b612eda36a9e34569b8dc9ed8dffd5e117f0843f014e7f1c0348b68 -address /run/containerd/containerd.sock"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 71675,
+      "ppid": 69206,
+      "command": "/home/johnclaw/.cursor-server/data/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/bin/cursor-agent --use-system-ca /home/johnclaw/.cursor-server/data/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/share/cursor-agent/versions/2026.09.28-64d2043/index.js --api-key crsr_9acfc82c9f31a96a40f64855cab9b8e08de46ae6c09efc54b11dbdc302f26cf7 --endpoint https://api2.cursor.sh worker start --worker-dir /home/johnclaw/tradeai-wt-wt-memory-loader-compat-repair --name ~/tradeai-wt-wt-memory-loader-compat-repair @ ms01-openclaw --label name=cursor-agent-worker-500b2e1d69 --label cursor.private_worker.workspace_key=cursor-agent-worker-6f9d92a108 --worker-api-socket /tmp/cursor-agent-worker-500b2e1d69.sock --verbose",
+      "cwd": "/home/johnclaw/tradeai-wt-wt-memory-loader-compat-repair",
+      "exe": "/home/johnclaw/.cursor-server/data/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/share/cursor-agent/versions/2026.09.28-64d2043/node",
+      "ancestry": [
+        {
+          "pid": 69206,
+          "command": "/home/johnclaw/.cursor-server/bin/linux-x64/3a92974361033b2051526321308c2740fe5912c0/node --dns-result-order=ipv4first --inspect-port=0 --experimental-network-inspection /home/johnclaw/.cursor-server/bin/linux-x64/3a92974361033b2051526321308c2740fe5912c0/out/bootstrap-fork --type=extensionHost --transformURIs --useHostProxy=false"
+        },
+        {
+          "pid": 4134429,
+          "command": "/home/johnclaw/.cursor-server/bin/linux-x64/3a92974361033b2051526321308c2740fe5912c0/node /home/johnclaw/.cursor-server/bin/linux-x64/3a92974361033b2051526321308c2740fe5912c0/out/server-main.js --start-server --host 127.0.0.1 --port 0 --connection-token-file /run/user/1000/cursor-remote-code.token.1446be0da5a03c3d8c22751d7307dc2c --telemetry-level off --enable-remote-auto-shutdown --accept-server-license-terms"
+        },
+        {
+          "pid": 4134417,
+          "command": "sh /home/johnclaw/.cursor-server/bin/linux-x64/3a92974361033b2051526321308c2740fe5912c0/bin/cursor-server --start-server --host 127.0.0.1 --port 0 --connection-token-file /run/user/1000/cursor-remote-code.token.1446be0da5a03c3d8c22751d7307dc2c --telemetry-level off --enable-remote-auto-shutdown --accept-server-license-terms"
+        },
+        {
+          "pid": 4132159,
+          "command": "bash"
+        },
+        {
+          "pid": 4132158,
+          "command": "sshd-session: johnclaw@notty"
+        },
+        {
+          "pid": 4132052,
+          "command": "sshd-session: johnclaw [priv]"
+        },
+        {
+          "pid": 2897,
+          "command": "sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 302872,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_server.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 303125,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/.config/tradeai/bin/health_agent_daemon_current.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 303505,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/lib/cio_governed_model_bridge.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 303615,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/cio_telegram_bot.py --loop",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 303786,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -u /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/run_telegram_callback_poller.py --daemon",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 303872,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_coordination_gateway.py --host 127.0.0.1 --port 18091 --expected-sha eec946b2cebaa1378dab285c506c789f6dff1fb4 --allow-lane incident-fanin --allow-lane research-intake",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 453996,
+      "ppid": 453985,
+      "command": "flock -n /tmp/entry_planner.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/flock",
+      "ancestry": [
+        {
+          "pid": 453985,
+          "command": "/bin/bash -c cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400 >> logs/entry_planner.log 2>&1  # daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)"
+        },
+        {
+          "pid": 453971,
+          "command": "/usr/sbin/CRON -f -P"
+        },
+        {
+          "pid": 2179,
+          "command": "/usr/sbin/cron -f -P"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 454006,
+      "ppid": 453996,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 453996,
+          "command": "flock -n /tmp/entry_planner.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400"
+        },
+        {
+          "pid": 453985,
+          "command": "/bin/bash -c cd $PROJ && flock -n /tmp/entry_planner.lock $PY scripts/watchlist_entry_planner.py --limit 60 --buy-rated-cap 400 >> logs/entry_planner.log 2>&1  # daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)"
+        },
+        {
+          "pid": 453971,
+          "command": "/usr/sbin/CRON -f -P"
+        },
+        {
+          "pid": 2179,
+          "command": "/usr/sbin/cron -f -P"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 506583,
+      "ppid": 2879,
+      "command": "/usr/lib/postgresql/17/bin/postgres -D /home/johnclaw/tradeai-lab/pg17",
+      "cwd": "/home/johnclaw/tradeai-lab/pg17",
+      "exe": "/usr/lib/postgresql/17/bin/postgres",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 554192,
+      "ppid": 2125676,
+      "command": "postgres: n8n n8n 172.19.0.3(56578) idle",
+      "cwd": null,
+      "exe": null,
+      "ancestry": [
+        {
+          "pid": 2125676,
+          "command": "postgres"
+        },
+        {
+          "pid": 2125654,
+          "command": "/usr/bin/containerd-shim-runc-v2 -namespace moby -id 0a49e04d6e9322a20186b3b13e5230532de71e115b78459684f7d92a23a2d1c6 -address /run/containerd/containerd.sock"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 554272,
+      "ppid": 2125676,
+      "command": "postgres: n8n n8n 172.19.0.3(56582) idle",
+      "cwd": null,
+      "exe": null,
+      "ancestry": [
+        {
+          "pid": 2125676,
+          "command": "postgres"
+        },
+        {
+          "pid": 2125654,
+          "command": "/usr/bin/containerd-shim-runc-v2 -namespace moby -id 0a49e04d6e9322a20186b3b13e5230532de71e115b78459684f7d92a23a2d1c6 -address /run/containerd/containerd.sock"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 703305,
+      "ppid": 703304,
+      "command": "node /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/apps/command-center-v3/node_modules/.bin/vite preview --host 127.0.0.1 --port 4186 --strictPort",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/apps/command-center-v3",
+      "exe": "/home/johnclaw/.nvm/versions/node/v22.23.2/bin/node",
+      "ancestry": [
+        {
+          "pid": 703304,
+          "command": "sh -c vite preview --host 127.0.0.1 --port 4186 --strictPort"
+        },
+        {
+          "pid": 703282,
+          "command": "npm run preview --host 127.0.0.1 --port 4186 --strictPort"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 703331,
+      "ppid": 703305,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild --service=0.21.5 --ping",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/apps/command-center-v3",
+      "exe": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild",
+      "ancestry": [
+        {
+          "pid": 703305,
+          "command": "node /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/apps/command-center-v3/node_modules/.bin/vite preview --host 127.0.0.1 --port 4186 --strictPort"
+        },
+        {
+          "pid": 703304,
+          "command": "sh -c vite preview --host 127.0.0.1 --port 4186 --strictPort"
+        },
+        {
+          "pid": 703282,
+          "command": "npm run preview --host 127.0.0.1 --port 4186 --strictPort"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 743719,
+      "ppid": 510025,
+      "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex",
+      "ancestry": [
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 743724,
+      "ppid": 743719,
+      "command": "bwrap --as-pid-1 --new-session --die-with-parent --ro-bind / / --dev /dev --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --bind /tmp /tmp --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --perms 555 --tmpfs /tmp/.git --remount-ro /tmp/.git --perms 555 --tmpfs /tmp/.agents --remount-ro /tmp/.agents --perms 555 --tmpfs /tmp/.codex --remount-ro /tmp/.codex --perms 555 --tmpfs /tmp/.aws --remount-ro /tmp/.aws --ro-bind /tmp/codex-bwrap-synthetic-mount-targets-1000 /tmp/codex-bwrap-synthetic-mount-targets-1000 --bind /home/johnclaw /home/johnclaw --ro-bind /home/johnclaw/.git /home/johnclaw/.git --perms 555 --tmpfs /home/johnclaw/.agents --remount-ro /home/johnclaw/.agents --ro-bind /home/johnclaw/.codex /home/johnclaw/.codex --perms 555 --tmpfs /home/johnclaw/.aws --remount-ro /home/johnclaw/.aws --unshare-user --unshare-pid --unshare-ipc --unshare-net --proc /proc --cap-drop ALL --argv0 codex-linux-sandbox -- /home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/usr/bin/bwrap",
+      "ancestry": [
+        {
+          "pid": 743719,
+          "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 743725,
+      "ppid": 743724,
+      "command": "codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex",
+      "ancestry": [
+        {
+          "pid": 743724,
+          "command": "bwrap --as-pid-1 --new-session --die-with-parent --ro-bind / / --dev /dev --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --bind /tmp /tmp --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --perms 555 --tmpfs /tmp/.git --remount-ro /tmp/.git --perms 555 --tmpfs /tmp/.agents --remount-ro /tmp/.agents --perms 555 --tmpfs /tmp/.codex --remount-ro /tmp/.codex --perms 555 --tmpfs /tmp/.aws --remount-ro /tmp/.aws --ro-bind /tmp/codex-bwrap-synthetic-mount-targets-1000 /tmp/codex-bwrap-synthetic-mount-targets-1000 --bind /home/johnclaw /home/johnclaw --ro-bind /home/johnclaw/.git /home/johnclaw/.git --perms 555 --tmpfs /home/johnclaw/.agents --remount-ro /home/johnclaw/.agents --ro-bind /home/johnclaw/.codex /home/johnclaw/.codex --perms 555 --tmpfs /home/johnclaw/.aws --remount-ro /home/johnclaw/.aws --unshare-user --unshare-pid --unshare-ipc --unshare-net --proc /proc --cap-drop ALL --argv0 codex-linux-sandbox -- /home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743719,
+          "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 743726,
+      "ppid": 743725,
+      "command": "/bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/usr/bin/bash",
+      "ancestry": [
+        {
+          "pid": 743725,
+          "command": "codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743724,
+          "command": "bwrap --as-pid-1 --new-session --die-with-parent --ro-bind / / --dev /dev --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --bind /tmp /tmp --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --perms 555 --tmpfs /tmp/.git --remount-ro /tmp/.git --perms 555 --tmpfs /tmp/.agents --remount-ro /tmp/.agents --perms 555 --tmpfs /tmp/.codex --remount-ro /tmp/.codex --perms 555 --tmpfs /tmp/.aws --remount-ro /tmp/.aws --ro-bind /tmp/codex-bwrap-synthetic-mount-targets-1000 /tmp/codex-bwrap-synthetic-mount-targets-1000 --bind /home/johnclaw /home/johnclaw --ro-bind /home/johnclaw/.git /home/johnclaw/.git --perms 555 --tmpfs /home/johnclaw/.agents --remount-ro /home/johnclaw/.agents --ro-bind /home/johnclaw/.codex /home/johnclaw/.codex --perms 555 --tmpfs /home/johnclaw/.aws --remount-ro /home/johnclaw/.aws --unshare-user --unshare-pid --unshare-ipc --unshare-net --proc /proc --cap-drop ALL --argv0 codex-linux-sandbox -- /home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743719,
+          "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 743728,
+      "ppid": 743726,
+      "command": ".venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 743726,
+          "command": "/bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743725,
+          "command": "codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743724,
+          "command": "bwrap --as-pid-1 --new-session --die-with-parent --ro-bind / / --dev /dev --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --bind /tmp /tmp --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --perms 555 --tmpfs /tmp/.git --remount-ro /tmp/.git --perms 555 --tmpfs /tmp/.agents --remount-ro /tmp/.agents --perms 555 --tmpfs /tmp/.codex --remount-ro /tmp/.codex --perms 555 --tmpfs /tmp/.aws --remount-ro /tmp/.aws --ro-bind /tmp/codex-bwrap-synthetic-mount-targets-1000 /tmp/codex-bwrap-synthetic-mount-targets-1000 --bind /home/johnclaw /home/johnclaw --ro-bind /home/johnclaw/.git /home/johnclaw/.git --perms 555 --tmpfs /home/johnclaw/.agents --remount-ro /home/johnclaw/.agents --ro-bind /home/johnclaw/.codex /home/johnclaw/.codex --perms 555 --tmpfs /home/johnclaw/.aws --remount-ro /home/johnclaw/.aws --unshare-user --unshare-pid --unshare-ipc --unshare-net --proc /proc --cap-drop ALL --argv0 codex-linux-sandbox -- /home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743719,
+          "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 785697,
+      "ppid": 743728,
+      "command": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/.venv/bin/python -m pytest -q --tb=line -p no:cacheprovider tests/test_provider_chokepoint_ratchet.py",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 743728,
+          "command": ".venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4"
+        },
+        {
+          "pid": 743726,
+          "command": "/bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743725,
+          "command": "codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743724,
+          "command": "bwrap --as-pid-1 --new-session --die-with-parent --ro-bind / / --dev /dev --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --bind /tmp /tmp --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --perms 555 --tmpfs /tmp/.git --remount-ro /tmp/.git --perms 555 --tmpfs /tmp/.agents --remount-ro /tmp/.agents --perms 555 --tmpfs /tmp/.codex --remount-ro /tmp/.codex --perms 555 --tmpfs /tmp/.aws --remount-ro /tmp/.aws --ro-bind /tmp/codex-bwrap-synthetic-mount-targets-1000 /tmp/codex-bwrap-synthetic-mount-targets-1000 --bind /home/johnclaw /home/johnclaw --ro-bind /home/johnclaw/.git /home/johnclaw/.git --perms 555 --tmpfs /home/johnclaw/.agents --remount-ro /home/johnclaw/.agents --ro-bind /home/johnclaw/.codex /home/johnclaw/.codex --perms 555 --tmpfs /home/johnclaw/.aws --remount-ro /home/johnclaw/.aws --unshare-user --unshare-pid --unshare-ipc --unshare-net --proc /proc --cap-drop ALL --argv0 codex-linux-sandbox -- /home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743719,
+          "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        },
+        {
+          "pid": 43086,
+          "command": "tmux new-session -s claude1"
+        }
+      ]
+    },
+    {
+      "pid": 786185,
+      "ppid": 1673809,
+      "command": "/home/johnclaw/.local/share/hermes-agent-venv/bin/python /home/johnclaw/.local/bin/hermes chat -q You are a disciplined swing-trade entry planner. Produce an ACTIONABLE ENTRY PLAN for a stock we are watching but do NOT yet own. You never place orders \u2014 the operator decides.  HARD RULES - The entry ZONE must be technically anchored (pullback to SMA/support, breakout over resistance,   support bounce, or reversal) \u2014 never \"buy here\" at any price. - limit_price sits INSIDE the zone at a level with REALISTIC fill probability (no optimistic fills   at the extreme of the zone). - pullback_definition must be objective (e.g. \"3-5% drop from 20d high into the rising 20d SMA\"). - invalidation must state when the setup is DEAD (level or condition). - stop is structural (below the zone's anchor, ATR-buffered), target honest vs analyst mean and   recent range. risk_reward = (target-limit)/(limit-stop), one decimal. - urgency: \"ready\" = price in/at zone now; \"near_entry\" = within ~1 ATR of the zone; else \"watch\". - proposal_tag: READY only when urgency=ready AND confidence>=0.7; NEEDS_CONFIRMATION when a   specific catalyst/level must confirm first; else WAIT. - STRICT JSON only. Numbers as numbers.  CANDIDATE symbol: GLXY \u00b7 price: $20.08 \u00b7 RSI14: 27.4 \u00b7 ATR14: $1.46 (7.3%) 20d swing high: $27.68 \u00b7 20d swing low: $19.71 \u00b7 50d SMA: $23.04 (-12.8%) hermes composite: 61.9 (rank #131) \u00b7 trend: bearish ANALYSTS: mean target $40.38 \u00b7 range $24.00-$57.00 \u00b7 rating buy \u00b7 n=16  OUTPUT (strict JSON): {\"entry_thesis\": \"<max 50 words \u2014 why actionable now/soon + the trigger>\",   \"setup_type\": \"pullback\"|\"breakout\"|\"support_bounce\"|\"reversal\",   \"entry_zone_low\": <number>, \"entry_zone_high\": <number>, \"limit_price\": <number>,   \"pullback_definition\": \"<objective qualifying condition>\",   \"invalidation\": \"<level/condition that kills the setup>\",   \"stop_price\": <number>, \"target_price\": <number>, \"risk_reward\": <number>,   \"urgency\": \"watch\"|\"near_entry\"|\"ready\", \"confidence\": <0.0-1.0>,   \"proposal\": {\"tag\": \"WAIT\"|\"READY\"|\"NEEDS_CONFIRMATION\",                \"suggested_entry\": <number>, \"sizing_rationale\": \"<max 25 words>\"}} -Q -m grok-3-mini --provider xai-oauth",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 1673809,
+          "command": "/usr/bin/python3 /home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254/scripts/grok_oauth_proxy.py"
+        },
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 786188,
+      "ppid": 785697,
+      "command": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/.venv/bin/python /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/scripts/check_comms_gateway_enforcement.py",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 785697,
+          "command": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/.venv/bin/python -m pytest -q --tb=line -p no:cacheprovider tests/test_provider_chokepoint_ratchet.py"
+        },
+        {
+          "pid": 743728,
+          "command": ".venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4"
+        },
+        {
+          "pid": 743726,
+          "command": "/bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743725,
+          "command": "codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743724,
+          "command": "bwrap --as-pid-1 --new-session --die-with-parent --ro-bind / / --dev /dev --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --bind /tmp /tmp --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --perms 555 --tmpfs /tmp/.git --remount-ro /tmp/.git --perms 555 --tmpfs /tmp/.agents --remount-ro /tmp/.agents --perms 555 --tmpfs /tmp/.codex --remount-ro /tmp/.codex --perms 555 --tmpfs /tmp/.aws --remount-ro /tmp/.aws --ro-bind /tmp/codex-bwrap-synthetic-mount-targets-1000 /tmp/codex-bwrap-synthetic-mount-targets-1000 --bind /home/johnclaw /home/johnclaw --ro-bind /home/johnclaw/.git /home/johnclaw/.git --perms 555 --tmpfs /home/johnclaw/.agents --remount-ro /home/johnclaw/.agents --ro-bind /home/johnclaw/.codex /home/johnclaw/.codex --perms 555 --tmpfs /home/johnclaw/.aws --remount-ro /home/johnclaw/.aws --unshare-user --unshare-pid --unshare-ipc --unshare-net --proc /proc --cap-drop ALL --argv0 codex-linux-sandbox -- /home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743719,
+          "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        },
+        {
+          "pid": 499255,
+          "command": "-bash"
+        }
+      ]
+    },
+    {
+      "pid": 786543,
+      "ppid": 786188,
+      "command": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/.venv/bin/python /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/scripts/check_provider_chokepoint.py",
+      "cwd": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 786188,
+          "command": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/.venv/bin/python /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/scripts/check_comms_gateway_enforcement.py"
+        },
+        {
+          "pid": 785697,
+          "command": "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008/.venv/bin/python -m pytest -q --tb=line -p no:cacheprovider tests/test_provider_chokepoint_ratchet.py"
+        },
+        {
+          "pid": 743728,
+          "command": ".venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4"
+        },
+        {
+          "pid": 743726,
+          "command": "/bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743725,
+          "command": "codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743724,
+          "command": "bwrap --as-pid-1 --new-session --die-with-parent --ro-bind / / --dev /dev --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --bind /tmp /tmp --perms 000 --tmpfs /tmp/codex-daemon-1000 --remount-ro /tmp/codex-daemon-1000 --perms 555 --tmpfs /tmp/.git --remount-ro /tmp/.git --perms 555 --tmpfs /tmp/.agents --remount-ro /tmp/.agents --perms 555 --tmpfs /tmp/.codex --remount-ro /tmp/.codex --perms 555 --tmpfs /tmp/.aws --remount-ro /tmp/.aws --ro-bind /tmp/codex-bwrap-synthetic-mount-targets-1000 /tmp/codex-bwrap-synthetic-mount-targets-1000 --bind /home/johnclaw /home/johnclaw --ro-bind /home/johnclaw/.git /home/johnclaw/.git --perms 555 --tmpfs /home/johnclaw/.agents --remount-ro /home/johnclaw/.agents --ro-bind /home/johnclaw/.codex /home/johnclaw/.codex --perms 555 --tmpfs /home/johnclaw/.aws --remount-ro /home/johnclaw/.aws --unshare-user --unshare-pid --unshare-ipc --unshare-net --proc /proc --cap-drop ALL --argv0 codex-linux-sandbox -- /home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} --apply-seccomp-then-exec -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 743719,
+          "command": "/home/johnclaw/.codex/tmp/arg0/codex-arg0BPprf0/codex-linux-sandbox --sandbox-policy-cwd /home/johnclaw --command-cwd /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008 --permission-profile {\"type\":\"managed\",\"file_system\":{\"type\":\"restricted\",\"entries\":[{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"root\"}},\"access\":\"read\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw\"},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"slash_tmp\"}},\"access\":\"write\"},{\"path\":{\"type\":\"special\",\"value\":{\"kind\":\"tmpdir\"}},\"access\":\"write\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.git\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.agents\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.codex\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"},{\"path\":{\"type\":\"path\",\"path\":\"/home/johnclaw/.aws\"},\"access\":\"read\",\"missing_path_behavior\":\"skip\"}]},\"network\":\"restricted\"} -- /bin/bash -c .venv/bin/python scripts/run_cio_hardening_ci.py --profile fast --jobs 4 > docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log 2>&1"
+        },
+        {
+          "pid": 510025,
+          "command": "/home/johnclaw/.codex/packages/app-server-daemon/releases/0.162.0-x86_64-unknown-linux-musl/bin/codex app-server --listen unix:// --analytics-default-enabled -c features.api_key_model_discovery=[REDACTED] -c features.auth_elicitation=true -c features.code_mode_host=true -c features.mcp_oauth_refresh_coordination=false --managed-daemon"
+        },
+        {
+          "pid": 506251,
+          "command": "/home/johnclaw/.nvm/versions/node/v22.23.2/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        },
+        {
+          "pid": 506238,
+          "command": "node /home/johnclaw/.nvm/versions/node/v22.23.2/bin/codex"
+        }
+      ]
+    },
+    {
+      "pid": 786547,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.trigger_producer --json",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 936910,
+      "ppid": 2591900,
+      "command": "/bin/bash -c source /home/johnclaw/.claude/shell-snapshots/snapshot-bash-1790284580362-ut1fzy.sh 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && { \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'python3 - <<'\"'\"'PYEOF'\"'\"' from pathlib import Path p = Path(\"/home/johnclaw/.claude/plans/mutable-riding-origami.md\"); s = p.read_text() add = '\"'\"''\"'\"''\"'\"'| C-01 CORRECTION | Served and dev-tree ledgers are ONE file (both symlink to `~/trade-ai-releases/persistent-state/data/cio/cio_action_ledger.jsonl`): 3,889 rows, 88 legacy-shaped, ALL legacy rows dated 2026-08-09\u219210 (the one-time `backfill_cio_actions.py` window); the tail row is stream-shaped and was written 2026-09-27 00:33Z. There is NO live legacy writer and the population is not frozen (audit said 108 rows / 82 actions \u2014 that probe read a stale copy). Remaining: optional sidecar quarantine of the 88 legacy rows (data change \u2192 operator grant); reader already tolerates them (#1231) | read-only probe 2026-09-26 20:4x ET | DOWNGRADED to Low; no code change needed | | Acceptance flake | controls branch `release_readiness` step failed once (exit 1, 15.6 s) while the hygiene acceptance ran concurrently on the same venv/M2 test DB; direct re-run passes (`WARN_NON_LIVE_ADJACENT`, ok=true). Train re-runs acceptance sequentially before pushing | `accept_p2_controls.log` | NOTED \u2014 do not run two acceptances at once | '\"'\"''\"'\"''\"'\"' marker = \"| Host queue (operator grants needed) |\" if \"C-01 CORRECTION\" not in s and marker in s:     i = s.index(marker); j = s.index(\"\\n\", i) + 1     s = s[:j] + add + s[j:] p.write_text(s); print(\"plan updated\") PYEOF S=/tmp/claude-1000/-home-johnclaw/5c08daaf-c46a-4c23-9c04-4a27c415f619/scratchpad; until grep -qE \"T_DONE|T_BRANCH_FAILED|T_FAIL\" $S/train_p2_grant.log 2>/dev/null; do sleep 60; done; echo \"TRAIN EVENT:\"; grep -E \"^===|T_\" $S/train_p2_grant.log' && pwd -P >| /tmp/claude-f474-cwd",
+      "cwd": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "exe": "/usr/bin/bash",
+      "ancestry": [
+        {
+          "pid": 2591900,
+          "command": "claude"
+        },
+        {
+          "pid": 2591370,
+          "command": "-bash"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1667689,
+      "ppid": 1667666,
+      "command": "/home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild --service=0.21.5 --ping",
+      "cwd": "/tmp/cio-exact-main-deploy/apps/command-center-v3",
+      "exe": "/home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild",
+      "ancestry": [
+        {
+          "pid": 1667666,
+          "command": "node /tmp/cio-exact-main-deploy/apps/command-center-v3/node_modules/.bin/vite preview --host 127.0.0.1 --port 4173"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1668061,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254/scripts/heartbeat_receiver.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1668142,
+      "ppid": 2879,
+      "command": "/usr/bin/python3 /home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254/scripts/chatgpt_oauth_proxy.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1673747,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m active_trader.motion_runtime",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1673809,
+      "ppid": 2879,
+      "command": "/usr/bin/python3 /home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254/scripts/grok_oauth_proxy.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a032116e7-main-exact-phase2-20261006-153254",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1770602,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/.openclaw/skills/tradeai-health-inspect/scripts/ops_agent_daemon.py --no-apply --telegram",
+      "cwd": "/home/johnclaw/.openclaw/skills/tradeai-health-inspect/scripts",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1817614,
+      "ppid": 1817527,
+      "command": "flock -n /tmp/watch_directives_service.lock env AGENT_DECISION_PAYLOAD=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watch_directives_service.py --apply",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/e6eee00a2-main-exact-phase2-20261007-233942",
+      "exe": "/usr/bin/flock",
+      "ancestry": [
+        {
+          "pid": 1817527,
+          "command": "/bin/bash -c cd $PROJ && CURATION_AUTO_APPLY=1 flock -n /tmp/watch_directives_service.lock env AGENT_DECISION_PAYLOAD=1 $PY scripts/watch_directives_service.py --apply >> logs/watch_directives_service.log 2>&1"
+        },
+        {
+          "pid": 1817356,
+          "command": "/usr/sbin/CRON -f -P"
+        },
+        {
+          "pid": 2179,
+          "command": "/usr/sbin/cron -f -P"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 1817630,
+      "ppid": 1817614,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watch_directives_service.py --apply",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/e6eee00a2-main-exact-phase2-20261007-233942",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 1817614,
+          "command": "flock -n /tmp/watch_directives_service.lock env AGENT_DECISION_PAYLOAD=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/watch_directives_service.py --apply"
+        },
+        {
+          "pid": 1817527,
+          "command": "/bin/bash -c cd $PROJ && CURATION_AUTO_APPLY=1 flock -n /tmp/watch_directives_service.lock env AGENT_DECISION_PAYLOAD=1 $PY scripts/watch_directives_service.py --apply >> logs/watch_directives_service.log 2>&1"
+        },
+        {
+          "pid": 1817356,
+          "command": "/usr/sbin/CRON -f -P"
+        },
+        {
+          "pid": 2179,
+          "command": "/usr/sbin/cron -f -P"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2026155,
+      "ppid": 2026154,
+      "command": "flock -n /tmp/schwab_stream.lock bash -c set -a; . ./.env; set +a; /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/schwab_stream_daemon.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/e6eee00a2-main-exact-phase2-20261007-233942",
+      "exe": "/usr/bin/flock",
+      "ancestry": [
+        {
+          "pid": 2026154,
+          "command": "/bin/bash -c cd $PROJ && flock -n /tmp/schwab_stream.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/schwab_stream_daemon.py\" >> logs/schwab_stream.log 2>&1"
+        },
+        {
+          "pid": 2026152,
+          "command": "/usr/sbin/CRON -f -P"
+        },
+        {
+          "pid": 2179,
+          "command": "/usr/sbin/cron -f -P"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2026156,
+      "ppid": 2026155,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/schwab_stream_daemon.py",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/e6eee00a2-main-exact-phase2-20261007-233942",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2026155,
+          "command": "flock -n /tmp/schwab_stream.lock bash -c set -a; . ./.env; set +a; /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/schwab_stream_daemon.py"
+        },
+        {
+          "pid": 2026154,
+          "command": "/bin/bash -c cd $PROJ && flock -n /tmp/schwab_stream.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/schwab_stream_daemon.py\" >> logs/schwab_stream.log 2>&1"
+        },
+        {
+          "pid": 2026152,
+          "command": "/usr/sbin/CRON -f -P"
+        },
+        {
+          "pid": 2179,
+          "command": "/usr/sbin/cron -f -P"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2156447,
+      "ppid": 2879,
+      "command": "./OpenD -cfg_file=/run/user/1000/tradeai/opend.rendered.xml -lang=en",
+      "cwd": "/home/johnclaw/.local/opt/trade-ai-lab/moomoo/opend/10.9.6908",
+      "exe": "/home/johnclaw/.local/opt/trade-ai-lab/moomoo/opend/10.9.6908/OpenD",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2156466,
+      "ppid": 2156447,
+      "command": "./OpenD -cfg_file=/run/user/1000/tradeai/opend.rendered.xml -lang=en",
+      "cwd": "/home/johnclaw/.local/opt/trade-ai-lab/moomoo/opend/10.9.6908",
+      "exe": "/home/johnclaw/.local/opt/trade-ai-lab/moomoo/opend/10.9.6908/OpenD",
+      "ancestry": [
+        {
+          "pid": 2156447,
+          "command": "./OpenD -cfg_file=/run/user/1000/tradeai/opend.rendered.xml -lang=en"
+        },
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2354117,
+      "ppid": 2879,
+      "command": "/usr/bin/node /home/johnclaw/.local/lib/openclaw/dist/index.js gateway --port 18789",
+      "cwd": "/home/johnclaw",
+      "exe": "/usr/bin/node",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2434708,
+      "ppid": 1,
+      "command": "node /home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3/node_modules/.bin/vite preview --host 127.0.0.1 --port 4173",
+      "cwd": "/home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3",
+      "exe": "/home/johnclaw/.nvm/versions/node/v22.23.2/bin/node",
+      "ancestry": [
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2434716,
+      "ppid": 2434708,
+      "command": "/home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild --service=0.21.5 --ping",
+      "cwd": "/home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3",
+      "exe": "/home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild",
+      "ancestry": [
+        {
+          "pid": 2434708,
+          "command": "node /home/johnclaw/tradeai-cio-complete-20261001/apps/command-center-v3/node_modules/.bin/vite preview --host 127.0.0.1 --port 4173"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2795443,
+      "ppid": 1,
+      "command": "node /home/johnclaw/tradeai-wt-cio-complete-20261001/apps/command-center-v3/node_modules/.bin/vite preview --host 127.0.0.1 --port 4175",
+      "cwd": "/home/johnclaw/tradeai-wt-cio-complete-20261001/apps/command-center-v3",
+      "exe": "/home/johnclaw/.nvm/versions/node/v22.23.2/bin/node",
+      "ancestry": [
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2795456,
+      "ppid": 2795443,
+      "command": "/home/johnclaw/tradeai-wt-cio-complete-20261001/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild --service=0.21.5 --ping",
+      "cwd": "/home/johnclaw/tradeai-wt-cio-complete-20261001/apps/command-center-v3",
+      "exe": "/home/johnclaw/tradeai-wt-cio-complete-20261001/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild",
+      "ancestry": [
+        {
+          "pid": 2795443,
+          "command": "node /home/johnclaw/tradeai-wt-cio-complete-20261001/apps/command-center-v3/node_modules/.bin/vite preview --host 127.0.0.1 --port 4175"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 2944767,
+      "ppid": 2591900,
+      "command": "/bin/bash -c source /home/johnclaw/.claude/shell-snapshots/snapshot-bash-1790284580362-ut1fzy.sh 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && { \\builtin unalias -- 'unsetenv'; \\builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && until bin/guard show 2>/dev/null | grep -E \"^\\s*db-write\" | grep -q \"Tranche 1\"; do sleep 45; done; echo \"db-write grant present\"' < /dev/null && pwd -P >| /tmp/claude-29a2-cwd",
+      "cwd": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "exe": "/usr/bin/bash",
+      "ancestry": [
+        {
+          "pid": 2591900,
+          "command": "claude"
+        },
+        {
+          "pid": 2591370,
+          "command": "-bash"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 3373941,
+      "ppid": 3373940,
+      "command": "node /home/johnclaw/tradeai-wt-at-live/apps/command-center-v3/node_modules/.bin/vite preview --port 4193 --strictPort",
+      "cwd": "/home/johnclaw/tradeai-wt-at-live/apps/command-center-v3",
+      "exe": "/home/johnclaw/.nvm/versions/node/v22.23.2/bin/node",
+      "ancestry": [
+        {
+          "pid": 3373940,
+          "command": "sh -c vite preview --port 4193 --strictPort"
+        },
+        {
+          "pid": 3373917,
+          "command": "npm exec vite preview --port 4193 --strictPort"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 3373962,
+      "ppid": 3373941,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild --service=0.21.5 --ping",
+      "cwd": "/home/johnclaw/tradeai-wt-at-live/apps/command-center-v3",
+      "exe": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/apps/command-center-v3/node_modules/@esbuild/linux-x64/bin/esbuild",
+      "ancestry": [
+        {
+          "pid": 3373941,
+          "command": "node /home/johnclaw/tradeai-wt-at-live/apps/command-center-v3/node_modules/.bin/vite preview --port 4193 --strictPort"
+        },
+        {
+          "pid": 3373940,
+          "command": "sh -c vite preview --port 4193 --strictPort"
+        },
+        {
+          "pid": 3373917,
+          "command": "npm exec vite preview --port 4193 --strictPort"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 4138228,
+      "ppid": 1,
+      "command": "/home/johnclaw/.cursor-server/data/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/bin/cursor-agent --use-system-ca /home/johnclaw/.cursor-server/data/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/share/cursor-agent/versions/2026.09.28-64d2043/index.js --api-key crsr_9acfc82c9f31a96a40f64855cab9b8e08de46ae6c09efc54b11dbdc302f26cf7 --endpoint https://api2.cursor.sh worker start --worker-dir /home/johnclaw --name ~ @ ms01-openclaw --label name=cursor-agent-worker-3b3b524f5e --label cursor.private_worker.workspace_key=cursor-agent-worker-8834ba3f25 --worker-api-socket /tmp/cursor-agent-worker-3b3b524f5e.sock --verbose",
+      "cwd": "/home/johnclaw",
+      "exe": "/home/johnclaw/.cursor-server/data/User/globalStorage/anysphere.cursor-agent-worker/agent-cli/.local/share/cursor-agent/versions/2026.09.28-64d2043/node",
+      "ancestry": [
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    },
+    {
+      "pid": 4160257,
+      "ppid": 2879,
+      "command": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_executor.py --interval 5",
+      "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3549125b7-main-exact-phase2-20261008-154128",
+      "exe": "/usr/bin/python3.14",
+      "ancestry": [
+        {
+          "pid": 2879,
+          "command": "/usr/lib/systemd/systemd --user"
+        },
+        {
+          "pid": 1,
+          "command": "/usr/lib/systemd/systemd --switched-root --system --deserialize=52 splash"
+        }
+      ]
+    }
+  ]
+}

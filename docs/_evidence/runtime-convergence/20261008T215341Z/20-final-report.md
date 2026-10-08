@@ -1,0 +1,91 @@
+# TradeAI runtime convergence due diligence — 2026-10-08
+
+Source audit and additive implementation are ready for review. Production convergence and full platform source acceptance are BLOCKED by incomplete registry/process contracts and natural acceptance proof. No deploy, scheduler installation, workflow activation, cutover, broker/order/stop/risk/send/2FA mutation or policy ratification was performed. Ollama retirement is recorded as operator intent; its running system service is drift.
+
+Evidence is a bounded observation window, not permanently current. Each JSON includes its timestamp/command/query. `00-current-baseline.md` is the Phase 0 artifact; subsequent re-measurements are explicitly later. Schemas distinguish OBSERVED_CURRENT, OBSERVED_HOST, OBSERVED_N8N, OBSERVED_DB, OBSERVED_GITHUB, SOURCE_ONLY, TEST_ONLY, STALE_HISTORICAL, NOT_MEASURED and BLOCKED. Inventory nulls are unknown, not zeros or proof. No secret values are included.
+
+## 1. Exact source/main/CURRENT identity
+
+At baseline/re-measurement, origin/main, initial HEAD and merge-base were `eec946b2cebaa1378dab285c506c789f6dff1fb4`. CURRENT is `/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420`, same source SHA. Portfolio-server PID 302872 cwd is that release. Served Command Center SHA is the same, built_at `2026-10-08T20:55:11.633Z`. `/api/health` returned HTTP 200/ok; this is API liveness, not broker or database acceptance. Evidence `00-identity.json`, `00-host.json`; command `python3 collect_baseline.py`. Worktree is `codex/runtime-n8n-convergence-20261008`, isolated from the initially clean primary checkout. Final PR head/source identity is reported separately; it is not deployed CURRENT.
+
+The current AGENTS §23 heading/version history says ACTIVE/ratified while its body still says PROPOSED. This textual contradiction is SOURCE_ONLY and has not been automatically ratified or rewritten. The explicit restrictions and operator-only scheduler/deploy boundaries govern this work.
+
+## 2. Scheduler census
+
+`01-scheduler-lane-inventory.json` contains **628 normalized rows**, including declared lanes and unmatched observations. Observed cron, user/system units, n8n and OpenClaw metadata are combined with registry intent. Event/CIO/Hermes/queue/polling/browser child execution and durable output coverage are incomplete and are explicitly NOT_MEASURED. The inventory's row count is not a business-process count. Command `scripts/report_scheduler_inventory.py --evidence docs/_evidence/runtime-convergence/20261008T215341Z`. Every requested field exists, unknown values stay null; writer/cost/send/broker flags inferred from an allowlist are SOURCE_ONLY, not live authority proof. No ACTIVE lane has a fully established scheduler -> executor -> receipt -> output -> consumer chain in this combined saved snapshot; API-only health is not substituted.
+
+## 3. Active lanes by scheduler
+
+Source registry has 233 lanes, **173 ACTIVE**: {'n8n': 2, 'cron': 114, 'systemd': 56, 'event': 1}. These are intent counts (SOURCE_ONLY). OBSERVED activation and drift are separate per-row fields. Source changed two no-signal monitor reasons and added the operator-retired system Ollama row; no host lane was activated. `13-registry-proof-gaps.json` lists missing contracts. Unmatched observations: **395**, often wrappers/stages; do not create invented owners or declare them healthy.
+
+## 4. Cron count and fire volume
+
+OBSERVED_HOST: {'raw_lines': 1047, 'job_lines': 441, 'comment_lines': 543, 'env_lines': 7, 'blank_lines': 56, 'distinct_commands': 440, 'distinct_scripts': 376, 'locked': 259, 'unlocked': 182, 'safe_flock': 35, 'bare_flock': 224, 'execution_roots': {'CURRENT': 435, 'OTHER_OR_UNKNOWN': 6}}. Next seven local calendar days Oct 9–15 produce a SOURCE_ONLY estimate of **51773 schedule fires**, 41110 across five weekdays and 10663 across two weekend days, before market gates/locks/failures. @reboot is unestimated; this interval has no DST transition. Cadence histogram, hourly heatmap, top 30 jobs and minute collisions are in `03-cron-remeasurement.json`. The 487/450 old counts are STALE_HISTORICAL. Logs support only partial runtime distributions, `03-runtime-distributions.json`; not every scheduler fire has a receipt.
+
+## 5. Systemd census
+
+Detailed read-only baseline captured 214 relevant user units; the later discovery retained 223 user/system records with PARTIAL discovery coverage. State/resource/fragment/ExecStart/EnvironmentFile path/timer/result/root fields are in `04-systemd-units.json` and `01-live-scheduler-observations.json`. Baseline unit state pairs: {('active', 'enabled'): 92, ('inactive', 'static'): 47, ('inactive', 'disabled'): 68, ('activating', 'disabled'): 2, ('failed', 'disabled'): 1, (None, None): 1, ('activating', 'static'): 1, ('active', ''): 2}. Gateway runs CURRENT. Relay and executor run older `3549125b7` release, with missing loaded unit definitions/dangling links to a removed `72b0ce6be` release. `04-unit-links.json`, `04-process-roots.json` prove this; older receipts confirm it. Active failed/activating units and old frozen daemons remain visible. System Ollama is enabled/running despite RETIRED intent (`04-ollama-retired-host.txt`). No restart occurred.
+
+## 6. OpenClaw scheduler census
+
+OBSERVED_HOST `05-openclaw.json`: 13 jobs, 9 enabled and 4 disabled; 7 enabled announce/Telegram jobs. Job IDs, agent IDs, expressions and scheduler state are measured; payloads/tokens/destinations are excluded. The gateway and external ops process are observed in `04-process-roots.json`; ops uses no-apply/Telegram flags. Agent/job metadata is not durable host run proof. Duplicate sends, per-run attribution, browser/memory child writers outside STATE_ROOT and external skill receipt paths remain NOT_MEASURED. Unified API exposes these entries as unowned/NO_SIGNAL rather than claiming healthy delivery. No OpenClaw jobs were migrated or sent.
+
+## 7. n8n runtime census
+
+OBSERVED_N8N/HOST: Community 2.43.0; image digest/ID and compose path in `06-n8n-container.json`. Container running since `2026-10-08T19:58:56.591617215Z`, restart count 0, no Docker healthcheck; publish 127.0.0.1:5678 only, `m8m-n8n_lab` network. DB Postgres 16.15, about 19.65MB at census. **12 workflows / 8 active / 4 inactive**, one scoped relay header credential (TYPE/name only), 0 API keys, 0 webhooks, 0 community packages/nodes. Retained executions at 22:49 census: 419 success, 17 error, 4 running, grouped mode/status and latest-five metadata in `06-n8n-db.json`; success-none retention means this is not an expected-fire completion ratio. Task-runner process observed; no Redis container observed. Queue mode not justified by current ledger load. Final CLI confirms version 2.43.0; /healthz returns 200 and /metrics 404 at the measured root path (`06-n8n-final-endpoints.json`). Explicit runner/log mode and restart history beyond the captured container epoch are NOT_MEASURED.
+
+## 8. n8n security/hardening assessment
+
+P1: owner MFA false, application DB role superuser with create/replication/bypass privileges. API is enabled despite no keys; operator decision needed to disable it. Positive observed controls: loopback UI, scoped relay credential, environment access blocked, command/SSH/email/FTP/local-file nodes excluded, community disabled, success payloads none, error all with 168h pruning, encryption key configured. Escrow/recovery verification is NOT_MEASURED. Sampled container TCP reaches relay only; configuration firewall proof is BLOCKED by sudo authorization (`07-network-probes.json`). Real read-only n8n security audit ran successfully and is redacted in `07-n8n-security-audit.md`; CLI bootstrap acquires its migration lock, so do not claim an entirely side-effect-free bootstrap.
+
+Latest observed dump `20261008T051506Z`, 626,423 bytes, backup receipt ok; latest restore-drill receipt Oct 7 14:40Z ok (`06-backups-current.json`). Nightly/weekly timer intent and pipeline step source exist; independent failure receipt/watchdog recovery must remain outside n8n authority. [n8n security audit documentation](https://docs.n8n.io/hosting/securing/security-audit/), [database guidance](https://docs.n8n.io/deploy/host-n8n/configure-n8n/choose-n8ns-database.md) supports a separate Postgres 17 plan/non-superuser role; [public API control](https://docs.n8n.io/deploy/host-n8n/configure-n8n/security/disable-the-public-api.md). [Community features](https://docs.n8n.io/deploy/host-n8n/community-edition-features.md): no observed requirement for paid RBAC/projects/SSO/external secrets/environments/Git/log streaming/multi-main. No Redis/queue upgrade is recommended without load evidence.
+
+## 9. N1 shadow result
+
+**BLOCKED, all current active workflow rows NO_GO**. `09-10-n1-acceptance-matrix.json` lists IDs/activation/shadow-live/schedules/relay attachment/latest retained executions/host receipts/output before-after evidence. 203 host requests at 22:49 are durable, mostly successful shadow receipts; one watchdog lock skip is retained as lost work. Executor code SHAs are older; branch fixes are not CURRENT. Complete green n8n + host proof for two natural fires after all current fixes is absent, including weekly no-fire lanes. No manual acceptance firing occurred. Snapshot live receipts alone do not prove valid canary conditions, legacy-active status and rollback. No lane is cut over.
+
+## 10. N2 readiness
+
+NO_GO. PR #1537 reviewed at exact head `66adc9285a581703d04c863b90ea36ee0964810f`, not applied. Extracted actual gate JS accepts shadow/live mismatch, exit1 and future finish. `11-dag-negative-review.json` and `11-n2-dependency-design.md` describe receipt identity/mode/exit/business-day/overnight/DST/staleness/idempotency/retry requirements. Receipt is dependency proof; schedule remains a trigger. No n8n provider/broker authority is introduced.
+
+## 11. Duplicate scheduler matrix
+
+`02-duplicates-conflicts.json`: 17 command/shared-lock candidate groups; 16 shared locks and one repeated exact command. Separate 12:05/16:10 session reviews are benign windows. Quote-refresh shared lock collides at 10:45/12:45/13:45 weekdays; NEEDS_DESIGN, not proof of identical business work. Four active shared-output groups require writer synchronization proof. Source registry drift/unowned entries are explicit. Shadow/live overlap is not automatically a duplicate side effect; receipts and mutation contracts decide it. Locks do not legitimize multiple schedulers. P0 financial/safety duplicates remain NOT_MEASURED, so no financial scheduler mutation is proposed.
+
+## 12. Dev-tree leakage matrix
+
+`04-dev-tree-leakage-matrix.json` literal recursive traces and `04-reviewed-path-findings.json` separate executable hops, state-read candidates and deliberate shared venv. 24 literal candidates are not 24 proven executions. Genuine source defects include three governance PROJ assignments (fixed) and portfolio controllers leading to six dev-root launchers (exact remaining remediation, preserve output/send semantics). Flash unit definitions reference another worktree; maintenance retention child and CIO read paths need review. Actual running process roots are `04-process-roots.json`; short-lived child execution is not inferred from a top-level CURRENT WorkingDirectory.
+
+## 13. Queue/worker matrix
+
+`17-queue-worker-matrix.json` joins 36 observed DB queue/proposal tables with selected source producer/consumer/claim/retry/reclaimer contracts and file-queue exceptions. One census cannot prove permanently growing queues or inflow capacity. Notable observed backlog: deep overnight pending 1,928 since May with stale done history; watch decision refresh queued 925 and running 4 since Oct 5; agent events processing 4 with old claims; watchlist jobs queued 4 with completed activity Oct 8. Do not replay paid or broker-affecting old work automatically. Watchlist/deep-overnight SELECT-then-UPDATE claim paths depend on original exclusivity; source reapers exist, but duplicate-claim and current reclaimer effectiveness require observation. SQLite n8n nonterminal queue empty at capture. Hermes/CIO file queues' live counts are NOT_MEASURED, source lease/dedupe contracts are not promoted to LIVE.
+
+## 14. Command Center coverage
+
+SOURCE_ONLY additive `/api/v2/scheduler-operations` is GET-only, `SchedulerOperations@v1`, READ_ONLY_ADVISORY. `/v3/coordination` defaults to Automation / Scheduler Operations with requested columns/filters, stale/error handling, nullable unknowns, receipt/output timeline and candidate SLO breaches. Existing event/migration views remain available. No model/provider keys or n8n payloads are exposed. LIVE requires matching durable host receipt and fresh output, not n8n green. Missing ownership/output/receipts remains visible, not filled with fake zeros. Four fixture Playwright tests passed, covering known problem filter/drilldown, stale 200, failed endpoint and 390px overflow; build passed (`15-*` artifacts). After exact-main deployment, LIVE no-interception API/host row agreement and console check remain BLOCKED by deployment grant; fixture success is TEST_ONLY.
+
+## 15. SLO baseline
+
+`16-slo-baseline.json` measures separate dry/live observed request cohorts, failure/skip ratios, runtime and queue p50/p95. Expected fires/missed/duplicate-run counts are null without complete retention/trigger identity. `03-runtime-distributions.json`: quotes `*/15 9-16 * * 1-5` (15m interval, 32 weekday fires), 18 lock skips / 31 observed requests (~58.1%), p95 2,652s; ATM 44 skips / 462 requests (~9.5%), p95 ~7s. These breach requested investigation thresholds; independent safety lane retained. Candidate critical 99% completion/<1% unexpected skip/2x cadence freshness are proposals, not globally ratified SLOs. UI can show measured candidate breaches while unmeasured coverage remains NOT_MEASURED. Market/off-hour exceptions require process-specific calendar contracts.
+
+## 16. Fixes implemented
+
+FIX_NOW_SOURCE/P1: rebind relay/executor in exact-main deploy source; fail on restart/root mismatch; document stable unit installation; release-relative root in three governance wrappers. P1/P2: read-only scheduler projection with partial discovery recovery, state drift, matching receipt validation, shadow separation, stale output/failure preservation, no-write ledger reader, nullable counters; additive operator table and fixture CI. P2: source Ollama retired intent/monitor NO_SIGNAL reasons. Burst fixture expanded to 1/5/16/32/64; source already has backlog64, so no server rewrite. P3: fix a pre-existing test's digit-substring/mtime false failure using structured withheld-value assertions and deterministic metadata collision; financial truth assertions retained. Each defect has negative regression evidence. No runtime remediation was applied.
+
+## 17. Operator-only changes proposed
+
+`20-operator-change-packet.md`: scoped stable unit install/restart and approved exact release; retire running Ollama after residual-consumer decision; owner-only MFA; API disable/healthcheck; isolated Postgres17/non-superuser migration; key escrow verification; privileged read-only firewall proof before rule changes; exact per-line collision/cadence/registry packets; natural N1/canary/rollback window. NEEDS_DESIGN: 395 unmatched row contracts, portfolio/dev-root child semantics, queue double claims, OAuth process scope, embedding replacement/vector migration. RETAIN_WITH_REASON: independent broker/safety/recovery and deliberate shared interpreter. No policy ratification or automatic source activation.
+
+## 18. Rollback plan
+
+Source rollback is git revert of problem-specific commits and operator deployment of the prior approved immutable main release. Stable unit recovery must restore valid regular definitions/root, not missing symlinks. Any future lane cutover rolls back only its exact retired cron line/timer and workflow, preserving unrelated scheduler changes. Keep old DB volume/digest during proposed migration; key escrow independent. This task changed no live scheduler ownership, so no host rollback is currently necessary. Ollama retirement must not be silently reversed.
+
+## 19. Remaining risks
+
+Runtime executor/relay are not exact-CURRENT; missing unit fragments jeopardize restart recovery. Registry and consumer/output chains incomplete. Financial duplicate-writer inventory, all child execution roots, browser/external skill receipts, queue throughput/reclaimer behavior, full firewall policy, metrics/log configuration, embedding reader/quality latency and natural success retention are NOT_MEASURED/BLOCKED. Final metadata proves native intelligence.embedding has 0 rows/vectors while all 1,322,836 content rows have non-NULL JSON embeddings; this is population proof, not vector validity/quality proof. N1/N2 remain NO_GO. Source/fixture evidence cannot establish live authority or production convergence. Canonical local acceptance passed (17/17 release checks and all CIO gates); final fixture Playwright passed 4/4. `21-validation.md` and `21-canonical-acceptance.log` record commands/results. Remote CI exact results are reported with the PR; a failed gate is never weakened to pass.
+
+## 20. Recommended next 30 days
+
+Days 1–3: review/approve exact source and narrowly scoped runtime recovery packet; resolve retired Ollama residual consumers; owner enables MFA; verify escrow and firewall rules. Days 4–10: observe two natural shadow fires per lane after all exact-CURRENT fixes, minimal execution-status evidence, proper live canary and per-lane rollback, with independent legacy/recovery during canary. Weekly natural shadow windows may require longer. Days 11–20: assign unmatched process owners, writer/consumer contracts and durable receipts, baseline expected-fire/skip/output SLOs, correct queue exclusivity/reclaimers and dev-root children. Days 21–30: consider only evidence-ready lane cutovers, then generic N2 dependency gating; separately decide Postgres17/n8n role and RAG migration. No target date overrides a NO_GO gate.
+
+PLATFORM_RUNTIME_SOURCE_ACCEPTANCE_BLOCKED

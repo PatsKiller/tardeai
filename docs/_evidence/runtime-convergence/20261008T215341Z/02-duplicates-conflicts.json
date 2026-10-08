@@ -1,0 +1,2656 @@
+{
+  "schema": "SchedulerConflicts@v1",
+  "as_of": "2026-10-08T22:58:21.899126+00:00",
+  "duplicates": [
+    {
+      "kind": "command",
+      "value": "cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+      "entries": [
+        "cron:1010",
+        "cron:1011"
+      ],
+      "schedules": [
+        "5 12 * * 1-5",
+        "10 16 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/tradeai_quote_refresh.lock",
+      "entries": [
+        "cron:92",
+        "cron:128"
+      ],
+      "schedules": [
+        "45 7,10,12,13,16 * * 1-5",
+        "*/5 9-15 * * 1-5"
+      ],
+      "scheduled_collision": true,
+      "verdict": "REVIEW_COLLISION",
+      "priority": "P2"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/tradeai_stale_proposal_sweeper.lock",
+      "entries": [
+        "cron:170",
+        "cron:181",
+        "cron:188"
+      ],
+      "schedules": [
+        "10 16 * * 1-5",
+        "15 8 * * 1-5",
+        "25 8 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/llm_enrichment.lock",
+      "entries": [
+        "cron:184",
+        "cron:185",
+        "cron:186"
+      ],
+      "schedules": [
+        "20 7 * * 1-5",
+        "20 16 * * 1-5",
+        "20 12 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/topic_curator.lock",
+      "entries": [
+        "cron:300",
+        "cron:302"
+      ],
+      "schedules": [
+        "30 9,13 * * *",
+        "30 18 * * *"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/portfolio_repricer.lock",
+      "entries": [
+        "cron:446",
+        "cron:563"
+      ],
+      "schedules": [
+        "10 16 * * 1-5",
+        "*/15 9-16 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/snaptrade_sync.lock",
+      "entries": [
+        "cron:479",
+        "cron:480"
+      ],
+      "schedules": [
+        "50 9 * * 1-5",
+        "35 17 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/tradeai_alpaca_stop_manager.lock",
+      "entries": [
+        "cron:497",
+        "cron:680"
+      ],
+      "schedules": [
+        "7-59/20 9-16 * * 1-5",
+        "*/15 4-10 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/research_sched.lock",
+      "entries": [
+        "cron:581",
+        "cron:582",
+        "cron:583",
+        "cron:585"
+      ],
+      "schedules": [
+        "5 9 * * 1-5",
+        "0 10-16 * * 1-5",
+        "30 20 * * 1-5",
+        "0 19 * * 0"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/ri_research_queue_cron.lock",
+      "entries": [
+        "cron:736",
+        "cron:737"
+      ],
+      "schedules": [
+        "45 16 * * 1-5",
+        "40 2 * * *"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/industry_momentum.lock",
+      "entries": [
+        "cron:757",
+        "cron:758"
+      ],
+      "schedules": [
+        "30 12 * * 1-5",
+        "18 16 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/chain_snapshot.lock",
+      "entries": [
+        "cron:759",
+        "cron:765"
+      ],
+      "schedules": [
+        "35 17 * * 1-5",
+        "0 10 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/defense_recs.lock",
+      "entries": [
+        "cron:760",
+        "cron:766"
+      ],
+      "schedules": [
+        "50 17 * * 1-5",
+        "10 10 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/opening_intel.lock",
+      "entries": [
+        "cron:789",
+        "cron:790",
+        "cron:791"
+      ],
+      "schedules": [
+        "30 3 * * 1-5",
+        "0 7 * * 1-5",
+        "15 9 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/hermes_agenda.lock",
+      "entries": [
+        "cron:821",
+        "cron:822"
+      ],
+      "schedules": [
+        "45 7 * * *",
+        "15 18 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/at_session_review.lock",
+      "entries": [
+        "cron:1010",
+        "cron:1011"
+      ],
+      "schedules": [
+        "5 12 * * 1-5",
+        "10 16 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    },
+    {
+      "kind": "lock",
+      "value": "/tmp/positions_sync.lock",
+      "entries": [
+        "cron:1019",
+        "cron:1020"
+      ],
+      "schedules": [
+        "9,24,39,54 9-16 * * 1-5",
+        "20 17 * * 1-5"
+      ],
+      "scheduled_collision": false,
+      "verdict": "NON_COLLIDING_WINDOWS_REVIEW_CONTRACT",
+      "priority": "P3"
+    }
+  ],
+  "shared_output_candidates": [
+    {
+      "output": "data/cio/research_trigger_ledger.jsonl",
+      "lanes": [
+        "research-scheduler-holdings",
+        "research-scheduler-priority-hourly",
+        "research-scheduler-watchlist-2030",
+        "research-scheduler-incubator-sun-1900"
+      ],
+      "verdict": "NOT_MEASURED writer synchronization"
+    },
+    {
+      "output": "data/runtime/organic_stance_hold_observe.json",
+      "lanes": [
+        "tradeai-stance-organic-observe",
+        "tradeai-stance-organic-observe-early"
+      ],
+      "verdict": "NOT_MEASURED writer synchronization"
+    },
+    {
+      "output": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/micro/live_symbols.json",
+      "lanes": [
+        "active-trader-micro-recorder-premarket",
+        "active-trader-micro-recorder"
+      ],
+      "verdict": "NOT_MEASURED writer synchronization"
+    },
+    {
+      "output": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/reviews",
+      "lanes": [
+        "active-trader-session-review",
+        "active-trader-session-review-close"
+      ],
+      "verdict": "NOT_MEASURED writer synchronization"
+    }
+  ],
+  "registry_drift": [
+    {
+      "lane_id": "unregistered-cron-60b157f10dd5-92",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-59c74a9e245f-118",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-be85b96fc7cb-125",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-6256a0e9f4f0-128",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f840ab4f497f-130",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e2dccf16e11e-131",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8b20d7fac7ad-132",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a8324af651ea-133",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-80e85dc70fc5-134",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-271fe10d70f2-135",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-19ec4412d488-136",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-377cbbba244c-137",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-81fcdae7258d-138",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-34e180b0b22f-142",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d78b774f5b96-145",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a4e47b024aa0-147",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-128bc0ef4abf-148",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4125387eb8f5-150",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2493e8ca29f9-151",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2f16aa73d60c-152",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-fb540d702736-154",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b695911bb1a2-156",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d9eb4e472115-157",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-bd53fa6cd726-158",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8f4b8e782744-159",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-78a9f221387d-160",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1653180357eb-161",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d2e976904b12-162",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9c71b8f1a677-164",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a25ad7171df7-168",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5afb8c806dbd-169",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-25cbcc381718-170",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-750e9f97072d-173",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-bd956297c42c-174",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5cfe0638638c-175",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c784428b1c74-181",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-24a5645e174c-183",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b90b969aa154-184",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8a49ac5583e5-185",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-11c488676db4-186",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8a4902e98c53-187",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-96ee185ab3f5-188",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-6f784e4dfa6c-189",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f9850a4b8b24-190",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2557f2ddb3f5-191",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-093c0d101be7-192",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b8629fe19caa-193",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0c2be2fa9bf7-194",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4d9b1f4b55cc-196",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8ae0383bba00-197",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-864b8b0d0f14-199",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e13b1c836fe8-200",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-56492d8b98c8-203",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8b4ae9885288-204",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5e42a7abd45d-205",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-006d96dbe449-206",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c8f9afef8c72-207",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d930da5511de-208",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f5633a352e6f-210",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c5bd68b293da-213",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e4d3c20139c7-214",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-643d55eb1fc9-216",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d7ac34560b44-217",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-943181e0c3ca-218",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7f667ab942ec-220",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-27f1bfc1fc80-222",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5ff24eb835bd-224",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-122a7463817c-225",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-aac2de607d09-227",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0ba8887b21ef-230",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0e907fa3b929-232",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-650cb8cb6d1d-234",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c102a9090a9a-236",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1e5ad012e19d-237",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-629d93a4e35c-243",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-63a849bec196-244",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-29c3c256d04c-246",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1fea7ec26785-248",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d8201bb9e6c7-250",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-046ad4b34fcd-252",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e51e3d0ac431-260",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-80c7bbc7c863-262",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-27b6729a9885-264",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1f5f1322a4c6-267",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-cffe3d7fdbcb-269",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9d6f476d0fcd-271",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-21339b299eff-273",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c958ba65be42-275",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d11c7c0fa6b8-277",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-bc86e67971cc-279",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0af4ec35294c-289",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8b930a39c289-291",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-202075c43a95-300",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4181a1dc96b4-302",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-038a9fa28247-306",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-3e8046e0ab91-308",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2ab331dba775-314",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-96a53eec17d4-316",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-28dac7dfc753-318",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-deaec843ec35-320",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-89014228a2c5-327",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7304048533d1-329",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a3cf72b8c8ab-330",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-69ad92e6ed5f-335",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ec2f4055e7e0-337",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2fb6a444f499-342",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-036ffec01046-349",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f766a326868f-352",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-919fb330a433-355",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-fb7de63328fa-358",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d25ce5c401d3-359",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-00305d0b11fd-363",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-62fb8bc60252-365",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5eb0980fd4ea-367",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-97e1c1abd77e-369",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1aa8fa133928-374",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9b42ec841e72-376",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e42fa45a5c36-377",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5e91dfed4bbd-379",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-767cd395d748-380",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-879e229c3b13-381",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1ff51bd62403-383",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ef6b16dff880-391",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-62c8fa6cc356-393",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7c720e96318d-400",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-566e453a0ec8-401",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4278bd89aeb5-406",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b79f469a5dfc-408",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-970496886142-409",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-27fa8c0ff1ea-411",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-73dd98abf075-413",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-21ff7f0604d5-418",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-94577cdf4436-420",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8e6c90c6eeeb-427",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-de00af4d9e26-429",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8ffccd187e2e-431",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-17338d7439f1-437",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-64b959891ae1-438",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e9fed0babeb6-442",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1acfd19126ea-448",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c22e6f04725d-449",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e82628d51086-450",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-6553b509f380-452",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ad06639b7915-454",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-39b05bf66c9f-455",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0d9f11dd3d00-456",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-eb26611e120b-457",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-349db88e92be-458",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d48500c5b76b-460",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f416aa456905-463",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-52cbdcc2541f-466",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-feb33dc018f1-467",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2866be494d15-468",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8c2b8e14ce27-469",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-98f024fa079a-470",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ce0098c1fd7b-471",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c6cd1843db28-472",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-945960c5690e-473",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2bef0335ed7c-474",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-660c222828f1-475",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b3e96f01d420-479",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e19f5ecf6314-480",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-58c2bb779544-482",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-89435526b329-484",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b8c9b084f117-486",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-77d5f3f4d0d3-488",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4d8343a51609-490",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9009e257dd9c-493",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b1fb96e4fd6e-495",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-dec002afb524-499",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-6486d0915f42-501",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-3b0b06d2b7f9-502",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-646e7f4bedd4-503",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-652ed7411088-504",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5b7ad4c4ca95-505",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4f7cc711dbcc-507",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c5d9a13febde-508",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a2b57b599e3b-517",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e7d13d46b045-519",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a537f40b7a3a-520",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4b0262e35f08-522",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ea285741c93b-524",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4f0c526e55e7-528",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7b605e9741bb-529",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9cc8eed8bb32-530",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-cca94bfc4dac-547",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-fa13b1e3ad73-549",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9d2f7bddd888-550",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-45f24dc5dca8-551",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1b9acce1049f-552",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-da98769a877b-553",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d3563fffc2b2-556",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d54b59b62d48-559",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b9f408290468-567",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ccb0432c580c-568",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-53697657dbe6-570",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-effc18e80bb8-571",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-21cbbd3091ac-572",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0ba7ff15b382-573",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-feef2174154b-574",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b8953d67e35a-575",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-fc2481c5d04b-577",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-bfed95d9570c-588",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c1549ae3c7a9-589",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7350b03b5331-592",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-621dba1b6e18-597",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-778b51065650-600",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8db90bca41c6-602",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-6eef144730cc-603",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-574193d53751-604",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f64e319d5d74-605",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-251aa0d8b4a3-606",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-92f931836335-607",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2ec546e00a55-608",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ad8cc37fa28c-609",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7df4f6a9fbe8-613",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a8e1ac548c30-615",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-add84f24e134-617",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b41a1b3b0f3a-619",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-75a6912a2518-621",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f42c5171f635-622",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-3bc46e85bf57-625",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7f5dc76d5a80-626",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-cefcb9949380-633",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-6d1e4e4c1288-640",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-41896de7b4e3-642",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-2cb514ae9a90-643",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4115ecbc75bd-646",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0c00d77c1522-647",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5629e4c917f1-650",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f9d469fc1eec-653",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1e87b64870f4-655",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9e80e56eae44-658",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b87f376bed06-662",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d19acee74dea-668",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-729066eb647a-671",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a997c6981c06-681",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-af990e239bc4-682",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-58a3c32bf740-683",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-85b8a5479781-684",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c873fef46111-685",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1b1be4668375-686",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9e5bfbd066ce-687",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-afc0248f450e-688",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-63623cbef995-697",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-15dc76b63dbb-698",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5c270f692b04-700",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-628da0e4dd27-702",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-df708182cdf9-705",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-cd1b8f54100d-712",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d58fbe0e7519-713",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1610431d2ca7-715",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8990b64dc073-716",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-47c3a783d610-717",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-67ce8f4426d5-719",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-dc6b4de9018a-725",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f40f95574019-726",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ccaaac71c414-727",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-78f3619900c3-729",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9a78bdff993b-731",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1ac78ef4db77-732",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b1e67cc4ef9a-733",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-443f30aa4705-736",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-140663f2011c-737",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-5211fde51689-739",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-3ac5afa9327e-741",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-34fc4ce153c2-743",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-812e5b18c334-746",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-984c1500840b-748",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-113b5e697059-750",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-f29db1496aa1-753",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a3fc2c0e2bae-755",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8d3fe860881c-759",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-bd1248e62afa-760",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9ae78ffaa15b-761",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0f5e7ff02080-762",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-bfc55d4fd3ff-763",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9afe2c954f60-765",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-8c20536b916c-766",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-1f27c938602f-768",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-0ea80f704012-769",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c603b83fbe23-770",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-08a26943514e-771",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d244b5411013-772",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-63900376d56a-777",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-945a3695bd30-778",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-336cf14e9c8c-779",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-dd8020108301-781",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-df73c052ae83-783",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c0f1c0da6174-785",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ef2536861e4d-789",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-088114ff6c96-790",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b929914086a4-791",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-75fe4f86b1c6-792",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ffe3905111a0-793",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-05c0f2496bb1-795",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-9e0f3f88360e-800",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a32b54d54afa-802",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-89fcbb2bbee8-804",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-a3bced52eedb-806",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-307c05fb749e-821",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-bdfd508db679-822",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ce5458f6174f-823",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c2d5dc9737a6-824",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-d51bffa0d839-832",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-c07291044faf-835",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-560ba31e5173-844",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-873499be2bbb-845",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-efbcc23c4554-846",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-979e7fcc0512-854",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-ab605a13e22d-856",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-6b8935de1c0f-858",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-efa6ee6789e6-859",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-45b5e9f345e4-860",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-e9c20adfa72c-861",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-352f24c044f9-862",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b1d8bfb31bd5-864",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-b8467e74ae44-871",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-95efba52451c-877",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-212230751b66-880",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-06c512390c2a-888",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-4d59e11e4285-897",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-cron-7a033fa89ba0-908",
+      "status": "ORPHANED",
+      "reason": "scheduled command has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-cio-governed-bridge.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-openclaw-gateway.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-portfolio-server.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-trade-ai-lab-moomoo-opend.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-active-trader-motion.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-advisory-shadow-session.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime-producer.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-cio-telegram.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-health-agent.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-lab-postgres.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-n8n-coordination-gateway.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-n8n-run-executor.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-n8n-run-relay.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-ops-agent.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-telegram-callback-poller.service",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-advisory-cache-worker.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-backlog-health-check.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-deep-research-local.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-embedding-promotion-review.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-librarian-backlog-loop.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-observation-check.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-shadow-scorer.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-hermes-source-discovery-dryrun.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-trade-ai-news-monitor.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-advisory-notif-broker.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-advisory-shadow-session.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime-producer.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@aegis.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@alex.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@argus.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@darwin.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@iris.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@maria.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@morgan.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@reflection.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@risk_agent.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@sentinel.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@steph.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@tax_agent.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-agent-runtime@vega.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-backup-enforcer.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-health-tick.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-hermes-cio-worker.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-maturity-feeds.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-n8n-lab-watchdog.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-platform-maintenance-monthly.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-platform-maintenance-nightly.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-platform-maintenance-weekly.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-unit-tradeai-watch-decision-scheduler.timer",
+      "status": "ORPHANED",
+      "reason": "active/failed unit has no lane row"
+    },
+    {
+      "lane_id": "unregistered-n8n-9208ac827e514183",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "unregistered-n8n-577f9dfaede632f3",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "unregistered-n8n-a26114588930ae9b",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "unregistered-n8n-baddad5487f9c288",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "unregistered-n8n-e511583d42831b8b",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "unregistered-n8n-c0d4c7845e5c4fcc",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "unregistered-n8n-e6f62397d5ae2aa2",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "unregistered-n8n-5439cd4d82e1f305",
+      "status": "ORPHANED",
+      "reason": "workflow activation observed; no declared scheduling owner"
+    },
+    {
+      "lane_id": "openclaw-aegis-evening-surveillance",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-676c2212-f18a-4913-b96d-e7790b7b173c",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-0775cd6b-2186-40fb-9b56-a3e36f6faf14",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-9a26d34d-b940-4185-9fe1-32403c0b3bc1",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-920bef5f-3b4b-4066-b695-92e72825e00a",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-a9c337e0-7a4d-4a83-8089-5aa3bf5f5059",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-729e2b82-7ace-4a13-8456-c469cb1072e9",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    },
+    {
+      "lane_id": "openclaw-b8b18bf7-5154-42c6-b290-45f04854dfe0",
+      "status": "ORPHANED",
+      "reason": "OpenClaw scheduling observed; no host output receipt or registry row"
+    }
+  ],
+  "unowned": [
+    "unregistered-cron-60b157f10dd5-92",
+    "unregistered-cron-59c74a9e245f-118",
+    "unregistered-cron-be85b96fc7cb-125",
+    "unregistered-cron-6256a0e9f4f0-128",
+    "unregistered-cron-f840ab4f497f-130",
+    "unregistered-cron-e2dccf16e11e-131",
+    "unregistered-cron-8b20d7fac7ad-132",
+    "unregistered-cron-a8324af651ea-133",
+    "unregistered-cron-80e85dc70fc5-134",
+    "unregistered-cron-271fe10d70f2-135",
+    "unregistered-cron-19ec4412d488-136",
+    "unregistered-cron-377cbbba244c-137",
+    "unregistered-cron-81fcdae7258d-138",
+    "unregistered-cron-34e180b0b22f-142",
+    "unregistered-cron-d78b774f5b96-145",
+    "unregistered-cron-a4e47b024aa0-147",
+    "unregistered-cron-128bc0ef4abf-148",
+    "unregistered-cron-4125387eb8f5-150",
+    "unregistered-cron-2493e8ca29f9-151",
+    "unregistered-cron-2f16aa73d60c-152",
+    "unregistered-cron-fb540d702736-154",
+    "unregistered-cron-b695911bb1a2-156",
+    "unregistered-cron-d9eb4e472115-157",
+    "unregistered-cron-bd53fa6cd726-158",
+    "unregistered-cron-8f4b8e782744-159",
+    "unregistered-cron-78a9f221387d-160",
+    "unregistered-cron-1653180357eb-161",
+    "unregistered-cron-d2e976904b12-162",
+    "unregistered-cron-9c71b8f1a677-164",
+    "unregistered-cron-a25ad7171df7-168",
+    "unregistered-cron-5afb8c806dbd-169",
+    "unregistered-cron-25cbcc381718-170",
+    "unregistered-cron-750e9f97072d-173",
+    "unregistered-cron-bd956297c42c-174",
+    "unregistered-cron-5cfe0638638c-175",
+    "unregistered-cron-c784428b1c74-181",
+    "unregistered-cron-24a5645e174c-183",
+    "unregistered-cron-b90b969aa154-184",
+    "unregistered-cron-8a49ac5583e5-185",
+    "unregistered-cron-11c488676db4-186",
+    "unregistered-cron-8a4902e98c53-187",
+    "unregistered-cron-96ee185ab3f5-188",
+    "unregistered-cron-6f784e4dfa6c-189",
+    "unregistered-cron-f9850a4b8b24-190",
+    "unregistered-cron-2557f2ddb3f5-191",
+    "unregistered-cron-093c0d101be7-192",
+    "unregistered-cron-b8629fe19caa-193",
+    "unregistered-cron-0c2be2fa9bf7-194",
+    "unregistered-cron-4d9b1f4b55cc-196",
+    "unregistered-cron-8ae0383bba00-197",
+    "unregistered-cron-864b8b0d0f14-199",
+    "unregistered-cron-e13b1c836fe8-200",
+    "unregistered-cron-56492d8b98c8-203",
+    "unregistered-cron-8b4ae9885288-204",
+    "unregistered-cron-5e42a7abd45d-205",
+    "unregistered-cron-006d96dbe449-206",
+    "unregistered-cron-c8f9afef8c72-207",
+    "unregistered-cron-d930da5511de-208",
+    "unregistered-cron-f5633a352e6f-210",
+    "unregistered-cron-c5bd68b293da-213",
+    "unregistered-cron-e4d3c20139c7-214",
+    "unregistered-cron-643d55eb1fc9-216",
+    "unregistered-cron-d7ac34560b44-217",
+    "unregistered-cron-943181e0c3ca-218",
+    "unregistered-cron-7f667ab942ec-220",
+    "unregistered-cron-27f1bfc1fc80-222",
+    "unregistered-cron-5ff24eb835bd-224",
+    "unregistered-cron-122a7463817c-225",
+    "unregistered-cron-aac2de607d09-227",
+    "unregistered-cron-0ba8887b21ef-230",
+    "unregistered-cron-0e907fa3b929-232",
+    "unregistered-cron-650cb8cb6d1d-234",
+    "unregistered-cron-c102a9090a9a-236",
+    "unregistered-cron-1e5ad012e19d-237",
+    "unregistered-cron-629d93a4e35c-243",
+    "unregistered-cron-63a849bec196-244",
+    "unregistered-cron-29c3c256d04c-246",
+    "unregistered-cron-1fea7ec26785-248",
+    "unregistered-cron-d8201bb9e6c7-250",
+    "unregistered-cron-046ad4b34fcd-252",
+    "unregistered-cron-e51e3d0ac431-260",
+    "unregistered-cron-80c7bbc7c863-262",
+    "unregistered-cron-27b6729a9885-264",
+    "unregistered-cron-1f5f1322a4c6-267",
+    "unregistered-cron-cffe3d7fdbcb-269",
+    "unregistered-cron-9d6f476d0fcd-271",
+    "unregistered-cron-21339b299eff-273",
+    "unregistered-cron-c958ba65be42-275",
+    "unregistered-cron-d11c7c0fa6b8-277",
+    "unregistered-cron-bc86e67971cc-279",
+    "unregistered-cron-0af4ec35294c-289",
+    "unregistered-cron-8b930a39c289-291",
+    "unregistered-cron-202075c43a95-300",
+    "unregistered-cron-4181a1dc96b4-302",
+    "unregistered-cron-038a9fa28247-306",
+    "unregistered-cron-3e8046e0ab91-308",
+    "unregistered-cron-2ab331dba775-314",
+    "unregistered-cron-96a53eec17d4-316",
+    "unregistered-cron-28dac7dfc753-318",
+    "unregistered-cron-deaec843ec35-320",
+    "unregistered-cron-89014228a2c5-327",
+    "unregistered-cron-7304048533d1-329",
+    "unregistered-cron-a3cf72b8c8ab-330",
+    "unregistered-cron-69ad92e6ed5f-335",
+    "unregistered-cron-ec2f4055e7e0-337",
+    "unregistered-cron-2fb6a444f499-342",
+    "unregistered-cron-036ffec01046-349",
+    "unregistered-cron-f766a326868f-352",
+    "unregistered-cron-919fb330a433-355",
+    "unregistered-cron-fb7de63328fa-358",
+    "unregistered-cron-d25ce5c401d3-359",
+    "unregistered-cron-00305d0b11fd-363",
+    "unregistered-cron-62fb8bc60252-365",
+    "unregistered-cron-5eb0980fd4ea-367",
+    "unregistered-cron-97e1c1abd77e-369",
+    "unregistered-cron-1aa8fa133928-374",
+    "unregistered-cron-9b42ec841e72-376",
+    "unregistered-cron-e42fa45a5c36-377",
+    "unregistered-cron-5e91dfed4bbd-379",
+    "unregistered-cron-767cd395d748-380",
+    "unregistered-cron-879e229c3b13-381",
+    "unregistered-cron-1ff51bd62403-383",
+    "unregistered-cron-ef6b16dff880-391",
+    "unregistered-cron-62c8fa6cc356-393",
+    "unregistered-cron-7c720e96318d-400",
+    "unregistered-cron-566e453a0ec8-401",
+    "unregistered-cron-4278bd89aeb5-406",
+    "unregistered-cron-b79f469a5dfc-408",
+    "unregistered-cron-970496886142-409",
+    "unregistered-cron-27fa8c0ff1ea-411",
+    "unregistered-cron-73dd98abf075-413",
+    "unregistered-cron-21ff7f0604d5-418",
+    "unregistered-cron-94577cdf4436-420",
+    "unregistered-cron-8e6c90c6eeeb-427",
+    "unregistered-cron-de00af4d9e26-429",
+    "unregistered-cron-8ffccd187e2e-431",
+    "unregistered-cron-17338d7439f1-437",
+    "unregistered-cron-64b959891ae1-438",
+    "unregistered-cron-e9fed0babeb6-442",
+    "unregistered-cron-1acfd19126ea-448",
+    "unregistered-cron-c22e6f04725d-449",
+    "unregistered-cron-e82628d51086-450",
+    "unregistered-cron-6553b509f380-452",
+    "unregistered-cron-ad06639b7915-454",
+    "unregistered-cron-39b05bf66c9f-455",
+    "unregistered-cron-0d9f11dd3d00-456",
+    "unregistered-cron-eb26611e120b-457",
+    "unregistered-cron-349db88e92be-458",
+    "unregistered-cron-d48500c5b76b-460",
+    "unregistered-cron-f416aa456905-463",
+    "unregistered-cron-52cbdcc2541f-466",
+    "unregistered-cron-feb33dc018f1-467",
+    "unregistered-cron-2866be494d15-468",
+    "unregistered-cron-8c2b8e14ce27-469",
+    "unregistered-cron-98f024fa079a-470",
+    "unregistered-cron-ce0098c1fd7b-471",
+    "unregistered-cron-c6cd1843db28-472",
+    "unregistered-cron-945960c5690e-473",
+    "unregistered-cron-2bef0335ed7c-474",
+    "unregistered-cron-660c222828f1-475",
+    "unregistered-cron-b3e96f01d420-479",
+    "unregistered-cron-e19f5ecf6314-480",
+    "unregistered-cron-58c2bb779544-482",
+    "unregistered-cron-89435526b329-484",
+    "unregistered-cron-b8c9b084f117-486",
+    "unregistered-cron-77d5f3f4d0d3-488",
+    "unregistered-cron-4d8343a51609-490",
+    "unregistered-cron-9009e257dd9c-493",
+    "unregistered-cron-b1fb96e4fd6e-495",
+    "unregistered-cron-dec002afb524-499",
+    "unregistered-cron-6486d0915f42-501",
+    "unregistered-cron-3b0b06d2b7f9-502",
+    "unregistered-cron-646e7f4bedd4-503",
+    "unregistered-cron-652ed7411088-504",
+    "unregistered-cron-5b7ad4c4ca95-505",
+    "unregistered-cron-4f7cc711dbcc-507",
+    "unregistered-cron-c5d9a13febde-508",
+    "unregistered-cron-a2b57b599e3b-517",
+    "unregistered-cron-e7d13d46b045-519",
+    "unregistered-cron-a537f40b7a3a-520",
+    "unregistered-cron-4b0262e35f08-522",
+    "unregistered-cron-ea285741c93b-524",
+    "unregistered-cron-4f0c526e55e7-528",
+    "unregistered-cron-7b605e9741bb-529",
+    "unregistered-cron-9cc8eed8bb32-530",
+    "unregistered-cron-cca94bfc4dac-547",
+    "unregistered-cron-fa13b1e3ad73-549",
+    "unregistered-cron-9d2f7bddd888-550",
+    "unregistered-cron-45f24dc5dca8-551",
+    "unregistered-cron-1b9acce1049f-552",
+    "unregistered-cron-da98769a877b-553",
+    "unregistered-cron-d3563fffc2b2-556",
+    "unregistered-cron-d54b59b62d48-559",
+    "unregistered-cron-b9f408290468-567",
+    "unregistered-cron-ccb0432c580c-568",
+    "unregistered-cron-53697657dbe6-570",
+    "unregistered-cron-effc18e80bb8-571",
+    "unregistered-cron-21cbbd3091ac-572",
+    "unregistered-cron-0ba7ff15b382-573",
+    "unregistered-cron-feef2174154b-574",
+    "unregistered-cron-b8953d67e35a-575",
+    "unregistered-cron-fc2481c5d04b-577",
+    "unregistered-cron-bfed95d9570c-588",
+    "unregistered-cron-c1549ae3c7a9-589",
+    "unregistered-cron-7350b03b5331-592",
+    "unregistered-cron-621dba1b6e18-597",
+    "unregistered-cron-778b51065650-600",
+    "unregistered-cron-8db90bca41c6-602",
+    "unregistered-cron-6eef144730cc-603",
+    "unregistered-cron-574193d53751-604",
+    "unregistered-cron-f64e319d5d74-605",
+    "unregistered-cron-251aa0d8b4a3-606",
+    "unregistered-cron-92f931836335-607",
+    "unregistered-cron-2ec546e00a55-608",
+    "unregistered-cron-ad8cc37fa28c-609",
+    "unregistered-cron-7df4f6a9fbe8-613",
+    "unregistered-cron-a8e1ac548c30-615",
+    "unregistered-cron-add84f24e134-617",
+    "unregistered-cron-b41a1b3b0f3a-619",
+    "unregistered-cron-75a6912a2518-621",
+    "unregistered-cron-f42c5171f635-622",
+    "unregistered-cron-3bc46e85bf57-625",
+    "unregistered-cron-7f5dc76d5a80-626",
+    "unregistered-cron-cefcb9949380-633",
+    "unregistered-cron-6d1e4e4c1288-640",
+    "unregistered-cron-41896de7b4e3-642",
+    "unregistered-cron-2cb514ae9a90-643",
+    "unregistered-cron-4115ecbc75bd-646",
+    "unregistered-cron-0c00d77c1522-647",
+    "unregistered-cron-5629e4c917f1-650",
+    "unregistered-cron-f9d469fc1eec-653",
+    "unregistered-cron-1e87b64870f4-655",
+    "unregistered-cron-9e80e56eae44-658",
+    "unregistered-cron-b87f376bed06-662",
+    "unregistered-cron-d19acee74dea-668",
+    "unregistered-cron-729066eb647a-671",
+    "unregistered-cron-a997c6981c06-681",
+    "unregistered-cron-af990e239bc4-682",
+    "unregistered-cron-58a3c32bf740-683",
+    "unregistered-cron-85b8a5479781-684",
+    "unregistered-cron-c873fef46111-685",
+    "unregistered-cron-1b1be4668375-686",
+    "unregistered-cron-9e5bfbd066ce-687",
+    "unregistered-cron-afc0248f450e-688",
+    "unregistered-cron-63623cbef995-697",
+    "unregistered-cron-15dc76b63dbb-698",
+    "unregistered-cron-5c270f692b04-700",
+    "unregistered-cron-628da0e4dd27-702",
+    "unregistered-cron-df708182cdf9-705",
+    "unregistered-cron-cd1b8f54100d-712",
+    "unregistered-cron-d58fbe0e7519-713",
+    "unregistered-cron-1610431d2ca7-715",
+    "unregistered-cron-8990b64dc073-716",
+    "unregistered-cron-47c3a783d610-717",
+    "unregistered-cron-67ce8f4426d5-719",
+    "unregistered-cron-dc6b4de9018a-725",
+    "unregistered-cron-f40f95574019-726",
+    "unregistered-cron-ccaaac71c414-727",
+    "unregistered-cron-78f3619900c3-729",
+    "unregistered-cron-9a78bdff993b-731",
+    "unregistered-cron-1ac78ef4db77-732",
+    "unregistered-cron-b1e67cc4ef9a-733",
+    "unregistered-cron-443f30aa4705-736",
+    "unregistered-cron-140663f2011c-737",
+    "unregistered-cron-5211fde51689-739",
+    "unregistered-cron-3ac5afa9327e-741",
+    "unregistered-cron-34fc4ce153c2-743",
+    "unregistered-cron-812e5b18c334-746",
+    "unregistered-cron-984c1500840b-748",
+    "unregistered-cron-113b5e697059-750",
+    "unregistered-cron-f29db1496aa1-753",
+    "unregistered-cron-a3fc2c0e2bae-755",
+    "unregistered-cron-8d3fe860881c-759",
+    "unregistered-cron-bd1248e62afa-760",
+    "unregistered-cron-9ae78ffaa15b-761",
+    "unregistered-cron-0f5e7ff02080-762",
+    "unregistered-cron-bfc55d4fd3ff-763",
+    "unregistered-cron-9afe2c954f60-765",
+    "unregistered-cron-8c20536b916c-766",
+    "unregistered-cron-1f27c938602f-768",
+    "unregistered-cron-0ea80f704012-769",
+    "unregistered-cron-c603b83fbe23-770",
+    "unregistered-cron-08a26943514e-771",
+    "unregistered-cron-d244b5411013-772",
+    "unregistered-cron-63900376d56a-777",
+    "unregistered-cron-945a3695bd30-778",
+    "unregistered-cron-336cf14e9c8c-779",
+    "unregistered-cron-dd8020108301-781",
+    "unregistered-cron-df73c052ae83-783",
+    "unregistered-cron-c0f1c0da6174-785",
+    "unregistered-cron-ef2536861e4d-789",
+    "unregistered-cron-088114ff6c96-790",
+    "unregistered-cron-b929914086a4-791",
+    "unregistered-cron-75fe4f86b1c6-792",
+    "unregistered-cron-ffe3905111a0-793",
+    "unregistered-cron-05c0f2496bb1-795",
+    "unregistered-cron-9e0f3f88360e-800",
+    "unregistered-cron-a32b54d54afa-802",
+    "unregistered-cron-89fcbb2bbee8-804",
+    "unregistered-cron-a3bced52eedb-806",
+    "unregistered-cron-307c05fb749e-821",
+    "unregistered-cron-bdfd508db679-822",
+    "unregistered-cron-ce5458f6174f-823",
+    "unregistered-cron-c2d5dc9737a6-824",
+    "unregistered-cron-d51bffa0d839-832",
+    "unregistered-cron-c07291044faf-835",
+    "unregistered-cron-560ba31e5173-844",
+    "unregistered-cron-873499be2bbb-845",
+    "unregistered-cron-efbcc23c4554-846",
+    "unregistered-cron-979e7fcc0512-854",
+    "unregistered-cron-ab605a13e22d-856",
+    "unregistered-cron-6b8935de1c0f-858",
+    "unregistered-cron-efa6ee6789e6-859",
+    "unregistered-cron-45b5e9f345e4-860",
+    "unregistered-cron-e9c20adfa72c-861",
+    "unregistered-cron-352f24c044f9-862",
+    "unregistered-cron-b1d8bfb31bd5-864",
+    "unregistered-cron-b8467e74ae44-871",
+    "unregistered-cron-95efba52451c-877",
+    "unregistered-cron-212230751b66-880",
+    "unregistered-cron-06c512390c2a-888",
+    "unregistered-cron-4d59e11e4285-897",
+    "unregistered-cron-7a033fa89ba0-908",
+    "unregistered-unit-cio-governed-bridge.service",
+    "unregistered-unit-openclaw-gateway.service",
+    "unregistered-unit-portfolio-server.service",
+    "unregistered-unit-trade-ai-lab-moomoo-opend.service",
+    "unregistered-unit-tradeai-active-trader-motion.service",
+    "unregistered-unit-tradeai-advisory-shadow-session.service",
+    "unregistered-unit-tradeai-agent-runtime-producer.service",
+    "unregistered-unit-tradeai-cio-telegram.service",
+    "unregistered-unit-tradeai-health-agent.service",
+    "unregistered-unit-tradeai-lab-postgres.service",
+    "unregistered-unit-tradeai-n8n-coordination-gateway.service",
+    "unregistered-unit-tradeai-n8n-run-executor.service",
+    "unregistered-unit-tradeai-n8n-run-relay.service",
+    "unregistered-unit-tradeai-ops-agent.service",
+    "unregistered-unit-tradeai-telegram-callback-poller.service",
+    "unregistered-unit-hermes-advisory-cache-worker.timer",
+    "unregistered-unit-hermes-backlog-health-check.timer",
+    "unregistered-unit-hermes-deep-research-local.timer",
+    "unregistered-unit-hermes-embedding-promotion-review.timer",
+    "unregistered-unit-hermes-librarian-backlog-loop.timer",
+    "unregistered-unit-hermes-observation-check.timer",
+    "unregistered-unit-hermes-shadow-scorer.timer",
+    "unregistered-unit-hermes-source-discovery-dryrun.timer",
+    "unregistered-unit-trade-ai-news-monitor.timer",
+    "unregistered-unit-tradeai-advisory-notif-broker.timer",
+    "unregistered-unit-tradeai-advisory-shadow-session.timer",
+    "unregistered-unit-tradeai-agent-runtime-producer.timer",
+    "unregistered-unit-tradeai-agent-runtime@aegis.timer",
+    "unregistered-unit-tradeai-agent-runtime@alex.timer",
+    "unregistered-unit-tradeai-agent-runtime@argus.timer",
+    "unregistered-unit-tradeai-agent-runtime@darwin.timer",
+    "unregistered-unit-tradeai-agent-runtime@iris.timer",
+    "unregistered-unit-tradeai-agent-runtime@maria.timer",
+    "unregistered-unit-tradeai-agent-runtime@morgan.timer",
+    "unregistered-unit-tradeai-agent-runtime@reflection.timer",
+    "unregistered-unit-tradeai-agent-runtime@risk_agent.timer",
+    "unregistered-unit-tradeai-agent-runtime@sentinel.timer",
+    "unregistered-unit-tradeai-agent-runtime@steph.timer",
+    "unregistered-unit-tradeai-agent-runtime@tax_agent.timer",
+    "unregistered-unit-tradeai-agent-runtime@vega.timer",
+    "unregistered-unit-tradeai-backup-enforcer.timer",
+    "unregistered-unit-tradeai-health-tick.timer",
+    "unregistered-unit-tradeai-hermes-cio-worker.timer",
+    "unregistered-unit-tradeai-maturity-feeds.timer",
+    "unregistered-unit-tradeai-n8n-lab-watchdog.timer",
+    "unregistered-unit-tradeai-platform-maintenance-monthly.timer",
+    "unregistered-unit-tradeai-platform-maintenance-nightly.timer",
+    "unregistered-unit-tradeai-platform-maintenance-weekly.timer",
+    "unregistered-unit-tradeai-watch-decision-scheduler.timer",
+    "unregistered-n8n-9208ac827e514183",
+    "unregistered-n8n-577f9dfaede632f3",
+    "unregistered-n8n-a26114588930ae9b",
+    "unregistered-n8n-baddad5487f9c288",
+    "unregistered-n8n-e511583d42831b8b",
+    "unregistered-n8n-Bi002YOPSpZOQpEo",
+    "unregistered-n8n-2yPuOGW9yYtJsoYk",
+    "unregistered-n8n-c0d4c7845e5c4fcc",
+    "unregistered-n8n-e6f62397d5ae2aa2",
+    "unregistered-n8n-5439cd4d82e1f305",
+    "openclaw-aegis-evening-surveillance",
+    "openclaw-steph-weekly-allocation-review",
+    "openclaw-steph-income-progress",
+    "openclaw-676c2212-f18a-4913-b96d-e7790b7b173c",
+    "openclaw-0775cd6b-2186-40fb-9b56-a3e36f6faf14",
+    "openclaw-e7b71848-ec62-436f-b21b-18eb63195796",
+    "openclaw-9a26d34d-b940-4185-9fe1-32403c0b3bc1",
+    "openclaw-920bef5f-3b4b-4066-b695-92e72825e00a",
+    "openclaw-d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+    "openclaw-a9c337e0-7a4d-4a83-8089-5aa3bf5f5059",
+    "openclaw-729e2b82-7ace-4a13-8456-c469cb1072e9",
+    "openclaw-31941553-99d1-4ab2-b420-782b19addca9",
+    "openclaw-b8b18bf7-5154-42c6-b290-45f04854dfe0"
+  ],
+  "benign_overlaps": [
+    "A shared interpreter venv is not dev-tree code execution.",
+    "A shadow schedule is coordination overlap; side-effect safety requires receipts, not a lock alone."
+  ],
+  "dangerous_overlaps": "Exact duplicates and active shared-writer/lock candidates require contract review; lock skips are not completed work."
+}

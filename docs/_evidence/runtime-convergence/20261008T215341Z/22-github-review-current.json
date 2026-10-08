@@ -1,0 +1,12 @@
+{
+  "as_of": "2026-10-08 23:40:21 UTC",
+  "evidence_class": "OBSERVED_GITHUB",
+  "command": "gh pr view 1537 --repo PatsKiller/tardeai --json number,state,headRefOid,mergeStateStatus,url",
+  "result": {
+    "headRefOid": "66adc9285a581703d04c863b90ea36ee0964810f",
+    "mergeStateStatus": "BEHIND",
+    "number": 1537,
+    "state": "OPEN",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1537"
+  }
+}

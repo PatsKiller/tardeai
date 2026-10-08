@@ -1,0 +1,87 @@
+{
+  "evidence_class": "TEST_ONLY",
+  "reviewed_pr": 1537,
+  "reviewed_head": "66adc9285a581703d04c863b90ea36ee0964810f",
+  "cases": [
+    {
+      "scenario": "shadow_predecessor_for_live",
+      "expected_gate_ok": false,
+      "observed": [
+        {
+          "json": {
+            "gate_ok": true,
+            "gate_attempt": 2,
+            "TRADEAI_N8N_RUN_URL": "http://fixture",
+            "predecessor_state": "RUN_DONE",
+            "predecessor_finished_at": "2026-10-08T20:00:00Z"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "scenario": "nonzero_exit_RUN_DONE",
+      "expected_gate_ok": false,
+      "observed": [
+        {
+          "json": {
+            "gate_ok": true,
+            "gate_attempt": 2,
+            "TRADEAI_N8N_RUN_URL": "http://fixture",
+            "predecessor_state": "RUN_DONE",
+            "predecessor_finished_at": "2026-10-08T20:00:00Z"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "scenario": "future_same_day",
+      "expected_gate_ok": false,
+      "observed": [
+        {
+          "json": {
+            "gate_ok": true,
+            "gate_attempt": 2,
+            "TRADEAI_N8N_RUN_URL": "http://fixture",
+            "predecessor_state": "RUN_DONE",
+            "predecessor_finished_at": "2026-10-08T23:00:00Z"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "scenario": "failed_predecessor",
+      "expected_gate_ok": false,
+      "observed": [
+        {
+          "json": {
+            "gate_ok": false,
+            "gate_attempt": 2,
+            "TRADEAI_N8N_RUN_URL": "http://fixture",
+            "predecessor_state": "RUN_FAILED",
+            "predecessor_finished_at": "2026-10-08T20:00:00Z"
+          }
+        }
+      ],
+      "exit": 0
+    },
+    {
+      "scenario": "missing_predecessor",
+      "expected_gate_ok": false,
+      "observed": [
+        {
+          "json": {
+            "gate_ok": false,
+            "gate_attempt": 2,
+            "TRADEAI_N8N_RUN_URL": "http://fixture",
+            "predecessor_state": null,
+            "predecessor_finished_at": null
+          }
+        }
+      ],
+      "exit": 0
+    }
+  ]
+}

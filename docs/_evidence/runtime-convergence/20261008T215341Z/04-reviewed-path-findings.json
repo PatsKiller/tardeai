@@ -1,0 +1,2765 @@
+{
+  "rows": [
+    {
+      "unit": "portfolio-backup.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_pg_backup.sh",
+          "line": 4,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_pg_backup.sh",
+          "line": 52,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_enforcer.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "portfolio-daily.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio.sh",
+          "line": 22,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "portfolio-lookthrough.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 8,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 32,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 35,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 38,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 8,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 32,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 35,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_lookthrough.sh",
+          "line": 38,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "portfolio-monthly.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_monthly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_monthly.sh",
+          "line": 16,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_monthly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_monthly.sh",
+          "line": 20,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_monthly.sh",
+          "line": 23,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_monthly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_monthly.sh",
+          "line": 26,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "portfolio-price-cache.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_price_cache.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_price_cache.sh",
+          "line": 12,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_price_cache.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "portfolio-weekly.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_weekly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_weekly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_weekly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_weekly.sh",
+          "line": 25,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_portfolio_weekly.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-cio-desk-memo-regen.service",
+      "candidate": "DEV_STATE_READ_OR_METADATA_CANDIDATE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/lib/cio_desk_synthesis.py",
+          "line": 121,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "roots.append(Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\"))"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/lib/cio_desk_synthesis.py",
+          "line": 251,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "live = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\")"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/lib/cio_desk_synthesis.py",
+          "line": 1510,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "root = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\")"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: classify read path vs executable; literal regex match does not prove execution",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-continuous.service",
+      "candidate": "SHARED_VENV_REFERENCE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_continuous.sh",
+          "line": 7,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "VENV_DIR=\"${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_continuous.sh",
+          "line": 20,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/system_preflight_check.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_continuous.sh",
+          "line": 23,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/continuous_runner.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "RETAIN_WITH_REASON: interpreter environment is shared; this literal alone is not a dev-tree code hop",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-flash-llm-intelligence.service",
+      "candidate": "DEV_WORKTREE_UNIT_AND_STATE_REFERENCE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/tradeai-wt-cursor-guardrails/scripts/flash_cadence_runner.py",
+          "line": 26,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "RUNTIME = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime\")"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_OPERATOR_GRANT / NEEDS_DESIGN: unit definitions and state root require explicit rebind; no live child PID proof",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-flash-portfolio-risk.service",
+      "candidate": "DEV_WORKTREE_UNIT_AND_STATE_REFERENCE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/tradeai-wt-cursor-guardrails/scripts/flash_cadence_runner.py",
+          "line": 26,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "RUNTIME = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime\")"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_OPERATOR_GRANT / NEEDS_DESIGN: unit definitions and state root require explicit rebind; no live child PID proof",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-flash-watchlist-daily.service",
+      "candidate": "DEV_WORKTREE_UNIT_AND_STATE_REFERENCE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/tradeai-wt-cursor-guardrails/scripts/flash_cadence_runner.py",
+          "line": 26,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "RUNTIME = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime\")"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_OPERATOR_GRANT / NEEDS_DESIGN: unit definitions and state root require explicit rebind; no live child PID proof",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-governance-facts.service",
+      "candidate": "DEV_PROJ_ASSIGNMENT",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_system_facts.sh",
+          "line": 5,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJ=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_system_facts.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_system_facts.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "FIX_NOW_SOURCE: three scheduled governance wrappers derive release root from BASH_SOURCE",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-governance-pipeline.service",
+      "candidate": "DEV_PROJ_ASSIGNMENT",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_governance_pipeline.sh",
+          "line": 11,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_governance_pipeline.sh",
+          "line": 52,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_a1a_check.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_a1a_check.sh",
+          "line": 5,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJ=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_a1a_check.sh",
+          "line": 28,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_a1a_compliance.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_governance_pipeline.sh",
+          "line": 53,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_system_facts.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_system_facts.sh",
+          "line": 5,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJ=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_system_facts.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_system_facts.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_governance_pipeline.sh",
+          "line": 54,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_governance_status.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_governance_pipeline.sh",
+          "line": 57,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_maturity_control_board.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_maturity_control_board.sh",
+          "line": 5,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJ=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_maturity_control_board.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_maturity_control_board.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/run_scheduled_maturity_control_board.sh",
+          "line": 28,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_phase_readiness_gates.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_governance_pipeline.sh",
+          "line": 58,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_operator_readiness_summary.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_governance_pipeline.sh",
+          "line": 61,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_state_of_repo_snapshot.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "FIX_NOW_SOURCE: three scheduled governance wrappers derive release root from BASH_SOURCE",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-main-desk-free-llm-weekly.service",
+      "candidate": "DEV_STATE_READ_OR_METADATA_CANDIDATE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/tradeai-wt-cursor-guardrails/scripts/main_desk_free_llm_weekly.py",
+          "line": 54,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime\"),"
+        },
+        {
+          "path": "/home/johnclaw/tradeai-wt-cursor-guardrails/scripts/main_desk_free_llm_weekly.py",
+          "line": 69,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "path = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime\")"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: classify read path vs executable; literal regex match does not prove execution",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-maturity-board.service",
+      "candidate": "DEV_PROJ_ASSIGNMENT",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_maturity_control_board.sh",
+          "line": 5,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJ=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_maturity_control_board.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_maturity_control_board.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_maturity_control_board.sh",
+          "line": 28,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_phase_readiness_gates.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "FIX_NOW_SOURCE: three scheduled governance wrappers derive release root from BASH_SOURCE",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-operator-answer-quality.service",
+      "candidate": "DEV_STATE_READ_OR_METADATA_CANDIDATE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_operator_answer_quality.py",
+          "line": 138,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "DEV_TREE = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\")"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: classify read path vs executable; literal regex match does not prove execution",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-platform-maintenance-monthly.service",
+      "candidate": "RETENTION_CHILD_PATH_CANDIDATE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 36,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 105,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/rotate_runtime_logs.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 107,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/rotate_runtime_logs.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 108,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "line": 19,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "line": 24,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "30 2 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && \\\\"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 113,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 115,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_platform_conformance.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 118,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_platform_conformance.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 119,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/nightly_integrity_sweep.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 121,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/nightly_integrity_sweep.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 122,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/strategy_config_loader.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/strategy_config_loader.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/siem_retention_purge.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/siem_retention_purge.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 128,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/hermes_universe_history_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 130,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/hermes_universe_history_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 131,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "line": 7,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "line": 8,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 133,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 134,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/db_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 137,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/db_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 138,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/prune_document_mentions.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 140,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/prune_document_mentions.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_db_hygiene.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_db_hygiene.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 146,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "line": 6,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 151,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 152,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "line": 7,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "line": 21,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "ROOT = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\")"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 157,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_verify.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 159,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_verify.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 161,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/purge_youtube_transcripts.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 163,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/purge_youtube_transcripts.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: docs_retention child literal plus shared interpreter references; do not rewrite destructive retention blindly",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-platform-maintenance-nightly.service",
+      "candidate": "RETENTION_CHILD_PATH_CANDIDATE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 36,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 105,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/rotate_runtime_logs.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 107,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/rotate_runtime_logs.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 108,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "line": 19,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "line": 24,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "30 2 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && \\\\"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 113,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 115,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_platform_conformance.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 118,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_platform_conformance.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 119,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/nightly_integrity_sweep.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 121,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/nightly_integrity_sweep.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 122,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/strategy_config_loader.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/strategy_config_loader.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/siem_retention_purge.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/siem_retention_purge.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 128,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/hermes_universe_history_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 130,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/hermes_universe_history_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 131,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "line": 7,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "line": 8,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 133,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 134,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/db_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 137,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/db_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 138,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/prune_document_mentions.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 140,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/prune_document_mentions.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_db_hygiene.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_db_hygiene.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 146,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "line": 6,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 151,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 152,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "line": 7,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "line": 21,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "ROOT = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\")"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 157,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_verify.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 159,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_verify.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 161,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/purge_youtube_transcripts.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 163,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/purge_youtube_transcripts.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: docs_retention child literal plus shared interpreter references; do not rewrite destructive retention blindly",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-platform-maintenance-weekly.service",
+      "candidate": "RETENTION_CHILD_PATH_CANDIDATE",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 36,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 105,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/rotate_runtime_logs.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 107,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/rotate_runtime_logs.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 108,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "line": 19,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "line": 24,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "30 2 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && \\\\"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 113,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/populate_performance_context.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 115,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_platform_conformance.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 118,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_platform_conformance.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 119,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/nightly_integrity_sweep.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 121,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/nightly_integrity_sweep.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 122,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/strategy_config_loader.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/strategy_config_loader.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/siem_retention_purge.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/siem_retention_purge.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 128,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/hermes_universe_history_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 130,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/hermes_universe_history_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 131,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "line": 7,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "line": 8,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 133,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 134,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/db_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 137,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/db_retention.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 138,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/prune_document_mentions.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 140,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/prune_document_mentions.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_db_hygiene.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/report_db_hygiene.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 146,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/docs_retention.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "line": 6,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 151,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/n8n_lab_restore_drill.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 152,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "line": 7,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "line": 21,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "ROOT = Path(\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\")"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/check_system_versions.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 157,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_verify.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 159,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_verify.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 161,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/purge_youtube_transcripts.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_platform_maintenance_pipeline.sh",
+          "line": 163,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/purge_youtube_transcripts.py",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: docs_retention child literal plus shared interpreter references; do not rewrite destructive retention blindly",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-portfolio-backup-cadence.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 14,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 114,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 10,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 11,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 12,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 123,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 4,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 52,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_enforcer.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 22,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 136,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 25,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 16,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 20,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 23,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 26,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 150,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 8,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 32,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 35,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 38,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 156,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-portfolio-daily-cadence.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 14,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 114,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 10,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 11,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 12,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 123,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 4,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 52,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_enforcer.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 22,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 136,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 25,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 16,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 20,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 23,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 26,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 150,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 8,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 32,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 35,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 38,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 156,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-portfolio-lookthrough-cadence.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 14,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 114,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 10,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 11,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 12,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 123,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 4,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 52,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_enforcer.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 22,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 136,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 25,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 16,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 20,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 23,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 26,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 150,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 8,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 32,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 35,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 38,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 156,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-portfolio-monthly-cadence.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 14,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 114,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 10,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 11,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 12,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 123,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 4,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 52,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_enforcer.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 22,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 136,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 25,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 16,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 20,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 23,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 26,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 150,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 8,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 32,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 35,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 38,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 156,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    },
+    {
+      "unit": "tradeai-portfolio-weekly-cadence.service",
+      "candidate": "RELEASE_CONTROLLER_TO_DEV_LAUNCHER",
+      "source_trace": [
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 14,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/_pipeline_common.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 114,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 10,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 11,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "line": 12,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 123,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 4,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_pg_backup.sh",
+          "line": 52,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_enforcer.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 124,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 125,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 127,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/backup_secrets_state.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 3,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "line": 22,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 135,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 136,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 25,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "line": 27,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 141,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 142,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 143,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_weekly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 6,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 16,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 17,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 20,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_weekly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 23,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 24,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/generate_reports_hub.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "line": 26,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 147,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_orchestrator.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_ai_analyst.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 148,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_monthly_report.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 149,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_yaml_advisor.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 150,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_portfolio_monthly.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 8,
+          "evidence_class": "SOURCE_ONLY",
+          "dev_tree_hop": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 32,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 35,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "line": 38,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 154,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_fetcher.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase3_lookthrough_resolver.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 155,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/phase2_coverage_audit.py",
+          "evidence_class": "SOURCE_ONLY"
+        },
+        {
+          "path": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/pipelines/run_portfolio_maintenance_pipeline.sh",
+          "line": 156,
+          "child": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/linux_launchers/run_lookthrough.sh",
+          "evidence_class": "SOURCE_ONLY"
+        }
+      ],
+      "actual_process_cwd": null,
+      "action": "NEEDS_DESIGN: launcher code-root fix separate from state/send semantics; inspect six linux_launchers listed in traces",
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_execution_proof": "NOT_MEASURED"
+    }
+  ],
+  "note": "Raw trace is conservative literal traversal, with candidates and shared-venv false positives. Do not equate its 24 candidates with 24 observed dev-tree executions."
+}

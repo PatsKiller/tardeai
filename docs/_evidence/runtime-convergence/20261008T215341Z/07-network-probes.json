@@ -1,0 +1,29 @@
+{
+  "as_of": "2026-10-08T22:58:21.899126+00:00",
+  "evidence_class": "OBSERVED_N8N",
+  "tcp_probe": {
+    "command": [
+      "docker",
+      "exec",
+      "m8m-n8n",
+      "node",
+      "-e",
+      "const net=require('net');const ports=[18092,18091,7777,7776,5432,11434,55432];\nPromise.all(ports.map(port=>new Promise(resolve=>{const s=net.connect({host:'172.19.0.1',port});\nconst end=result=>{s.destroy();resolve({host:'172.19.0.1',port,result})};s.setTimeout(1500);\ns.once('connect',()=>end('REACHABLE'));s.once('error',()=>end('REFUSED'));s.once('timeout',()=>end('TIMEOUT'));})))\n.then(rows=>process.stdout.write(JSON.stringify(rows)));"
+    ],
+    "exit": 0,
+    "stdout": "[{\"host\":\"172.19.0.1\",\"port\":18092,\"result\":\"REACHABLE\"},{\"host\":\"172.19.0.1\",\"port\":18091,\"result\":\"TIMEOUT\"},{\"host\":\"172.19.0.1\",\"port\":7777,\"result\":\"REFUSED\"},{\"host\":\"172.19.0.1\",\"port\":7776,\"result\":\"REFUSED\"},{\"host\":\"172.19.0.1\",\"port\":5432,\"result\":\"TIMEOUT\"},{\"host\":\"172.19.0.1\",\"port\":11434,\"result\":\"TIMEOUT\"},{\"host\":\"172.19.0.1\",\"port\":55432,\"result\":\"TIMEOUT\"}]",
+    "error_class": null
+  },
+  "firewall": {
+    "command": [
+      "sudo",
+      "-n",
+      "ufw",
+      "status",
+      "numbered"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "error_class": "command_failed"
+  }
+}
