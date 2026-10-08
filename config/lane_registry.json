@@ -3741,6 +3741,24 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_n8n_research_intake_20261008.py (request -> ACCEPTED -> enqueue through research_intelligence_queue.enqueue stub -> CONSUMED with artifact ri_research_queue:queue_id; duplicate, unknown type, no-enqueue-path, unknown topic, daily cap, dry-run). Consumer --dry-run from the worktree against the live gateway: 0 events (lane not yet allowed).",
       "note": "Coordination only: n8n never calls Hermes or an LLM; the consumer enqueues through the RI desk's own writer (after-close drain, its own cap and LLM wrapper). Hermes subject types are typed refusals (no per-request enqueue path exists)."
+    },
+    {
+      "lane_id": "lane-governance-packet-weekly",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-08",
+      "state_reason": "Phase 2 PR-E (2026-10-08): scripts/report_lane_governance_packet.py --write --period weekly ships NEVER_SCHEDULED; it awaits the operator's cron grant for the proposed line '20 6 * * 1 cd $PROJ && TRADEAI_STATE_ROOT=/home/johnclaw/trade-ai-releases/persistent-state $PY scripts/report_lane_governance_packet.py --write --period weekly >> logs/lane_governance_packet.log 2>&1'. Until then the packet is produced only by hand (--dry-run prints, --write writes json+md+receipt under the state root). Read-only: no send.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/lane_governance_packet_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_lane_governance_packet_20261008.py (fixture registry + receipts + sqlite ledger -> section counts; dry-run writes nothing; --write writes json/md/receipt; ops-summary model job fixture modes -> ARTIFACT_WRITTEN or typed refusal, no network); dry run from the worktree against the live state root 2026-10-08 printed the five section counts.",
+      "note": "Weekly per-lane governance packet: lane verdicts, coordination ledger states, fan-in incidents, release + conformance receipts, retention/hygiene. Model job #1 (ops_summary_draft/v1) reads the receipt; no lane carries the draft yet."
     }
   ],
   "undeclared_baseline": [
