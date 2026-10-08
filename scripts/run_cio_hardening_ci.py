@@ -2147,6 +2147,9 @@ GATES = [
             "tests/test_system_health_agent_conn_and_retired_20261007.py",
             "tests/test_persistent_state_root_import_20261008.py",
             "tests/test_scheduled_wrappers_resolve_own_tree_20261007.py",
+            "tests/test_units_execute_served_tree_20261008.py",
+            "tests/test_expected_services_lane_states_20261008.py",
+            "tests/test_health_agent_retry_disarmed_20261008.py",
             "tests/test_agent_auto_queue_valid_symbols_20260915.py",
         ],
     ),
@@ -3385,11 +3388,13 @@ GATES = [
             "tests/test_n8n_model_job_operation_20261007.py",
             "tests/test_n8n_phase1_dispatch_20261007.py",
             "tests/test_notification_outbox_projection_20261008.py",
+            "tests/test_approval_board_20261008.py",
             "tests/test_platform_maintenance_pipeline_20261007.py",
             # 2026-10-07 cron consolidation tranche C (low-risk): options tick, orchestrator
             # slot wrapper, drive syncs runner, hermes subject dispatcher. Proposals only; no
             # cron line is installed by listing them here.
             "tests/test_cron_tranche_c_lowrisk_20261007.py",
+            "tests/test_tranche_b_readiness_20261008.py",
             # Cron consolidation RANK 3: the 5-minute health tick that absorbs 17
             # monitor crontab lines. Hermetic (fake steps, tmp locks/state); it
             # pins due-phase arithmetic, lock skip, timeout = failure, receipt
@@ -3398,6 +3403,7 @@ GATES = [
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
             "tests/test_retention_registry_20261007.py",
+            "tests/test_pgvector_migration_plan_20261008.py",
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",
             "tests/test_n8n_research_intake_20261008.py",

@@ -820,12 +820,27 @@ def _check_output_validity(component, log_file, error_signatures=None, success_s
         return {"valid": False, "reason": "read_error"}
 
 
+_RETRY_DISARMED_LOGGED: set = set()
+
+
 def _attempt_retry(comp, conn):
     """Attempt automatic retry of a failed component. Max 2 retries per day."""
     cmd = comp.get("retry_cmd")
     if not cmd:
         return False
     component = comp["component"]
+    # 2026-10-08: every retry_cmd began with .venv/bin/python, which the served tree does not have, so
+    # every retry since the crons-to-CURRENT migration exited 127 (system_health_events RETRY rows:
+    # "/bin/sh: 1: .venv/bin/python: not found"). The interpreter is the one this agent runs under.
+    # Arming ~20 retry commands (several launch senders or daemons) is an operator decision, so the
+    # path stays DISARMED unless TRADEAI_HEALTH_AGENT_RETRY=1.
+    if cmd.startswith(".venv/bin/python"):
+        cmd = sys.executable + cmd[len(".venv/bin/python"):]
+    if os.environ.get("TRADEAI_HEALTH_AGENT_RETRY", "0") != "1":
+        if component not in _RETRY_DISARMED_LOGGED:
+            _RETRY_DISARMED_LOGGED.add(component)
+            log.info(f"[retry] {component} — RETRY_DISARMED (set TRADEAI_HEALTH_AGENT_RETRY=1 to arm): {cmd[:80]}")
+        return False
 
     # Check retry count today. Default FIRST: when the shared connection is closed or aborted the
     # SELECT raises, and the name must still exist below (2026-10-07: 1,082 UnboundLocalError

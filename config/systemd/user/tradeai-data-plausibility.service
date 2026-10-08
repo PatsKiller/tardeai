@@ -19,9 +19,11 @@ Type=oneshot
 # Runs from the DEV tree, which is what executes batch work here (cron = batch,
 # systemd = services; this is batch wearing a timer). Pointing it at the release
 # would measure the same database but from a tree that may lag main.
-WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# 2026-10-08: ran from the DEV tree (WorkingDirectory + relative scripts/ path) — the "dev tree is what
+# executes" trap; the five --alert monitors now run the served release. Interpreter stays the shared venv.
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
-    scripts/data_plausibility_monitor.py --alert
+    %h/trade-ai-releases/portfolio-server/CURRENT/scripts/data_plausibility_monitor.py --alert
 
 # Exit 1 means "BLOCK violations are present", which is a finding, not a unit
 # failure. Treating it as a failure would bury the alert under a systemd error

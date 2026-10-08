@@ -178,6 +178,64 @@ def dispatch_lane(lane_id: str, *, client: GatewayClient | None, root: Path, sha
     return row
 
 
+APPROVAL_LANE = "approval-package-reminder"
+
+
+def dispatch_board_events(*, client: GatewayClient | None, root: Path, sha: str, now: datetime,
+                          board: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Roadmap Phase 2 PR-C (2026-10-08): the approval board (open packages + active grants with
+    time-to-expiry) rides the existing pilot lane. Each row within its warning window becomes ONE
+    event keyed on (kind, id, expiry instant); repeated runs inside the window are `duplicate`.
+    The artifact is the board receipt this run writes in --apply mode. No new lane, no send."""
+    from scripts.lib import approval_board_projection as ab
+    from scripts.lib.n8n_pilot_observations import approval_reminder
+    if os.environ.get("TRADEAI_APPROVAL_BOARD", "1") == "0":   # hermetic callers opt out of the ledger + guard CLI reads
+        return []
+    board = board if board is not None else ab.build_board(now)
+    rows: list[dict[str, Any]] = []
+    receipt_path: Path | None = None
+    if client is not None:
+        receipt_path = ab.write_receipt(board, root)
+    observation = approval_reminder(root)
+    for r in board.get("expiring") or []:
+        plan = ab.event_plan(r)
+        idem = plan["idempotency_key"]
+        at = _stable_time(plan.get("at"), fallback=now)
+        event = event_reference(APPROVAL_LANE, idempotency_key=idem, subject_key=plan["subject_key"],
+                                artifact_ref=f"{plan['store']}:{plan['artifact_rel']}", now=at, deadline_hours=1.0, origin_sha=sha)
+        row: dict[str, Any] = {"lane_id": APPROVAL_LANE, "source": "approval_board", "fired": True, "why": None,
+                               "kind": plan["kind"], "id": plan["id"], "expires_at": plan["expires_at"], "ttl_min_left": plan["ttl_min_left"],
+                               "idempotency_key": idem, "event_id": event["event_id"], "subject_key": plan["subject_key"],
+                               "observation_status": observation.get("artifact_status"), "ops": []}
+        verdict_input = {"route": "coordination/event", "operation": "accept_event", "event": event}
+        row["contract"] = _local_contract(APPROVAL_LANE, verdict_input, observation, sha)
+        if client is None:
+            row["outcome"] = "DRY_RUN"
+            row["planned_ops"] = ["accept_event", "claim", "start", "artifact"]
+            rows.append(row)
+            continue
+        acc = client.accept_event(event)
+        row["ops"].append({"op": "accept_event", "state": acc.get("state"), "reason": acc.get("reason"), "duplicate": acc.get("duplicate")})
+        if acc.get("state") in {"UNREACHABLE", "REFUSED"}:
+            row["outcome"] = "GATEWAY_UNREACHABLE" if acc.get("state") == "UNREACHABLE" else "GATEWAY_REFUSED"
+            rows.append(row)
+            continue
+        ref: dict[str, Any] = {"store": plan["store"], "ref": plan["artifact_rel"], "as_of": now.isoformat()}
+        digest = _sha256_file(receipt_path) if receipt_path else None
+        if digest:
+            ref["sha256"] = digest
+        row["ops"].extend(walk_to_artifact(client, idem, ref))
+        last = row["ops"][-1].get("state") if row["ops"] else None
+        row["outcome"] = "ARTIFACT_WRITTEN" if last == "ARTIFACT_WRITTEN" else (last or "UNKNOWN")
+        rows.append(row)
+    return rows
+
+
+def board_summary(board: Mapping[str, Any]) -> dict[str, Any]:
+    return {"status": board.get("status"), "total": board.get("total"), "expiring_count": board.get("expiring_count"),
+            "counts": board.get("counts"), "sources": {k: v.get("status") for k, v in (board.get("sources") or {}).items()}}
+
+
 def _local_contract(lane_id: str, request: Mapping[str, Any], observation: Mapping[str, Any], sha: str) -> dict[str, Any]:
     """Run the pilot contract with a throwaway key so the lane rule is recorded without a socket."""
     from scripts.lib.n8n_coordination_gateway import sign_claim
@@ -229,9 +287,17 @@ def main(argv: list[str] | None = None) -> int:
         client = GatewayClient()
         gateway = {"url": client.url, "has_key": client.has_key, "healthz": client.healthz()}
     rows = [dispatch_lane(l, client=client, root=root, sha=sha, now=now, db_query=_db_query_factory()) for l in lanes]
+    board_note: dict[str, Any] | None = None
+    if APPROVAL_LANE in lanes and os.environ.get("TRADEAI_APPROVAL_BOARD", "1") != "0":
+        # Phase 2 PR-C: the board's expiring rows ride the same lane, one event per (kind, id, expiry)
+        from scripts.lib import approval_board_projection as ab
+        board = ab.build_board(now)
+        board_note = board_summary(board)
+        rows += dispatch_board_events(client=client, root=root, sha=sha, now=now, board=board)
     receipt = {"schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "mode": "apply" if args.apply else "dry-run",
                "served_sha": sha or None, "state_root": str(root), "gateway": gateway, "lanes": rows,
                "fired": sum(1 for r in rows if r["fired"]),
+               "approval_board": board_note,
                "ok": (not args.apply) or all(r.get("outcome") not in {"GATEWAY_UNREACHABLE", "GATEWAY_REFUSED", "UNKNOWN"} for r in rows)}
     out = Path(args.receipt) if args.receipt else (root / "data" / "runtime" / "n8n_pilot_dispatch_last.json")
     if args.apply:

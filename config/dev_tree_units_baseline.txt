@@ -1,0 +1,25 @@
+# Units under config/systemd/user that still execute from the DEV tree (WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/...
+# with a scripts/ entry). Debt recorded 2026-10-08 (tests/test_units_execute_served_tree_20261008.py): the count can only
+# shrink. Fix = WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT + absolute CURRENT script path, then remove the line.
+hermes-autonomous-loop.service
+hermes-deep-research-local.service
+hermes-external-feedback.service
+trade-ai-news-monitor.service
+tradeai-advisory-lessons-reflect.service
+tradeai-advisory-notif-broker.service
+tradeai-advisory-outcome-scorer.service
+tradeai-advisory-shadow-session.service
+tradeai-backup-enforcer.service
+tradeai-cio-desk-memo-regen.service
+tradeai-cio-event-brief.service
+tradeai-cio-reactive.service
+tradeai-cio-whatsapp.service
+tradeai-eod-consolidated-close.service
+tradeai-finviz-view-contracts.service
+tradeai-holdings-agent-enqueue.service
+tradeai-operator-answer-quality.service
+tradeai-portfolio-report-ms.service
+tradeai-sm-render.service
+tradeai-source-litmus.service
+tradeai-tax-lots-rebuild.service
+tradeai-watch-decision-scheduler.service
