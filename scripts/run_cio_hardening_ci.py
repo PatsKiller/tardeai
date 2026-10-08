@@ -3445,6 +3445,11 @@ GATES = [
         ],
     ),
     (
+        # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
+        "N8N_RUN_RELAY",
+        ["tests/test_n8n_run_relay_20261008.py"],
+    ),
+    (
         # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial
         # stage runner for the post-close, premarket and Hermes chains. Hermetic: the tests drive
         # the runner with true/false/sleep manifests against a scratch project root, prove that
