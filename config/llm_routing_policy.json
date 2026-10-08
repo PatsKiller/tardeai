@@ -1,0 +1,1274 @@
+{
+  "schema": "LlmRoutingPolicy@v1",
+  "default_policy_id": "default",
+  "policies": {
+    "default": {
+      "policy_id": "default",
+      "provider_concurrency": {
+        "deepseek": 6,
+        "grok": 2,
+        "chatgpt": 2
+      },
+      "processes": {
+        "advisory_desk_opinion": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 1.25
+        },
+        "advisory_desk_synthesis": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "aegis_steph_review": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "aegis_synthesis": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "alex_cio_escalation": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.15
+        },
+        "alex_cio_synthesis": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.4
+        },
+        "architecture_review": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "broker_cloud_oversight": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "cio_hermes_research": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.4
+        },
+        "cio_operator_reply": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.6
+        },
+        "cio_plan_enrichment": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5
+        },
+        "cio_policy_field_advisor": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "cio_prompt_judge": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "cloud_consensus_verdict": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "cloud_review": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "contradiction_adjudicator": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5
+        },
+        "deepseek_flash_operator_smoke": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05
+        },
+        "directive_keyword_enhancer": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "grok_execution_review": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "guardian_risk_critique": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.2
+        },
+        "hermes_analyst_coverage": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "hermes_cloud_json": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.3
+        },
+        "hermes_cross_source_synthesizer": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "hermes_external_research": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.3
+        },
+        "hermes_golden_judge": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "hermes_scalp_review": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "hermes_tag_engine": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "hermes_usefulness_score": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.3
+        },
+        "holding_protection_advisor": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "holding_protection_advisor_batch": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "holdings_llm_refresh": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "iris_taxonomy_agent": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "journal_ask": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "l3_independent_critic": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "l3_judgment_author": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.25
+        },
+        "ledger_tax_critique": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.2
+        },
+        "llm_intelligence_enrichment": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "local_llm_compat": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.25
+        },
+        "maria_research_critique": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.3
+        },
+        "morgan_wealth_synthesis": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.2
+        },
+        "multi_tier_trade_reviewer": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST_THINK"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST_THINK"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "n8n_material_digest_draft": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "n8n_ops_summary_draft": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "oauth_lane_keepalive": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "options_ensemble": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5
+        },
+        "paper_trade_advisory": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "pipeline_health_diagnosis": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "portfolio_ai_analyst": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "portfolio_ask": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "portfolio_monthly_report": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "portfolio_orchestrator": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "portfolio_weekly_report": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "reflective_critic_flash": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "reporting_grok_editorial": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "research_circle_analyzer": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1
+        },
+        "rotation_grok_review": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "rotation_oversight": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "steph_allocation_review": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "PRO"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.3
+        },
+        "stop_drift_alert": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "strategy_planner": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "think_tank_signal_miner": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "topic_curator": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "topic_ingestion": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "unregistered": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "watchlist_agent_debate_flash": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 1.5
+        },
+        "watchlist_agent_flash_extract": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.75
+        },
+        "watchlist_agent_oauth_fallback": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 1.0
+        },
+        "watchlist_cio_synthesis": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "PRO_THINK"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "PRO_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "watchlist_cio_synthesis_cron": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST_THINK"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST_THINK"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST_THINK"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.5
+        },
+        "watchlist_entry_planner": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "watchlist_maria_flash_narrative": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 2.0
+        },
+        "watchlist_maria_priority": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 5.0
+        },
+        "watchlist_risk_flash_narrative": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 1.0
+        },
+        "watchlist_steph_flash_narrative": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 1.0
+        }
+      }
+    }
+  }
+}
