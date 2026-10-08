@@ -6,6 +6,7 @@ import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT } from '../lib/designTokens'
 import { projectCoordination, type CoordinationPayload, type CoordinationRow } from '../lib/coordinationEvents'
 import { projectOutbox, type OutboxPayload } from '../lib/outboxProjection'
+import { projectApprovalBoard, type ApprovalBoardPayload } from '../lib/approvalBoard'
 
 const panel: CSSProperties = {
   background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14,
@@ -35,6 +36,8 @@ export default function CoordinationPage() {
   const { rows, sort, toggle } = useSort(model.rows, { key: 'recordedAt', dir: 'desc' }, getter)
   const outboxApi = useApi<OutboxPayload>('/api/v2/coordination/outbox?hours=24', 60_000)
   const outbox = useMemo(() => projectOutbox(outboxApi.loading && !outboxApi.data ? null : outboxApi.data), [outboxApi.data, outboxApi.loading])
+  const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
+  const approvals = useMemo(() => projectApprovalBoard(approvalsApi.loading && !approvalsApi.data ? null : approvalsApi.data), [approvalsApi.data, approvalsApi.loading])
   return (
     <div data-testid="coordination-page" style={{ display: 'grid', gap: 12 }}>
       <div style={panel}>
@@ -133,6 +136,56 @@ export default function CoordinationPage() {
               {outbox.rows.length === 0 ? (
                 <tr><td colSpan={7} style={{ ...cell, color: TOKENS.text[3] }}>
                   {outbox.status === 'OK' ? 'nothing sent, suppressed or withdrawn in the window' : 'outbox projection unavailable'}
+                </td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style={panel} data-testid="coordination-approvals">
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Approvals</div>
+          <div style={label}>open packages and active grants with time to expiry · the ledgers decide, this page only shows</div>
+        </div>
+        <ChipRow style={{ marginTop: 8 }}>
+          <Chip tone={approvals.statusTone} title="approval board status">{approvals.statusLabel}</Chip>
+          <Chip tone="neutral" title="board clock">{approvals.asOfLabel}</Chip>
+          <Chip tone={approvals.expiringCount > 0 ? 'danger' : 'neutral'} title="rows inside their expiry warning window">expiring {approvals.expiringCount}</Chip>
+          {approvals.counts.map(c => (
+            <Chip key={`${c.kind}:${c.state}`} tone={c.tone} title={`${c.kind} ${c.state}`}>{c.kind} {c.state} {c.n}</Chip>
+          ))}
+        </ChipRow>
+        {approvals.sourceNotes.length > 0 ? <div style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{approvals.sourceNotes.join(' · ')}</div> : null}
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>state</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>kind</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>id</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>scope</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>expiry</th>
+                <th style={{ ...label, textAlign: 'right', padding: '5px 6px' }}>uses left</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>items</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {approvals.rows.slice(0, 100).map(r => (
+                <tr key={r.key} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+                  <td style={cell}><Chip tone={r.tone}>{r.state}</Chip></td>
+                  <td style={mono}>{r.kind}</td>
+                  <td style={mono}>{r.id}</td>
+                  <td style={cell}>{r.scope}</td>
+                  <td style={{ ...mono, color: r.expiring ? TOKENS.text[0] : TOKENS.text[1] }}>{r.ttlLabel}</td>
+                  <td style={{ ...mono, textAlign: 'right' }}>{r.usesLeft ?? ''}</td>
+                  <td style={cell}>{r.pendingLabel}</td>
+                  <td style={cell}>{r.reason}</td>
+                </tr>
+              ))}
+              {approvals.rows.length === 0 ? (
+                <tr><td colSpan={8} style={{ ...cell, color: TOKENS.text[3] }}>
+                  {approvals.status === 'OK' ? 'no open packages and no active grants' : 'approval board unavailable'}
                 </td></tr>
               ) : null}
             </tbody>

@@ -65,7 +65,8 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
     monkeypatch.setenv("TRADEAI_SERVED_SHA", SHA)
     monkeypatch.setenv("TRADEAI_N8N_GATEWAY_HMAC_KEY", KEY.decode())
-    monkeypatch.setenv("TRADEAI_FANIN_LANE_REGISTRY", "0")   # 2026-10-08: the lane_registry source probes the host; keep this fixture hermetic
+    monkeypatch.setenv("TRADEAI_FANIN_LANE_REGISTRY", "0")
+    monkeypatch.setenv("TRADEAI_APPROVAL_BOARD", "0")       # 2026-10-08 PR-C: the board reads the guard CLI; keep this fixture hermetic   # 2026-10-08: the lane_registry source probes the host; keep this fixture hermetic
     monkeypatch.delenv("TRADEAI_READ_DSN", raising=False)
     monkeypatch.delenv("TRADE_AI_DSN", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
