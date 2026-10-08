@@ -3413,6 +3413,12 @@ GATES = [
         ["tests/test_wake_operator_turn_selection_20261005.py"],
     ),
     (
+        # Runtime convergence: denied observations, unregistered schedulers, lock skips,
+        # shadow/live separation and release rebind coverage.
+        "scheduler_operations",
+        ["tests/test_scheduler_operations.py", "tests/test_n8n_release_rebind.py", "tests/test_scheduler_launcher_roots.py"],
+    ),
+    (
         # 2026-10-08 — lane registry scheduler kind `n8n` (scheduler-of-record program):
         # validation, ledger/receipt-proven presence, the double-scheduler conflicts,
         # the per-line `_cutover.py --lane` cutover/rollback against a fake crontab, and
