@@ -3723,6 +3723,24 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Both absorbed lines sit in undeclared_baseline today; the inline purge produced no durable artifact, the wrapper does. Installed 2026-10-07: timer enabled (systemctl --user list-timers: next 2026-11-01 06:00 EST); scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence monthly --dry-run from the served tree listed every step with its lock before the install.",
       "note": "Cron consolidation RANK 4. Runner scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence monthly (dry-run default; --apply is the scheduled form). Proposed scheduler: config/systemd/user/tradeai-platform-maintenance-monthly.timer (1st 06:00), PROPOSAL ONLY, not installed. Declared NEVER_SCHEDULED pending the operator's config-write grant to install the units and delete the absorbed crontab lines (see docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md). The summary file is written only by --apply and only after every step has been attempted; a failed step is recorded in failed_steps, not hidden."
+    },
+    {
+      "lane_id": "n8n-research-intake-consumer",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-08",
+      "state_reason": "Phase 2 PR-D (2026-10-08): scripts/n8n_research_intake_consumer.py ships NEVER_SCHEDULED. It needs (1) the gateway unit re-installed with TRADEAI_N8N_GATEWAY_EXTRA_LANES including research-intake (config-write grant, service restart) and (2) an operator cron grant for a */15 line; until then no research_request event is accepted and nothing is enqueued.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_research_intake_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_research_intake_20261008.py (request -> ACCEPTED -> enqueue through research_intelligence_queue.enqueue stub -> CONSUMED with artifact ri_research_queue:queue_id; duplicate, unknown type, no-enqueue-path, unknown topic, daily cap, dry-run). Consumer --dry-run from the worktree against the live gateway: 0 events (lane not yet allowed).",
+      "note": "Coordination only: n8n never calls Hermes or an LLM; the consumer enqueues through the RI desk's own writer (after-close drain, its own cap and LLM wrapper). Hermes subject types are typed refusals (no per-request enqueue path exists)."
     }
   ],
   "undeclared_baseline": [
