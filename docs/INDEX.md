@@ -1438,6 +1438,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/15-pgvector-migration-decision-20261008.md` | pgvector migration of `content_embeddings` — decision packet (2026-10-08) | review_required | MISSING HEADER | `aa88f58c8ec5` |
 | `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | review_required | OK | `3bf623a3f9a5` |
 | `docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md` | 19 — N1 cutover packet (2026-10-08) | review_required | OK | `1c12618061f9` |
+| `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |
 | `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `9d5cc13f4722` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |

@@ -10,6 +10,124 @@
   "_entry_shape": "lane_id, command (argv, run with cwd = code root), lock (absolute; reused from the live cron/unit so n8n and cron cannot double-run), lock_kind (safe_flock default | flock = cron-style `flock -n`, conflict exit 75), timeout_s, dry_run_arg / live_arg (argv appended for that mode; null = mode unavailable, run refused), market_gate (bool; executor prepends scripts/market_day_gate.sh), output_signal (relative to $STATE_ROOT; mtime recorded before/after on the RunReceipt@v1)",
   "lanes": [
     {
+      "lane_id": "generate-analyst-daily-digest",
+      "source": "30 7 * * 1-5; flock -n /tmp/analyst_daily_digest.lock $PY scripts/generate_analyst_daily_digest.py --format docx; shadow builds report JSON (existing script semantics)",
+      "command": [
+        "$PY",
+        "scripts/generate_analyst_daily_digest.py"
+      ],
+      "lock": "/tmp/analyst_daily_digest.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--format",
+        "docx"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/generate_analyst_daily_digest_last.json"
+    },
+    {
+      "lane_id": "desk-suggestions-digest",
+      "source": "0 8 * * 1-5; $PY scripts/desk_suggestions_digest.py; no cron lock or dry-run; canary NOT lock-equivalent until operator adds a shared lock",
+      "command": [
+        "$PY",
+        "scripts/desk_suggestions_digest.py"
+      ],
+      "lock": "/tmp/tradeai_desk_suggestions_digest.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 180,
+      "dry_run_arg": null,
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/desk_suggestions_digest_last.json"
+    },
+    {
+      "lane_id": "job-coverage-monitor",
+      "source": "30 8,20 * * *; $PY scripts/job_coverage_monitor.py; no cron lock or dry-run; canary NOT lock-equivalent until operator adds a shared lock",
+      "command": [
+        "$PY",
+        "scripts/job_coverage_monitor.py"
+      ],
+      "lock": "/tmp/tradeai_job_coverage_monitor.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 180,
+      "dry_run_arg": null,
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/job_coverage_monitor_last.json"
+    },
+    {
+      "lane_id": "catalyst-calibration-monitor",
+      "source": "40 5 * * *; flock -n /tmp/catalyst_calibration_monitor.lock $PY scripts/catalyst_calibration_monitor.py",
+      "command": [
+        "$PY",
+        "scripts/catalyst_calibration_monitor.py"
+      ],
+      "lock": "/tmp/catalyst_calibration_monitor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/catalyst_calibration_history.json"
+    },
+    {
+      "lane_id": "source-attribution-monitor",
+      "source": "0 6 * * *; flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py",
+      "command": [
+        "$PY",
+        "scripts/source_attribution_monitor.py"
+      ],
+      "lock": "/tmp/source_attribution_monitor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/source_attribution_history.json"
+    },
+    {
+      "lane_id": "watch-directives-monitor",
+      "source": "20 6 * * *; flock -n /tmp/watch_directives_monitor.lock $PY scripts/watch_directives_monitor.py",
+      "command": [
+        "$PY",
+        "scripts/watch_directives_monitor.py"
+      ],
+      "lock": "/tmp/watch_directives_monitor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/watch_directives_history.json"
+    },
+    {
+      "lane_id": "finviz-view-contracts",
+      "source": "tradeai-finviz-view-contracts.service ExecStart=$PY scripts/check_finviz_view_contracts.py; no lock in unit, canary requires operator lock equivalence",
+      "command": [
+        "$PY",
+        "scripts/check_finviz_view_contracts.py"
+      ],
+      "lock": "/tmp/tradeai_finviz_view_contracts.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/finviz_view_contracts_last_run.json"
+    },
+    {
       "lane_id": "n8n-pilot-dispatch",
       "source": "crontab */15 * * * * ... $PY scripts/n8n_pilot_dispatch.py --apply (no lock on the cron line)",
       "command": [
@@ -151,6 +269,39 @@
       "output_signal": "data/governance/maturity_latest.json"
     }
   ],
+  "blocked_reasons": {
+    "llm-spend-report-daily": "Cron includes --send: host sender (§23.3).",
+    "llm-spend-report-weekly": "Cron includes --send: host sender (§23.3).",
+    "llm-spend-report-monthly": "Cron includes --send: host sender (§23.3).",
+    "material-change-digest": "notify_material_change --digest --apply is a host sender.",
+    "alert-daily-digest": "Default action sends Telegram.",
+    "ops-daily-digest": "External OpenClaw script sends Telegram and has no durable receipt; no external source edited.",
+    "ops-weekly-learning-report": "External OpenClaw script sends Telegram and has no durable receipt.",
+    "system-rollup-snapshot": "Default action sends Telegram and refreshes reporting catalog.",
+    "generate-weekly-docx": "Default action sends Telegram; dated report has no stable per-run receipt.",
+    "rotation-rebalance-digest": "Default action seeds research and sends Telegram; no stable receipt.",
+    "expected-services-audit": "Live service includes --alert; do not silently remove the sender from the existing lane.",
+    "data-source-health-audit": "Live audit is an alerting lane; command and shared lock require a separate sender-free contract.",
+    "served-copy-split-audit": "Live service includes --alert; exact cron/unit sender must remain host-owned.",
+    "data-plausibility-audit": "Live audit is an alerting lane; needs verified sender-free command and lock contract.",
+    "gap-resolution-audit": "Live audit is an alerting lane; needs verified sender-free command and lock contract.",
+    "source-litmus-vs-yahoo": "Live unit command/lock must be verified before adding an executor entry.",
+    "operator-answer-quality-audit": "Live audit is an alerting lane; needs verified sender-free command and lock contract.",
+    "research-lane-health": "Existing monitor can notify; needs a verified sender-free command and shared lock.",
+    "agent-runtime-health": "External runtime-health output is outside STATE_ROOT; no executor cwd/output contract yet.",
+    "llm-retry-monitor": "Default main truncates llm_retry_events.jsonl: destructive retention.",
+    "hermes-pipeline-health": "Exact cron includes --send; healthy idle runs have no durable receipt.",
+    "youtube-cookie-health-check": "Default action sends Telegram on red/amber.",
+    "finviz-health-check": "Updates DB health, has no write-nothing dry-run or stable file receipt for the executor.",
+    "crawl-v3-dashboard": "Exact cron includes --telegram; no stable receipt.",
+    "alert-missing-conditions": "Default action sends alerts and performs a paid credit probe.",
+    "drive-syncs-hourly": "Step scripts delete existing Drive objects and perform remote cleanup; destructive retention is forbidden.",
+    "backup-generated-docs": "Git commit-tree/update-ref/push and Telegram failure alerts are not relay authority.",
+    "sync-memory-to-drive": "External script permanently deletes Drive copies before upload; no upload receipt.",
+    "commit-hermes-daily": "Git commit/push origin main and Drive sync are not relay authority.",
+    "n8n-lab-backup": "Registry is RETIRED: already absorbed into platform-maintenance-nightly; do not add a second schedule.",
+    "n8n-lab-restore-drill": "Registry is RETIRED: already absorbed into platform-maintenance-weekly; do not add a second schedule."
+  },
   "pending_tranches": {
     "_note": "Lane ids from the operator-approved move list (PR #1512 tranches table, plan streamed-humming-wolf). Registry lane_ids are used where a row exists; script-derived ids (hyphenated script stem) mark the lanes with no registry row yet (stream D creates them). Listed without commands: a lane here is NOT runnable until it gets an entry in `lanes` with argv copied from its live cron line or unit, in its own PR. The two N1 monitor workflows are n8n-native and have no host command. portfolio-backup-cadence is listed under N2 (the PR table names it in both N2 and N5).",
     "N2": [
@@ -182,26 +333,19 @@
       "ops-weekly-learning-report",
       "system-rollup-snapshot",
       "generate-weekly-docx",
-      "generate-analyst-daily-digest",
-      "desk-suggestions-digest",
       "rotation-rebalance-digest"
     ],
     "N4": [
-      "expected-services",
+      "expected-services-audit",
       "data-source-health-audit",
-      "served-copy-split",
-      "data-plausibility",
-      "gap-resolution",
+      "served-copy-split-audit",
+      "data-plausibility-audit",
+      "gap-resolution-audit",
       "source-litmus-vs-yahoo",
-      "finviz-view-contracts",
       "operator-answer-quality-audit",
       "research-lane-health",
       "agent-runtime-health",
-      "job-coverage-monitor",
       "llm-retry-monitor",
-      "catalyst-calibration-monitor",
-      "source-attribution-monitor",
-      "watch-directives-monitor",
       "hermes-pipeline-health",
       "youtube-cookie-health-check",
       "finviz-health-check",
