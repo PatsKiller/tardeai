@@ -1,0 +1,229 @@
+{
+  "schema": "N8nRunAllowlist@v1",
+  "as_of": "2026-10-08",
+  "_why": "The only commands the n8n run route can start. The gateway accepts a run request only for a lane_id listed here with a command; scripts/n8n_run_executor.py re-reads this file at start and refuses (RUN_REFUSED) any row whose lane is absent. Data, not code: tests/test_n8n_run_allowlist_20261008.py checks every token against pipeline_manifest.FORBIDDEN_COMMAND_TOKENS and the gateway FORBIDDEN_ROUTE_TOKENS, and that no entry names a broker, order, send, secret-render, guard or deploy script.",
+  "_tokens": {
+    "$PY": "TRADEAI_VENV_PYTHON from the executor's environment, else the executor's own interpreter",
+    "$STATE_ROOT": "TRADEAI_STATE_ROOT (persistent-state)",
+    "$CODE_ROOT": "the tree the executor runs from (served CURRENT)"
+  },
+  "_entry_shape": "lane_id, command (argv, run with cwd = code root), lock (absolute; reused from the live cron/unit so n8n and cron cannot double-run), lock_kind (safe_flock default | flock = cron-style `flock -n`, conflict exit 75), timeout_s, dry_run_arg / live_arg (argv appended for that mode; null = mode unavailable, run refused), market_gate (bool; executor prepends scripts/market_day_gate.sh), output_signal (relative to $STATE_ROOT; mtime recorded before/after on the RunReceipt@v1)",
+  "lanes": [
+    {
+      "lane_id": "n8n-pilot-dispatch",
+      "source": "crontab */15 * * * * ... $PY scripts/n8n_pilot_dispatch.py --apply (no lock on the cron line)",
+      "command": [
+        "$PY",
+        "scripts/n8n_pilot_dispatch.py"
+      ],
+      "lock": "/tmp/tradeai_n8n_pilot_dispatch.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/n8n_pilot_dispatch_last.json"
+    },
+    {
+      "lane_id": "n8n-incident-fanin",
+      "source": "crontab */5 * * * * ... $PY scripts/n8n_incident_fanin.py --apply (no lock on the cron line)",
+      "command": [
+        "$PY",
+        "scripts/n8n_incident_fanin.py"
+      ],
+      "lock": "/tmp/tradeai_n8n_incident_fanin.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/n8n_incident_fanin_last.json"
+    },
+    {
+      "lane_id": "n8n-research-intake-consumer",
+      "source": "crontab */15 * * * * ... $PY scripts/n8n_research_intake_consumer.py --apply (no lock on the cron line)",
+      "command": [
+        "$PY",
+        "scripts/n8n_research_intake_consumer.py"
+      ],
+      "lock": "/tmp/tradeai_n8n_research_intake_consumer.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/n8n_research_intake_last.json"
+    },
+    {
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "source": "crontab */20 * * * * crontab -l > <snapshot>.tmp && mv -f <snapshot>.tmp <snapshot>; the target path is the mode argument ($1), dry_run writes the shadow copy",
+      "command": [
+        "bash",
+        "-c",
+        "crontab -l > \"${1}.tmp\" && mv -f \"${1}.tmp\" \"${1}\"",
+        "crontab_snapshot"
+      ],
+      "lock": "/tmp/tradeai_crontab_snapshot.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 30,
+      "dry_run_arg": [
+        "$STATE_ROOT/data/runtime/n8n_runs/shadow/crontab_snapshot.txt"
+      ],
+      "live_arg": [
+        "$STATE_ROOT/data/runtime/crontab_snapshot.txt"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/crontab_snapshot.txt"
+    },
+    {
+      "lane_id": "n8n-lab-watchdog",
+      "source": "tradeai-n8n-lab-watchdog.service: flock -n /tmp/tradeai-n8n-lab-watchdog.lock $PY scripts/n8n_lab_watchdog.py --url http://127.0.0.1:5678/healthz --receipt <state>/data/runtime/n8n_lab_watchdog_last.json --timeout 3; dry_run writes the shadow receipt",
+      "command": [
+        "$PY",
+        "scripts/n8n_lab_watchdog.py",
+        "--url",
+        "http://127.0.0.1:5678/healthz",
+        "--timeout",
+        "3"
+      ],
+      "lock": "/tmp/tradeai-n8n-lab-watchdog.lock",
+      "lock_kind": "flock",
+      "timeout_s": 20,
+      "dry_run_arg": [
+        "--receipt",
+        "$STATE_ROOT/data/runtime/n8n_runs/shadow/n8n_lab_watchdog_last.json"
+      ],
+      "live_arg": [
+        "--receipt",
+        "$STATE_ROOT/data/runtime/n8n_lab_watchdog_last.json"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/n8n_lab_watchdog_last.json"
+    },
+    {
+      "lane_id": "lane-governance-packet-weekly",
+      "source": "registry NEVER_SCHEDULED (no cron line, no unit); scripts/report_lane_governance_packet.py --period weekly, --dry-run default / --write",
+      "command": [
+        "$PY",
+        "scripts/report_lane_governance_packet.py",
+        "--period",
+        "weekly"
+      ],
+      "lock": "/tmp/tradeai_lane_governance_packet.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--write"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/lane_governance_packet_last.json"
+    },
+    {
+      "lane_id": "maturity-remeasure",
+      "source": "crontab 40 6 * * 1 cd CURRENT && flock -n /tmp/tradeai_maturity_remeasure.lock $PY scripts/maturity_remeasure.py --write; without --write the script measures and prints, writing nothing",
+      "command": [
+        "$PY",
+        "scripts/maturity_remeasure.py"
+      ],
+      "lock": "/tmp/tradeai_maturity_remeasure.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [],
+      "live_arg": [
+        "--write"
+      ],
+      "market_gate": false,
+      "output_signal": "data/governance/maturity_latest.json"
+    }
+  ],
+  "pending_tranches": {
+    "_note": "Lane ids from the operator-approved move list (PR #1512 tranches table, plan streamed-humming-wolf). Registry lane_ids are used where a row exists; script-derived ids (hyphenated script stem) mark the lanes with no registry row yet (stream D creates them). Listed without commands: a lane here is NOT runnable until it gets an entry in `lanes` with argv copied from its live cron line or unit, in its own PR. The two N1 monitor workflows are n8n-native and have no host command. portfolio-backup-cadence is listed under N2 (the PR table names it in both N2 and N5).",
+    "N2": [
+      "premarket-data-pipeline",
+      "after-close-pipeline-close-capture",
+      "after-close-pipeline-broker-truth",
+      "after-close-pipeline-planning",
+      "hermes-learning-pipeline-learn",
+      "hermes-learning-pipeline-tune",
+      "hermes-overnight-pipeline-night",
+      "hermes-overnight-pipeline-close",
+      "platform-maintenance-nightly",
+      "platform-maintenance-weekly",
+      "platform-maintenance-monthly",
+      "governance-pipeline",
+      "portfolio-daily-cadence",
+      "portfolio-weekly-cadence",
+      "portfolio-monthly-cadence",
+      "portfolio-lookthrough-cadence",
+      "portfolio-backup-cadence"
+    ],
+    "N3": [
+      "llm-spend-report-daily",
+      "llm-spend-report-weekly",
+      "llm-spend-report-monthly",
+      "material-change-digest",
+      "alert-daily-digest",
+      "ops-daily-digest",
+      "ops-weekly-learning-report",
+      "system-rollup-snapshot",
+      "generate-weekly-docx",
+      "generate-analyst-daily-digest",
+      "desk-suggestions-digest",
+      "rotation-rebalance-digest"
+    ],
+    "N4": [
+      "expected-services",
+      "data-source-health-audit",
+      "served-copy-split",
+      "data-plausibility",
+      "gap-resolution",
+      "source-litmus-vs-yahoo",
+      "finviz-view-contracts",
+      "operator-answer-quality-audit",
+      "research-lane-health",
+      "agent-runtime-health",
+      "job-coverage-monitor",
+      "llm-retry-monitor",
+      "catalyst-calibration-monitor",
+      "source-attribution-monitor",
+      "watch-directives-monitor",
+      "hermes-pipeline-health",
+      "youtube-cookie-health-check",
+      "finviz-health-check",
+      "crawl-v3-dashboard",
+      "alert-missing-conditions"
+    ],
+    "N5": [
+      "drive-syncs-hourly",
+      "backup-generated-docs",
+      "sync-memory-to-drive",
+      "commit-hermes-daily",
+      "n8n-lab-backup",
+      "n8n-lab-restore-drill"
+    ],
+    "N6": [
+      "dof-run-pipeline",
+      "dof-rescan-tickets",
+      "openclaw-reminder-claude-plan-1",
+      "openclaw-reminder-claude-plan-2",
+      "openclaw-reminder-supergrok-expiry",
+      "openclaw-reminder-sentinelone-earnings"
+    ]
+  },
+  "never": "broker/positions/stops/orders/paper lanes, every sender, sm-render, guard, release deploy, destructive retention stages, memory/learning writers, CIO/persona/OpenClaw agent loops, price and research ingest writers (rails §0 and §17)"
+}
