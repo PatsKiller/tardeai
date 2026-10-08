@@ -49,6 +49,63 @@ def test_render_uses_last_known_good(tmp_path, monkeypatch):
     re._telegram.assert_called()
 
 
+def test_render_rolls_replaced_overlap_values_and_keeps_them_on_rerender(tmp_path, monkeypatch):
+    old_bearer = "oldbeareroldbeareroldbearerold12"
+    new_bearer = "newbearernewbearernewbearernew12"
+    old_hmac = "oldhmacoldhmacoldhmacoldhmacold1"
+    new_hmac = "newhmacnewhmacnewhmacnewhmacnew1"
+    runtime = tmp_path / "rt"
+    runtime.mkdir()
+    envp = runtime / "env"
+    envp.write_text(
+        "OTHER=1\n"
+        f"TRADEAI_N8N_RELAY_BEARER={old_bearer}\n"
+        f"TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N={old_hmac}\n"
+    )
+    manifest = runtime / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "shell_keys": [
+                    "OTHER",
+                    "TRADEAI_N8N_RELAY_BEARER",
+                    "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N",
+                ]
+            }
+        )
+    )
+    monkeypatch.setattr(re, "RENDER_PATH", envp)
+    monkeypatch.setattr(re, "MANIFEST_PATH", manifest)
+    monkeypatch.setattr(re, "STATE_PATH", tmp_path / "state.json")
+    monkeypatch.setattr(re, "DISK_ENV", tmp_path / "missing.env")
+    monkeypatch.setattr(re, "_token", lambda: "tok")
+    monkeypatch.setattr(re, "_telegram", lambda _msg: None)
+    monkeypatch.setattr(
+        re,
+        "_fetch_secrets",
+        lambda _tok: {
+            "OTHER": "1",
+            "TRADEAI_N8N_RELAY_BEARER": new_bearer,
+            "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N": new_hmac,
+        },
+    )
+    first = re.render()
+    assert first["ok"] is True
+    text = envp.read_text(encoding="utf-8")
+    assert f"TRADEAI_N8N_RELAY_BEARER={new_bearer}\n" in text
+    assert f"TRADEAI_N8N_RELAY_BEARER_PREVIOUS={old_bearer}\n" in text
+    assert f"TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N_PREVIOUS={old_hmac}\n" in text
+    assert old_bearer not in json.dumps(first)
+    written = json.loads(manifest.read_text(encoding="utf-8"))
+    assert "TRADEAI_N8N_RELAY_BEARER_PREVIOUS" not in written["shell_keys"]
+    assert "TRADEAI_N8N_RELAY_BEARER_PREVIOUS" in written["overlap_previous"]
+    second = re.render()
+    assert second["ok"] is True
+    kept = envp.read_text(encoding="utf-8")
+    assert f"TRADEAI_N8N_RELAY_BEARER_PREVIOUS={old_bearer}\n" in kept
+    assert "SM_KEYS_DISAPPEARED" not in json.dumps(second)
+
+
 def test_fetch_skips_bws_keys(monkeypatch):
     monkeypatch.setattr(re, "_project_id", lambda t: "pid")
     def fake_bws(args, token):

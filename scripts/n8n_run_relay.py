@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Bearer-authenticated n8n run relay; never spawns and never holds provider credentials."""
+"""Bearer-authenticated n8n run relay; never spawns and never holds provider credentials.
+
+During rotation the relay accepts TRADEAI_N8N_RELAY_BEARER or TRADEAI_N8N_RELAY_BEARER_PREVIOUS.
+A missing previous bearer is the pre-rotation state. A short one refuses to start.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +39,7 @@ NO_CONSUMER_REASON = (
 )
 
 BEARER_ENV = "TRADEAI_N8N_RELAY_BEARER"
+BEARER_PREVIOUS_ENV = "TRADEAI_N8N_RELAY_BEARER_PREVIOUS"
 N8N_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N"
 LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"
 DEFAULT_GATEWAY = "http://127.0.0.1:18091"
@@ -84,6 +89,17 @@ def guard_bind(host: str, port: int) -> None:
 
 def _secret(environ: dict[str, str], name: str) -> bytes:
     value = environ.get(name, "").encode()
+    if len(value) < MIN_KEY_BYTES:
+        raise ValueError("relay_missing_secret")
+    return value
+
+
+def _optional_secret(environ: dict[str, str], name: str) -> bytes | None:
+    """Empty is absent. A present value shorter than MIN_KEY_BYTES refuses startup."""
+    raw = environ.get(name, "")
+    if raw == "":
+        return None
+    value = raw.encode()
     if len(value) < MIN_KEY_BYTES:
         raise ValueError("relay_missing_secret")
     return value
@@ -178,6 +194,7 @@ class Relay:
     ) -> None:
         self.environ = dict(environ or os.environ)
         self.bearer = _secret(self.environ, BEARER_ENV)
+        self.bearer_previous = _optional_secret(self.environ, BEARER_PREVIOUS_ENV)
         self.key = _secret(self.environ, N8N_KEY_ENV)
         self.allowlist = allowlist if allowlist is not None else load_run_allowlist(DEFAULT_RUN_ALLOWLIST)
         self.live_lanes = frozenset(x for x in self.environ.get(LIVE_LANES_ENV, "").split() if x)
@@ -228,11 +245,13 @@ class Relay:
 
     def _auth(self, authorization: str | None) -> bool:
         prefix = "Bearer "
-        return bool(
-            authorization
-            and authorization.startswith(prefix)
-            and hmac.compare_digest(authorization[len(prefix) :].encode(), self.bearer)
-        )
+        if not authorization or not authorization.startswith(prefix):
+            return False
+        presented = authorization[len(prefix) :].encode()
+        if hmac.compare_digest(presented, self.bearer):
+            return True
+        previous = self.bearer_previous
+        return previous is not None and hmac.compare_digest(presented, previous)
 
     def status(self, authorization: str | None) -> tuple[int, dict[str, Any]]:
         if not self._auth(authorization):

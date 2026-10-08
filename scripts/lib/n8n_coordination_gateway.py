@@ -174,13 +174,25 @@ class CallerKey:
     default: bool = False
 
 
-def build_caller_keys(key: bytes, *, previous_key: bytes | None = None, n8n_key: bytes | None = None) -> dict[str, CallerKey]:
+def build_caller_keys(
+    key: bytes,
+    *,
+    previous_key: bytes | None = None,
+    n8n_key: bytes | None = None,
+    n8n_previous_key: bytes | None = None,
+) -> dict[str, CallerKey]:
     """CALLER_KEYS for a gateway process. The dispatch key keeps its previous-key rotation overlap and serves
     every Trade AI-side caller_id (``default=True``). The n8n relay key is optional: without it the run scope is
-    simply unavailable, and ``n8n-relay`` claims are refused rather than verified against the dispatch key."""
+    simply unavailable, and ``n8n-relay`` claims are refused rather than verified against the dispatch key.
+    ``n8n_previous_key`` is that relay key's own overlap (TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N_PREVIOUS). It never
+    verifies a dispatch claim, and the dispatch previous key never verifies a relay claim."""
     out = {DISPATCH_CALLER: CallerKey(key=key, scopes=frozenset({SCOPE_READ}), previous_key=previous_key, default=True)}
     if n8n_key is not None:
-        out[RELAY_CALLER] = CallerKey(key=n8n_key, scopes=frozenset({SCOPE_RUN, SCOPE_READ}))
+        out[RELAY_CALLER] = CallerKey(
+            key=n8n_key,
+            scopes=frozenset({SCOPE_RUN, SCOPE_READ}),
+            previous_key=n8n_previous_key,
+        )
     return out
 
 

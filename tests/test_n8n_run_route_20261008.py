@@ -145,6 +145,21 @@ def test_run_scope_is_unavailable_without_the_n8n_key_or_a_durable_run_store(sto
     assert out["reason"] == "unknown_caller"
 
 
+N8N_OLD = b"previous-relay-key-not-a-live-secret!!"
+
+
+def test_n8n_previous_key_accepts_only_a_relay_claim_signed_with_that_key(stores):
+    keys = G.build_caller_keys(KEY, previous_key=OLD, n8n_key=N8N, n8n_previous_key=N8N_OLD)
+    out = _run(stores, "np1", key=N8N_OLD, caller_keys=keys)
+    assert out["state"] == "REQUESTED" and out["caller_id"] == "n8n-relay"
+    out = _run(stores, "np2", key=OLD, caller_keys=keys)
+    assert out["reason"] == "bad_signature"
+    assert SRV.load_n8n_previous_key({}) is None
+    assert SRV.load_n8n_previous_key({SRV.N8N_PREVIOUS_KEY_ENV: N8N_OLD.decode()}) == N8N_OLD
+    with pytest.raises(SRV.BindRefused):
+        SRV.load_n8n_previous_key({SRV.N8N_PREVIOUS_KEY_ENV: "short"})
+
+
 def test_previous_key_overlap_still_works_for_the_dispatch_key_only(stores):
     _l, nonces, receipts, _runs = stores
     req = {

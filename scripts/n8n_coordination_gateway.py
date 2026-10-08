@@ -46,6 +46,7 @@ from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
 KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY"
 PREVIOUS_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_PREVIOUS"
 N8N_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N"
+N8N_PREVIOUS_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N_PREVIOUS"
 RUN_ALLOWLIST_SCHEMA = "N8nRunAllowlist@v1"
 DEFAULT_RUN_ALLOWLIST = ROOT / "config" / "n8n_run_allowlist.json"
 BLOCKED_PORTS = frozenset({5432, 5433, 55432, 5678, 7776, 7777, 8088, 8766, 18090})
@@ -104,6 +105,18 @@ def load_n8n_key(environ: dict[str, str] | None = None) -> bytes | None:
     key = raw.encode("utf-8")
     if len(key) < MIN_KEY_BYTES:
         raise BindRefused("refusing a short n8n gateway key")
+    return key
+
+
+def load_n8n_previous_key(environ: dict[str, str] | None = None) -> bytes | None:
+    """Overlap key for the relay caller. Empty is the pre-rotation state. A short value refuses the bind."""
+    source = environ if environ is not None else os.environ
+    raw = source.get(N8N_PREVIOUS_KEY_ENV, "")
+    if not raw:
+        return None
+    key = raw.encode("utf-8")
+    if len(key) < MIN_KEY_BYTES:
+        raise BindRefused("refusing a short previous n8n gateway key")
     return key
 
 
@@ -217,12 +230,15 @@ def dispatch_http(
 def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | None = None,
                  ledger: CoordinationLedger | None = None, ledger_path: Path | None = None,
                  lane_allowlist: frozenset[str] | None = None, n8n_key: bytes | None = None,
-                 run_allowlist: frozenset[str] | None = None):
+                 run_allowlist: frozenset[str] | None = None,
+                 n8n_previous_key: bytes | None = None):
     nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
     idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
     # runs are durable or nothing: memory-only mode has no executor to drain it, so no run store
     run_store: Any = LedgerRunStore(ledger) if ledger is not None else None
-    caller_keys = build_caller_keys(key, previous_key=previous_key, n8n_key=n8n_key)
+    caller_keys = build_caller_keys(
+        key, previous_key=previous_key, n8n_key=n8n_key, n8n_previous_key=n8n_previous_key
+    )
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -293,6 +309,7 @@ def serve(
     ledger_path: Path | None = None,
     extra_lanes: frozenset[str] | set[str] | None = None,
     n8n_key: bytes | None = None,
+    n8n_previous_key: bytes | None = None,
     run_allowlist_path: Path | None = None,
 ) -> ThreadingHTTPServer:
     guard_bind(host, port)
@@ -307,7 +324,8 @@ def serve(
     # 2026-10-08: the run allowlist is read once at serve time; a change needs a restart (promote restarts the unit).
     run_allow = load_run_allowlist(run_allowlist_path)
     httpd = GatewayServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path,
-                                                lane_allowlist=allow, n8n_key=n8n_key, run_allowlist=run_allow))
+                                                     lane_allowlist=allow, n8n_key=n8n_key, run_allowlist=run_allow,
+                                                     n8n_previous_key=n8n_previous_key))
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
     httpd.run_allowlist = run_allow  # type: ignore[attr-defined]
     return httpd
@@ -329,13 +347,15 @@ def main(argv: list[str] | None = None) -> int:
         key = load_key()
         previous = load_previous_key()
         n8n_key = load_n8n_key()
+        n8n_previous = load_n8n_previous_key()
         ledger_path = None if args.no_ledger else (Path(args.ledger) if args.ledger else default_ledger_path())
         httpd = serve(args.host, args.port, key=key, expected_origin_sha=args.expected_sha, previous_key=previous,
                       ledger_path=ledger_path, extra_lanes=frozenset(args.allow_lane), n8n_key=n8n_key,
-                      run_allowlist_path=Path(args.run_allowlist))
+                      n8n_previous_key=n8n_previous, run_allowlist_path=Path(args.run_allowlist))
         print(json.dumps({"bound": f"{args.host}:{httpd.server_address[1]}", "durable": ledger_path is not None,
                           "ledger": str(ledger_path) if ledger_path else None,
                           "run_scope": n8n_key is not None and ledger_path is not None,
+                          "n8n_key_previous": n8n_previous is not None,
                           "run_lanes": sorted(httpd.run_allowlist)}), flush=True)  # type: ignore[attr-defined]
     except BindRefused as exc:
         print(str(exc), file=sys.stderr)

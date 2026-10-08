@@ -308,6 +308,23 @@ def test_last_run_empty_ledger_is_null_and_body_stays_within_cap(tmp_path):
     assert json.loads(body)["last"]["state"] == "RUN_DONE"
 
 
+def test_previous_bearer_is_accepted_and_a_short_one_refuses_start(tmp_path):
+    previous = "p" * 48
+    held = relay(
+        tmp_path,
+        transport=lambda *_: (200, {"state": "REQUESTED"}),
+        TRADEAI_N8N_RELAY_BEARER_PREVIOUS=previous,
+    )
+    assert held.status(f"Bearer {previous}")[0] == 200
+    assert held.status(f"Bearer {BEARER}")[0] == 200
+    assert held.status("Bearer nope")[0] == 401
+    assert held.counts["auth_failures"] == 1
+    body = json.dumps({"lane_id": LANE, "mode": "dry_run", "idempotency_key": "run-20261008-0009"}).encode()
+    assert held.run(f"Bearer {previous}", body)[0] == 200
+    with pytest.raises(ValueError, match="relay_missing_secret"):
+        relay(tmp_path, TRADEAI_N8N_RELAY_BEARER_PREVIOUS="short")
+
+
 def test_every_emitted_refusal_is_declared():
     assert R.REFUSALS
     for reason in (
