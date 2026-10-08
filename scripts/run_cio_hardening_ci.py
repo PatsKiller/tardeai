@@ -3432,6 +3432,19 @@ GATES = [
         ],
     ),
     (
+        # N8N_RUN_ROUTE — 2026-10-08 n8n scheduler-of-record tranche N1: the gateway `run` operation
+        # (per-caller keys, coordination_run scope, config/n8n_run_allowlist.json), the ledger `runs`
+        # table, the executor (fake runner, lock skip, timeout, receipt) and the allowlist safety test.
+        # Hermetic: tmp_path ledgers and state roots; no unit is installed by listing these.
+        "N8N_RUN_ROUTE",
+        [
+            "tests/test_n8n_run_route_20261008.py",
+            "tests/test_n8n_run_store_20261008.py",
+            "tests/test_n8n_run_executor_20261008.py",
+            "tests/test_n8n_run_allowlist_20261008.py",
+        ],
+    ),
+    (
         # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial
         # stage runner for the post-close, premarket and Hermes chains. Hermetic: the tests drive
         # the runner with true/false/sleep manifests against a scratch project root, prove that

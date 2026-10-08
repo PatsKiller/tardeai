@@ -11,11 +11,28 @@ import hashlib
 import hmac
 import json
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
 SCHEMA_VERSION = "event-reference/v0"
 RECEIPT_SCHEMA = "N8nCoordinationReceipt@v1"
+#: 2026-10-08 (n8n scheduler-of-record, tranche N1): the `run` operation. The gateway records a run
+#: REQUEST in the ledger `runs` table and returns this envelope; a separate executor process claims
+#: the row. The gateway never spawns, and nothing here widens the forbidden-route list.
+RUN_REQUESTED_SCHEMA = "RunRequested@v1"
+RUN_MODES = frozenset({"dry_run", "live"})
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
+MAX_REQUESTED_BY = 128
+SCOPE_READ = "coordination_read"
+SCOPE_RUN = "coordination_run"
+SCOPES = frozenset({SCOPE_READ, SCOPE_RUN})
+#: Trade AI-side callers (dispatch, incident fan-in, research intake, telegram ack) all sign with
+#: TRADEAI_N8N_GATEWAY_HMAC_KEY and carry read scope only. The relay identity signs with a second
+#: key that never grants anything but run+read; it never falls back to the dispatch key.
+DISPATCH_CALLER = "tradeai-dispatch"
+RELAY_CALLER = "n8n-relay"
+ALLOWED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run"})
 ALLOWED_PROJECTS = frozenset({"trade-ai", "nyc-dof-auction"})
 PILOT_LANES = frozenset(
     {
@@ -127,6 +144,9 @@ REFUSAL_REASONS = frozenset({
     "forbidden_route", "project_mismatch", "idempotency_conflict", "unknown_operation", "missing_idempotency_key",
     "unknown_event", "no_consumer_receipt", "missing_refusal_reason", "artifact_ref_required", "artifact_bytes_refused",
     "artifact_ref_too_large", "list_unsupported", "bad_time",
+    # 2026-10-08 run route: lane not in config/n8n_run_allowlist.json; mode outside {dry_run, live}; no run-capable
+    # key or no durable run store on this gateway; a caller_id that maps to no key.
+    "run_lane_not_allowlisted", "run_bad_mode", "run_scope_unavailable", "unknown_caller",
 })
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
@@ -140,6 +160,39 @@ class GatewayError(ValueError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+@dataclass(frozen=True)
+class CallerKey:
+    """One HMAC key, the scopes it may claim, and whether unnamed Trade AI-side callers fall back to it."""
+
+    key: bytes
+    scopes: frozenset[str] = field(default_factory=lambda: frozenset({SCOPE_READ}))
+    previous_key: bytes | None = None
+    default: bool = False
+
+
+def build_caller_keys(key: bytes, *, previous_key: bytes | None = None, n8n_key: bytes | None = None) -> dict[str, CallerKey]:
+    """CALLER_KEYS for a gateway process. The dispatch key keeps its previous-key rotation overlap and serves
+    every Trade AI-side caller_id (``default=True``). The n8n relay key is optional: without it the run scope is
+    simply unavailable, and ``n8n-relay`` claims are refused rather than verified against the dispatch key."""
+    out = {DISPATCH_CALLER: CallerKey(key=key, scopes=frozenset({SCOPE_READ}), previous_key=previous_key, default=True)}
+    if n8n_key is not None:
+        out[RELAY_CALLER] = CallerKey(key=n8n_key, scopes=frozenset({SCOPE_RUN, SCOPE_READ}))
+    return out
+
+
+def resolve_caller(caller_keys: Mapping[str, CallerKey], caller_id: str) -> CallerKey | None:
+    """Exact caller match first; otherwise the one default entry, except for the reserved relay identity."""
+    exact = caller_keys.get(caller_id)
+    if exact is not None:
+        return exact
+    if caller_id == RELAY_CALLER:
+        return None
+    for entry in caller_keys.values():
+        if entry.default:
+            return entry
+    return None
 
 
 def canonical(payload: Mapping[str, Any]) -> bytes:
@@ -168,7 +221,7 @@ def route_forbidden(route: str) -> str | None:
     for token in FORBIDDEN_ROUTE_TOKENS:
         if token in collapsed and token not in {"title"}:
             return token
-    if text not in {"coordination/event", "coordination/status"}:
+    if text not in ALLOWED_ROUTES:
         return "route_not_allowlisted"
     return None
 
@@ -183,8 +236,11 @@ def handle_request(
     expected_origin_sha: str,
     lane_allowlist: frozenset[str] | set[str] | None = None,
     previous_key: bytes | None = None,
+    caller_keys: Mapping[str, CallerKey] | None = None,
+    run_store: Any = None,
+    run_allowlist: frozenset[str] | set[str] | None = None,
 ) -> dict[str, Any]:
-    """Authenticate and accept, or return a typed refusal. Never sends."""
+    """Authenticate and accept, or return a typed refusal. Never sends, never spawns."""
     peer = request.get("peer")
     route = str(request.get("route") or "")
     blocked = route_forbidden(route)
@@ -198,11 +254,22 @@ def handle_request(
             now=now,
             nonce_store=nonce_store,
             previous_key=previous_key,
+            caller_keys=caller_keys,
         )
     except GatewayError as exc:
         return _refused(None, exc.reason, peer_ignored=peer)
 
     operation = str(request.get("operation") or "")
+    # The run scope opens exactly one operation on exactly one route; a read-scope claim never runs
+    # anything and a run-scope claim never reads or transitions an event.
+    if operation == "run" or route.strip().lower() == "coordination/run":
+        if operation != "run" or route.strip().lower() != "coordination/run":
+            return _refused(None, "unknown_operation", peer_ignored=peer)
+        if claim["scope"] != SCOPE_RUN:
+            return _refused(None, "bad_scope", peer_ignored=peer)
+        return _run(request, claim, run_store=run_store, run_allowlist=run_allowlist, now=_unix(now), peer=peer)
+    if claim["scope"] != SCOPE_READ:
+        return _refused(None, "bad_scope", peer_ignored=peer)
     allow = frozenset(lane_allowlist) if lane_allowlist is not None else PILOT_LANES
     if operation == "status":
         return _status(request, claim, idempotency_store, peer)
@@ -223,6 +290,48 @@ def handle_request(
     if operation == "model_job":
         return _model_job(request, claim, idempotency_store, peer, now=now)
     return _refused(None, "unknown_operation", peer_ignored=peer)
+
+
+def _run(request, claim, *, run_store, run_allowlist, now: float, peer) -> dict[str, Any]:
+    """Record a run REQUEST for an allowlisted lane. The gateway writes one ``runs`` row (state REQUESTED) and
+    returns RunRequested@v1; scripts/n8n_run_executor.py claims it from the ledger. A repeated idempotency_key
+    returns the existing row with ``duplicate: true`` whatever state it has reached. Nothing is spawned here."""
+    if run_store is None:
+        return _refused(None, "run_scope_unavailable", peer_ignored=peer)
+    try:
+        _reject_secret_material({k: v for k, v in request.items() if k not in {"claim", "signature"}})
+    except GatewayError as exc:
+        return _refused(None, exc.reason, peer_ignored=peer)
+    lane_id = request.get("lane_id")
+    if not isinstance(lane_id, str) or not lane_id or lane_id not in frozenset(run_allowlist or ()):
+        return _refused(None, "run_lane_not_allowlisted", peer_ignored=peer)
+    mode = request.get("mode")
+    if mode not in RUN_MODES:
+        return _refused(None, "run_bad_mode", peer_ignored=peer)
+    run_id = request.get("idempotency_key")
+    if not isinstance(run_id, str) or not run_id:
+        return _refused(None, "missing_idempotency_key", peer_ignored=peer)
+    if not RUN_ID_RE.fullmatch(run_id):
+        return _refused(None, "malformed_event", peer_ignored=peer)
+    requested_by = request.get("requested_by")
+    if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
+        return _refused(None, "malformed_event", peer_ignored=peer)
+    row, duplicate = run_store.request(
+        run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
+    )
+    return {
+        "schema": RUN_REQUESTED_SCHEMA,
+        "state": row["state"],
+        "run_id": row["run_id"],
+        "lane_id": row["lane_id"],
+        "mode": row["mode"],
+        "requested_by": row.get("requested_by"),
+        "caller_id": row.get("caller_id"),
+        "requested_at": row.get("requested_at"),
+        "durable": bool(getattr(run_store, "durable", False)),
+        "duplicate": bool(duplicate),
+        "peer_used_as_auth": False,
+    }
 
 
 #: Injected by tests; production uses n8n_model_job.bridge_governed_call (loopback HTTP to the governed bridge).
@@ -476,22 +585,36 @@ def _verify_claim(
     now,
     nonce_store: dict[str, float],
     previous_key: bytes | None = None,
+    caller_keys: Mapping[str, CallerKey] | None = None,
 ) -> dict[str, Any]:
     _require_key(key)
     if previous_key is not None:
         _require_key(previous_key)
+    if caller_keys is None:
+        caller_keys = build_caller_keys(key, previous_key=previous_key)
     claim = request.get("claim")
     signature = request.get("signature")
     if not isinstance(claim, Mapping) or not isinstance(signature, str) or not signature:
         raise GatewayError("missing_signature")
     if set(claim) != CLAIM_FIELDS:
         raise GatewayError("malformed_claim")
-    if claim.get("v") != 1 or claim.get("scope") != "coordination_read":
+    if claim.get("v") != 1 or claim.get("scope") not in SCOPES:
         raise GatewayError("bad_scope")
     if claim.get("project") not in ALLOWED_PROJECTS:
         raise GatewayError("unknown_project")
     if not isinstance(claim.get("caller_id"), str) or len(claim["caller_id"]) < 3:
         raise GatewayError("malformed_claim")
+    caller = resolve_caller(caller_keys, claim["caller_id"])
+    if caller is None and claim["caller_id"] == RELAY_CALLER:
+        # the relay identity without its key: the run scope is unavailable on this gateway
+        raise GatewayError("run_scope_unavailable")
+    if caller is None:
+        raise GatewayError("unknown_caller")
+    if claim["scope"] not in caller.scopes:
+        raise GatewayError("bad_scope")
+    _require_key(caller.key)
+    if caller.previous_key is not None:
+        _require_key(caller.previous_key)
     if not isinstance(claim.get("nonce"), str) or len(claim["nonce"]) < 8:
         raise GatewayError("malformed_claim")
     try:
@@ -505,7 +628,7 @@ def _verify_claim(
     if iat > instant + MAX_SKEW_S or exp < instant:
         raise GatewayError("claim_expired")
     signed = {k: claim[k] for k in CLAIM_FIELDS}
-    keys = [key] if previous_key is None else [key, previous_key]
+    keys = [caller.key] if caller.previous_key is None else [caller.key, caller.previous_key]
     signature_ok = False
     for candidate in keys:
         expected = hmac.new(candidate, canonical(signed), hashlib.sha256).hexdigest()

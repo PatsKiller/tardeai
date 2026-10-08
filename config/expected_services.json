@@ -187,6 +187,10 @@
     {
       "unit": "tradeai-operator-answer-quality.timer",
       "_why": "Operator answer-quality monitor (2026-09-13): replies without Sources:, false 'empty' claims about house data, book dumps for a named symbol, pendings never closed."
+    },
+    {
+      "unit": "tradeai-n8n-run-executor.service",
+      "_why": "2026-10-08 tranche N1 (plan streamed-humming-wolf): drains the coordination ledger runs table. Declared before the operator's config-write grant installs it, so MISSING until then is the expected audit trail, not an incident to clear by deleting this line."
     }
   ],
   "flags": [

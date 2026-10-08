@@ -1,17 +1,18 @@
-# PROPOSAL ONLY. Not installed. Do not systemctl enable without a production
-# service grant (plan tranche B, 2026-10-07). The HMAC key is NOT in this file.
-# 2026-10-07 roadmap Phase 1: the key is created in Bitwarden SM (project
-# trade-ai-prod) as TRADEAI_N8N_GATEWAY_HMAC_KEY (and _PREVIOUS for rotation);
-# scripts/secrets/render_env.py already delivers every shell-exportable SM key
-# to %t/tradeai/env (0600, tmpfs, re-rendered every 4h), so no second render
-# path and no hand-written env file. The optional ~/.config/tradeai/n8n-gateway.env
-# stays as an override for a lab-only key. Without a key the gateway refuses to bind.
+# INSTALLED and active on the host since 2026-10-07 (Phase 1, service grant): tradeai-n8n-coordination-gateway.service
+# on 127.0.0.1:18091, durable ledger. Changes to this file are applied under a config-write grant, never by an agent.
+# The HMAC keys are NOT in this file: Bitwarden SM (project trade-ai-prod) holds TRADEAI_N8N_GATEWAY_HMAC_KEY
+# (and _PREVIOUS for rotation); scripts/secrets/render_env.py delivers every shell-exportable SM key to
+# %t/tradeai/env (0600, tmpfs, re-rendered every 4h), so no second render path and no hand-written env file.
+# 2026-10-08 (tranche N1): the optional TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N identifies the n8n-relay caller and is the
+# only key that may claim scope coordination_run; without it the run scope is unavailable and the gateway still
+# binds. The optional ~/.config/tradeai/n8n-gateway.env stays as an override for a lab-only key. Without the
+# primary key the gateway refuses to bind.
 #
 # Loopback only; port 18091 is outside the gateway's blocked set and no other
 # Trade AI, DOF, Postgres or n8n service listens there.
 
 [Unit]
-Description=Trade AI n8n coordination gateway on 127.0.0.1:18091 (proposal only, not installed)
+Description=Trade AI n8n coordination gateway on 127.0.0.1:18091 (durable ledger; run route since 2026-10-08)
 After=network.target
 
 [Service]
