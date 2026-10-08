@@ -525,8 +525,3 @@ def _advice_holds_off_by_default(monkeypatch):
     except Exception:
         return
     monkeypatch.setattr(_ad, "hold", lambda name: False)
-    try:
-        import lib.advice_digest as _ad2  # flat import path used by some producers
-        monkeypatch.setattr(_ad2, "hold", lambda name: False)
-    except Exception:
-        pass

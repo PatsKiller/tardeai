@@ -24,15 +24,13 @@ import operator_alert_policy_v2 as policy  # noqa: E402
 
 NOW = datetime(2026, 10, 8, 21, 0, tzinfo=timezone.utc)
 
+#: The digest's one Telegram send site (send_advice_digest.deliver) — fired below through alarm_capture.
+COVERS = ["scripts/send_advice_digest.py"]
+
 
 @pytest.fixture
 def holds_on(monkeypatch):
     monkeypatch.setattr(ad, "hold", lambda name: True)
-    try:
-        import lib.advice_digest as ad2
-        monkeypatch.setattr(ad2, "hold", lambda name: True)
-    except Exception:
-        pass
 
 
 def _route(text: str):
@@ -223,3 +221,13 @@ def test_wiring_and_schedule():
     assert "sp.get('event')" in ui and "sp.get('q')" in ui
     send = (ROOT / "scripts/send_advice_digest.py").read_text()
     assert "bypass_router=True" in send and "mark_held_delivered" in send
+
+
+def test_the_digest_reaches_the_transport(alarm_capture):
+    """The send site fires and the HTML digest survives the trip (alarm coverage, tests/test_alarm_coverage.py)."""
+    import send_advice_digest as sad
+
+    probe = "📋 <b>CLOSE DIGEST</b> · advice digest firing check"
+    ids = sad.deliver([probe])
+    assert ids and alarm_capture.transport, "the digest never reached the transport"
+    assert "advice digest firing check" in alarm_capture.transport[0]["text"]
