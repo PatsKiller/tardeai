@@ -89,38 +89,21 @@ def get_rag_context(symbol, agent_name=None, strategy_focus=None,
         if query_vec is None:
             return _keyword_fallback(symbol, limit, cur)
 
-        if is_category:
-            # Search by strategy/category across news + YouTube + research embeddings
-            cur.execute("""
-                SELECT ce.id, ce.source_type, ce.source_id, ce.title, ce.embedding, ce.created_at
-                FROM content_embeddings ce
-                WHERE (ce.title ILIKE %s OR ce.source_type IN ('news','youtube','research_finding'))
-                  AND ce.created_at > NOW() - INTERVAL '365 days'
-                ORDER BY ce.created_at DESC LIMIT 200
-            """, (f"%{search_term}%",))
-        else:
-            cur.execute("""
-                SELECT id, source_type, source_id, title, embedding, created_at
-                FROM content_embeddings
-                WHERE title ILIKE %s
-                  AND created_at > NOW() - INTERVAL '365 days'
-                ORDER BY created_at DESC LIMIT 200
-            """, (f"%{symbol}%",))
-        candidates = cur.fetchall()
+        # 2026-10-08: candidate fetch goes through lib.embedding_reader so the backend (jsonb today,
+        # pgvector after scripts/migrate_content_embeddings_pgvector.py) is one env flip. jsonb = the
+        # exact SQL that lived here before.
+        from lib.embedding_reader import fetch_candidates as _fetch_candidates, similarity as _similarity
+        candidates, _backend = _fetch_candidates(cur, query_vec=query_vec, term=search_term if is_category else symbol,
+                                                 is_category=is_category)
 
         if not candidates:
             return _keyword_fallback(symbol, limit, cur)
 
         scored = []
         for c in candidates:
-            raw_vec = c.get("embedding")
-            if not raw_vec:
+            sim = _similarity(c, query_vec, cosine_sim, _backend)
+            if sim is None:
                 continue
-            vec = raw_vec if isinstance(raw_vec, list) else json.loads(raw_vec) if isinstance(raw_vec, str) else list(raw_vec.values()) if isinstance(raw_vec, dict) else None
-            if not vec:
-                continue
-
-            sim = cosine_sim(query_vec, vec)
             age_days = (datetime.now(timezone.utc) - c["created_at"].replace(tzinfo=timezone.utc)).days if c.get("created_at") else 0
             recency = max(0.5, 1.0 - (age_days // 30) * 0.10)
             sb = SOURCE_BOOSTS.get(c["source_type"], 1.0)
