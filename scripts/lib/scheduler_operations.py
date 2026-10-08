@@ -283,7 +283,8 @@ def receipt_proves_run(run: dict[str, Any], now: datetime) -> bool:
     if any(receipt.get(k) != run.get(k) for k in ('run_id', 'lane_id', 'mode', 'state', 'exit_code')):
         return False
     finished = timestamp(receipt.get('finished_at'))
-    return bool(finished and finished <= now)
+    return bool(finished and finished <= now and finished == timestamp(run.get('finished_at'))
+                and not receipt.get('lock_skipped') and not receipt.get('timed_out'))
 
 
 def _metrics(runs: list[dict[str, Any]], now: datetime) -> dict[str, Any]:

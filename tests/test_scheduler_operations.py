@@ -261,7 +261,7 @@ def test_mismatched_or_future_receipt_never_proves_live(tmp_path):
     out=tmp_path/'data/result.json';out.parent.mkdir();out.write_text('{}')
     os.utime(out,(NOW.timestamp(),NOW.timestamp()))
     base={'lane_id':'test-lane','run_id':'run-1','mode':'live','state':'RUN_DONE','exit_code':0,'requested_at':NOW.isoformat(),'finished_at':NOW.isoformat()}
-    for bad in ({'lane_id':'other'}, {'run_id':'other'}, {'mode':'dry_run'}, {'schema':'Unknown'}, {'exit_code':1}, {'finished_at':'2027-01-01T00:00:00Z'}):
+    for bad in ({'lane_id':'other'}, {'run_id':'other'}, {'mode':'dry_run'}, {'schema':'Unknown'}, {'exit_code':1}, {'finished_at':'2027-01-01T00:00:00Z'}, {'finished_at':'2026-10-01T22:00:00Z'}, {'lock_skipped':True}, {'timed_out':True}):
         receipt={'schema':'RunReceipt@v1','lane_id':'test-lane','run_id':'run-1','mode':'live','state':'RUN_DONE','exit_code':0,'finished_at':NOW.isoformat()}
         row=project(tmp_path,[lane()],observations('*/5 * * * * python scripts/test_lane.py'),[{**base,'receipt':{**receipt,**bad}}])['rows'][0]
         assert row['runtime_state']!='LIVE', bad
