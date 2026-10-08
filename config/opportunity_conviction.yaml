@@ -107,3 +107,24 @@ telegram:
   categories: [re_entry, reward, high_conviction_opportunity, risk, threat, watchlist_candidate]
   max_symbols: 2
   max_projection_age_hours: 26
+
+# Opportunity modal: what the company does, catalysts, latest news (operator 2026-10-08: "nothing here on what company
+# does or latest news, catalyst"). news_lane: the weekday --priority news run (scripts/news_ingestion.py) was capped at
+# 60 symbols filled by proposals, holdings and the watchlist, so the CIO's top-ranked names had no news at all (AOSL,
+# rank #1: zero articles in 90 days). The top_n ranked names now ride as an extra lane on top of that cap (free RSS
+# providers only). Modal windows are read-only lookbacks over news_articles / catalyst_events.
+modal:
+  news_days: 45
+  news_limit: 6
+  catalyst_days: 90
+  catalyst_limit: 5
+news_lane:
+  enabled: true
+  top_n: 25
+# profile_lane: scripts/build_symbol_profiles.py also covers the CIO's top_n ranked names, and retries Finviz-stub
+# descriptions ("Company — Industry.") after stub_retry_days, at most stub_retry_max per run, best-ranked first.
+profile_lane:
+  enabled: true
+  top_n: 150
+  stub_retry_days: 7
+  stub_retry_max: 150

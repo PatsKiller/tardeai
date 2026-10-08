@@ -157,3 +157,79 @@ def get_latest_news(db_query, symbols: list[str], *, hours: int = 72) -> dict[st
                                  "published_at": at.isoformat() if hasattr(at, "isoformat") else at,
                                  "sentiment": r.get("sentiment")}
     return out
+
+
+def title_key(title: Any) -> str:
+    """Comparable headline: lower-case, whitespace-collapsed, trailing " - Publisher" dropped (feeds append it)."""
+    t = " ".join(str(title or "").lower().split())
+    head, sep, tail = t.rpartition(" - ")
+    if sep and head and len(tail) <= 40:
+        t = head
+    return t[:120]
+
+
+def get_symbol_news(db_query, symbol: str, *, days: int = 45, limit: int = 6) -> list[dict[str, Any]]:
+    """Newest non-duplicate articles for one symbol (news_articles, registry domain catalyst_news), for the opportunity
+    modal (operator 2026-10-08). Same-title rows from different feeds collapse to the newest. Read-only."""
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return []
+    rows = db_query(
+        """
+        SELECT title, source, source_url, published_at, sentiment
+        FROM news_articles
+        WHERE upper(symbol) = %s AND published_at > now() - make_interval(days => %s)
+          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL
+        ORDER BY published_at DESC
+        LIMIT %s
+        """,
+        (sym, int(days), int(limit) * 3),
+    ) or []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in rows:
+        key = title_key(r.get("title"))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        at = r.get("published_at")
+        out.append({"title": r.get("title"), "source": r.get("source"), "url": r.get("source_url"),
+                    "published_at": at.isoformat() if hasattr(at, "isoformat") else at,
+                    "sentiment": r.get("sentiment")})
+        if len(out) >= int(limit):
+            break
+    return out
+
+
+def get_symbol_catalysts(db_query, symbol: str, *, days: int = 90, limit: int = 5) -> list[dict[str, Any]]:
+    """Typed catalysts for one symbol, newest first (catalyst_events; 'other' is untyped news and is excluded), each
+    normalized with the verified flag (confidence >= 0.3). For the opportunity modal (operator 2026-10-08). Read-only."""
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return []
+    rows = db_query(
+        """
+        SELECT symbol, catalyst_type, headline, severity, impact_score, confidence, source_url,
+               COALESCE(published_at, created_at) AS at
+        FROM catalyst_events
+        WHERE upper(symbol) = %s AND catalyst_type <> 'other'
+          AND COALESCE(published_at, created_at) > now() - make_interval(days => %s)
+        ORDER BY COALESCE(published_at, created_at) DESC
+        LIMIT %s
+        """,
+        (sym, int(days), int(limit) * 3),
+    ) or []
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in rows:
+        n = normalize_catalyst_row(r) or {}
+        key = title_key(n.get("headline"))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        at = r.get("at") or n.get("at")
+        n["at"] = at.isoformat() if hasattr(at, "isoformat") else at
+        out.append(_jsonable(n))
+        if len(out) >= int(limit):
+            break
+    return out

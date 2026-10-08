@@ -615,6 +615,7 @@ def gather(db_query, symbols: list[str]) -> dict[str, dict[str, Any]]:
         ctx[s]["profile"] = {"sector": p.get("sector") or e.get("sector"), "industry": p.get("industry") or e.get("industry"),
                              "company": p.get("company") or p.get("name") or e.get("company") or e.get("name"),
                              "next_earnings_date": _iso(p.get("next_earnings_date")),
+                             "description": p.get("description"),
                              # market_cap_usd is dollars; the cache's market_cap_b is millions (mislabelled)
                              "market_cap_usd": _f(e.get("market_cap_usd"))}
     pos = get_positions_context(db_query, syms, quotes={
