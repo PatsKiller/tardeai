@@ -3988,8 +3988,14 @@ def _latest_executive_brief(stale_after_s: float = 7200.0) -> dict:
         from scripts.lib.aec_agent_bus import bus_path
     except ImportError:  # pragma: no cover — flat import layout
         from lib.aec_agent_bus import bus_path  # type: ignore
-    out = {"body": None, "as_of": None, "age_s": None, "stale": True, "suppressed_repeat": None,
-           "source": "aec_agent_bus cycle.narrator.brief (hourly AEC cycle)"}
+    out = {
+        "body": None,
+        "as_of": None,
+        "age_s": None,
+        "stale": True,
+        "suppressed_repeat": None,
+        "source": "aec_agent_bus cycle.narrator.brief (hourly AEC cycle)",
+    }
     try:
         p = bus_path()
         with open(p, "rb") as f:
@@ -4007,9 +4013,16 @@ def _latest_executive_brief(stale_after_s: float = 7200.0) -> dict:
             if not pl.get("body"):
                 continue
             as_of = pl.get("as_of") or ev.get("as_of")
-            age = (datetime.now(timezone.utc) - datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))).total_seconds()
-            out.update(body=pl["body"], as_of=as_of, age_s=round(age), stale=age > stale_after_s,
-                       suppressed_repeat=bool(pl.get("suppressed_repeat")))
+            age = (
+                datetime.now(timezone.utc) - datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+            ).total_seconds()
+            out.update(
+                body=pl["body"],
+                as_of=as_of,
+                age_s=round(age),
+                stale=age > stale_after_s,
+                suppressed_repeat=bool(pl.get("suppressed_repeat")),
+            )
             break
     except Exception as e:  # noqa: BLE001 — the card says unavailable, never guesses
         out["error"] = f"{type(e).__name__}: {str(e)[:120]}"

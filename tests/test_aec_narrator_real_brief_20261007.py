@@ -18,7 +18,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib import aec_narrator as narr  # noqa: E402
-from scripts.lib import aec_memory_spines as mem  # noqa: E402
+
+# Seed the spine file through the module the narrator itself uses (narr.mem). Tests never import a memory silo
+# directly (scripts/check_memory_chokepoint.py); production reads stay behind the narrator.
+mem = narr.mem
 
 NOW = datetime(2026, 10, 7, 21, 0, tzinfo=timezone.utc)
 SNAP = {"computed_at": "2026-10-07T20:45:00+00:00",
