@@ -70,7 +70,7 @@ def _wire(monkeypatch, tmp_path, *, cadence=1.0, executor_age_h=0.5, unit_expect
     es.write_text(json.dumps({"schema": "ExpectedServices@v1", "units": units}))
     monkeypatch.setattr(fanin, "EXPECTED_SERVICES_PATH", es)
     if executor_age_h is not None:
-        p = tmp_path / "data/runtime/n8n_runs/n8n_run_executor_last.json"
+        p = tmp_path / "data/runtime/n8n_run_executor_last.json"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
             json.dumps({"schema": "RunReceipt@v1", "finished_at": (NOW - timedelta(hours=executor_age_h)).isoformat()})
@@ -211,3 +211,10 @@ def test_apply_writes_the_relay_counts_onto_the_receipt_and_keeps_the_baseline_w
     fanin.main(["--apply", "--receipt", str(receipt)])
     doc = json.loads(receipt.read_text())
     assert doc["relay_counts"]["auth_failures"] == 7 and doc["incidents"] == []
+
+
+def test_the_executor_heartbeat_path_is_the_executors_own_last_rel():
+    """Measured live on 72b0ce6be: the fan-in read n8n_runs/ while the executor writes data/runtime/."""
+    from scripts.n8n_run_executor import LAST_REL
+
+    assert fanin.EXECUTOR_LAST_REL == str(LAST_REL) == "data/runtime/n8n_run_executor_last.json"
