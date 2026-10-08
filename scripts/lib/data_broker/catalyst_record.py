@@ -132,3 +132,28 @@ def get_catalysts(days: int = 7) -> dict[str, Any]:
         "symbols_covered": sorted({str(r.get("symbol")).upper() for r in rows if r.get("symbol")}),
         "catalysts": _jsonable(normalized[:100]),
     }
+
+
+def get_latest_news(db_query, symbols: list[str], *, hours: int = 72) -> dict[str, dict[str, Any]]:
+    """{SYMBOL: {title, source, url, published_at, sentiment}} — the newest non-duplicate article per symbol
+    (news_articles, registry domain catalyst_news; advice digests, operator 2026-10-08). Read-only."""
+    syms = sorted({(s or "").upper() for s in symbols if s})
+    if not syms:
+        return {}
+    rows = db_query(
+        """
+        SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS symbol, title, source, source_url, published_at, sentiment
+        FROM news_articles
+        WHERE upper(symbol) = ANY(%s) AND published_at > now() - make_interval(hours => %s)
+          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL
+        ORDER BY upper(symbol), published_at DESC
+        """,
+        (syms, int(hours)),
+    ) or []
+    out: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        at = r.get("published_at")
+        out[str(r["symbol"])] = {"title": r.get("title"), "source": r.get("source"), "url": r.get("source_url"),
+                                 "published_at": at.isoformat() if hasattr(at, "isoformat") else at,
+                                 "sentiment": r.get("sentiment")}
+    return out

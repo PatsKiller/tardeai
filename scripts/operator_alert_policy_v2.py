@@ -187,10 +187,17 @@ def route_event(event: AlertEvent) -> RoutingDecision:
         # The operator asked to be told when a tracked name is ready to buy or getting close
         # (2026-09-15). Advisory, never capital at risk, so NOT in CRITICAL_IMMEDIATE_TYPES; immediate to
         # the general channel and deduped on the hour like material_change.
+        # 2026-10-08 operator: ALL entry alerts go to the 10:00 / 15:00 / 17:00 advice digests
+        # (scripts/send_advice_digest.py); rollback = config/advice_digest.yaml holds.cio_entry_state.
+        if _advice_hold("cio_entry_state"):
+            return RoutingDecision(ROUTE_DIGEST, None, "ADVICE", 24 * 3600, 3600, None)
         return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
     if atype == "thesis_update":
         # A material thesis change is the one piece the operator wants as text (not
         # noise). Immediate to the general channel; deduped on the 60-min window.
+        # 2026-10-08 operator: non-urgent advice → the advice digests (holds.thesis_update).
+        if _advice_hold("thesis_update"):
+            return RoutingDecision(ROUTE_DIGEST, None, "ADVICE", 24 * 3600, 3600, None)
         return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
     if atype in {"siem_without_trading_impact", "system_health", "job_telemetry"}:
         return RoutingDecision(ROUTE_DIGEST, None, "OPS", DEFAULT_TTLS.get(atype, 7 * 86400), 3600, None)
@@ -216,6 +223,18 @@ def expires_at_for(event: AlertEvent, decision: RoutingDecision) -> datetime:
 
 def alert_id_for(fingerprint: str) -> str:
     return f"al_{fingerprint[:24]}"
+
+
+def _advice_hold(name: str) -> bool:
+    """config/advice_digest.yaml holds.<name> (operator 2026-10-08). Never raises; unreadable config = no hold."""
+    try:
+        try:
+            from scripts.lib.advice_digest import hold
+        except ImportError:  # pragma: no cover
+            from lib.advice_digest import hold  # type: ignore
+        return bool(hold(name))
+    except Exception:
+        return False
 
 
 def classify_legacy_message(message: str, *, source_producer: str = "legacy_send_telegram") -> AlertEvent:

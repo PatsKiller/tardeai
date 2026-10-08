@@ -1147,6 +1147,12 @@ GATES = [
         "decision_cards_20261008",
         ["tests/test_decision_cards_20261008.py"],
     ),
+    # Advice digests (operator 2026-10-08): entry alerts / CIO advisory notes / thesis updates / watchlist BUY_READY
+    # held for the 10/15/17 ET HTML digests; scalps, approvals and stop/protection stay immediate.
+    (
+        "advice_digests_20261008",
+        ["tests/test_advice_digests_20261008.py"],
+    ),
     # Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:
     # per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment
     # drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06).
