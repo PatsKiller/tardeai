@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"n8n-pilot-dispatch\", \"mode\": \"live\", \"requested_by\": \"n8n-pilot-dispatch\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"n8n-pilot-dispatch\", mode: \"live\", requested_by: \"n8n-pilot-dispatch\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

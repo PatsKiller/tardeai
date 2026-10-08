@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"crontab-snapshot-for-health-agent\", \"mode\": \"live\", \"requested_by\": \"crontab-snapshot-for-health-agent\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"crontab-snapshot-for-health-agent\", mode: \"live\", requested_by: \"crontab-snapshot-for-health-agent\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

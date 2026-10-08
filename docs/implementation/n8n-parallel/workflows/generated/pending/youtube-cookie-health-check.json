@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"youtube-cookie-health-check\", \"mode\": \"live\", \"requested_by\": \"youtube-cookie-health-check\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"youtube-cookie-health-check\", mode: \"live\", requested_by: \"youtube-cookie-health-check\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

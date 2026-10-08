@@ -107,7 +107,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"governance-pipeline\", \"mode\": \"live\", \"requested_by\": \"governance-pipeline\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"governance-pipeline\", mode: \"live\", requested_by: \"governance-pipeline\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {
