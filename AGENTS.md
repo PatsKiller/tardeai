@@ -5,7 +5,7 @@ Policy-Version:      2.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-08T09:06:46-04:00
+Effective-Date:      2026-10-08
 Last-Reviewed:       2026-10-08T12:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
