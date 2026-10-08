@@ -717,6 +717,17 @@ def stance_short(info: dict) -> str:
     return f"CIO {word}" + (f" ({dec.get('date')})" if not es.get("state") and dec.get("date") else "")
 
 
+def _advice_hold(name: str) -> bool:
+    try:
+        try:
+            from scripts.lib.advice_digest import hold
+        except ImportError:  # pragma: no cover
+            from lib.advice_digest import hold  # type: ignore
+        return bool(hold(name))
+    except Exception:
+        return False
+
+
 def classify(c: dict, info: dict) -> dict:
     """Route one change to PAGE, DIGEST or COMMAND_CENTER on its structured facts.
 
@@ -750,6 +761,10 @@ def classify(c: dict, info: dict) -> dict:
     if lv["hit_stop"]:
         return {**out, "route": ROUTE_DIGEST, "state": "PLAN_INVALIDATED"}
     if verdict["state"] == "BUY_READY":
+        # 2026-10-08 operator: entry advice goes to the advice digests (held names hitting a stop/target or
+        # moving big still page above). Rollback: config/advice_digest.yaml holds.material_change_buy_ready.
+        if _advice_hold("material_change_buy_ready"):
+            return {**out, "route": ROUTE_DIGEST, "state": "BUY_READY"}
         return {**out, "route": ROUTE_PAGE, "state": "BUY_READY"}
     if info.get("strategy_inactive") and not info.get("plan"):
         return {**out, "route": ROUTE_CC, "state": "NO_PLAN", "why": "inactive strategy, no plan"}

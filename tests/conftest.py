@@ -513,3 +513,15 @@ def _reset_cio_heavy_composition_cache():
         _mod = _sys.modules.get(_name)
         if _mod is not None and hasattr(_mod, "_HEAVY_CACHE"):
             _mod._HEAVY_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
+def _advice_holds_off_by_default(monkeypatch):
+    """Advice digests (operator 2026-10-08) hold entry alerts / CIO advisory notes for the 10/15/17 digest when
+    config/advice_digest.yaml says so. Producer tests exercise the immediate path — which is also the rollback
+    path — so holds default OFF here; tests/test_advice_digests_20261008.py switches them on explicitly."""
+    try:
+        from scripts.lib import advice_digest as _ad
+    except Exception:
+        return
+    monkeypatch.setattr(_ad, "hold", lambda name: False)

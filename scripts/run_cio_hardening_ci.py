@@ -1147,6 +1147,12 @@ GATES = [
         "decision_cards_20261008",
         ["tests/test_decision_cards_20261008.py"],
     ),
+    # Advice digests (operator 2026-10-08): entry alerts / CIO advisory notes / thesis updates / watchlist BUY_READY
+    # held for the 10/15/17 ET HTML digests; scalps, approvals and stop/protection stay immediate.
+    (
+        "advice_digests_20261008",
+        ["tests/test_advice_digests_20261008.py"],
+    ),
     # Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:
     # per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment
     # drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06).
@@ -3466,6 +3472,9 @@ GATES = [
             "tests/test_n8n_run_store_20261008.py",
             "tests/test_n8n_run_executor_20261008.py",
             "tests/test_n8n_run_allowlist_20261008.py",
+            # 2026-10-08 first N1 shadow burst: ledger RLock across gateway handler threads (16-wide run and
+            # event bursts, same-nonce race) on a tmp_path ledger and 127.0.0.1 port 0.
+            "tests/test_n8n_gateway_concurrency_20261008.py",
         ],
     ),
     (

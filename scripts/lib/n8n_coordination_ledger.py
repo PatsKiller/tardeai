@@ -17,6 +17,14 @@ is kept.
 ``run`` operation inserts a REQUESTED row; scripts/n8n_run_executor.py claims the
 oldest REQUESTED row (RUNNING) in one transaction and finishes it with a
 RunReceipt@v1. The gateway never spawns; the executor never authenticates.
+
+2026-10-08 (first N1 shadow burst, 17:15:00Z): the gateway serves from ThreadingHTTPServer and every
+handler thread shares this ONE connection. Two handlers each ran ``BEGIN IMMEDIATE`` on it within 60 ms,
+the second raised ``cannot start a transaction within a transaction``, that handler died and the relay
+saw a dropped connection. Every method that touches the connection is ``@_locked`` (one RLock per
+ledger, shared by its adapters), reads included: a single SELECT on a shared connection would otherwise
+observe another thread's half-finished transaction. The lock is in-process only; cross-process safety
+(executor vs. gateway on the same file) stays with sqlite's BEGIN IMMEDIATE + busy timeout.
 """
 from __future__ import annotations
 
@@ -24,9 +32,23 @@ import hashlib
 import json
 import secrets
 import sqlite3
+import threading
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any, Mapping
+
+
+def _locked(fn):
+    """Hold the owning ledger's RLock for the whole call. Reentrant, so a locked method may call another
+    (accept -> _rate_limit -> _row). Adapters expose the ledger's lock as ``self.lock``."""
+
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        with self.lock:
+            return fn(self, *args, **kwargs)
+
+    return wrapper
 
 NO_CONSUMER_REASON = (
     "Source-side coordination ledger. Opened by scripts/n8n_coordination_gateway.py (--ledger) and read by the "
@@ -75,11 +97,14 @@ class CoordinationLedger:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # One connection, many handler threads (see the module docstring).
+        self.lock = threading.RLock()
         self._conn = sqlite3.connect(self.path, timeout=5, isolation_level=None, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._migrate()
 
+    @_locked
     def close(self) -> None:
         self._conn.close()
 
@@ -160,6 +185,7 @@ class CoordinationLedger:
             """
         )
 
+    @_locked
     def accept(
         self,
         *,
@@ -225,12 +251,15 @@ class CoordinationLedger:
         row["external_delivery"] = "NOT_CLAIMED"
         return row
 
+    @_locked
     def effect_count(self) -> int:
         return int(self._conn.execute("SELECT COUNT(*) AS n FROM effects").fetchone()["n"])
 
+    @_locked
     def nonce_present(self, nonce: str) -> bool:
         return self._conn.execute("SELECT 1 FROM nonces WHERE nonce = ?", (nonce,)).fetchone() is not None
 
+    @_locked
     def issue_reference(
         self,
         *,
@@ -251,6 +280,7 @@ class CoordinationLedger:
         )
         return token
 
+    @_locked
     def redeem_reference(
         self,
         token: str,
@@ -282,10 +312,12 @@ class CoordinationLedger:
             "can_mint_claim": False,
         }
 
+    @_locked
     def stored_token_material(self) -> str:
         rows = self._conn.execute("SELECT token_hash FROM reference_tokens").fetchall()
         return "\n".join(str(row["token_hash"]) for row in rows)
 
+    @_locked
     def mark_terminal(
         self,
         idempotency_key: str,
@@ -380,11 +412,14 @@ class LedgerNonceStore:
 
     def __init__(self, ledger: CoordinationLedger) -> None:
         self._l = ledger
+        self.lock = ledger.lock  # the ledger's RLock; a caller that reads then writes through this adapter holds it
 
+    @_locked
     def get(self, nonce: str, default=None):
         row = self._l._conn.execute("SELECT exp FROM nonces WHERE nonce = ?", (nonce,)).fetchone()
         return float(row["exp"]) if row is not None else default
 
+    @_locked
     def __setitem__(self, nonce: str, exp: float) -> None:
         now = datetime.now(timezone.utc).timestamp()
         self._l._conn.execute("BEGIN IMMEDIATE")
@@ -422,7 +457,9 @@ class LedgerReceiptStore:
 
     def __init__(self, ledger: CoordinationLedger) -> None:
         self._l = ledger
+        self.lock = ledger.lock  # the ledger's RLock; a caller that reads then writes through this adapter holds it
 
+    @_locked
     def _write(self, key: str, payload_hash: str | None, receipt: Mapping[str, Any]) -> None:
         now = datetime.now(timezone.utc)
         self._l._conn.execute("BEGIN IMMEDIATE")
@@ -442,6 +479,7 @@ class LedgerReceiptStore:
             self._l._conn.execute("ROLLBACK")
             raise
 
+    @_locked
     def get(self, key: str, default=None):
         row = self._l._conn.execute("SELECT payload_hash, receipt_json FROM receipts WHERE store_key = ?", (key,)).fetchone()
         if row is None:
@@ -451,6 +489,7 @@ class LedgerReceiptStore:
     def __setitem__(self, key: str, slot: Mapping[str, Any]) -> None:
         self._write(key, slot.get("payload_hash"), slot["receipt"])
 
+    @_locked
     def iter_receipts(self, *, project: str | None = None, lane_id: str | None = None, state: str | None = None,
                       since: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
         sql, args = "SELECT receipt_json FROM receipts WHERE 1=1", []
@@ -475,7 +514,9 @@ class LedgerRunStore:
 
     def __init__(self, ledger: CoordinationLedger) -> None:
         self._l = ledger
+        self.lock = ledger.lock  # the ledger's RLock; a caller that reads then writes through this adapter holds it
 
+    @_locked
     def request(self, *, run_id: str, lane_id: str, mode: str, requested_by: str | None, caller_id: str | None,
                 now: float) -> tuple[dict[str, Any], bool]:
         """Insert a REQUESTED row, or return the existing row for this run_id with duplicate=True."""
@@ -497,10 +538,12 @@ class LedgerRunStore:
             raise
         return self.get(run_id), False
 
+    @_locked
     def get(self, run_id: str) -> dict[str, Any] | None:
         row = self._l._conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         return None if row is None else self._row_dict(row)
 
+    @_locked
     def claim_next(self, *, now: float | None = None) -> dict[str, Any] | None:
         """Oldest REQUESTED row -> RUNNING in one transaction; None when the queue is empty."""
         at = _iso(now if now is not None else datetime.now(timezone.utc).timestamp())
@@ -520,6 +563,7 @@ class LedgerRunStore:
             raise
         return self.get(str(row["run_id"]))
 
+    @_locked
     def finish(self, run_id: str, *, state: str, receipt: Mapping[str, Any], now: float | None = None) -> dict[str, Any]:
         """RUNNING -> one of RUN_FINISHED_STATES with the RunReceipt@v1 stored on the row."""
         if state not in RUN_FINISHED_STATES:
@@ -548,6 +592,7 @@ class LedgerRunStore:
         assert out is not None
         return out
 
+    @_locked
     def list(self, *, state: str | None = None, lane_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
         sql, args = "SELECT * FROM runs WHERE 1=1", []
         if state:
