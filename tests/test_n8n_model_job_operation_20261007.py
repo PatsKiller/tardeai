@@ -154,4 +154,39 @@ def test_ops_summary_process_derives_its_own_task_type_and_a_foreign_process_is_
     idem2 = "idem-mj-0021"
     _call("accept_event", "5", nonces, store, event=_event(idem2)); _call("claim", "6", nonces, store, idempotency_key=idem2); _call("start", "7", nonces, store, idempotency_key=idem2)
     r = _call("model_job", "8", nonces, store, idempotency_key=idem2, job={**_job(tmp_path, idem2), "process_id": "alex_cio_synthesis"})
-    assert r["state"] == "REFUSED" and r["reason"] == "typed_refusal:process_not_registered" and len(seen) == 1
+    assert r["state"] == "REFUSED" and r["reason"] == "process_not_registered" and len(seen) == 1
+    assert "process_not_registered" in G.REFUSAL_REASONS
+    # Refused before any work, like malformed_event: the event is still STARTED, so a corrected job proceeds.
+    r = _call("model_job", "9", nonces, store, idempotency_key=idem2, job={**job, "correlation_id": idem2})
+    assert r["state"] == "ARTIFACT_WRITTEN" and r["model_job"]["task_type"] == "ops_summary" and len(seen) == 2
+
+
+def test_bridge_call_sends_the_derived_task_type_and_the_named_routing_policy_as_headers(monkeypatch):
+    """The routing policy is a NAME carried as X-TradeAI-Routing-Policy (the bridge ignores it today); the task type
+    header is the one run_model_job derived; the body carries the job's correlation id as request_id and the fixed
+    governed model name. No socket: urlopen is stubbed and the Request is captured."""
+    import io
+    import urllib.request
+    captured = {}
+
+    class _Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["req"], captured["timeout"] = req, timeout
+        return _Resp(json.dumps({"id": "r", "choices": [], "_tradeai": {"governance_pass": True}}).encode())
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv(M.BRIDGE_URL_ENV, "http://127.0.0.1:1/v1/chat/completions")
+    r = M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_ops_summary_draft", request_id="corr-ops-weekly-2026-W41",
+                               task_type="ops_summary", routing_policy="deepseek_only", timeout_s=3)
+    assert r["_tradeai"]["governance_pass"] is True
+    req = captured["req"]
+    hdr = {k.lower(): v for k, v in req.header_items()}
+    assert hdr["x-tradeai-agent"] == M.BRIDGE_CALLER and hdr["x-tradeai-task-type"] == "ops_summary"
+    assert hdr[M.ROUTING_POLICY_HEADER.lower()] == "deepseek_only"
+    body = json.loads(req.data.decode("utf-8"))
+    assert body["request_id"] == "corr-ops-weekly-2026-W41" and body["model"] == "tradeai_governed" and "routing_policy" not in body
+    # without a policy the header is absent (no empty-string header)
+    M.bridge_governed_call([{"role": "user", "content": "x"}], process_id="n8n_material_digest_draft", request_id="r2", timeout_s=3)
+    assert M.ROUTING_POLICY_HEADER.lower() not in {k.lower() for k, _ in captured["req"].header_items()}

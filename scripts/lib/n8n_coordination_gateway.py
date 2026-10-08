@@ -127,6 +127,7 @@ REFUSAL_REASONS = frozenset({
     "forbidden_route", "project_mismatch", "idempotency_conflict", "unknown_operation", "missing_idempotency_key",
     "unknown_event", "no_consumer_receipt", "missing_refusal_reason", "artifact_ref_required", "artifact_bytes_refused",
     "artifact_ref_too_large", "list_unsupported", "bad_time",
+    "process_not_registered",   # 2026-10-08 model_job: job.process_id outside n8n_model_job.PROCESS_TASK_TYPE
 })
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
@@ -261,6 +262,10 @@ def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
         from scripts.lib import n8n_model_job as MJ  # type: ignore
     except ImportError:
         import n8n_model_job as MJ  # type: ignore
+    # 2026-10-08: the task type is derived server-side from job.process_id (PROCESS_TASK_TYPE); a process outside
+    # the map is refused here, before any artifact read or call, and the event stays STARTED for a corrected job.
+    if str(job.get("process_id") or "") not in MJ.PROCESS_TASK_TYPE:
+        return _refused(None, "process_not_registered", peer_ignored=peer)
     call = MODEL_JOB_GOVERNED_CALL or MJ.bridge_governed_call
     result = MJ.run_model_job(job, governed_call=call, now=now if isinstance(now, datetime) else datetime.fromtimestamp(_unix(now), timezone.utc))
     updated = dict(receipt)
