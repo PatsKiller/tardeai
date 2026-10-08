@@ -16,9 +16,11 @@ Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/sc
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# 2026-10-08: ran from the DEV tree (WorkingDirectory + relative scripts/ path) — the "dev tree is what
+# executes" trap; the five --alert monitors now run the served release. Interpreter stays the shared venv.
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
-    scripts/check_served_copy_split.py --alert
+    %h/trade-ai-releases/portfolio-server/CURRENT/scripts/check_served_copy_split.py --alert
 
 # Exit 1 means "a directory is split" -- a finding, not a unit failure.
 SuccessExitStatus=0 1
