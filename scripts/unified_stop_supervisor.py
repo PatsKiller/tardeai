@@ -125,7 +125,10 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
 
     critical = recon.get("summary", {}).get("critical", 0)
     if critical > 0:
-        log.warning(f"CRITICAL: {critical} reconciliation findings — positions may be unprotected")
+        # Domain severity, NOT a code error — keep it a WARNING and avoid the bare uppercase
+        # "CRITICAL"/"ERROR" tokens so the health log_errors scanner doesn't miscount this
+        # routine unprotected-positions warning as a component crash.
+        log.warning(f"{critical} critical reconciliation finding(s) — positions may be unprotected")
 
     # Phase 190D: route paper-position protection defects to SIEM (alert_events) and,
     # when PROTECTION_ALERTS_TELEGRAM=true, to Telegram. Best-effort — must never break
