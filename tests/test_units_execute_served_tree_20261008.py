@@ -10,7 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 UNITS = ROOT / "config" / "systemd" / "user"
 BASELINE = ROOT / "config" / "dev_tree_units_baseline.txt"
-DEV = "WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# The dev tree is identified by its directory NAME, not a live-host absolute path (host-path ratchet):
+# any WorkingDirectory that names the rebuild checkout instead of the served CURRENT tree is the trap.
+DEV_RE = re.compile(r"^WorkingDirectory=.*trade-ai-v12-rebuild", re.M)
 FIXED = ["expected-services", "data-source-health", "served-copy-split", "data-plausibility", "gap-resolution"]
 
 
@@ -18,7 +20,7 @@ def _dev_tree_units() -> set[str]:
     out = set()
     for p in sorted(UNITS.glob("*.service")):
         t = p.read_text()
-        if DEV in t and re.search(r"ExecStart=.*\n?.*scripts/", t):
+        if DEV_RE.search(t) and re.search(r"ExecStart=.*\n?.*scripts/", t):
             out.add(p.name)
     return out
 
@@ -32,7 +34,7 @@ def test_the_five_alert_monitors_run_the_served_tree():
         t = (UNITS / f"tradeai-{u}.service").read_text()
         assert "WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT" in t, u
         assert "%h/trade-ai-releases/portfolio-server/CURRENT/scripts/" in t, u
-        assert DEV not in t, u
+        assert not DEV_RE.search(t), u
         assert ".venv/bin/python" in t, u   # interpreter stays the shared venv (CURRENT has none)
 
 
