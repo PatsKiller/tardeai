@@ -72,4 +72,5 @@ def main() -> dict:
 
 
 if __name__ == "__main__":
-    main()
+    from lib.scheduled_job_receipt import run_with_receipt
+    run_with_receipt(main, script="desk_suggestions_digest", root=PROJECT_ROOT)

@@ -5,6 +5,395 @@
   "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink — the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours → holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00. 2026-10-07: cron consolidation ranks 3-4 + tranche C install; 15 baseline entries pruned with their crontab deletion (the 9 absorbed lines that live in the 2026-09-28 inherited tranche stay in that pinned record and are named in the health-tick / platform-maintenance-* state_reason).",
   "lanes": [
     {
+      "lane_id": "n8n-monitor-trade-ai",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "s57KBllvqf6Jb5xF",
+        "match": "n8n-monitor-trade-ai",
+        "cadence": "*/5 * * * *"
+      },
+      "expected_cadence_hours": 0.08333333333333333,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id s57KBllvqf6Jb5xF, Schedule Every 5 minutes -> GET build-meta. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10e7c19321c906a is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "n8n-monitor-dof",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "GXwhbRkwsGcYZxgn",
+        "match": "n8n-monitor-dof",
+        "cadence": "*/5 * * * *"
+      },
+      "expected_cadence_hours": 0.08333333333333333,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id GXwhbRkwsGcYZxgn, Schedule Every 5 minutes -> GET run-scope. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10087387b964e87 is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "alert-daily-digest",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "55 17 * * 1-5",
+        "match": "scripts/alert_daily_digest.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/alert_daily_digest_last.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. CLI run_with_receipt entrypoint; sends through the host Telegram chokepoint, never allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "ops-daily-digest",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 18 * * *",
+        "match": ".openclaw/skills/tradeai-health-inspect/scripts/ops_daily_digest.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. External OpenClaw script main()/emit() prints JSON and sends Telegram; NO_SIGNAL: no durable job receipt. No external source was modified.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "ops-weekly-learning-report",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 9 * * 0",
+        "match": ".openclaw/skills/tradeai-health-inspect/scripts/ops_weekly_learning_report.py"
+      },
+      "expected_cadence_hours": 168,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. External OpenClaw script main()/emit() prints JSON and sends Telegram; NO_SIGNAL: no durable job receipt. No external source was modified.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "system-rollup-snapshot",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 20 * * *",
+        "match": "scripts/system_rollup_snapshot.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "ai_reports",
+        "column": "generated_at",
+        "where": "report_type='system_digest'"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/system_rollup_snapshot.py:97-101 inserts a system_digest ai_reports row; :114-115 sends Telegram. Host sender stays out.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "generate-weekly-docx",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 21 * * 0",
+        "match": "scripts/generate_weekly_docx.py"
+      },
+      "expected_cadence_hours": 168,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/portfolios/reports/analyst"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/generate_weekly_docx.py:361 save_report_json creates the weekly dated JSON, :388-389 sends Telegram. Directory signal is coarse: reruns of the same dated file do not refresh it; needs a stable job receipt before cutover.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "generate-analyst-daily-digest",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 7 * * 1-5",
+        "match": "scripts/generate_analyst_daily_digest.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/generate_analyst_daily_digest_last.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. CLI run_with_receipt entrypoint; report JSON at analyst_report_builder.py:3230-3236. Existing --dry-run writes report JSON: shadow is NOT write-nothing.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "desk-suggestions-digest",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 8 * * 1-5",
+        "match": "scripts/desk_suggestions_digest.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/desk_suggestions_digest_last.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. CLI run_with_receipt entrypoint; reads watch_directive_hits, does not promote or notify.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "rotation-rebalance-digest",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 18 * * 0",
+        "match": "scripts/rotation_rebalance_digest.py"
+      },
+      "expected_cadence_hours": 168,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/rotation_rebalance_digest.py:26-28 POSTs research requests and :73-74 sends Telegram. NO_SIGNAL: prints a summary, no durable per-run receipt; not allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "job-coverage-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 8,20 * * *",
+        "match": "scripts/job_coverage_monitor.py"
+      },
+      "expected_cadence_hours": 12,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/job_coverage_monitor_last.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. CLI run_with_receipt entrypoint; evaluate() reads scheduler and heartbeat metadata, no remediation is executed.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "llm-retry-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 7 * * *",
+        "match": "scripts/llm_retry_monitor.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/llm_retry_health.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/llm_retry_monitor.py:59 writes health JSON; :62 truncates its event ledger (destructive retention), so not allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "catalyst-calibration-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 5 * * *",
+        "match": "scripts/catalyst_calibration_monitor.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/catalyst_calibration_history.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/catalyst_calibration_monitor.py:75 writes its own monitoring history; --dry-run prints and does not append. This is NOT the catalyst calibration writer.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "source-attribution-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 6 * * *",
+        "match": "scripts/source_attribution_monitor.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/source_attribution_history.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/source_attribution_monitor.py:114 writes only its own monitoring history; --dry-run does not append. Queries, never changes source/trade scoring.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "watch-directives-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 6 * * *",
+        "match": "scripts/watch_directives_monitor.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/watch_directives_history.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/watch_directives_monitor.py:149 writes its own history; --dry-run does not append; never promotes a directive.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "hermes-pipeline-health",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 7,15 * * *",
+        "match": "scripts/hermes_pipeline_health.py"
+      },
+      "expected_cadence_hours": 16,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "alert_events",
+        "column": "created_at",
+        "where": "source_script='hermes_pipeline_health'"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/hermes_pipeline_health.py:181-187 inserts alerts on findings only; healthy idle runs have no durable receipt. Cron --send is a sender, not allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "youtube-cookie-health-check",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 19 * * *",
+        "match": "scripts/youtube_cookie_health_check.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/youtube_cookie_health_check_last.json"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. CLI run_with_receipt entrypoint; red/amber sends Telegram by default, so never allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "finviz-health-check",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 6-18/3 * * 1-5",
+        "match": "scripts/finviz_health_check.py"
+      },
+      "expected_cadence_hours": 12,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "data_source_health",
+        "column": "updated_at",
+        "where": "source_key='finviz'"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/finviz_health_check.py:98-111 updates finviz health metadata. Cron has no --telegram; no ingestion, no notification. Signal is health metadata, not market data.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "crawl-v3-dashboard",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 6 * * *",
+        "match": "scripts/crawl_v3_dashboard.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/crawl_v3_dashboard.py:137-156 prints results and conditionally sends; cron uses --telegram. NO_SIGNAL: no durable per-run receipt, so not allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "alert-missing-conditions",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 7 * * 1-5",
+        "match": "scripts/alert_missing_conditions.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. main() prints and dispatches operator alerts; check_api_credits() makes a paid model probe. NO_SIGNAL: no durable per-run receipt; never allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "backup-generated-docs",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 23 * * *",
+        "match": "linux_launchers/backup_generated_docs.sh"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. linux_launchers/backup_generated_docs.sh git commit-tree/update-ref/push plus Telegram failure alerts; NO_SIGNAL: no per-run durable receipt. Git authority is not relay authority.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "sync-memory-to-drive",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 3 * * *",
+        "match": ".claude/sync-memory-to-drive.sh"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT: 10 3 * * * flock -n /tmp/claude_memsync.lock ~/.claude/sync-memory-to-drive.sh. External source creates ~/.claude/projects/-home-johnclaw/memory_backup/claude_memory_backup.tar.gz, then permanently deletes Drive copies before upload. NO_SIGNAL: archive mtime proves packing, not upload, and no durable upload receipt exists. Not allowlisted.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "commit-hermes-daily",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "13 23 * * *",
+        "match": "scripts/commit_hermes_daily.sh"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/commit_hermes_daily.sh git add/commit/push origin main; may reset index and sync Drive. NO_SIGNAL: prints only; not allowlisted and never executed in this change.",
+      "state_since": "2026-10-08"
+    },
+    {
       "lane_id": "hermes-universe-history-retention",
       "owner": "platform",
       "scheduler": {
