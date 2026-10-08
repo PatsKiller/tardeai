@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,7 +48,10 @@ def _fixture(tmp_path):
                                                        "exit_code": 0, "duration_s": 1.0, "state": "RUN_DONE", "finished_at": "2026-10-07T12:00:00+00:00"})
     _write(root / "data/runtime/n8n_runs/r-cut-fail.json", {"schema": "RunReceipt@v1", "run_id": "r-cut-fail", "lane_id": "lane-cut", "mode": "live",
                                                              "exit_code": 2, "duration_s": 9.0, "state": "RUN_FAILED", "code_sha": "a" * 40})
-    _write(root / "data/runtime/n8n_runs/n8n_run_executor_last.json", {"schema": "RunReceipt@v1", "finished_at": "2026-10-08T12:00:09+00:00"})
+    # the executor heartbeat is judged against the real clock (the board is not given now= here, so file mtimes
+    # and this age agree); one hour ago is inside the 2x cadence window whenever the test runs
+    _write(root / "data/runtime/n8n_runs/n8n_run_executor_last.json",
+           {"schema": "RunReceipt@v1", "finished_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()})
     _write(root / "data/runtime/n8n_cutover/lane-cut-20261008T0800Z.json", {"schema": "CutoverReceipt@v1", "lane_id": "lane-cut", "action": "cutover",
                                                                             "scheduler_before": "cron", "scheduler_after": "n8n", "applied": True,
                                                                             "at": "2026-10-08T08:00:00+00:00", "crontab_backup": "backups/crontab-x.txt"})
