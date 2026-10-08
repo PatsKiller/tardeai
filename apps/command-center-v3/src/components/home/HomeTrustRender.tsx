@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom'
 import { isValidBriefingProse, briefingProse } from '../../lib/homeLabels'
 import { BB, T, TYPE } from '../../lib/watchTokens'
+import { RADIUS } from '../../lib/designTokens'
 
 export function HermesGatewayLine({ status, loopActive }: { status?: string; loopActive?: boolean }) {
   const ok = status === 'ok'
@@ -64,7 +65,7 @@ export function ExecutiveBriefCard({ brief }: { brief: any }) {
   const age = typeof brief.age_s === 'number' ? brief.age_s : null
   const ageLabel = age == null ? '' : age < 3600 ? `${Math.round(age / 60)}m ago` : `${Math.round(age / 3600)}h ago`
   return (
-    <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 14 }}>
+    <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.lg, padding: 16, marginTop: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ fontSize: TYPE.base, fontWeight: 700, color: 'var(--text0)' }}>Executive Brief</div>
         {ageLabel && <span style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>{ageLabel}</span>}
