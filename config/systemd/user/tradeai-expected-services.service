@@ -15,9 +15,11 @@ Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/co
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# 2026-10-08: ran from the DEV tree (WorkingDirectory + relative scripts/ path) — the "dev tree is what
+# executes" trap; the five --alert monitors now run the served release. Interpreter stays the shared venv.
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
-    scripts/check_expected_services.py --alert
+    %h/trade-ai-releases/portfolio-server/CURRENT/scripts/check_expected_services.py --alert
 
 # Exit 1 means "something declared is off" -- a finding, not a unit failure.
 # Treating it as a failure would bury the report and make is-failed useless for

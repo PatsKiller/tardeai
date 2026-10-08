@@ -116,6 +116,41 @@ def _unit_states() -> tuple[dict[str, str], dict[str, str]]:
     return enablement, activity
 
 
+REGISTRY_PATH = PROJECT_ROOT / "config" / "lane_registry.json"
+OFF_BY_DECISION = {"RETIRED", "PAUSED"}
+
+
+def lane_states_for_units(registry: dict | None) -> dict[str, tuple[str, str]]:
+    """unit name -> (lane_id, state) for every registry row whose scheduler names a systemd unit."""
+    out: dict[str, tuple[str, str]] = {}
+    for row in (registry or {}).get("lanes", []):
+        sched = row.get("scheduler") or {}
+        if sched.get("kind") != "systemd":
+            continue
+        for key in ("match", "expression"):
+            text = str(sched.get(key) or "")
+            for unit in re.findall(r"[\w@.\-]+\.(?:timer|service|path)", text):
+                out.setdefault(unit, (row.get("lane_id", "?"), str(row.get("state") or "")))
+    return out
+
+
+def apply_lane_states(results: list[dict], lane_states: dict[str, tuple[str, str]]) -> list[dict]:
+    """2026-10-08: a unit the registry marks RETIRED/PAUSED is EXPECTED to be off. The check kept
+    reporting DISABLED:tradeai-due-checkpoints.timer as a P1 incident although lane due-checkpoints is
+    RETIRED by operator decision (2026-09). Off-by-decision becomes RETIRED_OK (still printed, never an
+    incident); a disabled unit with no lane row or an ACTIVE row stays a finding. Pure."""
+    for r in results:
+        if r.get("kind") != "unit" or r.get("status") not in {"DISABLED", "MISSING", "INACTIVE"}:
+            continue
+        lane = lane_states.get(r["name"])
+        if lane and lane[1] in OFF_BY_DECISION:
+            r["status"] = "RETIRED_OK"
+            r["detail"] = f"lane {lane[0]} is {lane[1]} in config/lane_registry.json — off by decision"
+        elif lane is None:
+            r["detail"] = "no lane row in config/lane_registry.json — declare it, or retire it in the registry"
+    return results
+
+
 def check_unit(unit: str, enablement: dict[str, str], activity: dict[str, str]) -> str:
     """Classify one declared unit. Pure, so it is testable without systemd."""
     enabled = enablement.get(unit)
@@ -246,7 +281,13 @@ def main() -> int:
             }
         )
 
-    off = [r for r in results if r["status"] != "OK"]
+    try:
+        registry = json.loads(REGISTRY_PATH.read_text()) if REGISTRY_PATH.exists() else None
+    except (OSError, json.JSONDecodeError):
+        registry = None
+    results = apply_lane_states(results, lane_states_for_units(registry))
+
+    off = [r for r in results if r["status"] not in {"OK", "RETIRED_OK"}]
 
     if args.json:
         print(json.dumps({"schema": SCHEMA, "checked": len(results), "off": len(off), "results": results}, indent=2))

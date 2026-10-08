@@ -41,8 +41,9 @@ class _DeadConn:
         raise RuntimeError("connection already closed")
 
 
-def test_a_dead_connection_does_not_crash_the_retry_path():
+def test_a_dead_connection_does_not_crash_the_retry_path(monkeypatch):
     import system_health_agent as agent
+    monkeypatch.setenv("TRADEAI_HEALTH_AGENT_RETRY", "1")   # 2026-10-08: retries are disarmed by default
     comp = {"component": "unit-test", "retry_cmd": "true"}
     assert agent._attempt_retry(comp, _DeadConn()) is True   # `true` exits 0; the count query failing is logged, not fatal
 
