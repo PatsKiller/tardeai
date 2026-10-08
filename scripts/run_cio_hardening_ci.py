@@ -1141,6 +1141,18 @@ GATES = [
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
     ),
+    # Decision-speed redesign (operator 2026-10-08): Telegram decision cards route exactly like the old layout;
+    # Home/Communications/Watch answer action-risk-opportunity first with strict colour families.
+    (
+        "decision_cards_20261008",
+        ["tests/test_decision_cards_20261008.py"],
+    ),
+    # Advice digests (operator 2026-10-08): entry alerts / CIO advisory notes / thesis updates / watchlist BUY_READY
+    # held for the 10/15/17 ET HTML digests; scalps, approvals and stop/protection stay immediate.
+    (
+        "advice_digests_20261008",
+        ["tests/test_advice_digests_20261008.py"],
+    ),
     # Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:
     # per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment
     # drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06).
@@ -3498,6 +3510,18 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: CADENCE_TIMER_UNITS — 2026-10-08: the five timer-driven pipeline services (governance,
+        # portfolio daily/weekly/monthly/lookthrough) executed the DEV tree from host-only unit copies with no
+        # repo text; tradeai-operator-answer-quality.service was the sixth --alert monitor still dev-tree.
+        # Pins the 11 repo unit files to the served CURRENT tree (ExecStart + WorkingDirectory, measured
+        # OnCalendar preserved, no live-host literal) and the governance controller's PY fallback (exit 78).
+        # Hermetic; reads repo files only. Listing them here installs nothing.
+        "cadence_timer_units_20261008",
+        [
+            "tests/test_cadence_timer_units_20261008.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MIGRATION_BOARD — n8n scheduler-of-record program, stream G (2026-10-08):
         # the `runs` source on the coordination projection (tmp sqlite), the incident fan-in
         # `runs` source (P2 RUN_FAILED/RUN_TIMEOUT, P1 executor stalled, self-closing on RUN_DONE,
@@ -3509,6 +3533,22 @@ GATES = [
             "tests/test_n8n_coordination_runs_projection_20261008.py",
             "tests/test_n8n_incident_fanin_runs_20261008.py",
             "tests/test_n8n_migration_board_20261008.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_OBS_GAPS — n8n scheduler-of-record program, observability gaps (2026-10-08):
+        # the lane monitor renders scheduler_label and, for kind n8n, the last run with the
+        # FRESH/ORPHANED evaluate_lane decided (research_lane_health --lanes / alert body, governance
+        # packet `detail`); the incident fan-in `relay` source (P2 relay:auth_failures from the relay
+        # last file's counter diffed against the previous receipt, P1 relay:down, TRADEAI_FANIN_RELAY=0
+        # opt-out); the rotation daemon's pure due-selection + --dry-run and the two weekly
+        # secret_registry entries. Hermetic: tmp registry, tmp sqlite ledger, tmp relay/receipt files,
+        # tmp secret registry + state. Listing them here schedules nothing.
+        "n8n_observability_gaps_20261008",
+        [
+            "tests/test_lane_monitor_n8n_rendering_20261008.py",
+            "tests/test_n8n_incident_fanin_relay_20261008.py",
+            "tests/test_secret_rotation_schedule_20261008.py",
         ],
     ),
     (

@@ -63,6 +63,9 @@ _STOP = frozenset({
     # Alert chrome (2026-09-29): title "READY ENTRY ALERT — ADV" bound ENTRY/ALERT as
     # tickers and Telegram footers sent operators to /watch/intelligence/ALERT.
     "ENTRY", "ALERT", "SETUP", "TARGET", "LIMIT", "ADVISORY", "INVALIDATION",
+    # Decision-card chrome (2026-10-08, scripts/lib/telegram_cards.py): headers and block labels are words, not tickers.
+    "HIGH", "CONVICTION", "APPROACHING", "BLOCKED", "STATUS", "ACTION", "REQUIRED", "COMPANY", "VERDICT",
+    "CRITICAL", "WARNING", "ISSUE", "TTL", "REVIEW", "CHECK", "URGENT",  # not OPEN: Opendoor is a ticker
 })
 
 #: Holdings rows that are not instruments.

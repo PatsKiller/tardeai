@@ -1,6 +1,9 @@
 # Agent 2 W1 — registry and safe run contracts
 
-Status: implementation staged; full acceptance and supervisor review pending.
+Status: W1 source validated; updated-main acceptance and supervisor review pending.
+Owner: platform (Agent 2; Agent A reviews).
+as_of: 2026-10-08.
+Measured at: original W1 head `5e78c00811f8850086019d692543f0b1324c8f09`.
 Measured: 2026-10-08. Base: main `72b0ce6bec79dcdae46323643209154105479c76`.
 Authority: registry metadata, code, tests and PR only. No schedule cutover,
 service installation, workflow import, merge, deployment or trading.
@@ -78,12 +81,14 @@ Initial scoped suite: **85 passed** (before adding the native-monitor test).
 The next scoped run found one obsolete schema-only test asserting there were no
 n8n rows. That assertion is updated to permit exactly the two observed native
 monitors, retaining the prohibition against host-scheduler cutovers.
-Final scoped suite: **86 passed in 6.92s**. Full local acceptance: pending on
-the committed tree. The initial run stopped at release readiness (16/17 release
+Final original scoped suite: **86 passed in 6.92s**. Full local acceptance on
+`5e78c00811f8850086019d692543f0b1324c8f09`: **exit 0**, observed 12:37 EDT,
+17/17 release steps passed and all registered CIO gates passed. The initial run
+stopped at release readiness (16/17 release
 steps passed) because its filename-based hygiene classifier rejects an
 uncommitted `youtube_cookie_health_check.py` edit as sensitive. The direct
 readiness rerun confirmed no other failing validator. No gate is bypassed:
-commit the reviewed source locally, then run acceptance again before any push.
+the reviewed source was committed locally and acceptance rerun before push.
 
 - Dark contracts: zero new unexplained or uncompilable modules.
 - Test coverage registration: zero new unlisted tests; `N8N_AGENT2_W1` GATES anchor.
@@ -98,6 +103,22 @@ commit the reviewed source locally, then run acceptance again before any push.
   or live application database is exercised.
 
 ## Handoff acceptance
+
+Branch-update candidate, 2026-10-08: GitHub later reported this PR CONFLICTING
+with main. A local merge of main `443774e2197feeff2d254d77f372304ba1035b7b`
+has no unresolved code conflicts; the repository's generated-file driver keeps
+the local docs index and requires regeneration. Main's changes, including its
+new registry rows and GATES entries, are retained. No history rewrite or
+force-push is used. The docs index is regenerated after staging this update.
+Scoped and full acceptance must be rerun on the resulting committed candidate
+before its one remaining corrective push. This does not merge the PR, install
+a service, activate a workflow, or release the W2 registry lock.
+
+Updated-main scoped regression: **96 passed in 15.58s**, including the newly
+merged lane-monitor rendering and migration-board suites. New-file Ruff,
+coverage and host-path gates pass. Our diff against main has no whitespace
+errors; a whole-merge staged check reports existing generated Markdown hard
+line-break whitespace from main, which is preserved rather than edited.
 
 Supervisor review must resolve or explicitly accept the receipt, lock and
 never-list limitations before activation. These are not a declaration that

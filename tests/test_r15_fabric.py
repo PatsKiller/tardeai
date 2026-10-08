@@ -51,7 +51,7 @@ def test_each_producer_declares_wiring(producer: dict) -> None:
 
 def test_coverage_matrix_identifies_gaps() -> None:
     matrix = coverage_matrix()
-    assert matrix["counts"]["PARTIAL"] + matrix["counts"]["FULL"] + matrix["counts"]["UNWIRED"] == 31
+    assert matrix["counts"]["PARTIAL"] + matrix["counts"]["FULL"] + matrix["counts"]["UNWIRED"] == 32  # +opportunity_assessment (Investment Command Center, 2026-10-08)
     assert matrix["not_connected"]
     for row in matrix["rows"]:
         for flag in COVERAGE_FLAGS:

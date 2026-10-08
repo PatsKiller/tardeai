@@ -249,6 +249,18 @@ class CIONotificationDeliveryWorker:
         delivered: list[dict[str, Any]] = []
         failed: list[dict[str, Any]] = []
 
+        # 2026-10-08 operator: CIO advisory notes (re-entry notes, CIO advisory actions) wait for the 10:00 / 15:00 /
+        # 17:00 advice digest, which delivers them and marks them DELIVERED. They stay PENDING here (nothing lost).
+        # Rollback: config/advice_digest.yaml holds.cio_advisory_outbox.
+        try:
+            try:
+                from scripts.lib.advice_digest import hold as _advice_hold
+            except ImportError:  # pragma: no cover
+                from lib.advice_digest import hold as _advice_hold  # type: ignore
+            if _advice_hold("cio_advisory_outbox"):
+                notifications = [n for n in notifications if str(n.get("message_class") or "") != "advisory"]
+        except Exception:
+            pass
         for notif in notifications[:max_deliveries]:
             nid = notif.get("notification_id", "")
 

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { TopOpportunitiesWidget } from './OpportunitiesHub'
+import HomeDecision from '../components/decision/HomeDecision'
+import { Collapsible } from '../components/primitives/Collapsible'
 import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
 import { useApi } from '../hooks/useApi'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -183,6 +184,9 @@ export default function HomeHub({ onDrill }: Props) {
         }}>Morning brief → Reports</Link>
       </div>
 
+      {/* Decision-first (operator 2026-10-08): what needs action, highest risk, highest opportunity */}
+      <HomeDecision overview={overview} winRate={tradingWr} />
+
       {/* Defense Desk WS-E: compact market-posture strip — full desk at /v3/defense */}
       {(() => {
         const rows: any[] = (posture as any)?.momentum?.rows || []
@@ -238,7 +242,8 @@ export default function HomeHub({ onDrill }: Props) {
       </div>
 
       <>
-          {/* Command Center header — matches v2 layout */}
+          {/* Detailed metrics behind an expander — the decision block above answers first (2026-10-08) */}
+          <Collapsible title="More metrics" persistKey="home.more_metrics" summary="VIX · regime · last run · setup state · journal P&L" style={{ marginBottom: 16 }}>
           <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px' }), marginBottom: 16 }}>
             <div style={{ fontSize: terminalUi ? 11 : 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>Command Center</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
@@ -268,6 +273,7 @@ export default function HomeHub({ onDrill }: Props) {
               ))}
             </div>
           </div>
+          </Collapsible>
 
           {/* Per-account P/L by period */}
           <div data-testid="home-account-pnl" style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14, overflowX: 'auto' }}>
@@ -795,7 +801,6 @@ export default function HomeHub({ onDrill }: Props) {
           {/* AI Intelligence Briefing (full width) */}
           {cmd.llm_intelligence && <AiIntelligenceBriefing llm={cmd.llm_intelligence} />}
           {/* AEC Executive Brief — hourly, Command Center only (2026-10-07) */}
-          <TopOpportunitiesWidget />
           {cmd.executive_brief && <ExecutiveBriefCard brief={cmd.executive_brief} />}
       </>
     </div>

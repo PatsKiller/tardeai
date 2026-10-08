@@ -34,6 +34,11 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib.n8n_gateway_client import GatewayClient, walk_to_artifact  # noqa: E402
 from scripts.lib.n8n_pilot_observations import served_sha, state_root  # noqa: E402
 
+# Source of truth: scripts/n8n_run_executor.py LAST_REL (the heartbeat sits beside, not inside, n8n_runs/).
+# Kept as a literal so this reader does not import the executor entrypoint; the drift test
+# tests/test_n8n_migration_board_20261008.py asserts executor, board and fan-in agree.
+EXECUTOR_LAST_REL = "data/runtime/n8n_run_executor_last.json"
+
 SCHEMA = "N8nIncidentFanin@v1"
 NO_CONSUMER_REASON = (
     "Roadmap Phase 1 incident fan-in. Consumed by the coordination projection route once the gateway runs; "
@@ -72,8 +77,16 @@ def _tail_jsonl(path: Path, max_bytes: int = 2_000_000) -> list[dict]:
     return rows
 
 
-def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
-    """Open findings, each {source, item, severity, detail, artifact_rel, store}."""
+PREV_RECEIPT: dict[str, Any] | None = None   # main() parks the previous fan-in receipt here before collect()
+
+
+def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Open findings, each {source, item, severity, detail, artifact_rel, store}.
+
+    `prev` is the previous fan-in receipt (this script's own last file) for the sources that diff a counter
+    across runs (relay auth failures); it defaults to PREV_RECEIPT, None on the first run or without a receipt."""
+    if prev is None:
+        prev = PREV_RECEIPT
     rt = root / "data" / "runtime"
     out: list[dict[str, Any]] = []
     # 1. breach detector per-lane rows (OPEN, today or yesterday by breach_id day)
@@ -166,6 +179,12 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
     # shortest n8n cadence is a P1 (executor stalled). Closes itself on the next RUN_DONE because the finding
     # disappears. Env opt-out keeps CI fixtures without a ledger stable (same reason as lane_registry's no_crontab).
     out.extend(_runs_findings(root, now))
+    # 3f. n8n run relay (observability gaps PR, 2026-10-08): the relay's last file carries cumulative counts.
+    # auth_failures rising by >= RELAY_AUTH_FAILURE_STEP since the previous fan-in receipt is a P2 (a bad or
+    # rotated-out bearer is being presented); a relay last file older than 2x the shortest n8n cadence while
+    # the executor is running n8n lanes and the unit is expected is a P1 (relay down: n8n cannot ask for runs).
+    # Clears on the next file with no new failures. TRADEAI_FANIN_RELAY=0 opts out, like the runs source.
+    out.extend(_relay_findings(root, now, prev))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -180,6 +199,11 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
 
 
 OUTBOX_SOURCE_STATUS: dict[str, Any] = {"status": "not_run"}
+# The executor's heartbeat. Source of truth: scripts/n8n_run_executor.py LAST_REL (data/runtime/, NOT the
+# n8n_runs/ receipt dir). Measured live on 72b0ce6be (2026-10-08): this read pointed at n8n_runs/ so
+# executor:stalled and relay:down could never fire. Kept as the identical literal rather than an import
+# because importing the executor pulls the ledger + gateway modules into the fan-in at import time.
+EXECUTOR_LAST_REL = "data/runtime/n8n_run_executor_last.json"
 RUNS_STALE_FACTOR = 2.0
 RUNS_FAILURE_STATES = ("RUN_FAILED", "RUN_TIMEOUT")
 
@@ -214,7 +238,7 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                               "detail": f"run {it.get('run_id')} {it.get('mode')} exit={it.get('exit_code')} duration_s={it.get('duration_s')}"[:160],
                               "artifact_rel": str(it.get("receipt_ref") or f"{RUNS_RECEIPT_DIR}/{it.get('run_id')}.json"),
                               "store": "data/runtime", "detected_at": it.get("finished_at") or it.get("requested_at")})
-        exec_rel = f"{RUNS_RECEIPT_DIR}/n8n_run_executor_last.json"
+        exec_rel = EXECUTOR_LAST_REL
         exec_doc = _load(root / exec_rel)
         cadences = [float(r["expected_cadence_hours"]) for r in n8n_lanes.values() if r.get("expected_cadence_hours")]
         if exec_doc and cadences:
@@ -232,6 +256,73 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         return found
     except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
         NOTES["runs_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
+        return []
+
+
+RELAY_LAST_REL = "data/runtime/n8n_relay/n8n_run_relay_last.json"
+RELAY_UNIT = "tradeai-n8n-run-relay.service"
+RELAY_AUTH_FAILURE_STEP = 3        # auth_failures must rise by at least this much between two fan-in receipts
+RELAY_STALE_FACTOR = 2.0           # relay last file older than this x the shortest n8n cadence = down
+EXPECTED_SERVICES_PATH = ROOT / "config" / "expected_services.json"
+RELAY_COUNTS: dict[str, Any] = {}  # copied onto the receipt so the next fan-in can diff auth_failures
+
+
+def _relay_unit_expected(path: Path = None) -> bool:
+    doc = _load(path or EXPECTED_SERVICES_PATH) or {}
+    return any(str(u.get("unit") or "") == RELAY_UNIT for u in doc.get("units") or [] if isinstance(u, dict))
+
+
+def _relay_findings(root: Path, now: datetime, prev: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """relay:auth_failures (P2) and relay:down (P1) from the relay's last file; counts are kept on the receipt."""
+    global RELAY_COUNTS
+    NOTES.pop("relay_source", None)
+    RELAY_COUNTS = {}
+    try:
+        if os.environ.get("TRADEAI_FANIN_RELAY", "1") == "0":
+            raise RuntimeError("disabled_by_env")
+        doc = _load(root / RELAY_LAST_REL)
+        if not doc:
+            NOTES["relay_source"] = "ok:no_relay_last"       # never started here: expected_services reports the unit
+            return []
+        last = doc.get("last") or {}
+        counts = doc.get("counts") or {}
+        auth = int(counts.get("auth_failures") or 0)
+        RELAY_COUNTS = {"auth_failures": auth, "requested": int(counts.get("requested") or 0),
+                        "refused": int(counts.get("refused") or 0), "last_at": last.get("at"), "as_of": now.isoformat()}
+        found: list[dict[str, Any]] = []
+        prev_counts = (prev or {}).get("relay_counts") or {}
+        prev_auth = prev_counts.get("auth_failures")
+        if prev_auth is not None:
+            delta = auth - int(prev_auth)                       # negative after a relay restart (counters reset)
+            if delta >= RELAY_AUTH_FAILURE_STEP:
+                found.append({"source": "relay", "item": "relay:auth_failures", "severity": "P2",
+                              "detail": (f"auth_failures {int(prev_auth)}->{auth} (+{delta}) since fan-in {prev_counts.get('as_of')}; "
+                                         f"last {last.get('state')}/{last.get('reason')} at {last.get('at')}")[:160],
+                              "artifact_rel": RELAY_LAST_REL, "store": "data/runtime",
+                              "detected_at": last.get("at") or now.isoformat()})
+        from scripts.lib.lane_registry import load_registry
+        reg = load_registry(ROOT / "config" / "lane_registry.json")
+        cadences = [float(r["expected_cadence_hours"]) for r in reg.get("lanes") or []
+                    if (r.get("scheduler") or {}).get("kind") == "n8n" and r.get("state") == "ACTIVE"
+                    and r.get("expected_cadence_hours")]
+        exec_doc = _load(root / EXECUTOR_LAST_REL)
+        executor_running = False
+        if exec_doc and cadences:
+            ets = exec_doc.get("finished_at") or exec_doc.get("as_of") or exec_doc.get("at")
+            executor_running = (now - _stable(ets, now)).total_seconds() / 3600 <= RUNS_STALE_FACTOR * min(cadences)
+        relay_age_h = (now - _stable(last.get("at"), now)).total_seconds() / 3600 if last.get("at") else None
+        if (executor_running and relay_age_h is not None and relay_age_h > RELAY_STALE_FACTOR * min(cadences)
+                and _relay_unit_expected()):
+            found.append({"source": "relay", "item": "relay:down", "severity": "P1",
+                          "detail": (f"relay last file age_h={relay_age_h:.1f} > {RELAY_STALE_FACTOR}x shortest n8n cadence "
+                                     f"{min(cadences)}h while the executor runs {len(cadences)} n8n lane(s); unit {RELAY_UNIT} expected")[:160],
+                          "artifact_rel": RELAY_LAST_REL, "store": "data/runtime",
+                          "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()})
+        NOTES["relay_source"] = (f"ok:{len(found)}:auth_failures={auth}:prev={prev_auth}:"
+                                 f"executor_running={'yes' if executor_running else 'no'}")
+        return found
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        NOTES["relay_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
         return []
 
 
@@ -298,6 +389,10 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(timezone.utc)
     day = now.strftime("%Y-%m-%d")
     sha = served_sha() or ""
+    out = Path(args.receipt) if args.receipt else (root / "data" / "runtime" / "n8n_incident_fanin_last.json")
+    prev = _load(out) or {}
+    global PREV_RECEIPT
+    PREV_RECEIPT = prev
     findings = collect(root, now)
     by_sev: dict[str, int] = {}
     for f in findings:
@@ -305,8 +400,6 @@ def main(argv: list[str] | None = None) -> int:
     rows: list[dict[str, Any]] = []
     gateway: dict[str, Any] = {}
     prev_open: set[str] = set()
-    out = Path(args.receipt) if args.receipt else (root / "data" / "runtime" / "n8n_incident_fanin_last.json")
-    prev = _load(out) or {}
     prev_open = {r["idempotency_key"] for r in prev.get("incidents", []) if r.get("idempotency_key") and r.get("state") == "ARTIFACT_WRITTEN"}
     client = None
     if args.apply:
@@ -356,6 +449,8 @@ def main(argv: list[str] | None = None) -> int:
     receipt = {"schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "mode": "apply" if args.apply else "dry-run",
                "served_sha": sha or None, "state_root": str(root), "gateway": gateway, "open": len(findings), "by_severity": by_sev,
                "incidents": rows, "recovered": recovered, "outbox_source": OUTBOX_SOURCE_STATUS, "source_notes": dict(NOTES),
+               # the relay baseline survives a run where the relay source was off or broken (no false +delta later)
+               "relay_counts": dict(RELAY_COUNTS) or prev.get("relay_counts") or None,
                "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows)}
     if args.apply:
         out.parent.mkdir(parents=True, exist_ok=True)

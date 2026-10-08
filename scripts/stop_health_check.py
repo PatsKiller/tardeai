@@ -27,7 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 _COMPONENT = "stop_health"
 
 
-def _send_telegram(msg: str) -> str | None:
+def _send_telegram(msg: str, *, reply_markup: dict | None = None, link_preview_options: dict | None = None) -> str | None:
     """Send via the central router. Returns the provider message id, or None.
 
     None covers every case where no message reached Telegram — suppressed by the
@@ -38,7 +38,10 @@ def _send_telegram(msg: str) -> str | None:
     """
     try:
         from telegram_alert import send_telegram_with_id
-        return send_telegram_with_id(msg).get("message_id")
+        # Decision cards (2026-10-08) add buttons + preview; plain text sends exactly as before.
+        extra = {k: v for k, v in (("reply_markup", reply_markup), ("link_preview_options", link_preview_options))
+                 if v is not None}
+        return send_telegram_with_id(msg, **extra).get("message_id")
     except Exception:
         return None
 
@@ -578,7 +581,18 @@ def run(quiet: bool = False) -> dict:
     # B2 (2026-09-16): collapse per-symbol repeats into ONE message. SIEM + Hermes stay per-symbol
     # (durable evidence, one row each); the phone gets a single batched card instead of one per symbol.
     if batch:
-        if len(batch) == 1:
+        card = None
+        try:
+            from lib import telegram_cards as _tc  # decision card (operator 2026-10-08); rollback: config/telegram_cards.yaml
+            if _tc.enabled("stop_health"):
+                card = _tc.stop_health_card([{"symbol": sym, "account": acct, "condition": cond, "severity": sev,
+                                              "line": line} for sev, cond, sym, acct, line in batch])
+        except Exception:  # noqa: BLE001 — never lose a stop alert over a layout problem
+            card = None
+        if card:
+            mid = _send_telegram(card["text"], reply_markup=card.get("reply_markup"),
+                                 link_preview_options=card.get("link_preview_options"))
+        elif len(batch) == 1:
             sev, cond, sym, acct, line = batch[0]
             mid = _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
         else:

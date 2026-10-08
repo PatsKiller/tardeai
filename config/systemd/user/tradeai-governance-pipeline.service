@@ -1,0 +1,20 @@
+[Unit]
+# Measured 2026-10-08 (systemctl --user cat / show): the host copy in ~/.config/systemd/user (dated Jun 4, no
+# repo unit text existed) ran the DEV tree -- the "dev tree is what executes" trap:
+#   WorkingDirectory=$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+#   ExecStart=/usr/bin/bash $HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/pipelines/run_governance_pipeline.sh --apply
+#   (no EnvironmentFile, Nice=0, MemoryMax=infinity)
+# This file re-pins the same script and arguments to the served CURRENT release. It is installed by the
+# operator under a config-write grant (AGENTS.md section 9.3 / 17); merging it installs nothing:
+#   install -m 0600 "$HOME/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-governance-pipeline.service" "$HOME/.config/systemd/user/"
+#   systemctl --user daemon-reload && systemctl --user restart tradeai-governance-pipeline.timer
+Description=TradeAI Governance Pipeline Controller (Phase 200 pilot — reporting only, paper-safe)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+# The served tree has no .venv (tests/test_units_execute_served_tree_20261008.py). The controller takes its
+# interpreter from PY and stops with exit 78 when it is not executable, instead of running the dev tree.
+Environment=PY=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+EnvironmentFile=-%t/tradeai/env
+ExecStart=/usr/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/pipelines/run_governance_pipeline.sh --apply

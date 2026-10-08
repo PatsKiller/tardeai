@@ -15,9 +15,14 @@ Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/sc
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
-ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
-    scripts/check_operator_answer_quality.py --alert
+# 2026-10-08: ran from the DEV tree (WorkingDirectory + relative scripts/ path) -- the "dev tree is what
+# executes" trap; the sixth --alert monitor now runs the served release like the other five. Interpreter
+# stays the shared venv (CURRENT has none). Re-installed by the operator under a config-write grant:
+#   install -m 0600 "$HOME/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-operator-answer-quality.service" "$HOME/.config/systemd/user/"
+#   systemctl --user daemon-reload && systemctl --user restart tradeai-operator-answer-quality.timer
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    %h/trade-ai-releases/portfolio-server/CURRENT/scripts/check_operator_answer_quality.py --alert
 
 # Exit 1 means "there is a finding" -- a report, not a unit failure. Treating it
 # as a failure would bury the report and make is-failed useless for spotting a

@@ -461,6 +461,18 @@ def cio_entry_alert(item: dict[str, Any]) -> RichMessage:
         ("CIO VERDICT", [f"{marker} {stance}", f"What kills the idea: {hard_block_display}",
                          f"Time horizon: {time_horizon or 'not provided'}"]),
     ]
+    # Decision-card layout (operator 2026-10-08: "the ticker becomes the focus"); rollback = config/telegram_cards.yaml.
+    try:
+        try:
+            from scripts.lib import telegram_cards as _tc
+        except ImportError:  # pragma: no cover
+            from lib import telegram_cards as _tc  # type: ignore
+        if _tc.enabled("cio_entry"):
+            return _tc.entry_card(item, marker=marker, state=state, stance=stance, held=held,
+                                  review_status=str(review_status), next_action=str(next_action),
+                                  hard_block=hard_block, evidence=evidence)
+    except Exception:  # noqa: BLE001 — a card problem falls back to the proven layout, never to no alert
+        pass
     return RichMessage(
         marker=marker,
         title=f"CIO ENTRY ALERT — {sym} · {position}",

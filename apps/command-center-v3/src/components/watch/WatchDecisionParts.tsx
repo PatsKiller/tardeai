@@ -2,6 +2,7 @@
  *  Same vocabulary as the Communications hub: category, priority, five scores, TTL / expiry, status, actionability.
  *  Data: card.decision and body.decision_board from /api/v3/data-broker/watch-intelligence
  *  (scripts/lib/data_broker/watch_decision.py, config/watch_decision_standards.yaml). */
+import { BigNumberCard, type Family } from '../decision/DecisionParts'
 import { useEffect, useState } from 'react'
 import { RADIUS, TOKENS } from '../../lib/designTokens'
 import {
@@ -95,6 +96,14 @@ const PANEL_PRESET: Record<string, Record<string, string>> = {
   recent: { view: 'all', actionable: '1', sort: 'time_sensitivity' },
 }
 const PANEL_ORDER = ['attention', 'reward', 'reentry', 'risk', 'expiring', 'recent']
+const BOARD_LOOK: Record<string, { icon: string; label: string; family: Family }> = {
+  attention: { icon: '🚨', label: 'Needs attention', family: 'critical' },
+  reward: { icon: '🟢', label: 'Highest reward', family: 'opportunity' },
+  reentry: { icon: '↩️', label: 'Re-entry', family: 'opportunity' },
+  risk: { icon: '🔴', label: 'Highest risk', family: 'high' },
+  expiring: { icon: '⏳', label: 'Expiring soon', family: 'medium' },
+  recent: { icon: '⚡', label: 'Recently actionable', family: 'medium' },
+}
 
 export function WatchDecisionBoard({ board, onPreset, onOpen }: {
   board: any; onPreset: (preset: Record<string, string>) => void; onOpen: (symbol: string) => void
@@ -112,35 +121,15 @@ export function WatchDecisionBoard({ board, onPreset, onOpen }: {
           <b>{(st.expired ?? 0) + (st.invalidated ?? 0)}</b> expired / invalidated →
         </button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
+      {/* Numbers first (operator 2026-10-08): one big-number card per question; click → that view. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
         {PANEL_ORDER.filter((k) => board.panels[k]).map((k) => {
           const p = board.panels[k]
+          const look = BOARD_LOOK[k]
           return (
-            <div key={k} data-board-panel={k} style={{ border: `1px solid ${BORDER}`, borderRadius: RADIUS.md, padding: 8, background: 'var(--bg1)' }}>
-              <button type="button" onClick={() => onPreset(PANEL_PRESET[k])} title="Filter the list to this view"
-                style={{ all: 'unset', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '.05em' }}>{p.label}</span>
-                <span style={{ fontSize: 11, fontWeight: 800, color: p.count ? TEXT : MUTED }}>{p.count}</span>
-              </button>
-              {(p.items || []).length === 0 && <div style={{ fontSize: 10, color: MUTED }}>Nothing here.</div>}
-              {(p.items || []).map((e: any) => (
-                <div key={e.symbol} onClick={() => onOpen(e.symbol)} style={{ cursor: 'pointer', padding: '3px 0', borderTop: `1px solid ${BORDER}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 11, color: TEXT }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.company || ''}>
-                      <b style={{ fontFamily: MONO }}>{e.symbol}</b>{e.held ? <span style={{ color: TOKENS.success, marginLeft: 4, fontSize: 10 }}>HELD</span> : null}
-                      {e.action_hint ? <span style={{ color: TEXT2, marginLeft: 6, fontSize: 10 }}>{e.action_hint}</span> : null}
-                    </span>
-                    <span style={{ fontSize: 10, color: MUTED, whiteSpace: 'nowrap' }}>{e.priority_score ?? '—'}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
-                    {e.priority && <Badge text={e.priority.toUpperCase()} color={PRIORITY_COLOR[e.priority] || MUTED} />}
-                    {e.category && <Badge text={e.category_label || labelOf(e.category)} color={CATEGORY_COLOR[e.category] || MUTED} />}
-                    {e.reentry_status && <Badge text={`Re-entry: ${e.reentry_status}`} color={REENTRY_COLOR[e.reentry_status] || MUTED} />}
-                    <span style={{ fontSize: 10, color: MUTED }}>{e.status === 'active' ? ttlLabel(e.ttl_remaining_s) : labelOf(e.status)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <BigNumberCard key={k} testId={`watch-board-${k}`} icon={look.icon} label={look.label} value={p.count ?? 0}
+              family={look.family} onClick={() => onPreset(PANEL_PRESET[k])}
+              sub={(p.items || []).slice(0, 3).map((e: any) => e.symbol).filter(Boolean).join(' · ') || undefined} />
           )
         })}
       </div>

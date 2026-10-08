@@ -271,6 +271,24 @@ def _record_recoveries(report: dict) -> None:
               f"(alert_event={rec['alert_event_id']}, resolved={rec['resolved_rows']})")
 
 
+LANE_REGISTRY_ALERT_FINDINGS_MAX = 8
+
+
+def lane_registry_findings_text(row: dict, limit: int = LANE_REGISTRY_ALERT_FINDINGS_MAX) -> str:
+    """The lane-registry row's findings as indented lines for the alert body (bounded; the JSON has all)."""
+    try:
+        from scripts.lib.lane_registry import format_lane_line
+    except Exception:
+        from lane_registry import format_lane_line  # type: ignore
+    findings = list(row.get("findings") or [])
+    if not findings:
+        return ""
+    lines = ["\n      " + format_lane_line(f) for f in findings[:limit]]
+    if len(findings) > limit:
+        lines.append(f"\n      … {len(findings) - limit} more (see the JSON report)")
+    return "".join(lines)
+
+
 def _alert(report: dict) -> int:
     firing = [r for r in report.get("lanes") or [] if not r.get("ok")]
     state = reconcile_recovered(_load_lane_map(), report)
@@ -325,6 +343,12 @@ def _alert(report: dict) -> int:
             extra = (f"  uploaded={row.get('uploaded')} failed={row.get('failed')} "
                      f"exit={row.get('exit_code')}")
         extra2 = ""
+        if lane == "lane-registry":
+            # Observability gaps PR (2026-10-08): the alert named the verdicts (ORPHANED,SILENT) but never the
+            # lanes, so an n8n-scheduled lane with no RUN_DONE within its cadence was indistinguishable from a
+            # retired cron. Each finding now carries its scheduler label and, for kind n8n, the last run
+            # (mode/state/finished_at) with the FRESH/ORPHANED evaluate_lane already decided.
+            extra2 = lane_registry_findings_text(row)
         if lane == "coverage-stall":
             extra2 = (
                 f"  substantive={row.get('thesis_substantive', row.get('thesis_current'))}"
@@ -410,19 +434,39 @@ def _deliver_telegram(msg: str):
     return getattr(_ta, "last_message_id", lambda: None)()
 
 
+def lane_table_text(report: dict) -> str:
+    """`--lanes`: the lane-registry collector's rows rendered by scripts.lib.lane_registry.render_lane_table."""
+    try:
+        from scripts.lib.lane_registry import render_lane_table
+    except Exception:
+        from lane_registry import render_lane_table  # type: ignore
+    for row in report.get("lanes") or []:
+        if row.get("lane") == "lane-registry":
+            head = (f"lane-registry {row.get('summary')}  declared={row.get('declared')} "
+                    f"verdicts={json.dumps(row.get('verdict_counts') or {}, sort_keys=True)} as_of={row.get('as_of')}")
+            return head + "\n" + render_lane_table(row.get("lanes") or [])
+    return "lane-registry: not collected (RESEARCH_LANE_HEALTH_REGISTRY=0)"
+
+
 def main() -> int:
     # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
     from scripts.lib import assert_single_import_identity
     assert_single_import_identity()
     ap = argparse.ArgumentParser()
     ap.add_argument("--alert", action="store_true")
+    ap.add_argument("--lanes", action="store_true",
+                    help="print the lane-registry rows as a text table (scheduler label; n8n lanes show their "
+                         "last run and FRESH/ORPHANED) instead of the JSON report")
     args = ap.parse_args()
     try:
         report = collect_report()
     except Exception as exc:
         print(f"research_lane_health collect failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps(report, indent=2, default=str))
+    if args.lanes:
+        print(lane_table_text(report))
+    else:
+        print(json.dumps(report, indent=2, default=str))
     if args.alert:
         rc = _alert(report)
         # 2 = telegram send failed (check ran, notify did not). 0 = check ran.

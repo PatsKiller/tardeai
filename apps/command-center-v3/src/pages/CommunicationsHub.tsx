@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
-import { SymbolLink } from '../components/opportunity/OpportunityContext'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { BoardCards, FeedCard } from '../components/decision/FeedCards'
 import { useApi } from '../hooks/useApi'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/terminalHubChrome'
 import { RADIUS, TOKENS } from '../lib/designTokens'
 import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
-import { DecisionBoard, CommsFilterModal, ItemBadges, ScoreBar, ttlLabel, labelOf, CATEGORY_COLOR, REENTRY_COLOR, tint, type HubFilters } from '../components/comms/CommsHubParts'
+import { CommsFilterModal, ItemBadges, ttlLabel, labelOf, CATEGORY_COLOR, PANEL_PRESET, REENTRY_COLOR, tint, type HubFilters } from '../components/comms/CommsHubParts'
 
 type Tab = 'events' | 'deliveries' | 'subjects' | 'retention' | 'agents'
 
@@ -136,6 +137,21 @@ export default function CommunicationsHub() {
     const { sort: so, order: or, ...rest } = preset
     setHubFilters(rest); setSort(so || 'priority_score'); setOrder(or || 'desc'); setOffset(0); setPicked(new Set())
   }
+  // ?preset=attention|reward|reentry|risk|expiring|recent — Home "Review now" lands on the matching view.
+  const [sp] = useSearchParams()
+  const presetParam = sp.get('preset')
+  // ?event=<id> opens one message; ?q=<ticker or text> filters the feed (advice-digest links, 2026-10-08).
+  const eventParam = sp.get('event')
+  const qParam = sp.get('q')
+  useEffect(() => { if (eventParam) setSelectedId(eventParam) }, [eventParam])
+  useEffect(() => {
+    if (qParam) { setHubFilters((p) => ({ ...p, q: qParam })); setOffset(0) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qParam])
+  useEffect(() => {
+    if (presetParam && PANEL_PRESET[presetParam]) applyPreset(PANEL_PRESET[presetParam])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetParam])
   const bulk = (action: string, extra: Record<string, any> = {}, label?: string) => {
     if (!picked.size) return
     setPending({ path: '/api/v2/communications/events/bulk', body: { event_ids: Array.from(picked), action, ...extra },
@@ -267,7 +283,7 @@ export default function CommunicationsHub() {
 
       {tab === 'events' && hubMode && (
         <div>
-          <DecisionBoard board={board} onPick={applyPreset} onOpen={(id) => setSelectedId(id)} />
+          <BoardCards board={board} onPick={applyPreset} />
           <div className="cc-panel" style={hubPanel(terminalUi)}>
             {/* Re-entry focus + category chips + sort + filters */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
@@ -325,60 +341,18 @@ export default function CommunicationsHub() {
                 <button type="button" onClick={() => setPicked(new Set())} style={{ fontSize: 10, padding: '2px 8px', border: 'none', background: 'transparent', color: MUTED, cursor: 'pointer' }}>clear</button>
               </div>
             )}
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
-                <thead>
-                  <tr style={{ color: MUTED, textAlign: 'left' }}>
-                    <th style={{ padding: '4px 6px' }}>
-                      <input type="checkbox" checked={events.length > 0 && events.every((e) => picked.has(e.event_id))}
-                        onChange={(ev) => setPicked(ev.target.checked ? new Set(events.map((e) => e.event_id)) : new Set())} />
-                    </th>
-                    <th style={{ padding: '4px 6px' }}>message</th>
-                    <th style={{ padding: '4px 6px' }} title="priority · confidence · risk · reward · time sensitivity">scores P·C·R·Rw·T</th>
-                    <th style={{ padding: '4px 6px' }}>TTL</th>
-                    <th style={{ padding: '4px 6px' }}>status</th>
-                    <th style={{ padding: '4px 6px' }}>source</th>
-                    <th style={{ padding: '4px 6px' }}>when</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.length === 0 && !eventsLoading && (
-                    <tr><td colSpan={7} style={{ padding: 12, color: MUTED }}>Nothing matches these filters.</td></tr>
-                  )}
-                  {events.map((e) => {
-                    const active = e.event_id === selectedId
-                    const soon = e.ttl_remaining_s != null && e.ttl_remaining_s < 12 * 3600 && e.ttl_remaining_s > 0
-                    return (
-                      <tr key={e.event_id} style={{ background: active ? 'rgba(245,158,11,0.12)' : 'transparent', borderTop: `1px solid ${BORDER}`, verticalAlign: 'top', borderLeft: `3px solid ${CATEGORY_COLOR[e.category] || 'transparent'}` }}>
-                        <td style={{ padding: '5px 6px' }}>
-                          <input type="checkbox" checked={picked.has(e.event_id)} onChange={() => setPicked((p) => { const n = new Set(p); if (n.has(e.event_id)) n.delete(e.event_id); else n.add(e.event_id); return n })} />
-                        </td>
-                        <td style={{ padding: '5px 6px', color: TEXT, maxWidth: 520, cursor: 'pointer' }} onClick={() => setSelectedId(e.event_id)}>
-                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.sanitized_body || ''}>
-                            {e.direction === 'INBOUND' && <b style={{ color: AMBER, marginRight: 4 }}>IN</b>}
-                            {(e.symbols || []).length > 0 && <b style={{ fontFamily: MONO, marginRight: 6 }}>{e.symbols.slice(0, 3).map((s: string) => <span key={s} style={{ marginRight: 4 }}><SymbolLink symbol={s} /></span>)}</b>}
-                            {e.headline || e.short_summary || '—'}
-                          </div>
-                          <div style={{ marginTop: 3 }}><ItemBadges e={e} /></div>
-                        </td>
-                        <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>
-                          <b style={{ color: TEXT, marginRight: 4 }}>{e.priority_score ?? '—'}</b>
-                          <ScoreBar v={e.confidence} color={TOKENS.info} title="confidence" />
-                          <ScoreBar v={e.risk_score} color={TOKENS.danger} title="risk" />
-                          <ScoreBar v={e.reward_score} color={TOKENS.success} title="reward" />
-                          <ScoreBar v={e.time_sensitivity} color={TOKENS.warning} title="time sensitivity" />
-                        </td>
-                        <td style={{ padding: '5px 6px', color: soon ? AMBER : MUTED, whiteSpace: 'nowrap' }} title={e.expires_at ? `expires ${fmtWhen(e.expires_at)}` : ''}>
-                          {ttlLabel(e.ttl_remaining_s, e.legal_hold)}
-                        </td>
-                        <td style={{ padding: '5px 6px', color: TEXT2 }}>{e.lifecycle_status || '—'}</td>
-                        <td style={{ padding: '5px 6px', color: MUTED, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.producer}>{e.producer || '—'}</td>
-                        <td style={{ padding: '5px 6px', color: MUTED, whiteSpace: 'nowrap' }}>{fmtWhen(e.created_at)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 10, color: MUTED }}>
+              <input type="checkbox" checked={events.length > 0 && events.every((e) => picked.has(e.event_id))}
+                onChange={(ev) => setPicked(ev.target.checked ? new Set(events.map((e) => e.event_id)) : new Set())} aria-label="select all" />
+              select all on this page · click a card for the full message, scores and source
+            </div>
+            <div data-testid="comms-feed-cards" style={{ display: 'grid', gap: 6 }}>
+              {events.length === 0 && !eventsLoading && <div style={{ padding: 12, color: MUTED }}>Nothing matches these filters.</div>}
+              {events.map((e) => (
+                <FeedCard key={e.event_id} e={e} selected={e.event_id === selectedId} picked={picked.has(e.event_id)}
+                  onPick={() => setPicked((p) => { const n = new Set(p); if (n.has(e.event_id)) n.delete(e.event_id); else n.add(e.event_id); return n })}
+                  onOpen={() => setSelectedId(e.event_id)} />
+              ))}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', marginTop: 8, fontSize: 10, color: MUTED }}>
               <span>{eventsPayload?.total ? `${offset + 1}–${Math.min(offset + PAGE, eventsPayload.total)} of ${eventsPayload.total}` : ''}</span>

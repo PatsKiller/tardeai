@@ -73,7 +73,7 @@ export function ItemBadges({ e }: { e: any }) {
 
 // ── Decision board ──────────────────────────────────────────────────────────
 
-const PANEL_PRESET: Record<string, Record<string, string>> = {
+export const PANEL_PRESET: Record<string, Record<string, string>> = {
   attention: { actionable: '1', priority: 'critical,high', sort: 'priority_score' },
   reward: { actionable: '1', category: 'reward,high_conviction_opportunity,re_entry', sort: 'reward_score' },
   reentry: { category: 're_entry', reentry_status: 'confirmed,opportunity,potential', sort: 'priority_score' },
@@ -81,7 +81,7 @@ const PANEL_PRESET: Record<string, Record<string, string>> = {
   expiring: { actionable: '1', expiring_within_h: '12', sort: 'expires_at', order: 'asc' },
   recent: { actionable: '1', sort: 'actionable_since' },
 }
-const PANEL_ORDER = ['attention', 'reward', 'reentry', 'risk', 'expiring', 'recent']
+export const PANEL_ORDER = ['attention', 'reward', 'reentry', 'risk', 'expiring', 'recent']
 
 export function DecisionBoard({ board, onPick, onOpen }: { board: any; onPick: (preset: Record<string, string>) => void; onOpen: (id: string) => void }) {
   if (!board?.panels) return null

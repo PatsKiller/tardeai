@@ -420,7 +420,9 @@ def test_unit_files_exist_and_carry_the_required_settings():
     tmr = (ROOT / "config/systemd/user/tradeai-operator-answer-quality.timer").read_text()
     assert "scripts/check_operator_answer_quality.py --alert" in svc
     assert "SuccessExitStatus=0 1" in svc
-    assert "WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild" in svc
+    # 2026-10-08: re-pinned from the dev tree to the served release (PR cadence-timer-units-current).
+    assert "WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT" in svc
+    assert "%h/trade-ai-releases/portfolio-server/CURRENT/scripts/check_operator_answer_quality.py --alert" in svc
     assert "OnCalendar=*-*-* *:22,52:00" in tmr
     assert "Persistent=true" in tmr
 

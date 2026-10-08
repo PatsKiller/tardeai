@@ -39,7 +39,7 @@ def _run(monkeypatch, alerts):
     monkeypatch.setattr(shc, "_recently_alerted", lambda sym, cond, hours=2: False)
     monkeypatch.setattr(shc, "_siem", lambda *a, **k: siem.append(a))
     monkeypatch.setattr(shc, "_hermes_finding", lambda *a, **k: hermes.append(a))
-    monkeypatch.setattr(shc, "_send_telegram", lambda m: sent.append(m) or True)
+    monkeypatch.setattr(shc, "_send_telegram", lambda m, **k: sent.append(m) or True)
     monkeypatch.setattr(shc, "_portfolio_drawdown_guard", lambda: None)
     monkeypatch.setattr(shc, "_log_health_event", lambda *a, **k: None)
     monkeypatch.setattr(shc, "_pl_if_fired", lambda *a, **k: None)
@@ -56,8 +56,8 @@ def test_three_orphaned_stops_send_one_batched_message(monkeypatch):
     # one phone message, three durable evidence rows each
     assert len(sent) == 1
     msg = sent[0]
-    assert "STOP HEALTH — 3 alert(s)" in msg
-    assert "(3 urgent)" not in msg  # all-urgent omits the redundant count
+    # decision card (2026-10-08): one card, every symbol, the urgent/total counts
+    assert "CRITICAL STOP ALERT · 3 alerts" in msg and "Urgent alerts: 3 · Total alerts: 3" in msg
     for sym in ("ANET", "CSCO", "QCOM"):
         assert sym in msg
     assert len(siem) == 3 and len(hermes) == 3
@@ -67,7 +67,8 @@ def test_three_orphaned_stops_send_one_batched_message(monkeypatch):
 def test_single_alert_keeps_the_single_card_shape(monkeypatch):
     result, sent, siem, hermes = _run(monkeypatch, [_alert("HRL", "taxable", {"orphaned"})])
     assert len(sent) == 1
-    assert sent[0].startswith("🚨 STOP HEALTH — ORPHANED: *HRL*")
+    assert sent[0].startswith("🚨 <b>CRITICAL STOP ALERT</b>") and "$HRL" in sent[0]
+    assert "STOP HEALTH — ORPHANED" in sent[0]
     assert len(siem) == 1 and len(hermes) == 1
 
 
@@ -76,7 +77,7 @@ def test_already_alerted_symbols_are_skipped_and_nothing_sends(monkeypatch):
                         type("SLM", (), {"scan": staticmethod(lambda persist=True: {"summary": {"total": 1, "by_health": "alert"}, "alerts": [_alert("A", "a", {"orphaned"})]})}))
     monkeypatch.setattr(shc, "_recently_alerted", lambda sym, cond, hours=2: True)
     sent = []
-    monkeypatch.setattr(shc, "_send_telegram", lambda m: sent.append(m) or True)
+    monkeypatch.setattr(shc, "_send_telegram", lambda m, **k: sent.append(m) or True)
     monkeypatch.setattr(shc, "_siem", lambda *a, **k: None)
     monkeypatch.setattr(shc, "_hermes_finding", lambda *a, **k: None)
     monkeypatch.setattr(shc, "_portfolio_drawdown_guard", lambda: None)
@@ -90,4 +91,17 @@ def test_mixed_severity_header_counts_urgent_only(monkeypatch):
               _alert("C", "c", {"neared"})]  # neared → NEAR_TRIGGER (warning)
     _, sent, _, _ = _run(monkeypatch, alerts)
     assert len(sent) == 1
+    assert "3 alerts" in sent[0] and "Urgent alerts: 2 · Total alerts: 3" in sent[0]
+
+
+def test_cards_off_restores_the_previous_text_exactly(monkeypatch):
+    """Rollback path (config/telegram_cards.yaml enabled: false) keeps the 2026-09-16 shapes."""
+    from scripts.lib import telegram_cards as tc
+    monkeypatch.setattr(tc, "enabled", lambda family: False)
+    import lib.telegram_cards as tc2  # the producer imports the flat path
+    monkeypatch.setattr(tc2, "enabled", lambda family: False)
+    _, sent, _, _ = _run(monkeypatch, [_alert("HRL", "taxable", {"orphaned"})])
+    assert sent[0].startswith("🚨 STOP HEALTH — ORPHANED: *HRL*")
+    _, sent, _, _ = _run(monkeypatch, [_alert("A", "a", {"orphaned"}), _alert("B", "b", {"oversized"}),
+                                       _alert("C", "c", {"neared"})])
     assert "STOP HEALTH — 3 alert(s)" in sent[0] and "(2 urgent)" in sent[0]

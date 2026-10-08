@@ -86,6 +86,11 @@ def symbols_in(body: str) -> list[str]:
         add(a or b)
     for s in _TAG_RE.findall(body or ""):
         add(s)
+    # Decision cards (operator 2026-10-08) put the ticker alone on its own line as a cashtag: "$SWMR".
+    for l in [l.strip() for l in _plain(body).splitlines() if l.strip()][:4]:
+        m = re.fullmatch(r"\$([A-Z][A-Z0-9]{0,4}(?:\.[A-Z])?)", l)
+        if m:
+            add(m.group(1))
     lines = [l.strip() for l in _plain(body).splitlines() if l.strip()][:2]
     lead = re.match(r"^[^A-Za-z]*\*?([A-Z]{2,5})\*?\s+[A-Z][a-z]", lines[0]) if lines else None   # "TDG Reentry ..."
     if lead:
@@ -103,10 +108,14 @@ def headline(body: str) -> str:
 
 
 def topic_key(category: str, body: str) -> str:
-    """Same category + same headline shape (numbers ignored) = the same topic, so a newer copy supersedes."""
+    """Same category + same headline shape (numbers ignored) = the same topic, so a newer copy supersedes.
+
+    Card headers ("HIGH CONVICTION ENTRY", operator 2026-10-08) no longer carry the ticker, so the symbols are part
+    of the key — otherwise one name's card would supersede another's."""
     import hashlib
     norm = re.sub(r"[0-9][0-9.,:%$+-]*", "#", _first_line(body).lower())
-    return hashlib.sha1(f"{category}|{norm}".encode("utf-8")).hexdigest()[:16]
+    syms = ",".join(sorted(symbols_in(body)))
+    return hashlib.sha1(f"{category}|{norm}|{syms}".encode("utf-8")).hexdigest()[:16]
 
 
 def priority_score(priority: str, time: float, risk: float, reward: float, confidence: float) -> float:
