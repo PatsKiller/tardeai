@@ -17,6 +17,7 @@ import http.server
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -301,6 +302,19 @@ def resolve_caller(caller: str | None, task_type: str | None = None) -> str | No
     return CALLER_PROCESS_MAP.get(c)
 
 
+_CLIENT_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+
+
+def client_request_id_from(value: Any) -> str | None:
+    """A caller-supplied request id, accepted only in a bounded safe shape (<= 64 chars of [A-Za-z0-9._:-]).
+    It becomes the governed call's `rid`: response id, reservation metadata, journal key and the
+    provider_cost event's client_request_id. Anything else -> None -> the bridge mints its own."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text if _CLIENT_REQUEST_ID_RE.match(text) else None
+
+
 def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any] | None:
     """Look up model policy for a registered governance process.
 
@@ -407,7 +421,8 @@ class MockProvider:
                  stream: bool = False,
                  max_tokens: int = 16384,
                  thinking: str = "disabled",
-                 reasoning_effort: str | None = None) -> dict[str, Any]:
+                 reasoning_effort: str | None = None,
+                 client_request_id: str | None = None) -> dict[str, Any]:
         with self._lock:
             self.call_count += 1
 
@@ -597,7 +612,8 @@ class RealProvider:
                  max_tokens: int = 16384,
                  temperature: float = 0.3,
                  thinking: str = "disabled",
-                 reasoning_effort: str | None = None) -> dict[str, Any]:
+                 reasoning_effort: str | None = None,
+                 client_request_id: str | None = None) -> dict[str, Any]:
         if stream:
             raise NotImplementedError("RealProvider does not support streaming in P-1.2B")
 
@@ -653,7 +669,10 @@ class RealProvider:
 
         # ── Make HTTP call ──────────────────────────────────────────────
         base = "https://api.deepseek.com"
-        client_rid = uuid.uuid4().hex[:12]
+        # 2026-10-08: the caller's request id (the n8n job's correlation_id) is the provider_cost event's
+        # client_request_id, so a job receipt can join its cost event. Before, every attempt minted a fresh
+        # uuid here and the join never matched (settlement stayed NOT_MEASURED).
+        client_rid = client_request_id or uuid.uuid4().hex[:12]
         t0 = time.time()
 
         try:
@@ -1055,6 +1074,7 @@ def execute_governed_call(
                 max_tokens=max_tokens,
                 thinking=policy.get("thinking", "disabled"),
                 reasoning_effort=policy.get("reasoning_effort"),
+                client_request_id=rid,
             )
     except Exception as e:
         provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
@@ -1329,6 +1349,9 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         response_format = data.get("response_format")
         stream = bool(data.get("stream", False))
         max_tokens = int(data.get("max_tokens") or 16384)
+        # 2026-10-08: the body's request_id was read nowhere, so execute_governed_call minted its own and the
+        # caller's correlation id never reached the cost event. Shape-checked; anything else is ignored.
+        request_id = client_request_id_from(data.get("request_id"))
 
         # Reject client-supplied legacy model IDs
         if client_model and client_model.strip().lower() in LEGACY_MODEL_IDS:
@@ -1364,6 +1387,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                 response_format=response_format,
                 stream=stream,
                 max_tokens=max_tokens,
+                request_id=request_id,
             )
         finally:
             with _INFLIGHT_LOCK:

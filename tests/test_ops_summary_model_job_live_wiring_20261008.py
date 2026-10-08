@@ -135,3 +135,143 @@ def test_live_call_carries_the_ops_task_type_and_plan_mode_never_calls(tmp_path,
     assert plan["caller_maps_to"] == PROC and plan["registered"] is True and plan["policy"]["model_id"]
     assert plan["prompt"]["fits_max_input"] is True and plan["ready"] is True
     assert not list((root / "data").glob("governance/*")), "plan mode writes no artifact"
+    # 2026-10-08: ready also means the server-side task type and the rendered template agree with the live path
+    assert plan["task_type_derived"] == "ops_summary" and plan["task_type_ok"] is True and plan["governance_envelope"] == "_tradeai"
+    assert plan["template"] == {"id": "ops_summary_draft.v1", "invalid": None, "matches_inline_prompt": True}
+    monkeypatch.setattr(M, "PROCESS_TASK_TYPE", {"n8n_material_digest_draft": "model_job"})
+    plan = P.plan_ops_summary(root=root, period="weekly", key="2026-W41", now=NOW)
+    assert plan["task_type_ok"] is False and plan["task_type_refusal"] == "process_not_registered" and plan["ready"] is False
+
+
+# ── 2026-10-08 (Day 0, Agent C): the three live-path defects, proven against the bridge code ─────────────────────
+
+def test_fixture_call_returns_the_nested_envelope_and_the_job_reads_it():
+    import report_lane_governance_packet as P
+    body = P.fixture_call("valid")([{"role": "user", "content": "x"}], process_id=PROC, response_format={"type": "json_object"},
+                                   request_id="corr-ops-weekly-2026-W41", task_type="ops_summary")
+    assert "governance_pass" not in body and body["_tradeai"]["governance_pass"] is True and body["_tradeai"]["process_id"] == PROC
+    assert body["_tradeai"]["task_type_seen"] == "ops_summary"
+
+
+def _ops_job(root: Path, correlation_id: str) -> dict:
+    import hashlib
+    raw = (root / "data" / "runtime" / "lane_governance_packet_last.json").read_bytes()
+    return {"process_id": PROC, "output_schema_id": "ops_summary_draft/v1", "correlation_id": correlation_id,
+            "deadline": "2026-10-08T03:00:00+00:00",
+            "artifact_ref": {"store": "data/runtime", "ref": "lane_governance_packet_last.json", "sha256": hashlib.sha256(raw).hexdigest()}}
+
+
+OPS_ANSWER = {"headline": "ops", "sections": [{"area": "lanes", "summary": "ok"}], "open_items": [],
+              "sources_cited": ["lane_governance_packet_last.json"], "confidence_note": "stub", "recommendation": "NONE"}
+
+
+def test_a_real_bridge_success_through_execute_governed_call_is_accepted_by_run_model_job(bridge_plumbing, tmp_path, monkeypatch):
+    """Defect 1, end to end: the governed call is the bridge's own execute_governed_call (MockProvider, plumbing
+    stubbed); its Step 10 envelope is what run_model_job must parse. Before 2026-10-08 this was
+    `governance_refused: governance_pass false`."""
+    import scripts.lib.n8n_model_job as M
+    B = bridge_plumbing
+    root = _state_root(tmp_path)
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
+    seen = {}
+
+    def governed(messages, *, process_id, response_format, request_id, task_type=None, **named):
+        seen.update(process_id=process_id, request_id=request_id, task_type=task_type)
+        out = B.execute_governed_call(messages, process_id=process_id, response_format=response_format, max_tokens=512, request_id=request_id)
+        out["choices"][0]["message"]["content"] = json.dumps(OPS_ANSWER)   # mock prose -> schema-valid answer; envelope untouched
+        return out
+    rec = M.run_model_job(_ops_job(root, "corr-ops-weekly-2026-W41"), governed_call=governed, now=NOW, root=root)
+    assert (rec["state"], rec["reason"]) == ("ARTIFACT_WRITTEN", None), rec
+    assert rec["cost"]["reservation_id"] == 42 and rec["cost"]["mock"] is True and rec["cost"]["bridge_request_id"] == "corr-ops-weekly-2026-W41"
+    assert rec["cost"]["model_id"].startswith("deepseek") and rec["cost"]["provider"] == "deepseek"
+    assert seen == {"process_id": PROC, "request_id": "corr-ops-weekly-2026-W41", "task_type": "ops_summary"}
+
+
+def _handler(B, body: bytes, headers: dict):
+    import email.message
+    import io
+    h = B.GovernedBridgeHandler.__new__(B.GovernedBridgeHandler)
+    h.path, h.command, h.request_version = "/v1/chat/completions", "POST", "HTTP/1.1"
+    h.requestline, h.client_address, h.server, h.close_connection = "POST /v1/chat/completions HTTP/1.1", ("127.0.0.1", 0), None, True
+    h.headers = email.message.Message()
+    for k, v in {**headers, "Content-Length": str(len(body))}.items():
+        h.headers[k] = v
+    h.rfile, h.wfile = io.BytesIO(body), io.BytesIO()
+    return h
+
+
+def test_the_bridge_handler_threads_the_body_request_id_into_the_governed_call(monkeypatch):
+    """Defect 2a (2026-10-08): do_POST read `request_id` nowhere, so execute_governed_call minted its own id."""
+    import scripts.lib.cio_governed_model_bridge as B
+    calls = []
+
+    def fake_execute(messages, **kw):
+        calls.append(kw)
+        return {"id": kw.get("request_id"), "choices": []}
+    monkeypatch.setattr(B, "execute_governed_call", fake_execute)
+    body = json.dumps({"model": "tradeai_governed", "messages": [{"role": "user", "content": "x"}], "request_id": "corr-ops-weekly-2026-W41"}).encode()
+    h = _handler(B, body, {"X-TradeAI-Agent": "n8n_model_job", "X-TradeAI-Task-Type": "ops_summary", "Content-Type": "application/json"})
+    h.do_POST()
+    assert calls[-1]["process_id"] == PROC and calls[-1]["request_id"] == "corr-ops-weekly-2026-W41"
+    assert b'"id": "corr-ops-weekly-2026-W41"' in h.wfile.getvalue()
+    # an unsafe or absent id is dropped (the bridge mints its own), never passed through
+    for bad in ("x" * 65, "has space", "", 12, None, "é"):
+        h = _handler(B, json.dumps({"messages": [{"role": "user", "content": "x"}], "request_id": bad}).encode(),
+                     {"X-TradeAI-Agent": "n8n_model_job", "Content-Type": "application/json"})
+        h.do_POST()
+        assert calls[-1]["request_id"] is None, bad
+    assert B.client_request_id_from("corr-ops-weekly-2026-W41") == "corr-ops-weekly-2026-W41"
+
+
+class _Resp:
+    def __init__(self, payload: bytes):
+        self.status_code, self.headers, self._payload, self.closed = 200, {"x-request-id": "prov-req-77"}, payload, False
+
+    def iter_content(self, chunk_size=8192):
+        yield self._payload
+
+    def close(self):
+        self.closed = True
+
+
+def test_a_canary_call_with_request_id_x_emits_a_cost_event_whose_client_request_id_is_x(bridge_plumbing, tmp_path, monkeypatch):
+    """Defect 2b, end to end: execute_governed_call(request_id=X) -> RealProvider (HTTP stubbed, key stubbed) ->
+    provider_cost event with client_request_id == X, in a scratch log that run_model_job then joins (MEASURED).
+    Never a network call, never the live key store: get_deepseek_api_key is replaced before the provider runs."""
+    import requests
+
+    import lib.llm_model_registry as lmr
+    import scripts.lib.n8n_model_job as M
+    B = bridge_plumbing
+    root = _state_root(tmp_path)
+    log = root / "data" / "runtime" / "provider_cost" / "events.jsonl"
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
+    monkeypatch.setenv("PROVIDER_COST_EVENT_LOG", str(log))
+    monkeypatch.setenv("CIO_PROVIDER_REQUEST_JOURNAL_JSONL", str(tmp_path / "journal.jsonl"))
+    monkeypatch.setattr(lmr, "get_deepseek_api_key", lambda: ("test-key-not-real", "deepseek_tradeai", False))
+    posted = {}
+
+    def fake_post(url, **kw):
+        posted.update(kw)
+        return _Resp(json.dumps({"id": "prov", "model": kw["json"]["model"], "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+                                 "choices": [{"message": {"role": "assistant", "content": json.dumps(OPS_ANSWER)}, "finish_reason": "stop"}]}).encode())
+    monkeypatch.setattr(requests, "post", fake_post)
+    monkeypatch.setattr(B, "BIND_MODE", "canary")
+    B.RealProvider._instance = None
+    X = "corr-ops-weekly-2026-W41"
+    try:
+        out = B.execute_governed_call([{"role": "user", "content": "weekly ops summary"}], process_id=PROC,
+                                      response_format={"type": "json_object"}, max_tokens=512, request_id=X)
+    finally:
+        B.RealProvider._instance = None
+    assert "error" not in out, out.get("error")
+    assert posted["headers"]["X-TradeAI-Request-Id"] == X and posted["headers"]["Authorization"] == "Bearer test-key-not-real"
+    assert out["_tradeai"]["request_id"] == X and out["_tradeai"]["mock"] is False and out["_tradeai"]["reservation_id"] == 42
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [r["client_request_id"] for r in rows] == [X] and rows[0]["outcome"] == "success" and rows[0]["request_id"] == "prov-req-77"
+    assert "test-key-not-real" not in log.read_text()
+    joined = M._cost_event_for(X, root=root)
+    assert joined and joined["event_id"] == rows[0]["event_id"]
+    # the whole job now settles MEASURED on that join
+    rec = M.run_model_job(_ops_job(root, X), governed_call=lambda *a, **k: out, now=NOW, root=root)
+    assert rec["state"] == "ARTIFACT_WRITTEN" and rec["cost"]["settlement"] == "MEASURED" and rec["cost"]["provider_cost_event"]["event_id"] == joined["event_id"]
