@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"openclaw-sentinelone-earnings-reminder\", \"mode\": \"dry_run\", \"requested_by\": \"openclaw-sentinelone-earnings-reminder-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"openclaw-sentinelone-earnings-reminder\", mode: \"dry_run\", requested_by: \"openclaw-sentinelone-earnings-reminder-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

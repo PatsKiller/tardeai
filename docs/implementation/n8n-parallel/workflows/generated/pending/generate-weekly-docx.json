@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"generate-weekly-docx\", \"mode\": \"live\", \"requested_by\": \"generate-weekly-docx\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"generate-weekly-docx\", mode: \"live\", requested_by: \"generate-weekly-docx\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

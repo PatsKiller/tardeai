@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"gap-resolution-audit\", \"mode\": \"dry_run\", \"requested_by\": \"gap-resolution-audit-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"gap-resolution-audit\", mode: \"dry_run\", requested_by: \"gap-resolution-audit-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"portfolio-backup-cadence\", \"mode\": \"live\", \"requested_by\": \"portfolio-backup-cadence\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"portfolio-backup-cadence\", mode: \"live\", requested_by: \"portfolio-backup-cadence\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

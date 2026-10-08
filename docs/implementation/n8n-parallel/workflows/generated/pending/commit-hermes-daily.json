@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"commit-hermes-daily\", \"mode\": \"live\", \"requested_by\": \"commit-hermes-daily\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"commit-hermes-daily\", mode: \"live\", requested_by: \"commit-hermes-daily\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

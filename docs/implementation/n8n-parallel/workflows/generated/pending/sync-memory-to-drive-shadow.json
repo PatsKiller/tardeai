@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"sync-memory-to-drive\", \"mode\": \"dry_run\", \"requested_by\": \"sync-memory-to-drive-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"sync-memory-to-drive\", mode: \"dry_run\", requested_by: \"sync-memory-to-drive-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

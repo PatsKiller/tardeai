@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"backup-generated-docs\", \"mode\": \"dry_run\", \"requested_by\": \"backup-generated-docs-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"backup-generated-docs\", mode: \"dry_run\", requested_by: \"backup-generated-docs-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

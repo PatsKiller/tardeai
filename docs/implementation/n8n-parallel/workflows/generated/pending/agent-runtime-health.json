@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"agent-runtime-health\", \"mode\": \"live\", \"requested_by\": \"agent-runtime-health\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"agent-runtime-health\", mode: \"live\", requested_by: \"agent-runtime-health\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"source-litmus-vs-yahoo\", \"mode\": \"live\", \"requested_by\": \"source-litmus-vs-yahoo\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"source-litmus-vs-yahoo\", mode: \"live\", requested_by: \"source-litmus-vs-yahoo\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

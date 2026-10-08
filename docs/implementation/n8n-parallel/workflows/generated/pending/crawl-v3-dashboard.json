@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"crawl-v3-dashboard\", \"mode\": \"live\", \"requested_by\": \"crawl-v3-dashboard\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"crawl-v3-dashboard\", mode: \"live\", requested_by: \"crawl-v3-dashboard\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

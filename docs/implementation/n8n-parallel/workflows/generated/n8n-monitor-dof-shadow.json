@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"n8n-monitor-dof\", \"mode\": \"dry_run\", \"requested_by\": \"n8n-monitor-dof-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"n8n-monitor-dof\", mode: \"dry_run\", requested_by: \"n8n-monitor-dof-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {
