@@ -27,6 +27,16 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 _COMPONENT = "stop_health"
 
 
+def _send_card(card: dict) -> str | None:
+    """Send a decision card (HTML + buttons) via the central router; same id contract as _send_telegram."""
+    try:
+        from telegram_alert import send_telegram_with_id
+        return send_telegram_with_id(card["text"], reply_markup=card.get("reply_markup"),
+                                     link_preview_options=card.get("link_preview_options")).get("message_id")
+    except Exception:
+        return None
+
+
 def _send_telegram(msg: str) -> str | None:
     """Send via the central router. Returns the provider message id, or None.
 
@@ -578,7 +588,17 @@ def run(quiet: bool = False) -> dict:
     # B2 (2026-09-16): collapse per-symbol repeats into ONE message. SIEM + Hermes stay per-symbol
     # (durable evidence, one row each); the phone gets a single batched card instead of one per symbol.
     if batch:
-        if len(batch) == 1:
+        card = None
+        try:
+            from lib import telegram_cards as _tc  # decision card (operator 2026-10-08); rollback: config/telegram_cards.yaml
+            if _tc.enabled("stop_health"):
+                card = _tc.stop_health_card([{"symbol": sym, "account": acct, "condition": cond, "severity": sev,
+                                              "line": line} for sev, cond, sym, acct, line in batch])
+        except Exception:  # noqa: BLE001 — never lose a stop alert over a layout problem
+            card = None
+        if card:
+            mid = _send_card(card)
+        elif len(batch) == 1:
             sev, cond, sym, acct, line = batch[0]
             mid = _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
         else:
