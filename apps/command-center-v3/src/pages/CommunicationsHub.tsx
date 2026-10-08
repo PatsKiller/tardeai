@@ -380,8 +380,9 @@ export default function CommunicationsHub() {
                   <div style={{ fontSize: 10, color: TEXT2, lineHeight: 1.6, marginBottom: 10 }}>
                     {[
                       ['Symbols', (e.symbols || []).join(', ') || '—'],
-                      ['Priority score', e.priority_score ?? '—'],
-                      ['Confidence · Risk · Reward · Time', [e.confidence, e.risk_score, e.reward_score, e.time_sensitivity].map((v: any) => (v == null ? '—' : Number(v).toFixed(2))).join(' · ')],
+                      ['CIO conviction', e.levels?.conviction != null ? `${Math.round(e.levels.conviction)}/100${e.levels.rank ? ` · rank #${e.levels.rank}` : ''} (same number as Home and the ticker view)` : '— (not scored by the CIO)'],
+                      ['Message priority', e.priority_score ?? '—'],
+                      ['Message confidence · Risk · Reward · Time', [e.confidence, e.risk_score, e.reward_score, e.time_sensitivity].map((v: any) => (v == null ? '—' : Number(v).toFixed(2))).join(' · ')],
                       ['Status', e.lifecycle_status || '—'],
                       ['TTL', `${ttlLabel(e.ttl_remaining_s, e.legal_hold)} · expires ${fmtWhen(e.expires_at)}`],
                       ['Actionable', e.actionable ? `yes — ${e.action_hint || ''} (since ${fmtWhen(e.actionable_since)})` : 'no'],

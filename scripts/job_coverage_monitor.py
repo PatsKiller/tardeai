@@ -206,4 +206,6 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.scheduled_job_receipt import run_with_receipt
+    sys.exit(run_with_receipt(main, script="job_coverage_monitor", root=PROJECT_ROOT))

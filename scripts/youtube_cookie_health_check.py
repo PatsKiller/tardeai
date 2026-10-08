@@ -111,4 +111,5 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from lib.scheduled_job_receipt import run_with_receipt
+    sys.exit(run_with_receipt(main, script="youtube_cookie_health_check", root=PROJECT_ROOT))

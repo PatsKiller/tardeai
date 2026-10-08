@@ -140,8 +140,32 @@ def test_pending_tranches_list_lane_ids_without_commands_and_the_never_list_is_s
     for tranche in ("N2", "N3", "N4", "N5", "N6"):
         assert isinstance(pending[tranche], list) and pending[tranche], tranche
         assert not set(pending[tranche]) & set(LANES), tranche  # pending means not runnable
-    assert len(pending["N2"]) == 17 and len(pending["N3"]) == 12 and len(pending["N4"]) == 20
+    assert len(pending["N2"]) == 17
+    for tranche in ("N3", "N4", "N5"):
+        assert all(lane in DOC["blocked_reasons"] for lane in pending[tranche])
     assert "broker" in DOC["never"] and "sm-render" in DOC["never"]
+
+
+def test_n3_sender_free_report_and_suggestions_have_receipts():
+    assert {"generate-analyst-daily-digest", "desk-suggestions-digest"} <= LANES.keys()
+    assert LANES["generate-analyst-daily-digest"]["dry_run_arg"] == ["--dry-run"]
+    assert LANES["desk-suggestions-digest"]["dry_run_arg"] is None
+    assert "alert-daily-digest" not in LANES
+
+
+def test_n4_monitors_reuse_cron_locks_and_do_not_allow_destructive_retry_trim():
+    for lane in ("catalyst-calibration-monitor", "source-attribution-monitor", "watch-directives-monitor"):
+        assert LANES[lane]["lock"] == "/tmp/" + lane.replace("-", "_") + ".lock"
+        assert LANES[lane]["lock_kind"] == "flock"
+        assert LANES[lane]["dry_run_arg"] == ["--dry-run"]
+    assert "llm-retry-monitor" not in LANES
+    assert "youtube-cookie-health-check" not in LANES
+
+
+def test_n5_git_destructive_drive_sync_and_retired_duplicate_schedules_stay_blocked():
+    for lane in DOC["pending_tranches"]["N5"]:
+        assert lane not in LANES
+        assert DOC["blocked_reasons"][lane]
 
 
 def test_json_is_the_only_source_of_commands_in_the_executor():

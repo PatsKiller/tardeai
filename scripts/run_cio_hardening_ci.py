@@ -3502,6 +3502,11 @@ GATES = [
         ["tests/test_n8n_run_relay_20261008.py"],
     ),
     (
+        # N8N_AGENT2_W1 — 2026-10-08: observed registry rows, safe routing and durable legacy-job receipts.
+        "N8N_AGENT2_W1",
+        ["tests/test_n8n_w1_registry_20261008.py"],
+    ),
+    (
         # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial
         # stage runner for the post-close, premarket and Hermes chains. Hermetic: the tests drive
         # the runner with true/false/sleep manifests against a scratch project root, prove that
