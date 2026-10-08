@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/terminalHubChrome'
+import { RADIUS, TOKENS } from '../lib/designTokens'
 import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
-import { DecisionBoard, CommsFilterModal, ItemBadges, ScoreBar, ttlLabel, labelOf, CATEGORY_COLOR, REENTRY_COLOR, type HubFilters } from '../components/comms/CommsHubParts'
+import { DecisionBoard, CommsFilterModal, ItemBadges, ScoreBar, ttlLabel, labelOf, CATEGORY_COLOR, REENTRY_COLOR, tint, type HubFilters } from '../components/comms/CommsHubParts'
 
 type Tab = 'events' | 'deliveries' | 'subjects' | 'retention' | 'agents'
 
@@ -269,13 +270,13 @@ export default function CommunicationsHub() {
           <div className="cc-panel" style={hubPanel(terminalUi)}>
             {/* Re-entry focus + category chips + sort + filters */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-              <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 800 }}>RE-ENTRY</span>
+              <span style={{ fontSize: 10, color: TOKENS.success, fontWeight: 800 }}>RE-ENTRY</span>
               {['confirmed', 'opportunity', 'potential', 'expired', 'invalidated'].map((r) => {
                 const on = hubFilters.reentry_status === r
                 const n = eventsPayload?.facets?.reentry_status?.[r]
                 return (
                   <button key={r} type="button" onClick={() => applyPreset(on ? {} : { category: 're_entry', reentry_status: r, sort: 'priority_score' })}
-                    style={{ fontSize: 10, padding: '2px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${REENTRY_COLOR[r]}`, background: on ? `${REENTRY_COLOR[r]}33` : 'transparent', color: TEXT }}>
+                    style={{ fontSize: 10, padding: '2px 7px', borderRadius: RADIUS.sm, cursor: 'pointer', border: `1px solid ${REENTRY_COLOR[r]}`, background: on ? tint(REENTRY_COLOR[r], 20) : 'transparent', color: TEXT }}>
                     {labelOf(r)}{n != null ? ` · ${n}` : ''}
                   </button>
                 )
@@ -287,7 +288,7 @@ export default function CommunicationsHub() {
                 const n = eventsPayload?.facets?.category?.[c.id] || 0
                 return (
                   <button key={c.id} type="button" onClick={() => { setHubFilters((p) => { const x = { ...p }; if (on) delete x.category; else x.category = c.id; return x }); setOffset(0) }}
-                    style={{ fontSize: 10, padding: '2px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${on ? CATEGORY_COLOR[c.id] || BORDER : BORDER}`, background: on ? `${CATEGORY_COLOR[c.id] || '#60a5fa'}33` : 'transparent', color: n ? TEXT : MUTED }}
+                    style={{ fontSize: 10, padding: '2px 7px', borderRadius: RADIUS.sm, cursor: 'pointer', border: `1px solid ${on ? CATEGORY_COLOR[c.id] || BORDER : BORDER}`, background: on ? tint(CATEGORY_COLOR[c.id] || 'var(--info-color)', 20) : 'transparent', color: n ? TEXT : MUTED }}
                     title={`TTL ${c.ttl_hours}h`}>
                     {c.label} · {n}
                   </button>
@@ -299,8 +300,8 @@ export default function CommunicationsHub() {
                 Feed ({eventsPayload?.total ?? 0})
               </span>
               <input value={hubFilters.q || ''} onChange={(e) => { const v = e.target.value; setHubFilters((p) => { const x = { ...p }; if (v) x.q = v; else delete x.q; return x }); setOffset(0) }}
-                placeholder="Search messages, symbols, sources" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT, minWidth: 220 }} />
-              <button type="button" onClick={() => setFilterOpen(true)} style={{ fontSize: 10, padding: '3px 10px', border: '1px solid #60a5fa', background: '#60a5fa22', color: TEXT, cursor: 'pointer', fontWeight: 700 }}>
+                placeholder="Search messages, symbols, sources" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 220 }} />
+              <button type="button" onClick={() => setFilterOpen(true)} style={{ fontSize: 10, padding: '3px 10px', border: `1px solid ${TOKENS.info}`, background: tint(TOKENS.info), color: TEXT, cursor: 'pointer', fontWeight: 700 }}>
                 Filters{Object.keys(hubFilters).length ? ` (${Object.keys(hubFilters).length})` : ''}
               </button>
               {Object.keys(hubFilters).length > 0 && (
@@ -361,10 +362,10 @@ export default function CommunicationsHub() {
                         </td>
                         <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>
                           <b style={{ color: TEXT, marginRight: 4 }}>{e.priority_score ?? '—'}</b>
-                          <ScoreBar v={e.confidence} color="#60a5fa" title="confidence" />
-                          <ScoreBar v={e.risk_score} color="#ef4444" title="risk" />
-                          <ScoreBar v={e.reward_score} color="#22c55e" title="reward" />
-                          <ScoreBar v={e.time_sensitivity} color="#f59e0b" title="time sensitivity" />
+                          <ScoreBar v={e.confidence} color={TOKENS.info} title="confidence" />
+                          <ScoreBar v={e.risk_score} color={TOKENS.danger} title="risk" />
+                          <ScoreBar v={e.reward_score} color={TOKENS.success} title="reward" />
+                          <ScoreBar v={e.time_sensitivity} color={TOKENS.warning} title="time sensitivity" />
                         </td>
                         <td style={{ padding: '5px 6px', color: soon ? AMBER : MUTED, whiteSpace: 'nowrap' }} title={e.expires_at ? `expires ${fmtWhen(e.expires_at)}` : ''}>
                           {ttlLabel(e.ttl_remaining_s, e.legal_hold)}
@@ -416,7 +417,7 @@ export default function CommunicationsHub() {
                       <div key={String(k)}><span style={{ color: MUTED }}>{k}: </span><span style={{ color: TEXT }}>{String(v)}</span></div>
                     ))}
                   </div>
-                  <pre style={{ fontSize: 10, color: TEXT, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'var(--bg0, transparent)', border: `1px solid ${BORDER}`, padding: 8, borderRadius: 4, fontFamily: MONO }}>
+                  <pre style={{ fontSize: 10, color: TEXT, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'var(--bg0, transparent)', border: `1px solid ${BORDER}`, padding: 8, borderRadius: RADIUS.sm, fontFamily: MONO }}>
                     {e.sanitized_body || e.short_summary || ''}
                   </pre>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
@@ -443,15 +444,15 @@ export default function CommunicationsHub() {
                 value={textFilter}
                 onChange={(e) => setTextFilter(e.target.value)}
                 placeholder="Search summary / subject / incident"
-                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT, minWidth: 200 }}
+                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 200 }}
               />
-              <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT }}>
+              <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT }}>
                 <option value="">severity: all</option>
                 <option value="info">info</option>
                 <option value="warning">warning</option>
                 <option value="critical">critical</option>
               </select>
-              <select value={dirFilter} onChange={(e) => setDirFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT }}>
+              <select value={dirFilter} onChange={(e) => setDirFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT }}>
                 <option value="">direction: all</option>
                 <option value="INBOUND">INBOUND</option>
                 <option value="OUTBOUND">OUTBOUND</option>
@@ -460,7 +461,7 @@ export default function CommunicationsHub() {
                 value={subjectFilter}
                 onChange={(e) => setSubjectFilter(e.target.value)}
                 placeholder="Filter subject_key (server)"
-                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT, minWidth: 160 }}
+                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 160 }}
               />
               {eventsError && <span style={{ color: RED, fontSize: 10 }}>{eventsError}</span>}
               {eventsLoading && <span style={{ color: MUTED, fontSize: 10 }}>Loading…</span>}
@@ -673,7 +674,7 @@ export default function CommunicationsHub() {
               <div style={{ fontSize: 10, color: MUTED }}>No events in current projection.</div>
             )}
             {Object.entries(retentionCounts.byClass).map(([k, n]) => (
-              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: 2 }}>
+              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm }}>
                 <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', fontWeight: 800 }}>retention · {k}</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, marginTop: 4 }}>{n}</div>
               </div>
@@ -684,7 +685,7 @@ export default function CommunicationsHub() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8 }}>
             {Object.entries(retentionCounts.byKnowledge).map(([k, n]) => (
-              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: 2 }}>
+              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm }}>
                 <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', fontWeight: 800 }}>{k}</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: k === 'accepted' ? GREEN : TEXT, marginTop: 4 }}>{n}</div>
               </div>

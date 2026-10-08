@@ -3,6 +3,10 @@
  *  Filter modal: category, risk, reward, re-entry status, confidence, time range, source, symbol, priority.
  *  Badges: priority, category, re-entry status, actionable, TTL remaining, status. Data: /api/v2/communications/*. */
 import { useEffect, useState } from 'react'
+import { RADIUS, TOKENS } from '../../lib/designTokens'
+
+/** Soft fill for a token colour (var() colours cannot take a hex alpha suffix). */
+export const tint = (c: string, pct = 14) => `color-mix(in srgb, ${c} ${pct}%, transparent)`
 
 const MUTED = 'var(--text3)'
 const TEXT = 'var(--text0)'
@@ -11,15 +15,15 @@ const BORDER = 'var(--border)'
 const MONO = "'JetBrains Mono', ui-monospace, Consolas, monospace"
 
 export const PRIORITY_COLOR: Record<string, string> = {
-  critical: '#ef4444', high: '#f59e0b', medium: '#60a5fa', low: '#94a3b8',
+  critical: TOKENS.danger, high: TOKENS.warning, medium: TOKENS.info, low: TOKENS.neutral,
 }
 export const REENTRY_COLOR: Record<string, string> = {
-  confirmed: '#22c55e', opportunity: '#4ade80', potential: '#facc15', expired: '#94a3b8', invalidated: '#ef4444',
+  confirmed: TOKENS.success, opportunity: TOKENS.chart[0], potential: TOKENS.warning, expired: TOKENS.neutral, invalidated: TOKENS.danger,
 }
 export const CATEGORY_COLOR: Record<string, string> = {
-  re_entry: '#22c55e', risk: '#f97316', reward: '#4ade80', high_conviction_opportunity: '#10b981',
-  watchlist_candidate: '#a78bfa', threat: '#ef4444', market_event: '#38bdf8', news: '#94a3b8',
-  security_alert: '#f43f5e', system_alert: '#64748b', operational_issue: '#eab308', operator_conversation: '#c084fc',
+  re_entry: TOKENS.success, risk: TOKENS.warning, reward: TOKENS.chart[0], high_conviction_opportunity: TOKENS.chart[1],
+  watchlist_candidate: TOKENS.ai, threat: TOKENS.danger, market_event: TOKENS.info, news: TOKENS.neutral,
+  security_alert: TOKENS.chart[2], system_alert: TOKENS.neutral, operational_issue: TOKENS.chart[3], operator_conversation: TOKENS.chart[4],
 }
 
 export function labelOf(id?: string | null) {
@@ -39,7 +43,7 @@ export function ttlLabel(seconds?: number | null, legalHold?: boolean) {
 
 export function Badge({ text, color, title }: { text: string; color: string; title?: string }) {
   return (
-    <span title={title} style={{ display: 'inline-block', fontSize: 9, fontWeight: 800, padding: '1px 6px', borderRadius: 3,
+    <span title={title} style={{ display: 'inline-block', fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: RADIUS.sm,
       color, border: `1px solid ${color}`, background: 'transparent', whiteSpace: 'nowrap', letterSpacing: '.02em' }}>
       {text}
     </span>
@@ -49,8 +53,8 @@ export function Badge({ text, color, title }: { text: string; color: string; tit
 export function ScoreBar({ v, color, title }: { v?: number | null; color: string; title: string }) {
   const pct = v == null ? 0 : Math.round(v * 100)
   return (
-    <span title={`${title}: ${v == null ? 'n/a' : pct}`} style={{ display: 'inline-block', width: 26, height: 5, background: 'var(--bg2, #1f2937)', borderRadius: 2, marginRight: 2, verticalAlign: 'middle' }}>
-      <span style={{ display: 'block', width: `${pct}%`, height: 5, background: color, borderRadius: 2 }} />
+    <span title={`${title}: ${v == null ? 'n/a' : pct}`} style={{ display: 'inline-block', width: 26, height: 5, background: TOKENS.bg[2], borderRadius: RADIUS.sm, marginRight: 2, verticalAlign: 'middle' }}>
+      <span style={{ display: 'block', width: `${pct}%`, height: 5, background: color, borderRadius: RADIUS.sm }} />
     </span>
   )
 }
@@ -61,7 +65,7 @@ export function ItemBadges({ e }: { e: any }) {
       {e.priority && <Badge text={e.priority.toUpperCase()} color={PRIORITY_COLOR[e.priority] || MUTED} title={`priority score ${e.priority_score ?? '—'}`} />}
       {e.category && <Badge text={labelOf(e.category)} color={CATEGORY_COLOR[e.category] || MUTED} />}
       {e.reentry_status && <Badge text={`Re-entry: ${e.reentry_status}`} color={REENTRY_COLOR[e.reentry_status] || MUTED} />}
-      {e.actionable && <Badge text={e.action_hint ? `▶ ${e.action_hint}` : '▶ Actionable'} color="#22c55e" />}
+      {e.actionable && <Badge text={e.action_hint ? `▶ ${e.action_hint}` : '▶ Actionable'} color={TOKENS.success} />}
     </span>
   )
 }
@@ -83,14 +87,14 @@ export function DecisionBoard({ board, onPick, onOpen }: { board: any; onPick: (
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ fontSize: 10, color: MUTED, marginBottom: 6 }}>
-        <b style={{ color: TEXT }}>{board.live ?? 0}</b> live items · <b style={{ color: '#22c55e' }}>{board.actionable ?? 0}</b> actionable ·{' '}
+        <b style={{ color: TEXT }}>{board.live ?? 0}</b> live items · <b style={{ color: TOKENS.success }}>{board.actionable ?? 0}</b> actionable ·{' '}
         <b style={{ color: TEXT2 }}>{board.ignorable ?? 0}</b> can be ignored (informational)
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8 }}>
         {PANEL_ORDER.filter((k) => board.panels[k]).map((k) => {
           const p = board.panels[k]
           return (
-            <div key={k} className="cc-panel" style={{ border: `1px solid ${BORDER}`, borderRadius: 6, padding: 8, background: 'var(--bg1)' }}>
+            <div key={k} className="cc-panel" style={{ border: `1px solid ${BORDER}`, borderRadius: RADIUS.md, padding: 8, background: 'var(--bg1)' }}>
               <button type="button" onClick={() => onPick(PANEL_PRESET[k])} title="Filter the feed to this view"
                 style={{ all: 'unset', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', width: '100%', marginBottom: 6 }}>
                 <span style={{ fontSize: 10, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '.05em' }}>{p.label}</span>
@@ -105,7 +109,7 @@ export function DecisionBoard({ board, onPick, onOpen }: { board: any; onPick: (
                   </div>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
                     <ItemBadges e={e} />
-                    <span style={{ fontSize: 9, color: MUTED }}>{ttlLabel(e.ttl_remaining_s, e.legal_hold)}</span>
+                    <span style={{ fontSize: 10, color: MUTED }}>{ttlLabel(e.ttl_remaining_s, e.legal_hold)}</span>
                   </div>
                 </div>
               ))}
@@ -137,10 +141,10 @@ function Chips({ options, value, onChange, colors }: { options: { id: string; la
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
       {options.map((o) => {
         const on = sel.has(o.id)
-        const c = colors?.[o.id] || '#60a5fa'
+        const c = colors?.[o.id] || TOKENS.info
         return (
           <button key={o.id} type="button" onClick={() => onChange(toggleCsv(value, o.id))}
-            style={{ fontSize: 10, padding: '2px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${on ? c : BORDER}`, background: on ? `${c}22` : 'transparent', color: on ? TEXT : TEXT2 }}>
+            style={{ fontSize: 10, padding: '2px 7px', borderRadius: RADIUS.sm, cursor: 'pointer', border: `1px solid ${on ? c : BORDER}`, background: on ? tint(c) : 'transparent', color: on ? TEXT : TEXT2 }}>
             {o.label}{o.count != null ? ` · ${o.count}` : ''}
           </button>
         )
@@ -174,7 +178,7 @@ export function CommsFilterModal({ open, initial, meta, onApply, onClose }: { op
   )
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 18, width: 620, maxWidth: '94vw', maxHeight: '88vh', overflowY: 'auto' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.lg, padding: 18, width: 620, maxWidth: '94vw', maxHeight: '88vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
           <b style={{ color: TEXT }}>Communication intelligence filters</b>
           <button type="button" onClick={() => setF({})} style={{ fontSize: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', padding: '2px 8px' }}>Clear all</button>
@@ -201,7 +205,7 @@ export function CommsFilterModal({ open, initial, meta, onApply, onClose }: { op
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
           <button type="button" onClick={onClose} style={{ fontSize: 11, padding: '4px 12px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer' }}>Cancel</button>
-          <button type="button" onClick={() => { onApply(f); onClose() }} style={{ fontSize: 11, padding: '4px 12px', border: '1px solid #22c55e', background: '#22c55e22', color: TEXT, cursor: 'pointer', fontWeight: 700 }}>Apply filters</button>
+          <button type="button" onClick={() => { onApply(f); onClose() }} style={{ fontSize: 11, padding: '4px 12px', border: `1px solid ${TOKENS.success}`, background: tint(TOKENS.success), color: TEXT, cursor: 'pointer', fontWeight: 700 }}>Apply filters</button>
         </div>
       </div>
     </div>
