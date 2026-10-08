@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -592,6 +593,10 @@ def _validate_event(event: Mapping[str, Any], *, expected_origin_sha: str, allow
     _parse_time(event["deadline"])
 
 
+#: nonce read-then-consume lock for memory-only ({}) nonce stores; the ledger adapter brings its own.
+_MEMORY_NONCE_LOCK = threading.Lock()
+
+
 def _verify_claim(
     request,
     *,
@@ -652,10 +657,14 @@ def _verify_claim(
     if not signature_ok:
         raise GatewayError("bad_signature")
     nonce = claim["nonce"]
-    prior = nonce_store.get(nonce)
-    if prior is not None and prior >= instant:
-        raise GatewayError("replayed_nonce")
-    nonce_store[nonce] = exp
+    # 2026-10-08: read-then-consume is one critical section. A durable store (LedgerNonceStore) lends the
+    # ledger's RLock; the memory-only dict store gets a module lock. Without this, two handler threads
+    # presenting the same nonce inside the window both pass (one accept and one replayed_nonce is the contract).
+    with getattr(nonce_store, "lock", None) or _MEMORY_NONCE_LOCK:
+        prior = nonce_store.get(nonce)
+        if prior is not None and prior >= instant:
+            raise GatewayError("replayed_nonce")
+        nonce_store[nonce] = exp
     return signed
 
 

@@ -265,6 +265,13 @@ class Relay:
         return status, reply
 
 
+class RelayServer(ThreadingHTTPServer):
+    """2026-10-08: listen backlog 64 (stock 5) so a :00 burst of n8n workflows does not wait on the kernel's
+    1 s SYN retransmit; same change as the gateway's GatewayServer, which this relay sits in front of."""
+
+    request_queue_size = 64
+
+
 def serve(host: str, port: int, relay: Relay) -> None:
     guard_bind(host, port)
 
@@ -301,7 +308,7 @@ def serve(host: str, port: int, relay: Relay) -> None:
         do_DELETE = do_PUT
         do_PATCH = do_PUT
 
-    server = ThreadingHTTPServer((host, port), Handler)
+    server = RelayServer((host, port), Handler)
     print(json.dumps({"ok": True, "host": host, "port": port, "authority": "READ_ONLY_ADVISORY"}), flush=True)
     server.serve_forever()
 
