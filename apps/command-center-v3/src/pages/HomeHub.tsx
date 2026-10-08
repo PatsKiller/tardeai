@@ -185,7 +185,7 @@ export default function HomeHub({ onDrill }: Props) {
       </div>
 
       {/* Decision-first (operator 2026-10-08): what needs action, highest risk, highest opportunity */}
-      <HomeDecision overview={overview} winRate={tradingWr.value} />
+      <HomeDecision overview={overview} winRate={tradingWr} />
 
       {/* Defense Desk WS-E: compact market-posture strip — full desk at /v3/defense */}
       {(() => {

@@ -18,7 +18,7 @@ function money(v: any, compact = true) {
   return `${sign}$${a.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
 }
 
-export function HomeExecutiveStrip({ overview, winRate }: { overview: any; winRate?: number | null }) {
+export function HomeExecutiveStrip({ overview, winRate }: { overview: any; winRate?: { value?: number | null; trades?: number | null; scope?: string | null } }) {
   const today = overview?.today_change
   const pct = overview?.today_pct
   const up = Number(today) >= 0
@@ -28,7 +28,9 @@ export function HomeExecutiveStrip({ overview, winRate }: { overview: any; winRa
       { label: 'Today', value: `${up ? '+' : ''}${money(today, false)}`, sub: pct != null ? `${up ? '+' : ''}${Number(pct).toFixed(2)}%` : undefined,
         tone: today == null ? undefined : up ? 'var(--success-color)' : 'var(--danger-color)' },
       { label: 'Realized', value: money(overview?.journal?.realized_pnl) },
-      { label: 'Win rate', value: winRate != null ? `${winRate}%` : '—' },
+      // scope + denominator are mandatory on a win rate (scripts/validate_metric_consistency.py)
+      { label: 'Journal win rate', value: winRate?.value != null ? `${winRate.value}%` : '—',
+        sub: winRate?.trades != null ? `${winRate.trades} trades${winRate.scope ? ` · ${String(winRate.scope).replace(/_/g, ' ')}` : ''}` : undefined },
     ]} />
   )
 }
@@ -116,7 +118,7 @@ export function TopRisks() {
 }
 
 /** The whole decision block for the top of Home. */
-export default function HomeDecision({ overview, winRate }: { overview: any; winRate?: number | null }) {
+export default function HomeDecision({ overview, winRate }: { overview: any; winRate?: { value?: number | null; trades?: number | null; scope?: string | null } }) {
   return (
     <div data-testid="home-decision" style={{ marginBottom: 16 }}>
       <HomeExecutiveStrip overview={overview} winRate={winRate} />
