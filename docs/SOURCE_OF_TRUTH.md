@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 51 domains · 22 providers.
+Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 52 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -101,6 +101,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **cio_operator_artifacts** | derived | `cio/cio_operator_artifacts.jsonl` | `scripts/lib/cio_operator_artifacts.py` | event-driven (written when a hooked producer composes or sends an output) | 168h | — | native | — | — | `say_so` | operator 2026-10-03 |
 | **counterfactual_ledger** | derived | `cio/counterfactual_ledger.jsonl` | `scripts/lib/counterfactual_ledger.py` | daily (scripts/build_counterfactual_ledger.py --apply) | 48h | — | native | — | — | `say_so` | operator 2026-10-03 |
 | **active_trader_microstructure** | ingested | `data/active_trader/micro/<day>/<SYMBOL>.jsonl + <SYMBOL>.bars.json + micro/live_symbols.json` | `scripts/active_trader/microstructure_recorder.py` | every 5 s 06:00-12:00 ET Mon-Fri (recorder windows) | 0.00417h | `active_trader_microstructure` | moomoo | — | — | `say_so` | operator 2026-10-05 |
+| **opportunity_assessment** | derived | `data/cio/cio_opportunity_projection.json` | `scripts/cio_opportunity_curator.py` | */30 09:00-16:00 Mon-Fri + 17:50 once the cron is granted | 26h | `opportunity` | derived | — | — | `say_so` | operator 2026-10-08 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -167,6 +168,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **CIO completeness gap closure - operator approved ONE append-only store for operator-relevant CIO outputs 2026-10-03 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1419** — 1 rows: domain `cio_operator_artifacts`
 - **Policy Review P3 counterfactual ledger for blocked ideas — operator approved 2026-10-03 (artifact https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1425** — 1 rows: domain `counterfactual_ledger`
 - **Operator HARD RULE 2026-10-05 (Command Center is the source of truth; refreshed by the data broker and spawned out) + Active Trader microstructure recorder approved 2026-10-05 ('yes do 1-4', PR #1444); alert sync PR wt/at-alert-sync-20261005** — 1 rows: domain `active_trader_microstructure`
+- **Investment Command Center plan approved 2026-10-08 (/plan; session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); PR #1516, docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md** — 1 rows: domain `opportunity_assessment`
 
 ## Monitors
 

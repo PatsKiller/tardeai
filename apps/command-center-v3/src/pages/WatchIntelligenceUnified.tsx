@@ -3,8 +3,9 @@
  * Consumes ONLY the Data Broker projection — no page-side record selection.
  * Zero provider calls on load.
  */
+import { SymbolLink, useOpenSymbol } from '../components/opportunity/OpportunityContext'
 import { useCallback, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
@@ -215,7 +216,7 @@ export default function WatchIntelligenceUnified() {
   const materialChange = qsGet(sp, 'material_change', '')
   const decisionQs = DECISION_KEYS.map(k => [k, qsGet(sp, k, '')]).filter(([, v]) => v)
   const decisionKey = decisionQs.map(([k, v]) => `${k}=${v}`).join('&')
-  const navigate = useNavigate()
+  const openSymbol = useOpenSymbol()
   const [decisionOpen, setDecisionOpen] = useState(false)
 
   const apiQs = useMemo(() => {
@@ -375,7 +376,7 @@ export default function WatchIntelligenceUnified() {
       )}
 
       {/* 1b. Decision board — the six at-a-glance answers (operator 2026-10-07) */}
-      <WatchDecisionBoard board={body?.decision_board} onPreset={applyPreset} onOpen={(s) => navigate(`/watch/intelligence/${s}`)} />
+      <WatchDecisionBoard board={body?.decision_board} onPreset={applyPreset} onOpen={(s) => openSymbol(s)} />
       <WatchDecisionFilterModal open={decisionOpen} initial={decisionInitial} board={body?.decision_board} onApply={applyDecision} onClose={() => setDecisionOpen(false)} />
 
       {/* 2. Counts */}
@@ -635,7 +636,7 @@ export default function WatchIntelligenceUnified() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <div>
                       <div style={{ fontSize: TYPE.lg, fontWeight: 900 }}>
-                        {c.symbol}
+                        <SymbolLink symbol={c.symbol} />
                         {c.starred ? <span style={{ color: BB.amber, marginLeft: 6 }}>★</span> : null}
                         {c.held ? <span style={{ color: BB.green, marginLeft: 6, fontSize: TYPE.xs }}>HELD</span> : null}
                       </div>

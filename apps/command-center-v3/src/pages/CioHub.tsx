@@ -16,6 +16,7 @@ import CioSourceClocksPanel from '../components/cio/CioSourceClocksPanel'
 import CioOfficeHomeProjections from '../components/cio/CioOfficeHomeProjections'
 import CioProductHealthPanel from '../components/cio/CioProductHealthPanel'
 import CioThesisDelegationPanel from '../components/cio/CioThesisDelegationPanel'
+import { TopOpportunitiesWidget } from './OpportunitiesHub'
 import CioThesisResearchContextPanel from '../components/cio/CioThesisResearchContextPanel'
 import CioRecordLedgersPanel from '../components/cio/CioRecordLedgersPanel'
 import CioLessonDigestPanel from '../components/cio/CioLessonDigestPanel'
@@ -2211,6 +2212,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
             </div>
           )}
           <AgentResearchOpsStrip />
+          <TopOpportunitiesWidget />
           <UniverseThesesPanel />
           <div style={{ marginTop: 28 }}>
             <CioOperatorEvidencePanel section="research" />

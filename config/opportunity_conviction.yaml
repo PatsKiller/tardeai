@@ -1,0 +1,109 @@
+# Investment Command Center — opportunity engine rules (scripts/lib/data_broker/opportunity.py).
+# Operator 2026-10-08: every opportunity gets a risk/reward ladder, six factor scores, a 0-100 conviction score, a
+# rank, an opportunity type, a technical condition and a stance, curated and persisted in CIO memory
+# (scripts/cio_opportunity_curator.py → cio_theses). Change a weight or threshold here — never in code or the UI.
+#
+# Missing factors are DROPPED and the remaining weights re-normalised (the Hermes rule), never filled with a neutral
+# value; `coverage` = the share of total weight that had real inputs. Conviction below `min_coverage` is shown but
+# never ranked into the top bands.
+
+version: 1
+
+universe:
+  confluence_fresh_days: 7     # symbols with a fresh confluence technical row
+  analyst_fresh_days: 30       # symbols with a fresh analyst target row
+  include_watchlist_status: [active]
+  recently_sold_days: 180      # "Recently Sold" position status / re-entry eligibility
+
+factors:
+  technical:      {weight: 0.22, label: "Technical"}
+  fundamental:    {weight: 0.10, label: "Fundamental"}
+  analyst:        {weight: 0.18, label: "Analyst"}
+  momentum:       {weight: 0.15, label: "Momentum"}
+  risk_reward:    {weight: 0.22, label: "Risk/Reward"}
+  portfolio_fit:  {weight: 0.13, label: "Portfolio Fit"}
+
+min_coverage: 0.5
+
+scoring:
+  # risk_reward: piecewise-linear R:R → score
+  rr_points: [[0.0, 0], [1.0, 20], [1.5, 35], [2.0, 50], [3.0, 75], [5.0, 100]]
+  # analyst: recommendation mean 1 (strong buy) .. 5 (sell) → 100..0, blended with upside
+  analyst_upside_full_pct: 40
+  analyst_mean_weight: 0.6
+  analyst_min_count: 3          # fewer analysts → the factor is dropped
+  analyst_upside_sanity_pct: 150  # upside above this is flagged (stale or penny-stock target) and not scored
+  # momentum: 50 ± change, plus relative volume
+  momentum_1m_mult: 1.2
+  momentum_1w_mult: 2.0
+  momentum_rvol_bonus: 10       # added when relative volume >= 1.5 on an up day
+  # technical fallback when Hermes components are absent
+  alignment_score: {bullish: 75, mixed: 50, bearish: 25}
+  # fundamental: fundamental_data metrics (sparse) — ROE / margin / forward PE
+  fundamental_min_metrics: 2
+  # portfolio fit
+  fit_base: 60
+  fit_position_cap_pct: 10      # an existing position at/over this weight → fit for adding drops
+  fit_sector_cap_pct: 30        # sector at/over this share of the book → fit drops
+  fit_sector_light_pct: 5       # sector under this share → fit rises (diversifies)
+
+# Risk/reward ladder fallbacks when no entry plan exists.
+levels:
+  atr_invalidation_mult: 2.0    # invalidation = entry − 2×ATR when no plan or strategy stop
+  analyst_targets_as_ladder: true   # T1 = mean target, T2 = high target when no plan targets
+  min_risk_pct: 1.0             # invalidation closer than this to entry → R:R is not meaningful (flagged, not scored)
+  max_rr: 15                    # R:R above this is implausible (flagged, not scored)
+  # how much a level source is trusted when scoring R:R (a real entry plan beats a mechanical card or ATR)
+  source_trust: {entry_plan: 1.0, strategy_card: 0.75, atr: 0.6, analyst: 0.6}
+
+# Opportunity type (first match wins).
+types:
+  exit_candidate: {held: true, stance_in: [EXIT, TRIM]}
+  add_on:         {held: true, min_conviction: 70, min_rr: 2.0}
+  existing:       {held: true}
+  re_entry:       {held: false, reentry_or_recently_sold: true}
+  new_position:   {held: false, min_conviction: 70, min_rr: 2.0}
+  watchlist:      {}
+
+# Technical condition (first match wins).
+conditions:
+  overbought:         {rsi_min: 70}
+  oversold:           {rsi_max: 30}
+  breaking_out:       {near_52w_high_pct: 3, rvol_min: 1.2}
+  pullback:           {alignment_in: [bullish, mixed], below_sma20: true, above_sma50: true}
+  trend_continuation: {alignment_in: [bullish], rsi_min: 50}
+
+# Market-cap bands (USD).
+cap_bands: {mega: 200000000000, large: 10000000000, mid: 2000000000, small: 0}
+
+# Stance (cio_decision_semantics vocabulary). Wording is descriptive and conditional only — never an instruction.
+stance:
+  exit_if: {held: true, max_conviction: 35, min_coverage: 0.8}   # never on thin evidence (e.g. an income ETF)
+  trim_if: {held: true, min_weight_pct: 12}
+  add_if:  {held: true, min_conviction: 70, min_rr: 2.0}   # same bar as the add_on type
+  re_enter_if: {held: false, reentry_or_recently_sold: true, min_conviction: 70}
+
+# Presets (API + UI).
+presets:
+  top5: {min_conviction: 80, min_rr: 2.0, min_coverage: 0.8, limit: 5, sort: conviction}
+  new: {type: new_position, sort: conviction}
+  re_entry: {type: re_entry, sort: conviction}
+  add_on: {type: add_on, sort: conviction}
+  exit: {type: exit_candidate, sort: conviction}
+
+# Curator: material change gate for CIO-memory writes.
+material_change:
+  conviction_delta: 5
+  rank_band_size: 25            # rank 1-25, 26-50, … a band change is material
+  level_delta_pct: 2.0          # entry / invalidation / T1 moved by more than this %
+
+# Telegram resonance (operator 2026-10-08: "make sure these changes resonate in telegram alerts also").
+# telegram_alert.send_telegram appends ONE line from the CIO opportunity projection to alerts whose Communications
+# category is listed and which name a curated symbol: conviction, rank, R:R, upside, stance + a link that opens the
+# opportunity view. Read-only, never raises, never sends anything new; skipped when the projection is older than
+# max_projection_age_hours (a stale number is worse than none).
+telegram:
+  enabled: true
+  categories: [re_entry, reward, high_conviction_opportunity, risk, threat, watchlist_candidate]
+  max_symbols: 2
+  max_projection_age_hours: 26

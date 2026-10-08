@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SymbolLink } from '../components/opportunity/OpportunityContext'
 import { useApi } from '../hooks/useApi'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/terminalHubChrome'
@@ -355,7 +356,7 @@ export default function CommunicationsHub() {
                         <td style={{ padding: '5px 6px', color: TEXT, maxWidth: 520, cursor: 'pointer' }} onClick={() => setSelectedId(e.event_id)}>
                           <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.sanitized_body || ''}>
                             {e.direction === 'INBOUND' && <b style={{ color: AMBER, marginRight: 4 }}>IN</b>}
-                            {(e.symbols || []).length > 0 && <b style={{ fontFamily: MONO, marginRight: 6 }}>{e.symbols.slice(0, 3).join(' ')}</b>}
+                            {(e.symbols || []).length > 0 && <b style={{ fontFamily: MONO, marginRight: 6 }}>{e.symbols.slice(0, 3).map((s: string) => <span key={s} style={{ marginRight: 4 }}><SymbolLink symbol={s} /></span>)}</b>}
                             {e.headline || e.short_summary || '—'}
                           </div>
                           <div style={{ marginTop: 3 }}><ItemBadges e={e} /></div>

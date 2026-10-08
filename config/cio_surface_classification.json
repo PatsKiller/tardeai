@@ -1094,6 +1094,29 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Audit receipt appended by scripts/expire_stale_cio_plans.py (counts and expired plan ids per run). Its effect is surfaced where the operator looks: the CIO Desk Decisions card's open-plan count, and each expired plan's status_reason on the plan itself.",
       "owner_hint": "scripts/expire_stale_cio_plans.py"
+    },
+    {
+      "name": "schema:OpportunityProjection@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Investment Command Center (operator plan approved 2026-10-08, PR #1516): the latest curated ranking of ~1,400 OpportunityAssessment@v1 rows, written to data/cio/cio_opportunity_projection.json by scripts/cio_opportunity_curator.py through CIOOpportunityStore.write_projection. Served by GET /api/v3/opportunities and rendered in Watch > Opportunities and the Home Top opportunities widget; the Telegram opportunity line reads it too.",
+      "owner_hint": "scripts/cio_opportunity_curator.py",
+      "record_edge": {
+        "route": "/api/v3/opportunities",
+        "path": [
+          "items"
+        ],
+        "reader": "api_v3_opportunities.py::get_list",
+        "writer": "lib/cio_opportunity_store.py::CIOOpportunityStore.write_projection",
+        "store": "cio_opportunity_projection.json"
+      }
+    },
+    {
+      "name": "schema:OpportunityAssessmentVersion@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Append-only CIO-memory version history (data/cio/cio_opportunity_assessments.jsonl) of the same assessment the operator sees through schema:OpportunityProjection@v1; a version is written only on a material change and exists for audit and learning. The opportunity modal shows only the version count and change reasons, read via CIOOpportunityStore.history.",
+      "owner_hint": "scripts/lib/cio_opportunity_store.py"
     }
   ]
 }

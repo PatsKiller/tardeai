@@ -1,7 +1,7 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      2.0.0
+Policy-Version:      2.0.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
@@ -9,7 +9,7 @@ Effective-Date:      2026-10-08
 Last-Reviewed:       2026-10-08T12:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.6.1
+Supersedes:          2.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -1585,6 +1585,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **cio_operator_artifacts** | derived | `cio/cio_operator_artifacts.jsonl` | `scripts/lib/cio_operator_artifacts.py` | event-driven (written when a hooked producer composes or sends an output) | 168h | — | native | — | — | `say_so` | operator 2026-10-03 |
 | **counterfactual_ledger** | derived | `cio/counterfactual_ledger.jsonl` | `scripts/lib/counterfactual_ledger.py` | daily (scripts/build_counterfactual_ledger.py --apply) | 48h | — | native | — | — | `say_so` | operator 2026-10-03 |
 | **active_trader_microstructure** | ingested | `data/active_trader/micro/<day>/<SYMBOL>.jsonl + <SYMBOL>.bars.json + micro/live_symbols.json` | `scripts/active_trader/microstructure_recorder.py` | every 5 s 06:00-12:00 ET Mon-Fri (recorder windows) | 0.00417h | `active_trader_microstructure` | moomoo | — | — | `say_so` | operator 2026-10-05 |
+| **opportunity_assessment** | derived | `data/cio/cio_opportunity_projection.json` | `scripts/cio_opportunity_curator.py` | */30 09:00-16:00 Mon-Fri + 17:50 once the cron is granted | 26h | `opportunity` | derived | — | — | `say_so` | operator 2026-10-08 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an
@@ -1877,6 +1878,7 @@ Each line is something an agent got wrong today or was about to. The code carrie
   - TTLs: operational 72 h, market/securities 96 h, watchlist/correlation/relationship 1 week. A newer item on the same symbol (or topic) and category supersedes older ones.
   - `scripts/comms_lifecycle.py` (hourly) expires, then archives to jsonl.gz and deletes — refusing the delete unless archived counts match. Never delete comms rows any other way. Admin keep = `legal_hold` / `retain_until` through the guarded bulk route.
 - **The same standards apply to the Watchlist** (operator 2026-10-07, "watchlist etc"). Every Watch card's category, priority, scores, TTL/expiry, status and actionability come from `config/watch_decision_standards.yaml` through `lib/data_broker/watch_decision.py`. Change a rule there; never in the page. On the Watchlist the SIGNAL expires, never the membership: held names never leave the views and nothing is deleted.
+- **Investment opportunities are curated in CIO memory** (operator 2026-10-08). Conviction, factor scores, the risk/reward ladder, rank, opportunity type and stance come from `config/opportunity_conviction.yaml` through `lib/data_broker/opportunity.py`, and are persisted only by `scripts/cio_opportunity_curator.py` into `data/cio/cio_opportunity_assessments.jsonl` (a version only on material change) + `cio_opportunity_projection.json`. Never publish an assessment as a `cio_theses` version (it would replace the research thesis). Never store a behaviour key (`stop`, `limit`, `shares`, `qty`, `order`, …) — levels are `entry_ref` / `invalidation_level` / `targets`. Telegram symbol alerts carry the opportunity line through `telegram_alert.send_telegram` only.
 
 ### Git and CI
 - **Branch protection requires a PR to be up to date.**
@@ -4030,6 +4032,7 @@ No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 2.0.1 | 2026-10-08 | ACTIVE on merge | PATCH | On top of 2.0.0: Telegram/Communications section gains the Investment Command Center rule: opportunity rules in `config/opportunity_conviction.yaml`; curated assessments persisted only by `cio_opportunity_curator.py` into the CIO opportunity store (never as a thesis version); no behaviour keys; the Telegram opportunity line only via `send_telegram`. Adds obligations, weakens nothing; §0/§2/§17 untouched. | Operator-directed 2026-10-08 (/plan Investment Command Center; "make sure all data is curated by and persistent in CIO memory"; "resonate in telegram alerts"). |
 | 2.0.0 | 2026-10-08 | ACTIVE | MAJOR | §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n only)" added: scope limited to the `m8m-n8n` compose project; n8n workflows are §9.3 scheduler entries (registry row with `output_signal` first, grant-gated install/activate/edit/retire, shadow → canary → cutover → per-line rollback, `# RETIRED <date> n8n-cutover <lane_id>` never deleted, double scheduler fails the registry gate); the only trigger path is the gateway `coordination/run` operation for lanes in `config/n8n_run_allowlist.json` (never broker/order/stop/position/paper-execution/sender/secret-render/guard/release-deploy/destructive-retention/memory-writer/authoritative-ingest), gateway never spawns, executor reuses the lane's lock, RunReceipt is the evidence; n8n may pick registered `n8n_*` process ids, versioned template ids and named routing policies but never a model, provider, raw prompt or caller identity, every call capped by the process registry and the $2.00/day cap with typed refusal; exactly one n8n credential (relay bearer from Bitwarden SM, weekly rotation, valid only at the relay), HMAC key host-side, `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` + prune ≤168 h as the precondition; n8n is replaceable. §9.3 and §17 amended in place; ADR_COORDINATION_SECRETS moves to ACCEPTED (one credential). MAJOR: routing and scheduler reach widen for one actor; nothing weakened for any other. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d88ac4943612b6703402f638ba3ed9af` (operator, 2026-10-08, in session: "i approve"); merged #1513 at 2026-10-08T09:06:46-04:00; operator direction 2026-10-08 ("make agents.md carve out just for n8n"; decisions 1–3 of the n8n program plan). |
 | 1.6.1 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications rule extended to the Watchlist: Watch decision standards live in `config/watch_decision_standards.yaml` via `lib/data_broker/watch_decision.py`; the signal expires, never the membership. No rule weakened; §0/§2/§17 untouched. | Operator-directed 2026-10-07 ("watchlist etc"; "start the watchlist"). |
 | 1.6.0 | 2026-10-07 | ACTIVE on merge | MINOR | Telegram section gains "Communications is the single record of operator message traffic": every operator send/receive is recorded in `communication_events` (`send_telegram` or `record_operator_message`); classification and TTLs live in `config/comms_categories.yaml`; removal only through `comms_lifecycle.py` archive-then-delete. Adds obligations, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-07 (Communications hub spec; "Same TTL as everything"; "Archive, then remove"). |
