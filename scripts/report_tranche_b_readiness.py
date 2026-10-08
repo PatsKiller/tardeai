@@ -41,6 +41,11 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib.lane_registry import load_registry, observe_signal, state_root  # noqa: E402
 
 SCHEMA = "TrancheBReadiness@v1"
+NO_CONSUMER_REASON = (
+    "Cron tranche B cutover readiness receipt (2026-10-08). Read by the operator and by the per-stage "
+    "scripts/pipelines/cutover/cutover_*.sh dry-runs before a cutover; no scheduled lane consumes it yet — "
+    "it is produced on demand until the last stage is cut over, then retired with the dry-run lines."
+)
 AUTHORITY = "READ_ONLY_ADVISORY"
 RECEIPT_REL = "data/runtime/tranche_b_readiness_last.json"
 FRESH_DAYS = 7
