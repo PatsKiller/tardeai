@@ -387,6 +387,7 @@ GATES = [
         "telegram_notification_normalization",
         [
             "tests/test_telegram_notification_normalization.py",
+            "tests/test_telegram_message_contract.py",
             "tests/test_r20_v2_notification_idempotency.py",
             # 2026-09-21: these three were written for this subsystem and run by
             # NOTHING -- named only in check_test_coverage.py's UNLISTED_BASELINE.
