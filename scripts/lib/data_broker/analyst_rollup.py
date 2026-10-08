@@ -26,6 +26,24 @@ def get_analyst_rollup(symbols: list[str] | None = None) -> dict[str, dict[str, 
         pass
 
     pills_by_sym = pills.get("by_symbol") or pills.get("pills") or {}
+    if isinstance(pills_by_sym, list):
+        # pro_analyst_fetch writes a LIST of pills ({symbol, recommendation_key, target_mean_price, ...}); the dict
+        # branch below never matched it, so this reader returned {} for every caller (found 2026-10-08).
+        pills_by_sym = {
+            str(p.get("symbol")).upper(): {
+                "consensus": p.get("recommendation_key"),
+                "mean_target": p.get("target_mean_price"),
+                "target_high": p.get("target_high_price"),
+                "target_low": p.get("target_low_price"),
+                "analyst_count": p.get("number_of_analyst_opinions"),
+                "rec_key": p.get("recommendation_key"),
+                "recommendation_mean": p.get("recommendation_mean"),
+                "upside_pct": p.get("upside_to_mean_target_pct"),
+                "stale": p.get("stale"),
+                "as_of": (p.get("provenance") or {}).get("yahoo_at") or pills.get("updated_at"),
+            }
+            for p in pills_by_sym if isinstance(p, dict) and p.get("symbol")
+        }
     if not isinstance(pills_by_sym, dict):
         return {}
 
@@ -48,5 +66,10 @@ def get_analyst_rollup(symbols: list[str] | None = None) -> dict[str, dict[str, 
             "std_dev": data.get("std_dev"),
             "as_of": data.get("as_of") or data.get("updated_at"),
             "sector": data.get("sector"),
+            "target_high": data.get("target_high"),
+            "target_low": data.get("target_low"),
+            "recommendation_mean": data.get("recommendation_mean"),
+            "upside_pct": data.get("upside_pct"),
+            "stale": data.get("stale"),
         }
     return out

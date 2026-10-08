@@ -645,6 +645,17 @@ def send_telegram(
     # `last_message_id()` afterwards could be handed the id of an EARLIER message
     # and staple it to this alert. An absent id must stay absent.
     reset_last_message_ids()
+    # Investment Command Center (operator 2026-10-08): opportunity/risk alerts that name a curated symbol carry one
+    # line from CIO memory — conviction, rank, R:R, upside, stance + a link. Read-only; returns the message
+    # unchanged on any problem (scripts/lib/opportunity_alert.py, config/opportunity_conviction.yaml `telegram`).
+    try:
+        try:
+            from scripts.lib.opportunity_alert import enrich as _opp_enrich
+        except ImportError:
+            from lib.opportunity_alert import enrich as _opp_enrich  # type: ignore
+        message = _opp_enrich(message, message_class=message_class or "operator_alert")
+    except Exception:
+        pass
     # Phase 6 Tier D broker — SHADOW ingest only; never suppresses delivery.
     try:
         from lib.advisory.notification_broker import wrap_send_hook

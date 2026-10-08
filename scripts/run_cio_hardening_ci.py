@@ -1135,6 +1135,12 @@ GATES = [
         "watch_decision_standards_20261008",
         ["tests/test_watch_decision_standards_20261008.py"],
     ),
+    # Investment Command Center (operator 2026-10-08): opportunity engine (R:R ladder, six factors, conviction, rank,
+    # type, stance), CIO-memory opportunity store (material-change versions, behaviour keys refused), API, Telegram line.
+    (
+        "investment_command_center_20261008",
+        ["tests/test_investment_command_center_20261008.py"],
+    ),
     # Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:
     # per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment
     # drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06).

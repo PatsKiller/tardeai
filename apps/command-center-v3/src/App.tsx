@@ -1,3 +1,4 @@
+import { OpportunityModalProvider } from './components/opportunity/OpportunityContext'
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
@@ -178,6 +179,7 @@ function GoProposalDeepLink() {
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
   return (
+    <OpportunityModalProvider>
     <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <SchwabReauthBanner />
       <FinvizCookieBanner />
@@ -251,6 +253,7 @@ function Shell() {
       </div>
       <DetailDrawer ctx={drill} onClose={() => setDrill(null)} />
     </div>
+    </OpportunityModalProvider>
   )
 }
 
