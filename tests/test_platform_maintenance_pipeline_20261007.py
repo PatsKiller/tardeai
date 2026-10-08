@@ -218,7 +218,8 @@ def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order():
     assert by["prune_document_mentions"]["lock"] == "/tmp/document_mentions_prune.lock"
     assert by["prune_document_mentions"]["timeout"] == "20m"
     # args preserved verbatim
-    assert by["populate_performance_context"]["cmd"].endswith("scripts/populate_performance_context.py --apply'"  # 2026-10-08: wrapped in bash -c that sources the rendered env)
+    # 2026-10-08: wrapped in bash -c that sources the rendered env, so the verbatim argv now ends with a quote
+    assert by["populate_performance_context"]["cmd"].endswith("scripts/populate_performance_context.py --apply'")
     assert by["nightly_integrity_sweep"]["cmd"].endswith("scripts/nightly_integrity_sweep.py --telegram")
     assert by["strategy_config_sync"]["cmd"].endswith("scripts/strategy_config_loader.py --sync-db")
     assert by["hermes_universe_history_retention"]["cmd"].endswith("hermes_universe_history_retention.py --apply")
