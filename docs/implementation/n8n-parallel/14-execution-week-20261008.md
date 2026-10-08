@@ -57,3 +57,19 @@ Compression rationale for 0.3: a `--dry-run` stage executes nothing and writes o
 ## Not in scope this week
 
 Any lane cutover into n8n (Phase 5 packet), queue mode, n8n AI Agent nodes, Slack/Teams/CRM.
+
+## Model job #1 — how to run the first live draft (added 2026-10-08, G1)
+
+Wiring now in the tree: process `n8n_ops_summary_draft` in `config/llm_process_registry.json` (deepseek-only, FAST, $0.10/day, soft cap 1/day, schema `ops_summary_draft/v1`); the bridge maps caller `n8n_model_job` + task type `ops_summary` to it server-side (`CALLER_TASK_PROCESS_MAP`), and both n8n model-job processes are in the bridge's policy map (they were registered but unmapped, so Step 3 refused them as `UNKNOWN_PROCESS` — the digest job could never have run live either). `scripts/report_lane_governance_packet.py --draft-mode plan` resolves mapping, registration, policy, caps and prompt size without a call.
+
+Order, after the release that carries this change has re-resolved `cio-governed-bridge.service` (the bridge reads the registry and the map at start):
+
+```
+cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && set -a; . /run/user/$(id -u)/tradeai/env; set +a
+export TRADEAI_STATE_ROOT=/home/johnclaw/trade-ai-releases/persistent-state PROJECT_ROOT=$PWD
+PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+$PY scripts/report_lane_governance_packet.py --write --period weekly --draft --draft-mode plan     # expect "ready": true
+$PY scripts/report_lane_governance_packet.py --write --period weekly --draft                       # ONE live Flash call, ≤ $0.10
+```
+
+What proves it: `data/governance/ops_summary_draft_weekly_<YYYY-Www>.json` with `receipt.state == "ARTIFACT_WRITTEN"` and `receipt.cost.reservation_id` joining a `provider_cost` event (the model-job receipt under `data/runtime/n8n_model_jobs/corr-ops-weekly-<key>.json` carries the same join); `lane_governance_packet_last.json.ops_summary.state`. A typed refusal (`governance_refused`, `over_cap`, `provider_outage`, `schema_invalid`) is recorded the same way and spends nothing. No lane posts the draft as a coordination event yet (receipt note `no lane for ops summary yet`).

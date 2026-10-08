@@ -249,7 +249,7 @@ BRIDGE_CALLER = "n8n_model_job"
 
 
 def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, response_format: Optional[dict] = None,
-                         request_id: Optional[str] = None, timeout_s: float = 60.0) -> dict[str, Any]:
+                         request_id: Optional[str] = None, timeout_s: float = 60.0, task_type: str = "model_job") -> dict[str, Any]:
     """Loopback HTTP to the running governed bridge (cio-governed-bridge.service, 127.0.0.1:8766).
 
     The bridge maps the caller header to the process server-side (CALLER_PROCESS_MAP); the job's
@@ -262,7 +262,7 @@ def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, res
                        "max_tokens": 2048, "request_id": request_id}).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json",
                                                                           "X-TradeAI-Agent": BRIDGE_CALLER,
-                                                                          "X-TradeAI-Task-Type": "model_job"})
+                                                                          "X-TradeAI-Task-Type": task_type})   # 2026-10-08: ops_summary selects n8n_ops_summary_draft server-side
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             return json.loads(resp.read().decode("utf-8"))

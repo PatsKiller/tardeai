@@ -1314,6 +1314,7 @@ GATES = [
             "tests/test_lane_registry_bare_schedule_20260928.py",
             "tests/test_lane_registry_drift_events_20261008.py",
             "tests/test_lane_governance_packet_20261008.py",
+            "tests/test_ops_summary_model_job_live_wiring_20261008.py",
         ],
     ),
     (

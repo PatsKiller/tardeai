@@ -99,6 +99,7 @@ def test_bridge_caller_maps_to_the_small_cap_process_server_side():
     from scripts.lib.cio_governed_model_bridge import resolve_caller
     assert resolve_caller("n8n_model_job") == "n8n_material_digest_draft"
     assert resolve_caller("n8n_model_job", task_type="alex_cio_synthesis") == "n8n_material_digest_draft"   # task type cannot escalate
+    assert resolve_caller("n8n_model_job", task_type="ops_summary") == "n8n_ops_summary_draft"           # 2026-10-08: sibling small-cap process
 
 
 def test_bridge_transport_failures_become_provider_outage(monkeypatch):
