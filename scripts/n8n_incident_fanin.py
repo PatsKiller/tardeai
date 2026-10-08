@@ -40,6 +40,8 @@ NO_CONSUMER_REASON = (
     "no cron line exists until the operator installs it (lane n8n-incident-fanin, NEVER_SCHEDULED)."
 )
 LANE = "incident-fanin"
+NOTES: dict[str, str] = {}   # per-source availability notes, copied onto the receipt (2026-10-08)
+LANE_REGISTRY_RECEIPT_REL = "data/runtime/n8n_lane_registry_drift_last.json"
 AUTHORITY = "READ_ONLY_ADVISORY"
 SEV = {"NO_OUTPUT": "P2", "SILENT": "P2", "HUNG": "P1", "FAILING": "P1", "BACKLOG": "P2", "MEMORY_UNREACHABLE": "P1",
        "SLO_MISS": "P2", "UNGOVERNED": "P3"}
@@ -132,6 +134,30 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
             out.append({"source": "db_hygiene", "item": f"{f.get('code')}:{f.get('item')}", "severity": str(f.get("severity") or "P3"),
                         "detail": str(f.get("detail") or "")[:160], "artifact_rel": "data/runtime/db_hygiene_last.json",
                         "store": "data/runtime", "detected_at": doc.get("as_of")})
+    # 3c. lane-registry drift (Phase 2 PR-B, 2026-10-08): the gate's findings between CI runs. Pure
+    # library calls over the live registry + crontab + timer names; fail-soft, never a crash of the fan-in.
+    NOTES.pop("lane_registry_source", None)
+    try:
+        import subprocess as _sp
+        from scripts.lib.lane_registry import discover_systemd, load_registry
+        from scripts.lib.lane_registry_drift import findings as _drift_findings
+        if os.environ.get("TRADEAI_FANIN_LANE_REGISTRY", "1") == "0":
+            raise RuntimeError("disabled_by_env")        # hermetic callers (tests) opt out of probing the host
+        reg = load_registry(ROOT / "config" / "lane_registry.json")
+        _cron = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=30)
+        if _cron.returncode != 0:
+            raise RuntimeError("no_crontab")             # CI runners and fresh hosts: nothing to compare against
+        cron_text = _cron.stdout
+        units = [str(u.get("expression") or "") for u in discover_systemd()]
+        drift = _drift_findings(reg, cron_text, units)
+        NOTES["lane_registry_source"] = f"ok:{len(drift)}"
+    except Exception as exc:   # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        drift = []
+        NOTES["lane_registry_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
+    for f in drift:
+        out.append({"source": "lane_registry", "code": f["code"], "item": f["item"], "severity": f["severity"], "detail": f["detail"][:160],
+                    "artifact_rel": LANE_REGISTRY_RECEIPT_REL, "store": "data/runtime",
+                    "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()})   # stable per UTC day = stable payload
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -167,6 +193,18 @@ def build_event(f: dict[str, Any], *, day: str, now: datetime, sha: str) -> dict
             "correlation_id": f"corr-{key}", "idempotency_key": key}
 
 
+def write_lane_registry_receipt(root: Path, drift: list[dict[str, Any]], now: datetime, sha: str) -> Path:
+    """The durable artifact a lane_registry incident references (apply mode only)."""
+    p = root / LANE_REGISTRY_RECEIPT_REL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    doc = {"schema": "N8nLaneRegistryDrift@v1", "authority": AUTHORITY, "as_of": now.isoformat(), "served_sha": sha or None,
+           "source_note": NOTES.get("lane_registry_source"), "findings": drift}
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, indent=1, default=str) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
+    return p
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group(required=True)
@@ -193,6 +231,8 @@ def main(argv: list[str] | None = None) -> int:
         client = GatewayClient(caller_id="tradeai-incident-fanin")
         gateway = {"url": client.url, "has_key": client.has_key, "healthz": client.healthz()}
     current_keys: set[str] = set()
+    if args.apply:
+        write_lane_registry_receipt(root, [f for f in findings if f["source"] == "lane_registry"], now, sha)
     for f in findings:
         ev = build_event(f, day=day, now=now, sha=sha)
         current_keys.add(ev["idempotency_key"])
@@ -233,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         recovered.append(rec)
     receipt = {"schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "mode": "apply" if args.apply else "dry-run",
                "served_sha": sha or None, "state_root": str(root), "gateway": gateway, "open": len(findings), "by_severity": by_sev,
-               "incidents": rows, "recovered": recovered,
+               "incidents": rows, "recovered": recovered, "source_notes": dict(NOTES),
                "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows)}
     if args.apply:
         out.parent.mkdir(parents=True, exist_ok=True)
