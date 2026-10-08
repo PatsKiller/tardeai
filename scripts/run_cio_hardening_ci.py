@@ -2110,6 +2110,8 @@ GATES = [
             "tests/test_weekly_disk_cleanup_notify_20260918.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
             "tests/test_cio_telegram_stance_gate_20260918.py",
+            # 2026-09-28: release-dir git HEAD can move while stamped blobs stay.
+            "tests/test_check_release_pin_integrity.py",
         ],
     ),
     (
