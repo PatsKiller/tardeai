@@ -27,7 +27,10 @@ cd "$PROJ"
 
 declare -a STEP_NAMES STEP_STATUS STEP_MS
 overall=0
-PY="$PROJ/.venv/bin/python"
+# 2026-10-08: the served CURRENT tree has no .venv, so the systemd unit exports PY (the shared venv). Without
+# it the dev-tree default still applies; a missing interpreter stops here (exit 78) instead of failing 3 steps.
+PY="${PY:-$PROJ/.venv/bin/python}"
+[ -x "$PY" ] || { echo "[FATAL] PY not executable: $PY (export PY=<venv>/bin/python)" >&2; exit 78; }
 
 gov_step() {
   local name="$1"; shift

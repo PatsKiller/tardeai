@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.lib import n8n_coordination_projection as _proj  # noqa: E402
 from scripts.lib import n8n_model_job as _mj  # noqa: E402
-from scripts.lib.lane_registry import collect_lane_registry_report  # noqa: E402
+from scripts.lib.lane_registry import collect_lane_registry_report, lane_scheduler_text  # noqa: E402
 
 SCHEMA = "LaneGovernancePacket@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -75,6 +75,12 @@ def _load(path: Path) -> Optional[dict]:
 
 # ── sections ──────────────────────────────────────────────────────────────────────────────────────
 
+def _finding_detail(row: Mapping[str, Any]) -> str:
+    age = row.get("output_age_hours")
+    out = f"output {age}h" if age is not None else "output none"
+    return f"{lane_scheduler_text(dict(row))}; {out}"[:200]
+
+
 def lanes_section(*, now: _dt.datetime, registry_path: Optional[Path], root: Path, cron_text: Optional[str],
                   include_systemd: bool) -> dict[str, Any]:
     rep = collect_lane_registry_report(now=now, registry_path=registry_path, root=root, cron_text=cron_text,
@@ -82,7 +88,11 @@ def lanes_section(*, now: _dt.datetime, registry_path: Optional[Path], root: Pat
     by_state: Counter = Counter(str(r.get("state") or "") for r in rep.get("lanes") or [])
     return {"declared": rep.get("declared"), "verdict_counts": rep.get("verdict_counts") or {},
             "by_declared_state": dict(by_state), "summary": rep.get("summary"),
-            "findings": [{"lane_id": f.get("lane_id"), "verdict": f.get("verdict"), "detail": str(f.get("detail") or "")[:160]}
+            # `detail` read a key evaluate_lane never emits, so every finding rendered blank. It is now the
+            # scheduler column (n8n lanes: last run + FRESH/ORPHANED as evaluated) plus the output age.
+            "findings": [{"lane_id": f.get("lane_id"), "verdict": f.get("verdict"),
+                          "scheduler_label": f.get("scheduler_label"), "n8n_last_run": f.get("n8n_last_run"),
+                          "detail": _finding_detail(f)}
                          for f in rep.get("findings") or []][:200],
             "undeclared": len(rep.get("undeclared") or []), "registry_path": rep.get("registry_path")}
 
