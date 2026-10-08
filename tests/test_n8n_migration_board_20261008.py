@@ -50,7 +50,7 @@ def _fixture(tmp_path):
                                                              "exit_code": 2, "duration_s": 9.0, "state": "RUN_FAILED", "code_sha": "a" * 40})
     # the executor heartbeat is judged against the real clock (the board is not given now= here, so file mtimes
     # and this age agree); one hour ago is inside the 2x cadence window whenever the test runs
-    _write(root / "data/runtime/n8n_runs/n8n_run_executor_last.json",
+    _write(root / "data/runtime/n8n_run_executor_last.json",
            {"schema": "RunReceipt@v1", "finished_at": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()})
     _write(root / "data/runtime/n8n_cutover/lane-cut-20261008T0800Z.json", {"schema": "CutoverReceipt@v1", "lane_id": "lane-cut", "action": "cutover",
                                                                             "scheduler_before": "cron", "scheduler_after": "n8n", "applied": True,
@@ -124,7 +124,7 @@ def test_no_inputs_at_all_is_an_honest_not_started_board(tmp_path, monkeypatch):
 
 def test_executor_stalled_flags_every_cut_over_lane(tmp_path, monkeypatch):
     monkeypatch.setattr(B, "served_sha", lambda: None)
-    _write(tmp_path / "data/runtime/n8n_runs/n8n_run_executor_last.json", {"finished_at": "2026-10-08T09:00:00+00:00"})
+    _write(tmp_path / "data/runtime/n8n_run_executor_last.json", {"finished_at": "2026-10-08T09:00:00+00:00"})
     reg = {"schema": "LaneRegistry@v1", "lanes": [_lane("a", "n8n", cadence=1.0, expression="wf-1"), _lane("b", "cron")]}
     tr = {"schema": "N8nMigrationTranches@v1", "tranches": {"N1": {"lanes": [{"lane_id": "a"}, {"lane_id": "b"}]}}}
     board = B.build_board(root=tmp_path, registry=reg, tranches=tr, ledger=tmp_path / "none.sqlite", now=NOW, cron_text="", units=[])
@@ -160,3 +160,14 @@ def test_program_config_lists_71_unique_lanes_and_registered_ones_exist():
     # every lane without a registry row names what the doc named (a script or a workflow) or says why
     assert all(l.get("match") or l.get("note") for l in unregistered), unregistered
     assert "scripts/n8n_migration_board.py" in B.NO_CONSUMER_REASON or "migration-board" in B.NO_CONSUMER_REASON
+
+
+def test_board_and_fanin_read_the_heartbeat_where_the_executor_writes_it():
+    """Regression for the 2026-10-08 defect: both readers looked inside n8n_runs/ while the executor writes beside it,
+    so executor_last_age_h was always None and executor:stalled could never fire. The three paths must agree."""
+    from scripts import n8n_incident_fanin as F
+    from scripts import n8n_run_executor as X
+    executor_rel = X.LAST_REL.as_posix()
+    assert B.EXECUTOR_LAST_REL == executor_rel
+    assert F.EXECUTOR_LAST_REL == executor_rel
+    assert Path(executor_rel).parent != Path(B.RUNS_RECEIPT_DIR)  # the heartbeat is not a run receipt
