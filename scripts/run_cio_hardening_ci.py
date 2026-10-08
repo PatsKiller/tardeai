@@ -1313,6 +1313,7 @@ GATES = [
             "tests/test_earnings_gate_vocabulary_20260928.py",
             "tests/test_lane_registry_bare_schedule_20260928.py",
             "tests/test_lane_registry_drift_events_20261008.py",
+            "tests/test_lane_governance_packet_20261008.py",
         ],
     ),
     (
