@@ -5,6 +5,121 @@
   "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink — the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours → holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00. 2026-10-07: cron consolidation ranks 3-4 + tranche C install; 15 baseline entries pruned with their crontab deletion (the 9 absorbed lines that live in the 2026-09-28 inherited tranche stay in that pinned record and are named in the health-tick / platform-maintenance-* state_reason).",
   "lanes": [
     {
+      "lane_id": "dof-run-pipeline",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 20 * * 6",
+        "match": "nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py"
+      },
+      "expected_cadence_hours": 168,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Observed crontab -l 2026-10-08: Saturday 20:00, cwd ~/nyc-dof-auction, .venv/bin/python3 scripts/run_pipeline.py, stdout -> logs/pipeline.log. NO_SIGNAL: no durable aggregate receipt; run_pipeline.py:74-91 prints failed stage numbers but main does not return a nonzero exit. stage6_reports.py writes dated outputs outside Trade AI state. Scheduling metadata only: SQL writers are barred by AGENTS 23.3; no shared cron lock or write-nothing dry-run. No foreign repository edited or command invoked.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "dof-rescan-tickets",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 18 * * *",
+        "match": "nyc-dof-auction && .venv/bin/python3 scripts/rescan_tickets.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "dof_ticket_lookups",
+        "column": "lookup_at",
+        "where": "rescan_count > 0"
+      },
+      "note": "Observed crontab -l 2026-10-08: daily 18:00, cwd ~/nyc-dof-auction, .venv/bin/python3 scripts/rescan_tickets.py, stdout -> logs/rescan.log. rescan_tickets.py:185-204 updates lookup_at and rescan_count; this signal proves a changed lookup, not an idle successful scan or full pipeline completion. Reader availability/database identity must be verified by the DOF projection owner. SQL UPDATE/DELETE/INSERT makes the command forbidden by AGENTS 23.3; no shared cron lock or dry-run. No command invoked.",
+      "state_since": "2026-10-08"
+    },
+    {
+      "lane_id": "openclaw-reminder-claude-plan-1",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "a9b4aece7a8b7c95",
+        "match": "676c2212-f18a-4913-b96d-e7790b7b173c",
+        "cadence": "0 9 24 * *"
+      },
+      "expected_cadence_hours": 744,
+      "state": "NEVER_SCHEDULED",
+      "state_reason": "n8n replacement has not been imported or activated; legacy OpenClaw job remains enabled. NO_SIGNAL: no corresponding OpenClaw cron/runs receipt exists. Do not trigger an OpenClaw agent loop or add a host sender to the allowlist. Packet PROPOSED is not a LaneRegistry state; using NEVER_SCHEDULED for this n8n replacement only.",
+      "state_since": "2026-10-08",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled legacy job 676c2212-f18a-4913-b96d-e7790b7b173c, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to a9b4aece7a8b7c95. This state describes only the replacement, not the enabled legacy job.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 676c2212-f18a-4913-b96d-e7790b7b173c enabled. Generated INDEX.json alias openclaw-claude-plan-reminder-week-before, id a9b4aece7a8b7c95; canonical packet/tranche lane openclaw-reminder-claude-plan-1 differs from generated request lane and must be aligned before import. monthly on day 24; legacy state reports lastRunStatus=ok, lastDeliveryStatus=not-requested. Legacy job has not been disabled; registration is not a cutover or a delivery receipt."
+    },
+    {
+      "lane_id": "openclaw-reminder-claude-plan-2",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "1675d3c97ed9a3d6",
+        "match": "0775cd6b-2186-40fb-9b56-a3e36f6faf14",
+        "cadence": "0 9 28 * *"
+      },
+      "expected_cadence_hours": 744,
+      "state": "NEVER_SCHEDULED",
+      "state_reason": "n8n replacement has not been imported or activated; legacy OpenClaw job remains enabled. NO_SIGNAL: no corresponding OpenClaw cron/runs receipt exists. Do not trigger an OpenClaw agent loop or add a host sender to the allowlist. Packet PROPOSED is not a LaneRegistry state; using NEVER_SCHEDULED for this n8n replacement only.",
+      "state_since": "2026-10-08",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled legacy job 0775cd6b-2186-40fb-9b56-a3e36f6faf14, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to 1675d3c97ed9a3d6; its day-28 schedule does not reproduce the legacy last-day schedule.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 0775cd6b-2186-40fb-9b56-a3e36f6faf14 enabled. Generated INDEX.json alias openclaw-claude-plan-reminder-last-day, id 1675d3c97ed9a3d6; canonical packet/tranche lane openclaw-reminder-claude-plan-2 differs from generated request lane and must be aligned before import. legacy cadence is 0 9 L * *; generated day 28 is APPROXIMATE, not equivalent; do not activate it as a last-day replacement. Legacy job has not been disabled; registration is not a cutover or a delivery receipt."
+    },
+    {
+      "lane_id": "openclaw-reminder-supergrok-expiry",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "c08d72aee9fba3c1",
+        "match": "9a26d34d-b940-4185-9fe1-32403c0b3bc1",
+        "cadence": "0 10 20 10 *"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_reason": "n8n replacement has not been imported or activated; legacy OpenClaw job remains enabled. NO_SIGNAL: no corresponding OpenClaw cron/runs receipt exists. Do not trigger an OpenClaw agent loop or add a host sender to the allowlist. Packet PROPOSED is not a LaneRegistry state; using NEVER_SCHEDULED for this n8n replacement only.",
+      "state_since": "2026-10-08",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled one-shot legacy job 9a26d34d-b940-4185-9fe1-32403c0b3bc1, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to c08d72aee9fba3c1; its annual schedule is not a single-fire replacement.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 9a26d34d-b940-4185-9fe1-32403c0b3bc1 enabled. Generated INDEX.json alias openclaw-supergrok-promo-expiry, id c08d72aee9fba3c1; canonical packet/tranche lane openclaw-reminder-supergrok-expiry differs from generated request lane and must be aligned before import. legacy at 2026-10-20T14:00:00Z; generated annual cron needs an explicit one-shot/deactivation guard. Legacy job has not been disabled; registration is not a cutover or a delivery receipt."
+    },
+    {
+      "lane_id": "openclaw-reminder-sentinelone-earnings",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "d28ad5e4adcb021a",
+        "match": "a9c337e0-7a4d-4a83-8089-5aa3bf5f5059",
+        "cadence": "0 8 7 12 *"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_reason": "n8n replacement has not been imported or activated; legacy OpenClaw job remains enabled. NO_SIGNAL: no corresponding OpenClaw cron/runs receipt exists. Do not trigger an OpenClaw agent loop or add a host sender to the allowlist. Packet PROPOSED is not a LaneRegistry state; using NEVER_SCHEDULED for this n8n replacement only.",
+      "state_since": "2026-10-08",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled one-shot legacy job a9c337e0-7a4d-4a83-8089-5aa3bf5f5059, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to d28ad5e4adcb021a; its annual schedule is not a single-fire replacement.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job a9c337e0-7a4d-4a83-8089-5aa3bf5f5059 enabled. Generated INDEX.json alias openclaw-sentinelone-earnings-reminder, id d28ad5e4adcb021a; canonical packet/tranche lane openclaw-reminder-sentinelone-earnings differs from generated request lane and must be aligned before import. legacy at 2026-12-07T13:00:00Z; generated annual cron needs an explicit one-shot/deactivation guard. Legacy job has not been disabled; registration is not a cutover or a delivery receipt."
+    },
+    {
       "lane_id": "n8n-monitor-trade-ai",
       "owner": "platform",
       "scheduler": {

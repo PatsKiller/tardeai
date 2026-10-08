@@ -326,5 +326,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     """Only pre-existing native workflows are declared; cron/timer cutovers stay operator-owned."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
-    native = {r["lane_id"] for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
+    native = {
+        r["lane_id"] for r in reg["lanes"]
+        if (r.get("scheduler") or {}).get("kind") == "n8n" and r["state"] == "ACTIVE"
+    }
     assert native == {"n8n-monitor-trade-ai", "n8n-monitor-dof"}
