@@ -3483,6 +3483,19 @@ GATES = [
             "tests/test_n8n_migration_board_20261008.py",
         ],
     ),
+    (
+        # 2026-10-08 — n8n model job, live shape (workstream C, Day 0). Pins the bridge's nested
+        # `_tradeai` governance envelope, request_id -> provider_cost client_request_id, the
+        # server-side PROCESS_TASK_TYPE map (unknown process = process_not_registered before any
+        # call) and server-rendered prompt templates that reproduce the inline prompt byte for
+        # byte. Hermetic: injected governed call, stubbed HTTP, scratch state root; no provider.
+        "N8N_MODEL_JOB_SHAPE",
+        [
+            "tests/test_n8n_model_job_20261007.py",
+            "tests/test_n8n_model_job_operation_20261007.py",
+            "tests/test_ops_summary_model_job_live_wiring_20261008.py",
+        ],
+    ),
 ]
 
 
