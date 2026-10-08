@@ -3395,6 +3395,7 @@ GATES = [
             "tests/test_retention_registry_20261007.py",
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",
+            "tests/test_n8n_research_intake_20261008.py",
             "tests/test_n8n_coordination_ledger_20261007.py",
             "tests/test_n8n_gateway_http_20261007.py",
             "tests/test_n8n_lab_watchdog_20261007.py",
