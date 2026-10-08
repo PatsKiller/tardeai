@@ -57,6 +57,34 @@ export function AiIntelligenceBriefing({ llm }: { llm: any }) {
   )
 }
 
+/** AEC Executive Brief — hourly, Command Center only (operator 2026-10-07; no Telegram). Source: /api/v2/command
+ *  → executive_brief, the newest cycle.narrator.brief on the agent bus. Read-only. */
+export function ExecutiveBriefCard({ brief }: { brief: any }) {
+  if (!brief) return null
+  const age = typeof brief.age_s === 'number' ? brief.age_s : null
+  const ageLabel = age == null ? '' : age < 3600 ? `${Math.round(age / 60)}m ago` : `${Math.round(age / 3600)}h ago`
+  return (
+    <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: TYPE.base, fontWeight: 700, color: 'var(--text0)' }}>Executive Brief</div>
+        {ageLabel && <span style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>{ageLabel}</span>}
+        {brief.stale && <span style={{ fontSize: TYPE.xs, color: BB.amber, fontWeight: 700 }}>STALE</span>}
+        {brief.suppressed_repeat && <span style={{ fontSize: TYPE.xs, color: 'var(--text3)' }}>unchanged since last hour</span>}
+      </div>
+      {brief.body ? (
+        <pre style={{ fontSize: TYPE.xs, color: 'var(--text2)', lineHeight: 1.5, whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'var(--font-mono, monospace)' }}>
+          {String(brief.body).split('\n').filter((l: string) => !l.startsWith('Trade AI — Executive Brief')).join('\n').trim()}
+        </pre>
+      ) : (
+        <div style={{ fontSize: TYPE.xs, color: BB.amber }}>
+          Executive Brief unavailable{brief.error ? ` — ${brief.error}` : ' — no brief on the agent bus yet (hourly AEC cycle)'}.
+        </div>
+      )}
+      <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/command → executive_brief ({brief.source})</div>
+    </div>
+  )
+}
+
 export function EquityThinNote({ days }: { days: number }) {
   if (days >= 10) return null
   return (

@@ -2076,6 +2076,7 @@ GATES = [
             "tests/test_release_pin_and_validator.py",
             "tests/test_aec_agent_bus_memory_20260919.py",
             "tests/test_aec_narrator_20260919.py",
+            "tests/test_aec_narrator_real_brief_20261007.py",
             "tests/test_bitemporal_correctness.py",
             # M5 Module 2: SINGLE_VALUED supersession, atomic receipts, MRU token budget.
             "tests/test_m5_memory_substrate_20260923.py",
