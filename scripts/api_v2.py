@@ -53899,6 +53899,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # Approval board (roadmap Phase 2 PR-C, 2026-10-08): open approval packages and active guard grants
+    # with time-to-expiry, from their own ledgers. Read-only; nothing here approves, grants or sends.
+    if base_path == "/api/v2/coordination/approvals":
+        try:
+            from lib.approval_board_projection import load_board as _board_load
+
+            return 200, {"ok": True, "data": _board_load()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
     # alternatives (per unit), portfolio facts and the CIO review — read-only.
     if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):
