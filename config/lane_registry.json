@@ -3771,7 +3771,7 @@
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Communications hub lifecycle (operator 2026-10-07): classify unclassified messages, mark expired by category TTL (operational 72h, market/securities 96h, watchlist 1 week), then archive (jsonl.gz under persistent-state/archive/comms_lifecycle) and remove expired+superseded messages past a 24h grace. Operator decisions: same TTL for approvals/broker facts; archive-then-delete.",
+      "state_reason": "Communications hub lifecycle (operator 2026-10-07): classify unclassified messages, mark expired by category TTL (operational 72h, market/securities 96h, watchlist 1 week), then archive (jsonl.gz under persistent-state/archive/comms_lifecycle) and remove expired and replaced (newer data on the same symbol) messages past a 24h grace. Operator decisions: same TTL for approvals/broker facts; archive-then-delete.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/comms_lifecycle_latest.json"
