@@ -3432,6 +3432,18 @@ GATES = [
         ],
     ),
     (
+        # N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n
+        # scheduler-of-record workflow generator and the per-lane cutover checklist. The tests
+        # pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set
+        # and the INDEX shape; the checklist renders from receipts under tmp_path only. Listing
+        # them imports nothing into n8n and retires no cron line.
+        "n8n_workflow_gen_20261008",
+        [
+            "tests/test_n8n_workflow_templates_20261008.py",
+            "tests/test_n8n_cutover_checklist_20261008.py",
+        ],
+    ),
+    (
         # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial
         # stage runner for the post-close, premarket and Hermes chains. Hermetic: the tests drive
         # the runner with true/false/sleep manifests against a scratch project root, prove that
