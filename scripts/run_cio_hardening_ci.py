@@ -3525,6 +3525,22 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_OBS_GAPS — n8n scheduler-of-record program, observability gaps (2026-10-08):
+        # the lane monitor renders scheduler_label and, for kind n8n, the last run with the
+        # FRESH/ORPHANED evaluate_lane decided (research_lane_health --lanes / alert body, governance
+        # packet `detail`); the incident fan-in `relay` source (P2 relay:auth_failures from the relay
+        # last file's counter diffed against the previous receipt, P1 relay:down, TRADEAI_FANIN_RELAY=0
+        # opt-out); the rotation daemon's pure due-selection + --dry-run and the two weekly
+        # secret_registry entries. Hermetic: tmp registry, tmp sqlite ledger, tmp relay/receipt files,
+        # tmp secret registry + state. Listing them here schedules nothing.
+        "n8n_observability_gaps_20261008",
+        [
+            "tests/test_lane_monitor_n8n_rendering_20261008.py",
+            "tests/test_n8n_incident_fanin_relay_20261008.py",
+            "tests/test_secret_rotation_schedule_20261008.py",
+        ],
+    ),
+    (
         # 2026-10-08 — n8n model job, live shape (workstream C, Day 0). Pins the bridge's nested
         # `_tradeai` governance envelope, request_id -> provider_cost client_request_id, the
         # server-side PROCESS_TASK_TYPE map (unknown process = process_not_registered before any
