@@ -15,7 +15,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.lib.atomic_json_store import atomic_write_json
+try:
+    from scripts.lib.atomic_json_store import atomic_write_json
+except ImportError:  # 2026-10-08: callers that only put scripts/lib on sys.path (check_expected_services.py
+    # under tradeai-expected-services.service) crashed hourly since 2026-10-05 with "No module named 'scripts'";
+    # the receipt went stale and two P1 incidents stayed open on a 3-day-old run. Same module, same directory.
+    from atomic_json_store import atomic_write_json  # type: ignore[no-redef]
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
