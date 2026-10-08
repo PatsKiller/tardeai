@@ -105,7 +105,7 @@ the reviewed source was committed locally and acceptance rerun before push.
 ## Handoff acceptance
 
 Branch-update candidate, 2026-10-08: GitHub later reported this PR CONFLICTING
-with main. A local merge of main `6b1ed40e44361134575c885a742309d61388317f`
+with main. A local merge of main `3549125b79b2baa62d725a79e4de562cdb96c2b7`
 has no unresolved code conflicts; the repository's generated-file driver keeps
 the local docs index and requires regeneration. Main's changes, including its
 new registry rows and GATES entries, are retained. No history rewrite or
@@ -142,6 +142,16 @@ Those changes are retained by a second local main merge, together with W1's
 receipt and registry changes. A fresh full acceptance with a durable local
 log is required on the resulting commit before the single remaining push.
 No extra remote push was used during these local updates.
+
+Recovery acceptance on `e14fcecc294dd9a2ea5211749c2dbab28ddf095e`:
+**exit 0** at 15:24:50 EDT, 119 scoped tests passed, 17/17 release checks
+passed, all CIO gates passed (334 parallel units, 20 serial gates; wall 454
+seconds), and all four LOCAL_ACCEPTANCE predicates true. Durable local
+artifacts: `/tmp/agent2-w1-acceptance-95s1n5mq/{acceptance.log,result.json,gate-summary.md}`.
+During that run, main gained PR #1533 (two UI files). The final update also
+retains that change so the remaining push does not knowingly submit a branch
+behind strict main. Fresh acceptance on the resulting final head remains
+required before push; no earlier green result is substituted for it.
 
 Supervisor review must resolve or explicitly accept the receipt, lock and
 never-list limitations before activation. These are not a declaration that
