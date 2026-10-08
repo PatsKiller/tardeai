@@ -1450,6 +1450,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md` | Cron tranche B — post-close, premarket and Hermes chains: measurements, fit, manifests (2026-10-07) | review_required | OK | `37fb7b08b80c` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md` | Cron consolidation — tranche C, low-risk part (ranks 13, 14, 18, 9), 2026-10-07 | review_required | MISSING HEADER | `459432353f4a` |
 | `docs/implementation/n8n-parallel/proposals/dof-reader-role-20261008.sql.md` | Proposal — `dof_reader`: a read-only role for the DOF queue and enrichment views (2026-10-08) | review_required | OK | `61dd0f77b3b5` |
+| `docs/implementation/n8n-parallel/proposals/key-rotation-schedule-20261008.md` | Weekly key rotation schedule — PROPOSAL (operator cron grant), 2026-10-08 | review_required | OK | `1b54faa6869a` |
 | `docs/implementation/n8n-parallel/proposals/n8n-lab-hardening-compose-diff-20261008.md` | Proposal — n8n lab hardening: compose diff, SM key names, firewall (2026-10-08) | review_required | OK | `bcb3fa902f33` |
 | `docs/implementation/n8n-parallel/proposals/phase1-install-commands.md` | Phase 1 install commands (operator), 2026-10-07 | review_required | MISSING HEADER | `d491f8368e49` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
