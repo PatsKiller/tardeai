@@ -14,6 +14,9 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+#: The CIO-memory projection this API serves (written by cio_opportunity_curator via CIOOpportunityStore).
+STORE = "data/cio/cio_opportunity_projection.json"
+
 
 def _db_query(sql, params=None, fetch="all"):
     from db_adapter import _execute
@@ -56,6 +59,7 @@ def get_list(query: dict | None = None) -> dict[str, Any]:
         "as_of": proj.get("as_of"),
         "run_id": proj.get("run_id"),
         "curated_by": "cio_opportunity_curator → CIO memory",
+        "store": STORE,
         "universe": len(items),
         "total": len(matched),
         "page": page,

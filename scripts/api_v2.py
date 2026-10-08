@@ -1446,6 +1446,13 @@ def _stops_audit_api(query=None):
     }
 
 
+def _opportunities_list(query=None):
+    """GET /api/v3/opportunities — Investment Command Center ranking from CIO memory (operator 2026-10-08)."""
+    import api_v3_opportunities as _opp
+
+    return _opp.get_list(query or {})
+
+
 def _build_reentry_decision_desk_api(query=None):
     """GET /api/v2/reentry/decision-desk — calls the deterministic Data Broker decision desk.
     All price/RSI/indicator values sourced from market_quotes + indicator_confluence_cache.
@@ -47145,6 +47152,7 @@ ROUTES = {
     "/api/v2/stops/audit": lambda q=None: _stops_audit_api(q),
     "/api/v2/stops/reentry-watch": lambda q=None: _stops_reentry_watch_api(q),
     "/api/v2/reentry/decision-desk": lambda q=None: _build_reentry_decision_desk_api(q),
+    "/api/v3/opportunities": lambda q=None: _opportunities_list(q),
     "/api/v2/reentry/run-insights": lambda q=None: _run_reentry_insights_api(),
     "/api/v2/portfolio/performance": portfolio_performance,
     "/api/v2/watchlist": watchlist_combined,
@@ -53460,14 +53468,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
     # Investment Command Center (operator 2026-10-08): curated opportunities from CIO memory — read-only
-    if method == "GET" and (base_path == "/api/v3/opportunities" or base_path.startswith("/api/v3/opportunities/")):
+    if method == "GET" and base_path.startswith("/api/v3/opportunities/"):
         try:
             import api_v3_opportunities as _opp
 
             rest = base_path[len("/api/v3/opportunities") :].strip("/")
-            if not rest:
-                return 200, _opp.get_list(query or {})
-            if "/" not in rest:
+            if rest and "/" not in rest:
                 return 200, _opp.get_detail(rest.upper())
             return 404, {"ok": False, "error": "not_found"}
         except Exception as e:

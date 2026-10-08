@@ -2817,7 +2817,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-08",
-        "reference": "Investment Command Center plan approved 2026-10-08 (/plan; session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md",
+        "reference": "Investment Command Center plan approved 2026-10-08 (/plan; session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); PR #1516, docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md",
         "scope": "Curated OpportunityAssessment@v1 per symbol (levels, R:R, six factor scores, conviction, rank, type, stance) in CIO memory; derived from existing broker stores, zero provider calls."
       },
       "store": {
@@ -2837,7 +2837,21 @@
       "primary_provider": "derived",
       "backup": [],
       "retired": [],
-      "no_coverage": "say_so"
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ]
     }
   ]
 }

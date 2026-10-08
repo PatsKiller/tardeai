@@ -1573,6 +1573,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **cio_operator_artifacts** | derived | `cio/cio_operator_artifacts.jsonl` | `scripts/lib/cio_operator_artifacts.py` | event-driven (written when a hooked producer composes or sends an output) | 168h | — | native | — | — | `say_so` | operator 2026-10-03 |
 | **counterfactual_ledger** | derived | `cio/counterfactual_ledger.jsonl` | `scripts/lib/counterfactual_ledger.py` | daily (scripts/build_counterfactual_ledger.py --apply) | 48h | — | native | — | — | `say_so` | operator 2026-10-03 |
 | **active_trader_microstructure** | ingested | `data/active_trader/micro/<day>/<SYMBOL>.jsonl + <SYMBOL>.bars.json + micro/live_symbols.json` | `scripts/active_trader/microstructure_recorder.py` | every 5 s 06:00-12:00 ET Mon-Fri (recorder windows) | 0.00417h | `active_trader_microstructure` | moomoo | — | — | `say_so` | operator 2026-10-05 |
+| **opportunity_assessment** | derived | `data/cio/cio_opportunity_projection.json` | `scripts/cio_opportunity_curator.py` | */30 09:00-16:00 Mon-Fri + 17:50 once the cron is granted | 26h | `opportunity` | derived | — | — | `say_so` | operator 2026-10-08 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an

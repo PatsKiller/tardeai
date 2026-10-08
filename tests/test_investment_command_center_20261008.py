@@ -191,11 +191,14 @@ def test_positions_context_weight_and_pending_realized(tmp_path):
 
     h = tmp_path / "holdings.json"
     h.write_text(json.dumps({"as_of": "2026-10-08", "portfolio_totals": {"total_value": 1000.0}, "holdings": [
-        {"symbol": "ABC", "shares": 2, "market_value": 100.0, "cost_basis": 80.0, "account": "a", "portfolio_pct": 99},
-        {"symbol": "ABC", "shares": 1, "market_value": 50.0, "cost_basis": 45.0, "account": "b"}]}))
+        {"symbol": "ABC", "shares": 2, "price": 40.0, "cost_basis": 80.0, "account": "a", "portfolio_pct": 99},
+        {"symbol": "ABC", "shares": 1, "price": 40.0, "cost_basis": 45.0, "account": "b"}]}))
     q = lambda sql, params=None, fetch="all": [{"s": "XYZ", "last_sell": date(2026, 9, 1)}]  # noqa: E731
-    out = get_positions_context(q, ["ABC", "XYZ"], holdings_path=h)
-    assert out["ABC"]["weight_pct"] == 15.0 and out["ABC"]["avg_cost"] == round(125 / 3, 4)
+    # value comes from the read-time quote (50), never the stored mark (40) — lib/portfolio_positions
+    out = get_positions_context(q, ["ABC", "XYZ"], holdings_path=h,
+                                quotes={"ABC": {"price": 50.0, "as_of": datetime.now(timezone.utc).isoformat()}})
+    assert out["ABC"]["market_value"] == 150.0 and out["ABC"]["weight_pct"] == 15.0
+    assert out["ABC"]["avg_cost"] == round(125 / 3, 4) and out["ABC"]["unrealized_pl"] == 25.0
     assert out["ABC"]["realized_pl"] is None and "phase-3" in out["ABC"]["pending"]["realized_pl"]
     assert out["XYZ"]["owned"] is False and out["XYZ"]["last_sell_date"] == "2026-09-01"
 

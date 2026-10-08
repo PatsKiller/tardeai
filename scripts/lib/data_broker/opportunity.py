@@ -617,7 +617,9 @@ def gather(db_query, symbols: list[str]) -> dict[str, dict[str, Any]]:
                              "next_earnings_date": _iso(p.get("next_earnings_date")),
                              # market_cap_usd is dollars; the cache's market_cap_b is millions (mislabelled)
                              "market_cap_usd": _f(e.get("market_cap_usd"))}
-    pos = get_positions_context(db_query, syms) or {}
+    pos = get_positions_context(db_query, syms, quotes={
+        s: {"price": (ctx[s].get("quote") or {}).get("price"), "as_of": (ctx[s].get("quote") or {}).get("as_of"),
+            "source": "market_quotes"} for s in syms if (ctx[s].get("quote") or {}).get("price")}) or {}
     sold_days = int((load_config().get("universe") or {}).get("recently_sold_days") or 180)
     cutoff = (date.today() - timedelta(days=sold_days)).isoformat()
     try:
