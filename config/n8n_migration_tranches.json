@@ -1,0 +1,287 @@
+{
+ "schema": "N8nMigrationTranches@v1",
+ "authority": "READ_ONLY_ADVISORY",
+ "as_of": "2026-10-08",
+ "source": "docs/implementation/n8n-parallel/16-codex-assessment-review-20261008.md §4.2 (71 lanes, N1–N6)",
+ "note": "Program list only. The registry (config/lane_registry.json) stays the scheduler-of-record truth; a lane here without a registry row is reported NO_REGISTRY_ROW by scripts/n8n_migration_board.py until stream D adds it. The doc's N2 'portfolio cadences ×5' overlaps N5's portfolio-backup-cadence; backup is counted once (N5) and portfolio-price-cache fills the fifth N2 slot.",
+ "lane_count": 71,
+ "tranches": {
+  "N1": {
+   "title": "coordination-only",
+   "lanes": [
+    {
+     "lane_id": "n8n-pilot-dispatch"
+    },
+    {
+     "lane_id": "n8n-incident-fanin"
+    },
+    {
+     "lane_id": "n8n-research-intake-consumer"
+    },
+    {
+     "lane_id": "crontab-snapshot-for-health-agent"
+    },
+    {
+     "lane_id": "n8n-lab-watchdog"
+    },
+    {
+     "lane_id": "lane-governance-packet-weekly"
+    },
+    {
+     "lane_id": "maturity-remeasure"
+    },
+    {
+     "lane_id": "n8n-monitor-trade-ai",
+     "match": "docs/implementation/n8n-parallel/workflows/n8n-monitor-trade-ai.json",
+     "note": "existing monitor workflow; lives in n8n, no registry row"
+    },
+    {
+     "lane_id": "n8n-monitor-dof",
+     "match": "docs/implementation/n8n-parallel/workflows/n8n-monitor-dof.json",
+     "note": "existing monitor workflow; lives in n8n, no registry row"
+    }
+   ]
+  },
+  "N2": {
+   "title": "pipeline orchestration",
+   "lanes": [
+    {
+     "lane_id": "premarket-data-pipeline"
+    },
+    {
+     "lane_id": "after-close-pipeline-broker-truth"
+    },
+    {
+     "lane_id": "after-close-pipeline-close-capture"
+    },
+    {
+     "lane_id": "after-close-pipeline-planning"
+    },
+    {
+     "lane_id": "hermes-learning-pipeline-learn"
+    },
+    {
+     "lane_id": "hermes-learning-pipeline-tune"
+    },
+    {
+     "lane_id": "hermes-overnight-pipeline-close"
+    },
+    {
+     "lane_id": "hermes-overnight-pipeline-night"
+    },
+    {
+     "lane_id": "platform-maintenance-nightly"
+    },
+    {
+     "lane_id": "platform-maintenance-weekly"
+    },
+    {
+     "lane_id": "platform-maintenance-monthly"
+    },
+    {
+     "lane_id": "governance-pipeline"
+    },
+    {
+     "lane_id": "portfolio-daily-cadence"
+    },
+    {
+     "lane_id": "portfolio-weekly-cadence"
+    },
+    {
+     "lane_id": "portfolio-monthly-cadence"
+    },
+    {
+     "lane_id": "portfolio-lookthrough-cadence"
+    },
+    {
+     "lane_id": "portfolio-price-cache",
+     "note": "doc §4.2 says 'portfolio cadences ×5'; the fifth portfolio timer besides backup (counted in N5) is the weekly price-cache refresh"
+    }
+   ]
+  },
+  "N3": {
+   "title": "reports and digests",
+   "lanes": [
+    {
+     "lane_id": "llm-spend-report-daily"
+    },
+    {
+     "lane_id": "llm-spend-report-weekly"
+    },
+    {
+     "lane_id": "llm-spend-report-monthly"
+    },
+    {
+     "lane_id": "material-change-digest"
+    },
+    {
+     "lane_id": "alert-daily-digest",
+     "match": "scripts/alert_daily_digest.py"
+    },
+    {
+     "lane_id": "ops-daily-digest",
+     "match": "scripts/ops_daily_digest.py"
+    },
+    {
+     "lane_id": "ops-weekly-learning-report",
+     "match": "scripts/ops_weekly_learning_report.py"
+    },
+    {
+     "lane_id": "system-rollup-snapshot",
+     "match": "scripts/system_rollup_snapshot.py"
+    },
+    {
+     "lane_id": "generate-weekly-docx",
+     "match": "scripts/generate_weekly_docx.py"
+    },
+    {
+     "lane_id": "generate-analyst-daily-digest",
+     "match": "scripts/generate_analyst_daily_digest.py"
+    },
+    {
+     "lane_id": "desk-suggestions-digest",
+     "match": "scripts/desk_suggestions_digest.py"
+    },
+    {
+     "lane_id": "rotation-rebalance-digest",
+     "match": "scripts/rotation_rebalance_digest.py"
+    }
+   ]
+  },
+  "N4": {
+   "title": "audits and monitors",
+   "lanes": [
+    {
+     "lane_id": "expected-services-audit"
+    },
+    {
+     "lane_id": "data-source-health-audit"
+    },
+    {
+     "lane_id": "served-copy-split-audit"
+    },
+    {
+     "lane_id": "data-plausibility-audit"
+    },
+    {
+     "lane_id": "gap-resolution-audit"
+    },
+    {
+     "lane_id": "source-litmus-vs-yahoo"
+    },
+    {
+     "lane_id": "finviz-view-contracts"
+    },
+    {
+     "lane_id": "operator-answer-quality-audit"
+    },
+    {
+     "lane_id": "research-lane-health"
+    },
+    {
+     "lane_id": "agent-runtime-health"
+    },
+    {
+     "lane_id": "job-coverage-monitor",
+     "match": "scripts/job_coverage_monitor.py"
+    },
+    {
+     "lane_id": "llm-retry-monitor",
+     "match": "scripts/llm_retry_monitor.py"
+    },
+    {
+     "lane_id": "catalyst-calibration-monitor",
+     "match": "scripts/catalyst_calibration_monitor.py"
+    },
+    {
+     "lane_id": "source-attribution-monitor",
+     "match": "scripts/source_attribution_monitor.py"
+    },
+    {
+     "lane_id": "watch-directives-monitor",
+     "match": "scripts/watch_directives_monitor.py"
+    },
+    {
+     "lane_id": "hermes-pipeline-health",
+     "match": "scripts/hermes_pipeline_health.py"
+    },
+    {
+     "lane_id": "youtube-cookie-health-check",
+     "match": "scripts/youtube_cookie_health_check.py"
+    },
+    {
+     "lane_id": "finviz-health-check",
+     "match": "scripts/finviz_health_check.py"
+    },
+    {
+     "lane_id": "crawl-v3-dashboard",
+     "match": "scripts/crawl_v3_dashboard.py"
+    },
+    {
+     "lane_id": "alert-missing-conditions",
+     "match": "scripts/alert_missing_conditions.py"
+    }
+   ]
+  },
+  "N5": {
+   "title": "backups and syncs",
+   "lanes": [
+    {
+     "lane_id": "drive-syncs-hourly"
+    },
+    {
+     "lane_id": "backup-generated-docs",
+     "match": "scripts/backup_generated_docs.py"
+    },
+    {
+     "lane_id": "sync-memory-to-drive",
+     "match": "scripts/sync_memory_to_drive.py"
+    },
+    {
+     "lane_id": "commit-hermes-daily",
+     "match": "scripts/commit_hermes_daily.py"
+    },
+    {
+     "lane_id": "n8n-lab-backup"
+    },
+    {
+     "lane_id": "n8n-lab-restore-drill"
+    },
+    {
+     "lane_id": "portfolio-backup-cadence"
+    }
+   ]
+  },
+  "N6": {
+   "title": "other projects",
+   "lanes": [
+    {
+     "lane_id": "dof-run-pipeline",
+     "match": "run_pipeline.py",
+     "note": "DOF six stages; one receipt per stage; after the dof_reader role (operator decision 2)"
+    },
+    {
+     "lane_id": "dof-rescan-tickets",
+     "match": "rescan_tickets.py",
+     "note": "DOF; after the dof_reader role"
+    },
+    {
+     "lane_id": "openclaw-reminder-claude-plan-1",
+     "note": "OpenClaw reminder; pure schedule"
+    },
+    {
+     "lane_id": "openclaw-reminder-claude-plan-2",
+     "note": "OpenClaw reminder; pure schedule"
+    },
+    {
+     "lane_id": "openclaw-reminder-supergrok-expiry",
+     "note": "OpenClaw reminder; pure schedule"
+    },
+    {
+     "lane_id": "openclaw-reminder-sentinelone-earnings",
+     "note": "OpenClaw reminder; pure schedule"
+    }
+   ]
+  }
+ }
+}

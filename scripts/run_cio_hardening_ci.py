@@ -3444,6 +3444,20 @@ GATES = [
             "tests/test_pipeline_manifest_runner_20261007.py",
         ],
     ),
+    (
+        # ANCHOR: N8N_MIGRATION_BOARD — n8n scheduler-of-record program, stream G (2026-10-08):
+        # the `runs` source on the coordination projection (tmp sqlite), the incident fan-in
+        # `runs` source (P2 RUN_FAILED/RUN_TIMEOUT, P1 executor stalled, self-closing on RUN_DONE,
+        # TRADEAI_FANIN_RUNS=0 opt-out) and scripts/n8n_migration_board.py (phases, risk flags,
+        # rollback readiness, --write/--markdown) from fixture receipts. Hermetic; no host path,
+        # no crontab read, no ledger write. Listing them here schedules nothing.
+        "n8n_migration_board_20261008",
+        [
+            "tests/test_n8n_coordination_runs_projection_20261008.py",
+            "tests/test_n8n_incident_fanin_runs_20261008.py",
+            "tests/test_n8n_migration_board_20261008.py",
+        ],
+    ),
 ]
 
 
