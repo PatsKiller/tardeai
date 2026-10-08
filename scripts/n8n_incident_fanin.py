@@ -141,8 +141,13 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
         import subprocess as _sp
         from scripts.lib.lane_registry import discover_systemd, load_registry
         from scripts.lib.lane_registry_drift import findings as _drift_findings
+        if os.environ.get("TRADEAI_FANIN_LANE_REGISTRY", "1") == "0":
+            raise RuntimeError("disabled_by_env")        # hermetic callers (tests) opt out of probing the host
         reg = load_registry(ROOT / "config" / "lane_registry.json")
-        cron_text = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=30).stdout
+        _cron = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=30)
+        if _cron.returncode != 0:
+            raise RuntimeError("no_crontab")             # CI runners and fresh hosts: nothing to compare against
+        cron_text = _cron.stdout
         units = [str(u.get("expression") or "") for u in discover_systemd()]
         drift = _drift_findings(reg, cron_text, units)
         NOTES["lane_registry_source"] = f"ok:{len(drift)}"

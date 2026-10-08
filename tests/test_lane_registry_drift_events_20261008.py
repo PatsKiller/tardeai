@@ -151,3 +151,24 @@ def test_apply_writes_the_drift_receipt_the_incident_references(monkeypatch, tmp
     rec = json.loads(receipt.read_text())
     assert rec["source_notes"]["lane_registry_source"] == "ok:1"
     assert [r["source"] for r in rec["incidents"]] == ["lane_registry"]
+
+
+def test_a_host_without_a_crontab_or_an_env_opt_out_yields_no_findings_and_a_note(monkeypatch, tmp_path):
+    """CI runners have no crontab (`crontab -l` exits 1): the source must note it and add nothing — the
+    first CI run of this PR added a third incident to a fixture that expects two."""
+    import subprocess
+    real_run = subprocess.run
+
+    def no_crontab(cmd, *a, **k):
+        if cmd[:2] == ["crontab", "-l"]:
+            class R:  # noqa: D401
+                stdout = ""
+                returncode = 1
+            return R()
+        return real_run(cmd, *a, **k)
+    monkeypatch.setattr(subprocess, "run", no_crontab)
+    assert [f for f in fanin.collect(tmp_path, NOW) if f["source"] == "lane_registry"] == []
+    assert fanin.NOTES["lane_registry_source"].startswith("unavailable:RuntimeError:no_crontab")
+    monkeypatch.setenv("TRADEAI_FANIN_LANE_REGISTRY", "0")
+    assert [f for f in fanin.collect(tmp_path, NOW) if f["source"] == "lane_registry"] == []
+    assert "disabled_by_env" in fanin.NOTES["lane_registry_source"]
