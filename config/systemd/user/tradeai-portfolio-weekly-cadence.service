@@ -1,0 +1,21 @@
+[Unit]
+# Measured 2026-10-08 (systemctl --user cat / show): the host copy in ~/.config/systemd/user (dated Jun 7, no
+# repo unit text existed) ran the DEV tree -- the "dev tree is what executes" trap:
+#   WorkingDirectory=$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+#   ExecStart=/usr/bin/bash $HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence weekly --apply
+#   (no EnvironmentFile, Nice=0, MemoryMax=infinity)
+# This file re-pins the same script and arguments to the served CURRENT release. It is installed by the
+# operator under a config-write grant (AGENTS.md section 9.3 / 17); merging it installs nothing:
+#   install -m 0600 "$HOME/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-portfolio-weekly-cadence.service" "$HOME/.config/systemd/user/"
+#   systemctl --user daemon-reload && systemctl --user restart tradeai-portfolio-weekly-cadence.timer
+Description=TradeAI portfolio-maintenance WEEKLY report cadence (Phase 208 pilot — advisory-draft review-only, paper-safe)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+# The served tree has no .venv (tests/test_units_execute_served_tree_20261008.py). PY names the shared venv
+# for every step that honours it (the scripts/pipelines convention); the launchers this controller calls
+# still resolve their own PROJECT_ROOT, which is recorded as a separate finding in the PR that added this file.
+Environment=PY=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+EnvironmentFile=-%t/tradeai/env
+ExecStart=/usr/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence weekly --apply
