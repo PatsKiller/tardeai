@@ -520,6 +520,59 @@ def _project_hub(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+_PROJ_CACHE: dict[str, Any] = {"mtime": None, "items": {}}
+
+
+def _opportunity_items() -> dict[str, Any]:
+    """CIO opportunity projection (entry zone / targets / conviction), cached by mtime."""
+    try:
+        try:
+            from scripts.lib.cio_opportunity_store import PROJECTION_PATH
+        except ImportError:  # pragma: no cover
+            from lib.cio_opportunity_store import PROJECTION_PATH  # type: ignore
+        m = PROJECTION_PATH.stat().st_mtime
+        if _PROJ_CACHE["mtime"] != m:
+            _PROJ_CACHE["items"] = (json.loads(PROJECTION_PATH.read_text(encoding="utf-8")).get("items") or {})
+            _PROJ_CACHE["mtime"] = m
+    except Exception:
+        return {}
+    return _PROJ_CACHE["items"]
+
+
+def attach_market(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Operator 2026-10-08 ("why no prices"): every item that names a ticker carries the data-broker quote read
+    NOW (AGENTS §7A — price is the broker quote at read time) and, where the CIO has them, the entry zone and
+    target. Read-only; an unavailable quote stays absent (never a stale number presented as current)."""
+    syms = sorted({(e.get("symbols") or [None])[0] for e in events if (e.get("symbols") or [None])[0]})
+    if not syms:
+        return events
+    try:
+        from db_adapter import _execute
+        from lib.data_broker.market_quote import get_price_batch
+
+        quotes = get_price_batch(lambda sql, params=None, fetch="all": _execute(sql, params, fetch=fetch),
+                                 syms, skip_live=True) or {}
+    except Exception:
+        quotes = {}
+    opp = _opportunity_items()
+    for e in events:
+        sym = (e.get("symbols") or [None])[0]
+        if not sym:
+            continue
+        q = quotes.get(sym) or {}
+        if q.get("price") is not None:
+            e["market"] = {"symbol": sym, "price": q.get("price"), "day_change_pct": q.get("chg_pct"),
+                           "source": q.get("source"), "as_of": q.get("as_of") or q.get("fetched_at")}
+        a = opp.get(sym) or {}
+        rr = a.get("risk_reward") or {}
+        if rr.get("entry_zone") or rr.get("primary_target") or rr.get("targets"):
+            e["levels"] = {"entry_zone": rr.get("entry_zone"), "entry_ref": rr.get("entry_ref"),
+                           "invalidation_level": rr.get("invalidation_level"),
+                           "target": rr.get("primary_target") or ((rr.get("targets") or [{}])[0]).get("px"),
+                           "rr": rr.get("rr"), "conviction": a.get("conviction"), "rank": a.get("rank")}
+    return events
+
+
 def hub_events(filters: dict[str, Any]) -> dict[str, Any] | None:
     """Hub list + total + facets, or None when the DB / hub columns are unavailable."""
     conn = _events_db_conn()
@@ -563,7 +616,7 @@ def hub_events(filters: dict[str, Any]) -> dict[str, Any] | None:
         cats = _cats()
     except Exception:
         cats = []
-    return {"ok": True, "events": [_project_hub(r) for r in rows], "total": total, "limit": lim, "offset": off,
+    return {"ok": True, "events": attach_market([_project_hub(r) for r in rows]), "total": total, "limit": lim, "offset": off,
             "source": "db", "hub": True, "facets": facets, "categories": cats,
             "priorities": ["critical", "high", "medium", "low"], "statuses": list(HUB_STATUSES),
             "reentry_statuses": list(REENTRY_STATUSES), "sorts": list(HUB_SORTS),
@@ -602,7 +655,7 @@ def board(limit: int = 6) -> dict[str, Any] | None:
                 cols = [d[0] for d in cur.description]
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
                 cur.execute(f"SELECT count(*) FROM communication_events WHERE {_LIVE} AND {cond}")
-                panels[key] = {"label": label, "count": cur.fetchone()[0], "items": [_project_hub(r) for r in rows]}
+                panels[key] = {"label": label, "count": cur.fetchone()[0], "items": attach_market([_project_hub(r) for r in rows])}
             cur.execute(f"SELECT count(*), count(*) FILTER (WHERE actionable) FROM communication_events WHERE {_LIVE}")
             live, actionable = cur.fetchone()
         conn.rollback()

@@ -165,3 +165,25 @@ def test_command_center_decision_layout_is_wired():
     comms = (src / "pages/CommunicationsHub.tsx").read_text()
     assert "<BoardCards" in comms and "<FeedCard" in comms and "scores P·C·R·Rw·T" not in comms
     assert "BigNumberCard" in (src / "components/watch/WatchDecisionParts.tsx").read_text()
+
+
+def test_feed_items_carry_the_live_quote_and_cio_levels(monkeypatch, tmp_path):
+    """Operator 2026-10-08 ("why no prices"): every ticker item shows the read-time quote + CIO entry/target."""
+    import json as _json
+    import communications_portal as cp
+    from lib.data_broker import market_quote
+    import scripts.lib.cio_opportunity_store as cs
+
+    monkeypatch.setattr(market_quote, "get_price_batch", lambda q, syms, skip_live=True:
+                        {"SWMR": {"price": 13.45, "chg_pct": -4.2, "as_of": "t", "source": "data_broker.market_quotes:x"}})
+    proj = tmp_path / "p.json"
+    proj.write_text(_json.dumps({"items": {"SWMR": {"conviction": 57, "rank": 852, "risk_reward": {
+        "entry_zone": [13.9, 14.5], "entry_ref": 14.1, "primary_target": 22.0, "rr": 6.1}}}}))
+    monkeypatch.setattr(cs, "PROJECTION_PATH", proj)
+    cp._PROJ_CACHE.update(mtime=None, items={})
+    out = cp.attach_market([{"symbols": ["SWMR"]}, {"symbols": ["NOQ"]}, {"symbols": []}])
+    assert out[0]["market"]["price"] == 13.45 and out[0]["levels"]["entry_zone"] == [13.9, 14.5]
+    assert out[0]["levels"]["target"] == 22.0
+    assert "market" not in out[1] and "market" not in out[2]          # unavailable stays absent, never invented
+    ui = (ROOT / "apps/command-center-v3/src/components/decision/FeedCards.tsx").read_text()
+    assert "<PriceTag m={e.market} />" in ui and "<LevelsLine l={e.levels} />" in ui

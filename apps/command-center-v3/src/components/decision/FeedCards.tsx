@@ -13,6 +13,34 @@ export function alertType(headline?: string | null, symbols: string[] = []): str
   return h.replace(/\s+/g, ' ').trim().slice(0, 48).toUpperCase() || '—'
 }
 
+const usd = (v: any) => (v == null || !Number.isFinite(Number(v)) ? '—' : `$${Number(v).toFixed(2)}`)
+
+/** Live quote next to the ticker: "$14.04 ▲2.1%" (data-broker quote read at request time). */
+export function PriceTag({ m }: { m?: any }) {
+  if (!m || m.price == null) return null
+  const ch = m.day_change_pct
+  const up = Number(ch) >= 0
+  return (
+    <span title={m.as_of ? `${m.source || 'quote'} · ${new Date(m.as_of).toLocaleTimeString()}` : m.source}
+      style={{ ...numStyle, fontSize: 14, fontWeight: 800, color: 'var(--text0)' }}>
+      {usd(m.price)}
+      {ch != null && <span style={{ fontSize: 12, marginLeft: 4, color: up ? 'var(--success-color)' : 'var(--danger-color)' }}>{up ? '▲' : '▼'}{Math.abs(Number(ch)).toFixed(1)}%</span>}
+    </span>
+  )
+}
+
+/** "Entry $13.90–$14.50 · Target $22.00 · R:R 6.5" from the CIO opportunity levels, when the CIO has them. */
+export function LevelsLine({ l }: { l?: any }) {
+  if (!l) return null
+  const parts: string[] = []
+  if (l.entry_zone && l.entry_zone[0] != null) parts.push(`Entry ${usd(l.entry_zone[0])}–${usd(l.entry_zone[1])}`)
+  else if (l.entry_ref != null) parts.push(`Entry ${usd(l.entry_ref)}`)
+  if (l.target != null) parts.push(`Target ${usd(l.target)}`)
+  if (l.rr != null) parts.push(`R:R ${Number(l.rr).toFixed(1)}`)
+  if (!parts.length) return null
+  return <div style={{ ...numStyle, fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{parts.join(' · ')}</div>
+}
+
 export function FeedCard({ e, selected, picked, onPick, onOpen }: {
   e: any; selected: boolean; picked: boolean; onPick: () => void; onOpen: () => void
 }) {
@@ -32,11 +60,13 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
           {syms.length > 0
             ? <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--text0)' }}><SymbolLink symbol={syms[0]} />{syms.length > 1 ? <span style={{ fontSize: 11, color: 'var(--text3)' }}> +{syms.length - 1}</span> : null}</span>
             : e.direction === 'INBOUND' ? <span style={{ fontSize: 12, fontWeight: 900, color: s.color }}>FROM YOU</span> : null}
+          {syms.length > 0 && <PriceTag m={e.market} />}
           <span style={{ fontSize: 13, fontWeight: 800, color: s.color, letterSpacing: '.03em' }}>{alertType(e.headline || e.short_summary, syms)}</span>
         </div>
         {e.action_hint && e.actionable
           ? <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginTop: 2 }}>▶ {e.action_hint}</div>
           : <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{labelOf(e.category)} · informational</div>}
+        <LevelsLine l={e.levels} />
       </div>
       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
         <div style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: 'var(--text0)', lineHeight: 1 }} title="priority score">{e.priority_score != null ? Math.round(e.priority_score) : '—'}</div>
@@ -71,7 +101,11 @@ export function BoardCards({ board, onPick }: { board: any; onPick: (preset: Rec
           const look = PANEL_LOOK[k] || { icon: '•', label: p.label, family: 'neutral' as Family }
           return <BigNumberCard key={k} testId={`board-${k}`} icon={look.icon} label={look.label} value={p.count ?? 0}
             family={look.family} onClick={() => onPick(PANEL_PRESET[k])}
-            sub={(p.items || []).slice(0, 3).map((e: any) => (e.symbols || [])[0]).filter(Boolean).join(' · ') || undefined} />
+            sub={(p.items || []).slice(0, 3).map((e: any) => {
+              const sym = (e.symbols || [])[0]
+              if (!sym) return null
+              return e.market?.price != null ? `${sym} ${usd(e.market.price)}` : sym
+            }).filter(Boolean).join(' · ') || undefined} />
         })}
       </div>
     </div>
