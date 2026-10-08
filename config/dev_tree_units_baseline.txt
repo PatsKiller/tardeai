@@ -17,7 +17,6 @@ tradeai-cio-whatsapp.service
 tradeai-eod-consolidated-close.service
 tradeai-finviz-view-contracts.service
 tradeai-holdings-agent-enqueue.service
-tradeai-operator-answer-quality.service
 tradeai-portfolio-report-ms.service
 tradeai-sm-render.service
 tradeai-source-litmus.service

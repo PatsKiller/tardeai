@@ -3493,6 +3493,18 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: CADENCE_TIMER_UNITS — 2026-10-08: the five timer-driven pipeline services (governance,
+        # portfolio daily/weekly/monthly/lookthrough) executed the DEV tree from host-only unit copies with no
+        # repo text; tradeai-operator-answer-quality.service was the sixth --alert monitor still dev-tree.
+        # Pins the 11 repo unit files to the served CURRENT tree (ExecStart + WorkingDirectory, measured
+        # OnCalendar preserved, no live-host literal) and the governance controller's PY fallback (exit 78).
+        # Hermetic; reads repo files only. Listing them here installs nothing.
+        "cadence_timer_units_20261008",
+        [
+            "tests/test_cadence_timer_units_20261008.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MIGRATION_BOARD — n8n scheduler-of-record program, stream G (2026-10-08):
         # the `runs` source on the coordination projection (tmp sqlite), the incident fan-in
         # `runs` source (P2 RUN_FAILED/RUN_TIMEOUT, P1 executor stalled, self-closing on RUN_DONE,

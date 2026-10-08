@@ -1,0 +1,14 @@
+[Unit]
+# Measured 2026-10-08 (systemctl --user cat / show): OnCalendar=Mon-Fri 07:40 and Sun 18:00, Persistent=true,
+# no RandomizedDelaySec, enabled, next elapse Fri 2026-10-09 07:40 EDT. The schedule is preserved exactly; only
+# the service it starts moves from the dev tree to the served CURRENT tree. Installed by the operator under a
+# config-write grant (install -m 0600 copy, daemon-reload, restart of this timer); this file installs nothing.
+Description=TradeAI Governance Pipeline schedule (preserves legacy cadence: weekday morning + Sunday eve)
+
+[Timer]
+OnCalendar=Mon-Fri 07:40
+OnCalendar=Sun 18:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
