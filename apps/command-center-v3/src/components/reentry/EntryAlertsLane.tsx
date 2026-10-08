@@ -2,6 +2,7 @@
  *  ENTRY_NEAR pages, on the Re-Entry page where the operator looks for them. Reads
  *  GET /api/v2/buy-ready/packets (BuyReadyPacketIndex@v1); every number and tone comes from
  *  the server (AGENTS §13). Advisory only: no order controls. */
+import { SymbolLink } from '../opportunity/OpportunityContext'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, SHADOW, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../../lib/designTokens'
 import { Chip, ChipRow, Collapsible, Metric, MetricRow, ShowMore } from '../primitives'
@@ -64,7 +65,7 @@ function AlertCard({ r }: { r: Row }) {
   return (
     <article data-testid="entry-alert-card" style={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderLeft: `3px solid ${t.color}`, borderRadius: RADIUS.md, boxShadow: SHADOW[1], padding: '10px 14px', minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <a href={`/v3/watch/intelligence/${encodeURIComponent(r.symbol)}`} style={{ fontSize: TYPE.lg, fontWeight: 900, color: TOKENS.text[0], textDecoration: 'none' }}>{owned ? `${r.symbol} already owned` : r.symbol}</a>
+        <span style={{ fontSize: TYPE.lg, fontWeight: 900, color: TOKENS.text[0] }}><SymbolLink symbol={r.symbol}>{owned ? `${r.symbol} already owned` : r.symbol}</SymbolLink></span>
         <ChipRow>
           <Chip tone={tone} guideKey="entry.state">{String(r.state || 'unknown').replace(/_/g, ' ')}</Chip>
           <Chip tone={ZONE_TONE[r.zone.position] || 'neutral'} guideKey="entry.zone">{zoneLabel}</Chip>

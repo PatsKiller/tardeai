@@ -5,6 +5,7 @@ import WatchpoolHub from './WatchpoolHub'
 import SectorsHub from './SectorsHub'
 import PullbackMacdHub from './PullbackMacdHub'
 import WatchIntelligenceUnified from './WatchIntelligenceUnified'
+import OpportunitiesHub from './OpportunitiesHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, TYPE, RAIL } from '../lib/watchTokens'
 import { ChipLegend } from '../components/TerminalChip'
@@ -13,9 +14,10 @@ import { useApi } from '../hooks/useApi'
 interface Props { onDrill: (ctx: DrillContext) => void }
 
 /** Secondary research lenses only — Watchlist/Intelligence/Screener are NOT tabs. */
-const TABS = ['Intelligence', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
+const TABS = ['Intelligence', 'Opportunities', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
 const TAB_SLUG: Record<typeof TABS[number], string> = {
   Intelligence: 'intelligence',
+  Opportunities: 'opportunities',
   Watchpool: 'watchpool',
   Sectors: 'sectors',
   'Pullback/MACD': 'pullback-macd',
@@ -63,7 +65,9 @@ export default function WatchHub({ onDrill }: Props) {
           <div style={hubSubtitle(terminalUi)}>
             {tab === 'Intelligence'
               ? 'Primary workspace · Screener filters integrated · legacy Watchlist hidden'
-              : 'Secondary research lens'}
+              : tab === 'Opportunities'
+                ? 'Ranked by conviction · risk/reward · Street upside — curated in CIO memory'
+                : 'Secondary research lens'}
           </div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -89,6 +93,7 @@ export default function WatchHub({ onDrill }: Props) {
       </div>
       <WatchRegimeStrip />
       {tab === 'Intelligence' && <WatchIntelligenceUnified />}
+      {tab === 'Opportunities' && <OpportunitiesHub />}
       {tab === 'Watchpool' && <WatchpoolHub onDrill={onDrill} embedded />}
       {tab === 'Sectors' && <SectorsHub onDrill={onDrill} embedded />}
       {tab === 'Pullback/MACD' && <PullbackMacdHub onDrill={onDrill} embedded />}

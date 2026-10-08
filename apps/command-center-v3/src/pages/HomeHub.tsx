@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { TopOpportunitiesWidget } from './OpportunitiesHub'
 import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
 import { useApi } from '../hooks/useApi'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -794,6 +795,7 @@ export default function HomeHub({ onDrill }: Props) {
           {/* AI Intelligence Briefing (full width) */}
           {cmd.llm_intelligence && <AiIntelligenceBriefing llm={cmd.llm_intelligence} />}
           {/* AEC Executive Brief — hourly, Command Center only (2026-10-07) */}
+          <TopOpportunitiesWidget />
           {cmd.executive_brief && <ExecutiveBriefCard brief={cmd.executive_brief} />}
       </>
     </div>
