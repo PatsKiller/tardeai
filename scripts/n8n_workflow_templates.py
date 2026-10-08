@@ -727,7 +727,14 @@ def build_workflow(lane: dict, mode: str, relay_url: str = RELAY_URL_PLACEHOLDER
     assert mode in ("dry_run", "live"), mode
     lane_id = lane["lane_id"]
     name = f"{lane_id}-shadow" if mode == "dry_run" else lane_id
-    body = {"lane_id": lane_id, "mode": mode, "requested_by": name}
+    # The relay derives the idempotent run id from workflow_id + execution_id (scripts/n8n_run_relay.py
+    # _derived_run_id) and refuses a body without them (relay_bad_run_id, measured 2026-10-08 17:00Z on the
+    # first live shadow fire). n8n fills both at execution time, so the body is an expression, not a literal.
+    json_body = (
+        "={{ JSON.stringify({ lane_id: " + json.dumps(lane_id) + ", mode: " + json.dumps(mode)
+        + ", requested_by: " + json.dumps(name)
+        + ", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}"
+    )
     n_sched, n_set, n_http, n_code = "Schedule", "Relay constants", "POST relay /run", "Assert REQUESTED"
     nodes = [
         {
@@ -776,7 +783,7 @@ def build_workflow(lane: dict, mode: str, relay_url: str = RELAY_URL_PLACEHOLDER
                 "genericAuthType": "httpHeaderAuth",
                 "sendBody": True,
                 "specifyBody": "json",
-                "jsonBody": json.dumps(body, sort_keys=True),
+                "jsonBody": json_body,
                 "options": {
                     "timeout": HTTP_TIMEOUT_MS,
                     # neverError: the Code node is the single assertion point, so a 4xx/5xx

@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"catalyst-calibration-monitor\", \"mode\": \"live\", \"requested_by\": \"catalyst-calibration-monitor\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"catalyst-calibration-monitor\", mode: \"live\", requested_by: \"catalyst-calibration-monitor\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

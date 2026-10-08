@@ -98,9 +98,13 @@ def test_http_node_follows_the_relay_contract(tmp_path):
         assert http["credentials"]["httpHeaderAuth"]["name"] == "tradeai-run-relay"
         assert p["options"]["timeout"] == 10_000
         assert p["options"]["response"]["response"]["fullResponse"] is True
-        body = json.loads(p["jsonBody"])
+        jb = p["jsonBody"]
         mode = "dry_run" if wf["name"].endswith("-shadow") else "live"
-        assert body == {"lane_id": wf["meta"]["lane_id"], "mode": mode, "requested_by": wf["name"]}
+        # an n8n expression: the relay needs workflow_id + execution_id to mint the idempotent run id
+        assert jb.startswith("={{ JSON.stringify({") and jb.endswith("}) }}")
+        assert f"lane_id: {json.dumps(wf['meta']['lane_id'])}" in jb and f"mode: {json.dumps(mode)}" in jb
+        assert f"requested_by: {json.dumps(wf['name'])}" in jb
+        assert "workflow_id: String($workflow.id)" in jb and "execution_id: String($execution.id)" in jb
         # no IP anywhere in the workflow; the base URL is the Set-node placeholder
         text = json.dumps(wf)
         assert "172." not in text and "127.0.0.1" not in text

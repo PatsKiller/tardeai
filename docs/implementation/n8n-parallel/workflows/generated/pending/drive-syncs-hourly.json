@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"drive-syncs-hourly\", \"mode\": \"live\", \"requested_by\": \"drive-syncs-hourly\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"drive-syncs-hourly\", mode: \"live\", requested_by: \"drive-syncs-hourly\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

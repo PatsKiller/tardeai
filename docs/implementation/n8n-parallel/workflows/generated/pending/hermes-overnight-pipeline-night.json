@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"hermes-overnight-pipeline-night\", \"mode\": \"live\", \"requested_by\": \"hermes-overnight-pipeline-night\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"hermes-overnight-pipeline-night\", mode: \"live\", requested_by: \"hermes-overnight-pipeline-night\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

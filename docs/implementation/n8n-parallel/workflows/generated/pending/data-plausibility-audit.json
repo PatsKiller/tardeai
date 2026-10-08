@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"data-plausibility-audit\", \"mode\": \"live\", \"requested_by\": \"data-plausibility-audit\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"data-plausibility-audit\", mode: \"live\", requested_by: \"data-plausibility-audit\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"system-rollup-snapshot\", \"mode\": \"live\", \"requested_by\": \"system-rollup-snapshot\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"system-rollup-snapshot\", mode: \"live\", requested_by: \"system-rollup-snapshot\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

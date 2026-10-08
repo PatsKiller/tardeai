@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"ops-daily-digest\", \"mode\": \"live\", \"requested_by\": \"ops-daily-digest\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"ops-daily-digest\", mode: \"live\", requested_by: \"ops-daily-digest\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"n8n-lab-restore-drill\", \"mode\": \"dry_run\", \"requested_by\": \"n8n-lab-restore-drill-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"n8n-lab-restore-drill\", mode: \"dry_run\", requested_by: \"n8n-lab-restore-drill-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

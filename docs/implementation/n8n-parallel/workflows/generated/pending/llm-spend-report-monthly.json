@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"llm-spend-report-monthly\", \"mode\": \"live\", \"requested_by\": \"llm-spend-report-monthly\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"llm-spend-report-monthly\", mode: \"live\", requested_by: \"llm-spend-report-monthly\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

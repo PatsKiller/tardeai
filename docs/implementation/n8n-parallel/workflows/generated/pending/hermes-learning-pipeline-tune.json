@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"hermes-learning-pipeline-tune\", \"mode\": \"live\", \"requested_by\": \"hermes-learning-pipeline-tune\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"hermes-learning-pipeline-tune\", mode: \"live\", requested_by: \"hermes-learning-pipeline-tune\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

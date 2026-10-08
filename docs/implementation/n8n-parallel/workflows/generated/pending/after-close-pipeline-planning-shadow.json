@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"after-close-pipeline-planning\", \"mode\": \"dry_run\", \"requested_by\": \"after-close-pipeline-planning-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"after-close-pipeline-planning\", mode: \"dry_run\", requested_by: \"after-close-pipeline-planning-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

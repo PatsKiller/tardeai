@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"n8n-lab-watchdog\", \"mode\": \"live\", \"requested_by\": \"n8n-lab-watchdog\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"n8n-lab-watchdog\", mode: \"live\", requested_by: \"n8n-lab-watchdog\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {

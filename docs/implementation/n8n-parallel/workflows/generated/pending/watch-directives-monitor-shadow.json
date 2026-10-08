@@ -103,7 +103,7 @@
       "parameters": {
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "jsonBody": "{\"lane_id\": \"watch-directives-monitor\", \"mode\": \"dry_run\", \"requested_by\": \"watch-directives-monitor-shadow\"}",
+        "jsonBody": "={{ JSON.stringify({ lane_id: \"watch-directives-monitor\", mode: \"dry_run\", requested_by: \"watch-directives-monitor-shadow\", workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}",
         "method": "POST",
         "options": {
           "response": {
