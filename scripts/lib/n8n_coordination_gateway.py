@@ -147,6 +147,7 @@ REFUSAL_REASONS = frozenset({
     # 2026-10-08 run route: lane not in config/n8n_run_allowlist.json; mode outside {dry_run, live}; no run-capable
     # key or no durable run store on this gateway; a caller_id that maps to no key.
     "run_lane_not_allowlisted", "run_bad_mode", "run_scope_unavailable", "unknown_caller",
+    "process_not_registered",   # 2026-10-08 model_job: job.process_id outside n8n_model_job.PROCESS_TASK_TYPE
 })
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
@@ -337,6 +338,11 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer) -> dict[
 #: Injected by tests; production uses n8n_model_job.bridge_governed_call (loopback HTTP to the governed bridge).
 MODEL_JOB_GOVERNED_CALL = None
 MODEL_JOB_FIELDS = frozenset({"process_id", "artifact_ref", "correlation_id", "deadline", "output_schema_id"})
+#: 2026-10-08 (n8n carve-out groundwork): a caller may NAME a prompt template and a routing policy; both are
+#: short identifiers resolved server-side (n8n_model_job renders the template; the bridge receives the policy
+#: name as a header and ignores it today). Raw prompt text is still not a job field.
+MODEL_JOB_OPTIONAL_FIELDS = frozenset({"template_id", "routing_policy"})
+MODEL_JOB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
@@ -350,8 +356,11 @@ def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
     if receipt["state"] != "STARTED":
         return _refused(None, f"illegal_transition:{receipt['state']}->ARTIFACT_WRITTEN", peer_ignored=peer)
     job = request.get("job")
-    if not isinstance(job, Mapping) or set(job) - MODEL_JOB_FIELDS or not all(k in job for k in MODEL_JOB_FIELDS):
+    if not isinstance(job, Mapping) or set(job) - (MODEL_JOB_FIELDS | MODEL_JOB_OPTIONAL_FIELDS) or not all(k in job for k in MODEL_JOB_FIELDS):
         return _refused(None, "malformed_event", peer_ignored=peer)
+    for opt in MODEL_JOB_OPTIONAL_FIELDS:
+        if opt in job and not (isinstance(job[opt], str) and MODEL_JOB_ID_RE.match(job[opt])):
+            return _refused(None, "malformed_event", peer_ignored=peer)
     try:
         _reject_secret_material(job)
     except GatewayError as exc:
@@ -362,6 +371,10 @@ def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
         from scripts.lib import n8n_model_job as MJ  # type: ignore
     except ImportError:
         import n8n_model_job as MJ  # type: ignore
+    # 2026-10-08: the task type is derived server-side from job.process_id (PROCESS_TASK_TYPE); a process outside
+    # the map is refused here, before any artifact read or call, and the event stays STARTED for a corrected job.
+    if str(job.get("process_id") or "") not in MJ.PROCESS_TASK_TYPE:
+        return _refused(None, "process_not_registered", peer_ignored=peer)
     call = MODEL_JOB_GOVERNED_CALL or MJ.bridge_governed_call
     result = MJ.run_model_job(job, governed_call=call, now=now if isinstance(now, datetime) else datetime.fromtimestamp(_unix(now), timezone.utc))
     updated = dict(receipt)
@@ -369,7 +382,8 @@ def _model_job(request, claim, store, peer, *, now) -> dict[str, Any]:
     updated["outbound"] = "blocked"
     updated["mutation"] = "blocked"
     updated["durable"] = bool(getattr(store, "durable", False))
-    updated["model_job"] = {k: result.get(k) for k in ("state", "reason", "detail", "cost", "started_at", "ended_at", "output_schema_id")}
+    updated["model_job"] = {k: result.get(k) for k in ("state", "reason", "detail", "cost", "started_at", "ended_at", "output_schema_id",
+                                                        "task_type", "template_id", "routing_policy")}
     if result.get("state") == "ARTIFACT_WRITTEN":
         try:
             out_path = MJ.write_receipt(result)

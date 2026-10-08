@@ -191,6 +191,10 @@
     {
       "unit": "tradeai-n8n-run-executor.service",
       "_why": "2026-10-08 tranche N1 (plan streamed-humming-wolf): drains the coordination ledger runs table. Declared before the operator's config-write grant installs it, so MISSING until then is the expected audit trail, not an incident to clear by deleting this line."
+    },
+    {
+      "unit": "tradeai-n8n-run-relay.service",
+      "_why": "2026-10-08 tranche N1 (AGENTS.md §23.3): the one host listener the n8n lab may reach (172.19.0.1:18092); declared before the operator's config-write grant installs it, so MISSING until then is the expected audit trail, not an incident to clear by deleting this line."
     }
   ],
   "flags": [

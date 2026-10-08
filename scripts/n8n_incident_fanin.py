@@ -161,6 +161,11 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
     # 3d. notification outbox (Phase 2 PR-A, 2026-10-08): withdrawn sends, sends stuck pending > 30 min, suppression
     # spike. Read through the projection with a 3 s statement timeout; no DB -> no findings, receipt says so.
     out.extend(_outbox_findings(now))
+    # 3e. n8n run ledger (scheduler-of-record program, stream G, 2026-10-08): a RUN_FAILED / RUN_TIMEOUT on a lane
+    # whose scheduler of record is n8n is a P2 (plan rollback trigger); an executor receipt older than 2x the
+    # shortest n8n cadence is a P1 (executor stalled). Closes itself on the next RUN_DONE because the finding
+    # disappears. Env opt-out keeps CI fixtures without a ledger stable (same reason as lane_registry's no_crontab).
+    out.extend(_runs_findings(root, now))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -175,6 +180,59 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
 
 
 OUTBOX_SOURCE_STATUS: dict[str, Any] = {"status": "not_run"}
+RUNS_STALE_FACTOR = 2.0
+RUNS_FAILURE_STATES = ("RUN_FAILED", "RUN_TIMEOUT")
+
+
+def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """Latest run per n8n-scheduled lane from the ledger `runs` table (read-only projection) + executor liveness."""
+    NOTES.pop("runs_source", None)
+    try:
+        if os.environ.get("TRADEAI_FANIN_RUNS", "1") == "0":
+            raise RuntimeError("disabled_by_env")
+        from scripts.lib.lane_registry import load_registry
+        from scripts.lib.n8n_coordination_projection import RUNS_RECEIPT_DIR, project_runs
+        reg = load_registry(ROOT / "config" / "lane_registry.json")
+        n8n_lanes = {str(r.get("lane_id")): r for r in reg.get("lanes") or []
+                     if (r.get("scheduler") or {}).get("kind") == "n8n" and r.get("state") == "ACTIVE"}
+        if not n8n_lanes:
+            NOTES["runs_source"] = "ok:no_n8n_lanes"
+            return []
+        proj = project_runs(limit=500, now=now)
+        if proj.get("status") != "OK":
+            raise RuntimeError(str(proj.get("status")))
+        latest: dict[str, dict[str, Any]] = {}
+        for it in proj.get("items") or []:          # newest first
+            lane = str(it.get("lane_id") or "")
+            if lane in n8n_lanes and lane not in latest:
+                latest[lane] = it
+        found: list[dict[str, Any]] = []
+        for lane, it in sorted(latest.items()):
+            st = str(it.get("state") or "")
+            if st in RUNS_FAILURE_STATES:
+                found.append({"source": "runs", "item": f"{lane}:{st}", "severity": "P2",
+                              "detail": f"run {it.get('run_id')} {it.get('mode')} exit={it.get('exit_code')} duration_s={it.get('duration_s')}"[:160],
+                              "artifact_rel": str(it.get("receipt_ref") or f"{RUNS_RECEIPT_DIR}/{it.get('run_id')}.json"),
+                              "store": "data/runtime", "detected_at": it.get("finished_at") or it.get("requested_at")})
+        exec_rel = f"{RUNS_RECEIPT_DIR}/n8n_run_executor_last.json"
+        exec_doc = _load(root / exec_rel)
+        cadences = [float(r["expected_cadence_hours"]) for r in n8n_lanes.values() if r.get("expected_cadence_hours")]
+        if exec_doc and cadences:
+            ts = exec_doc.get("finished_at") or exec_doc.get("as_of") or exec_doc.get("at")
+            try:
+                age_h = (now - _stable(ts, now)).total_seconds() / 3600
+            except Exception:  # noqa: BLE001
+                age_h = None
+            if age_h is not None and age_h > RUNS_STALE_FACTOR * min(cadences):
+                found.append({"source": "runs", "item": "executor:stalled", "severity": "P1",
+                              "detail": f"executor_last age_h={age_h:.1f} > {RUNS_STALE_FACTOR}x shortest n8n cadence {min(cadences)}h",
+                              "artifact_rel": exec_rel, "store": "data/runtime",
+                              "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()})
+        NOTES["runs_source"] = f"ok:{len(found)}:n8n_lanes={len(n8n_lanes)}:executor_receipt={'yes' if exec_doc else 'no'}"
+        return found
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        NOTES["runs_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
+        return []
 
 
 def _outbox_findings(now: datetime) -> list[dict[str, Any]]:
