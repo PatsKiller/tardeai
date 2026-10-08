@@ -173,10 +173,11 @@ def _burst(port: int, bodies: list[bytes]) -> list[tuple[int | None, dict | None
         return list(pool.map(fire, bodies))
 
 
-def test_sixteen_concurrent_run_requests_all_land_as_requested_rows(gateway):
+@pytest.mark.parametrize('burst_size', [1, 5, 16, 32, 64])
+def test_expected_concurrent_run_bursts_all_land_as_requested_rows(gateway, burst_size):
     httpd, tracebacks = gateway
     port = httpd.server_address[1]
-    bodies = [_run_body(f"nonce-run-{i:04d}", f"run-20261008-burst-{i:04d}") for i in range(BURST)]
+    bodies = [_run_body(f"nonce-run-{i:04d}", f"run-20261008-burst-{i:04d}") for i in range(burst_size)]
     wall = time.perf_counter()
     results = _burst(port, bodies)
     wall = time.perf_counter() - wall
@@ -187,17 +188,25 @@ def test_sixteen_concurrent_run_requests_all_land_as_requested_rows(gateway):
         status == 200 and out["state"] == "REQUESTED" and out["duplicate"] is False for status, out, _ in results
     )
     rows = httpd.coordination_ledger._conn.execute("SELECT state, COUNT(*) AS n FROM runs GROUP BY state").fetchall()
-    assert [(r["state"], r["n"]) for r in rows] == [("REQUESTED", BURST)]
+    assert [(r["state"], r["n"]) for r in rows] == [("REQUESTED", burst_size)]
     latencies = [lat for _, _, lat in results]
     MEASURED["run_burst_client_mean_s"] = sum(latencies) / len(latencies)
     MEASURED["run_burst_client_max_s"] = max(latencies)
     MEASURED["run_burst_wall_s"] = wall
-    MEASURED["run_burst_wall_per_request_ms"] = wall / BURST * 1e3  # the serialized cost of one request
+    MEASURED["run_burst_wall_per_request_ms"] = wall / burst_size * 1e3  # the serialized cost of one request
     handler = httpd.server_side_s
     MEASURED["run_burst_handler_mean_ms"] = sum(handler) / len(handler) * 1e3
     MEASURED["run_burst_handler_max_ms"] = max(handler) * 1e3
-    assert len(handler) == BURST
+    assert len(handler) == burst_size
     assert MEASURED["run_burst_client_mean_s"] < MAX_MEAN_LATENCY_S
+    ordered = sorted(latencies)
+    metrics = {'evidence_class': 'TEST_ONLY', 'burst': burst_size,
+               'request_p50_s': ordered[len(ordered)//2],
+               'request_p95_s': ordered[max(0, int(len(ordered)*.95+.999)-1)],
+               'request_max_s': max(ordered), 'handler_max_s': max(handler),
+               'dropped_requests': len(dropped), 'handler_errors': len(tracebacks),
+               'queue_delay_s': None, 'queue_delay_reason': 'executor not run in gateway-only fixture'}
+    print('BURST_METRICS', json.dumps(metrics, sort_keys=True))
 
 
 def test_sixteen_concurrent_event_accepts_with_distinct_nonces_all_commit(gateway):

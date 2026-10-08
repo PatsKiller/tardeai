@@ -150,6 +150,9 @@ def test_office_truth_is_not_replaceable_by_memory(cio):
         "context_id": "ctx-price", "price": 999.0, "holdings": {"AAA": 10}, "cash": 1,
         "summary": "remembered price", "created_at": "2026-10-01T10:00:00Z",
     }])
+    # Metadata clocks may contain the digits of a withheld price.
+    import os
+    os.utime(cio / "memory_contexts.jsonl", ns=(1799999999999999999, 1799999999999999999))
     block = _cognition(cio)
     assert block["office_truth"]["sourced_from_memory"] is False
     assert block["office_truth"]["replaceable_by_cognition"] is False
@@ -158,7 +161,17 @@ def test_office_truth_is_not_replaceable_by_memory(cio):
     assert item["office_truth_fields_withheld"] == ["cash", "holdings", "price"]
     assert "price" not in item and "holdings" not in item and "cash" not in item
     assert item["authority"] == "NON_AUTHORITATIVE_CONTEXT"
-    assert "999" not in json.dumps(block)
+    def leaves(value):
+        if isinstance(value, dict):
+            return [leaf for nested in value.values() for leaf in leaves(nested)]
+        if isinstance(value, list):
+            return [leaf for nested in value for leaf in leaves(nested)]
+        return [value]
+
+    # Check values structurally, including accidental nesting, rather than digit
+    # substrings in valid source-ref/mtime metadata. A leaked numeric price still fails.
+    assert 999.0 not in leaves(block)
+    assert "999.0" not in leaves(block)
 
 
 def test_prior_operator_reject_and_defer_are_retrievable_cognition(cio):
