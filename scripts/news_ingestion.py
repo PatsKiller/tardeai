@@ -208,6 +208,30 @@ def _proposal_queue_pairs(conn) -> list[tuple[str, str]]:
     return [(str(r["symbol"]).upper(), str(r["strategy_type"] or "watchlist")) for r in cur.fetchall() if r.get("symbol")]
 
 
+def _opportunity_lane_pairs(already: set[str]) -> list[tuple[str, str]]:
+    """The CIO's top-ranked opportunities (projection rank <= news_lane.top_n in config/opportunity_conviction.yaml).
+
+    The 60-symbol --priority cap fills with proposals, holdings and the watchlist, so ranked names the operator opens
+    in the opportunity modal had no news (operator 2026-10-08). They ride as an extra lane on top of the cap; names
+    already in the capped list are not repeated. Never raises: a missing projection means no extra lane.
+    """
+    try:
+        from lib.cio_opportunity_store import CIOOpportunityStore
+        from lib.data_broker.opportunity import load_config
+
+        lane = load_config().get("news_lane") or {}
+        if not lane.get("enabled"):
+            return []
+        top_n = int(lane.get("top_n") or 0)
+        items = CIOOpportunityStore().read_projection().get("items") or {}
+        ranked = sorted((a.get("rank"), s.upper()) for s, a in items.items()
+                        if isinstance(a, dict) and a.get("rank") and a["rank"] <= top_n)
+        return [(s, "opportunity") for _, s in ranked if s not in already]
+    except Exception as e:  # noqa: BLE001
+        print(f"  [news] opportunity lane skipped: {e}")
+        return []
+
+
 def _priority_symbol_list(conn) -> list[tuple[str, str]]:
     proposal_first = _proposal_queue_pairs(conn)
     prop_set = {p[0].upper() for p in proposal_first}
@@ -506,6 +530,10 @@ def ingest(mode: str = "priority", *, single_symbol: str | None = None) -> dict:
     if mode == "priority":
         cap = int(os.environ.get("NEWS_INGEST_MAX", "60"))
         symbol_pairs = symbol_pairs[:cap]
+        extra = _opportunity_lane_pairs({p[0].upper() for p in symbol_pairs})
+        if extra:
+            print(f"  [news] opportunity lane +{len(extra)} (CIO top-ranked, beyond the cap)")
+            symbol_pairs = symbol_pairs + extra
     elif mode == "full":
         cap = int(os.environ.get("NEWS_INGEST_MAX", "60"))
         symbol_pairs = symbol_pairs[:cap]

@@ -1141,6 +1141,13 @@ GATES = [
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
     ),
+    # Opportunity modal news (operator 2026-10-08: "nothing here on what company does or latest news, catalyst"):
+    # profile description, typed catalysts, latest news without catalyst repeats, and the news-ingestion opportunity
+    # lane that gives the CIO's top-ranked names news beyond the 60-symbol cap.
+    (
+        "opportunity_modal_news_20261008",
+        ["tests/test_opportunity_modal_news_20261008.py"],
+    ),
     # Decision-speed redesign (operator 2026-10-08): Telegram decision cards route exactly like the old layout;
     # Home/Communications/Watch answer action-risk-opportunity first with strict colour families.
     (
