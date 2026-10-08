@@ -2086,11 +2086,60 @@ def _communications_events(query=None):
     import communications_portal as _cp
 
     q = query or {}
+    # Communications hub (2026-10-07): server-side search / filters / sort / paging / facets; expired rows hidden.
+    hub_keys = (
+        "q",
+        "category",
+        "priority",
+        "lifecycle_status",
+        "severity",
+        "direction",
+        "message_class",
+        "producer",
+        "since",
+        "until",
+        "sort",
+        "order",
+        "offset",
+        "min_score",
+        "include_expired",
+        "hub",
+        "reentry_status",
+        "symbol",
+        "actionable",
+        "min_confidence",
+        "min_risk",
+        "min_reward",
+        "min_time",
+        "expiring_within_h",
+    )
+    hub = {k: q.get(k) for k in hub_keys if q.get(k) not in (None, "")}
+    if hub.get("include_expired") is not None:
+        hub["include_expired"] = str(hub["include_expired"]).lower() in ("1", "true", "yes")
     return _cp.list_events(
         limit=int(q.get("limit") or 100),
         subject_key=q.get("subject_key") or None,
         status=q.get("status") or None,
+        hub=hub or None,
     )
+
+
+def _communications_board(query=None):
+    """GET /api/v2/communications/board?limit= — the six decision panels (attention, reward, re-entry, risk,
+    expiring soon, recently actionable) over live items. Operator 2026-10-07."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import communications_portal as _cp
+
+    q = query or {}
+    out = _cp.board(limit=int(q.get("limit") or 6))
+    return out or {
+        "ok": False,
+        "panels": {},
+        "source": "unavailable",
+        "error": "communications DB or hub columns unavailable (migration 2026_10_07)",
+    }
 
 
 def _communications_event(event_id: str):
@@ -47729,6 +47778,7 @@ ROUTES = {
     "/api/v2/stops/lifecycle": lambda: _stops_lifecycle_api(),
     "/api/v2/communications/health": _communications_health,
     "/api/v2/communications/events": _communications_events,
+    "/api/v2/communications/board": _communications_board,
     "/api/v2/communications/deliveries": _communications_deliveries,
     "/api/v2/communications/subjects": _communications_subjects,
     "/api/v2/communications/agents": _communications_agents,
@@ -52659,6 +52709,37 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # ── ADMIN WRITE SURFACE (Tier-2/3) — every write routes through admin_write_guard ──
     # ACCESS -> CONFIRM (two-step) -> APPLY -> AUDIT. NO Tier-1 (live-execution) control here.
+    # Communications hub bulk actions (2026-10-07): acknowledge / unacknowledge / retain (admin TTL override) /
+    # release / expire, through the guarded admin write (token -> two-step confirm -> apply -> audit).
+    if method == "POST" and base_path == "/api/v2/communications/events/bulk":
+        try:
+            import sys as _s
+
+            _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            import communications_portal as _cp
+            from admin_write_guard import admin_write
+
+            b = body or {}
+            ids = [str(x) for x in (b.get("event_ids") or b.get("ids") or []) if str(x).strip()][:500]
+            action = str(b.get("action") or "")
+            if not ids or action not in _cp.HUB_ACTIONS:
+                return 400, {"ok": False, "error": f"event_ids and action in {list(_cp.HUB_ACTIONS)} required"}
+            hours = b.get("retain_hours")
+            hours = float(hours) if hours not in (None, "", 0, "0") else None
+            operator = (b.get("operator") or "operator")[:60]
+            return admin_write(
+                action=f"communications.{action}",
+                target=f"communication_events:{len(ids)} event(s)",
+                old_value={"event_ids": ids[:50], "count": len(ids)},
+                new_value={"action": action, "retain_hours": hours},
+                apply_fn=lambda: _cp.bulk_apply(ids, action, operator, hours),
+                operator=operator,
+                confirmed=bool(b.get("confirm")),
+                token=b.get("token"),
+            )
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:300]}
+
     if method == "POST" and base_path in ("/api/v2/admin/alert/ack", "/api/v2/admin/alert/resolve"):
         try:
             from admin_write_guard import admin_write

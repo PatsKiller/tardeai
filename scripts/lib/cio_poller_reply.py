@@ -176,6 +176,15 @@ def make_send_fn(*, token: str, reply_to_message_id: Any = None,
                     reply_to_message_id=target_reply)
         except Exception:
             pass
+        # ...and into the Communications hub (operator 2026-10-07: nothing relevant outside that view).
+        try:
+            from scripts.telegram_alert import record_operator_message  # noqa: PLC0415
+
+            if body:
+                record_operator_message(body, producer="telegram_poller.cio_reply", message_class="report",
+                                        delivered=bool(_deliver.last_result.get("ok")))
+        except Exception:  # noqa: BLE001 — recording never changes the reply
+            pass
         return res
 
     return _deliver

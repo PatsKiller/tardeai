@@ -3761,6 +3761,25 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_lane_governance_packet_20261008.py (fixture registry + receipts + sqlite ledger -> section counts; dry-run writes nothing; --write writes json/md/receipt; ops-summary model job fixture modes -> ARTIFACT_WRITTEN or typed refusal, no network); dry run from the worktree against the live state root 2026-10-08 printed the five section counts.",
       "note": "Weekly per-lane governance packet: lane verdicts, coordination ledger states, fan-in incidents, release + conformance receipts, retention/hygiene. Model job #1 (ops_summary_draft/v1) reads the receipt; no lane carries the draft yet."
+    },
+    {
+      "lane_id": "comms-lifecycle",
+      "owner": "comms",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "17 * * * * cd $PROJ && flock -n /tmp/comms_lifecycle.lock timeout 900 $PY scripts/comms_lifecycle.py --apply >> logs/comms_lifecycle.log 2>&1",
+        "match": "scripts/comms_lifecycle.py"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "state_since": "2026-10-07",
+      "state_reason": "Communications hub lifecycle (operator 2026-10-07): classify unclassified messages, mark expired by category TTL (operational 72h, market/securities 96h, watchlist 1 week), then archive (jsonl.gz under persistent-state/archive/comms_lifecycle) and remove expired and replaced (newer data on the same symbol) messages past a 24h grace. Operator decisions: same TTL for approvals/broker facts; archive-then-delete.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/comms_lifecycle_latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/COMMS_HUB_2026-10-07.md; tests/test_comms_hub_20261007.py."
     }
   ],
   "undeclared_baseline": [

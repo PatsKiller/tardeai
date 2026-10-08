@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/terminalHubChrome'
+import { RADIUS, TOKENS } from '../lib/designTokens'
+import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
+import { DecisionBoard, CommsFilterModal, ItemBadges, ScoreBar, ttlLabel, labelOf, CATEGORY_COLOR, REENTRY_COLOR, tint, type HubFilters } from '../components/comms/CommsHubParts'
 
 type Tab = 'events' | 'deliveries' | 'subjects' | 'retention' | 'agents'
 
@@ -82,14 +85,30 @@ export default function CommunicationsHub() {
   const [dirFilter, setDirFilter] = useState('')
   const [textFilter, setTextFilter] = useState('')
 
+  // Communications hub (2026-10-07): server-side filters / sort / paging; decision board; bulk actions.
+  const [hubFilters, setHubFilters] = useState<HubFilters>({})
+  const [sort, setSort] = useState('priority_score')
+  const [order, setOrder] = useState('desc')
+  const [offset, setOffset] = useState(0)
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [pending, setPending] = useState<PendingAction | null>(null)
+  const PAGE = 100
+
   const eventsPath = useMemo(() => {
-    const q = new URLSearchParams({ limit: '250' })
+    const q = new URLSearchParams({ limit: String(PAGE), hub: '1', sort, order, offset: String(offset) })
     if (subjectFilter.trim()) q.set('subject_key', subjectFilter.trim())
+    for (const [k, v] of Object.entries(hubFilters)) {
+      if (!v) continue
+      if (k === 'within_h') q.set('since', new Date(Date.now() - Number(v) * 3600_000).toISOString())
+      else q.set(k, v)
+    }
     return `/api/v2/communications/events?${q.toString()}`
-  }, [subjectFilter])
+  }, [subjectFilter, hubFilters, sort, order, offset])
+  const { data: boardPayload, refetch: refetchBoard } = useApi<any>('/api/v2/communications/board?limit=5', 60_000)
 
   const { data: health, loading: healthLoading } = useApi<any>('/api/v2/communications/health', 60_000)
-  const { data: eventsPayload, loading: eventsLoading, error: eventsError } = useApi<any>(eventsPath, 30_000)
+  const { data: eventsPayload, loading: eventsLoading, error: eventsError, refetch: refetchEvents } = useApi<any>(eventsPath, 30_000)
   const { data: deliveriesPayload, loading: deliveriesLoading } = useApi<any>(
     '/api/v2/communications/deliveries?limit=500',
     60_000,
@@ -110,6 +129,17 @@ export default function CommunicationsHub() {
   })
 
   const events: any[] = eventsPayload?.events || []
+  const hubMode = eventsPayload?.hub === true
+  const board = boardPayload?.data ?? boardPayload
+  const applyPreset = (preset: Record<string, string>) => {
+    const { sort: so, order: or, ...rest } = preset
+    setHubFilters(rest); setSort(so || 'priority_score'); setOrder(or || 'desc'); setOffset(0); setPicked(new Set())
+  }
+  const bulk = (action: string, extra: Record<string, any> = {}, label?: string) => {
+    if (!picked.size) return
+    setPending({ path: '/api/v2/communications/events/bulk', body: { event_ids: Array.from(picked), action, ...extra },
+      label: label || `${labelOf(action)} ${picked.size} message(s)` })
+  }
   const deliveries: any[] = deliveriesPayload?.deliveries || []
   const subjects: any[] = subjectsPayload?.subjects || []
   const agentSubscriptions: any[] = agentsPayload?.subscriptions || []
@@ -231,7 +261,179 @@ export default function CommunicationsHub() {
         )}
       </div>
 
-      {tab === 'events' && (
+      <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => { setPicked(new Set()); refetchEvents?.(); refetchBoard?.() }} />
+      <CommsFilterModal open={filterOpen} initial={hubFilters} meta={eventsPayload} onApply={(f) => { setHubFilters(f); setOffset(0) }} onClose={() => setFilterOpen(false)} />
+
+      {tab === 'events' && hubMode && (
+        <div>
+          <DecisionBoard board={board} onPick={applyPreset} onOpen={(id) => setSelectedId(id)} />
+          <div className="cc-panel" style={hubPanel(terminalUi)}>
+            {/* Re-entry focus + category chips + sort + filters */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: TOKENS.success, fontWeight: 800 }}>RE-ENTRY</span>
+              {['confirmed', 'opportunity', 'potential', 'expired', 'invalidated'].map((r) => {
+                const on = hubFilters.reentry_status === r
+                const n = eventsPayload?.facets?.reentry_status?.[r]
+                return (
+                  <button key={r} type="button" onClick={() => applyPreset(on ? {} : { category: 're_entry', reentry_status: r, sort: 'priority_score' })}
+                    style={{ fontSize: 10, padding: '2px 7px', borderRadius: RADIUS.sm, cursor: 'pointer', border: `1px solid ${REENTRY_COLOR[r]}`, background: on ? tint(REENTRY_COLOR[r], 20) : 'transparent', color: TEXT }}>
+                    {labelOf(r)}{n != null ? ` · ${n}` : ''}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+              {(eventsPayload?.categories || []).map((c: any) => {
+                const on = (hubFilters.category || '') === c.id
+                const n = eventsPayload?.facets?.category?.[c.id] || 0
+                return (
+                  <button key={c.id} type="button" onClick={() => { setHubFilters((p) => { const x = { ...p }; if (on) delete x.category; else x.category = c.id; return x }); setOffset(0) }}
+                    style={{ fontSize: 10, padding: '2px 7px', borderRadius: RADIUS.sm, cursor: 'pointer', border: `1px solid ${on ? CATEGORY_COLOR[c.id] || BORDER : BORDER}`, background: on ? tint(CATEGORY_COLOR[c.id] || 'var(--info-color)', 20) : 'transparent', color: n ? TEXT : MUTED }}
+                    title={`TTL ${c.ttl_hours}h`}>
+                    {c.label} · {n}
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <span style={{ fontSize: 10, color: MUTED, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                Feed ({eventsPayload?.total ?? 0})
+              </span>
+              <input value={hubFilters.q || ''} onChange={(e) => { const v = e.target.value; setHubFilters((p) => { const x = { ...p }; if (v) x.q = v; else delete x.q; return x }); setOffset(0) }}
+                placeholder="Search messages, symbols, sources" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 220 }} />
+              <button type="button" onClick={() => setFilterOpen(true)} style={{ fontSize: 10, padding: '3px 10px', border: `1px solid ${TOKENS.info}`, background: tint(TOKENS.info), color: TEXT, cursor: 'pointer', fontWeight: 700 }}>
+                Filters{Object.keys(hubFilters).length ? ` (${Object.keys(hubFilters).length})` : ''}
+              </button>
+              {Object.keys(hubFilters).length > 0 && (
+                <button type="button" onClick={() => applyPreset({})} style={{ fontSize: 10, padding: '3px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }}>Clear</button>
+              )}
+              <span style={{ fontSize: 10, color: MUTED }}>sort</span>
+              <select value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0) }} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, color: TEXT }}>
+                {[['priority_score', 'Priority score'], ['confidence', 'Confidence'], ['risk_score', 'Risk'], ['reward_score', 'Reward'], ['time_sensitivity', 'Time sensitivity'], ['expires_at', 'Expiry'], ['actionable_since', 'Became actionable'], ['created_at', 'Newest']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <button type="button" onClick={() => setOrder((o) => (o === 'desc' ? 'asc' : 'desc'))} style={{ fontSize: 10, padding: '3px 6px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer' }}>{order === 'desc' ? '↓' : '↑'}</button>
+              {eventsLoading && <span style={{ color: MUTED, fontSize: 10 }}>Loading…</span>}
+              {eventsError && <span style={{ color: RED, fontSize: 10 }}>{eventsError}</span>}
+            </div>
+            {picked.size > 0 && (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, fontSize: 10 }}>
+                <b style={{ color: TEXT }}>{picked.size} selected</b>
+                {[['acknowledge', {}, 'Acknowledge'], ['retain', { retain_hours: 24 }, 'Keep +24h'], ['retain', { retain_hours: 168 }, 'Keep +7d'], ['retain', {}, 'Keep (no expiry)'], ['release', {}, 'Release hold'], ['expire', {}, 'Expire now']].map(([a, x, l]: any) => (
+                  <button key={l} type="button" onClick={() => bulk(a, x, `${l}: ${picked.size} message(s)`)} style={{ fontSize: 10, padding: '2px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: 'pointer' }}>{l}</button>
+                ))}
+                <button type="button" onClick={() => setPicked(new Set())} style={{ fontSize: 10, padding: '2px 8px', border: 'none', background: 'transparent', color: MUTED, cursor: 'pointer' }}>clear</button>
+              </div>
+            )}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                <thead>
+                  <tr style={{ color: MUTED, textAlign: 'left' }}>
+                    <th style={{ padding: '4px 6px' }}>
+                      <input type="checkbox" checked={events.length > 0 && events.every((e) => picked.has(e.event_id))}
+                        onChange={(ev) => setPicked(ev.target.checked ? new Set(events.map((e) => e.event_id)) : new Set())} />
+                    </th>
+                    <th style={{ padding: '4px 6px' }}>message</th>
+                    <th style={{ padding: '4px 6px' }} title="priority · confidence · risk · reward · time sensitivity">scores P·C·R·Rw·T</th>
+                    <th style={{ padding: '4px 6px' }}>TTL</th>
+                    <th style={{ padding: '4px 6px' }}>status</th>
+                    <th style={{ padding: '4px 6px' }}>source</th>
+                    <th style={{ padding: '4px 6px' }}>when</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.length === 0 && !eventsLoading && (
+                    <tr><td colSpan={7} style={{ padding: 12, color: MUTED }}>Nothing matches these filters.</td></tr>
+                  )}
+                  {events.map((e) => {
+                    const active = e.event_id === selectedId
+                    const soon = e.ttl_remaining_s != null && e.ttl_remaining_s < 12 * 3600 && e.ttl_remaining_s > 0
+                    return (
+                      <tr key={e.event_id} style={{ background: active ? 'rgba(245,158,11,0.12)' : 'transparent', borderTop: `1px solid ${BORDER}`, verticalAlign: 'top', borderLeft: `3px solid ${CATEGORY_COLOR[e.category] || 'transparent'}` }}>
+                        <td style={{ padding: '5px 6px' }}>
+                          <input type="checkbox" checked={picked.has(e.event_id)} onChange={() => setPicked((p) => { const n = new Set(p); if (n.has(e.event_id)) n.delete(e.event_id); else n.add(e.event_id); return n })} />
+                        </td>
+                        <td style={{ padding: '5px 6px', color: TEXT, maxWidth: 520, cursor: 'pointer' }} onClick={() => setSelectedId(e.event_id)}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.sanitized_body || ''}>
+                            {e.direction === 'INBOUND' && <b style={{ color: AMBER, marginRight: 4 }}>IN</b>}
+                            {(e.symbols || []).length > 0 && <b style={{ fontFamily: MONO, marginRight: 6 }}>{e.symbols.slice(0, 3).join(' ')}</b>}
+                            {e.headline || e.short_summary || '—'}
+                          </div>
+                          <div style={{ marginTop: 3 }}><ItemBadges e={e} /></div>
+                        </td>
+                        <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>
+                          <b style={{ color: TEXT, marginRight: 4 }}>{e.priority_score ?? '—'}</b>
+                          <ScoreBar v={e.confidence} color={TOKENS.info} title="confidence" />
+                          <ScoreBar v={e.risk_score} color={TOKENS.danger} title="risk" />
+                          <ScoreBar v={e.reward_score} color={TOKENS.success} title="reward" />
+                          <ScoreBar v={e.time_sensitivity} color={TOKENS.warning} title="time sensitivity" />
+                        </td>
+                        <td style={{ padding: '5px 6px', color: soon ? AMBER : MUTED, whiteSpace: 'nowrap' }} title={e.expires_at ? `expires ${fmtWhen(e.expires_at)}` : ''}>
+                          {ttlLabel(e.ttl_remaining_s, e.legal_hold)}
+                        </td>
+                        <td style={{ padding: '5px 6px', color: TEXT2 }}>{e.lifecycle_status || '—'}</td>
+                        <td style={{ padding: '5px 6px', color: MUTED, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.producer}>{e.producer || '—'}</td>
+                        <td style={{ padding: '5px 6px', color: MUTED, whiteSpace: 'nowrap' }}>{fmtWhen(e.created_at)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end', marginTop: 8, fontSize: 10, color: MUTED }}>
+              <span>{eventsPayload?.total ? `${offset + 1}–${Math.min(offset + PAGE, eventsPayload.total)} of ${eventsPayload.total}` : ''}</span>
+              <button type="button" disabled={offset === 0} onClick={() => setOffset((o) => Math.max(0, o - PAGE))} style={{ fontSize: 10, padding: '2px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer' }}>Prev</button>
+              <button type="button" disabled={!eventsPayload?.total || offset + PAGE >= eventsPayload.total} onClick={() => setOffset((o) => o + PAGE)} style={{ fontSize: 10, padding: '2px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer' }}>Next</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'events' && hubMode && selectedId && (() => {
+        const e = events.find((x) => x.event_id === selectedId)
+          || Object.values(board?.panels || {}).flatMap((p: any) => p.items || []).find((x: any) => x.event_id === selectedId)
+          || detail
+        return (
+          <div onClick={() => setSelectedId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 900 }}>
+            <div onClick={(ev) => ev.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 520, maxWidth: '96vw', background: 'var(--bg1)', borderLeft: `1px solid ${BORDER}`, padding: 16, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <b style={{ color: TEXT, fontSize: 12 }}>{e?.headline || e?.short_summary || shortId(selectedId)}</b>
+                <button type="button" onClick={() => setSelectedId(null)} style={{ fontSize: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', padding: '2px 6px' }}>Close</button>
+              </div>
+              {e && (
+                <>
+                  <div style={{ marginBottom: 8 }}><ItemBadges e={e} /></div>
+                  <div style={{ fontSize: 10, color: TEXT2, lineHeight: 1.6, marginBottom: 10 }}>
+                    {[
+                      ['Symbols', (e.symbols || []).join(', ') || '—'],
+                      ['Priority score', e.priority_score ?? '—'],
+                      ['Confidence · Risk · Reward · Time', [e.confidence, e.risk_score, e.reward_score, e.time_sensitivity].map((v: any) => (v == null ? '—' : Number(v).toFixed(2))).join(' · ')],
+                      ['Status', e.lifecycle_status || '—'],
+                      ['TTL', `${ttlLabel(e.ttl_remaining_s, e.legal_hold)} · expires ${fmtWhen(e.expires_at)}`],
+                      ['Actionable', e.actionable ? `yes — ${e.action_hint || ''} (since ${fmtWhen(e.actionable_since)})` : 'no'],
+                      ['Source', e.producer || '—'],
+                      ['Created', fmtWhen(e.created_at)],
+                      ['Rule', e.classified_by || '—'],
+                    ].map(([k, v]) => (
+                      <div key={String(k)}><span style={{ color: MUTED }}>{k}: </span><span style={{ color: TEXT }}>{String(v)}</span></div>
+                    ))}
+                  </div>
+                  <pre style={{ fontSize: 10, color: TEXT, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'var(--bg0, transparent)', border: `1px solid ${BORDER}`, padding: 8, borderRadius: RADIUS.sm, fontFamily: MONO }}>
+                    {e.sanitized_body || e.short_summary || ''}
+                  </pre>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {[['acknowledge', {}, 'Acknowledge'], ['retain', { retain_hours: 168 }, 'Keep +7d'], ['retain', {}, 'Keep (no expiry)'], ['expire', {}, 'Expire now']].map(([a, x, l]: any) => (
+                      <button key={l} type="button" onClick={() => setPending({ path: '/api/v2/communications/events/bulk', body: { event_ids: [selectedId], action: a, ...x }, label: `${l}: 1 message` })}
+                        style={{ fontSize: 10, padding: '2px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: 'pointer' }}>{l}</button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {tab === 'events' && !hubMode && (
         <div style={{ display: 'grid', gridTemplateColumns: selectedId ? '1fr 360px' : '1fr', gap: 12 }}>
           <div className="cc-panel" style={hubPanel(terminalUi)}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
@@ -242,15 +444,15 @@ export default function CommunicationsHub() {
                 value={textFilter}
                 onChange={(e) => setTextFilter(e.target.value)}
                 placeholder="Search summary / subject / incident"
-                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT, minWidth: 200 }}
+                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 200 }}
               />
-              <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT }}>
+              <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT }}>
                 <option value="">severity: all</option>
                 <option value="info">info</option>
                 <option value="warning">warning</option>
                 <option value="critical">critical</option>
               </select>
-              <select value={dirFilter} onChange={(e) => setDirFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT }}>
+              <select value={dirFilter} onChange={(e) => setDirFilter(e.target.value)} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT }}>
                 <option value="">direction: all</option>
                 <option value="INBOUND">INBOUND</option>
                 <option value="OUTBOUND">OUTBOUND</option>
@@ -259,7 +461,7 @@ export default function CommunicationsHub() {
                 value={subjectFilter}
                 onChange={(e) => setSubjectFilter(e.target.value)}
                 placeholder="Filter subject_key (server)"
-                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: 2, color: TEXT, minWidth: 160 }}
+                style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 160 }}
               />
               {eventsError && <span style={{ color: RED, fontSize: 10 }}>{eventsError}</span>}
               {eventsLoading && <span style={{ color: MUTED, fontSize: 10 }}>Loading…</span>}
@@ -449,18 +651,30 @@ export default function CommunicationsHub() {
       {tab === 'retention' && (
         <div className="cc-panel" style={hubPanel(terminalUi)}>
           <div style={{ fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
-            Retention (read-only — no purge from this UI)
+            Retention · TTL by category
           </div>
           <p style={{ fontSize: 10, color: MUTED, marginTop: 0, lineHeight: 1.5 }}>
-            Librarian expiry is not scheduled in production yet; this tab shows retention_class and knowledge-status
-            rollups over the loaded window. Expiry is not deletion — a knowledge-gated event is governed separately.
+            Every message has a TTL by category (config/comms_categories.yaml). When it runs out the message leaves every
+            active view; it stays under the "include expired" filter for the grace period, then the hourly lifecycle pass
+            (scripts/comms_lifecycle.py) archives it to jsonl.gz and removes it. A newer message on the same symbol or topic
+            supersedes older ones. Use "Keep" in the feed to hold a message past its TTL.
           </p>
+          {hubMode && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 8, marginBottom: 12 }}>
+              {(eventsPayload?.categories || []).map((c: any) => (
+                <div key={c.id} style={{ border: `1px solid ${BORDER}`, borderLeft: `3px solid ${CATEGORY_COLOR[c.id] || BORDER}`, padding: 6, fontSize: 10 }}>
+                  <div style={{ color: TEXT, fontWeight: 700 }}>{c.label}</div>
+                  <div style={{ color: MUTED }}>TTL {c.ttl_hours >= 48 ? `${c.ttl_hours / 24}d` : `${c.ttl_hours}h`}</div>
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginBottom: 12 }}>
             {Object.keys(retentionCounts.byClass).length === 0 && (
               <div style={{ fontSize: 10, color: MUTED }}>No events in current projection.</div>
             )}
             {Object.entries(retentionCounts.byClass).map(([k, n]) => (
-              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: 2 }}>
+              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm }}>
                 <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', fontWeight: 800 }}>retention · {k}</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: TEXT, marginTop: 4 }}>{n}</div>
               </div>
@@ -471,7 +685,7 @@ export default function CommunicationsHub() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8 }}>
             {Object.entries(retentionCounts.byKnowledge).map(([k, n]) => (
-              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: 2 }}>
+              <div key={k} style={{ padding: 10, border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm }}>
                 <div style={{ fontSize: 10, color: MUTED, textTransform: 'uppercase', fontWeight: 800 }}>{k}</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: k === 'accepted' ? GREEN : TEXT, marginTop: 4 }}>{n}</div>
               </div>

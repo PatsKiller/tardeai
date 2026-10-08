@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.5.1
+Policy-Version:      1.6.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-06
-Last-Reviewed:       2026-10-06T16:45:00-04:00
+Effective-Date:      2026-10-07
+Last-Reviewed:       2026-10-07T18:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.5.0
+Supersedes:          1.5.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -1859,6 +1859,11 @@ Each line is something an agent got wrong today or was about to. The code carrie
   - `proposal_chat_ids()` is the Proposal Decisions group.
   - `allowed_chat_ids()` is for inbound allowlists only.
 - **Orphaned-stop alerts stay IMMEDIATE** (capital-protection set). Dedupe them; never route them to digest.
+- **Communications is the single record of operator message traffic** (operator 2026-10-07: "nothing relevant should exist outside this centralized view").
+  - Every operator-facing send goes through `telegram_alert.send_telegram`, or — for a bot with its own transport — calls `telegram_alert.record_operator_message(...)` after sending. Inbound operator messages are recorded with `direction="INBOUND"`.
+  - Category, priority, scores, re-entry status, actionability and TTL come from `config/comms_categories.yaml` through `scripts/lib/comms/classify.py`. Add a category or rule there; never hard-code one in a producer or the UI.
+  - TTLs: operational 72 h, market/securities 96 h, watchlist/correlation/relationship 1 week. A newer item on the same symbol (or topic) and category supersedes older ones.
+  - `scripts/comms_lifecycle.py` (hourly) expires, then archives to jsonl.gz and deletes — refusing the delete unless archived counts match. Never delete comms rows any other way. Admin keep = `legal_hold` / `retain_until` through the guarded bulk route.
 
 ### Git and CI
 - **Branch protection requires a PR to be up to date.**
@@ -3838,6 +3843,7 @@ superseded).
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.6.0 | 2026-10-07 | ACTIVE on merge | MINOR | Telegram section gains "Communications is the single record of operator message traffic": every operator send/receive is recorded in `communication_events` (`send_telegram` or `record_operator_message`); classification and TTLs live in `config/comms_categories.yaml`; removal only through `comms_lifecycle.py` archive-then-delete. Adds obligations, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-07 (Communications hub spec; "Same TTL as everything"; "Archive, then remove"). |
 | 1.5.1 | 2026-10-06 | ACTIVE on merge | PATCH | §7A positions known-gaps measurement updated: reinvestments no longer merged by a missing orderId, broker precision kept, per-account replace window; ledger lots reproduce the broker for every Schwab position. No rule change. | Operator-directed 2026-10-06 ("fix the lot transfer direction gap now"). |
 | 1.5.0 | 2026-10-06 | ACTIVE on merge | MINOR | §7A positions "Known gaps" rewritten after the fix: the Schwab ingest dropped transfer/journal direction (abs() of the security leg); outflows are now `Security Transfer Out` / `Journaled Shares Out`, and agents must never take abs() of a broker leg. Lots reproduce the broker except 3 explained rows. Adds an obligation, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-06 ("fix the lot transfer direction gap now"; earlier "edit agents.md with correct source of truth"). |
 | 1.4.0 | 2026-10-06 | ACTIVE on merge | MINOR | §7A gains "Positions, cost basis and portfolio value — the source of truth": the truth per fact (shares/cash = broker read; basis = broker average × shares for the same account; price = data-broker quote at read time; realized = broker-matched sells), the shadow positions store and its single writer `scripts/positions_sync.py`, seven enforced rules (no new holdings.json writer; shared write lock; per (account, symbol) comparisons; broker basis applied not reverted; no hard-coded thresholds; read-only broker clients only; validate with `portfolio_reconcile.py`), the `config/portfolio_positions.yaml` rule table, and measured known gaps. Adds obligations, weakens nothing; §0, §2, §17 and role authority untouched. | **Operator-directed** 2026-10-06 ("edit agents.md with correct source of truth so no other agents changes and see the config rules"). |

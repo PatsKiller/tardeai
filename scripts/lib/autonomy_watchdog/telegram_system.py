@@ -152,6 +152,15 @@ def send_system(
         rec["ok"] = False
         rec["reason"] = type(e).__name__
     record_send(rec, root=root)
+    try:  # Communications hub (operator 2026-10-07): every operator-facing message is in the ledger.
+        try:
+            from telegram_alert import record_operator_message
+        except ImportError:
+            from scripts.telegram_alert import record_operator_message  # type: ignore
+        record_operator_message(text, producer="autonomy_watchdog.telegram_system", message_class="ops",
+                                delivered=bool(rec.get("ok")) and not rec.get("suppressed"))
+    except Exception:  # noqa: BLE001 — recording never changes the watchdog's send
+        pass
     return rec
 
 
