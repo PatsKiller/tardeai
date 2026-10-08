@@ -33,8 +33,16 @@ def _section(title_prefix: str) -> str:
 def test_1_3_0_is_active_and_dated():
     # 1.3.0 or a later version that keeps its text (1.4.0, 2026-10-06, adds §7A positions rules only).
     assert tuple(int(x) for x in _control("Policy-Version").split(".")) >= (1, 3, 0)
-    assert _control("Status") == "ACTIVE"
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date"))
+    status = _control("Status")
+    if status == "PROPOSED":
+        # A later version awaiting its own ratification (2.0.0, 2026-10-08, the n8n carve-out) does not
+        # un-ratify 1.3.0: the previously active text governs (version policy rule 2), so the control
+        # block must say PENDING and the superseded version must itself carry the 1.3.0 text.
+        assert _control("Effective-Date") == "PENDING"
+        assert tuple(int(x) for x in _control("Supersedes").split(".")) >= (1, 3, 0)
+    else:
+        assert status == "ACTIVE"
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date"))
 
 
 def test_rule_2_requires_a_per_task_grant():
