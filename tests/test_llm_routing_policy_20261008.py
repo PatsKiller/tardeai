@@ -361,9 +361,7 @@ def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyP
         with _governed(monkeypatch):
             port = int(server.server_address[1])
             conn = HTTPConnection("127.0.0.1", port, timeout=5)
-            body = json.dumps(
-                {"stream": True, "messages": [{"role": "user", "content": "x"}]}
-            ).encode("utf-8")
+            body = json.dumps({"stream": True, "messages": [{"role": "user", "content": "x"}]}).encode("utf-8")
             conn.request(
                 "POST",
                 "/v1/chat/completions",
