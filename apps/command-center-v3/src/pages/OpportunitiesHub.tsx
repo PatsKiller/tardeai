@@ -7,7 +7,7 @@ import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, numStyle } from '../lib/designTokens'
 import { tint } from '../components/comms/CommsHubParts'
 import { useOpenSymbol } from '../components/opportunity/OpportunityContext'
-import { condLabel, convictionColor, money, pct, typeLabel } from '../components/opportunity/OpportunityModal'
+import { condLabel, convictionColor, money, pct, typeLabel } from '../components/opportunity/format'
 
 const MUTED = 'var(--text3)'
 const TEXT = 'var(--text0)'
