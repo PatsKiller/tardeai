@@ -2,7 +2,7 @@
  "schema": "DataRetentionPolicy@v1",
  "authority": "READ_ONLY_ADVISORY",
  "as_of": "2026-10-07",
- "note": "Declarative retention registry. db_retention.py enforces DELETE and ARCHIVE_THEN_DELETE rows (archive = jsonl.gz under persistent-state/archive/db_retention/<table>/ BEFORE the delete; the delete runs only if the archived row count equals the matching count). KEEP_FOREVER rows are never deleted; archive=true on them means a yearly archive copy. check_retention_policy.py fails CI when a row is malformed or a KEEP_FOREVER row lacks a reason; report_db_hygiene.py (nightly) fails the lane and raises an incident when a large or growing table has no row here, when duplicate indexes reappear, or when the database exceeds size_budget_gb. Classes: DELETE, ARCHIVE_THEN_DELETE, KEEP_FOREVER, EXTERNAL_POLICY (enforced by a named job elsewhere; hygiene still watches its window when window_days is set).",
+ "note": "Declarative retention registry. db_retention.py enforces DELETE and ARCHIVE_THEN_DELETE rows (archive = jsonl.gz under persistent-state/archive/db_retention/<table>/ BEFORE the delete; the delete runs only if the archived row count equals the matching count). KEEP_FOREVER rows are never deleted; archive=true on them means a yearly archive copy. check_retention_policy.py fails CI when a row is malformed or a KEEP_FOREVER row lacks a reason; report_db_hygiene.py (nightly) fails the lane and raises an incident when a large or growing table has no row here, when duplicate indexes reappear, or when the database exceeds size_budget_gb. Classes: DELETE, ARCHIVE_THEN_DELETE, KEEP_FOREVER, EXTERNAL_POLICY (enforced by a named job elsewhere; hygiene still watches its window when window_days is set). 2026-10-08: six rows added for the tables the first nightly hygiene report flagged UNCOVERED_TABLE (operator-reviewed PR).",
  "size_budget_gb": 16,
  "table_budget_mb": {
   "content_embeddings": 4096,
@@ -591,7 +591,7 @@
    "window_days": null,
    "archive": false,
    "owner": "hermes",
-   "reason": "hermes librarian: staged 90 d \u2192 archived \u2192 purged 180 d",
+   "reason": "hermes librarian: staged 90 d → archived → purged 180 d",
    "since": "2026-10-07"
   },
   {
@@ -1346,6 +1346,66 @@
    "owner": "research",
    "reason": "monthly purge_after cron (0 3 1 * *) owns this table",
    "since": "2026-10-07"
+  },
+  {
+   "table": "enrichment_log",
+   "ts_column": "started_at",
+   "class": "DELETE",
+   "window_days": 180,
+   "archive": false,
+   "owner": "platform",
+   "reason": "enrichment run log (125,666 rows, 31 MB, oldest 2026-05-22 on 2026-10-08); no reader needs more than two quarters; hygiene UNCOVERED_TABLE first nightly run",
+   "since": "2026-10-08"
+  },
+  {
+   "table": "pipeline_runs",
+   "ts_column": "started_at",
+   "class": "DELETE",
+   "window_days": 180,
+   "archive": false,
+   "owner": "platform",
+   "reason": "pipeline_run_telemetry rows (92,613 rows, 34 MB, oldest 2026-05-09); freshness monitors read the last days only; hygiene UNCOVERED_TABLE",
+   "since": "2026-10-08"
+  },
+  {
+   "table": "communication_thread_membership",
+   "ts_column": "joined_at",
+   "class": "KEEP_FOREVER",
+   "window_days": null,
+   "archive": false,
+   "owner": "platform",
+   "reason": "join table between communication threads and their participants (76,309 rows, 54 MB); rows must live and die with their thread, an age window would orphan thread history; revisit with a thread-level policy",
+   "since": "2026-10-08"
+  },
+  {
+   "table": "screener_symbol_membership",
+   "ts_column": "updated_at",
+   "class": "ARCHIVE_THEN_DELETE",
+   "window_days": 365,
+   "archive": true,
+   "owner": "screener",
+   "reason": "screener roll-on/roll-off history (66,944 rows, 249 MB, oldest 2026-05-06); one year is kept live for incubator analysis, older rows archived to jsonl.gz before delete; hygiene UNCOVERED_TABLE",
+   "since": "2026-10-08"
+  },
+  {
+   "table": "document_mentions",
+   "ts_column": "observed_at",
+   "class": "EXTERNAL_POLICY",
+   "window_days": null,
+   "archive": false,
+   "owner": "platform",
+   "reason": "pruned by scripts/prune_document_mentions.py (nightly maintenance step 10) per SOURCE table window — a mention outlives nothing its source row outlives; 249,765 rows, 172 MB; hygiene UNCOVERED_TABLE",
+   "since": "2026-10-08"
+  },
+  {
+   "table": "cio_directive_hits_staging",
+   "ts_column": "proposed_at",
+   "class": "DELETE",
+   "window_days": 90,
+   "archive": false,
+   "owner": "cio",
+   "reason": "staging rows drained into cio_directive_hits (37,233 rows, 27 MB, oldest 2026-08-13); drained rows have no reader after a quarter; hygiene UNCOVERED_TABLE",
+   "since": "2026-10-08"
   }
  ]
 }
