@@ -53892,7 +53892,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.notification_outbox_projection import load_outbox as _outbox_load
 
             q = query or {}
-            return 200, {"ok": True, "data": _outbox_load(hours=int(q.get("hours") or 24), state=q.get("state") or None)}
+            return 200, {
+                "ok": True,
+                "data": _outbox_load(hours=int(q.get("hours") or 24), state=q.get("state") or None),
+            }
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
