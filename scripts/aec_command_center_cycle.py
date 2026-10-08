@@ -384,16 +384,18 @@ def run_cycle(
         f"bitemporal_dry_run={bitemporal_receipt.get('dry_run')}"
     )
     brief = render_executive_brief(subject_key=subject_key)
-    # Live Telegram only when AEC_NARRATOR_NOTIFY=1 and --apply. Default dry-run.
+    # Command Center only (operator 2026-10-07). Telegram needs ALL of: config/aec_narrator.yaml
+    # narrator.telegram: true, AEC_NARRATOR_NOTIFY=1 and --apply. The env var alone sent a content-free brief
+    # every hour for 17 days.
     import os as _os
+    from scripts.lib.aec_narrator import load_config as _narr_cfg
 
-    _narr_notify = str(_os.environ.get("AEC_NARRATOR_NOTIFY", "0")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    _narr_env = str(_os.environ.get("AEC_NARRATOR_NOTIFY", "0")).strip().lower() in {"1", "true", "yes", "on"}
+    _narr_cfg_on = bool(_narr_cfg().get("telegram"))
+    _narr_notify = _narr_env and _narr_cfg_on
     notify_receipt = notify_executive_brief(brief, apply=bool(apply and _narr_notify))
+    if not _narr_cfg_on and notify_receipt.get("telegram") == "dry_run":
+        notify_receipt["telegram"] = "disabled_by_config"
     narr_ev = bus.publish(
         agent_id="narrator_agent",
         topic="cycle.narrator.brief",
@@ -407,9 +409,13 @@ def run_cycle(
             "reason": (
                 "cycle_narrator_notify"
                 if (apply and _narr_notify)
-                else "cycle_renders_brief_notify_requires_AEC_NARRATOR_NOTIFY"
+                else "command_center_only"
             ),
             "aec_narrator_notify": bool(_narr_notify),
+            # The Command Center reads the brief from here (GET /api/v2/command -> executive_brief).
+            "body": brief.get("body"),
+            "as_of": brief.get("as_of"),
+            "suppressed_repeat": bool(brief.get("suppressed_repeat")),
         },
         dry_run=not apply,
     )

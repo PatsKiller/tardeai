@@ -3979,6 +3979,56 @@ def _position_transfer_detect(body=None):
         return {"ok": False, "error": str(e)[:240]}
 
 
+def _latest_executive_brief(stale_after_s: float = 7200.0) -> dict:
+    """Newest AEC Executive Brief from the agent bus (operator 2026-10-07: Command Center only, not Telegram).
+
+    Reads only the TAIL of data/cio/aec_agent_bus.jsonl (the bus grows ~1.6 MB) for the last
+    topic=cycle.narrator.brief event carrying a body. Read-only; never renders or writes a brief."""
+    try:
+        from scripts.lib.aec_agent_bus import bus_path
+    except ImportError:  # pragma: no cover — flat import layout
+        from lib.aec_agent_bus import bus_path  # type: ignore
+    out = {
+        "body": None,
+        "as_of": None,
+        "age_s": None,
+        "stale": True,
+        "suppressed_repeat": None,
+        "source": "aec_agent_bus cycle.narrator.brief (hourly AEC cycle)",
+    }
+    try:
+        p = bus_path()
+        with open(p, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 262144))
+            tail = f.read().decode("utf-8", errors="ignore").splitlines()
+        for line in reversed(tail):
+            if '"cycle.narrator.brief"' not in line:
+                continue
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            pl = ev.get("payload") or {}
+            if not pl.get("body"):
+                continue
+            as_of = pl.get("as_of") or ev.get("as_of")
+            age = (
+                datetime.now(timezone.utc) - datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+            ).total_seconds()
+            out.update(
+                body=pl["body"],
+                as_of=as_of,
+                age_s=round(age),
+                stale=age > stale_after_s,
+                suppressed_repeat=bool(pl.get("suppressed_repeat")),
+            )
+            break
+    except Exception as e:  # noqa: BLE001 — the card says unavailable, never guesses
+        out["error"] = f"{type(e).__name__}: {str(e)[:120]}"
+    return out
+
+
 def _pp_cfg_basis_truth() -> str:
     """positions.cost_basis_truth from config/portfolio_positions.yaml ('broker' | 'anchor'); default broker."""
     try:
@@ -29346,6 +29396,7 @@ def _morning_command():
         # OperatorNumberCensus M4: Command must name its producer (rebalance/retirement already do).
         "snapshot_source": "holdings.json (canonical) + risk_management.json",
         "llm_intelligence": llm_cache,
+        "executive_brief": _latest_executive_brief(),
         "portfolio": {
             "total_value": total,
             "cash": cash,

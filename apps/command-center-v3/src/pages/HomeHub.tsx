@@ -9,7 +9,7 @@ import BookTreemap from '../components/home/BookTreemap'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
 import { plain, plainAlert, runLabel, thresholdSentence } from '../lib/homeLabels'
 import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
-import { HermesGatewayLine, AiIntelligenceBriefing, EquityThinNote } from '../components/home/HomeTrustRender'
+import { HermesGatewayLine, AiIntelligenceBriefing, EquityThinNote, ExecutiveBriefCard } from '../components/home/HomeTrustRender'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -793,6 +793,8 @@ export default function HomeHub({ onDrill }: Props) {
 
           {/* AI Intelligence Briefing (full width) */}
           {cmd.llm_intelligence && <AiIntelligenceBriefing llm={cmd.llm_intelligence} />}
+          {/* AEC Executive Brief — hourly, Command Center only (2026-10-07) */}
+          {cmd.executive_brief && <ExecutiveBriefCard brief={cmd.executive_brief} />}
       </>
     </div>
   )

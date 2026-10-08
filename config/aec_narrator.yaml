@@ -1,0 +1,5 @@
+# AEC Executive Brief (scripts/lib/aec_narrator.py). Operator 2026-10-07: "Command Center only" — the hourly brief
+# is shown on the Command Center Home (GET /api/v2/command -> executive_brief) and is NOT sent to Telegram.
+# Turning telegram on needs this flag AND AEC_NARRATOR_NOTIFY=1 on the cycle unit AND --apply.
+narrator:
+  telegram: false
