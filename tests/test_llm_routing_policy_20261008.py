@@ -256,6 +256,21 @@ def test_unhealthy_primary_without_healthy_fallback_does_not_call_provider(
     assert reserve.call_count == 0
 
 
+def test_pytest_ignores_the_host_health_file_unless_the_env_points_at_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("TRADEAI_LLM_PROVIDER_HEALTH", raising=False)
+    monkeypatch.delenv("TRADEAI_DEEPSEEK_BALANCE_HISTORY", raising=False)
+    live = bridge._PROJECT_ROOT / "data" / "runtime" / "llm_provider_health.json"
+    assert bridge.provider_health_path() != live
+    ignored = bridge.select_governed_lane("alex_cio_synthesis")
+    assert ignored.get("refused") is None
+    assert ignored["policy"]["requested_policy"] == "PRO"
+    assert ignored["routing_decision"]["reason"] == "health_unknown"
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    assert bridge.provider_health_path() == live
+
+
 def test_success_receipt_joins_routing_decision_to_reservation(monkeypatch: pytest.MonkeyPatch) -> None:
     from lib.provider_cost.context import cost_attribution as real_attribution
 

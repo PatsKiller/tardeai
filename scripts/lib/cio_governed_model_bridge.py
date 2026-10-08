@@ -355,15 +355,30 @@ def routing_policy_path() -> Path:
     return _env_path("TRADEAI_LLM_ROUTING_POLICY", _PROJECT_ROOT / "config" / "llm_routing_policy.json")
 
 
+def _receipt_path(env_name: str, default: Path) -> Path:
+    """Explicit env wins. A pytest run does not read the host's live receipt.
+
+    Production (no PYTEST_CURRENT_TEST) still reads data/runtime. A test that
+    sets TRADEAI_LLM_PROVIDER_HEALTH or TRADEAI_DEEPSEEK_BALANCE_HISTORY reads
+    that path, including a fixture it just wrote.
+    """
+    raw = os.environ.get(env_name)
+    if raw:
+        return Path(raw)
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return Path("/tmp/tradeai-pytest-absent-receipts") / default.name
+    return default
+
+
 def provider_health_path() -> Path:
-    return _env_path(
+    return _receipt_path(
         "TRADEAI_LLM_PROVIDER_HEALTH",
         _PROJECT_ROOT / "data" / "runtime" / "llm_provider_health.json",
     )
 
 
 def deepseek_balance_history_path() -> Path:
-    return _env_path(
+    return _receipt_path(
         "TRADEAI_DEEPSEEK_BALANCE_HISTORY",
         _PROJECT_ROOT / "data" / "runtime" / "deepseek_balance_history.jsonl",
     )
