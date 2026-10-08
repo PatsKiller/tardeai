@@ -59,6 +59,15 @@ class BindRefused(RuntimeError):
     pass
 
 
+class GatewayServer(ThreadingHTTPServer):
+    """2026-10-08 (first N1 shadow burst): the stock listen backlog is 5, so a :00 burst wider than that
+    overflows the accept queue and the overflowed clients sit on the kernel's 1 s SYN retransmit
+    (measured: 16-wide burst 1.05 s with backlog 5, 24 ms with 64). daemon_threads is already True on
+    ThreadingHTTPServer; nothing else changes."""
+
+    request_queue_size = 64
+
+
 def guard_bind(host: str, port: int) -> None:
     if host != "127.0.0.1":
         raise BindRefused("refusing non-loopback bind")
@@ -297,8 +306,8 @@ def serve(
     allow = frozenset(PILOT_LANES) | frozenset(extra_lanes or ())
     # 2026-10-08: the run allowlist is read once at serve time; a change needs a restart (promote restarts the unit).
     run_allow = load_run_allowlist(run_allowlist_path)
-    httpd = ThreadingHTTPServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path,
-                                                           lane_allowlist=allow, n8n_key=n8n_key, run_allowlist=run_allow))
+    httpd = GatewayServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path,
+                                                lane_allowlist=allow, n8n_key=n8n_key, run_allowlist=run_allow))
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
     httpd.run_allowlist = run_allow  # type: ignore[attr-defined]
     return httpd

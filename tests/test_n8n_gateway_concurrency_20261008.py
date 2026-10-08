@@ -11,12 +11,12 @@ held under the same lock so two claims with the same nonce cannot both pass.
 Hermetic: tmp_path ledger and allowlist, 127.0.0.1 port 0, keys that are not live secrets, the
 server is shut down by the fixture. The burst sizes mirror the live defect at 4x.
 
-Measured while writing this (probe, not asserted): the stock ThreadingHTTPServer listens with
-request_queue_size=5, so a 16-wide simultaneous connect overflows the accept backlog and the
-overflowed clients sit on the kernel's 1 s SYN retransmit (wall 1.05 s) although every request is
-served. With backlog 64 the same burst takes 24 ms and a 64-wide burst 99 ms. That is a separate
-finding (the gateway's listen backlog), not this fix; the fixture raises the backlog on the server
-class it hands to ``serve`` so the latency assertions measure the ledger lock, not the SYN timer.
+Measured while writing this: the stock ThreadingHTTPServer listens with request_queue_size=5, so a
+16-wide simultaneous connect overflows the accept backlog and the overflowed clients sit on the
+kernel's 1 s SYN retransmit (wall 1.05 s) although every request is served. With backlog 64 the
+same burst takes 24 ms and a 64-wide burst 99 ms. The gateway (GatewayServer) and the relay in front
+of it (RelayServer) now listen with backlog 64; the last test pins that, and the bursts here run
+against the production server class so the latency assertions cover both the lock and the backlog.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 import pytest
 
 from scripts import n8n_coordination_gateway as SRV
+from scripts import n8n_run_relay as RELAY
 from scripts.lib import n8n_coordination_gateway as G
 from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerNonceStore
 
@@ -49,12 +50,6 @@ BURST = 16
 MAX_MEAN_LATENCY_S = 0.25
 
 MEASURED: dict[str, float] = {}
-
-
-class _WideBacklogServer(ThreadingHTTPServer):
-    """Same server, listen backlog wide enough that a 16-wide connect never waits on a SYN retransmit."""
-
-    request_queue_size = 64
 
 
 def _claim(nonce: str, *, caller: str, scope: str, key: bytes, now: float | None = None) -> dict:
@@ -112,7 +107,6 @@ def _event_body(nonce: str, idem: str) -> bytes:
 
 @pytest.fixture
 def gateway(tmp_path, monkeypatch):
-    monkeypatch.setattr(SRV, "ThreadingHTTPServer", _WideBacklogServer)
     server_side: list[float] = []
     real_dispatch = SRV.dispatch_http
 
@@ -297,3 +291,14 @@ def test_lock_cost_is_negligible_against_one_sqlite_transaction(tmp_path):
     finally:
         ledger.close()
     print("\nMEASURED", json.dumps({k: round(v, 6) for k, v in MEASURED.items()}, sort_keys=True))
+
+
+def test_gateway_and_relay_listen_backlogs_absorb_a_burst_wider_than_the_stock_five(gateway):
+    """Stock ThreadingHTTPServer backlog is 5; a wider simultaneous connect waits ~1 s on SYN retransmit."""
+    httpd, _ = gateway
+    assert ThreadingHTTPServer.request_queue_size == 5  # the default this guards against
+    for server_cls in (SRV.GatewayServer, RELAY.RelayServer):
+        assert issubclass(server_cls, ThreadingHTTPServer)
+        assert server_cls.request_queue_size >= 64
+        assert server_cls.daemon_threads is True
+    assert isinstance(httpd, SRV.GatewayServer)
