@@ -1312,6 +1312,7 @@ GATES = [
             "tests/test_m2_substrate_check.py",
             "tests/test_earnings_gate_vocabulary_20260928.py",
             "tests/test_lane_registry_bare_schedule_20260928.py",
+            "tests/test_lane_registry_drift_events_20261008.py",
         ],
     ),
     (
@@ -2142,6 +2143,7 @@ GATES = [
             "tests/test_watchlist_bridge_recreate_cooldown_20260915.py",
             "tests/test_system_health_retired_component_20260915.py",
             "tests/test_system_health_agent_conn_and_retired_20261007.py",
+            "tests/test_persistent_state_root_import_20261008.py",
             "tests/test_scheduled_wrappers_resolve_own_tree_20261007.py",
             "tests/test_agent_auto_queue_valid_symbols_20260915.py",
         ],

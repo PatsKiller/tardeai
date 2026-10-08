@@ -218,7 +218,8 @@ def test_builtin_nightly_plan_is_the_absorbed_cron_lines_in_clock_order():
     assert by["prune_document_mentions"]["lock"] == "/tmp/document_mentions_prune.lock"
     assert by["prune_document_mentions"]["timeout"] == "20m"
     # args preserved verbatim
-    assert by["populate_performance_context"]["cmd"].endswith("scripts/populate_performance_context.py --apply")
+    # 2026-10-08: wrapped in bash -c that sources the rendered env, so the verbatim argv now ends with a quote
+    assert by["populate_performance_context"]["cmd"].endswith("scripts/populate_performance_context.py --apply'")
     assert by["nightly_integrity_sweep"]["cmd"].endswith("scripts/nightly_integrity_sweep.py --telegram")
     assert by["strategy_config_sync"]["cmd"].endswith("scripts/strategy_config_loader.py --sync-db")
     assert by["hermes_universe_history_retention"]["cmd"].endswith("hermes_universe_history_retention.py --apply")
@@ -334,3 +335,13 @@ def test_purge_apply_stamps_deletes_commits_and_writes_receipt(tmp_path):
     p.write_receipt(res, receipt)
     on_disk = json.loads(receipt.read_text())
     assert on_disk["schema"] == "YoutubeTranscriptPurge@v1" and on_disk["deleted"] == 3
+
+
+def test_the_performance_context_step_sources_the_rendered_env_and_its_dependency_is_declared():
+    """2026-10-08 first nightly run: populate_performance_context rc=1 (ruamel.yaml missing from the venv) and,
+    once installed, soft-skipped because DB_* come only from the rendered env the old cron line never sourced."""
+    runner = (ROOT / "scripts" / "pipelines" / "run_platform_maintenance_pipeline.sh").read_text()
+    i = runner.index("add_step populate_performance_context")
+    block = runner[i:i + 400]
+    assert "tradeai/env" in block and "populate_performance_context.py --apply" in block
+    assert "ruamel.yaml" in (ROOT / "requirements.txt").read_text()
