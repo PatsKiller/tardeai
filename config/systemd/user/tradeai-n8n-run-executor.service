@@ -3,6 +3,8 @@
 # coordination ledger `runs` table every 5 s and runs allowlisted lanes (config/n8n_run_allowlist.json)
 # under each lane's own lock, from the served CURRENT tree. It binds no socket and holds no HMAC key:
 # the gateway unit authenticates callers, this unit only executes what the ledger already recorded.
+# Install a stable regular unit file under ~/.config/systemd/user, then daemon-reload; archive any
+# old dangling link first under the operator grant. Do not systemctl link a rotating CURRENT path.
 # TRADEAI_VENV_PYTHON (from %t/tradeai/env or the override file) resolves `$PY` in the allowlist; without
 # it the executor falls back to the interpreter below.
 
