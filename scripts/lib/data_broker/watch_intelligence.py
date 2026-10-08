@@ -26,6 +26,7 @@ VIEWS = (
     "needs_review",
     "needs_data",
     "avoid",
+    "expired",
     "all",
 )
 
@@ -760,20 +761,36 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
         }
         items.append(it)
 
-    # Apply non-view ranking filters first (view=top_ideas filters after rank)
-    filter_q = {**q, "view": "all" if view == "top_ideas" else view}
-    filtered = _apply_filters(items, filter_q)
+    # Decision standards (operator 2026-10-07): category, priority, scores, TTL/expiry, status, actionability on
+    # every card — config/watch_decision_standards.yaml. The board answers over the whole universe, not the page.
+    from lib.data_broker import watch_decision as _wd
 
-    if view == "top_ideas":
+    _wd.attach([i["card"] for i in items])
+    for i in items:
+        i["domains"]["WatchDecision"] = {"decision": field(i["card"].get("decision"), source=_wd.DECISION_VERSION)}
+    decision_board = _wd.board([i["card"] for i in items])
+    dq = dict(q)
+    if view == "expired":
+        dq.setdefault("decision_status", "expired,invalidated")
+    items_live = [i for i in items if _wd.passes(i["card"].get("decision") or {}, dq)]
+
+    # Apply non-view ranking filters first (view=top_ideas filters after rank)
+    filter_q = {**q, "view": "all" if view in ("top_ideas", "expired") else view}
+    filtered = _apply_filters(items_live, filter_q)
+
+    if sort.lower() in _wd.SORTS:
+        # Decision sorts apply to any view (Top Ideas included) — operator 2026-10-07.
+        sorted_items = sorted(filtered, key=_wd.sort_key(sort))
+    elif view == "top_ideas":
         ranked = rank_top_ideas(filtered)
         # Top Ideas = top ranked slice (dynamic), not DEFAULT_PRIORITY
         sorted_items = ranked
         sort = f"rank:{RANK_VERSION}"
-    elif view == "near_trigger":
-        sorted_items = _apply_filters(items, {**q, "view": "near_trigger"})
+    elif view in ("near_trigger", "expired"):
+        sorted_items = _apply_filters(items_live, {**q, "view": "all" if view == "expired" else view})
         sorted_items = _sort_items(sorted_items, sort)
     else:
-        sorted_items = _apply_filters(items, {**q, "view": view})
+        sorted_items = _apply_filters(items_live, {**q, "view": view})
         sorted_items = _sort_items(sorted_items, sort)
 
     total = len(sorted_items)
@@ -799,6 +816,10 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
         ),
         "near_trigger": sum(1 for i in items if (i.get("card") or {}).get("is_near_trigger")),
         "material_change": sum(1 for i in sorted_items if (i.get("card") or {}).get("material_change")),
+        "decision_live": decision_board["live"],
+        "decision_actionable": decision_board["actionable"],
+        "decision_expired": decision_board["facets"]["status"].get("expired", 0),
+        "decision_invalidated": decision_board["facets"]["status"].get("invalidated", 0),
     }
 
     cards_out = [i.get("card") for i in page_items]
@@ -866,6 +887,7 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
             "provider_calls": 0,
         },
         "rank_version": RANK_VERSION if view == "top_ideas" else None,
+        "decision_board": decision_board,
     }
     return body
 

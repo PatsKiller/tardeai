@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.6.0
+Policy-Version:      1.6.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-07
-Last-Reviewed:       2026-10-07T18:00:00-04:00
+Effective-Date:      2026-10-08
+Last-Reviewed:       2026-10-08T00:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.5.1
+Supersedes:          1.6.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -1864,6 +1864,7 @@ Each line is something an agent got wrong today or was about to. The code carrie
   - Category, priority, scores, re-entry status, actionability and TTL come from `config/comms_categories.yaml` through `scripts/lib/comms/classify.py`. Add a category or rule there; never hard-code one in a producer or the UI.
   - TTLs: operational 72 h, market/securities 96 h, watchlist/correlation/relationship 1 week. A newer item on the same symbol (or topic) and category supersedes older ones.
   - `scripts/comms_lifecycle.py` (hourly) expires, then archives to jsonl.gz and deletes — refusing the delete unless archived counts match. Never delete comms rows any other way. Admin keep = `legal_hold` / `retain_until` through the guarded bulk route.
+- **The same standards apply to the Watchlist** (operator 2026-10-07, "watchlist etc"). Every Watch card's category, priority, scores, TTL/expiry, status and actionability come from `config/watch_decision_standards.yaml` through `lib/data_broker/watch_decision.py`. Change a rule there; never in the page. On the Watchlist the SIGNAL expires, never the membership: held names never leave the views and nothing is deleted.
 
 ### Git and CI
 - **Branch protection requires a PR to be up to date.**
@@ -3843,6 +3844,7 @@ superseded).
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.6.1 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications rule extended to the Watchlist: Watch decision standards live in `config/watch_decision_standards.yaml` via `lib/data_broker/watch_decision.py`; the signal expires, never the membership. No rule weakened; §0/§2/§17 untouched. | Operator-directed 2026-10-07 ("watchlist etc"; "start the watchlist"). |
 | 1.6.0 | 2026-10-07 | ACTIVE on merge | MINOR | Telegram section gains "Communications is the single record of operator message traffic": every operator send/receive is recorded in `communication_events` (`send_telegram` or `record_operator_message`); classification and TTLs live in `config/comms_categories.yaml`; removal only through `comms_lifecycle.py` archive-then-delete. Adds obligations, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-07 (Communications hub spec; "Same TTL as everything"; "Archive, then remove"). |
 | 1.5.1 | 2026-10-06 | ACTIVE on merge | PATCH | §7A positions known-gaps measurement updated: reinvestments no longer merged by a missing orderId, broker precision kept, per-account replace window; ledger lots reproduce the broker for every Schwab position. No rule change. | Operator-directed 2026-10-06 ("fix the lot transfer direction gap now"). |
 | 1.5.0 | 2026-10-06 | ACTIVE on merge | MINOR | §7A positions "Known gaps" rewritten after the fix: the Schwab ingest dropped transfer/journal direction (abs() of the security leg); outflows are now `Security Transfer Out` / `Journaled Shares Out`, and agents must never take abs() of a broker leg. Lots reproduce the broker except 3 explained rows. Adds an obligation, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-06 ("fix the lot transfer direction gap now"; earlier "edit agents.md with correct source of truth"). |

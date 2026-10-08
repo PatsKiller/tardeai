@@ -4,10 +4,13 @@
  * Zero provider calls on load.
  */
 import { useCallback, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
+import {
+  DECISION_KEYS, DECISION_SORTS, WatchDecisionBadges, WatchDecisionBoard, WatchDecisionFilterModal, type WatchDecision,
+} from '../components/watch/WatchDecisionParts'
 
 type Card = {
   symbol: string
@@ -63,6 +66,7 @@ type Card = {
   absolute_performance_summary?: string | null
   next_review_at?: string | null
   next_review_condition?: string | null
+  decision?: WatchDecision | null
 }
 
 type ReviewStatus = {
@@ -87,6 +91,7 @@ const VIEWS: { id: string; label: string }[] = [
   { id: 'needs_review', label: 'Needs Review' },
   { id: 'needs_data', label: 'Needs Data' },
   { id: 'avoid', label: 'Avoid' },
+  { id: 'expired', label: 'Expired' },
   { id: 'all', label: 'All' },
 ]
 
@@ -208,6 +213,10 @@ export default function WatchIntelligenceUnified() {
   const reviewAgent = qsGet(sp, 'review_agent', '')
   const freshness = qsGet(sp, 'freshness', '')
   const materialChange = qsGet(sp, 'material_change', '')
+  const decisionQs = DECISION_KEYS.map(k => [k, qsGet(sp, k, '')]).filter(([, v]) => v)
+  const decisionKey = decisionQs.map(([k, v]) => `${k}=${v}`).join('&')
+  const navigate = useNavigate()
+  const [decisionOpen, setDecisionOpen] = useState(false)
 
   const apiQs = useMemo(() => {
     const p = new URLSearchParams()
@@ -232,8 +241,10 @@ export default function WatchIntelligenceUnified() {
     if (starredOnly) p.set('starred', '1')
     if (heldOnly) p.set('held', '1')
     if (origin) p.set('origin', origin)
+    for (const [k, v] of decisionQs) p.set(k, v)
     return p.toString()
-  }, [view, page, sort, q, street, state, sector, industry, instrument, reviewStatus, reviewAgent, freshness, materialChange, savedList, provider, model, cioView, starredOnly, heldOnly, origin])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, page, sort, q, street, state, sector, industry, instrument, reviewStatus, reviewAgent, freshness, materialChange, savedList, provider, model, cioView, starredOnly, heldOnly, origin, decisionKey])
 
   const [refreshKey, setRefreshKey] = useState(0)
   const [starError, setStarError] = useState<string | null>(null)
@@ -288,6 +299,21 @@ export default function WatchIntelligenceUnified() {
   if (heldOnly) activeChips.push('held')
   if (origin) activeChips.push(`origin:${origin}`)
   if (q) activeChips.push(`q:${q}`)
+  for (const [k, v] of decisionQs) activeChips.push(`${k}:${v}`)
+
+  const applyDecision = (f: Record<string, string>) => {
+    const next = new URLSearchParams(sp)
+    for (const k of DECISION_KEYS) next.delete(k)
+    for (const [k, v] of Object.entries(f)) if (v) next.set(k, v)
+    next.set('page', '1')
+    setSp(next, { replace: true })
+  }
+  const applyPreset = (preset: Record<string, string>) => {
+    const next = new URLSearchParams()
+    for (const [k, v] of Object.entries(preset)) next.set(k, v)
+    setSp(next, { replace: true })
+  }
+  const decisionInitial = Object.fromEntries(decisionQs)
 
   return (
     <div
@@ -347,6 +373,10 @@ export default function WatchIntelligenceUnified() {
       {starError && (
         <div style={{ color: BB.red, fontSize: TYPE.sm, marginBottom: 8 }} data-star-error>{starError}</div>
       )}
+
+      {/* 1b. Decision board — the six at-a-glance answers (operator 2026-10-07) */}
+      <WatchDecisionBoard board={body?.decision_board} onPreset={applyPreset} onOpen={(s) => navigate(`/watch/intelligence/${s}`)} />
+      <WatchDecisionFilterModal open={decisionOpen} initial={decisionInitial} board={body?.decision_board} onApply={applyDecision} onClose={() => setDecisionOpen(false)} />
 
       {/* 2. Counts */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(0,1fr))', gap: 8, marginBottom: 10 }}>
@@ -490,8 +520,12 @@ export default function WatchIntelligenceUnified() {
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
+        <button type="button" style={pill(decisionQs.length > 0)} onClick={() => setDecisionOpen(true)} data-open-decision-filters>
+          Decision filters{decisionQs.length ? ` · ${decisionQs.length}` : ''}
+        </button>
         <select value={sort} onChange={e => setParam('sort', e.target.value)} style={inputStyle}>
           <option value="watch_rank">Sort: watch rank</option>
+          {DECISION_SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           <option value="street_rating">Sort: street</option>
           <option value="day_change">Sort: day change</option>
           <option value="upside">Sort: upside</option>
@@ -546,7 +580,7 @@ export default function WatchIntelligenceUnified() {
           <table style={{ width: '100%', borderCollapse: 'collapse', background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12 }}>
             <thead>
               <tr>
-                {['Symbol', 'Street', 'Trade AI', 'Last', 'CIO', 'Maria', 'Action'].map(h => (
+                {['Symbol', 'Decision', 'Street', 'Trade AI', 'Last', 'CIO', 'Maria', 'Action'].map(h => (
                   <th key={h} style={{ textAlign: 'left', fontSize: TYPE.xs, color: BB.text3, padding: 8, borderBottom: `1px solid ${BB.border}` }}>{h}</th>
                 ))}
               </tr>
@@ -555,6 +589,7 @@ export default function WatchIntelligenceUnified() {
               {cards.map(c => (
                 <tr key={c.symbol} onClick={() => setSelected(c.symbol)} style={{ cursor: 'pointer' }} data-intelligence-card data-symbol={c.symbol}>
                   <td style={td}>{c.symbol}{c.starred ? ' ★' : ''}{c.held ? ' H' : ''}</td>
+                  <td style={td}><WatchDecisionBadges d={c.decision} /></td>
                   <td style={td} data-primary-rating>{c.street_rating}</td>
                   <td style={{ ...td, color: stateColor(c.trade_ai_state) }}>{c.trade_ai_state}</td>
                   <td style={td}>{money(c.last)} {pct(c.day_change_pct)}</td>
@@ -629,6 +664,7 @@ export default function WatchIntelligenceUnified() {
                       <span style={{ border: `1px solid ${BB.amber}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.amber }}>MATERIAL CHANGE</span>
                     ) : null}
                   </div>
+                  {c.decision ? <div style={{ marginTop: 6 }}><WatchDecisionBadges d={c.decision} /></div> : null}
                   {c.decision_input_price != null && c.current_quote != null && Number(c.decision_input_price) !== Number(c.current_quote) ? (
                     <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 6 }} data-decision-vs-quote>
                       Decision input {money(Number(c.decision_input_price))}

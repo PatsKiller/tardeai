@@ -1,0 +1,87 @@
+# Watch decision standards — category, priority, scores, TTL, status, actionability for every Watch item
+# (scripts/lib/data_broker/watch_decision.py). Operator 2026-10-07: the Command Center standards that
+# Communications follows apply to the Watchlist too: every item carries a category, priority, confidence score,
+# TTL, expiration timestamp, status and actionability indicator; items are sortable by priority, confidence,
+# risk, reward and time sensitivity; stale signals leave the active views.
+#
+# What expires is the SIGNAL, never the membership: an expired item moves to the "expired" view until new
+# evidence (a new entry plan, synthesis, review or re-entry computation) reaffirms it. HELD positions never leave
+# the views — a held name with an old signal shows status "expired" (review it) but stays listed. Removing a name from the
+# watchlist stays an operator action (watchlist_hygiene.py keeps its own weekly rules).
+#
+# Rules run top to bottom; the first whose every condition holds wins. Conditions (all optional, AND-ed):
+#   held, near_trigger, in_zone, proposal_allowed      true/false
+#   reentry_state_in, trade_state_in, plan_urgency_in, synthesis_in   lists (upper-cased compare, urgency lower)
+#   min_plan_confidence, min_rr                          numbers
+# Scores are 0..1. priority_score = 100 × (0.35·time + 0.25·max(risk, reward) + 0.20·confidence + 0.20·tier),
+# tier from the rule's base priority — the same formula as config/comms_categories.yaml.
+
+version: 1
+
+categories:
+  re_entry:                    {label: "Re-Entry", ttl_hours: 96}
+  risk:                        {label: "Risk", ttl_hours: 96}
+  high_conviction_opportunity: {label: "High Conviction Opportunity", ttl_hours: 96}
+  reward:                      {label: "Reward", ttl_hours: 96}
+  watchlist_candidate:         {label: "Watchlist Candidate", ttl_hours: 168}
+  held_position:               {label: "Held Position", ttl_hours: 168}
+
+# Re-entry desk state (lib/data_broker/reentry_decision_desk.py) → re-entry status (same vocabulary as Communications).
+reentry_status:
+  "READY TO REVIEW": confirmed
+  "NEAR ENTRY": potential
+  "WAIT": opportunity
+  "OVERBOUGHT WAIT": opportunity
+  "MISSING PLAN": opportunity
+  "MISSING MARKET": opportunity
+
+# Trade AI states and CIO synthesis outcomes that INVALIDATE a non-held idea (status = invalidated; still visible
+# under the "avoid" view and with include_expired).
+invalidating_trade_states: [AVOID, BLOCKED, DETERMINISTIC_FAIL]
+invalidating_synthesis: [AVOID, IGNORE, SELL]
+
+rules:
+  - {id: held_negative, category: risk, priority: high, actionable: true, action: "Review the held position",
+     when: {held: true, synthesis_in: [SELL, TRIM, AVOID]}}
+  - {id: held_blocked, category: risk, priority: high, actionable: true, action: "Review the held position",
+     when: {held: true, trade_state_in: [AVOID, BLOCKED, DETERMINISTIC_FAIL]}}
+  - {id: reentry_confirmed, category: re_entry, priority: high, actionable: true, action: "Review re-entry now",
+     when: {held: false, reentry_state_in: ["READY TO REVIEW"]}}
+  - {id: reentry_near, category: re_entry, priority: medium, actionable: true, action: "Set a re-entry alert",
+     when: {held: false, reentry_state_in: ["NEAR ENTRY"]}}
+  - {id: reentry_watch, category: re_entry, priority: low, actionable: false,
+     when: {held: false, reentry_state_in: [WAIT, "OVERBOUGHT WAIT", "MISSING PLAN", "MISSING MARKET"]}}
+  - {id: proposal_ready, category: high_conviction_opportunity, priority: high, actionable: true, action: "Review the proposal",
+     when: {proposal_allowed: true}}
+  - {id: plan_ready_strong, category: high_conviction_opportunity, priority: high, actionable: true, action: "Review entry",
+     when: {plan_urgency_in: [ready], in_zone: true, min_plan_confidence: 0.6, min_rr: 2.0}}
+  - {id: plan_ready, category: reward, priority: medium, actionable: true, action: "Review entry",
+     when: {plan_urgency_in: [ready]}}
+  - {id: near_trigger, category: reward, priority: medium, actionable: true, action: "Watch the trigger",
+     when: {near_trigger: true}}
+  - {id: plan_near, category: reward, priority: low, actionable: false,
+     when: {plan_urgency_in: [near_entry]}}
+  - {id: held_watch, category: held_position, priority: low, actionable: false, when: {held: true}}
+  - {id: candidate, category: watchlist_candidate, priority: low, actionable: false, when: {}}
+
+# Score inputs.
+scores:
+  reward_rr_full: 6.0          # R:R at which reward = 1.0 (stored R:R mostly 2-4; 3 saturated)
+  reward_upside_full_pct: 30   # street upside % at which reward = 1.0 (used when no plan R:R)
+  risk_stop_full_pct: 15       # stop distance % at which stop risk = 1.0
+  risk_earnings_days: 7        # earnings inside this window adds risk and time sensitivity
+  near_full_pct: 6             # distance-to-trigger % at which time sensitivity falls to 0
+  default_confidence: 0.3      # when no planner / strategy / synthesis confidence exists
+  plan_fresh_hours: 168        # an entry plan older than this no longer counts as evidence
+  synthesis_fresh_hours: 336
+
+# priority label from priority_score — never lower than the rule's base priority, at most one tier above it.
+priority_bands: {critical: 80, high: 60, medium: 40}
+
+# Decision board: the six at-a-glance questions.
+board:
+  panel_size: 6
+  expiring_within_hours: 24
+  recent_hours: 24
+  reward_min: 0.5              # "Highest reward" counts items at or above this reward score
+  risk_min: 0.6                # "Highest risk" counts risk-category items and items at or above this risk score
