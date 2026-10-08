@@ -329,6 +329,67 @@ def test_provider_semaphore_releases_when_generate_raises(monkeypatch: pytest.Mo
     assert sem._value == sem._initial_value
 
 
+def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refusal that appears only on the stream path's second resolve is JSON, before HTTP 200."""
+    calls = {"n": 0}
+    real = bridge.resolve_model_policy
+
+    def _flip(process_id: str, task_type: str = "", routing_policy: str | None = None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real(process_id, task_type, routing_policy)
+        return {
+            "refused": "lane_unhealthy",
+            "refused_status": 503,
+            "refused_message": "Every health-gated lane for process alex_cio_synthesis is unhealthy",
+            "routing_decision": {
+                "policy_id": "default",
+                "lane_chosen": None,
+                "reason": "lane_unhealthy",
+                "health_snapshot": {"provider_health": "present", "lanes": {"deepseek": "unhealthy"}},
+            },
+        }
+
+    monkeypatch.setattr(bridge, "resolve_model_policy", _flip)
+    stream = MagicMock(side_effect=AssertionError("stream must not start"))
+    monkeypatch.setattr(bridge.MockProvider, "generate_stream", stream)
+    monkeypatch.setattr(bridge.RealProvider, "generate", MagicMock(side_effect=AssertionError("real provider")))
+    server = bridge.start_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with _governed(monkeypatch):
+            port = int(server.server_address[1])
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
+            body = json.dumps(
+                {"stream": True, "messages": [{"role": "user", "content": "x"}]}
+            ).encode("utf-8")
+            conn.request(
+                "POST",
+                "/v1/chat/completions",
+                body=body,
+                headers={"Content-Type": "application/json", "X-TradeAI-Agent": "alex"},
+            )
+            response = conn.getresponse()
+            raw = response.read()
+            content_type = response.getheader("Content-Type")
+            conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    payload = json.loads(raw.decode("utf-8"))
+    assert response.status == 503
+    assert content_type == "application/json"
+    assert payload["error"]["code"] == "lane_unhealthy"
+    assert payload["error"]["status"] == 503
+    assert payload["routing_decision"]["reason"] == "lane_unhealthy"
+    assert payload["routing_decision"]["lane_chosen"] is None
+    assert calls["n"] == 2
+    assert stream.call_count == 0
+    assert not raw.startswith(b"data:")
+
+
 def test_semaphore_size_is_the_configured_integer() -> None:
     policy = _load("llm_routing_policy.json")
     configured = policy["policies"]["default"]["provider_concurrency"]["deepseek"]

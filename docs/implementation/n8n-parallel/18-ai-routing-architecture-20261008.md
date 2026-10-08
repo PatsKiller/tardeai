@@ -74,7 +74,7 @@ Two caps already apply, and this policy does not add a third refusal: the proces
 
 ## Receipts
 
-Every bridge response, success and refusal, includes `routing_decision`:
+Every bridge response, success and refusal, includes `routing_decision`. The stream path resolves the policy again before it writes the HTTP status line. When that second resolve is not a usable lane, the response is the same typed JSON the non-stream path returns (`error.code`, `error.status`, and `routing_decision`) with `Content-Type: application/json`. It does not open `text/event-stream`.
 
 ```text
 {policy_id, lane_chosen, reason, health_snapshot}

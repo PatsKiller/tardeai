@@ -682,6 +682,45 @@ def select_governed_lane(process_id: str, routing_policy: str | None = None) -> 
     return {"policy": resolved, "routing_decision": decision}
 
 
+def stream_policy_refusal(process_id: str, routing_policy: str | None, policy: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Typed JSON when the stream path's second resolve is not a usable lane.
+
+    None means the lane is usable. A refused lane keeps its code, status, and
+    routing_decision. A missing process is UNKNOWN_PROCESS / 400, with the
+    not_routed decision execute_governed_call attaches when resolve returns None.
+    """
+    if (
+        isinstance(policy, dict)
+        and not policy.get("refused")
+        and not policy.get("missing_process")
+        and "model_id" in policy
+    ):
+        return None
+    policy_id = normalize_routing_policy_header(routing_policy)
+    decision = _routing_decision(policy_id, None, "not_routed", dict(_HEALTH_NOT_READ))
+    if isinstance(policy, dict) and isinstance(policy.get("routing_decision"), dict):
+        decision = policy["routing_decision"]
+    if isinstance(policy, dict) and policy.get("refused"):
+        code = str(policy["refused"])
+        message = str(policy.get("refused_message") or policy["refused"])
+        status = int(policy.get("refused_status") or 503)
+    else:
+        code = "UNKNOWN_PROCESS"
+        message = f"Process '{process_id}' not registered in governance bridge"
+        status = 400
+    return {
+        "error": {"code": code, "message": message, "status": status},
+        "id": uuid.uuid4().hex[:12],
+        "object": "chat.completion.error",
+        "created": int(time.time()),
+        "model": "tradeai_governed",
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "cost_estimate": 0.0,
+        "governance_pass": False,
+        "routing_decision": decision,
+    }
+
+
 def unknown_routing_policy_response(policy_name: str | None) -> dict[str, Any]:
     """Refusal body for an unknown header. Does not read health receipts or call a provider."""
     policy_id = normalize_routing_policy_header(policy_name)
@@ -1855,17 +1894,19 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
 
     def _send_stream(self, result: dict, messages: list, process_id: str,
                      tools: list | None, max_tokens: int, routing_policy: str | None = None) -> None:
+        # Resolve before any status line. A refusal that appears only on this
+        # second resolve is the same typed JSON the non-stream path returns.
+        policy = resolve_model_policy(process_id, routing_policy=routing_policy)
+        refusal = stream_policy_refusal(process_id, routing_policy, policy)
+        if refusal is not None:
+            self._send_json(int(refusal["error"]["status"]), refusal)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-TradeAI-Governed", f"cio_bridge_{'p1_2b' if BIND_MODE == 'canary' else 'p1_2a'}")
         self.end_headers()
-
-        policy = resolve_model_policy(process_id, routing_policy=routing_policy)
-        if not isinstance(policy, dict) or policy.get("refused") or "model_id" not in policy:
-            self.send_error(400, f"Unknown process: {process_id}")
-            return
         model_id = policy["model_id"]
         provider = RealProvider.instance() if BIND_MODE == "canary" else MockProvider.instance()
         if BIND_MODE == "canary":
