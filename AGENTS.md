@@ -4,8 +4,8 @@
 Policy-Version:      2.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
+Status:              ACTIVE
+Effective-Date:      2026-10-08
 Last-Reviewed:       2026-10-08T12:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
@@ -3409,7 +3409,7 @@ overnight LLM window · merging divergent copies of any authoritative store · *
 retiring a data source, or a writer of an authoritative store** (§7A — an agent proposes the
 registry row; the operator's grant is recorded in its `approval`; the gate fails an ungranted
 source) · **activating, editing or deactivating an n8n workflow that schedules a Trade AI lane**
-(§23 — a `cron` grant; PROPOSED in 2.0.0) · branch-protection or required-context changes ·
+(§23 — a `cron` grant; ACTIVE in 2.0.0) · branch-protection or required-context changes ·
 provisioning or funding any model or data
 plan · deleting anything · live broker authority (A4/A5): live flags, live sessions, 2FA, credentials, the
 Stage 14 canary, and any change to `DETERMINISTIC_ENTRY_POINTS`, session-grant limits or the grant contract.
@@ -3857,7 +3857,7 @@ superseded).
 
 ---
 
-# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — PROPOSED 2.0.0
+# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 2.0.0
 
 **Status: PROPOSED.** Awaiting `APPROVE_AGENTS_POLICY_2_0_0 <pr> <sha>`. Until the operator
 ratifies it, the 1.6.1 text governs and nothing in this section grants anything. Operator direction
@@ -4030,7 +4030,7 @@ No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 2.0.0 | 2026-10-08 | PROPOSED | MAJOR | §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n only)" added: scope limited to the `m8m-n8n` compose project; n8n workflows are §9.3 scheduler entries (registry row with `output_signal` first, grant-gated install/activate/edit/retire, shadow → canary → cutover → per-line rollback, `# RETIRED <date> n8n-cutover <lane_id>` never deleted, double scheduler fails the registry gate); the only trigger path is the gateway `coordination/run` operation for lanes in `config/n8n_run_allowlist.json` (never broker/order/stop/position/paper-execution/sender/secret-render/guard/release-deploy/destructive-retention/memory-writer/authoritative-ingest), gateway never spawns, executor reuses the lane's lock, RunReceipt is the evidence; n8n may pick registered `n8n_*` process ids, versioned template ids and named routing policies but never a model, provider, raw prompt or caller identity, every call capped by the process registry and the $2.00/day cap with typed refusal; exactly one n8n credential (relay bearer from Bitwarden SM, weekly rotation, valid only at the relay), HMAC key host-side, `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` + prune ≤168 h as the precondition; n8n is replaceable. §9.3 and §17 amended in place; ADR_COORDINATION_SECRETS moves to ACCEPTED (one credential). MAJOR: routing and scheduler reach widen for one actor; nothing weakened for any other. | **PENDING** — `APPROVE_AGENTS_POLICY_2_0_0 <pr> <sha>`; operator direction 2026-10-08 ("make agents.md carve out just for n8n"; decisions 1–3 of the n8n program plan). |
+| 2.0.0 | 2026-10-08 | ACTIVE | MAJOR | §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n only)" added: scope limited to the `m8m-n8n` compose project; n8n workflows are §9.3 scheduler entries (registry row with `output_signal` first, grant-gated install/activate/edit/retire, shadow → canary → cutover → per-line rollback, `# RETIRED <date> n8n-cutover <lane_id>` never deleted, double scheduler fails the registry gate); the only trigger path is the gateway `coordination/run` operation for lanes in `config/n8n_run_allowlist.json` (never broker/order/stop/position/paper-execution/sender/secret-render/guard/release-deploy/destructive-retention/memory-writer/authoritative-ingest), gateway never spawns, executor reuses the lane's lock, RunReceipt is the evidence; n8n may pick registered `n8n_*` process ids, versioned template ids and named routing policies but never a model, provider, raw prompt or caller identity, every call capped by the process registry and the $2.00/day cap with typed refusal; exactly one n8n credential (relay bearer from Bitwarden SM, weekly rotation, valid only at the relay), HMAC key host-side, `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` + prune ≤168 h as the precondition; n8n is replaceable. §9.3 and §17 amended in place; ADR_COORDINATION_SECRETS moves to ACCEPTED (one credential). MAJOR: routing and scheduler reach widen for one actor; nothing weakened for any other. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d88ac4943612b6703402f638ba3ed9af` (operator, 2026-10-08, in session: "i approve"); merged #1513 at 2026-10-08T09:06:46-04:00; operator direction 2026-10-08 ("make agents.md carve out just for n8n"; decisions 1–3 of the n8n program plan). |
 | 1.6.1 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications rule extended to the Watchlist: Watch decision standards live in `config/watch_decision_standards.yaml` via `lib/data_broker/watch_decision.py`; the signal expires, never the membership. No rule weakened; §0/§2/§17 untouched. | Operator-directed 2026-10-07 ("watchlist etc"; "start the watchlist"). |
 | 1.6.0 | 2026-10-07 | ACTIVE on merge | MINOR | Telegram section gains "Communications is the single record of operator message traffic": every operator send/receive is recorded in `communication_events` (`send_telegram` or `record_operator_message`); classification and TTLs live in `config/comms_categories.yaml`; removal only through `comms_lifecycle.py` archive-then-delete. Adds obligations, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-07 (Communications hub spec; "Same TTL as everything"; "Archive, then remove"). |
 | 1.5.1 | 2026-10-06 | ACTIVE on merge | PATCH | §7A positions known-gaps measurement updated: reinvestments no longer merged by a missing orderId, broker precision kept, per-account replace window; ledger lots reproduce the broker for every Schwab position. No rule change. | Operator-directed 2026-10-06 ("fix the lot transfer direction gap now"). |
