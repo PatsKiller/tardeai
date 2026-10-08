@@ -573,6 +573,49 @@ def scheduler_label(sched: Optional[dict[str, Any]]) -> str:
     return f"{kind}:{expr}" if expr else kind
 
 
+#: What the monitor prints for an n8n lane's scheduler presence. FRESH/ORPHANED is READ from
+#: `scheduler_present`, which `_scheduler_present` decided against expected_cadence_hours; the
+#: renderers below never re-derive it (observability gaps PR, 2026-10-08).
+N8N_FRESH = "FRESH"
+
+
+def n8n_last_run_label(last: Optional[dict[str, Any]]) -> str:
+    """`mode/state finished_at` for the newest n8n run a report row carries, or the reason there is none."""
+    if not last:
+        return "no run (no ledger row, no RunReceipt)"
+    return (f"{last.get('mode') or '?'}/{last.get('state') or '?'} "
+            f"{last.get('finished_at') or '?'}")
+
+
+def lane_scheduler_text(row: dict[str, Any]) -> str:
+    """The scheduler column of a lane row from `evaluate_lane`.
+
+    A cron/systemd lane reads `cron:<expr>`; an n8n lane reads `n8n:<workflow id>` plus its last
+    run (mode/state/finished_at) and FRESH or ORPHANED — the cron expression it retired is not
+    the scheduler any more, so printing it would be a lie about who fires the lane.
+    """
+    label = str(row.get("scheduler_label") or scheduler_label(row.get("scheduler")))
+    if str((row.get("scheduler") or {}).get("kind") or "") != SCHEDULER_N8N:
+        return label
+    fresh = N8N_FRESH if row.get("scheduler_present") else ORPHANED
+    cadence = row.get("expected_cadence_hours")
+    within = f" within {cadence}h" if cadence else ""
+    return f"{label} last {n8n_last_run_label(row.get('n8n_last_run'))} [{fresh}{within}]"
+
+
+def format_lane_line(row: dict[str, Any]) -> str:
+    """One text line per evaluated lane: id, verdict, scheduler (see `lane_scheduler_text`), output age."""
+    age = row.get("output_age_hours")
+    cadence = row.get("expected_cadence_hours")
+    out = f"output {age}h" + (f"/{cadence}h" if cadence else "") if age is not None else "output none"
+    return f"{str(row.get('lane_id') or row.get('lane') or ''):<36} {str(row.get('verdict') or ''):<16} {lane_scheduler_text(row)}  {out}"
+
+
+def render_lane_table(rows: Iterable[dict[str, Any]]) -> str:
+    """The lane-monitor text surface: every row from `collect_lane_registry_report()["lanes"]`."""
+    return "\n".join(format_lane_line(r) for r in rows)
+
+
 def _scheduler_present(row: dict[str, Any], found: dict[str, Any], *,
                        now: Optional[datetime] = None,
                        root: Optional[Path] = None) -> bool:
