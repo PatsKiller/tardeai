@@ -1312,6 +1312,7 @@ GATES = [
             "tests/test_m2_substrate_check.py",
             "tests/test_earnings_gate_vocabulary_20260928.py",
             "tests/test_lane_registry_bare_schedule_20260928.py",
+            "tests/test_lane_registry_drift_events_20261008.py",
         ],
     ),
     (
