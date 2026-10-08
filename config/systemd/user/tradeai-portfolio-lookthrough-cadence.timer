@@ -1,0 +1,13 @@
+[Unit]
+# Measured 2026-10-08 (systemctl --user cat / show): OnCalendar=Sun *-*-01..07 06:30:00, Persistent=true, no RandomizedDelaySec,
+# enabled, next elapse Sun 2026-11-01 06:30 EST. The schedule is preserved exactly; only the service it starts moves from
+# the dev tree to the served CURRENT tree. Installed by the operator under a config-write grant (install -m 0600
+# copy, daemon-reload, restart of this timer); this file installs nothing.
+Description=TradeAI portfolio LOOKTHROUGH cadence schedule (1st Sun 06:30 — after legacy 06:00, parallel observation)
+
+[Timer]
+OnCalendar=Sun *-*-01..07 06:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
