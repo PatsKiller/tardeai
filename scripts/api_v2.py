@@ -53885,6 +53885,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # Notification outbox projection (roadmap Phase 2 PR-A, 2026-10-08): what the senders did —
+    # sent / suppressed / recorded / withdrawn with the recorded reason. Read-only; n8n never sends.
+    if base_path == "/api/v2/coordination/outbox":
+        try:
+            from lib.notification_outbox_projection import load_outbox as _outbox_load
+
+            q = query or {}
+            return 200, {
+                "ok": True,
+                "data": _outbox_load(hours=int(q.get("hours") or 24), state=q.get("state") or None),
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
     # alternatives (per unit), portfolio facts and the CIO review — read-only.
     if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):

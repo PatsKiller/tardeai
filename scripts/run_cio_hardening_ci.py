@@ -3382,6 +3382,7 @@ GATES = [
             "tests/test_n8n_model_job_20261007.py",
             "tests/test_n8n_model_job_operation_20261007.py",
             "tests/test_n8n_phase1_dispatch_20261007.py",
+            "tests/test_notification_outbox_projection_20261008.py",
             "tests/test_platform_maintenance_pipeline_20261007.py",
             # 2026-10-07 cron consolidation tranche C (low-risk): options tick, orchestrator
             # slot wrapper, drive syncs runner, hermes subject dispatcher. Proposals only; no

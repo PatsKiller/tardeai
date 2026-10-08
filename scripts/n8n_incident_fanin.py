@@ -158,6 +158,9 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
         out.append({"source": "lane_registry", "code": f["code"], "item": f["item"], "severity": f["severity"], "detail": f["detail"][:160],
                     "artifact_rel": LANE_REGISTRY_RECEIPT_REL, "store": "data/runtime",
                     "detected_at": now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()})   # stable per UTC day = stable payload
+    # 3d. notification outbox (Phase 2 PR-A, 2026-10-08): withdrawn sends, sends stuck pending > 30 min, suppression
+    # spike. Read through the projection with a 3 s statement timeout; no DB -> no findings, receipt says so.
+    out.extend(_outbox_findings(now))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -169,6 +172,27 @@ def collect(root: Path, now: datetime) -> list[dict[str, Any]]:
                         "detail": f"ok={doc.get('ok')} age_h={None if age_h is None else round(age_h, 1)}",
                         "artifact_rel": "backups/n8n/n8n_lab_backup_last.json", "store": "persistent-state", "detected_at": doc.get("as_of")})
     return out
+
+
+OUTBOX_SOURCE_STATUS: dict[str, Any] = {"status": "not_run"}
+
+
+def _outbox_findings(now: datetime) -> list[dict[str, Any]]:
+    """Anomalies from scripts/lib/notification_outbox_projection; fail-soft and recorded in the receipt."""
+    global OUTBOX_SOURCE_STATUS
+    try:
+        from scripts.lib.notification_outbox_projection import anomalies, load_outbox
+        model = load_outbox(hours=24, timeout_s=3.0, now=now)
+        OUTBOX_SOURCE_STATUS = {"status": model.get("status"), "note": model.get("note"), "total": model.get("total")}
+        if model.get("status") != "OK":
+            return []
+        found = []
+        for a in anomalies(model):
+            found.append({**a, "artifact_rel": "data/runtime/n8n_incident_fanin_last.json", "store": "data/runtime"})
+        return found
+    except Exception as exc:  # noqa: BLE001
+        OUTBOX_SOURCE_STATUS = {"status": "unavailable", "note": f"{type(exc).__name__}: {str(exc)[:120]}"}
+        return []
 
 
 def idem_key(f: dict[str, Any], day: str) -> str:
@@ -273,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
         recovered.append(rec)
     receipt = {"schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "mode": "apply" if args.apply else "dry-run",
                "served_sha": sha or None, "state_root": str(root), "gateway": gateway, "open": len(findings), "by_severity": by_sev,
-               "incidents": rows, "recovered": recovered, "source_notes": dict(NOTES),
+               "incidents": rows, "recovered": recovered, "outbox_source": OUTBOX_SOURCE_STATUS, "source_notes": dict(NOTES),
                "ok": (not args.apply) or all(r.get("state") not in {"UNREACHABLE", "REFUSED", "UNKNOWN"} for r in rows)}
     if args.apply:
         out.parent.mkdir(parents=True, exist_ok=True)
