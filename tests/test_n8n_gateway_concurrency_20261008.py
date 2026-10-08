@@ -173,7 +173,7 @@ def _burst(port: int, bodies: list[bytes]) -> list[tuple[int | None, dict | None
         return list(pool.map(fire, bodies))
 
 
-@pytest.mark.parametrize('burst_size', [1, 5, 16, 32, 64])
+@pytest.mark.parametrize("burst_size", [1, 5, 16, 32, 64])
 def test_expected_concurrent_run_bursts_all_land_as_requested_rows(gateway, burst_size):
     httpd, tracebacks = gateway
     port = httpd.server_address[1]
@@ -200,13 +200,19 @@ def test_expected_concurrent_run_bursts_all_land_as_requested_rows(gateway, burs
     assert len(handler) == burst_size
     assert MEASURED["run_burst_client_mean_s"] < MAX_MEAN_LATENCY_S
     ordered = sorted(latencies)
-    metrics = {'evidence_class': 'TEST_ONLY', 'burst': burst_size,
-               'request_p50_s': ordered[len(ordered)//2],
-               'request_p95_s': ordered[max(0, int(len(ordered)*.95+.999)-1)],
-               'request_max_s': max(ordered), 'handler_max_s': max(handler),
-               'dropped_requests': len(dropped), 'handler_errors': len(tracebacks),
-               'queue_delay_s': None, 'queue_delay_reason': 'executor not run in gateway-only fixture'}
-    print('BURST_METRICS', json.dumps(metrics, sort_keys=True))
+    metrics = {
+        "evidence_class": "TEST_ONLY",
+        "burst": burst_size,
+        "request_p50_s": ordered[len(ordered) // 2],
+        "request_p95_s": ordered[max(0, int(len(ordered) * 0.95 + 0.999) - 1)],
+        "request_max_s": max(ordered),
+        "handler_max_s": max(handler),
+        "dropped_requests": len(dropped),
+        "handler_errors": len(tracebacks),
+        "queue_delay_s": None,
+        "queue_delay_reason": "executor not run in gateway-only fixture",
+    }
+    print("BURST_METRICS", json.dumps(metrics, sort_keys=True))
 
 
 def test_sixteen_concurrent_event_accepts_with_distinct_nonces_all_commit(gateway):
