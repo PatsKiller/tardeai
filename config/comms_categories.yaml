@@ -50,7 +50,7 @@ rules:
      priority: high, confidence: 0.9, risk: 0.6, reward: 0.0, time: 0.8, actionable: true, action: "Check credentials"}
 
   # ── Threats: what can hurt a held position now ──
-  - {id: stop_health, match: "stop[ _]health|stop_triggered|orphaned|stop crossed|stop triggered|protective-stop|unprotected|stop placement reminder",
+  - {id: stop_health, match: "stop[ _]health|stop_triggered|orphaned|stop crossed|stop triggered|protective-stop|unprotected|stop placement reminder|critical stop alert|stop warning",
      category: threat, priority: critical, confidence: 0.9, risk: 1.0, reward: 0.0, time: 1.0, actionable: true, action: "Check stops"}
   - {id: plan_invalidated, match: "plan invalidated|through stop|what kills the idea", category: threat, priority: high,
      confidence: 0.8, risk: 0.8, reward: 0.0, time: 0.8, actionable: true, action: "Re-plan or drop"}
@@ -68,13 +68,13 @@ rules:
      risk: 0.3, reward: 0.0, time: 0.3, actionable: false}
 
   # ── High conviction: CIO buy-ready setups inside the zone ──
-  - {id: high_conviction, match: "cio entry alert", body: "buy[_ ]ready|inside entry zone", category: high_conviction_opportunity,
+  - {id: high_conviction, match: "cio entry alert|high conviction entry|add-on entry|entry approaching|entry blocked|^\\W*entry alert$", body: "buy[_ ]ready|inside entry zone", category: high_conviction_opportunity,
      priority: high, confidence: 0.7, risk: 0.4, reward: 0.8, time: 0.8, actionable: true, action: "Review entry"}
 
   # ── Reward: entries, scalps, options plays ──
   - {id: scalp_alert, match: "active trader · scalp alert|momentum scalp setup", category: reward, priority: high,
      confidence: 0.5, risk: 0.6, reward: 0.6, time: 1.0, actionable: true, action: "Watch the trigger"}
-  - {id: cio_entry, match: "cio entry alert|^entry state |watch — cio stance", category: reward, priority: medium,
+  - {id: cio_entry, match: "cio entry alert|^entry state |watch — cio stance|entry approaching|add-on entry|entry blocked|^\\W*entry alert$", category: reward, priority: medium,
      confidence: 0.5, risk: 0.4, reward: 0.6, time: 0.6, actionable: true, action: "Review entry"}
   - {id: options_intent, match: "options intent", category: reward, priority: medium, confidence: 0.6, risk: 0.3,
      reward: 0.5, time: 0.4, actionable: true, action: "Review options plan"}

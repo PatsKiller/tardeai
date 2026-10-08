@@ -1000,7 +1000,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | OK | `b51f26253575` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | OK | `ec2e5f4ac157` |
 | `docs/diligence/current/OPTIONS_ORDER_GATE_PROOF_2026-09-27.md` | Options order gate proof — broker layer (2026-09-27) | review_required | MISSING HEADER | `6dcb1e84f8b7` |
-| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `3757cde68556` |
+| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `51ef5489246c` |
 | `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | OK | `8bd7b79ca8fe` |
 | `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | OK | `356036502fea` |
 | `docs/diligence/current/RISK_GATE_MATRIX.md` | Risk Gate Matrix | review_required | OK | `ceaf05c64e9c` |
@@ -1787,6 +1787,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close | review_required | OK | `ff4d8004bf21` |
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET | review_required | OK | `f3951cc5a623` |
+| `docs/ops/DECISION_SPEED_REDESIGN_2026-10-08.md` | Decision-speed redesign — Telegram cards, Home, Communications, Watch (2026-10-08) | review_required | MISSING HEADER | `10f58141678e` |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern | review_required | OK | `7f5763a0c9fb` |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer | review_required | OK | `950c2f95e8b8` |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) | review_required | OK | `d3c4580d5c8b` |
@@ -1946,7 +1947,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/plan-openclaw-internal-first-integrity-20260923.md` | Plan: OpenClaw internal-first integrity (Maria → Trade-AI / Hermes before MODEL_GENERAL) | review_required | OK | `cc830e718f80` |
 | `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `056e7cde7fb6` |
 | `docs/plan-s-hollow-research-then-answer.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
-| `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `ffcfe9166ee9` |
+| `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `1776cfbd1feb` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06) | current_phase_keep | OK | `06306949c580` |
 | `docs/project/CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md` | Closed-Loop Imported Trade Edge Comparison (2026-06-06) | current_phase_keep | OK | `d1472f1967df` |
@@ -2131,7 +2132,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `0d6146c1d769` |
 | `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | OK | `fdbc12f84836` |
 | `docs/project/RECOMMENDATION_INTELLIGENCE.md` | Recommendation Intelligence Engine | current_phase_keep | OK | `86fc73d96ca3` |
-| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `a2e16b12fd4a` |
+| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `0ad545a7ef32` |
 | `docs/project/REPORTS_ACTION_TARGET_CONTRACT_2026-06-21.md` | Reports Action Target Contract + 3-Column Briefing (2026-06-21) | current_phase_keep | OK | `14d5ea7ac651` |
 | `docs/project/REPORTS_COMMAND_PORTAL_PHASE2_UX_HARDENING_2026-06-21.md` | Reports Command Portal — Phase 2 UX Hardening (2026-06-21) | current_phase_keep | OK | `fd2e6de7b2be` |
 | `docs/project/REPORTS_COMMAND_PORTAL_REDESIGN_2026-06-19.md` | Reports Command Portal — Redesign (2026-06-19) | current_phase_keep | OK | `d7d3f916e021` |

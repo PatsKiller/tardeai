@@ -1,0 +1,5 @@
+# Telegram decision cards (scripts/lib/telegram_cards.py) — operator 2026-10-08: "the ticker becomes the focus".
+# Set a family's enabled: false to roll back to the previous layout instantly (no deploy needed: read per send).
+families:
+  cio_entry: {enabled: true}     # telegram_rich.cio_entry_alert → EntryCard (both entry producers)
+  stop_health: {enabled: true}   # scripts/stop_health_check.py

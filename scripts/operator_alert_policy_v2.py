@@ -305,7 +305,8 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
     # Legacy watchlist_entry_planner still emits "ENTRY ALERT — SYM". Same operator intent as
     # cio_entry_state (page the phone for READY/NEAR). Must match BEFORE scanner_candidate, which
     # otherwise swallows "entry alert" into COMMAND_CENTER / P2_DASHBOARD_ONLY.
-    if re.search(r"\bentry alert\b", text, re.I):
+    # Decision-card headers (scripts/lib/telegram_cards.ENTRY_HEADERS, operator 2026-10-08) route the same way.
+    if re.search(r"\b(?:entry alert|high conviction entry|entry approaching|add-on entry|entry blocked)\b", text, re.I):
         return ev("cio_entry_state", "info")
     if re.search(r"research update|holding research|analyst report|catalyst research", text, re.I):
         return ev("research_update", "info")

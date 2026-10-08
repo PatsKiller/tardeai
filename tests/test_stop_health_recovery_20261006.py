@@ -335,7 +335,7 @@ def test_new_alerts_persist_stable_keys_and_dedupe_accounts_independently(monkey
     monkeypatch.setattr(health, "_recently_alerted", recently)
     monkeypatch.setattr(health, "_siem", lambda *args: saved.append(args) or len(saved))
     monkeypatch.setattr(health, "_hermes_finding", lambda *args: None)
-    monkeypatch.setattr(health, "_send_telegram", lambda message: sent.append(message))
+    monkeypatch.setattr(health, "_send_telegram", lambda message, **kw: sent.append(message))
     monkeypatch.setattr(health, "_pl_if_fired", lambda *args: None)
     monkeypatch.setattr(health, "_portfolio_drawdown_guard", lambda: None)
     monkeypatch.setattr(health, "_log_health_event", lambda **kw: None)

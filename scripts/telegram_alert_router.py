@@ -63,7 +63,8 @@ _BUDGET_PATH = PROJ / "data" / "runtime" / "telegram_daily_send_budget.json"
 # Capital-risk / operator-requested-action signatures that are never budgeted.
 _OPS_EXEMPT_PATTERN = re.compile(
     r"STOP HEALTH|ORPHANED|OVERSIZED|PROTECTION|BROKER AUTH|2FA|FLATTEN|DRAWDOWN"
-    r"|GO \S|ENTRY ALERT|Material change|CIO entry|TRIGGERED",
+    r"|GO \S|ENTRY ALERT|Material change|CIO entry|TRIGGERED"
+    r"|HIGH CONVICTION ENTRY|ENTRY APPROACHING|ADD-ON ENTRY|ENTRY BLOCKED|CRITICAL STOP ALERT|STOP WARNING",
     re.IGNORECASE,
 )
 
