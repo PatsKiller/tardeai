@@ -1102,13 +1102,17 @@
         "match": "p1_digest_sender.py"
       },
       "expected_cadence_hours": 4,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "json_key",
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/state/p1_digest_watermark.json",
         "key": "as_of"
       },
-      "note": "Delivers the P1_DIGEST tier, which had no sender: a P1_DIGEST verdict archived the message to telegram_outbox and returned False, and nothing pushed the archive (4,387 archived vs 1,707 delivered since 2026-07-02). Installed 2026-09-01, operator-authorised. The output_signal is the SHARED watermark, deliberately not a checkout-relative path: a per-tree watermark re-sent 33 already-delivered messages when the job ran from a second tree."
+      "note": "Delivers the P1_DIGEST tier, which had no sender: a P1_DIGEST verdict archived the message to telegram_outbox and returned False, and nothing pushed the archive (4,387 archived vs 1,707 delivered since 2026-07-02). Installed 2026-09-01, operator-authorised. The output_signal is the SHARED watermark, deliberately not a checkout-relative path: a per-tree watermark re-sent 33 already-delivered messages when the job ran from a second tree.",
+      "state_since": "2026-10-08",
+      "state_reason": "Folded into the advice digests (operator 2026-10-08: 'fold into the new schedule' — three messages a day). scripts/send_advice_digest.py delivers the same reports_archive rows as its OTHER UPDATES section and advances this lane's watermark after a confirmed send.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/ADVICE_DIGESTS_2026-10-08.md; tests/test_advice_digests_20261008.py"
     },
     {
       "lane_id": "portfolio-live-monitor",
@@ -1390,16 +1394,16 @@
         "match": "notify_material_change.py --digest"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "state_since": "2026-09-24",
-      "state_reason": "Installed 2026-09-24 at the M5 tranche-3 deploy (operator: 'do the post-merge steps'): daily 16:15 from the dev tree, flock /tmp/material_change_digest.lock, same gateway env as the 15-min notifier, logs/material_change_digest.log.",
+      "state": "RETIRED",
+      "state_since": "2026-10-08",
+      "state_reason": "Folded into the 17:00 advice digest (operator 2026-10-08): today's material changes appear under MOVED TODAY with their 'N× its normal daily move' magnitude; BUY_READY material changes are held for the digest (config/advice_digest.yaml).",
       "output_signal": {
         "kind": "db_max",
         "table": "material_changes",
         "column": "notified_at"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "scripts/notify_material_change.py --digest (run_digest); operator decisions 2026-09-24 in the plan transient-gliding-waffle.md; the cron line is installed at deploy, not by the build.",
+      "reason_evidence": "docs/ops/ADVICE_DIGESTS_2026-10-08.md; tests/test_advice_digests_20261008.py",
       "note": "Daily digest of material changes that did not page (plan invalidated, non-actionable moves, held news) plus a one-line list of Command-Center-only names. Rows it announces are marked notify_outcome=DIGEST_SENT."
     },
     {
@@ -3799,6 +3803,25 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md; tests/test_investment_command_center_20261008.py; live dry run 2026-10-08: 1,412 symbols, 1,332 rankable, 8.5 s."
+    },
+    {
+      "lane_id": "advice-digest",
+      "owner": "comms",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 10,15,17 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/send_advice_digest.py --slot auto --send >> logs/advice_digest.log 2>&1  # TRADEAI_LANE advice-digest",
+        "match": "scripts/send_advice_digest.py"
+      },
+      "expected_cadence_hours": 7,
+      "state": "ACTIVE",
+      "state_since": "2026-10-08",
+      "state_reason": "Advice digests (operator 2026-10-08): non-urgent advice — all CIO entry alerts, CIO decisions/advisory notes, re-entry, rating changes, research — leaves immediate Telegram and arrives as HTML digests at 10:00, 15:00 and 17:00 ET (17:00 adds what moved up/down today: price, ratings, CIO conviction, new catalysts). Folds the P1 digest, the 08:00/16:00 alert digest, the 16:30 closed-trade digest and the 16:15 material-change digest. Scalps, approvals and stop/protection alerts stay immediate.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/advice_digest_latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/ADVICE_DIGESTS_2026-10-08.md; tests/test_advice_digests_20261008.py"
     }
   ],
   "undeclared_baseline": [

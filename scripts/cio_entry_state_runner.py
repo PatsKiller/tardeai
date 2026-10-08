@@ -395,6 +395,10 @@ def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
     return out
 
 
+class _HeldForDigest(Exception):
+    """Control flow: the CIO-bot copy is held for the advice digest (not an error)."""
+
+
 def send_alerts(result: dict, evidence: dict) -> dict:
     out = {"cio_desk": False, "cio_bus": False}
     sym = str(result.get("symbol") or "").upper()
@@ -402,6 +406,17 @@ def send_alerts(result: dict, evidence: dict) -> dict:
     operator_payload["text"] = stamp_cio_stance(operator_payload["text"], [result["symbol"]])
     out.update(operator_send(operator_payload, primary_symbols=[sym] if sym else None))
     try:
+        # 2026-10-08 operator: all entry alerts go to the advice digests. The operator_send copy above is routed
+        # (policy_v2 → DIGEST, recorded in Communications); this direct CIO-bot copy would page, so it is held.
+        # Rollback: config/advice_digest.yaml holds.cio_entry_bot_copy.
+        try:
+            from scripts.lib.advice_digest import hold as _advice_hold
+        except ImportError:  # pragma: no cover
+            from lib.advice_digest import hold as _advice_hold  # type: ignore
+        if _advice_hold("cio_entry_bot_copy"):
+            out["cio_desk"] = False
+            out["cio_desk_reason"] = "held_for_advice_digest"
+            raise _HeldForDigest()
         from scripts.lib.cio_telegram_transport import send_cio_message
         r = send_cio_message(operator_payload["text"], subject="", kind="cio_advisory",
                              dedupe_key=ces.transition_key(result), reply_markup=operator_payload.get("reply_markup"),
@@ -417,6 +432,8 @@ def send_alerts(result: dict, evidence: dict) -> dict:
             out["cio_desk_message_refs"] = r.get("message_refs")
         if not out["cio_desk"]:
             out["cio_desk_reason"] = "deduped" if r.get("deduped") else (r.get("reason") or "not delivered")
+    except _HeldForDigest:
+        pass
     except Exception as exc:
         out["cio_desk_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
     try:

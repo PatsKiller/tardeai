@@ -140,6 +140,14 @@ export default function CommunicationsHub() {
   // ?preset=attention|reward|reentry|risk|expiring|recent — Home "Review now" lands on the matching view.
   const [sp] = useSearchParams()
   const presetParam = sp.get('preset')
+  // ?event=<id> opens one message; ?q=<ticker or text> filters the feed (advice-digest links, 2026-10-08).
+  const eventParam = sp.get('event')
+  const qParam = sp.get('q')
+  useEffect(() => { if (eventParam) setSelectedId(eventParam) }, [eventParam])
+  useEffect(() => {
+    if (qParam) { setHubFilters((p) => ({ ...p, q: qParam })); setOffset(0) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qParam])
   useEffect(() => {
     if (presetParam && PANEL_PRESET[presetParam]) applyPreset(PANEL_PRESET[presetParam])
     // eslint-disable-next-line react-hooks/exhaustive-deps
