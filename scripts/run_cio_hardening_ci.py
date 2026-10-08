@@ -3388,6 +3388,18 @@ GATES = [
         ["tests/test_wake_operator_turn_selection_20261005.py"],
     ),
     (
+        # 2026-10-08 — lane registry scheduler kind `n8n` (scheduler-of-record program):
+        # validation, ledger/receipt-proven presence, the double-scheduler conflicts,
+        # the per-line `_cutover.py --lane` cutover/rollback against a fake crontab, and
+        # the per-lane readiness verdicts. Hermetic; no registry row is flipped here.
+        "N8N_LANE_KIND",
+        [
+            "tests/test_lane_registry_n8n_kind_20261008.py",
+            "tests/test_n8n_lane_cutover_20261008.py",
+            "tests/test_n8n_lane_readiness_20261008.py",
+        ],
+    ),
+    (
         # 2026-10-07 — n8n lab coordination is local code. These tests pin the
         # muted pilots, the receipt vocabulary, and the unenabled watchdog.
         # Listing them here does not enable a timer or promote the branch.
