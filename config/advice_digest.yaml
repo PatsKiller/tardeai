@@ -1,0 +1,39 @@
+# Advice digests (operator 2026-10-08): non-urgent advice leaves immediate Telegram and arrives as three HTML
+# digests a day. Scripts: scripts/send_advice_digest.py, scripts/lib/advice_digest.py.
+# Decisions (2026-10-08): scalp alerts + approval requests stay IMMEDIATE; ALL CIO entry alerts go to the digest;
+# the 17:00 digest adds what moved up/down today (price, ratings, conviction rank, new catalysts); the old scheduled
+# digests (P1 08/16 + every 4h, closed-trade 16:30, material-change 16:15) fold into these three.
+#
+# enabled: false (or a hold set false) restores immediate delivery for that path — read on every send, no deploy.
+enabled: true
+
+slots:            # ET, weekdays (market-day gate)
+  "10": {label: "Morning digest", movers: false}
+  "15": {label: "Afternoon digest", movers: false}
+  "17": {label: "Close digest", movers: true}
+
+holds:            # which producers stop paging and feed the digest instead
+  cio_entry_state: true          # operator_alert_policy_v2 cio_entry_state -> DIGEST (entry planner + runner)
+  cio_entry_bot_copy: true       # cio_entry_state_runner's direct CIO-bot copy
+  cio_advisory_outbox: true      # CIO bot outbox message_class=advisory (re-entry notes, CIO advisory actions)
+  thesis_update: true            # operator_alert_policy_v2 thesis_update -> DIGEST
+  material_change_buy_ready: true  # notify_material_change: a watchlist BUY_READY page -> DIGEST
+  # Held-position stop/target hits and big moves keep paging (capital at risk) — not listed on purpose.
+
+# Communications categories collected for the "new advice" sections (rule ids excluded stay immediate).
+sections:
+  - {id: entries, title: "Entry setups", icon: "🟢", categories: [high_conviction_opportunity, reward], exclude_rules: [scalp_alert]}
+  - {id: reentry, title: "Re-entry", icon: "↩️", categories: [re_entry]}
+  - {id: cio, title: "CIO decisions & research", icon: "🧠", categories: [news, watchlist_candidate], include_rules: [news, watchlist]}
+max_items_per_section: 8
+
+movers:           # 17:00 digest
+  price_move_pct: 4.0           # |day change| at or above this, held + watchlist + top-ranked names
+  max_price_movers: 6
+  rating_target_change_pct: 5.0 # analyst mean target moved at least this much since the previous snapshot
+  conviction_delta: 5           # conviction points (CIO opportunity versions written today)
+  max_each: 5
+
+news_hours: 72
+catalyst_days: 14
+max_message_chars: 3800         # Telegram limit 4096; split at item boundaries, never mid-tag
