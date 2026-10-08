@@ -146,3 +146,22 @@ def test_producers_are_wired():
     sh = (ROOT / "scripts" / "stop_health_check.py").read_text()
     assert "stop_health_card(" in sh and "_send_card(card)" in sh
     assert set(tc.ENTRY_HEADERS) <= set(re.findall(r"[A-Z][A-Z -]+[A-Z]", (ROOT / "scripts" / "telegram_alert_router.py").read_text()))
+
+
+# ── Command Center decision layout (operator 2026-10-08) ────────────────────
+
+def test_command_center_decision_layout_is_wired():
+    src = ROOT / "apps/command-center-v3/src"
+    parts = (src / "components/decision/DecisionParts.tsx").read_text()
+    for fam, tone in (("critical", "danger"), ("high", "warning"), ("medium", "info"), ("opportunity", "success"),
+                      ("security", "ai")):
+        assert f"{fam}: '{tone}'" in parts                                  # strict colour discipline, tokens only
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", parts)
+    home = (src / "pages/HomeHub.tsx").read_text()
+    assert home.index("<HomeDecision") < home.index("market-posture strip")   # decisions before everything else
+    assert '<Collapsible title="More metrics"' in home
+    hd = (src / "components/decision/HomeDecision.tsx").read_text()
+    assert hd.index("<RequiresAttention") < hd.index("<BestOpportunities") < hd.index("<TopRisks")
+    comms = (src / "pages/CommunicationsHub.tsx").read_text()
+    assert "<BoardCards" in comms and "<FeedCard" in comms and "scores P·C·R·Rw·T" not in comms
+    assert "BigNumberCard" in (src / "components/watch/WatchDecisionParts.tsx").read_text()
