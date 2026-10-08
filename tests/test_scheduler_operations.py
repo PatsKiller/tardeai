@@ -266,3 +266,11 @@ def test_mismatched_or_future_receipt_never_proves_live(tmp_path):
         row=project(tmp_path,[lane()],observations('*/5 * * * * python scripts/test_lane.py'),[{**base,'receipt':{**receipt,**bad}}])['rows'][0]
         assert row['runtime_state']!='LIVE', bad
         assert row['completed_fires_24h']==0, bad
+
+
+def test_database_signal_keeps_database_evidence_class(tmp_path):
+    row=project(tmp_path,[lane(signal={'kind':'db_max','table':'runtime_receipts','column':'finished_at'})],observations('*/5 * * * * python scripts/test_lane.py'))['rows'][0]
+    # Supply a read-only query adapter only for the projection, never run the lane.
+    result=build_projection({'lanes':[lane(signal={'kind':'db_max','table':'runtime_receipts','column':'finished_at'})]},observations('*/5 * * * * python scripts/test_lane.py'),root=tmp_path,now=NOW,db_query=lambda q: [(NOW,)])
+    assert result['rows'][0]['output_evidence_class']=='OBSERVED_DB'
+    assert row['output_evidence_class']=='NOT_MEASURED'

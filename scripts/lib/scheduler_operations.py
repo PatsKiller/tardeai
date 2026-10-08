@@ -477,7 +477,7 @@ def build_projection(registry: dict[str, Any], observations: dict[str, Any], *, 
         cadence_s = float(lane.get('expected_cadence_hours') or 0)*3600
         row['freshness_sla_s'] = cadence_s*2 if cadence_s else None
         row['freshness'] = ('FRESH' if age is not None and age <= cadence_s else 'AGING' if age is not None and age <= cadence_s*2 else 'STALE' if age is not None else 'ABSENT' if signal.get('readable') else 'NOT_MEASURED')
-        row['output_evidence_class'] = 'OBSERVED_HOST' if signal.get('readable') else 'NOT_MEASURED'
+        row['output_evidence_class'] = ('OBSERVED_DB' if sig.get('kind') == 'db_max' else 'OBSERVED_HOST') if signal.get('readable') else 'NOT_MEASURED'
         row['health_reason'] = row['health_reason'] or signal.get('detail')
         inactive = row['declared_state'] != 'ACTIVE'
         last_state = live_runs[-1].get('state') if live_runs else None
