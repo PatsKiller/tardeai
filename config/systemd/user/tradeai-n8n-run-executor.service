@@ -1,0 +1,27 @@
+# n8n run executor (plan streamed-humming-wolf, tranche N1, 2026-10-08). Committed here; installed by the
+# operator under a config-write grant (`systemctl --user enable --now`), never by an agent. It polls the
+# coordination ledger `runs` table every 5 s and runs allowlisted lanes (config/n8n_run_allowlist.json)
+# under each lane's own lock, from the served CURRENT tree. It binds no socket and holds no HMAC key:
+# the gateway unit authenticates callers, this unit only executes what the ledger already recorded.
+# TRADEAI_VENV_PYTHON (from %t/tradeai/env or the override file) resolves `$PY` in the allowlist; without
+# it the executor falls back to the interpreter below.
+
+[Unit]
+Description=Trade AI n8n run executor (drains the coordination ledger runs table)
+After=network.target tradeai-n8n-coordination-gateway.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-%t/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/n8n-gateway.env
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=TRADEAI_VENV_PYTHON=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_executor.py --interval 5
+Restart=always
+RestartSec=10
+Nice=10
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

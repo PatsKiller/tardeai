@@ -1,7 +1,7 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.6.2
+Policy-Version:      2.0.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
@@ -9,9 +9,21 @@ Effective-Date:      2026-10-08
 Last-Reviewed:       2026-10-08T12:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.6.1
+Supersedes:          2.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**2.0.0 is PROPOSED (MAJOR) — the n8n carve-out, §23.** Awaiting operator ratification
+(`APPROVE_AGENTS_POLICY_2_0_0 <pr> <sha>`, §20). Until then **1.6.1 is the governing text**
+and §23 grants nothing. It adds §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n
+only)": n8n workflows are scheduler entries under §9.3; n8n may request a run only through the
+gateway `coordination/run` operation for allowlisted lanes; n8n may choose among registered `n8n_*`
+processes, template ids and routing policies but never a model, a provider or a raw prompt; n8n holds
+exactly one credential (the relay bearer) on the precondition that execution data on success is not
+retained; n8n is replaceable. MAJOR because routing and scheduler reach widen for one actor (version
+policy: classify by the weakest guarantee); nothing in §0, §2, §2A, §7A is weakened for any actor. §9.3
+and §17 are amended in place (§23.7). Operator direction 2026-10-08: "make agents.md carve out just
+for n8n".
 
 **1.5.0 (2026-10-06, MINOR, operator-directed)**: §7A positions gaps updated — never take `abs()` of a broker leg (transfer direction). **1.4.0 (2026-10-06, MINOR, operator-directed)** adds the positions source-of-truth rules to §7A ("Positions, cost basis and portfolio value"). Nothing else changes; the 1.3.0 text below still governs.
 
@@ -2425,12 +2437,15 @@ accumulates the divergence this document exists to remove.
 
 - **A job has a `config/lane_registry.json` row with an `output_signal` before it is installed** —
   the durable artifact that proves it ran. Not an exit code, not a log file existing.
-- **Installing, editing or removing a scheduler entry is operator-only. Propose.**
+- **Installing, editing or removing a scheduler entry is operator-only. Propose.** An n8n workflow
+  that schedules a Trade AI lane is a scheduler entry (§23.2; `scheduler.kind = "n8n"`).
 - **Dry-run under the exact cron form**: by path, neutral cwd, from a **pinned release directory**,
   never `CURRENT`.
 - **Verify both schedulers** — cron and systemd.
 - **Retirement carries its reason**: `# RETIRED <date> lane=<id> reason=<why> owner=<who>
-  review_by=<date>`. **Never invent a reason**; an honest `UNKNOWN` is itself a finding.
+  review_by=<date>`. **Never invent a reason**; an honest `UNKNOWN` is itself a finding. A line
+  retired by an n8n cutover carries the fixed form `# RETIRED <date> n8n-cutover <lane_id>` — the
+  reason is the cutover and the owner/review live in its `CutoverReceipt@v1` (§23.2).
 - **After install, verify durable evidence on the natural schedule** — a hand-run does not close it.
 - **Data-source lanes declare which credential each path uses.** Screener CSV (`finviz_ingestion.py`,
   `finviz_screener_runner.py`) prefers `FINVIZ_COOKIE` and falls back to `FINVIZ_API_TOKEN` with
@@ -3395,7 +3410,9 @@ variable to raise, the control surface is the code · re-enabling the retired
 overnight LLM window · merging divergent copies of any authoritative store · **adding, replacing or
 retiring a data source, or a writer of an authoritative store** (§7A — an agent proposes the
 registry row; the operator's grant is recorded in its `approval`; the gate fails an ungranted
-source) · branch-protection or required-context changes · provisioning or funding any model or data
+source) · **activating, editing or deactivating an n8n workflow that schedules a Trade AI lane**
+(§23 — a `cron` grant; ACTIVE in 2.0.0) · branch-protection or required-context changes ·
+provisioning or funding any model or data
 plan · deleting anything · live broker authority (A4/A5): live flags, live sessions, 2FA, credentials, the
 Stage 14 canary, and any change to `DETERMINISTIC_ENTRY_POINTS`, session-grant limits or the grant contract.
 
@@ -3842,11 +3859,181 @@ superseded).
 
 ---
 
+# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 2.0.0
+
+**Status: PROPOSED.** Awaiting `APPROVE_AGENTS_POLICY_2_0_0 <pr> <sha>`. Until the operator
+ratifies it, the 1.6.1 text governs and nothing in this section grants anything. Operator direction
+2026-10-08: *"make agents.md carve out just for n8n"*, after the three decisions of the same day —
+(1) one scoped key may live in n8n; (2) the cron-lane ladder is shadow → canary → cutover → rollback;
+(3) broader AI routing in n8n, implemented as a carve-out scoped only to n8n. The program is
+`/home/johnclaw/.claude/plans/streamed-humming-wolf.md` (workstream E); the lab's own rules are
+`/home/johnclaw/m8m-bakeoff-lab/docs/AGENTS.md`, which already says this file wins.
+
+**Why MAJOR (version policy).** This section lets a non-Trade AI process request a lane run and
+choose among model-routing options. Classified by the weakest guarantee after the change: routing
+and scheduler reach for one actor widen, so the class is MAJOR even though every rail below is a
+restriction. *Cause: AGENTS.md 1.6.1 contained zero occurrences of `n8n` (measured 2026-10-08), so
+a process that was about to schedule 71 lanes was governed by nothing in this file.*
+
+## 23.1 Scope — this section reaches n8n and nothing else
+
+- **Applies only to the n8n Community instance in the `m8m-n8n` compose project**
+  (`/home/johnclaw/m8m-bakeoff-lab/docker-compose.n8n.yml`, container `m8m-n8n`, network
+  `m8m-n8n_lab` 172.19.0.0/16). Nothing here loosens §0, §2, §2A, §7A or §17 for any other actor —
+  not an LLM agent, not OpenClaw, not a cron line, not a human at the n8n UI acting on anything
+  other than an n8n workflow. The safer-or-more-restrictive rule still wins on any conflict.
+  *Cause (§20): the lab bench already declared "Does-not-replace: Trade AI AGENTS.md"; without a
+  scope line, a carve-out written for one process reads as precedent for every process.*
+- **n8n is a scheduler and a requester, never an authority.** An n8n execution row is not a job
+  receipt, a delivery receipt, broker truth, or evidence that a host job ran (§0 rail 8). Evidence is
+  the `RunReceipt@v1` and the lane's `output_signal`, both written on the host.
+
+## 23.2 n8n workflows are scheduler entries — §9.3 applies in full
+
+- **Registry row first.** An n8n workflow that schedules a Trade AI lane is a scheduler entry. The
+  lane has a `config/lane_registry.json` row with `scheduler.kind = "n8n"`, `scheduler.expression`
+  = the n8n workflow id, `scheduler.match` = the retired cron text, and an `output_signal`, before the
+  workflow is activated (§9.3 rule 1). A script that writes nothing gains a `--receipt` flag before it
+  is moved; rail 8 is not waived for a lane because it is small.
+- **Install, activate, edit or retire only under an operator grant** — a `cron` grant for the
+  crontab/timer side, a `config-write` grant for units and registry-bearing config (§9.3 rule 2,
+  §17). An agent proposes the workflow JSON (exported under
+  `docs/implementation/n8n-parallel/workflows/`); the operator imports and activates it.
+- **Shadow before canary before cutover.** Every lane fires at least once from n8n in `dry_run`
+  (shadow; the cron line stays live), then at least once in `live` while the cron line is still
+  present (canary; the lane's existing `safe_flock` lock proves no double-run), and only then is cut
+  over. Weekly and monthly lanes take one manual natural-equivalent fire as the canary. Each step
+  leaves a `RunReceipt@v1`; a step without a receipt did not happen (§0 rail 7, §6).
+- **Cutover comments, never deletes.** Cutover is `scripts/pipelines/cutover/_cutover.py --lane
+  <lane_id>` under a `cron` grant: the exact crontab line is commented with
+  `# RETIRED <date> n8n-cutover <lane_id>` (a systemd lane is `disable --now` on its timer, recorded
+  in the receipt), the registry row flips to `kind: n8n`, and a `CutoverReceipt@v1` is written. The
+  line is never deleted (§0 rail 6). **Rollback re-enables that exact line** (or re-enables that
+  timer) and deactivates the workflow — per line, never a wholesale crontab restore.
+  *Cause: the tranche-B `_cutover.py` rollback was a wholesale crontab restore, which would have
+  reverted every other lane's state along with the one that failed.*
+- **One scheduler per lane.** A lane with both an active cron line and an n8n scheduler is a
+  double-scheduler conflict (`CRON_PRESENT_WHILE_SCHEDULER_N8N`) that fails
+  `check_lane_registry --fail-on-new --state-drift` and is a rollback trigger. The lock prevents the
+  double *run*; the registry gate prevents the double *schedule*. *Cause: a lane left `kind: cron`
+  with its line removed is reported ORPHANED by the lane monitor (measured 2026-10-08), and the
+  mirror-image — a line left live beside a new scheduler — had no finding at all.*
+- **The retirement tag is the §9.3 tag's fixed form for this one case.** The reason is the cutover
+  itself; owner and review date live in the `CutoverReceipt@v1`, which the tag's `<lane_id>` keys.
+
+## 23.3 The only trigger path — `coordination/run`, allowlisted lanes, host-side execution
+
+- **n8n may request a run only through the coordination gateway (`127.0.0.1:18091`) operation
+  `coordination/run`**, reached from the container through the relay on the docker bridge
+  (`172.19.0.1:18092`, pending the operator's permission to bind it), with claim scope
+  `coordination_run` and caller `n8n-relay`. No other port, route, socket, SSH, `docker exec`,
+  file drop or webhook is a trigger path. A run request names a `lane_id` and a `mode ∈ {dry_run,
+  live}` and nothing else that changes what executes.
+- **Only lanes in `config/n8n_run_allowlist.json` (`N8nRunAllowlist@v1`) may be requested, and the
+  allowlist is data with a test.** It may never contain a broker, order, stop, position,
+  paper-execution, sender (Telegram or email), secret-render, guard, release-deploy,
+  destructive-retention, memory/learning-writer or authoritative-ingest command (§0 rails 1–2; §7A
+  rule 1, one writer per store; §17). Every command token is checked against the gateway's
+  `FORBIDDEN_ROUTE_TOKENS` and the writers in `config/data_source_authority.json`; a lane that
+  fails that test does not enter the allowlist, whatever its owner says. *Cause: the ADR threat
+  model — a stolen bearer must not place an order, mint a grant, satisfy 2FA, promote a release, bid
+  or open a DOF SQL path — is only true if the set of runnable commands cannot contain one.*
+- **The gateway never spawns.** It validates the claim and writes a `RunRequested@v1` row to the
+  ledger `runs` table and stops. `tradeai-n8n-run-executor.service` (own cgroup) runs the lane's
+  existing runner under the lane's existing lock (`safe_flock.sh`, `market_day_gate.sh` where the
+  cron line had it) from the pinned CURRENT release, exactly as cron would. *Cause: the gateway runs
+  under `MemoryMax=256M CPUQuota=20%` and was built on the invariant "never spawns"; a run path that
+  spawned there would make a 256 MB sandbox the parent of every lane.*
+- **Exit 0 is not evidence (§0 rail 8).** The `RunReceipt@v1` (exit, duration, `output_signal`
+  mtime before/after, `safe_flock` event reference) and the `output_signal` itself are the evidence.
+  `RUN_FAILED`, `RUN_SKIPPED_LOCK`, `RUN_REFUSED` and a relay auth failure are typed rows, never a
+  silent exit.
+- **No sends from n8n.** Nothing in n8n sends Telegram, email, Slack or any operator message;
+  `send_telegram` on the host stays the single chokepoint (§9.1). The email-send nodes remain in
+  `NODES_EXCLUDE`.
+
+## 23.4 Governed routing — n8n chooses among registered options, never a model or a provider
+
+- **n8n may choose, per `model_job`:** a `process_id` from the registered `n8n_*` processes in
+  `config/llm_process_registry.json` (today `n8n_material_digest_draft`, `n8n_ops_summary_draft`); an
+  optional `template_id` from the versioned `config/n8n_prompt_templates.json`
+  (`N8nPromptTemplate@v1`, rendered **server-side**); and an optional `routing_policy` name from
+  `config/llm_routing_policy.json` (`LlmRoutingPolicy@v1`). That is the whole surface.
+- **n8n may not:** name a model or a provider (the client model field is ignored); send raw prompt
+  text (a template id is the only prompt input, so §2A's egress line is enforced in one place on the
+  host); hold a provider key; call a provider; or supply its own caller identity. Caller identity
+  stays server-side (`CALLER_PROCESS_MAP` / `CALLER_TASK_PROCESS_MAP`, §7 governed bridge, §9.2
+  "every bridge caller names itself"); the gateway derives the task type from `job.process_id`, not
+  from the caller. *Cause (§9.2, 2026-09-14): 88% of a week's spend sat under one shared id carrying
+  six callers because callers could relabel themselves; a routing surface that accepted a model
+  name or a prompt from n8n would reopen that and add an egress path no host code could sanitise.*
+- **Every call is capped twice and refuses typed.** The process registry row caps requests and
+  dollars per day; `LLM_GLOBAL_DAILY_USD_CAP = 2.00` (§12) rules above it. The bridge resolves
+  model and lane, records `routing_decision` on every receipt, and refuses with a typed reason
+  (`COST_CAP_EXCEEDED`, `lane_unhealthy`, `process_mismatch`, …) — never fail-open (§9.2 "check the
+  budget before the call"). Scheduled n8n model jobs are scheduled paid work and sit inside the
+  operator's window (§9.3, §12); a refused call is queued by `lib/llm_deferral`, not dropped.
+  *Cause (§12, 2026-09-17..19): a provider that answered every call with HTTP 402 for three days
+  looked, to every monitor, like a system doing no work.*
+- **Outputs are drafts.** Every `n8n_*` process is `READ_ONLY_ADVISORY`, `recommendation` must be
+  `NONE`, output is validated against `config/schemas/n8n_model_job_outputs.json`, and no model
+  output from this path writes an InstrumentRecord, a belief, a lesson or a memory store (§2,
+  `MBI_BEHAVIOR = 0`; §7A one writer per store).
+
+## 23.5 Secrets — exactly one n8n credential, and the precondition for its existence
+
+- **n8n holds exactly one credential: the relay bearer** (`TRADEAI_N8N_RELAY_BEARER`, a Header-Auth
+  credential), rendered from Bitwarden SM (project `trade-ai-prod`) by `render_env.py`, valid only
+  at the relay, rotated weekly through `config/secret_registry.yaml` and `rotation_daemon.py` once
+  that daemon is scheduled. It can request a run of an allowlisted lane in `dry_run` or `live` and
+  nothing else. A second n8n credential of any kind — provider, broker, database, messaging, n8n
+  API key — is a §17 decision and, until granted, a defect (§2A: SM is the only store; §7A rule 1).
+- **The gateway HMAC key stays host-side.** `TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N` is read by the relay
+  from the rendered tmpfs env; it never enters n8n, a workflow, an execution record or a log.
+  `TRADEAI_N8N_GATEWAY_HMAC_KEY` (caller `tradeai-dispatch`) is unchanged.
+- **Execution data on success is not retained, as the precondition for any credential existing.**
+  `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`, `EXECUTIONS_DATA_SAVE_ON_ERROR=all`,
+  `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE=168` (hours). If the running compose file
+  does not say so, the credential is not created. Owner MFA is on and the n8n database role is not a
+  superuser before the credential exists. *Cause: `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md`
+  — n8n stores execution input, so a bearer in a workflow is a bearer in the n8n database; the lab
+  measured `EXECUTIONS_DATA_SAVE_ON_SUCCESS=all` on 2026-10-07.*
+- **Never print a value.** Name the variable; never its content — in a receipt, a PR, a chat, a
+  workflow note or an n8n execution (§2A).
+
+## 23.6 n8n is replaceable
+
+- **Deleting the compose project must leave production unchanged**, except that n8n-scheduled
+  lanes stop firing until rolled back to cron (23.2). No lock, registry, ledger, receipt, template,
+  routing policy, process registry row, allowlist, secret or output lives in n8n; everything owned
+  by Trade AI stays on the host, under its existing writer. A design in which n8n must survive for
+  Trade AI to be correct is out of policy. *Cause: the bakeoff measured incumbent 97 / n8n 73; the
+  operator moved scheduling to n8n for throughput, not for authority, and the lab doc already says
+  "n8n is not the owner of Trade AI or NYC DOF jobs".*
+- **Rollback triggers are findings, the decision is the operator's:** `RUN_FAILED` where the last
+  three cron runs succeeded; `output_signal` older than 2× cadence after cutover;
+  `CRON_PRESENT_WHILE_SCHEDULER_N8N`; relay bearer failures; n8n `healthz` down > 10 min; any
+  `RUN_REFUSED` row. Rollback target: under five minutes, by re-enabling the exact line.
+
+## 23.7 Sentences amended in place by this version (§20: replaced, not accumulated)
+
+- §9.3 "Installing, editing or removing a scheduler entry is operator-only" now names an n8n
+  workflow as a scheduler entry.
+- §9.3 "Retirement carries its reason" now carries the fixed n8n-cutover form of the tag.
+- §17 gains "activating, editing or deactivating an n8n workflow that schedules a Trade AI lane".
+- `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` moves from "no n8n credential" (PROPOSED) to
+  ACCEPTED with exactly one; the superseded text is kept there under its own heading.
+
+No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
+
+---
+
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 1.6.2 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications section gains the Investment Command Center rule: opportunity rules in `config/opportunity_conviction.yaml`; curated assessments persisted only by `cio_opportunity_curator.py` into the CIO opportunity store (never as a thesis version); no behaviour keys; the Telegram opportunity line only via `send_telegram`. Adds obligations, weakens nothing; §0/§2/§17 untouched. | Operator-directed 2026-10-08 (/plan Investment Command Center; "make sure all data is curated by and persistent in CIO memory"; "resonate in telegram alerts"). |
+| 2.0.1 | 2026-10-08 | ACTIVE on merge | PATCH | On top of 2.0.0: Telegram/Communications section gains the Investment Command Center rule: opportunity rules in `config/opportunity_conviction.yaml`; curated assessments persisted only by `cio_opportunity_curator.py` into the CIO opportunity store (never as a thesis version); no behaviour keys; the Telegram opportunity line only via `send_telegram`. Adds obligations, weakens nothing; §0/§2/§17 untouched. | Operator-directed 2026-10-08 (/plan Investment Command Center; "make sure all data is curated by and persistent in CIO memory"; "resonate in telegram alerts"). |
+| 2.0.0 | 2026-10-08 | ACTIVE | MAJOR | §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n only)" added: scope limited to the `m8m-n8n` compose project; n8n workflows are §9.3 scheduler entries (registry row with `output_signal` first, grant-gated install/activate/edit/retire, shadow → canary → cutover → per-line rollback, `# RETIRED <date> n8n-cutover <lane_id>` never deleted, double scheduler fails the registry gate); the only trigger path is the gateway `coordination/run` operation for lanes in `config/n8n_run_allowlist.json` (never broker/order/stop/position/paper-execution/sender/secret-render/guard/release-deploy/destructive-retention/memory-writer/authoritative-ingest), gateway never spawns, executor reuses the lane's lock, RunReceipt is the evidence; n8n may pick registered `n8n_*` process ids, versioned template ids and named routing policies but never a model, provider, raw prompt or caller identity, every call capped by the process registry and the $2.00/day cap with typed refusal; exactly one n8n credential (relay bearer from Bitwarden SM, weekly rotation, valid only at the relay), HMAC key host-side, `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` + prune ≤168 h as the precondition; n8n is replaceable. §9.3 and §17 amended in place; ADR_COORDINATION_SECRETS moves to ACCEPTED (one credential). MAJOR: routing and scheduler reach widen for one actor; nothing weakened for any other. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d88ac4943612b6703402f638ba3ed9af` (operator, 2026-10-08, in session: "i approve"); merged #1513 at 2026-10-08T09:06:46-04:00; operator direction 2026-10-08 ("make agents.md carve out just for n8n"; decisions 1–3 of the n8n program plan). |
 | 1.6.1 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications rule extended to the Watchlist: Watch decision standards live in `config/watch_decision_standards.yaml` via `lib/data_broker/watch_decision.py`; the signal expires, never the membership. No rule weakened; §0/§2/§17 untouched. | Operator-directed 2026-10-07 ("watchlist etc"; "start the watchlist"). |
 | 1.6.0 | 2026-10-07 | ACTIVE on merge | MINOR | Telegram section gains "Communications is the single record of operator message traffic": every operator send/receive is recorded in `communication_events` (`send_telegram` or `record_operator_message`); classification and TTLs live in `config/comms_categories.yaml`; removal only through `comms_lifecycle.py` archive-then-delete. Adds obligations, weakens nothing; §0/§2/§17 untouched. | **Operator-directed** 2026-10-07 (Communications hub spec; "Same TTL as everything"; "Archive, then remove"). |
 | 1.5.1 | 2026-10-06 | ACTIVE on merge | PATCH | §7A positions known-gaps measurement updated: reinvestments no longer merged by a missing orderId, broker precision kept, per-account replace window; ledger lots reproduce the broker for every Schwab position. No rule change. | Operator-directed 2026-10-06 ("fix the lot transfer direction gap now"). |
