@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT } from '../lib/designTokens'
 import { projectCoordination, type CoordinationPayload, type CoordinationRow } from '../lib/coordinationEvents'
+import { projectOutbox, type OutboxPayload } from '../lib/outboxProjection'
 
 const panel: CSSProperties = {
   background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14,
@@ -32,6 +33,8 @@ export default function CoordinationPage() {
   const { data, loading, error, transport, stale } = useApi<CoordinationPayload>('/api/v2/coordination/events?limit=200', 30_000)
   const model = useMemo(() => projectCoordination(loading && !data ? null : data, { transport, stale }), [data, loading, transport, stale])
   const { rows, sort, toggle } = useSort(model.rows, { key: 'recordedAt', dir: 'desc' }, getter)
+  const outboxApi = useApi<OutboxPayload>('/api/v2/coordination/outbox?hours=24', 60_000)
+  const outbox = useMemo(() => projectOutbox(outboxApi.loading && !outboxApi.data ? null : outboxApi.data), [outboxApi.data, outboxApi.loading])
   return (
     <div data-testid="coordination-page" style={{ display: 'grid', gap: 12 }}>
       <div style={panel}>
@@ -88,6 +91,53 @@ export default function CoordinationPage() {
             ) : null}
           </tbody>
         </table>
+      </div>
+      <div style={panel} data-testid="coordination-outbox">
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Outbox</div>
+          <div style={label}>what the senders did · sent / suppressed / recorded / withdrawn · n8n never sends</div>
+        </div>
+        <ChipRow style={{ marginTop: 8 }}>
+          <Chip tone={outbox.statusTone} title="outbox projection status">{outbox.statusLabel}</Chip>
+          <Chip tone="neutral" title="window">{outbox.windowLabel}</Chip>
+          {outbox.counts.map(c => (
+            <Chip key={`${c.outbox}:${c.state}`} tone={c.tone} title={`${c.outbox} ${c.state}`}>{c.outbox.replace('_outbox', '')} {c.state} {c.n}</Chip>
+          ))}
+        </ChipRow>
+        {outbox.note ? <div style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{outbox.note}</div> : null}
+        <div style={{ overflowX: 'auto', marginTop: 8 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>state</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>outbox</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>channel</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>subject</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>reason</th>
+                <th style={{ ...label, textAlign: 'left', padding: '5px 6px' }}>created</th>
+                <th style={{ ...label, textAlign: 'right', padding: '5px 6px' }}>age (min)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {outbox.rows.slice(0, 100).map(r => (
+                <tr key={r.key} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+                  <td style={cell}><Chip tone={r.tone}>{r.state}</Chip></td>
+                  <td style={mono}>{r.outbox.replace('_outbox', '')}</td>
+                  <td style={cell}>{r.channel}</td>
+                  <td style={mono}>{r.subject}</td>
+                  <td style={cell}>{r.reason}</td>
+                  <td style={mono}>{r.createdAt ?? 'UNDATED'}</td>
+                  <td style={{ ...mono, textAlign: 'right' }}>{r.ageMinutes ?? ''}</td>
+                </tr>
+              ))}
+              {outbox.rows.length === 0 ? (
+                <tr><td colSpan={7} style={{ ...cell, color: TOKENS.text[3] }}>
+                  {outbox.status === 'OK' ? 'nothing sent, suppressed or withdrawn in the window' : 'outbox projection unavailable'}
+                </td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
