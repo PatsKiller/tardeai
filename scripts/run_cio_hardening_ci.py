@@ -3466,6 +3466,9 @@ GATES = [
             "tests/test_n8n_run_store_20261008.py",
             "tests/test_n8n_run_executor_20261008.py",
             "tests/test_n8n_run_allowlist_20261008.py",
+            # 2026-10-08 first N1 shadow burst: ledger RLock across gateway handler threads (16-wide run and
+            # event bursts, same-nonce race) on a tmp_path ledger and 127.0.0.1 port 0.
+            "tests/test_n8n_gateway_concurrency_20261008.py",
         ],
     ),
     (
