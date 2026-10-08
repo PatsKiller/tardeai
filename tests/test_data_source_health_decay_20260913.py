@@ -408,7 +408,7 @@ def test_unit_files_match_the_brief():
     svc = (ROOT / "config/systemd/user/tradeai-data-source-health.service").read_text()
     tmr = (ROOT / "config/systemd/user/tradeai-data-source-health.timer").read_text()
     assert "SuccessExitStatus=0 1" in svc
-    assert "WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild" in svc
+    assert "WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT" in svc  # served tree since fb6bf6c97
     assert "check_data_source_health.py --alert" in svc
     assert "OnCalendar=*-*-* *:27:00" in tmr
     assert "Persistent=true" in tmr

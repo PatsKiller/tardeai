@@ -205,7 +205,7 @@ def test_unit_files_exist_and_carry_the_required_settings():
     tmr = (ROOT / "config/systemd/user/tradeai-gap-resolution.timer").read_text()
     assert "scripts/check_gap_resolution.py --alert" in svc
     assert "SuccessExitStatus=0 1" in svc
-    assert "WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild" in svc
+    assert "WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT" in svc  # served tree since fb6bf6c97
     assert "OnCalendar=*-*-* *:07,37:00" in tmr
     assert "Persistent=true" in tmr
 
