@@ -24,6 +24,7 @@ export const CATEGORY_COLOR: Record<string, string> = {
   re_entry: TOKENS.success, risk: TOKENS.warning, reward: TOKENS.chart[0], high_conviction_opportunity: TOKENS.chart[1],
   watchlist_candidate: TOKENS.ai, threat: TOKENS.danger, market_event: TOKENS.info, news: TOKENS.neutral,
   security_alert: TOKENS.chart[2], system_alert: TOKENS.neutral, operational_issue: TOKENS.chart[3], operator_conversation: TOKENS.chart[4],
+  held_position: TOKENS.chart[5],
 }
 
 export function labelOf(id?: string | null) {
@@ -125,7 +126,7 @@ export function DecisionBoard({ board, onPick, onOpen }: { board: any; onPick: (
 
 export type HubFilters = Record<string, string>
 
-const LEVELS = [['', 'any'], ['0.3', '≥ 0.3'], ['0.5', '≥ 0.5'], ['0.7', '≥ 0.7'], ['0.9', '≥ 0.9']]
+export const LEVELS = [['', 'any'], ['0.3', '≥ 0.3'], ['0.5', '≥ 0.5'], ['0.7', '≥ 0.7'], ['0.9', '≥ 0.9']]
 const RANGES = [['', 'all time'], ['1', 'last 1h'], ['6', 'last 6h'], ['24', 'last 24h'], ['72', 'last 3d'], ['168', 'last 7d']]
 
 function toggleCsv(csv: string | undefined, v: string) {
@@ -135,7 +136,7 @@ function toggleCsv(csv: string | undefined, v: string) {
   return Array.from(s).join(',')
 }
 
-function Chips({ options, value, onChange, colors }: { options: { id: string; label: string; count?: number }[]; value?: string; onChange: (v: string) => void; colors?: Record<string, string> }) {
+export function Chips({ options, value, onChange, colors }: { options: { id: string; label: string; count?: number }[]; value?: string; onChange: (v: string) => void; colors?: Record<string, string> }) {
   const sel = new Set((value || '').split(',').filter(Boolean))
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>

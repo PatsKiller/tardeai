@@ -1129,6 +1129,12 @@ GATES = [
         "comms_hub_20261007",
         ["tests/test_comms_hub_20261007.py"],
     ),
+    # Watch decision standards (operator 2026-10-07 "watchlist etc"): category, priority, five scores, TTL/expiry,
+    # status, actionability on every Watch card; held names never leave; search always finds the name.
+    (
+        "watch_decision_standards_20261008",
+        ["tests/test_watch_decision_standards_20261008.py"],
+    ),
     # Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:
     # per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment
     # drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06).
