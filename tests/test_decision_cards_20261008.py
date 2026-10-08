@@ -64,7 +64,7 @@ def test_entry_card_layout(monkeypatch):
         assert any(l.endswith(label) for l in lines), label
     assert "Zone: $13.90 - $14.50" in plain and "R:R 6.45" in plain and "Software Infrastructure" in plain
     assert "PE MISSING" in plain and "What kills the idea" in plain and "TTL: 4 days" in plain
-    assert [b["text"] for b in out["reply_markup"]["inline_keyboard"][0]] == ["Open Research", "Open TradingView",
+    assert [b["text"] for b in out["reply_markup"]["inline_keyboard"][0]] == ["Open Research", "Open Trading View",
                                                                               "Review Position"]
     assert "nothing executed" in out["text"] and len(out["text"]) <= tr.MAX_TEXT and out["parse_mode"] == "HTML"
 
@@ -144,7 +144,7 @@ def test_topic_keys_differ_per_symbol_for_card_headers(monkeypatch):
 def test_producers_are_wired():
     assert "telegram_cards" in (ROOT / "scripts" / "lib" / "telegram_rich.py").read_text()
     sh = (ROOT / "scripts" / "stop_health_check.py").read_text()
-    assert "stop_health_card(" in sh and "_send_card(card)" in sh
+    assert "stop_health_card(" in sh and '_send_telegram(card["text"]' in sh
     assert set(tc.ENTRY_HEADERS) <= set(re.findall(r"[A-Z][A-Z -]+[A-Z]", (ROOT / "scripts" / "telegram_alert_router.py").read_text()))
 
 

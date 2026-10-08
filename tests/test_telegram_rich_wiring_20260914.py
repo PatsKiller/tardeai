@@ -236,7 +236,9 @@ def test_entry_alert_is_rich_and_keeps_the_entry_alert_words(monkeypatch, rich):
     }
     assert wep._alert("AXTI", plan, "ready", 12.1)
     text, kw = calls[0]
-    assert "ENTRY ALERT" in text and "/v3/trading?tab=Scalp&amp;symbol=AXTI" in text
+    # decision card (2026-10-08): an entry header that routes as cio_entry_state; the ticker links to Trading
+    from scripts.lib.telegram_cards import ENTRY_HEADERS
+    assert any(h in text for h in ENTRY_HEADERS) and "/v3/trading?tab=Scalp&amp;symbol=AXTI" in text
     assert "Close under 10.90" in text and "T1 $13.5" in text and "nothing executed" in text
     assert CHART in kw["link_preview_options"]["url"] and kw["reply_markup"]
 
@@ -303,10 +305,10 @@ def test_cio_entry_card_has_executive_sections_and_expandable_evidence(rich):
         "first_hard_block": "Earnings blackout", "thesis": "CGM demand",
     }).render()
     text = payload["text"]
-    for section in ("CIO VIEW", "PRICE SETUP", "RISK / REWARD", "POSITION IMPACT", "CATALYST",
-                    "OPTIONS REVIEW", "CIO VERDICT"):
+    # decision card (2026-10-08): what → ticker → status/action → numbers → company/verdict; detail collapsed
+    for section in ("STATUS", "ACTION REQUIRED", "ENTRY", "STOP", "TARGET", "COMPANY", "CIO VERDICT"):
         assert f"<b>{section}</b>" in text
-    assert "Existing position" in text and "STOP" in text and "ENTRY ZONE" in text
+    assert "ADD-ON ENTRY" in text and "Zone: $82.80 - $84.00" in text and "Catalyst:" in text
     assert "&amp; &lt;research&gt;" in text
     assert "BREAKEVEN_AT_OR_ABOVE_TARGET" in text
     assert "CIO review: unreviewed" in text
@@ -319,8 +321,8 @@ def test_cio_entry_card_preserves_missing_facts_and_never_invents_sizing(rich):
     text = rich.cio_entry_alert({"symbol": "DXCM", "state": "ENTRY_NEAR", "held": False,
                                  "price": 85.99, "entry_low": 82.8, "entry_high": 84.0,
                                  "stop": 80.4, "target": 94.0}).render()["text"]
-    assert "Sizing: not provided" in text
-    assert "unavailable" in text
+    assert "Sizing" not in text and "Shares" not in text      # the card never invents a size
+    assert "unavailable" in text                               # missing company is said, not hidden
     assert "probability" not in text.lower()
 
 
@@ -336,9 +338,9 @@ def test_cio_entry_card_normalizes_option_blocks_and_gauges(rich):
         "thesis": ["PE MISSING — thesis not on house file", "catalyst: Analyst upgrade"],
         "cio_stance": "HUMAN_REVIEW",
     }).render()["text"]
-    assert "Allegion plc · Industrials" in text
-    assert "Risk to stop $4.68" in text and "Reward to target $20.02" in text
-    assert "BREAKEVEN_AT_OR_ABOVE_TARGET · EARNINGS_BLACKOUT" in text
+    assert "Allegion plc\nIndustrials" in text
+    assert "risk to stop $4.68" in text and "reward to target $20.02" in text
+    assert "BREAKEVEN_AT_OR_ABOVE_TARGET\nEARNINGS_BLACKOUT" in text
     assert "PE MISSING — thesis not on house file · catalyst: Analyst upgrade" in text
     assert "['PE MISSING" not in text
     assert "What kills the idea: No hard block recorded — review incomplete" in text

@@ -27,17 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 _COMPONENT = "stop_health"
 
 
-def _send_card(card: dict) -> str | None:
-    """Send a decision card (HTML + buttons) via the central router; same id contract as _send_telegram."""
-    try:
-        from telegram_alert import send_telegram_with_id
-        return send_telegram_with_id(card["text"], reply_markup=card.get("reply_markup"),
-                                     link_preview_options=card.get("link_preview_options")).get("message_id")
-    except Exception:
-        return None
-
-
-def _send_telegram(msg: str) -> str | None:
+def _send_telegram(msg: str, *, reply_markup: dict | None = None, link_preview_options: dict | None = None) -> str | None:
     """Send via the central router. Returns the provider message id, or None.
 
     None covers every case where no message reached Telegram — suppressed by the
@@ -48,7 +38,10 @@ def _send_telegram(msg: str) -> str | None:
     """
     try:
         from telegram_alert import send_telegram_with_id
-        return send_telegram_with_id(msg).get("message_id")
+        # Decision cards (2026-10-08) add buttons + preview; plain text sends exactly as before.
+        extra = {k: v for k, v in (("reply_markup", reply_markup), ("link_preview_options", link_preview_options))
+                 if v is not None}
+        return send_telegram_with_id(msg, **extra).get("message_id")
     except Exception:
         return None
 
@@ -597,7 +590,8 @@ def run(quiet: bool = False) -> dict:
         except Exception:  # noqa: BLE001 — never lose a stop alert over a layout problem
             card = None
         if card:
-            mid = _send_card(card)
+            mid = _send_telegram(card["text"], reply_markup=card.get("reply_markup"),
+                                 link_preview_options=card.get("link_preview_options"))
         elif len(batch) == 1:
             sev, cond, sym, acct, line = batch[0]
             mid = _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
