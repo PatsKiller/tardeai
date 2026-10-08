@@ -1,1351 +1,1411 @@
 {
- "schema": "DataRetentionPolicy@v1",
- "authority": "READ_ONLY_ADVISORY",
- "as_of": "2026-10-07",
- "note": "Declarative retention registry. db_retention.py enforces DELETE and ARCHIVE_THEN_DELETE rows (archive = jsonl.gz under persistent-state/archive/db_retention/<table>/ BEFORE the delete; the delete runs only if the archived row count equals the matching count). KEEP_FOREVER rows are never deleted; archive=true on them means a yearly archive copy. check_retention_policy.py fails CI when a row is malformed or a KEEP_FOREVER row lacks a reason; report_db_hygiene.py (nightly) fails the lane and raises an incident when a large or growing table has no row here, when duplicate indexes reappear, or when the database exceeds size_budget_gb. Classes: DELETE, ARCHIVE_THEN_DELETE, KEEP_FOREVER, EXTERNAL_POLICY (enforced by a named job elsewhere; hygiene still watches its window when window_days is set).",
- "size_budget_gb": 16,
- "table_budget_mb": {
-  "content_embeddings": 4096,
-  "hermes_external_research": 256
- },
- "policies": [
-  {
-   "table": "action_signals_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "advisor_observations",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "aegis_covered_call_candidates",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "aegis_discovery_index",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "aegis_evidence_ledger",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "aegis_portfolio_briefs",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "aegis_rotation_candidates",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "aegis_steph_escalations",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "aegis_symbol_snapshot_nightly",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "afterhours_candidate_snapshot",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "scalp",
-   "reason": "after-hours candidates",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "agent_calibration_events",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "agents",
-   "reason": "calibration curves need aggregates, not rows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "agent_chain_runs",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "agent_context_refreshes",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "agent_event_queue",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "agent_handoffs",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "agent_recommendation_outcome_links",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "agents",
-   "reason": "outcome links; aggregates kept",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "agent_recommendation_registry",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "agents",
-   "reason": "calibration aggregates keep the signal; rows do not",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "alert_digest_queue",
-   "ts_column": "queued_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "notifications",
-   "reason": "never consumed; expires_at",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "alert_events",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "alert_occurrences",
-   "ts_column": "recorded_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "notifications",
-   "reason": "alert occurrence rows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "analyst_consensus_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "analyst_consensus_history_quarantine_20260913",
-   "ts_column": "quarantined_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "analyst_data_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "approval_log",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "article_index",
-   "ts_column": "ingested_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "asset_intelligence_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "atm_decision_log",
-   "ts_column": "decided_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
-   "archive": true,
-   "owner": "execution",
-   "reason": "ATM decision audit; archive yearly",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "catalyst_events",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "cio_decisions",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "claude_interventions",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
-   "archive": true,
-   "owner": "platform",
-   "reason": "operator/agent intervention audit",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "communication_deliveries",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "comms",
-   "reason": "delivery receipts",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "communication_events",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "comms",
-   "reason": "suppression/dedupe audit trail",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "communication_outbox",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "comms",
-   "reason": "outbox rows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "content_embeddings",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "librarian enforces 90 d; fused_signal/social_post rows 30 d via source_windows",
-   "since": "2026-10-07",
-   "source_windows": {
-    "fused_signal": 30,
-    "social_post": 30
-   }
-  },
-  {
-   "table": "content_entity_links",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "intel",
-   "reason": "links follow content windows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "curation_loop_audit",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "hermes",
-   "reason": "curation audit",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "daily_close_cache",
-   "ts_column": "price_date",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 730,
-   "archive": true,
-   "owner": "prices",
-   "reason": "closes older than 2 y archived",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "daily_snapshots",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 14,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "daily_system_metrics",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 14,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "decision_blueprints",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "cio",
-   "reason": "blueprints",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "decision_inputs",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "decision_outcomes",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "decision_packets",
-   "ts_column": "generated_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 90,
-   "archive": true,
-   "owner": "cio",
-   "reason": "20 kB rows, regenerable from inputs",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "deep_overnight_llm_queue",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": false,
-   "owner": "cio",
-   "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "deep_overnight_llm_results",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": false,
-   "owner": "cio",
-   "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "deploy_plans",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
-   "archive": true,
-   "owner": "platform",
-   "reason": "deployment plans; yearly archive",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "dividend_history",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": true,
-   "archive_after_days": 365,
-   "owner": "portfolio",
-   "reason": "income record: tax, 7 years",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "dof_ticket_events",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
-   "archive": true,
-   "owner": "dof",
-   "reason": "auction history",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "escalation_queue",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "fused_signals",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "health_agent_snapshots",
-   "ts_column": "captured_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "126 MB of toast snapshots",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_directive_hits_staging",
-   "ts_column": "proposed_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "hermes",
-   "reason": "staging rows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_discovery_audit",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_embedding_queue",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "hermes",
-   "reason": "completed rows kept forever today",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_external_research",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 90,
-   "archive": true,
-   "owner": "hermes",
-   "reason": "raw external answers; summaries live in hermes_research_intelligence; 70% repeated questions",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_memory_events",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "hermes",
-   "reason": "expires_at never elapses; bound it",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_outcome_ledger",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "hermes",
-   "reason": "outcome rows summarised into score history",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_research_intelligence",
-   "ts_column": "created_at",
-   "class": "EXTERNAL_POLICY",
-   "window_days": null,
-   "archive": false,
-   "owner": "hermes",
-   "reason": "hermes librarian: staged 90 d \u2192 archived \u2192 purged 180 d",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_score_event_queue",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "hermes",
-   "reason": "processed queue rows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_score_history",
-   "ts_column": "scored_at",
-   "class": "DELETE",
-   "window_days": 21,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "hermes_validation_findings",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "hermes",
-   "reason": "validation findings",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "incubator_events",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "screener",
-   "reason": "incubator roll-on/off events",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "indicator_confluence_cache",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "signals",
-   "reason": "cache; 86% older than 90 d",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "inference_ensemble_jobs",
-   "ts_column": "started_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "agents",
-   "reason": "73% expired",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "intelligence_entities",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": false,
-   "owner": "intel",
-   "reason": "entity registry: identity spine for symbols and subjects; never pruned",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "intelligence_whiteboard",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "iris_hygiene_log",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 14,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "iris_hygiene_pending",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 14,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "iris_run_log",
-   "ts_column": "ran_at",
-   "class": "DELETE",
-   "window_days": 14,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "john_decision_history",
-   "ts_column": "changed_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "john_decision_queue",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "llm_consumption_log",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "platform",
-   "reason": "cost rows; monthly rollups kept by llm_spend_report",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "llm_cost_reservations",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "settled reservations",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "market_ohlcv_bars",
-   "ts_column": "bar_time",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
-   "archive": true,
-   "owner": "prices",
-   "reason": "bars older than 1 y go to parquet/jsonl archive",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "market_quote_snapshots",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "prices",
-   "reason": "quote snapshots",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "market_quotes",
-   "ts_column": "fetched_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "narrative_subjects",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": false,
-   "owner": "intel",
-   "reason": "entity/subject spine; versioned by the identity registry",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "news_articles",
-   "ts_column": "published_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "notification_log",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "options_chain_snapshots",
-   "ts_column": "captured_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
-   "archive": true,
-   "owner": "options",
-   "reason": "chain snapshots; 1 y hot",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "overnight_actionable_outcomes",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": false,
-   "owner": "cio",
-   "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "paper_protection_adjustment_proposals",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "paper",
-   "reason": "paper training rows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "paper_trade_proposals",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "paper",
-   "reason": "paper proposals",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "performance_daily",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "portfolio_intelligence_events",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "portfolio_snapshots",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": true,
-   "archive_after_days": 365,
-   "owner": "portfolio",
-   "reason": "account history: tax/basis, 7 years",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "price_cache",
-   "ts_column": "price_date",
-   "class": "DELETE",
-   "window_days": 365,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "proposal_event_log",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "watch",
-   "reason": "proposal lifecycle audit",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "proposal_execution_readiness",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "watch",
-   "reason": "readiness snapshots",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "proposal_llm_review_queue",
-   "ts_column": "started_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "watch",
-   "reason": "stuck/expired reviews",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "proposal_technical_snapshots",
-   "ts_column": "computed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "watch",
-   "reason": "technical snapshots at proposal time",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "rec_ticker_attribution",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "agents",
-   "reason": "attribution rows",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "research_insights",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "run_summary",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "scalp_ignition_events",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "scalp",
-   "reason": "signal events; archive for backtests",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "schwab_stream_book",
-   "ts_column": "captured_at",
-   "class": "DELETE",
-   "window_days": 7,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "schwab_stream_quotes",
-   "ts_column": "captured_at",
-   "class": "DELETE",
-   "window_days": 7,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "scope_governor_audit",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "sec_form4",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "sentiment_observations",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "signal_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "social_posts",
-   "ts_column": "ingested_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "social_sentiment_history",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "state_freshness_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "strategy_backtest_trades",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
-   "archive": true,
-   "owner": "strategy",
-   "reason": "backtest trades",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "strategy_rule_evaluations",
-   "ts_column": "updated_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "strategy_rule_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "system_health_checks",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "system_rollup_daily",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 365,
-   "archive": false,
-   "owner": "platform",
-   "reason": "0 rows but 78 MB orphaned TOAST: needs VACUUM FULL once (operator window)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "telegram_outbox",
-   "ts_column": "sent_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 90,
-   "archive": true,
-   "owner": "comms",
-   "reason": "sent messages",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "ticker_prices",
-   "ts_column": "price_date",
-   "class": "DELETE",
-   "window_days": 365,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "ticker_snapshot_daily",
-   "ts_column": "snapshot_date",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "trade_ai_scans",
-   "ts_column": "scanned_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "trade_ai_state",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "trade_backtest_results",
-   "ts_column": "computed_at",
-   "class": "DELETE",
-   "window_days": 14,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "trade_closed",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": true,
-   "archive_after_days": 365,
-   "owner": "portfolio",
-   "reason": "realized trades: tax record, 7 years",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "trade_integrity_audit",
-   "ts_column": "audited_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 90,
-   "archive": true,
-   "owner": "platform",
-   "reason": "audit trail; archive quarterly",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "trade_transactions",
-   "ts_column": "created_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": true,
-   "archive_after_days": 365,
-   "owner": "portfolio",
-   "reason": "brokerage/tax record: IRS 7-year expectation; archive yearly, never delete",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "transcript_intel_history",
-   "ts_column": "observed_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watch_decision_refresh_jobs",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "watch",
-   "reason": "job rows; 79% were older than 30 d",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watch_directive_hits",
-   "ts_column": "surfaced_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 90,
-   "archive": true,
-   "owner": "watch",
-   "reason": "directive hits",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_agent_jobs",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_agent_results",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_analysis_maturity",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_entry_plans",
-   "ts_column": "created_at",
-   "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 180,
-   "archive": true,
-   "owner": "watch",
-   "reason": "entry plans",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_events",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_final_synthesis",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_items",
-   "ts_column": "updated_at",
-   "class": "KEEP_FOREVER",
-   "window_days": null,
-   "archive": false,
-   "owner": "watch",
-   "reason": "the watchlist itself (24k rows, 118 MB from 2.1M updates: repack, not delete)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_research_cards",
-   "ts_column": "updated_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_strategy_cards",
-   "ts_column": "updated_at",
-   "class": "DELETE",
-   "window_days": 90,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "watchlist_synthesis_safety_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 30,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "yahoo_analyst_targets_history",
-   "ts_column": "created_at",
-   "class": "DELETE",
-   "window_days": 180,
-   "archive": false,
-   "owner": "platform",
-   "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
-   "since": "2026-10-07"
-  },
-  {
-   "table": "youtube_transcripts",
-   "ts_column": "n/a",
-   "class": "EXTERNAL_POLICY",
-   "window_days": null,
-   "archive": false,
-   "owner": "research",
-   "reason": "monthly purge_after cron (0 3 1 * *) owns this table",
-   "since": "2026-10-07"
-  }
- ]
+  "schema": "DataRetentionPolicy@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-10-07",
+  "note": "Declarative retention registry. db_retention.py enforces DELETE and ARCHIVE_THEN_DELETE rows (archive = jsonl.gz under persistent-state/archive/db_retention/<table>/ BEFORE the delete; the delete runs only if the archived row count equals the matching count). KEEP_FOREVER rows are never deleted; archive=true on them means a yearly archive copy. check_retention_policy.py fails CI when a row is malformed or a KEEP_FOREVER row lacks a reason; report_db_hygiene.py (nightly) fails the lane and raises an incident when a large or growing table has no row here, when duplicate indexes reappear, or when the database exceeds size_budget_gb. Classes: DELETE, ARCHIVE_THEN_DELETE, KEEP_FOREVER, EXTERNAL_POLICY (enforced by a named job elsewhere; hygiene still watches its window when window_days is set). 2026-10-08: six rows added for the tables the first nightly hygiene report flagged UNCOVERED_TABLE (operator-reviewed PR).",
+  "size_budget_gb": 16,
+  "table_budget_mb": {
+    "content_embeddings": 4096,
+    "hermes_external_research": 256
+  },
+  "policies": [
+    {
+      "table": "action_signals_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "advisor_observations",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "aegis_covered_call_candidates",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "aegis_discovery_index",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "aegis_evidence_ledger",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "aegis_portfolio_briefs",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "aegis_rotation_candidates",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "aegis_steph_escalations",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "aegis_symbol_snapshot_nightly",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "afterhours_candidate_snapshot",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "scalp",
+      "reason": "after-hours candidates",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "agent_calibration_events",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "agents",
+      "reason": "calibration curves need aggregates, not rows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "agent_chain_runs",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "agent_context_refreshes",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "agent_event_queue",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "agent_handoffs",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "agent_recommendation_outcome_links",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "agents",
+      "reason": "outcome links; aggregates kept",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "agent_recommendation_registry",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "agents",
+      "reason": "calibration aggregates keep the signal; rows do not",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "alert_digest_queue",
+      "ts_column": "queued_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "notifications",
+      "reason": "never consumed; expires_at",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "alert_events",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "alert_occurrences",
+      "ts_column": "recorded_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "notifications",
+      "reason": "alert occurrence rows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "analyst_consensus_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "analyst_consensus_history_quarantine_20260913",
+      "ts_column": "quarantined_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "analyst_data_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "approval_log",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "article_index",
+      "ts_column": "ingested_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "asset_intelligence_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "atm_decision_log",
+      "ts_column": "decided_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "execution",
+      "reason": "ATM decision audit; archive yearly",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "catalyst_events",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "cio_decisions",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "claude_interventions",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "platform",
+      "reason": "operator/agent intervention audit",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "communication_deliveries",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "comms",
+      "reason": "delivery receipts",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "communication_events",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "comms",
+      "reason": "suppression/dedupe audit trail",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "communication_outbox",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "comms",
+      "reason": "outbox rows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "content_embeddings",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "librarian enforces 90 d; fused_signal/social_post rows 30 d via source_windows",
+      "since": "2026-10-07",
+      "source_windows": {
+        "fused_signal": 30,
+        "social_post": 30
+      }
+    },
+    {
+      "table": "content_entity_links",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "intel",
+      "reason": "links follow content windows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "curation_loop_audit",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "hermes",
+      "reason": "curation audit",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "daily_close_cache",
+      "ts_column": "price_date",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 730,
+      "archive": true,
+      "owner": "prices",
+      "reason": "closes older than 2 y archived",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "daily_snapshots",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 14,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "daily_system_metrics",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 14,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "decision_blueprints",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "cio",
+      "reason": "blueprints",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "decision_inputs",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "decision_outcomes",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "decision_packets",
+      "ts_column": "generated_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 90,
+      "archive": true,
+      "owner": "cio",
+      "reason": "20 kB rows, regenerable from inputs",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "deep_overnight_llm_queue",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": false,
+      "owner": "cio",
+      "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "deep_overnight_llm_results",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": false,
+      "owner": "cio",
+      "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "deploy_plans",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "platform",
+      "reason": "deployment plans; yearly archive",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "dividend_history",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": true,
+      "archive_after_days": 365,
+      "owner": "portfolio",
+      "reason": "income record: tax, 7 years",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "dof_ticket_events",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "dof",
+      "reason": "auction history",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "escalation_queue",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "fused_signals",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "health_agent_snapshots",
+      "ts_column": "captured_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "126 MB of toast snapshots",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_directive_hits_staging",
+      "ts_column": "proposed_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "hermes",
+      "reason": "staging rows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_discovery_audit",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_embedding_queue",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "hermes",
+      "reason": "completed rows kept forever today",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_external_research",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 90,
+      "archive": true,
+      "owner": "hermes",
+      "reason": "raw external answers; summaries live in hermes_research_intelligence; 70% repeated questions",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_memory_events",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "hermes",
+      "reason": "expires_at never elapses; bound it",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_outcome_ledger",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "hermes",
+      "reason": "outcome rows summarised into score history",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_research_intelligence",
+      "ts_column": "created_at",
+      "class": "EXTERNAL_POLICY",
+      "window_days": null,
+      "archive": false,
+      "owner": "hermes",
+      "reason": "hermes librarian: staged 90 d → archived → purged 180 d",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_score_event_queue",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "hermes",
+      "reason": "processed queue rows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_score_history",
+      "ts_column": "scored_at",
+      "class": "DELETE",
+      "window_days": 21,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "hermes_validation_findings",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "hermes",
+      "reason": "validation findings",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "incubator_events",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "screener",
+      "reason": "incubator roll-on/off events",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "indicator_confluence_cache",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "signals",
+      "reason": "cache; 86% older than 90 d",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "inference_ensemble_jobs",
+      "ts_column": "started_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "agents",
+      "reason": "73% expired",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "intelligence_entities",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": false,
+      "owner": "intel",
+      "reason": "entity registry: identity spine for symbols and subjects; never pruned",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "intelligence_whiteboard",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "iris_hygiene_log",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 14,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "iris_hygiene_pending",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 14,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "iris_run_log",
+      "ts_column": "ran_at",
+      "class": "DELETE",
+      "window_days": 14,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "john_decision_history",
+      "ts_column": "changed_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "john_decision_queue",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "llm_consumption_log",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "platform",
+      "reason": "cost rows; monthly rollups kept by llm_spend_report",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "llm_cost_reservations",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "settled reservations",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "market_ohlcv_bars",
+      "ts_column": "bar_time",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "prices",
+      "reason": "bars older than 1 y go to parquet/jsonl archive",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "market_quote_snapshots",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "prices",
+      "reason": "quote snapshots",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "market_quotes",
+      "ts_column": "fetched_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "narrative_subjects",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": false,
+      "owner": "intel",
+      "reason": "entity/subject spine; versioned by the identity registry",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "news_articles",
+      "ts_column": "published_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "notification_log",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "options_chain_snapshots",
+      "ts_column": "captured_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "options",
+      "reason": "chain snapshots; 1 y hot",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "overnight_actionable_outcomes",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": false,
+      "owner": "cio",
+      "reason": "retired overnight-LLM family (lane deep-overnight-llm RETIRED); ~5 MB, no writes since 2026-05; outcomes still read by an api_v2 route",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "paper_protection_adjustment_proposals",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "paper",
+      "reason": "paper training rows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "paper_trade_proposals",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "paper",
+      "reason": "paper proposals",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "performance_daily",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "portfolio_intelligence_events",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "portfolio_snapshots",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": true,
+      "archive_after_days": 365,
+      "owner": "portfolio",
+      "reason": "account history: tax/basis, 7 years",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "price_cache",
+      "ts_column": "price_date",
+      "class": "DELETE",
+      "window_days": 365,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "proposal_event_log",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "watch",
+      "reason": "proposal lifecycle audit",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "proposal_execution_readiness",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "watch",
+      "reason": "readiness snapshots",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "proposal_llm_review_queue",
+      "ts_column": "started_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "watch",
+      "reason": "stuck/expired reviews",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "proposal_technical_snapshots",
+      "ts_column": "computed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "watch",
+      "reason": "technical snapshots at proposal time",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "rec_ticker_attribution",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "agents",
+      "reason": "attribution rows",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "research_insights",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "run_summary",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "scalp_ignition_events",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "scalp",
+      "reason": "signal events; archive for backtests",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "schwab_stream_book",
+      "ts_column": "captured_at",
+      "class": "DELETE",
+      "window_days": 7,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "schwab_stream_quotes",
+      "ts_column": "captured_at",
+      "class": "DELETE",
+      "window_days": 7,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "scope_governor_audit",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "sec_form4",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "sentiment_observations",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "signal_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "social_posts",
+      "ts_column": "ingested_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "social_sentiment_history",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "state_freshness_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "strategy_backtest_trades",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "strategy",
+      "reason": "backtest trades",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "strategy_rule_evaluations",
+      "ts_column": "updated_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "strategy_rule_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "system_health_checks",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "system_rollup_daily",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 365,
+      "archive": false,
+      "owner": "platform",
+      "reason": "0 rows but 78 MB orphaned TOAST: needs VACUUM FULL once (operator window)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "telegram_outbox",
+      "ts_column": "sent_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 90,
+      "archive": true,
+      "owner": "comms",
+      "reason": "sent messages",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "ticker_prices",
+      "ts_column": "price_date",
+      "class": "DELETE",
+      "window_days": 365,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "ticker_snapshot_daily",
+      "ts_column": "snapshot_date",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "trade_ai_scans",
+      "ts_column": "scanned_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "trade_ai_state",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "trade_backtest_results",
+      "ts_column": "computed_at",
+      "class": "DELETE",
+      "window_days": 14,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "trade_closed",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": true,
+      "archive_after_days": 365,
+      "owner": "portfolio",
+      "reason": "realized trades: tax record, 7 years",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "trade_integrity_audit",
+      "ts_column": "audited_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 90,
+      "archive": true,
+      "owner": "platform",
+      "reason": "audit trail; archive quarterly",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "trade_transactions",
+      "ts_column": "created_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": true,
+      "archive_after_days": 365,
+      "owner": "portfolio",
+      "reason": "brokerage/tax record: IRS 7-year expectation; archive yearly, never delete",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "transcript_intel_history",
+      "ts_column": "observed_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watch_decision_refresh_jobs",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "watch",
+      "reason": "job rows; 79% were older than 30 d",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watch_directive_hits",
+      "ts_column": "surfaced_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 90,
+      "archive": true,
+      "owner": "watch",
+      "reason": "directive hits",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_agent_jobs",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_agent_results",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_analysis_maturity",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_entry_plans",
+      "ts_column": "created_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 180,
+      "archive": true,
+      "owner": "watch",
+      "reason": "entry plans",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_events",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_final_synthesis",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_items",
+      "ts_column": "updated_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": false,
+      "owner": "watch",
+      "reason": "the watchlist itself (24k rows, 118 MB from 2.1M updates: repack, not delete)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_research_cards",
+      "ts_column": "updated_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_strategy_cards",
+      "ts_column": "updated_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "watchlist_synthesis_safety_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 30,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "yahoo_analyst_targets_history",
+      "ts_column": "created_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "youtube_transcripts",
+      "ts_column": "n/a",
+      "class": "EXTERNAL_POLICY",
+      "window_days": null,
+      "archive": false,
+      "owner": "research",
+      "reason": "monthly purge_after cron (0 3 1 * *) owns this table",
+      "since": "2026-10-07"
+    },
+    {
+      "table": "enrichment_log",
+      "ts_column": "started_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "enrichment run log (125,666 rows, 31 MB, oldest 2026-05-22 on 2026-10-08); no reader needs more than two quarters; hygiene UNCOVERED_TABLE first nightly run",
+      "since": "2026-10-08"
+    },
+    {
+      "table": "pipeline_runs",
+      "ts_column": "started_at",
+      "class": "DELETE",
+      "window_days": 180,
+      "archive": false,
+      "owner": "platform",
+      "reason": "pipeline_run_telemetry rows (92,613 rows, 34 MB, oldest 2026-05-09); freshness monitors read the last days only; hygiene UNCOVERED_TABLE",
+      "since": "2026-10-08"
+    },
+    {
+      "table": "communication_thread_membership",
+      "ts_column": "joined_at",
+      "class": "KEEP_FOREVER",
+      "window_days": null,
+      "archive": false,
+      "owner": "platform",
+      "reason": "join table between communication threads and their participants (76,309 rows, 54 MB); rows must live and die with their thread, an age window would orphan thread history; revisit with a thread-level policy",
+      "since": "2026-10-08"
+    },
+    {
+      "table": "screener_symbol_membership",
+      "ts_column": "updated_at",
+      "class": "ARCHIVE_THEN_DELETE",
+      "window_days": 365,
+      "archive": true,
+      "owner": "screener",
+      "reason": "screener roll-on/roll-off history (66,944 rows, 249 MB, oldest 2026-05-06); one year is kept live for incubator analysis, older rows archived to jsonl.gz before delete; hygiene UNCOVERED_TABLE",
+      "since": "2026-10-08"
+    },
+    {
+      "table": "document_mentions",
+      "ts_column": "observed_at",
+      "class": "EXTERNAL_POLICY",
+      "window_days": null,
+      "archive": false,
+      "owner": "platform",
+      "reason": "pruned by scripts/prune_document_mentions.py (nightly maintenance step 10) per SOURCE table window — a mention outlives nothing its source row outlives; 249,765 rows, 172 MB; hygiene UNCOVERED_TABLE",
+      "since": "2026-10-08"
+    },
+    {
+      "table": "cio_directive_hits_staging",
+      "ts_column": "proposed_at",
+      "class": "DELETE",
+      "window_days": 90,
+      "archive": false,
+      "owner": "cio",
+      "reason": "staging rows drained into cio_directive_hits (37,233 rows, 27 MB, oldest 2026-08-13); drained rows have no reader after a quarter; hygiene UNCOVERED_TABLE",
+      "since": "2026-10-08"
+    }
+  ]
 }
