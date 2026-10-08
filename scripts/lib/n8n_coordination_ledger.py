@@ -12,6 +12,11 @@ COMMIT returned; it still does not prove delivery to n8n or to an operator.
 
 No HMAC seed is stored. A reference token is returned once and only its hash
 is kept.
+
+2026-10-08 (n8n scheduler-of-record, tranche N1): the ``runs`` table. The gateway
+``run`` operation inserts a REQUESTED row; scripts/n8n_run_executor.py claims the
+oldest REQUESTED row (RUNNING) in one transaction and finishes it with a
+RunReceipt@v1. The gateway never spawns; the executor never authenticates.
 """
 from __future__ import annotations
 
@@ -30,6 +35,12 @@ NO_CONSUMER_REASON = (
 
 LEDGER_SCHEMA = "N8nCoordinationLedgerRow@v1"
 REFERENCE_SCOPE = "coordination_read"
+RUN_STATE_REQUESTED = "REQUESTED"
+RUN_STATE_RUNNING = "RUNNING"
+RUN_FINISHED_STATES = frozenset({"RUN_DONE", "RUN_FAILED", "RUN_TIMEOUT", "RUN_SKIPPED_LOCK", "RUN_REFUSED"})
+RUN_STATES = frozenset({RUN_STATE_REQUESTED, RUN_STATE_RUNNING}) | RUN_FINISHED_STATES
+RUN_ROW_FIELDS = ("run_id", "lane_id", "mode", "state", "requested_by", "caller_id", "requested_at", "started_at",
+                  "finished_at", "exit_code", "duration_s")
 MAX_PAYLOAD_BYTES = 65536
 RATE_LIMIT = 30
 RATE_WINDOW_S = 60
@@ -131,6 +142,21 @@ class CoordinationLedger:
                 exp REAL NOT NULL,
                 scope TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS runs (
+                run_id TEXT PRIMARY KEY,
+                lane_id TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                state TEXT NOT NULL,
+                requested_by TEXT,
+                caller_id TEXT,
+                requested_at TEXT NOT NULL,
+                started_at TEXT,
+                finished_at TEXT,
+                exit_code INTEGER,
+                duration_s REAL,
+                receipt_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS runs_state_requested_at ON runs (state, requested_at);
             """
         )
 
@@ -438,3 +464,102 @@ class LedgerReceiptStore:
             sql += " AND updated_at >= ?"; args.append(since)
         sql += " ORDER BY updated_at DESC LIMIT ?"; args.append(int(limit))
         return [json.loads(r["receipt_json"]) for r in self._l._conn.execute(sql, args).fetchall()]
+
+
+class LedgerRunStore:
+    """``runs`` table adapter. ``request`` is what the gateway's run operation calls; ``claim_next`` and
+    ``finish`` belong to the executor. Every write is one BEGIN IMMEDIATE ... COMMIT, so two executors
+    polling the same file cannot both claim a row, and a gateway restart replays what was requested."""
+
+    durable = True
+
+    def __init__(self, ledger: CoordinationLedger) -> None:
+        self._l = ledger
+
+    def request(self, *, run_id: str, lane_id: str, mode: str, requested_by: str | None, caller_id: str | None,
+                now: float) -> tuple[dict[str, Any], bool]:
+        """Insert a REQUESTED row, or return the existing row for this run_id with duplicate=True."""
+        if not run_id or not lane_id or not mode:
+            raise LedgerError("malformed_event")
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            existing = self._l._conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+            if existing is not None:
+                self._l._conn.execute("ROLLBACK")
+                return self._row_dict(existing), True
+            self._l._conn.execute(
+                "INSERT INTO runs (run_id, lane_id, mode, state, requested_by, caller_id, requested_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (run_id, lane_id, mode, RUN_STATE_REQUESTED, requested_by, caller_id, _iso(now)))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+        return self.get(run_id), False
+
+    def get(self, run_id: str) -> dict[str, Any] | None:
+        row = self._l._conn.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        return None if row is None else self._row_dict(row)
+
+    def claim_next(self, *, now: float | None = None) -> dict[str, Any] | None:
+        """Oldest REQUESTED row -> RUNNING in one transaction; None when the queue is empty."""
+        at = _iso(now if now is not None else datetime.now(timezone.utc).timestamp())
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._l._conn.execute(
+                "SELECT run_id FROM runs WHERE state = ? ORDER BY requested_at ASC, run_id ASC LIMIT 1",
+                (RUN_STATE_REQUESTED,)).fetchone()
+            if row is None:
+                self._l._conn.execute("ROLLBACK")
+                return None
+            self._l._conn.execute("UPDATE runs SET state = ?, started_at = ? WHERE run_id = ? AND state = ?",
+                                  (RUN_STATE_RUNNING, at, row["run_id"], RUN_STATE_REQUESTED))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+        return self.get(str(row["run_id"]))
+
+    def finish(self, run_id: str, *, state: str, receipt: Mapping[str, Any], now: float | None = None) -> dict[str, Any]:
+        """RUNNING -> one of RUN_FINISHED_STATES with the RunReceipt@v1 stored on the row."""
+        if state not in RUN_FINISHED_STATES:
+            raise LedgerError("illegal_transition")
+        at = _iso(now if now is not None else datetime.now(timezone.utc).timestamp())
+        exit_code = receipt.get("exit_code")
+        duration = receipt.get("duration_s")
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            current = self._l._conn.execute("SELECT state FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+            if current is None:
+                raise LedgerError("unknown_event")
+            if current["state"] != RUN_STATE_RUNNING:
+                raise LedgerError(f"illegal_transition:{current['state']}->{state}")
+            self._l._conn.execute(
+                "UPDATE runs SET state = ?, finished_at = ?, exit_code = ?, duration_s = ?, receipt_json = ? WHERE run_id = ?",
+                (state, receipt.get("finished_at") or at,
+                 int(exit_code) if isinstance(exit_code, int) else None,
+                 float(duration) if isinstance(duration, (int, float)) else None,
+                 json.dumps(dict(receipt), sort_keys=True, default=str), run_id))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+        out = self.get(run_id)
+        assert out is not None
+        return out
+
+    def list(self, *, state: str | None = None, lane_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM runs WHERE 1=1", []
+        if state:
+            sql += " AND state = ?"; args.append(state)
+        if lane_id:
+            sql += " AND lane_id = ?"; args.append(lane_id)
+        sql += " ORDER BY requested_at DESC, run_id DESC LIMIT ?"; args.append(int(limit))
+        return [self._row_dict(r) for r in self._l._conn.execute(sql, args).fetchall()]
+
+    @staticmethod
+    def _row_dict(row: sqlite3.Row) -> dict[str, Any]:
+        out = {k: row[k] for k in RUN_ROW_FIELDS}
+        raw = row["receipt_json"]
+        out["receipt"] = json.loads(raw) if raw else None
+        return out
