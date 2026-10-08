@@ -56,4 +56,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from lib.scheduled_job_receipt import run_with_receipt
+    raise SystemExit(run_with_receipt(main, script="generate_analyst_daily_digest", root=PROJECT_ROOT))
