@@ -94,6 +94,9 @@ def comms_url(event_id: Optional[str] = None, symbol: Optional[str] = None) -> s
 # ── collection ──────────────────────────────────────────────────────────────
 
 
+_NOT_TICKER_ADVICE = __import__("re").compile(r"\b(?:brief|digest)\b", __import__("re").I)
+
+
 def collect_comms(db: Callable, since: datetime, until: datetime) -> dict[str, list[dict[str, Any]]]:
     """{section_id: [item]} — the newest event per (section, symbol) in the window."""
     from scripts.lib.comms.classify import headline, symbols_in
@@ -112,6 +115,8 @@ def collect_comms(db: Callable, since: datetime, until: datetime) -> dict[str, l
             rule = r.get("classified_by") or ""
             if rule in excl or (incl and rule not in incl):
                 continue
+            if _NOT_TICKER_ADVICE.search(headline(r.get("sanitized_body") or "")):
+                continue                     # portfolio-wide briefs/digests are not one ticker's advice
             syms = list(r.get("symbols") or []) or symbols_in(r.get("sanitized_body") or "")
             if not syms or syms[0] in seen:
                 continue
@@ -221,6 +226,15 @@ def enrich(db: Callable, symbols: list[str]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _held_symbols() -> list[str]:
+    try:
+        from lib.data_broker.watch_domains import membership_held
+
+        return sorted(membership_held()[0])
+    except Exception:
+        return []
+
+
 def collect_movers(db: Callable, today: date, universe: list[str], facts_for: Callable) -> dict[str, list[dict]]:
     """17:00 — what moved up or down today: price, ratings, conviction rank, new catalysts."""
     cfg = load_config().get("movers") or {}
@@ -233,9 +247,10 @@ def collect_movers(db: Callable, today: date, universe: list[str], facts_for: Ca
 
         quotes = get_price_batch(q, universe, skip_live=True) or {}
         th = float(cfg.get("price_move_pct") or 4.0)
+        held = set(_held_symbols())
         moves = [(s, v) for s, v in quotes.items() if v.get("chg_pct") is not None and abs(v["chg_pct"]) >= th]
-        moves.sort(key=lambda kv: -abs(kv[1]["chg_pct"]))
-        out["price"] = [{"symbol": s, "chg_pct": v["chg_pct"], "price": v["price"]}
+        moves.sort(key=lambda kv: (kv[0] not in held, -abs(kv[1]["chg_pct"])))   # your positions first
+        out["price"] = [{"symbol": s, "chg_pct": v["chg_pct"], "price": v["price"], "held": s in held}
                         for s, v in moves[: int(cfg.get("max_price_movers") or n)]]
     except Exception:
         pass
@@ -278,12 +293,14 @@ def collect_movers(db: Callable, today: date, universe: list[str], facts_for: Ca
             if not prev:
                 continue
             ct, pt = _f(cur.get("target_mean_price")), _f(prev.get("target_mean_price"))
-            key_change = (cur.get("recommendation_key") or "") != (prev.get("recommendation_key") or "")
+            ck, pk = _key(cur.get("recommendation_key")), _key(prev.get("recommendation_key"))
+            # coverage starting ("none" → buy) is not an upgrade: a key change needs a real rating on both sides
+            key_change = bool(ck and pk and ck != pk)
             tgt_change = ct and pt and abs(ct - pt) / pt * 100 >= tpct
             if key_change or tgt_change:
                 up = (ct or 0) > (pt or 0) if not key_change else _rank(cur.get("recommendation_key")) < _rank(prev.get("recommendation_key"))
-                out["ratings"].append({"symbol": s, "up": up, "from_key": prev.get("recommendation_key"),
-                                       "to_key": cur.get("recommendation_key"), "from_target": pt, "to_target": ct})
+                out["ratings"].append({"symbol": s, "up": up, "from_key": pk, "to_key": ck, "key_change": key_change,
+                                       "from_target": pt, "to_target": ct})
         out["ratings"] = out["ratings"][:n]
     except Exception:
         pass
@@ -325,6 +342,11 @@ def collect_movers(db: Callable, today: date, universe: list[str], facts_for: Ca
 
 
 _KEYS = ["strong_buy", "buy", "hold", "underperform", "sell"]
+
+
+def _key(k: Any) -> Optional[str]:
+    k = str(k or "").strip().lower().replace(" ", "_")
+    return k if k and k not in ("none", "null", "nan") else None
 
 
 def _rank(k: Any) -> int:
@@ -433,14 +455,17 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
         mv = []
         if movers.get("price"):
             mv.append("<b>Price</b>\n" + "\n".join(
-                f"{'📈' if m['chg_pct'] >= 0 else '📉'} {link('$' + m['symbol'], ticker_url(m['symbol']))} "
-                f"{_usd(m['price'])} {'▲' if m['chg_pct'] >= 0 else '▼'}{abs(m['chg_pct']):.1f}%"
+                f"{'📈' if m['chg_pct'] >= 0 else '📉'} {link('$' + m['symbol'], ticker_url(m['symbol']))}"
+                + (" <b>HELD</b> " if m.get("held") else " ")
+                + f"{_usd(m['price'])} {'▲' if m['chg_pct'] >= 0 else '▼'}{abs(m['chg_pct']):.1f}%"
                 + (f" · {m['x_normal']:.1f}× its normal daily move" if m.get('x_normal') else "") for m in movers["price"]))
         if movers.get("ratings"):
             mv.append("<b>Ratings</b>\n" + "\n".join(
                 f"{'⬆️' if r['up'] else '⬇️'} {link('$' + r['symbol'], ticker_url(r['symbol']))} "
-                + (f"{esc(str(r['from_key']).upper())} → {esc(str(r['to_key']).upper())}" if r['from_key'] != r['to_key'] else "")
-                + (f" · target {_usd(r['from_target'])} → {_usd(r['to_target'])}" if r.get('to_target') else "")
+                + (f"{esc(str(r['from_key']).replace('_', ' ').upper())} → {esc(str(r['to_key']).replace('_', ' ').upper())}"
+                   if r.get('key_change') else "rating unchanged")
+                + (f" · target {_usd(r['from_target'])} → {_usd(r['to_target'])}"
+                   if r.get('to_target') and r.get('from_target') and abs(r['to_target'] - r['from_target']) > 0.005 else "")
                 for r in movers["ratings"]))
         if movers.get("conviction"):
             mv.append("<b>CIO conviction</b>\n" + "\n".join(
@@ -462,6 +487,14 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
     blocks.append("<i>Advisory only — nothing is ordered. Scalp alerts, approvals and stop/protection alerts still "
                   "arrive immediately.</i>")
     limit = int(cfg.get("max_message_chars") or 3800)
+    # a section header never ends a message on its own: glue it to the block that follows
+    glued: list[str] = []
+    for b in blocks:
+        if glued and glued[-1].startswith("━━") and "\n\n" not in glued[-1]:
+            glued[-1] = glued[-1] + "\n\n" + b
+        else:
+            glued.append(b)
+    blocks = glued
     msgs, cur = [], ""
     for b in blocks:
         if cur and len(cur) + len(b) + 2 > limit:

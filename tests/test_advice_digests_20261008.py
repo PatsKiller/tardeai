@@ -183,7 +183,8 @@ def test_thin_items_are_one_line_and_bad_data_is_flagged():
 def test_render_sections_movers_and_safe_splitting(monkeypatch):
     sections = {"entries": [{"symbol": "NFLX", "event_id": "e"}] * 1, "reentry": [], "cio": []}
     movers = {"price": [{"symbol": "NFLX", "chg_pct": 5.2, "price": 71.1, "x_normal": 3.4}],
-              "ratings": [{"symbol": "NFLX", "up": True, "from_key": "hold", "to_key": "buy", "from_target": 80, "to_target": 93.66}],
+              "ratings": [{"symbol": "NFLX", "up": True, "from_key": "hold", "to_key": "buy", "key_change": True,
+                          "from_target": 80, "to_target": 93.66}],
               "conviction": [{"symbol": "NFLX", "from": 62, "to": 74, "rank_from": 400, "rank_to": 165}],
               "catalysts": [{"symbol": "NFLX", "headline": "New deal"}]}
     msgs = ad.render("17", sections, [], FACTS, movers, {"rows": [(1, None, "stop_warning", "t", "b")]}, NOW)
