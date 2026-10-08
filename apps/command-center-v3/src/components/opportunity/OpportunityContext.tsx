@@ -3,7 +3,7 @@
  *  clickable ticker (stops propagation so a click inside a card does not also select the card). The URL parameter
  *  ?opp=SYMBOL opens it too — Telegram opportunity lines link there. */
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { FONT } from '../../lib/designTokens'
 
 const OpportunityModal = lazy(() => import('./OpportunityModal'))
@@ -20,6 +20,9 @@ export function OpportunityModalProvider({ children }: { children: ReactNode }) 
   const [sp, setSp] = useSearchParams()
   const opp = sp.get('opp')
   useEffect(() => { if (opp) setSymbol(opp.toUpperCase()) }, [opp])
+  // Moving to another page always closes the modal (it must never sit over a page you navigated to).
+  const { pathname } = useLocation()
+  useEffect(() => { if (!opp) setSymbol(null) }, [pathname])  // eslint-disable-line react-hooks/exhaustive-deps
   const open = useCallback((s: string) => { if (s) setSymbol(String(s).toUpperCase()) }, [])
   const close = useCallback(() => {
     setSymbol(null)

@@ -23,8 +23,18 @@ export default function Modal({ open, onClose, title, width = 1040, children, fo
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
   }, [open, onClose])
   if (!open) return null
+  /** A click outside the panel closes the modal AND lands on what was under it (the nav, a tab, another ticker),
+   *  so "Watch" works in one click instead of two (operator 2026-10-08: "cant click watch"). */
+  const clickThrough = (e: React.MouseEvent) => {
+    const { clientX: x, clientY: y } = e
+    onClose()
+    window.setTimeout(() => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null
+      if (el && typeof el.click === 'function') el.click()
+    }, 0)
+  }
   return (
-    <div onClick={onClose} role="presentation"
+    <div onClick={clickThrough} role="presentation"
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.62)', zIndex: 1200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '4vh 12px', overflowY: 'auto' }}>
       <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" data-testid={testId} onClick={(e) => e.stopPropagation()}
         style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.lg, boxShadow: SHADOW[3], width, maxWidth: '96vw', outline: 'none' }}>
