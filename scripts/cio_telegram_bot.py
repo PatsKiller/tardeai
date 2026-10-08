@@ -66,6 +66,23 @@ def poll_updates(token: str, offset: int, timeout: int = 25) -> list[dict]:
     return data.get("result") or []
 
 
+def _record_inbound(msg: dict) -> None:
+    """The operator's messages to the CIO Desk bot go into the Communications hub (operator 2026-10-07: nothing
+    relevant outside that view). Allowlisted chats only; best-effort, never affects the reply."""
+    try:
+        chat = str((msg.get("chat") or {}).get("id") or "")
+        if chat not in {str(c) for c in allowlist_chat_ids()}:
+            return
+        text = str(msg.get("text") or msg.get("caption") or "").strip()
+        if not text:
+            return
+        from scripts.telegram_alert import record_operator_message
+
+        record_operator_message(text, producer="cio_desk_bot.inbound", direction="INBOUND")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def process_once(*, timeout: int = 25, dry_run: bool = False) -> dict:
     out = {
         "processed": 0,
@@ -97,6 +114,8 @@ def process_once(*, timeout: int = 25, dry_run: bool = False) -> dict:
         msg = upd.get("message")
         if not msg:
             continue
+        if not dry_run:
+            _record_inbound(msg)
         try:
             res = process_telegram_message(msg, dry_run=dry_run)
             out["results"].append(res)

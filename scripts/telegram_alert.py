@@ -346,6 +346,43 @@ def _comms_gateway_owns(message_class: str) -> bool:
     return telegram_class_allowed(mode, message_class)
 
 
+def record_operator_message(
+    message: str,
+    *,
+    producer: str,
+    message_class: str = "report",
+    delivered: bool | None = None,
+    direction: str = "OUTBOUND",
+) -> None:
+    """Record a message that reached (or came from) the operator by a path other than send_telegram.
+
+    Operator 2026-10-07: Communications is the single source of truth for message traffic — "nothing relevant
+    should exist outside this centralized view". The CIO Desk bot, poller replies, the autonomy watchdog and Maria
+    send through their own transports and never reached communication_events. Best-effort and never raises: a
+    ledger write can never change what was sent. INBOUND rows (the operator's own messages) carry no delivery.
+    """
+    if str(direction).upper() != "INBOUND":
+        _best_effort_comms_publish(message, message_class=message_class, producer=producer, delivered=delivered)
+        return
+    try:
+        try:
+            from scripts.lib.comms.adapters import from_plain_message
+            from scripts.lib.comms.client import publish_communication
+        except ImportError:
+            from lib.comms.adapters import from_plain_message  # type: ignore
+            from lib.comms.client import publish_communication  # type: ignore
+        text = (message or "").strip()
+        if not text:
+            return
+        event = from_plain_message(producer=producer, body=text, subject_key=f"telegram:inbound:{text[:48]}",
+                                   event_type="operator_message", message_class="operator_command")
+        event.direction = "INBOUND"
+        event.channels = []
+        publish_communication(event)
+    except Exception:  # noqa: BLE001 — recording never affects the conversation
+        return
+
+
 def _best_effort_comms_publish(
     message: str,
     *,

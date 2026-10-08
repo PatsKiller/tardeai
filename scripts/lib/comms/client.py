@@ -289,6 +289,7 @@ def _persist_db(
                         """,
                         (event_id, str(etype), str(one)),
                     )
+            _classify_in_tx(cur, event_id, row)
         conn.commit()
     return PublishResult(
         ok=True,
@@ -342,6 +343,34 @@ def _stamp_subject_identity(event: CommunicationEvent) -> None:
             event.subject_guid = guid
     except Exception:
         return
+
+
+def _classify_in_tx(cur, event_id: str, row: dict) -> None:
+    """Category / priority / TTL for the new row (operator 2026-10-07: every message classified, every message
+    expires). Runs inside the publish transaction behind a SAVEPOINT: a database without the classification
+    columns (migration 2026_10_07 not yet applied) or a bad config never costs the event itself."""
+    try:
+        from scripts.lib.comms import classify as _cl
+
+        c = _cl.classify(
+            body=str(row.get("sanitized_body") or row.get("short_summary") or ""),
+            direction=str(row.get("direction") or "OUTBOUND"),
+            severity=row.get("severity"),
+            message_class=row.get("message_class"),
+        )
+        created = row.get("created_at")
+        if isinstance(created, str):
+            created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+    except Exception:  # noqa: BLE001 — classification is best-effort; the event is the fact
+        return
+    cur.execute("SAVEPOINT comms_classify")
+    try:
+        params = _cl.update_params(event_id, c, created)
+        cur.execute(_cl.UPDATE_SQL, params)
+        cur.execute(_cl.SUPERSEDE_SQL, params)
+        cur.execute("RELEASE SAVEPOINT comms_classify")
+    except Exception:  # noqa: BLE001
+        cur.execute("ROLLBACK TO SAVEPOINT comms_classify")
 
 
 def publish_communication(event: CommunicationEvent) -> PublishResult:

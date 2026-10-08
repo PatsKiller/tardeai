@@ -1123,6 +1123,12 @@ GATES = [
         "portfolio_price_truth_20261005",
         ["tests/test_portfolio_price_truth_20261005.py"],
     ),
+    # Communications hub (operator 2026-10-07): categories, scores, re-entry status, actionability, TTL by category,
+    # supersede, decision board, filters, bulk actions; lifecycle archive-then-delete refuses a short archive.
+    (
+        "comms_hub_20261007",
+        ["tests/test_comms_hub_20261007.py"],
+    ),
     # Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:
     # per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment
     # drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06).

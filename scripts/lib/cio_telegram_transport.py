@@ -342,7 +342,21 @@ def send_cio_message(
         result["reason"] = "send_failed"
         result["errors"] = errors[:5]
     _append_send_receipt(result, kind=kind, decision_id=decision_id)
+    _record_in_communications(text, kind=kind, delivered=bool(result.get("delivered")))
     return result
+
+
+def _record_in_communications(text: str, *, kind: str, delivered: bool) -> None:
+    """The CIO Desk bot's messages belong in the Communications hub too (operator 2026-10-07); before, they lived
+    only in cio_telegram_receipts.jsonl. Best-effort: never changes the send result."""
+    try:
+        try:
+            from scripts.telegram_alert import record_operator_message
+        except ImportError:
+            from telegram_alert import record_operator_message  # type: ignore
+        record_operator_message(text, producer=f"cio_desk_bot.{kind}", message_class="report", delivered=delivered)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _chat_ref(chat_id: Any) -> str:

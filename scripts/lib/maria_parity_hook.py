@@ -201,6 +201,18 @@ def record_desk_exchange(*, question: str, chat_id: str, message_id: str, channe
         p.parent.mkdir(parents=True, exist_ok=True)
         with p.open("a", encoding="utf-8") as fh:
             fh.write(_json.dumps(row, sort_keys=True, default=str) + "\n")
+        # Communications hub (operator 2026-10-07): the desk text Maria answered from is in the ledger too. The
+        # operator's question stays hashed (personal data, as above); Maria's own rewrite lives in OpenClaw.
+        try:
+            try:
+                from scripts.telegram_alert import record_operator_message
+            except ImportError:
+                from telegram_alert import record_operator_message  # type: ignore
+            if desk_text:
+                record_operator_message(desk_text, producer=f"maria.desk.{channel or 'telegram'}",
+                                        message_class="report", delivered=None)
+        except Exception:  # noqa: BLE001
+            pass
         return rid
     except Exception:  # noqa: BLE001 — never fail Maria's reply on receipting
         return None
