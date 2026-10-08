@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
@@ -123,6 +127,37 @@ def test_duplicate_reply_passes_through_and_transport_failure_is_502(tmp_path):
         )[1]["reason"]
         == "relay_gateway_unreachable"
     )
+
+
+def test_transport_preserves_gateway_http_refusal(tmp_path, monkeypatch):
+    body = json.dumps({"state": "REFUSED", "reason": "run_bad_mode"}).encode()
+
+    def refused(*_args, **_kwargs):
+        raise HTTPError("http://127.0.0.1:18091/v1/coordination", 403, "refused", {}, BytesIO(body))
+
+    monkeypatch.setattr(R.urllib.request, "urlopen", refused)
+    r = relay(tmp_path)
+    status, out = r.run(
+        f"Bearer {BEARER}",
+        json.dumps({"lane_id": LANE, "mode": "dry_run", "idempotency_key": "run-20261008-http1"}).encode(),
+    )
+    assert status == 403
+    assert out["reason"] == "run_bad_mode"
+    assert out["gateway_http_status"] == 403
+    assert r.counts["gateway_unreachable"] == 0
+
+
+def test_direct_script_help_works_outside_repo():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts/n8n_run_relay.py"), "--help"],
+        cwd="/tmp",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--run-allowlist" in result.stdout
 
 
 def test_status_and_unit_registry_contract():

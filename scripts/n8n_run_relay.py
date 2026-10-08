@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 import urllib.error
@@ -18,6 +19,11 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
+
+# Support direct execution from outside the repository, as systemd does.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from scripts.lib.n8n_coordination_gateway import RUN_ID_RE, SCOPE_RUN, RELAY_CALLER, sign_claim
 from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
@@ -44,6 +50,7 @@ REFUSALS = frozenset(
         "relay_live_not_enabled",
         "relay_bad_run_id",
         "relay_gateway_unreachable",
+        "relay_gateway_http_error",
         "relay_missing_secret",
         "relay_bad_bind",
     }
@@ -135,8 +142,15 @@ class Relay:
     def _transport(self, url: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         body = json.dumps(payload, separators=(",", ":")).encode()
         request = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=5) as response:
-            return response.status, json.loads(response.read().decode())
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read().decode())
+        except urllib.error.HTTPError as exc:
+            try:
+                payload = json.loads(exc.read().decode())
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {"state": "REFUSED", "reason": "relay_gateway_http_error"}
+            return exc.code, payload
 
     def _log(self, row: dict[str, Any]) -> None:
         with self._lock:
