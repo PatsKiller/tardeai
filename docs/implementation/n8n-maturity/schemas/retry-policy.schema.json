@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:n8n-maturity/retry-policy.schema.json",
+  "title": "N8nRetryPolicies@v1",
+  "description": "config/n8n_retry_policies.json (design 02 §3.4, §5). Named retry policies referenced by lane_registry dispatch.retry_policy, plus executor class caps. Verdict = f(state, exit_code, reason, policy) computed by the executor; retries are minted only by coordination/due.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "as_of", "default_policy", "policies", "class_caps", "breaker_threshold"],
+  "properties": {
+    "schema": {"const": "N8nRetryPolicies@v1"},
+    "as_of": {"type": "string", "format": "date"},
+    "default_policy": {"type": "string"},
+    "breaker_threshold": {"type": "integer", "minimum": 2, "maximum": 10, "description": "Consecutive DEAD_LETTER slots that open the lane breaker."},
+    "class_caps": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "global": {"type": "integer", "minimum": 1, "maximum": 8},
+        "reserved_priority_max": {"type": "integer", "minimum": 0, "maximum": 9, "description": "One worker is reserved for items at or below this priority."},
+        "monitor": {"type": "integer", "minimum": 1},
+        "report": {"type": "integer", "minimum": 1},
+        "hygiene": {"type": "integer", "minimum": 1},
+        "pipeline": {"type": "integer", "minimum": 1},
+        "heavy": {"type": "integer", "minimum": 1},
+        "llm": {"type": "integer", "minimum": 1},
+        "ingest": {"type": "integer", "minimum": 1},
+        "send": {"type": "integer", "minimum": 1},
+        "learn": {"type": "integer", "minimum": 1}
+      },
+      "required": ["global", "reserved_priority_max"]
+    },
+    "policies": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z0-9][a-z0-9-]{1,40}$"},
+      "additionalProperties": {"$ref": "#/$defs/policy"}
+    }
+  },
+  "$defs": {
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_attempts", "backoff_s", "retryable_states", "retryable_exit_codes", "terminal_exit_codes", "terminal_reason_patterns", "catchup_min"],
+      "properties": {
+        "description": {"type": "string", "maxLength": 200},
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Total attempts including the first. 1 = never retry (senders, learning writers)."},
+        "backoff_s": {
+          "type": "array",
+          "items": {"type": "integer", "minimum": 10, "maximum": 3600},
+          "description": "backoff_s[n-1] seconds after attempt n finished before attempt n+1 is RETRY_DUE. Length must be max_attempts-1."
+        },
+        "retryable_states": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["RUN_TIMEOUT", "RUN_FAILED"]},
+          "description": "RUN_FAILED is retryable only when its exit code is in retryable_exit_codes or its reason matches retryable_reason_patterns. RUN_REFUSED is never retryable; RUN_SKIPPED_LOCK is verdict 'skipped' and satisfies the slot."
+        },
+        "retryable_exit_codes": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 255}},
+        "retryable_reason_patterns": {"type": "array", "items": {"type": "string", "maxLength": 80}, "description": "Regexes over the RunReceipt reason (e.g. executor_lost, spawn:.*EAGAIN, dns|5\\d\\d|connection)."},
+        "terminal_exit_codes": {"type": "array", "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 255}, "description": "Always terminal, overriding retryable lists (e.g. 2 usage error)."},
+        "terminal_reason_patterns": {"type": "array", "items": {"type": "string", "maxLength": 80}, "description": "Always terminal (e.g. COST_CAP, PEAK_SKIP, cost_cap)."},
+        "catchup_min": {"type": "integer", "minimum": 1, "maximum": 1440, "description": "Default missed-slot horizon for lanes using this policy (dispatch.catchup_min overrides). Sub-hourly lanes replay only the newest missed slot."},
+        "dlq_severity": {"enum": ["P1", "P2", "P3"], "default": "P2"},
+        "permitted_classes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["monitor", "report", "hygiene", "pipeline", "heavy", "llm", "ingest", "send", "learn"]},
+          "description": "Classes allowed to name this policy; CI refuses e.g. a send-class lane on a multi-attempt policy."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema": "N8nRetryPolicies@v1",
+      "as_of": "2026-10-09",
+      "default_policy": "transient-2",
+      "breaker_threshold": 3,
+      "class_caps": {"global": 3, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 1, "send": 1, "pipeline": 2, "learn": 1},
+      "policies": {
+        "none": {"max_attempts": 1, "backoff_s": [], "retryable_states": [], "retryable_exit_codes": [], "terminal_exit_codes": [], "terminal_reason_patterns": [], "catchup_min": 30, "permitted_classes": ["send", "learn", "monitor", "report", "hygiene", "pipeline", "heavy", "llm", "ingest"]},
+        "transient-2": {"max_attempts": 3, "backoff_s": [30, 120], "retryable_states": ["RUN_TIMEOUT", "RUN_FAILED"], "retryable_exit_codes": [69, 75, 111], "retryable_reason_patterns": ["^executor_lost$", "^spawn:.*(EAGAIN|ENOMEM)"], "terminal_exit_codes": [2], "terminal_reason_patterns": ["(?i)cost_cap"], "catchup_min": 60, "permitted_classes": ["monitor", "report", "hygiene", "pipeline"]},
+        "transient-1-slow": {"max_attempts": 2, "backoff_s": [600], "retryable_states": ["RUN_TIMEOUT", "RUN_FAILED"], "retryable_exit_codes": [75], "retryable_reason_patterns": ["^executor_lost$"], "terminal_exit_codes": [2], "terminal_reason_patterns": ["(?i)cost_cap"], "catchup_min": 180, "permitted_classes": ["heavy"]},
+        "llm-transient": {"max_attempts": 2, "backoff_s": [300], "retryable_states": ["RUN_TIMEOUT", "RUN_FAILED"], "retryable_exit_codes": [75], "retryable_reason_patterns": ["(?i)(dns|\\b5\\d\\d\\b|connection)"], "terminal_exit_codes": [2], "terminal_reason_patterns": ["(?i)cost_cap", "PEAK_SKIP", "\\b4\\d\\d\\b"], "catchup_min": 120, "permitted_classes": ["llm"]}
+      }
+    }
+  ]
+}
