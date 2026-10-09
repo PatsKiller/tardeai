@@ -911,6 +911,8 @@ GATES = [
             "tests/test_maturity_lessons_stream_cache_20261002.py",
             # 10-09 operator-approved: archive rotation of the lesson log (never deletes; latest-by-id stays live).
             "tests/test_advisory_kb_lessons_retention.py",
+            # 10-09 operator-approved: lesson counters derived from events; vectors stored once.
+            "tests/test_kb_lessons_writer_derived_counters_20261009.py",
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",
