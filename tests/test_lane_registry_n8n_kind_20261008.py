@@ -337,6 +337,17 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "openclaw-reminder-supergrok-expiry",
         "openclaw-reminder-sentinelone-earnings",
     }
-    assert set(native) == monitors | reminders
+    # N1 host lanes cut over 2026-10-09 (cutover_lane.sh --apply after shadow + live canary): their cron
+    # lines are commented RETIRED, never deleted; the row keeps the retired cron text as `match`.
+    cutover = {
+        "n8n-pilot-dispatch",
+        "n8n-incident-fanin",
+        "n8n-research-intake-consumer",
+        "crontab-snapshot-for-health-agent",
+    }
+    assert set(native) == monitors | reminders | cutover
+    assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)
+    assert all((native[lane]["scheduler"].get("match") or "").strip() for lane in cutover)
+    assert all(native[lane]["scheduler"]["expression"] != native[lane]["scheduler"]["match"] for lane in cutover)
     assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
     assert all(native[lane]["state"] == "NEVER_SCHEDULED" for lane in reminders)
