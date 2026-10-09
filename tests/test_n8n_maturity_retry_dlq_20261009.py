@@ -56,7 +56,8 @@ def test_policy_file_loads_with_program_values(policies):
     assert dict(policies.class_caps) == {"global": 3, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 1,
                                          "send": 1, "pipeline": 2, "learn": 1}
     assert set(policies.policies) == {"none", "transient-2", "transient-1-slow", "llm-transient"}
-    assert policies.get().name == "transient-2"
+    assert policies.get() is rp.UNRESOLVED_POLICY and policies.get("bogus") is rp.UNRESOLVED_POLICY
+    assert policies.default().name == "transient-2"
     assert policies.get("transient-2").backoff_s == (30, 120)
     assert len(policies.sha256) == 64
     with pytest.raises(TypeError):
@@ -312,7 +313,7 @@ def test_legacy_row_without_slot_key_dead_letters_by_run_id(store, policies):
 
 
 def test_release_dead_letter_and_breaker_reset_streak(store, policies):
-    pol = policies.get("none")
+    pol = policies.get("transient-2")
     for i, minute in enumerate(("1000", "1100", "1200")):
         row = _run_slot(store, minute, state="RUN_FAILED", exit_code=1, reason="exit_1", at=T0 + 100 * i)
         rp.finalize_outcome(store, row, pol, breaker_threshold=3, now=T0 + 100 * i + 3)
@@ -341,7 +342,7 @@ def _seed_dead_lane(path: Path, policies) -> None:
     st = LedgerRunStore(ledger)
     for i, minute in enumerate(("1000", "1100", "1200")):
         row = _run_slot(st, minute, state="RUN_FAILED", exit_code=1, reason="exit_1", at=T0 + 100 * i)
-        rp.finalize_outcome(st, row, policies.get("none"), breaker_threshold=3, now=T0 + 100 * i + 3)
+        rp.finalize_outcome(st, row, policies.get("transient-2"), breaker_threshold=3, now=T0 + 100 * i + 3)
     ledger.close()
 
 
@@ -392,8 +393,8 @@ def test_cli_release_slot_dry_run_then_real(tmp_path, policies, capsys, monkeypa
                         capsys)
     assert code == 0
     lines = rec.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    r = json.loads(lines[0])
+    assert [json.loads(x)["phase"] for x in lines] == ["intent", "committed"]
+    r = json.loads(lines[1])
     assert r["schema"] == "DeadLetterRelease@v1" and r["by"] == "opuser" and r["note"] == "fixed"
     assert [x["slot_key"] for x in r["released"]] == [slot] and r["breaker_released"] is False
     ledger = CoordinationLedger(db)
@@ -403,7 +404,7 @@ def test_cli_release_slot_dry_run_then_real(tmp_path, policies, capsys, monkeypa
     # already released / unknown -> not found
     code, _, err = _cli(["--ledger", str(db), "release", "--slot-key", slot, "--note", "x", "--receipts", str(rec)],
                         capsys)
-    assert code == 3 and "not_found" in err and len(rec.read_text(encoding="utf-8").splitlines()) == 1
+    assert code == 3 and "not_found" in err and len(rec.read_text(encoding="utf-8").splitlines()) == 2
 
 
 def test_cli_release_lane_releases_all_and_breaker(tmp_path, policies, capsys):
@@ -412,8 +413,8 @@ def test_cli_release_lane_releases_all_and_breaker(tmp_path, policies, capsys):
     code, out, _ = _cli(["--ledger", str(db), "release", "--lane", LANE, "--note", "creds rotated", "--by", "agent-x",
                          "--receipts", str(rec)], capsys)
     assert code == 0
-    r = json.loads(rec.read_text(encoding="utf-8").splitlines()[0])
-    assert len(r["released"]) == 3 and r["breaker_released"] is True and r["by"] == "agent-x"
+    r = json.loads(rec.read_text(encoding="utf-8").splitlines()[-1])
+    assert r["phase"] == "committed" and len(r["released"]) == 3 and r["breaker_released"] is True and r["by"] == "agent-x"
     ledger = CoordinationLedger(db)
     st = LedgerRunStore(ledger)
     assert st.list_dead_letters(LANE) == [] and not st.breaker(LANE)["open"]
@@ -421,3 +422,191 @@ def test_cli_release_lane_releases_all_and_breaker(tmp_path, policies, capsys):
     ledger.close()
     code, _, _ = _cli(["--ledger", str(db), "release", "--lane", LANE, "--note", "x", "--receipts", str(rec)], capsys)
     assert code == 3
+
+
+# ── review of #1594: code-level class rails, refused releases, read-only list, receipt-first, migration race ──
+
+
+def _lax(policies, name="transient-2", **changes):
+    """A deliberately mis-configured policy (bypassing validate_policies) to prove the rails live in code."""
+    import dataclasses
+
+    return dataclasses.replace(policies.get(name), **changes)
+
+
+def test_send_class_exit_75_is_terminal_and_dead_lettered_even_on_a_retrying_policy(store, policies):
+    lax = _lax(policies, permitted_classes=frozenset(rp.CLASSES))  # a policy file that wrongly permits send
+    slot = f"d:{LANE}:live:20261009T1000"
+    store.request(run_id=slot, lane_id=LANE, mode="live", requested_by="n8n", caller_id="n8n-relay", now=T0,
+                  slot_key=slot, attempt=1, klass="send", priority=3)
+    store.claim_next(now=T0 + 1)
+    row = store.finish(slot, state="RUN_FAILED", now=T0 + 2, receipt={"exit_code": 75, "reason": "exit_75"})
+    assert rp.verdict("RUN_FAILED", 75, "exit_75", lax) == "retryable"  # the raw policy would retry
+    out = rp.finalize_outcome(store, row, lax, breaker_threshold=3, now=T0 + 3)
+    assert out.verdict == "terminal" and out.dead_letter["class"] == "send"
+    assert out.dead_letter["max_attempts"] == 1 and store.get(slot)["verdict"] == "terminal"
+    fin = datetime(2026, 10, 9, 14, 0, tzinfo=timezone.utc)
+    assert rp.next_attempt_at(lax, 1, fin, klass="send") is None
+    assert rp.next_attempt_at(lax, 1, fin, klass="learn") is None
+    assert rp.next_attempt_at(lax, 1, fin, klass="report") is not None
+    assert rp.effective_max_attempts(lax, "send") == 1 and rp.effective_max_attempts(lax, "report") == 3
+    assert rp.dead_letter_rearmable(out.dead_letter) == (False, "class_send_never_retries")
+
+
+@pytest.mark.parametrize("policy, klass, state, code, reason, want", [
+    ("transient-1-slow", "report", "RUN_FAILED", 75, "exit_75", "terminal"),   # class not permitted
+    ("transient-2", "heavy", "RUN_TIMEOUT", 124, "timeout_exit_124", "terminal"),
+    ("transient-2", "learn", "RUN_TIMEOUT", 124, "timeout_exit_124", "terminal"),
+    ("transient-2", "report", "RUN_TIMEOUT", 124, "timeout_exit_124", "retryable"),
+    ("transient-2", None, "RUN_TIMEOUT", 124, "timeout_exit_124", "retryable"),  # legacy row: policy alone
+    ("transient-2", "send", "RUN_DONE", 0, None, "ok"),
+    ("transient-2", "send", "RUN_SKIPPED_LOCK", 75, "flock_held", "skipped"),
+])
+def test_class_verdict_rails(policies, policy, klass, state, code, reason, want):
+    assert rp.class_verdict(state, code, reason, policies.get(policy), klass) == want
+
+
+@pytest.mark.parametrize("reason", ["COST_CAP reached", "cost_cap", "PEAK_SKIP", "peak_skip window"])
+def test_llm_class_cost_cap_and_peak_skip_terminal_whatever_the_policy(policies, reason):
+    lax = _lax(policies, "llm-transient", terminal_reason_patterns=(), retryable_reason_patterns=(".*",))
+    assert rp.verdict("RUN_FAILED", 75, reason, lax) == "retryable"
+    assert rp.class_verdict("RUN_FAILED", 75, reason, lax, "llm") == "terminal"
+    assert rp.class_verdict("RUN_FAILED", 75, "connection reset", lax, "llm") == "retryable"
+
+
+def test_missing_policy_is_terminal_and_logged(store, policies, caplog):
+    import logging
+
+    caplog.set_level(logging.WARNING, logger=rp.__name__)
+    assert policies.get(None) is rp.UNRESOLVED_POLICY
+    assert "unresolved" in caplog.text
+    row = _run_slot(store, "1000", state="RUN_TIMEOUT", exit_code=124, reason="timeout_exit_124")
+    out = rp.finalize_outcome(store, row, None, breaker_threshold=3, now=T0 + 3)
+    assert out.verdict == "terminal" and out.dead_letter["policy"] == "unresolved"
+    assert rp.dead_letter_rearmable(out.dead_letter) == (False, "single_attempt_policy")
+
+
+def test_store_refuses_release_of_non_rearmable_dead_letters(store, policies):
+    row = _run_slot(store, "1000", state="RUN_FAILED", exit_code=1, reason="exit_1")
+    rp.finalize_outcome(store, row, policies.get("none"), breaker_threshold=3, now=T0 + 3)
+    slot = row["slot_key"]
+    with pytest.raises(LedgerError) as ei:
+        store.release_dead_letter(slot, "op", "n", T0 + 10)
+    assert ei.value.reason == "release_refused:single_attempt_policy"
+    with pytest.raises(LedgerError):
+        store.release_dead_letters([slot], "op", "n", T0 + 10)
+    assert store.get_dead_letter(slot)["released_at"] is None  # due never sees a released single-attempt slot
+    store.record_dead_letter(slot_key="legacy-key-0000000009", lane_id=LANE, mode="live", slot_local=None,
+                             attempts=1, last_run_id="legacy-key-0000000009", last_state="RUN_FAILED",
+                             last_reason="exit_1", verdict="terminal", now=T0)
+    with pytest.raises(LedgerError, match="unknown_class_or_policy"):
+        store.release_dead_letter("legacy-key-0000000009", "op", "n", T0 + 10)
+
+
+def _seed_send_dead(path: Path, policies, minute="1500") -> str:
+    ledger = CoordinationLedger(path)
+    st = LedgerRunStore(ledger)
+    slot = f"d:{LANE}:live:20261009T{minute}"
+    st.request(run_id=slot, lane_id=LANE, mode="live", requested_by="n8n", caller_id="r", now=T0 + 900,
+               slot_key=slot, attempt=1, klass="send", priority=3)
+    st.claim_next(now=T0 + 901)
+    row = st.finish(slot, state="RUN_FAILED", now=T0 + 902, receipt={"exit_code": 75, "reason": "exit_75"})
+    rp.finalize_outcome(st, row, policies.get("none"), breaker_threshold=3, now=T0 + 903)
+    ledger.close()
+    return slot
+
+
+def test_cli_refuses_send_slot_release_with_typed_error(tmp_path, policies, capsys):
+    db, rec = tmp_path / "l.sqlite", tmp_path / "rel.jsonl"
+    slot = _seed_send_dead(db, policies)
+    code, _, err = _cli(["--ledger", str(db), "release", "--slot-key", slot, "--note", "n", "--receipts", str(rec)],
+                        capsys)
+    assert code == 4 and json.loads(err)["error"] == "release_refused" and not rec.exists()
+    assert json.loads(err)["refused"][0]["reason"] == "class_send_never_retries"
+
+
+def test_cli_lane_release_skips_refused_but_releases_breaker(tmp_path, policies, capsys):
+    db, rec = tmp_path / "l.sqlite", tmp_path / "rel.jsonl"
+    _seed_dead_lane(db, policies)
+    send_slot = _seed_send_dead(db, policies)
+    code, _, _ = _cli(["--ledger", str(db), "release", "--lane", LANE, "--note", "n", "--receipts", str(rec)], capsys)
+    assert code == 0
+    r = json.loads(rec.read_text(encoding="utf-8").splitlines()[-1])
+    assert len(r["released"]) == 3 and r["refused"] == [{"slot_key": send_slot, "reason": "class_send_never_retries"}]
+    ledger = CoordinationLedger(db)
+    st = LedgerRunStore(ledger)
+    assert st.get_dead_letter(send_slot)["released_at"] is None and not st.breaker(LANE)["open"]
+    ledger.close()
+
+
+def test_cli_receipt_is_written_before_the_ledger_commit(tmp_path, policies, capsys, monkeypatch):
+    db, rec = tmp_path / "l.sqlite", tmp_path / "rel.jsonl"
+    _seed_dead_lane(db, policies)
+    seen = {}
+
+    def boom(self, *a, **k):
+        seen["receipt_lines"] = rec.read_text(encoding="utf-8").splitlines()
+        raise LedgerError("simulated_commit_failure")
+
+    monkeypatch.setattr(LedgerRunStore, "release_dead_letters", boom)
+    code, _, err = _cli(["--ledger", str(db), "release", "--lane", LANE, "--note", "n", "--receipts", str(rec)], capsys)
+    assert code == 3 and "release_failed" in err
+    assert [json.loads(x)["phase"] for x in seen["receipt_lines"]] == ["intent"]
+    assert [json.loads(x)["phase"] for x in rec.read_text(encoding="utf-8").splitlines()] == ["intent", "aborted"]
+    monkeypatch.undo()
+    ledger = CoordinationLedger(db)
+    assert len(LedgerRunStore(ledger).list_dead_letters(LANE)) == 3  # nothing released
+    ledger.close()
+
+
+def test_cli_list_does_not_migrate_an_old_schema(tmp_path, capsys):
+    path = tmp_path / "old.sqlite"
+    con = sqlite3.connect(path)
+    con.executescript(_OLD_RUNS)
+    con.commit()
+    con.close()
+    code, out, _ = _cli(["--ledger", str(path), "list", "--json"], capsys)
+    assert code == 0 and json.loads(out)["schema_not_migrated"] is True
+    code, _, _ = _cli(["--ledger", str(path), "release", "--lane", LANE, "--note", "n",
+                       "--receipts", str(tmp_path / "r.jsonl")], capsys)
+    assert code == 3
+    con = sqlite3.connect(path)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(runs)")}
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    con.close()
+    assert "slot_key" not in cols and "dead_letters" not in tables
+
+
+def test_read_only_ledger_refuses_writes(tmp_path):
+    path = tmp_path / "l.sqlite"
+    CoordinationLedger(path).close()
+    ro = CoordinationLedger(path, read_only=True)
+    with pytest.raises(sqlite3.OperationalError):
+        LedgerRunStore(ro).set_cursor(LANE, "s", "c", T0)
+    ro.close()
+
+
+def test_migration_tolerates_a_concurrent_duplicate_column(tmp_path):
+    ledger = CoordinationLedger(tmp_path / "l.sqlite")  # columns already present
+
+    class StalePragma:
+        """Another process added the column after our PRAGMA read: PRAGMA says missing, ALTER says duplicate."""
+
+        def __init__(self, conn):
+            self._c = conn
+
+        def execute(self, sql, *a):
+            if sql.startswith("PRAGMA table_info"):
+                return self._c.execute("SELECT 'x' AS name WHERE 0")
+            return self._c.execute(sql, *a)
+
+        def __getattr__(self, name):
+            return getattr(self._c, name)
+
+    real = ledger._conn
+    ledger._conn = StalePragma(real)
+    ledger._add_columns("runs", {"slot_key": "TEXT"})  # duplicate column name -> treated as success
+    with pytest.raises(sqlite3.OperationalError):
+        ledger._add_columns("no_such_table", {"c": "TEXT"})
+    ledger._conn = real
+    ledger.close()

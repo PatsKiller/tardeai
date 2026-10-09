@@ -22,8 +22,11 @@ Contract for B5.3 ``compute_due`` (read-only consumer of what this module writes
   until ``next_attempt_at(policy, attempt, finished_at)``, then RETRY_DUE with ``attempt + 1``.
 - A ``dead_letters`` row for the slot key with ``released_at`` NULL ⇒ DEAD_LETTER (not emitted).
 - A RELEASED dead letter (``released_at`` set) ⇒ due re-arms that slot as RETRY_DUE with
-  ``attempt = attempts + 1`` and reason ``"dlq_release"``, ONLY while the slot is inside ``catchup_min``;
-  outside the window the release only clears the breaker.
+  ``attempt = attempts + 1`` and reason ``"dlq_release"``, ONLY while the slot is inside ``catchup_min`` AND
+  ``dead_letter_rearmable(row) == (True, "")`` (never send/learn, never a single-attempt policy, never an unknown
+  class/policy); outside the window the release only clears the breaker. The store also refuses such releases.
+- Due must use ``class_verdict``/``effective_max_attempts`` (not the raw policy) when deciding RETRY_DUE, and a
+  missing/unknown ``dispatch.retry_policy`` resolves to ``UNRESOLVED_POLICY`` (never retries).
 - Breaker open iff the ``breakers`` row has ``opened_at`` and (``released_at`` is NULL or
   ``released_at < opened_at``) — ``scripts.lib.n8n_coordination_ledger.breaker_is_open``. Open ⇒ BREAKER_OPEN for
   every slot of the lane.
@@ -36,12 +39,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping, Optional
+
+from scripts.lib.n8n_coordination_ledger import SINGLE_ATTEMPT_CLASSES, dead_letter_rearmable  # noqa: F401  (re-export)
 
 NO_CONSUMER_REASON = (
     "Library for the n8n maturity dispatch core (design 02 §3.4); consumed by scripts/n8n_dlq.py now and by "
@@ -56,6 +62,10 @@ RETRYABLE_STATE_CHOICES = ("RUN_TIMEOUT", "RUN_FAILED")
 SEVERITIES = ("P1", "P2", "P3")
 VERDICT_OK, VERDICT_RETRYABLE, VERDICT_TERMINAL, VERDICT_SKIPPED = "ok", "retryable", "terminal", "skipped"
 LLM_TERMINAL_SAMPLES = ("COST_CAP", "PEAK_SKIP")
+#: LLM-class runs whose reason matches these are terminal, whatever their policy says (F8: no double spend).
+LLM_HARD_TERMINAL_RE = re.compile(r"(?i)cost_cap|peak_skip")
+UNRESOLVED_POLICY_NAME = "unresolved"
+log = logging.getLogger(__name__)
 _TOP_KEYS = {"schema", "as_of", "default_policy", "breaker_threshold", "class_caps", "policies"}
 _POLICY_REQUIRED = ("max_attempts", "backoff_s", "retryable_states", "retryable_exit_codes", "terminal_exit_codes",
                     "terminal_reason_patterns", "catchup_min")
@@ -98,8 +108,25 @@ class RetryPolicies:
     as_of: str = ""
 
     def get(self, name: Optional[str] = None) -> RetryPolicy:
-        """The named policy (the default when ``name`` is None/empty). KeyError on an unknown name."""
-        return self.policies[name or self.default_policy]
+        """The named policy. A None/empty or unknown name does NOT fall back to the default: it returns
+        ``UNRESOLVED_POLICY`` (single attempt, nothing retryable, so every failure is terminal) and logs a
+        warning. Use ``default()`` to ask for the default policy explicitly."""
+        if name and name in self.policies:
+            return self.policies[name]
+        log.warning("n8n retry policy %r unresolved; treating the run as single-attempt terminal", name)
+        return UNRESOLVED_POLICY
+
+    def default(self) -> RetryPolicy:
+        """The file's ``default_policy``, asked for explicitly (e.g. by the registry checker)."""
+        return self.policies[self.default_policy]
+
+
+#: What ``RetryPolicies.get`` returns for a missing/unknown policy name: one attempt, every failure terminal.
+UNRESOLVED_POLICY = RetryPolicy(
+    name=UNRESOLVED_POLICY_NAME, max_attempts=1, backoff_s=(), retryable_states=frozenset(),
+    retryable_exit_codes=frozenset(), retryable_reason_patterns=(), terminal_exit_codes=frozenset(),
+    terminal_reason_patterns=("(?i)cost_cap", "(?i)peak_skip"), catchup_min=30, dlq_severity="P2",
+    permitted_classes=frozenset(CLASSES), description="missing or unknown retry policy: never retry")
 
 
 @dataclass
@@ -313,16 +340,45 @@ def _as_dt(value: datetime | str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def next_attempt_at(policy: RetryPolicy, attempt: int, finished_at: datetime | str) -> Optional[datetime]:
+def effective_max_attempts(policy: RetryPolicy, klass: Optional[str] = None) -> int:
+    """The policy's max_attempts, hard-capped in code: 1 for send/learn classes and for a class the policy does
+    not permit. ``klass`` None (legacy run with no class) keeps the policy value."""
+    if klass is not None and (klass in SINGLE_ATTEMPT_CLASSES or not policy_permits_class(policy, klass)):
+        return 1
+    return policy.max_attempts
+
+
+def next_attempt_at(policy: RetryPolicy, attempt: int, finished_at: datetime | str,
+                    klass: Optional[str] = None) -> Optional[datetime]:
     """When attempt ``attempt + 1`` becomes RETRY_DUE: ``finished_at + backoff_s[attempt-1]``; None when
-    ``attempt >= max_attempts``. ``finished_at`` may be an ISO string (naive = UTC)."""
-    if attempt < 1 or attempt >= policy.max_attempts:
+    ``attempt >= effective_max_attempts(policy, klass)`` (so never for send/learn or an unpermitted class).
+    ``finished_at`` may be an ISO string (naive = UTC)."""
+    if attempt < 1 or attempt >= effective_max_attempts(policy, klass):
         return None
     return _as_dt(finished_at) + timedelta(seconds=policy.backoff_s[attempt - 1])
 
 
 def policy_permits_class(policy: RetryPolicy, klass: str) -> bool:
     return klass in policy.permitted_classes
+
+
+def class_verdict(state: str, exit_code: Optional[int], reason: Optional[str], policy: RetryPolicy,
+                  klass: Optional[str] = None) -> str:
+    """``verdict`` plus the code-level class rails, which hold whatever the policy file says:
+
+    - a class the policy does not permit: any non-ok/non-skipped run is terminal;
+    - send / learn: never retryable (terminal);
+    - llm: a reason matching COST_CAP or PEAK_SKIP (any case) is terminal.
+    ``klass`` None (legacy run) applies the policy alone."""
+    v = verdict(state, exit_code, reason, policy)
+    if v != VERDICT_RETRYABLE or klass is None:
+        return v
+    if not policy_permits_class(policy, klass) or klass in SINGLE_ATTEMPT_CLASSES:
+        return VERDICT_TERMINAL
+    if klass == "llm" and LLM_HARD_TERMINAL_RE.search(reason or ""):
+        return VERDICT_TERMINAL
+    return v
+
 
 
 def slot_local_of(slot_key: Optional[str]) -> Optional[str]:
@@ -338,8 +394,8 @@ def _finding(source: str, item: str, severity: str, detail: str, now: float) -> 
             "detected_at": datetime.fromtimestamp(now, timezone.utc).isoformat()}
 
 
-def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: RetryPolicy, *, breaker_threshold: int,
-                     now: float, severity: Optional[str] = None) -> Outcome:
+def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: Optional[RetryPolicy], *, breaker_threshold: int,
+                     now: float, severity: Optional[str] = None, klass: Optional[str] = None) -> Outcome:
     """Verdict + dead letter + breaker for one FINISHED run row (as returned by ``LedgerRunStore.finish``).
 
     ``store`` is a ``LedgerRunStore``. Writes ``runs.verdict``; on terminal, or retryable with
@@ -347,12 +403,23 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: RetryPolicy
     and returns finding ``dlq:<lane>`` (``severity`` overrides the policy's dlq_severity, e.g. a P1 lane); when the
     lane then has ``consecutive_dead >= breaker_threshold`` and no open breaker, opens it (finding
     ``breaker:<lane>`` P2). A RUN_DONE (verdict ok) auto-releases an open breaker (by ``auto:run_done``).
-    ``now`` is unix seconds."""
+    ``now`` is unix seconds.
+
+    Code-level rails (``class_verdict`` / ``effective_max_attempts``), whatever the policy file says: the run's
+    class (``klass`` or the row's ``class``) not permitted by the policy ⇒ terminal; send/learn ⇒ one attempt,
+    never retryable; llm with a COST_CAP/PEAK_SKIP reason ⇒ terminal. ``policy`` None (missing/unknown name) ⇒
+    ``UNRESOLVED_POLICY``: every failure terminal. The dead letter records ``class`` and the effective
+    ``max_attempts`` so ``dead_letter_rearmable`` can refuse re-arming single-attempt / send / learn slots."""
+    if policy is None:
+        log.warning("finalize_outcome: no retry policy for lane %r; terminal on failure", run_row.get("lane_id"))
+        policy = UNRESOLVED_POLICY
     lane = str(run_row["lane_id"])
+    klass = klass if klass is not None else run_row.get("class")
     receipt = run_row.get("receipt") or {}
     reason = receipt.get("reason") if isinstance(receipt, Mapping) else None
     exit_code = run_row.get("exit_code")
-    v = verdict(str(run_row["state"]), exit_code if _int(exit_code) else None, reason, policy)
+    v = class_verdict(str(run_row["state"]), exit_code if _int(exit_code) else None, reason, policy, klass)
+    max_attempts = effective_max_attempts(policy, klass)
     with store.lock:
         store.set_verdict(str(run_row["run_id"]), v)
         out = Outcome(verdict=v)
@@ -361,16 +428,18 @@ def finalize_outcome(store: Any, run_row: Mapping[str, Any], policy: RetryPolicy
                 out.breaker_closed = True
             return out
         attempt = int(run_row.get("attempt") or 1)
-        if not (v == VERDICT_TERMINAL or (v == VERDICT_RETRYABLE and attempt >= policy.max_attempts)):
+        if not (v == VERDICT_TERMINAL or (v == VERDICT_RETRYABLE and attempt >= max_attempts)):
             return out
         slot_key = str(run_row.get("slot_key") or run_row["run_id"])
         out.dead_letter = store.record_dead_letter(
             slot_key=slot_key, lane_id=lane, mode=run_row.get("mode"), slot_local=slot_local_of(slot_key),
             attempts=attempt, last_run_id=str(run_row["run_id"]), last_state=str(run_row["state"]),
-            last_reason=reason, verdict=v, now=now)
+            last_reason=reason, verdict=v, now=now, klass=klass, max_attempts=max_attempts,
+            policy=policy.name)
         sev = severity if severity in SEVERITIES else policy.dlq_severity
         out.findings.append(_finding("dlq", f"dlq:{lane}", sev,
-                                     f"{slot_key} {run_row['state']} {reason or ''} attempt {attempt}/{policy.max_attempts}",
+                                     f"{slot_key} {run_row['state']} {reason or ''} attempt {attempt}/{max_attempts}"
+                                     f" policy {policy.name}",
                                      now))
         out.consecutive_dead = store.consecutive_dead(lane)
         brk = store.breaker(lane)
