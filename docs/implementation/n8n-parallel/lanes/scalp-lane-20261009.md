@@ -1,5 +1,10 @@
 # trade-ai-scalp-live as an n8n-driven lane — 2026-10-09
 
+> **Update 2026-10-09 15:25 ET — AGENTS.md 4.0.0 ACTIVE.** The operator typed
+> "APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix". The §23.3 exception below is now policy,
+> applied by the follow-up PR to #1573. The allowlist has `live_arg: []`. Live still needs
+> activation steps 1, 2 and 3b below, each under its own grant.
+
 **Operator decision (2026-10-09, AskUserQuestion):** "n8n drives a governed lane (Recommended)".
 - n8n owns the 5-minute schedule, the heartbeat watch, retries and stall healing.
 - It starts the existing `scripts/run_trade_ai_scalp_live.py` through the governed run route: relay → gateway
@@ -51,8 +56,10 @@ Ratify with `APPROVE_AGENTS_POLICY_4_0_0 <PR> <sha>`. A follow-up PR then sets `
 2. Import both workflows into `m8m-n8n` and activate **only** `trade-ai-scalp-live-shadow` (config-write grant
    naming the workflow id from `generated/INDEX.json`). Watch `n8n_runs/` receipts: `RUN_DONE` or
    `RUN_SKIPPED_LOCK` (cron holds the lock) every 5 min.
-3. Ratify the §23.3 amendment. Merge the `live_arg` PR. Add the lane to the relay's live lanes. Activate the
-   live workflow. Cron and n8n now share the lock, and whichever fires first runs.
+3. ~~Ratify the §23.3 amendment~~ **done 2026-10-09 (4.0.0)**. The `live_arg: []` PR is the follow-up to #1573.
+   3b. Under a config-write grant, append `trade-ai-scalp-live` to `TRADEAI_N8N_RELAY_LIVE_LANES` in
+   `~/.config/tradeai/n8n-relay.env`, then `systemctl --user restart tradeai-n8n-run-relay`. Under a grant naming the
+   workflow id, activate the live workflow. Cron and n8n now share the lock, and whichever fires first runs.
 4. After 3 clean market days, retire the cron line (cron grant, archive the crontab first) and flip the
    registry row to `kind n8n`.
 

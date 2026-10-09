@@ -673,8 +673,8 @@ LANES: list[dict] = [
         "note": "Daily cadence per the registry row (expected_cadence_hours 24). Read-only; receipt data/runtime/n8n_workflow_drift_last.json.",
     },
     # Trade-AI scalp scan (operator 2026-10-09 "n8n drives a governed lane"; lanes/scalp-lane-20261009.md).
-    # The cron line stays the scheduler of record. Shadow only: the allowlist entry has --dry-run and no
-    # live_arg until the §23.3 amendment (sender + ingest writer) is ratified, so the live workflow is refused.
+    # The cron line stays the scheduler of record and fallback. Live allowed by the AGENTS.md 4.0.0 §23.3
+    # exception (APPROVE_AGENTS_POLICY_4_0_0, 2026-10-09); still needs the relay live-lane listing + activation grant.
     {
         "lane_id": "trade-ai-scalp-live",
         "tranche": "N7",

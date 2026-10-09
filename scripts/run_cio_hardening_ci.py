@@ -3592,7 +3592,7 @@ GATES = [
         # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
         "n8n_scalp_lane_20261009",
-        ["tests/test_n8n_scalp_lane_20261009.py"],
+        ["tests/test_n8n_scalp_lane_20261009.py", "tests/test_agents_policy_4_0_0_scalp_lane.py"],
     ),
     (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.

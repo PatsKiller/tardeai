@@ -4401,7 +4401,7 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md; tests/test_trade_ai_scalp_5min_20261009.py; dry run 2026-10-09 (writes/sends stubbed): 104 scored, 13 rows, 0 alerts, 470 s cold / 204 s warm",
-      "note": "2026-10-09: output_signal was the literal '~/trade-ai-releases/…/scalp_universe_latest.json'; observe_signal never expands '~', so the monitor read the lane as never producing. Now the per-run receipt, relative to the state root like the other rows. n8n: shadow candidate only (allowlist --dry-run, generated workflows trade-ai-scalp-live-shadow / trade-ai-scalp-live, inactive); cron stays scheduler of record (operator 2026-10-09 \"n8n drives a governed lane\"; docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md)."
+      "note": "2026-10-09: output_signal was the literal '~/trade-ai-releases/…/scalp_universe_latest.json'; observe_signal never expands '~', so the monitor read the lane as never producing. Now the per-run receipt, relative to the state root like the other rows. n8n: LIVE CANDIDATE (AGENTS.md 4.0.0 §23.3 exception, APPROVE_AGENTS_POLICY_4_0_0 2026-10-09; allowlist --dry-run and live_arg []; generated workflows trade-ai-scalp-live-shadow / trade-ai-scalp-live, not yet imported or active; relay live-lane listing pending a config-write grant); cron stays scheduler of record and fallback until 3 clean n8n market days (operator 2026-10-09 \"n8n drives a governed lane\"; docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md)."
     },
     {
       "lane_id": "storage-watch",

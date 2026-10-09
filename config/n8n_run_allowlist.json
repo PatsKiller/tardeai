@@ -1,6 +1,6 @@
 {
   "schema": "N8nRunAllowlist@v1",
-  "as_of": "2026-10-08",
+  "as_of": "2026-10-09",
   "_why": "The only commands the n8n run route can start. The gateway accepts a run request only for a lane_id listed here with a command; scripts/n8n_run_executor.py re-reads this file at start and refuses (RUN_REFUSED) any row whose lane is absent. Data, not code: tests/test_n8n_run_allowlist_20261008.py checks every token against pipeline_manifest.FORBIDDEN_COMMAND_TOKENS and the gateway FORBIDDEN_ROUTE_TOKENS, and that no entry names a broker, order, send, secret-render, guard or deploy script.",
   "_tokens": {
     "$PY": "TRADEAI_VENV_PYTHON from the executor's environment, else the executor's own interpreter",
@@ -347,7 +347,7 @@
     },
     {
       "lane_id": "trade-ai-scalp-live",
-      "source": "crontab 2026-10-09 (PR #1553): */5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py (lane trade-ai-scalp-live). Operator 2026-10-09: \"n8n drives a governed lane (Recommended)\" — n8n owns the 5-min schedule, heartbeat watch and retry; cron stays the fallback. SHADOW ONLY: dry_run_arg --dry-run is read-only (no scan, no write, no send). live_arg is null on purpose: the live cycle ingests the Finviz screener, writes trade_ai_scans and Telegram-alerts a new GO, and AGENTS.md 3.0.0 §23.3 keeps senders and ingest writers out of this list. Live waits for the operator's ratification of the §23.3 amendment proposed in docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md. Same lock as the cron line so the two can never overlap",
+      "source": "crontab 2026-10-09 (PR #1553): */5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py (lane trade-ai-scalp-live). Operator 2026-10-09: \"n8n drives a governed lane (Recommended)\" — n8n owns the 5-min schedule, heartbeat watch and retry; cron stays the fallback. dry_run_arg --dry-run is read-only (no scan, no write, no send). LIVE ALLOWED by AGENTS.md 4.0.0 §23.3 exception (operator 2026-10-09 15:25 ET: \"APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix\"): the live cycle ingests the Finviz screener through the data broker, writes trade_ai_scans + the scalp projection and sends a new GO through send_telegram; it is the only allowlisted lane that may. live_arg [] = the exact cron argv. Live is reachable only when the lane is also in the relay TRADEAI_N8N_RELAY_LIVE_LANES (config-write grant) and the live workflow is activated (grant naming the workflow id). Cron stays the fallback. Same lock as the cron line so the two can never overlap",
       "command": [
         "$PY",
         "scripts/run_trade_ai_scalp_live.py"
@@ -358,7 +358,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": true,
       "output_signal": "data/runtime/trade_ai_scalp_live_last.json"
     }
@@ -492,5 +492,5 @@
       "openclaw-reminder-sentinelone-earnings"
     ]
   },
-  "never": "broker/positions/stops/orders/paper lanes, every sender, sm-render, guard, release deploy, destructive retention stages, memory/learning writers, CIO/persona/OpenClaw agent loops, price and research ingest writers (rails §0 and §17)"
+  "never": "broker/positions/stops/orders/paper lanes, every sender, sm-render, guard, release deploy, destructive retention stages, memory/learning writers, CIO/persona/OpenClaw agent loops, price and research ingest writers (rails §0 and §17). Sole exception: trade-ai-scalp-live (AGENTS.md 4.0.0 §23.3, APPROVE_AGENTS_POLICY_4_0_0, operator 2026-10-09)"
 }

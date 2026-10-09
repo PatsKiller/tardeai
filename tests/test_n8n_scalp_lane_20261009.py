@@ -1,7 +1,7 @@
 """trade-ai-scalp-live as an n8n-driven lane (operator 2026-10-09: "n8n drives a governed lane (Recommended)").
 
-Shadow only until the AGENTS §23.3 amendment is ratified: the allowlist entry has --dry-run and no live_arg (the
-live cycle is a Finviz ingest + trade_ai_scans writer + Telegram sender). Pins: the dry run writes nothing, every
+Live allowed by the AGENTS 4.0.0 §23.3 exception (APPROVE_AGENTS_POLICY_4_0_0, 2026-10-09): live_arg [] is the exact
+cron argv (the live cycle is a Finviz ingest + trade_ai_scans writer + Telegram sender, so nothing else may change). Pins: the dry run writes nothing, every
 completed run writes the receipt the executor and the fan-in read, the registry output_signal resolves (no '~'),
 the generated workflows exist and are inactive, and the fan-in raises one STALLED finding in RTH only.
 Hermetic: tmp state root, fake clocks, no network, no DB.
@@ -27,16 +27,18 @@ ALLOW = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encodi
 ENTRY = next(e for e in ALLOW["lanes"] if e["lane_id"] == LANE)
 
 
-def test_allowlist_entry_is_shadow_only_and_shares_the_cron_lock():
+def test_allowlist_entry_runs_the_cron_argv_and_shares_the_cron_lock():
     assert X.validate_entry(ENTRY) is None
     assert ENTRY["command"] == ["$PY", "scripts/run_trade_ai_scalp_live.py"]
     assert ENTRY["dry_run_arg"] == ["--dry-run"]
-    assert ENTRY["live_arg"] is None                              # live waits for the §23.3 amendment
+    assert ENTRY["live_arg"] == []                                # AGENTS 4.0.0 §23.3 exception: exact cron argv
     assert ENTRY["lock"] == "/tmp/tradeai_scalp_live.lock" and ENTRY["lock_kind"] == "flock"
     assert ENTRY["timeout_s"] == 295 and ENTRY["market_gate"] is True
     assert ENTRY["output_signal"] == "data/runtime/trade_ai_scalp_live_last.json"
     env = {"TRADEAI_VENV_PYTHON": "/py"}
-    assert X.build_argv(ENTRY, "live", env=env, state_root=Path("/s"), code_root=Path("/c")) is None
+    live = X.build_argv(ENTRY, "live", env=env, state_root=Path("/s"), code_root=Path("/c"))
+    assert live[-2:] == ["/py", "scripts/run_trade_ai_scalp_live.py"]
+    assert ["timeout", "-k", str(X.KILL_AFTER_S), "295", "bash", "scripts/market_day_gate.sh"] == live[5:11]
     argv = X.build_argv(ENTRY, "dry_run", env=env, state_root=Path("/s"), code_root=Path("/c"))
     assert argv[:5] == ["flock", "-n", "-E", str(X.FLOCK_CONFLICT_EXIT), "/tmp/tradeai_scalp_live.lock"]
     assert argv[-3:] == ["/py", "scripts/run_trade_ai_scalp_live.py", "--dry-run"]
