@@ -346,7 +346,7 @@
    "window_days": 90,
    "archive": false,
    "owner": "platform",
-   "reason": "librarian enforces 90 d; source_windows (fused_signal/social_post 30 d) enforced by db_retention.py as ARCHIVE_THEN_DELETE in verified batches (operator decision 2026-10-09)",
+   "reason": "librarian enforces 90 d; source_windows (fused_signal/social_post 30 d) declared but OFF (source_windows_enabled=false, 2026-10-09 audit F: windows on embedding created_at loop; social_post deletion not approved); the one-time junk fused_signal purge stays manual under a grant",
    "since": "2026-10-07",
    "source_windows": {
     "fused_signal": 30,
@@ -356,7 +356,8 @@
    "source_windows_class": "ARCHIVE_THEN_DELETE",
    "source_windows_batch_rows": 20000,
    "source_windows_max_rows_per_run": 100000,
-   "source_windows_since": "2026-10-09"
+   "source_windows_since": "2026-10-09",
+   "source_windows_enabled": false
   },
   {
    "table": "content_entity_links",
