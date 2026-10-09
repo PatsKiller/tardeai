@@ -379,9 +379,10 @@ def test_registry_truth_empty_crontab_is_unverified_not_full_coverage(tmp_path):
 
 
 def test_registry_truth_no_active_cron_rows_scores_gate_score_without_bonus(tmp_path):
-    # rows of another kind declare every line, so the gate passes; but there is no ACTIVE kind-cron row, so
-    # reverse is 0/0 → None (no bonus), never 1.0 → 10
-    lanes = [_lane(x, kind="systemd", match=f"scripts/{x}.py") for x in ("a", "b", "c")]
+    # non-ACTIVE cron rows declare every line, so the gate passes; but there is no ACTIVE kind-cron row, so
+    # reverse is 0/0 → None (no bonus), never 1.0 → 10. (Since #1597 a row of another scheduler kind no longer
+    # declares a crontab line, so PAUSED cron rows carry the declaration here.)
+    lanes = [_lane(x, match=f"scripts/{x}.py", state="PAUSED") for x in ("a", "b", "c")]
     _registry(tmp_path, lanes)
     r = ds.registry_truth(_probe(tmp_path, _runner(CRON3)))
     assert r["gate"]["pass"] is True and r["metrics"]["active_cron_rows"] == 0
