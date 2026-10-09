@@ -1887,6 +1887,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE | archive_superseded | OK | `c2b8e5cfeebb` |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 | review_required | OK | `c2bbceeb4d87` |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET | review_required | OK | `fb6602cf2a8a` |
+| `docs/ops/SYMBOL_THESIS_JOB_REPAIR_2026-10-09.md` | Symbol-thesis job repair (2026-10-09) | review_required | MISSING HEADER | `46208c96de07` |
 | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram feed audit — P0 gates (freeze window) + P1 queue | review_required | OK | `bf3111399284` |
 | `docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md` | M2 memory substrate benchmark | review_required | OK | `9d3cee118593` |
 | `docs/ops/TRADE_AI_M3_MEMORY_CONSOLIDATION_2026-08-24.md` | M3 memory consolidation | review_required | OK | `7e3368f52a62` |
