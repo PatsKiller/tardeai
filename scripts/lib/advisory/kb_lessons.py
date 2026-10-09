@@ -18,7 +18,9 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import math
+import os
 import re
 from collections import Counter
 from datetime import datetime, timezone
@@ -43,6 +45,7 @@ EMBEDDINGS_PATH: Path | None = None
 
 EMBED_MODEL = "nomic-embed-text"
 EMBED_DIM = 64  # hash fallback dim
+HASH_EMBED_MODEL = "hash_embed_v1"
 MAX_INJECT = 5
 RETIRE_HIT_RATE = 0.40
 RETIRE_MIN_APPS = 20
@@ -52,12 +55,31 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_log = logging.getLogger(__name__)
+
+
 def _append_once(path: Path, line: str) -> None:
-    with open(path, "a", encoding="utf-8") as f:
+    """Append one line durably (2026-10-09 follow-up to #1617).
+
+    A previous writer that died mid-line leaves the file without a trailing
+    newline; appending straight after it would glue two JSON objects onto one
+    line and lose both. Repair that first, then write, flush and fsync.
+    """
+    with open(path, "a+b") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
-        f.write(line)
-        f.flush()
-        fcntl.flock(f, fcntl.LOCK_UN)
+        try:
+            f.seek(0, os.SEEK_END)
+            if f.tell() > 0:
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) != b"\n":
+                    f.seek(0, os.SEEK_END)
+                    f.write(b"\n")
+            f.seek(0, os.SEEK_END)
+            f.write(line.encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def _lessons_lock():
@@ -106,35 +128,44 @@ def _embedding_key(lesson_id: str, csha: str, model: Any) -> str:
 def _load_embeddings() -> dict[str, list[float]]:
     out: dict[str, list[float]] = {}
     for r in _read_jsonl(_embeddings_path()):
+        if not isinstance(r, dict):
+            _log.warning("kb_lessons: skipping non-object line in %s (%s)",
+                         _embeddings_path(), type(r).__name__)
+            continue
         emb = r.get("embedding")
         if r.get("id") and isinstance(emb, list) and emb:
             out.setdefault(_embedding_key(str(r["id"]), str(r.get("content_sha") or ""), r.get("model")), emb)
     return out
 
 
-def _write_lesson_row(lesson: dict[str, Any]) -> dict[str, Any]:
+def _write_lesson_row(lesson: dict[str, Any], *, _locked: bool = False) -> dict[str, Any]:
     """Append one content row (ratify / retire). The embedding goes to the
     embeddings store once per (id, content sha, model); the row keeps a ref.
 
     The store is append-only and is not rotated, so the archive rotator can
     never move the only copy of a live lesson's vector. Returns the lesson as
     readers see it (embedding attached, ts as written).
+
+    ``_locked=True`` means the caller already holds ``_lessons_lock`` (flock on a
+    fresh fd is not re-entrant, so taking it again would self-deadlock).
     """
+    if not _locked:
+        with _lessons_lock():
+            return _write_lesson_row(lesson, _locked=True)
     row = dict(lesson)
     emb = row.pop("embedding", None)
     model = row.get("embedding_model")
     csha = content_sha(row)
-    with _lessons_lock():
-        if isinstance(emb, list) and emb:
-            key = _embedding_key(str(row.get("id")), csha, model)
-            if key not in _load_embeddings():
-                _append_once(_embeddings_path(), json.dumps({
-                    "id": row.get("id"), "content_sha": csha, "model": model,
-                    "dim": len(emb), "ts": _now_iso(), "embedding": emb,
-                }, default=str, ensure_ascii=False) + "\n")
-            row["embedding_ref"] = {"content_sha": csha, "model": model}
-        row["ts"] = _now_iso()
-        _append_once(LESSONS_PATH, json.dumps(row, default=str, ensure_ascii=False) + "\n")
+    if isinstance(emb, list) and emb:
+        key = _embedding_key(str(row.get("id")), csha, model)
+        if key not in _load_embeddings():
+            _append_once(_embeddings_path(), json.dumps({
+                "id": row.get("id"), "content_sha": csha, "model": model,
+                "dim": len(emb), "ts": _now_iso(), "embedding": emb,
+            }, default=str, ensure_ascii=False) + "\n")
+        row["embedding_ref"] = {"content_sha": csha, "model": model}
+    row["ts"] = _now_iso()
+    _append_once(LESSONS_PATH, json.dumps(row, default=str, ensure_ascii=False) + "\n")
     out = dict(row)
     if isinstance(emb, list) and emb:
         out["embedding"] = emb
@@ -216,10 +247,61 @@ def embed_text(text: str) -> tuple[list[float], str]:
 
 
 def cosine(a: list[float], b: list[float]) -> float:
-    if not a or not b:
+    """Dot product of two unit vectors of the SAME model and dimension.
+
+    2026-10-09: this used to truncate to min(len), so a 768-d nomic query
+    against a 4096-d qwen3-embedding:8b lesson vector produced a meaningless
+    number. Vectors of different length are not comparable: 0.0. Callers
+    (``retrieve_lessons_for_row``) must only pair same-model vectors.
+    """
+    if not a or not b or len(a) != len(b):
         return 0.0
-    n = min(len(a), len(b))
-    return sum(a[i] * b[i] for i in range(n))
+    return sum(x * y for x, y in zip(a, b))
+
+
+def lesson_embedding_model(lesson: dict[str, Any]) -> str | None:
+    """The model that produced the lesson's stored vector, when recorded."""
+    ref = lesson.get("embedding_ref")
+    if isinstance(ref, dict) and ref.get("model"):
+        return str(ref["model"])
+    model = lesson.get("embedding_model")
+    return str(model) if model else None
+
+
+def embed_query_for_model(text: str, model: str) -> list[float] | None:
+    """Embed a query with one specific model, or None when that model cannot
+    be used here (e.g. outside the Ollama allowlist). Never substitutes another
+    model: a query vector is only useful against vectors of its own model."""
+    if model == HASH_EMBED_MODEL:
+        return hash_embed(text)
+    return ollama_embed(text, model=model)
+
+
+_TOKEN_RE = re.compile(r"[a-z0-9%$.]+")
+
+
+def lexical_similarity(query: str, lesson: dict[str, Any]) -> float:
+    """Token-set Jaccard of the query vs the lesson title+body, in [0, 1].
+
+    The similarity used for a lesson whose vector cannot be compared with the
+    query (unknown model, model unusable here, or dimension mismatch)."""
+    q = set(_TOKEN_RE.findall((query or "").lower()))
+    d = set(_TOKEN_RE.findall(f"{lesson.get('title') or ''} {lesson.get('body') or ''}".lower()))
+    if not q or not d:
+        return 0.0
+    return len(q & d) / len(q | d)
+
+
+_DIM_MISMATCH_LOGGED: set[tuple[str, int, int]] = set()
+
+
+def _log_dim_mismatch_once(model: str, q_dim: int, l_dim: int) -> None:
+    key = (model, q_dim, l_dim)
+    if key in _DIM_MISMATCH_LOGGED:
+        return
+    _DIM_MISMATCH_LOGGED.add(key)
+    _log.warning("kb_lessons: query/lesson embedding dimension mismatch for model %s "
+                 "(%d vs %d); similarity skipped, lexical fallback used", model, q_dim, l_dim)
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -322,30 +404,34 @@ def ratify_lesson(lesson_id: str, *, by: str = "iris") -> dict[str, Any]:
             match = c
             break
     # also allow re-ratify from lessons path (derived counters carried, as before)
-    if not match:
-        match = next((l for l in list_lessons(status=None) if l.get("id") == lesson_id), None)
-    if not match:
-        raise ValueError(f"lesson not found: {lesson_id}")
-
-    lesson = dict(match)
-    lesson["status"] = "ratified"
-    lesson["ratified_at"] = _now_iso()
-    lesson["ratified_by"] = by
-    lesson = _write_lesson_row(lesson)
+    # The baseline counters are read under the lesson lock: read-then-lock let
+    # a counter event land between the read and the row write, and the new
+    # row's later ts then silently dropped that increment.
+    with _lessons_lock():
+        if not match:
+            match = next((l for l in list_lessons(status=None) if l.get("id") == lesson_id), None)
+        if not match:
+            raise ValueError(f"lesson not found: {lesson_id}")
+        lesson = dict(match)
+        lesson["status"] = "ratified"
+        lesson["ratified_at"] = _now_iso()
+        lesson["ratified_by"] = by
+        lesson = _write_lesson_row(lesson, _locked=True)
     _rebuild_index()
     return lesson
 
 
 def retire_lesson(lesson_id: str, *, reason: str = "manual") -> dict[str, Any]:
-    lessons = list_lessons(status=None)
-    match = next((l for l in lessons if l.get("id") == lesson_id), None)
-    if not match:
-        raise ValueError(f"lesson not found: {lesson_id}")
-    retired = dict(match)
-    retired["status"] = "retired"
-    retired["retired_at"] = _now_iso()
-    retired["retire_reason"] = reason
-    retired = _write_lesson_row(retired)
+    # Baseline (derived counters) computed under the lock; see ratify_lesson.
+    with _lessons_lock():
+        match = next((l for l in list_lessons(status=None) if l.get("id") == lesson_id), None)
+        if not match:
+            raise ValueError(f"lesson not found: {lesson_id}")
+        retired = dict(match)
+        retired["status"] = "retired"
+        retired["retired_at"] = _now_iso()
+        retired["retire_reason"] = reason
+        retired = _write_lesson_row(retired, _locked=True)
     _rebuild_index()
     return retired
 
@@ -477,18 +563,37 @@ def retrieve_lessons_for_row(
     query_text: str = "",
     limit: int = MAX_INJECT,
 ) -> list[dict[str, Any]]:
-    """Rank ratified lessons by symbol/sector/verdict + embedding similarity."""
+    """Rank ratified lessons by symbol/sector/verdict + similarity.
+
+    Similarity is cosine only between vectors of the SAME model: the query is
+    embedded once per lesson model (cached for this call). A lesson whose
+    model is unknown or unusable here (e.g. qwen3-embedding:8b, outside the
+    Ollama allowlist), or whose vector dimension differs from the query's,
+    gets the lexical similarity (token Jaccard vs title+body) instead —
+    never a cross-model number.
+    """
     lessons = list_lessons(status="ratified")
     if not lessons:
         return []
     q = query_text or f"{symbol} {sector} {verdict}"
-    q_emb, _ = embed_text(q)
+    q_default, q_default_model = embed_text(q)
+    q_cache: dict[str, list[float] | None] = {q_default_model: q_default}
     scored: list[tuple[float, dict[str, Any]]] = []
     sym_u = (symbol or "").upper()
     ver_u = (verdict or "").upper()
     sec_l = (sector or "").lower()
     for l in lessons:
-        score = cosine(q_emb, l.get("embedding") or [])
+        l_emb = l.get("embedding") or []
+        l_model = lesson_embedding_model(l)
+        q_emb: list[float] | None = None
+        if l_emb and l_model:
+            if l_model not in q_cache:
+                q_cache[l_model] = embed_query_for_model(q, l_model)
+            q_emb = q_cache[l_model]
+            if q_emb and len(q_emb) != len(l_emb):
+                _log_dim_mismatch_once(l_model, len(q_emb), len(l_emb))
+                q_emb = None
+        score = cosine(q_emb, l_emb) if q_emb else lexical_similarity(q, l)
         if sym_u and sym_u in [s.upper() for s in (l.get("symbols") or [])]:
             score += 0.35
         if ver_u and ver_u in [v.upper() for v in (l.get("verdict_types") or [])]:
