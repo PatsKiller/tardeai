@@ -156,3 +156,56 @@ def test_alert_exit_zero_when_alarms_found(monkeypatch, tmp_path):
     import sys
     monkeypatch.setattr(sys, "argv", ["research_lane_health.py", "--alert"])
     assert hl.main() == 0
+
+
+def _stub_identity_guard(monkeypatch):
+    """main() refuses dual lib.X / scripts.lib.X imports; other tests in this
+    module import both spellings, so the guard is not what is under test here."""
+    import scripts.lib as _sl
+    monkeypatch.setattr(_sl, "assert_single_import_identity", lambda: None)
+
+
+def _two_lane_report():
+    return {
+        "as_of": "now",
+        "ok": False,
+        "lanes": [
+            {"lane": "deepseek", "ok": False, "firing": ["error_streak:50>=5"],
+             "error_streak": 50, "non_error_24h": 1, "attempts_24h": 275},
+            {"lane": "overnight-deep", "ok": False, "firing": ["zero_non_error_24h"],
+             "error_streak": 0, "non_error_24h": 0, "attempts_24h": 0},
+        ],
+    }
+
+
+def test_two_lanes_alerted_is_exit_zero_not_send_failed(monkeypatch, tmp_path):
+    """2026-10-09: `_alert` returned the sent COUNT and main mapped rc==2 to
+    'telegram send failed', so alerting exactly two lanes failed the unit."""
+    monkeypatch.setattr(hl, "STATUS_PATH", tmp_path / "h.json")
+    monkeypatch.setattr(hl, "_condition_path", lambda: tmp_path / "cond.json")
+    sent = []
+    monkeypatch.setattr(hl, "_deliver_telegram", lambda msg: sent.append(msg))
+    report = _two_lane_report()
+    monkeypatch.setattr(hl, "collect_report", lambda: report)
+    _stub_identity_guard(monkeypatch)
+    import sys
+    monkeypatch.setattr(sys, "argv", ["research_lane_health.py", "--alert"])
+    assert hl.main() == 0
+    assert len(sent) == 1
+
+
+def test_send_failure_still_exits_two(monkeypatch, tmp_path):
+    monkeypatch.setattr(hl, "STATUS_PATH", tmp_path / "h.json")
+    monkeypatch.setattr(hl, "_condition_path", lambda: tmp_path / "cond.json")
+
+    def boom(msg):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(hl, "_deliver_telegram", boom)
+    report = _two_lane_report()
+    assert hl._alert(report) == hl.SEND_FAILED
+    monkeypatch.setattr(hl, "collect_report", lambda: report)
+    _stub_identity_guard(monkeypatch)
+    import sys
+    monkeypatch.setattr(sys, "argv", ["research_lane_health.py", "--alert"])
+    assert hl.main() == 2

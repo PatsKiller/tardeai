@@ -1,0 +1,23 @@
+{
+  "schema": "N8nExecutorConfig@v1",
+  "as_of": "2026-10-09",
+  "_why": "Executor v2 (scripts/n8n_run_executor.py ExecutorV2) intervals and limits, read only when TRADEAI_N8N_EXECUTOR_WORKERS >= 2 (v2 is opt-in; 1 = the v1 serial drain, which never reads this file). A missing file or a missing/out-of-range key falls back to the same value in code (EXECUTOR_DEFAULTS) with a logged warning. Class caps and the global cap live in config/n8n_retry_policies.json#class_caps.",
+  "max_workers": 8,
+  "heartbeat_s": 30,
+  "stale_heartbeat_s": 90,
+  "reap_every_s": 60,
+  "lost_grace_s": 120,
+  "heavy_timeout_s": 1800,
+  "unknown_lane_timeout_s": 3600,
+  "dlq_window_s": 86400,
+  "poll_s": 2,
+  "finish_retry_attempts": 5,
+  "finish_retry_backoff_s": 0.5,
+  "finish_retry_backoff_max_s": 8,
+  "status_queue_limit": 5000,
+  "receipt_history": 200,
+  "typed_reason_markers": {
+    "COST_CAP": "(?i)cost_cap|skipped_budget",
+    "PEAK_SKIP": "(?i)peak_skip"
+  }
+}

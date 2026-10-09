@@ -53,7 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        # AWS ECR Public mirror of the official image: unauthenticated hub pulls hit toomanyrequests (2026-10-09).
+        image: public.ecr.aws/docker/library/postgres:17
         env: { POSTGRES_PASSWORD: ci, POSTGRES_DB: trade_ai_test }
         ports: ['5432:5432']
         options: >-
