@@ -253,6 +253,11 @@ def enforced_source_windows(doc: dict) -> list[dict]:
         sw = r.get("source_windows")
         if not sw or r.get("class") in ("KEEP_FOREVER", "EXTERNAL_POLICY"):
             continue
+        # 2026-10-09 due-diligence audit F: windows measured on the embedding's created_at re-embed,
+        # re-archive and re-delete the same source rows every window, and social_post deletion was not
+        # operator-approved. Declared-but-off until both are resolved; the junk purge stays manual.
+        if r.get("source_windows_enabled") is False:
+            continue
         if r.get("source_windows_class") != "ARCHIVE_THEN_DELETE" or not r.get("source_column"):
             raise SystemExit(f"ERROR: registry row {r.get('table')} source_windows needs source_column and "
                              "source_windows_class ARCHIVE_THEN_DELETE")

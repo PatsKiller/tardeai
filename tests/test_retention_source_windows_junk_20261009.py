@@ -227,6 +227,9 @@ def test_committed_registry_declares_enforced_archive_first_source_windows():
     import db_retention as dr
     doc = json.loads((ROOT / "config" / "data_retention_policy.json").read_text())
     assert validate(doc) == []
+    assert dr.enforced_source_windows(doc) == []          # declared but switched off (audit F, 2026-10-09)
+    for r in doc["policies"]:
+        r.pop("source_windows_enabled", None)
     ws = dr.enforced_source_windows(doc)
     got = {(w["table"], w["source"], w["days"]) for w in ws}
     assert got == {("content_embeddings", "fused_signal", 30), ("content_embeddings", "social_post", 30)}
