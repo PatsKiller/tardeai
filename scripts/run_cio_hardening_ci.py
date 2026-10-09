@@ -3588,6 +3588,13 @@ GATES = [
         ["tests/test_n8n_ops_lanes_20261009.py"],
     ),
     (
+        # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
+        # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
+        # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
+        "n8n_scalp_lane_20261009",
+        ["tests/test_n8n_scalp_lane_20261009.py"],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
