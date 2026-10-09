@@ -3731,6 +3731,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_INCIDENT_NOTIFIER — N8N maturity B2 (2026-10-09): scripts/incident_notifier.py, the human
+        # end of the incident fan-in. P1 at once, P2 one batch per window, recovery on clear, per-incident 24 h
+        # dedupe, daily cap from env, operator acks from the ledger, dry-run sends and records nothing, and the
+        # sender is only the SYSTEM ops module (no family, token or chat; this module is not a SYSTEM caller).
+        # Hermetic: tmp state root, tmp sqlite ledger, stub sender/previewer. Listing it here schedules nothing.
+        "N8N_INCIDENT_NOTIFIER",
+        [
+            "tests/test_incident_notifier_20261009.py",
+        ],
+    ),
+    (
         # 2026-10-08 — n8n model job, live shape (workstream C, Day 0). Pins the bridge's nested
         # `_tradeai` governance envelope, request_id -> provider_cost client_request_id, the
         # server-side PROCESS_TASK_TYPE map (unknown process = process_not_registered before any

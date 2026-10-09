@@ -9,8 +9,9 @@ for this family is SYSTEM_TELEGRAM_INTERDICT. CI / pytest never send.
 
 Volume: one daily heartbeat per NY date (identity ``system-heartbeat:<date>``)
 and at most one alert per transition kind per NY date
-(``system-alert:<date>:<kind>``). A recorded ok send makes every later run that
-day a dedupe that never reaches the transport.
+(``system-alert:<date>:<kind>``). A recorded DELIVERED send makes every later run
+that day a dedupe that never reaches the transport. A comms-editor hold
+(``suppressed``) is recorded ok but is not a delivery: the next run retries it.
 """
 from __future__ import annotations
 
@@ -79,9 +80,24 @@ def configured(env: Optional[dict[str, str]] = None) -> dict[str, Any]:
     }
 
 
+def _delivered(rec: dict[str, Any]) -> bool:
+    """True only for a send the transport actually delivered.
+
+    A comms-editor hold/drop is recorded ``ok: True`` (it is not a failure) with
+    ``suppressed`` set and ``reason: "suppressed:<why>"``; it was NOT delivered, so it
+    must never satisfy the dedupe, or a held message is silently never retried
+    (N8N maturity B2 round 2, 2026-10-09)."""
+    if not rec.get("ok") or rec.get("deduped"):
+        return False
+    if rec.get("suppressed") or rec.get("held"):
+        return False
+    return not str(rec.get("reason") or "").startswith("suppressed")
+
+
 def already_sent(identity: str, *, root=None) -> Optional[dict[str, Any]]:
+    """The first DELIVERED record for ``identity`` (held/suppressed records never count)."""
     for rec in read_jsonl(paths(root)["system_sends"]):
-        if rec.get("identity") == identity and rec.get("ok"):
+        if rec.get("identity") == identity and _delivered(rec):
             return rec
     return None
 
