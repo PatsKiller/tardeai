@@ -127,6 +127,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/r20-r24/WORKFLOW_ACCEPTANCE_HARNESS.md` | Workflow Acceptance Harness | review_required | OK | `eb1687008437` |
 | `docs/_evidence/r20/R20_VS_R21.md` | R20 live specialist status vs R21 admin visibility | review_required | OK | `b36cacccd2e2` |
 | `docs/_evidence/r21/R21_1_DETAIL_ENDPOINTS.md` | R21.1 Detail Endpoints | review_required | OK | `7718fd1bdf0b` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/00-current-baseline.md` | Current runtime baseline | review_required | OK | `5450148b6e41` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/07-n8n-security-audit.md` | Installed n8n security audit | review_required | OK | `ced3f7d164d1` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/11-n2-dependency-design.md` | N2 receipt dependency review — source only, NO_GO | review_required | MISSING HEADER | `a1279aa228b2` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/12-consolidation-review.md` | Cron consolidation re-measurement | review_required | MISSING HEADER | `5d6b1fe72112` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/18-19-model-and-vector-review.md` | Model routing and embedding load — separate governed decisions | review_required | MISSING HEADER | `13da3fbb8461` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/20-final-report.md` | TradeAI runtime convergence due diligence — 2026-10-08 | review_required | MISSING HEADER | `626eebbbe301` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/20-operator-change-packet.md` | Operator-only runtime packet — prepared, NOT APPLIED | review_required | MISSING HEADER | `85cb1ab42d5a` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md` | Source validation — 2026-10-08 | review_required | MISSING HEADER | `746c0fb2e84e` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |
