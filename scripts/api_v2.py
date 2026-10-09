@@ -28714,6 +28714,23 @@ def _reports_catalog_route(query=None):
 _SYSTEM_ROLLUP_MEMO = {"ts": 0.0, "window": None, "data": None}
 
 
+def _system_rollup_trends() -> dict:
+    """Trends panel: compact per-day headline summaries ONLY (storage audit 2026-10-09 #5).
+
+    Selecting whole payloads here made every stored day nest the previous 14 days' payloads,
+    doubling nightly until the INSERT exceeded the 256 MB jsonb limit (silent since
+    2026-08-01). Only payload->'headlines' is read, and compact_trend_rows keeps scalars only.
+    """
+    from lib.system_rollup_payload import compact_trend_rows
+
+    rows = (
+        _db_query("""SELECT day, payload->'headlines' AS headlines FROM system_rollup_daily
+                        ORDER BY day DESC LIMIT 14""")
+        or []
+    )
+    return compact_trend_rows(rows)
+
+
 def _system_rollup(window: str = "24h") -> dict:
     """Reports v3 WS-B: the whole-system activity rollup — one dict, every panel corpus-tagged.
     Reuses existing aggregates (consumption overview, health snapshot, data-source health) and
@@ -28884,15 +28901,7 @@ def _system_rollup(window: str = "24h") -> dict:
 
     _panel("health", "health snapshot + data-source health + consumption (reused)", _health_strip)
 
-    def _trends():
-        rows = (
-            _db_query("""SELECT day, payload FROM system_rollup_daily
-                            ORDER BY day DESC LIMIT 14""")
-            or []
-        )
-        return {"days": len(rows), "rows": [{"day": str(r["day"]), "payload": _json_clean(r["payload"])} for r in rows]}
-
-    _panel("trends", "system_rollup_daily snapshots", _trends)
+    _panel("trends", "system_rollup_daily snapshots", _system_rollup_trends)
 
     try:
         from datetime import datetime as _dtn, timezone as _tzn

@@ -3697,6 +3697,19 @@ GATES = [
             "tests/test_bridge_agent_preconditions_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: ROLLUP_RECURSION_AND_FUSED_EMBEDDINGS — storage audit 2026-10-09 (#1, #5) + operator decision:
+        # system_rollup_daily payload bounded (trends = compact headlines only, no stored trends panel, byte cap
+        # -> typed ROLLUP_PAYLOAD_TOO_LARGE, receipt, non-zero exit); rag_indexer fused_signal text carries real
+        # fields, empty signals skipped + counted; content_embeddings source_windows (30 d) enforced as verified
+        # ARCHIVE_THEN_DELETE batches; one-time junk fused_signal purge is dry-run by default.
+        "rollup_recursion_and_fused_embeddings_20261009",
+        [
+            "tests/test_system_rollup_bounded_20261009.py",
+            "tests/test_rag_fused_signal_text_20261009.py",
+            "tests/test_retention_source_windows_junk_20261009.py",
+        ],
+    ),
 ]
 
 
