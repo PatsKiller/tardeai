@@ -715,17 +715,25 @@ class LedgerRunStore:
         classes = default_classes or {}
         self._l._conn.execute("BEGIN IMMEDIATE")
         try:
-            rows = self._l._conn.execute(
-                'SELECT run_id, lane_id, "class", priority, requested_at FROM runs r WHERE r.state = ?'
-                " AND NOT EXISTS (SELECT 1 FROM runs r2 WHERE r2.lane_id = r.lane_id AND r2.state = ?)"
-                " ORDER BY requested_at ASC, run_id ASC LIMIT 2000",
-                (RUN_STATE_REQUESTED, RUN_STATE_RUNNING)).fetchall()
+            # No row LIMIT (review #1598): a window over requested_at starved a new P0 behind >= 2000 older rows.
+            # The raw-priority filter runs in SQL; the scan orders by raw priority so the best rows come first.
+            sql = ('SELECT run_id, lane_id, "class", priority, requested_at FROM runs r WHERE r.state = ?'
+                   " AND NOT EXISTS (SELECT 1 FROM runs r2 WHERE r2.lane_id = r.lane_id AND r2.state = ?)")
+            args: list[Any] = [RUN_STATE_REQUESTED, RUN_STATE_RUNNING]
+            if max_priority is not None:
+                sql += " AND COALESCE(r.priority, ?) <= ?"
+                args += [int(default_priority), int(max_priority)]
+            sql += " ORDER BY COALESCE(r.priority, ?) ASC, requested_at ASC, run_id ASC"
+            args.append(int(default_priority))
+            rows = self._l._conn.execute(sql, args).fetchall()
             best: tuple | None = None
             for r in rows:
+                prio = int(r["priority"]) if r["priority"] is not None else int(default_priority)
+                if best is not None and prio - PRIORITY_AGE_MAX > best[0][0]:
+                    break                         # raw-priority order: no later row can age past the best
                 klass = r["class"] or classes.get(str(r["lane_id"])) or "report"
                 if klass in excluded:
                     continue
-                prio = int(r["priority"]) if r["priority"] is not None else int(default_priority)
                 if max_priority is not None and prio > max_priority:
                     continue
                 key = (aged_priority(prio, str(r["requested_at"]), now), str(r["requested_at"]), str(r["run_id"]))
