@@ -1,0 +1,798 @@
+[
+  {
+    "path": "AGENTS.md",
+    "sha256": "0fcf6542b7fb4d603879de82d9a04e5503e9c691eabe44183d5325018dc6bb90",
+    "lines": 4060,
+    "headings": [
+      "# AGENTS.md \u2014 Trade AI: the operating standard for every agent",
+      "# Document version policy",
+      "# 0 \u00b7 If you read nothing else",
+      "# 1 \u00b7 Identity and responsibilities",
+      "## What the agent is",
+      "## What the agent owns",
+      "## What the agent never touches",
+      "## Responsibilities, in order",
+      "## Session protocol",
+      "# 2 \u00b7 Authority rails \u2014 non-negotiable",
+      "# 2A \u00b7 Data egress \u2014 what may leave this box",
+      "## Never leaves this box \u2014 absolute",
+      "## Permitted to an external model provider",
+      "## A single egress point",
+      "## Drive and chat",
+      "# 2B \u00b7 Role authority profiles",
+      "# 3 \u00b7 The governing principle",
+      "# 4 \u00b7 Evidence and citation",
+      "## Evidence vocabulary \u2014 required on every claim",
+      "## Citation standard",
+      "# 5 \u00b7 Metric rules",
+      "## Time discipline",
+      "# 6 \u00b7 Dry runs \u2014 required",
+      "# 7 \u00b7 Standing traps \u2014 each one has cost real time",
+      "## Tooling and shell"
+    ]
+  },
+  {
+    "path": "AI_WORK_POLICY.md",
+    "sha256": "d024b817f42fa736d788ff2dd8fcde511c55e1a30a306b259b664bacc1289fdf",
+    "lines": 618,
+    "headings": [
+      "# Trade AI \u2014 AI Engineering & Remote-Cost Policy",
+      "# 1. CORE DEVELOPMENT MODEL",
+      "# 2. LOCAL COMMITS ARE THE CHECKPOINT MECHANISM",
+      "# 3. REMOTE PUSH BUDGET",
+      "# 4. NO INTERMEDIATE REMOTE CHECKPOINTS",
+      "# 5. REQUIRED LOCAL GATES BEFORE FIRST PUSH",
+      "# 6. TEST-FIRST / LOCAL-FIRST ITERATION",
+      "# 7. GITHUB CI IS THE FINAL INDEPENDENT CHECK",
+      "# 8. NATURAL / LIVE EVIDENCE STAYS LOCAL UNTIL MILESTONE",
+      "# 9. WATCHERS MUST NOT DRIVE REMOTE ACTIVITY",
+      "# 10. EVIDENCE BATCHING",
+      "# 11. PR POLICY",
+      "# 12. DOCS-ONLY WORK",
+      "# 13. REMOTE-COST AWARENESS",
+      "## 13.1 REPOSITORY VISIBILITY IS NOT A COST LEVER",
+      "# 14. AGENT HANDOFFS ARE LOCAL",
+      "# 15. BRANCH / COMMIT BEHAVIOR",
+      "# 16. REMOTE PUSH AUTHORIZATION",
+      "# 17. MAXIMUM TWO-PUSH RULE",
+      "# 18. CI WORKFLOW DESIGN POLICY",
+      "# 19. CONCURRENCY",
+      "# 20. TRADE AI SAFETY BOUNDARIES",
+      "# 21. DEPLOYMENT IS DISTINCT FROM PUSH",
+      "# 22. TOOL-SPECIFIC RULE",
+      "# 23. DEFAULT STATUS REPORT"
+    ]
+  },
+  {
+    "path": "docs/SOURCE_OF_TRUTH.md",
+    "sha256": "294da182ba99c25aa39bb20efbed942f3a65570e09f62598da57d9a4a16c6f5f",
+    "lines": 206,
+    "headings": [
+      "# Source of Truth \u2014 one declaration per domain",
+      "## Rules",
+      "## Ownership and the grant",
+      "## Where every served store lives",
+      "## Domains of record",
+      "## Writer ceilings \u2014 stores not yet consolidated to one writer",
+      "## Providers",
+      "## Approval records",
+      "## Monitors",
+      "## How to add or retire a source",
+      "## Enforcement"
+    ]
+  },
+  {
+    "path": "config/data_source_authority.json",
+    "sha256": "d36e96b16428fe04031f65923c65f00ae6b0098310e47a73e990d5b37308f6fb",
+    "lines": 2857,
+    "headings": []
+  },
+  {
+    "path": "config/lane_registry.json",
+    "sha256": "af799046be0bb10b53c6b3f1754d0167ae65f49180a6f5543445eea82a7ab076",
+    "lines": 4827,
+    "headings": []
+  },
+  {
+    "path": "config/expected_services.json",
+    "sha256": "28423c725728c9c507dc2671707404607112ce2afab05efb9d0a965f35f0bdbe",
+    "lines": 214,
+    "headings": []
+  },
+  {
+    "path": "config/n8n_run_allowlist.json",
+    "sha256": "3ccc646fa2172d3f08b3d5b9d8a46882a02ef0ab848b67ca2c47fd28bf0bbe7e",
+    "lines": 373,
+    "headings": []
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/06-findings-and-gateway.md",
+    "sha256": "31dde27048da269ec7417983ab3743abd693a1f0eb43a98840c54e43a19d8866",
+    "lines": 76,
+    "headings": [
+      "# Findings corrected, and the muted coordination gateway",
+      "## What was wrong in the census labels",
+      "## Approval reminder",
+      "## Blockers",
+      "## Gateway",
+      "## Five contracts",
+      "## Tests",
+      "## Effects",
+      "## Rollback"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md",
+    "sha256": "054270f4802e4d60db542dd7a8de1b5fa322689a5864ebbae039ec0c22113f56",
+    "lines": 99,
+    "headings": [
+      "# Cron consolidation \u2014 the 487 lines, what overlaps, what to merge, what to leave alone",
+      "## 1. The shape of the file",
+      "## 2. True duplicates and dead lines (remove first)",
+      "## 3. Overlaps that cost money or correctness",
+      "## 4. Consolidation plan, ranked",
+      "## 5. What must not be merged",
+      "## 6. Recommended execution"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/04-risk-and-access.md",
+    "sha256": "a9ffcd1fd24ec997372c4d062cd1310e528950875441e76b3019dbaa7e1baa8a",
+    "lines": 42,
+    "headings": [
+      "# Access gaps and risk register",
+      "## Access",
+      "## Risks",
+      "## Effects"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/01-scheduler-truth.md",
+    "sha256": "7b1d7b63dc403e6b6b25dac005376768daa30586b9a646afcb81c09292c47a14",
+    "lines": 58,
+    "headings": [
+      "# Scheduler truth",
+      "## Classifier",
+      "## Contradiction adjudicator \u2014 conflict, not a silent flip",
+      "## Maturity remeasure \u2014 proposed ACTIVE row, not applied",
+      "## Alignment rule"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/04-pilot-contracts.md",
+    "sha256": "ed162b23b17cb8752dc037c1650f6c4fd215b579b6bde6a863eae48ed2bb0de5",
+    "lines": 17,
+    "headings": [
+      "# Five muted pilot contracts"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/02-feature-matrix.md",
+    "sha256": "bcc8763607c7bf74568c71402f6348dfd1be9c2556c9d3ce6980c1b22b8f00e3",
+    "lines": 43,
+    "headings": [
+      "# Phase 1D \u2014 features on the installed n8n",
+      "## Correction 2026-10-07T02:14Z"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md",
+    "sha256": "1c12618061f9edd3ab06b4b7cf5225d2003d59d475049ceb8f203b9df79d71d5",
+    "lines": 418,
+    "headings": [
+      "# 19 \u2014 N1 cutover packet (2026-10-08)",
+      "## 1. The nine lanes at a glance",
+      "## 2. Common mechanics (cited once, used by every lane)",
+      "### 2.1 Shadow evidence (`mode=dry_run`)",
+      "### 2.2 Canary evidence (`mode=live`, host scheduler still live)",
+      "### 2.3 Cutover and rollback commands (one form, per lane)",
+      "# dry-run (default) \u2014 writes only $STATE/data/runtime/n8n_cutover/<lane>-<ts>-cutover-dry-run.json",
+      "# apply \u2014 backs up the crontab to ~/.local/state/tradeai/backups/crontab-<ts>-pre-cutover-lane-<lane>.txt,",
+      "# comments the ONE matching line as \"# RETIRED 2026-10-08 n8n-cutover <lane> <line>\", flips the registry row",
+      "# rollback dry-run / apply \u2014 uncomments exactly the tagged line, restores scheduler_before from the receipt",
+      "# readiness (read-only; --write adds $STATE/data/runtime/n8n_lane_readiness_last.json)",
+      "## 3. Per-lane packet",
+      "### 3.1 `n8n-pilot-dispatch`",
+      "### 3.2 `n8n-incident-fanin`",
+      "### 3.3 `n8n-research-intake-consumer`",
+      "### 3.4 `crontab-snapshot-for-health-agent`",
+      "### 3.5 `n8n-lab-watchdog`",
+      "### 3.6 `lane-governance-packet-weekly`",
+      "### 3.7 `maturity-remeasure`",
+      "### 3.8 `n8n-monitor-trade-ai` and 3.9 `n8n-monitor-dof` (n8n-native)",
+      "## 4. Shadow \u2192 canary \u2192 cutover ladder summary (what must exist before `--apply`)",
+      "## 5. Dry-run run log (sandbox; nothing on the host changed)",
+      "### 5.1 Phase A \u2014 cutover dry-run, registry = this worktree (`CUTOVER_CODE_ROOT=$WT`, `TRADEAI_STATE_ROOT=$SB/stateA`)",
+      "### 5.2 Phase B \u2014 sandbox apply on a COPY of the registry (`CUTOVER_CODE_ROOT=$SB/code`, `TRADEAI_STATE_ROOT=$SB/stateB`)",
+      "### 5.3 Phase B3 \u2014 real rollback rehearsal for the first lane (sandbox)"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/00-baseline.md",
+    "sha256": "743d99a3ee49e181467f84c694506b109d2099cd1563c6b4cc808c4fd795820c",
+    "lines": 145,
+    "headings": [
+      "# n8n parallel program \u2014 phase 0 baseline",
+      "## Served pin and scope",
+      "## Policy read",
+      "## Registries (source declarations)",
+      "## Host schedule census",
+      "### Journal volume",
+      "## Lane to host match",
+      "## Five pilot lanes, still owned by cron",
+      "## API inventory",
+      "## Model-id drift",
+      "## DOF data boundary",
+      "## What this baseline does not claim"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/05-phase-gate.md",
+    "sha256": "59495b78821e7c003efcde529614558b6597596a5d9a36e24638bf2eca8a9d3c",
+    "lines": 44,
+    "headings": [
+      "# Phase gate \u2014 muted gateway, not a cutover",
+      "## What is true",
+      "## Update 2026-10-07",
+      "## What is not true",
+      "## Phase 3 entry conditions",
+      "## Rollback"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/05-watchdog.md",
+    "sha256": "781b77a5e529b822a481b508728e179155e5c3342cc5a1c4fb1802dfbc6ca41d",
+    "lines": 21,
+    "headings": [
+      "# n8n lab watchdog",
+      "## What a healthz 200 is",
+      "## Unit proposal",
+      "## Host-failure limit",
+      "## After a future enablement"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/14-execution-week-20261008.md",
+    "sha256": "bd4d849645a27834ce0cca338871ba49b3118485166b39519b76206bcc1b6049",
+    "lines": 75,
+    "headings": [
+      "# Execution plan \u2014 cron close-out and n8n Phase 2 in one week (2026-10-07 \u2192 2026-10-14)",
+      "## Day 0 \u2014 Wed 2026-10-07 evening",
+      "## Day 1 \u2014 Thu 2026-10-08",
+      "## Day 2 \u2014 Fri 2026-10-09",
+      "## Day 3\u20134 \u2014 Sat/Sun 2026-10-10/11 (off-peak: paid-LLM work allowed)",
+      "## Day 5 \u2014 Mon 2026-10-12",
+      "## Day 6 \u2014 Tue 2026-10-13",
+      "## Day 7 \u2014 Wed 2026-10-14",
+      "## Operator decisions this week needs",
+      "## Not in scope this week",
+      "## Model job #1 \u2014 how to run the first live draft (added 2026-10-08, G1)"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/07-release-packet.md",
+    "sha256": "b64b44aff29512bfea22ee7360a7d23e929891973cd018e28f714c3d2a67e71f",
+    "lines": 60,
+    "headings": [
+      "# Release packet and access block",
+      "## Status update 2026-10-07 (after merge and promotion)",
+      "## ACCESS_BLOCKED",
+      "## Promotion packet, for a later decision",
+      "## Counts for this pass",
+      "## Status"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/12-database-knowledge-design-review-20261007.md",
+    "sha256": "2aa1e28a6a9326676646a1ab2450911313d802b91303f5aebbdc7031651a0c18",
+    "lines": 152,
+    "headings": [
+      "# Critical design review \u2014 database health, RAG and embeddings, research retention, pruning, knowledge architecture",
+      "## Area 1 \u2014 the \"degraded\" database",
+      "### What was actually degraded",
+      "### The production database, measured for the first time",
+      "### Root cause",
+      "### Remediation options",
+      "## Area 2 \u2014 RAG and embeddings, re-examined",
+      "## Area 3 \u2014 financial research retention policy",
+      "## Area 4 \u2014 pruning strategy",
+      "## Area 5 \u2014 clean house before expanding n8n?",
+      "## Area 6 \u2014 future-state knowledge architecture",
+      "## Executive answers"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/01-disposition-and-pilots.md",
+    "sha256": "91f823ffb0104901c726ca70f2dbd9a3d6ab4221e629589a1af5728db76cb4ef",
+    "lines": 93,
+    "headings": [
+      "# Phase 1 \u2014 disposition and five pilot contracts",
+      "## Disposition",
+      "## Exclusions that stay in their current owner",
+      "## Platform choice for the pilot",
+      "## Pilot contracts",
+      "### 1. Morning brief receipt \u2014 `morning-brief-0730`",
+      "### 2. Holdings research handoff \u2014 `research-scheduler-holdings`",
+      "### 3. Material-change digest \u2014 `material-change-digest`",
+      "### 4. LLM-spend digest \u2014 `llm-spend-report-daily`",
+      "### 5. Non-trading approval reminder \u2014 `approval-package-reminder`",
+      "## Gate"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/02-approval-receipts.md",
+    "sha256": "bddaf67776d35b82f14603819cdc30c574ef1fc311a400507710b23b65b78204",
+    "lines": 33,
+    "headings": [
+      "# Approval reminder receipts",
+      "## Five facts, kept separate",
+      "## Receipt",
+      "## Tests and the natural hour"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/08-install-and-doc-audit.md",
+    "sha256": "456df34c6b88b2dac507029bf90d93e35f41bfac0b61af0dc5339b3cbfb56415",
+    "lines": 145,
+    "headings": [
+      "# n8n lab install and documentation audit",
+      "## Pins at this read",
+      "## Containers",
+      "## Environment that is safe to record",
+      "## What is installed inside n8n",
+      "## Workflows",
+      "## Automation boundary",
+      "## Documentation inventory",
+      "## Phase documents and what is current",
+      "## Drive",
+      "## Still open"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/15-pgvector-migration-decision-20261008.md",
+    "sha256": "aa88f58c8ec5ade1f559611e2252d5aae29f0f075c325c1e14a60c7b5d21c735",
+    "lines": 57,
+    "headings": [
+      "# pgvector migration of `content_embeddings` \u2014 decision packet (2026-10-08)",
+      "## Measurement (read-only, 2026-10-08 01:50Z)",
+      "## Plan (what `--apply` would run, in this order)",
+      "## Guards (every write path, typed refusals, exit 2)",
+      "## Reader switch",
+      "## Rollback",
+      "## What the operator must approve",
+      "## Verification after apply"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/11-target-state-blueprint-20261007.md",
+    "sha256": "c9b1b64f4b1af3ae790b14af4681bfd1ca294023d9edd8432834c6e3f06956ce",
+    "lines": 177,
+    "headings": [
+      "# n8n target-state blueprint \u2014 baseline status, gap analysis, process inventory, operating model",
+      "## Part 1 \u2014 baseline status and gap analysis",
+      "## Part 2 \u2014 complete workflow and process inventory",
+      "### 2.1 Workflows and automations already contracted (the five pilots)",
+      "### 2.2 Operational, incident and governance processes",
+      "### 2.3 Notifications and reporting",
+      "### 2.4 Research, knowledge and document processes",
+      "### 2.5 Agent orchestration and LLM",
+      "### 2.6 Human approval, trading, broker, data and secrets (the permanent exclusions)",
+      "## Part 3 \u2014 strategic answers and the operating model"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md",
+    "sha256": "3bf623a3f9a5774be3b7a360c040cf5f3925f23b93ce95bb53f59459c4ee6ee4",
+    "lines": 224,
+    "headings": [
+      "# n8n as scheduler-of-record \u2014 operating model (architecture package part 1, 2026-10-08)",
+      "## 1. What is built in this PR",
+      "## 2. The run path n8n plugs into (what it may and may not do)",
+      "## 3. What n8n improves here, concretely",
+      "### 3.1 Workflow reliability",
+      "### 3.2 Visibility",
+      "### 3.3 Error recovery",
+      "### 3.4 Maintenance",
+      "### 3.5 Automation scale",
+      "### 3.6 Operational execution",
+      "## 4. What n8n does not do in this design (limits stated once)",
+      "## 5. Operator procedure",
+      "### 5.1 Prerequisites (once)",
+      "### 5.2 Render with the granted relay address (keeps the repo IP-free)",
+      "# the repo copy keeps http://RELAY_HOST:18092; the staged copy carries the granted address",
+      "### 5.3 Import (N1: 18 files, all inactive)",
+      "### 5.4 Activate in ladder order (per lane; one tranche per window)",
+      "### 5.5 Day 0\u20134 sequence (plan \"Schedule\", unchanged)",
+      "## 6. Checklist semantics (what a tick means)",
+      "## 7. Rollback triggers (plan, verbatim in substance)",
+      "## 8. Open items (not done in this PR)"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/03-lab-topology-and-cost.md",
+    "sha256": "50cdbe4c1377b0148a0dca7d8c5a2092587df45069dbb53520b99f3c898228d8",
+    "lines": 65,
+    "headings": [
+      "# Phase 2 \u2014 lab topology, credentials, and cost",
+      "## Topology",
+      "## Credential gate",
+      "## Restore",
+      "## Cost",
+      "## Watchdog"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md",
+    "sha256": "a81dc074b255fb86c55c64ddaf1aeebf594fe232e4cd95a8dd51adadb19df8c4",
+    "lines": 159,
+    "headings": [
+      "# Agent 2 W1 \u2014 registry and safe run contracts",
+      "## Before and after",
+      "## Receipt semantics",
+      "## Safety conflicts and dependencies",
+      "## Validation evidence",
+      "## Handoff acceptance"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/10-eligibility-and-secrets-20261007.md",
+    "sha256": "2f678ae3cf6a490b0211e71096eb12a1cf008bbc547a5fa1d917ad0955a07022",
+    "lines": 265,
+    "headings": [
+      "# Follow-up audit \u2014 n8n workload eligibility and secret-management review",
+      "## Section 1 \u2014 process-by-process eligibility review",
+      "### 1.1 Broker, positions, stops, orders \u2014 class C (all 30 items)",
+      "### 1.2 Trading signals and data ingest \u2014 class C (\u224860 cron lines)",
+      "### 1.3 Options \u2014 class C now, B later for the approval-queue *view*",
+      "### 1.4 Research \u2014 class B for handoff receipts, C for execution",
+      "### 1.5 Notifications and operator surfaces \u2014 class B (observe receipt/suppression), C for the send",
+      "### 1.6 Reporting and digests \u2014 class B (three pilots)",
+      "### 1.7 Memory and learning \u2014 class C",
+      "### 1.8 Agent loops \u2014 class C",
+      "### 1.9 Health, monitoring, governance \u2014 class B (fan-in view), C for checks",
+      "### 1.10 Backups, maintenance, secrets \u2014 class C",
+      "### 1.11 Approvals and release \u2014 class B for the reminder pilot, C for authority",
+      "### 1.12 DOF (nyc-dof-auction) \u2014 class E, conditional B",
+      "### 1.13 Retire \u2014 class D",
+      "### 1.14 Class A \u2014 items to move fully into n8n",
+      "## Section 2 \u2014 candidate pipeline inventory",
+      "## Section 3 \u2014 agent and LLM workflow placement",
+      "## Section 4 \u2014 can Bitwarden be used today?",
+      "## Section 5 \u2014 open-source secret-store alternatives",
+      "## Section 6 \u2014 best secret-management architecture for this environment",
+      "## Section 7 \u2014 final recommendations",
+      "### Final architecture and migration roadmap"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/03-durable-ledger.md",
+    "sha256": "c7adbc29349dbfcd04f0d287dceb48720344db544cbfabf1440e01d8066ab4ad",
+    "lines": 31,
+    "headings": [
+      "# Durable coordination ledger",
+      "## Why this is not the existing outbox",
+      "## What the file proves",
+      "## Authentication",
+      "## DOF"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/09-live-audit-20261007.md",
+    "sha256": "82f4d2135e25b8d92ad45c671b4e1dc68374cd7e98a3b095941a7d62d290d54e",
+    "lines": 300,
+    "headings": [
+      "# n8n live audit \u2014 installation, parity, capability, migration, security, execution plan",
+      "## Executive summary",
+      "## Section 1 \u2014 n8n installation audit (OBSERVED_LAB)",
+      "## Section 2 \u2014 hosted feature parity",
+      "## Section 3 \u2014 LLM and agent capability inventory (OBSERVED_SERVED)",
+      "### 3.1 Models and providers",
+      "### 3.2 Agent systems",
+      "### 3.3 Capability checklist",
+      "## Section 4 \u2014 workflow migration analysis",
+      "### 4.1 Classification by category",
+      "## Section 5 \u2014 n8n capability catalog for this environment",
+      "## Section 6 \u2014 security review",
+      "## Section 7 \u2014 execution plan",
+      "### Phase 0 \u2014 current-state census (DONE as of this document)",
+      "### Phase 1 \u2014 platform hardening (lab + the two reachable surfaces)",
+      "### Phase 2 \u2014 feature completion (coordination plane)",
+      "### Phase 3 \u2014 workflow \"migration\" (shadow pilots, no ownership change)",
+      "### Phase 4 \u2014 LLM orchestration (one governed model job)",
+      "### Phase 5 \u2014 production cutover (bounded)",
+      "## Section 8 \u2014 deliverables index and answers"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/00-fact-reconciliation.md",
+    "sha256": "f0da125c7130fbdd3f43d980908678cdae01677d95b77503f307c8e89b1a4802",
+    "lines": 76,
+    "headings": [
+      "# Fact reconciliation",
+      "## Pins",
+      "## What is local only",
+      "## Census",
+      "## Two real drifts",
+      "## Two one-shot non-issues",
+      "## Not claimed"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/config-write-grant-n1-20261008.md",
+    "sha256": "d766579de909f9139af00f36ca3db412def178d18e8183838bc9542ce69dba38",
+    "lines": 238,
+    "headings": [
+      "# Config-write grant packet \u2014 N1 night (2026-10-08)",
+      "## 1. Summary of what tonight's grant does and does not cover",
+      "## 2. Relay and executor \u2014 link + enable from CURRENT",
+      "### 2.1 Measured",
+      "### 2.2 Repo unit files (`config/systemd/user/`, both already CURRENT-pinned)",
+      "### 2.3 Sequence (config-write grant)",
+      "# link from CURRENT (as requested). NOTE: `systemctl link` needs an absolute path and refuses if a unit of that",
+      "# name already exists in ~/.config/systemd/user (neither does today). The link target is the CURRENT symlink",
+      "# path, so the unit text follows promotions; see the caveat below.",
+      "### 2.4 Verification (quote each in the grant thread)",
+      "#   expect ActiveState=active SubState=running, WorkingDirectory=$CUR, ExecStart script path under $CUR",
+      "#   expect one JSON line {\"executor\": \"started\", \"ledger\": \".../n8n_coordination_ledger.sqlite\", \"allowlist\": \"$CUR/config/n8n_run_allowlist.json\", \"lanes\": [7 ids], ...}",
+      "#   expect {\"ok\": true, \"host\": \"172.19.0.1\", \"port\": 18092, \"authority\": \"READ_ONLY_ADVISORY\"} (scripts/n8n_run_relay.py:305)",
+      "### 2.5 Rollback",
+      "## 3. The five `--alert` monitor units \u2014 re-pin to CURRENT",
+      "### 3.1 Measured host state vs repo file",
+      "### 3.2 Sequence (config-write grant)",
+      "# timers stay enabled and untouched; the services are oneshot and are started by their timers. Optional one-off fire to get",
+      "# the first CURRENT-run receipt now instead of at the next OnCalendar tick:",
+      "#   systemctl --user start tradeai-gap-resolution.service   (next natural tick is :07/:37 anyway)",
+      "### 3.3 Verification",
+      "# first receipt after the next tick (paths from config/lane_registry.json output_signal):",
+      "### 3.4 Rollback",
+      "## 4. The five timer-driven pipeline services \u2014 NO repo unit file (separate PR)",
+      "## 5. Grant texts"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/cron-tranche-b-cutover-plan-20261008.md",
+    "sha256": "335afbe4b09386e6b386f3ca35e4e0a49342d6bcea8603065b422fa0b0764701",
+    "lines": 70,
+    "headings": [
+      "# Cron tranche B \u2014 cutover readiness and compressed plan (2026-10-08)",
+      "## Readiness table (live)",
+      "## The two blockers",
+      "## Compressed cutover order",
+      "## What each cutover script does (`scripts/pipelines/cutover/`)",
+      "## Registry edit each cutover PR must carry (described, not applied here)",
+      "## Receipt"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/phase1-install-commands.md",
+    "sha256": "d491f8368e4988fb0f6ab53526d4b4177b1484f51cc4c58c6ae9cdd9fa0c3e78",
+    "lines": 59,
+    "headings": [
+      "# Phase 1 install commands (operator), 2026-10-07",
+      "## 0. Bitwarden SM keys (project trade-ai-prod) \u2014 operator creates, `render_env` delivers",
+      "## 1. Lab hardening (compose) \u2014 applies `proposals/docker-compose.n8n.hardened.yml`",
+      "## 2. Units (service grant) \u2014 files already in `config/systemd/user/`",
+      "# edit the gateway ExecStart wrapper args if needed: --port 18091 --expected-sha $(cat ~/trade-ai-releases/portfolio-server/CURRENT/GIT_SHA) --allow-lane incident-fanin",
+      "## 3. Cron lines (cron grant) \u2014 append with `crontab -l > backup; (crontab -l; cat lines) | crontab -`",
+      "## 4. S1 / S2 (config-write + DB grants) \u2014 see `S1-portfolio-server-bind.md`, `S2-dof-bind-and-role.md`",
+      "## 5. n8n owner MFA \u2014 in the n8n UI (Settings \u2192 Personal \u2192 Two-factor); then rotate the owner password into SM."
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/n8n-lab-hardening-compose-diff-20261008.md",
+    "sha256": "bcb3fa902f334736c8384606dd0666bfddd61ee2a24e0aba769b79d9ca0d0d0d",
+    "lines": 136,
+    "headings": [
+      "# Proposal \u2014 n8n lab hardening: compose diff, SM key names, firewall (2026-10-08)",
+      "## 1. Compose diff (unified, against the running file)",
+      "## 2. Owner MFA (operator, n8n UI)",
+      "## 3. Non-superuser database role on recreate (operator)",
+      "## 4. Bitwarden SM keys to add (operator; names only, never values here)",
+      "## 5. Firewall rule proposal \u2014 172.19.0.0/16 may reach the host only on 18092 (operator, sudo)",
+      "# 1. allow the relay port only, from the lab subnet, on the lab bridge interface",
+      "# 2. refuse everything else from the lab subnet to the host",
+      "## 6. The relay itself \u2014 PENDING OPERATOR PERMISSION",
+      "## Order of operations"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/cron-tranche-b-design.md",
+    "sha256": "37fb7b08b80c2c6471f4f9da8da495304062d385bcd4503c784b2e88f99954f5",
+    "lines": 392,
+    "headings": [
+      "# Cron tranche B \u2014 post-close, premarket and Hermes chains: measurements, fit, manifests (2026-10-07)",
+      "## 1. What was measured and how",
+      "## 2. Fit arithmetic",
+      "### 2a. Post-close \u2014 the study's \"close-capture 16:05 \u2192 broker-truth 16:30 \u2192 planning 17:30\"",
+      "### 2b. Premarket \u2014 05:45 \u2192 must finish before the 07:30 brief",
+      "### 2c. Hermes chains",
+      "## 3. What `_pipeline_common.sh` and the 199E skeletons actually do (Part 2)",
+      "## 4. The skeleton delivered (Part 3)",
+      "## 5. Manifest mapping tables (cron line \u2192 step)",
+      "### 5a. `after_close.json`",
+      "### 5b. `premarket.json`",
+      "### 5c. `hermes_learning.json`",
+      "### 5d. `hermes_overnight.json`",
+      "## 6. Install sequence (operator cron grant per step; nothing here is done by this PR)",
+      "## 7. Rollback",
+      "## 8. Open items for the operator / parent"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/dof-reader-role-20261008.sql.md",
+    "sha256": "61dd0f77b3b52b38387ece34ece1e92881ae5f09a717d19252e6520b92ab6941",
+    "lines": 148,
+    "headings": [
+      "# Proposal \u2014 `dof_reader`: a read-only role for the DOF queue and enrichment views (2026-10-08)",
+      "## What the schema actually is",
+      "## The SQL (operator runs as superuser, in a transaction)",
+      "## Verification (operator, after COMMIT)",
+      "## Where the role is used, and where it is not"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/cron-tranche-a-decisions.md",
+    "sha256": "cff41e44423f5e4c297b6fe25fe412c7c4c923cfbbc4695a2c109b69f130e228",
+    "lines": 22,
+    "headings": [
+      "# Cron tranche A \u2014 operator decisions (2026-10-07)"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md",
+    "sha256": "df85877b88a090d09c2476cbd0b845cfab9ed075f4c2a91e75482101cef9c764",
+    "lines": 18,
+    "headings": [
+      "# Proposal S2 \u2014 DOF app exposure and database role"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/key-rotation-schedule-20261008.md",
+    "sha256": "1b54faa6869a805c0dcc4739ac28afafc7bf8717cf96db3a59fe2f9df307d5e1",
+    "lines": 139,
+    "headings": [
+      "# Weekly key rotation schedule \u2014 PROPOSAL (operator cron grant), 2026-10-08",
+      "## Why",
+      "## Dry-run evidence (tmp copy of the registry; both keys stamped rotated 2026-10-08, evaluated at day 8)",
+      "## What the daemon cannot do (exact missing capabilities \u2014 not faked here)",
+      "## Proposed cron line (operator installs; the crontab header already defines `PROJ`, `PY`, `TRADEAI_ENV`)",
+      "# Secret rotation nag \u2014 ADR_COORDINATION_SECRETS weekly keys (daemon docstring: 05:30 ET daily). PROPOSAL key-rotation-schedule-20261008.md",
+      "## Proposed `config/lane_registry.json` row (PROPOSAL \u2014 a registry edit goes through the registry lock, Agent 2's W1/W2 queue)",
+      "## Grant text (the operator approves this wording; fill the PR number and head SHA from the PR header)",
+      "## Weekly operator runbook for the two keys (until capabilities 1\u20132 exist)"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md",
+    "sha256": "459432353f4a6637f3559e4a5dfc62f777cd489a202b967c450794be821915be",
+    "lines": 309,
+    "headings": [
+      "# Cron consolidation \u2014 tranche C, low-risk part (ranks 13, 14, 18, 9), 2026-10-07",
+      "## Rank 13 \u2014 options tick (`scripts/options_tick.py`)",
+      "### Today (crontab lines 1036, 1038, 1040 \u2014 verbatim)",
+      "### Proposed (one line)",
+      "### What the runner does, per tick",
+      "### Timing deltas (deliberate, small)",
+      "### Registry",
+      "## Rank 14 \u2014 orchestrator slots (`scripts/run_orchestrator_slot.sh`)",
+      "### Today (crontab lines 142, 144, 145, 147, 148, 205 \u2014 verbatim)",
+      "### Proposed (two lines)",
+      "### Why a wrapper, not `--run-label auto`",
+      "### Registry",
+      "## Rank 18 \u2014 hourly Drive syncs (`scripts/run_drive_syncs.sh`)",
+      "### Today (crontab lines 405 and 1026 \u2014 verbatim)",
+      "### Proposed (one line)",
+      "### Registry",
+      "## Rank 9 \u2014 hermes subject enhance (`scripts/hermes_subject_enhance_dispatch.py`)",
+      "### Today (crontab lines 477\u2013482 \u2014 verbatim)",
+      "### Proposed (one line)",
+      "### Due table (minute phase, window, lock, guard and argv preserved)",
+      "### Sequencing semantics",
+      "### Registry",
+      "## Install / cutover order (operator, cron grant)",
+      "## Rollback",
+      "## Expected reduction"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md",
+    "sha256": "91ba4c978d1963124ac9608bb2f71f7042d7713fb7f563ac33a9383e0883d33a",
+    "lines": 180,
+    "headings": [
+      "# Cron consolidation RANK 4 \u2014 platform maintenance pipeline (PROPOSAL)",
+      "## Why",
+      "## Mapping \u2014 crontab line \u2192 step",
+      "### `--cadence nightly` (timer 01:15 daily)",
+      "### `--cadence weekly` (timer Sun 03:00)",
+      "### `--cadence monthly` (timer 1st 06:00)",
+      "### Timeouts marked \"(new)\"",
+      "## Runner behaviour",
+      "## Install (operator, under grants \u2014 in this order)",
+      "# 0. snapshot today's crontab FIRST (rollback input)",
+      "# 1. dry-run from the served tree, by path, exact timer form (AGENTS.md \u00a79.3)",
+      "# 2. install the units (config-write grant) \u2014 they are PROPOSAL files until this step",
+      "# 3. delete the absorbed crontab lines by number (cron grant). NUMBERS ARE FROM 2026-10-07 \u2014 re-confirm each",
+      "#    with `crontab -l | sed -n 'Np'` before deleting; the file changes. Delete highest-first so numbers hold.",
+      "#    (958-960 are the three comment lines above db_retention; keep them if you prefer the history in place.)",
+      "#    expect 0 (the schwab sweep, memsync and Drive sync lines do not match this pattern and stay)",
+      "# 4. registry in the SAME change (AGENTS.md \u00a79.3): flip the three lanes to ACTIVE with scheduler.kind=systemd",
+      "#    and the timer name; mark hermes-universe-history-retention, db-retention, document-mentions-prune,",
+      "#    platform-conformance-audit, n8n-lab-backup, n8n-lab-restore-drill RETIRED with",
+      "#    superseded_by=platform-maintenance-<cadence>; run python3 scripts/check_lane_registry.py --fail-on-new.",
+      "## Verification (after the first natural fire, not a hand-run)",
+      "# each absorbed log still grows (e.g. logs/db_retention.log gets a \"platform-maintenance/nightly step=db_retention\" header per run)",
+      "## Rollback",
+      "# registry: revert the lane flips from step 4 in the same change",
+      "## Expected line reduction"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md",
+    "sha256": "5345f335f12ba9f908551a916efa380ca742cd26948fcba278fbce06e023e638",
+    "lines": 25,
+    "headings": [
+      "# Proposal S1 \u2014 stop serving the Trade AI API unauthenticated on 0.0.0.0:7777"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md",
+    "sha256": "77196f9bf0140bd28381819657e0b61e54640a86d441af13c1bd43f4767522ff",
+    "lines": 158,
+    "headings": [
+      "# Cron consolidation RANK 3 \u2014 the health tick (proposal), 2026-10-07",
+      "## What stays in cron (by design)",
+      "## Mapping table (read verbatim from `crontab -l` on 2026-10-07; `$PROJ`=CURRENT, `$PY`=dev venv python)",
+      "## Expected firing reduction",
+      "## Behavioural differences the operator should accept or veto",
+      "## Install plan (operator, under a config-write grant + a cron grant; nothing below has been run)",
+      "## Verification (first hour, then first day)",
+      "## Rollback (operator)",
+      "## Files in this PR"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md",
+    "sha256": "9d5cc13f472267068a8e8fd4522f8538d1eda20408895473a9f96798726dd92f",
+    "lines": 48,
+    "headings": [
+      "# Cron cutover ledger \u2014 2026-10-07 (ranks 3\u20134 + tranche C install)",
+      "## Step 1 \u2014 ranks 3\u20134 (19:56Z)",
+      "## Step 2 \u2014 tranche C install, old lines kept (19:58Z)",
+      "## Step 3 \u2014 pending (follow-up PR after the second cycle)",
+      "## Host note",
+      "## Step 3 \u2014 tranche C old lines deleted (22:40Z, cron grant 69093b20b90691d1)",
+      "## Tranche B day 0 \u2014 eight stage lines in `--dry-run` (22:40Z, same grant)",
+      "## 2026-10-08 02:11Z \u2014 release b18d8087b promoted; research-intake chain installed"
+    ]
+  },
+  {
+    "path": "docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md",
+    "sha256": "fc4884189c2f3642e5eef457459d9a241add8e31e15028529d5acdf9c3a41df5",
+    "lines": 256,
+    "headings": [
+      "# Window runtimes \u2014 fixed-minute cron lines in 05:30\u201308:00 and 16:00\u201318:40 (7 days to 2026-10-07)"
+    ]
+  },
+  {
+    "path": "docs/architecture/n8n/ADR_COORDINATION_SECRETS.md",
+    "sha256": "1483767a78a34fb5990efc5a2cbb599b0a3d6649a8f6d3a02a9ce0390080f99f",
+    "lines": 137,
+    "headings": [
+      "# ADR: coordination secrets for the n8n lab",
+      "## Decision",
+      "## Preconditions (all must hold before the credential is created)",
+      "## Threat model (unchanged)",
+      "## Key handling",
+      "## Consequences",
+      "## Rejected",
+      "## Tests that exist",
+      "## What remains false",
+      "## Superseded \u2014 the PROPOSED text of 2026-10-07 (kept verbatim; no longer the decision)",
+      "### Threat model",
+      "### Key handling",
+      "### Bootstrap that stays inside the policy",
+      "### Tests that exist",
+      "### What remains false"
+    ]
+  }
+]

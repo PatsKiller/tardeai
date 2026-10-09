@@ -1,6 +1,9 @@
 # n8n run relay (plan streamed-humming-wolf, tranche N1, 2026-10-08; AGENTS.md §23.3). Committed here;
 # INSTALLED BY THE OPERATOR ONLY, under a config-write grant that names this unit, with
-#   systemctl --user link  %h/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-n8n-run-relay.service
+#   install -m 0644 "$HOME/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-n8n-run-relay.service" "$HOME/.config/systemd/user/tradeai-n8n-run-relay.service"
+#   systemctl --user daemon-reload
+# Use a stable regular file: systemctl link canonicalizes CURRENT to a release that retention may retire.
+# Archive any existing dangling unit symlink under the operator grant before installation.
 #   systemctl --user enable --now tradeai-n8n-run-relay.service
 # No agent installs or enables it (auto-mode classifier: Expose Local Services).
 #

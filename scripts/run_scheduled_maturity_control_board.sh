@@ -2,7 +2,8 @@
 # Phase 9C: Scheduled maturity board + phase readiness reports. Read-only.
 set -euo pipefail
 
-PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# Code follows the installed launcher/release; state symlinks and existing guards remain authoritative.
+PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 set -a; source "$PROJ/.env"; set +a
 PY="$PROJ/.venv/bin/python"
 LOG="$PROJ/logs/maturity_control_board.log"

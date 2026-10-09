@@ -75,7 +75,8 @@ export function ItemBadges({ e }: { e: any }) {
 
 export const PANEL_PRESET: Record<string, Record<string, string>> = {
   attention: { actionable: '1', priority: 'critical,high', sort: 'priority_score' },
-  reward: { actionable: '1', category: 'reward,high_conviction_opportunity,re_entry', sort: 'reward_score' },
+  // ranked by the CIO conviction Home and the opportunity view show (operator 2026-10-08); below-floor names last
+  reward: { actionable: '1', category: 'reward,high_conviction_opportunity,re_entry', sort: 'conviction' },
   reentry: { category: 're_entry', reentry_status: 'confirmed,opportunity,potential', sort: 'priority_score' },
   risk: { category: 'threat,risk', sort: 'risk_score' },
   expiring: { actionable: '1', expiring_within_h: '12', sort: 'expires_at', order: 'asc' },

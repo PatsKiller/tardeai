@@ -1,0 +1,111 @@
+{
+  "ruff_version": "0.16.2",
+  "rows": [
+    {
+      "path": "docs/_evidence/runtime-convergence/20261008T215341Z/build_review_artifacts.py",
+      "before_ref": ":docs/_evidence/runtime-convergence/20261008T215341Z/build_review_artifacts.py",
+      "ast_sha256_before": "59a51f606d49dd64ead5a142f44c1658cfab987a451025c9521a37320a088bdc",
+      "ast_sha256_after": "59a51f606d49dd64ead5a142f44c1658cfab987a451025c9521a37320a088bdc",
+      "equivalent": true
+    },
+    {
+      "path": "docs/_evidence/runtime-convergence/20261008T215341Z/collect_baseline.py",
+      "before_ref": ":docs/_evidence/runtime-convergence/20261008T215341Z/collect_baseline.py",
+      "ast_sha256_before": "2295538b6c74340c7d9476ff1e2c45065afbae75936eef186cb2a28b604dfc5c",
+      "ast_sha256_after": "2295538b6c74340c7d9476ff1e2c45065afbae75936eef186cb2a28b604dfc5c",
+      "equivalent": true
+    },
+    {
+      "path": "docs/_evidence/runtime-convergence/20261008T215341Z/collect_census.py",
+      "before_ref": ":docs/_evidence/runtime-convergence/20261008T215341Z/collect_census.py",
+      "ast_sha256_before": "abeed6d05fa2b770de082702a4284ac2d5eeb74906721cf29a91ff10ede04fba",
+      "ast_sha256_after": "abeed6d05fa2b770de082702a4284ac2d5eeb74906721cf29a91ff10ede04fba",
+      "equivalent": true
+    },
+    {
+      "path": "docs/_evidence/runtime-convergence/20261008T215341Z/collect_final_metadata.py",
+      "before_ref": ":docs/_evidence/runtime-convergence/20261008T215341Z/collect_final_metadata.py",
+      "ast_sha256_before": "2ece0b96541300f164da04228d913054ddac7776882af5914f01fd99aceea4fa",
+      "ast_sha256_after": "2ece0b96541300f164da04228d913054ddac7776882af5914f01fd99aceea4fa",
+      "equivalent": true
+    },
+    {
+      "path": "docs/_evidence/runtime-convergence/20261008T215341Z/collect_supplement.py",
+      "before_ref": ":docs/_evidence/runtime-convergence/20261008T215341Z/collect_supplement.py",
+      "ast_sha256_before": "04f9ebce06059a186549f0703315d82ee7fddc52f30910b33f28843c421f631d",
+      "ast_sha256_after": "04f9ebce06059a186549f0703315d82ee7fddc52f30910b33f28843c421f631d",
+      "equivalent": true
+    },
+    {
+      "path": "docs/_evidence/runtime-convergence/20261008T215341Z/reverify_identity.py",
+      "before_ref": ":docs/_evidence/runtime-convergence/20261008T215341Z/reverify_identity.py",
+      "ast_sha256_before": "353f26764390afb4177f2033117fab2199f5622d35f032da8f57efe6bcf43d1f",
+      "ast_sha256_after": "353f26764390afb4177f2033117fab2199f5622d35f032da8f57efe6bcf43d1f",
+      "equivalent": true
+    },
+    {
+      "path": "scripts/api_v2.py",
+      "before_ref": "HEAD:scripts/api_v2.py",
+      "ast_sha256_before": "22c6125f7bd24a77f6f8063122212fc53ff3d66f876ff1274b326f64bbb2a578",
+      "ast_sha256_after": "22c6125f7bd24a77f6f8063122212fc53ff3d66f876ff1274b326f64bbb2a578",
+      "equivalent": true
+    },
+    {
+      "path": "scripts/lib/scheduler_operations.py",
+      "before_ref": "HEAD:scripts/lib/scheduler_operations.py",
+      "ast_sha256_before": "d95fc50135c71363b5c1c82a99629890d01f79801ef50b1bf4447cf64ad9e461",
+      "ast_sha256_after": "d95fc50135c71363b5c1c82a99629890d01f79801ef50b1bf4447cf64ad9e461",
+      "equivalent": true
+    },
+    {
+      "path": "scripts/report_scheduler_inventory.py",
+      "before_ref": "HEAD:scripts/report_scheduler_inventory.py",
+      "ast_sha256_before": "41bd0aa2844a80211b3cff80a4c490d865f319bc85f4c57e2ee3f33cec696e12",
+      "ast_sha256_after": "41bd0aa2844a80211b3cff80a4c490d865f319bc85f4c57e2ee3f33cec696e12",
+      "equivalent": true
+    },
+    {
+      "path": "scripts/run_cio_hardening_ci.py",
+      "before_ref": "HEAD:scripts/run_cio_hardening_ci.py",
+      "ast_sha256_before": "62c32ed1449d8e360054bf8c221cfa39eaa91d2cfd90cd240dfb7ab3c2e338f4",
+      "ast_sha256_after": "62c32ed1449d8e360054bf8c221cfa39eaa91d2cfd90cd240dfb7ab3c2e338f4",
+      "equivalent": true
+    },
+    {
+      "path": "tests/test_cio_operator_evidence_receipts_20261002.py",
+      "before_ref": "HEAD:tests/test_cio_operator_evidence_receipts_20261002.py",
+      "ast_sha256_before": "3c56a2f773ab49827fba631867b916d3e65f52ffead73f4c6244d37d7cae53ff",
+      "ast_sha256_after": "3c56a2f773ab49827fba631867b916d3e65f52ffead73f4c6244d37d7cae53ff",
+      "equivalent": true
+    },
+    {
+      "path": "tests/test_n8n_gateway_concurrency_20261008.py",
+      "before_ref": "HEAD:tests/test_n8n_gateway_concurrency_20261008.py",
+      "ast_sha256_before": "fd54d65883df0ed2b38d852440723d0e06df66b2b4c9f86347e159e1d3e3d101",
+      "ast_sha256_after": "fd54d65883df0ed2b38d852440723d0e06df66b2b4c9f86347e159e1d3e3d101",
+      "equivalent": true
+    },
+    {
+      "path": "tests/test_n8n_release_rebind.py",
+      "before_ref": "HEAD:tests/test_n8n_release_rebind.py",
+      "ast_sha256_before": "a74679ed48231405d5b1e7261ae21c481b23ce3f121814d4351a23e1c5d03a8d",
+      "ast_sha256_after": "a74679ed48231405d5b1e7261ae21c481b23ce3f121814d4351a23e1c5d03a8d",
+      "equivalent": true
+    },
+    {
+      "path": "tests/test_scheduler_launcher_roots.py",
+      "before_ref": "HEAD:tests/test_scheduler_launcher_roots.py",
+      "ast_sha256_before": "271dc1b6d1384ad0ac9b08c6aaac66f2ee9ce0730aab55e4b6a2766ef74690a1",
+      "ast_sha256_after": "271dc1b6d1384ad0ac9b08c6aaac66f2ee9ce0730aab55e4b6a2766ef74690a1",
+      "equivalent": true
+    },
+    {
+      "path": "tests/test_scheduler_operations.py",
+      "before_ref": "HEAD:tests/test_scheduler_operations.py",
+      "ast_sha256_before": "6e5690323c42093181bcaa6749682cb12ff2ba262f33d7238a9e521e40a2aa05",
+      "ast_sha256_after": "6e5690323c42093181bcaa6749682cb12ff2ba262f33d7238a9e521e40a2aa05",
+      "equivalent": true
+    }
+  ],
+  "note": "Formatting only on changed Python files; AST equality verified. Existing line endings preserved through safe_text_edit."
+}
