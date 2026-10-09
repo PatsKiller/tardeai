@@ -3623,6 +3623,8 @@ GATES = [
             "tests/test_n8n_workflow_drift_20261009.py",
             "tests/test_n8n_activation_grants_20261009.py",
             "tests/test_n8n_agent_identity_parity_20261009.py",
+            # incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)
+            "tests/test_n8n_incident_fanin_governance_20261009.py",
         ],
     ),
     (
