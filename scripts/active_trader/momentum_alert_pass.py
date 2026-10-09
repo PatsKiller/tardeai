@@ -35,8 +35,29 @@ def _epoch(ts: Any) -> Optional[float]:
         return None
 
 
+def armed_levels(info: Optional[Mapping[str, Any]], trig_cfg: Optional[Mapping[str, Any]]) -> dict:
+    """ARMED entry/stop from the trigger state machine (2026-10-09): entry = the break of the prior bar's
+    high + entry_offset (what a fire would use), stop = pullback low − stop_offset. The old ARMED line
+    printed last price and last − 1·ATR ("entry 4.05 · stop 4.01 · R 0.04"), which was not the setup."""
+    info = info or {}
+    tc = trig_cfg or {}
+    ph, pl = info.get("prev_high"), info.get("pullback_low")
+    out: dict[str, Any] = {"armed_bars": info.get("armed_bars"), "leg_high": info.get("leg_high"),
+                           "pullback_low": pl}
+    if ph is None or pl is None:
+        return out
+    entry = float(ph) + float(tc.get("entry_offset") or 0.0)
+    stop = float(pl) - float(tc.get("stop_offset") or 0.0)
+    if stop < entry:
+        out.update(entry_ref=round(entry, 4), stop_ref=round(stop, 4), break_level=float(ph))
+    return out
+
+
 def build_candidates(results: Sequence[Mapping[str, Any]], trigger_fires: Sequence[Mapping[str, Any]],
-                     trigger_states: Mapping[str, str], *, day: str) -> list[ma.Candidate]:
+                     trigger_states: Mapping[str, str], *, day: str,
+                     trigger_info: Optional[Mapping[str, Mapping[str, Any]]] = None,
+                     trig_cfg: Optional[Mapping[str, Any]] = None,
+                     trade_ai: Optional[Mapping[str, dict]] = None) -> list[ma.Candidate]:
     latest_fire: dict[str, Mapping[str, Any]] = {}
     for f in trigger_fires:
         s = f.get("symbol")
@@ -47,26 +68,95 @@ def build_candidates(results: Sequence[Mapping[str, Any]], trigger_fires: Sequen
         sym = r.get("symbol")
         tax = r.get("_tax") or {}
         fire = latest_fire.get(sym)
+        state = str(trigger_states.get(sym, "IDLE"))
+        lv = armed_levels((trigger_info or {}).get(sym), trig_cfg) if state.upper() == "ARMED" else {}
+        use_fsm = fire is None and "entry_ref" in lv
         out.append(ma.Candidate(
             symbol=sym, lane=str(r.get("lane")), ign=float(r.get("ign") or 0.0),
-            fsm_state=str(trigger_states.get(sym, "IDLE")),
+            fsm_state=state,
             setup_id=tax.get("primary_setup_id"), setup_label=tax.get("primary_setup_label"),
-            entry_ref=(fire or {}).get("entry", r.get("entry_ref")),
-            stop_ref=(fire or {}).get("stop", r.get("stop_ref")),
+            entry_ref=lv["entry_ref"] if use_fsm else (fire or {}).get("entry", r.get("entry_ref")),
+            stop_ref=lv["stop_ref"] if use_fsm else (fire or {}).get("stop", r.get("stop_ref")),
+            break_level=lv.get("break_level") if use_fsm else None,
+            armed_bars=lv.get("armed_bars"), leg_high=lv.get("leg_high"), pullback_low=lv.get("pullback_low"),
+            trade_ai=(trade_ai or {}).get(sym),
             rvol=r.get("rvol_tod"), fire_ts_epoch=_epoch((fire or {}).get("fire_ts")),
             session_date=day))
     return out
 
 
+def trade_ai_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
+    """Latest trade_ai_scans verdict per symbol for the session day (read-only). {} on any failure."""
+    syms = sorted({s for s in symbols if s})
+    if conn is None or not syms:
+        return {}
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT DISTINCT ON (symbol) symbol, decision, not_tradeable, scanned_at
+                             FROM trade_ai_scans WHERE run_date = %s AND symbol = ANY(%s)
+                            ORDER BY symbol, scanned_at DESC""", (day, syms))
+            rows = cur.fetchall()
+        conn.rollback()
+    except Exception:  # noqa: BLE001
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return {}
+    out = {}
+    for r in rows:
+        sym, dec, nt, at = (r["symbol"], r["decision"], r["not_tradeable"], r["scanned_at"]) if isinstance(r, Mapping) \
+            else (r[0], r[1], r[2], r[3])
+        out[str(sym)] = {"decision": dec, "not_tradeable": bool(nt),
+                         "scanned_at": at.isoformat() if hasattr(at, "isoformat") else at}
+    return out
+
+
+def stand_down_candidates(throttle_state: Mapping[str, Any], trigger_states: Mapping[str, str],
+                          trigger_info: Mapping[str, Mapping[str, Any]], fired: set, *, now: float,
+                          cfg: "ma.AlertConfig", day: str) -> list[ma.Candidate]:
+    """An ARMED leg that was SENT within stand_down_window_min and has since gone stale (ARMED past
+    armed_max_bars) or left ARMED without firing gets one STAND_DOWN (2026-10-09: 18 of 19 ARMED alerts
+    simply went quiet). Never twice for the same leg."""
+    last = dict((throttle_state or {}).get("last") or {})
+    out = []
+    for key, ts in last.items():
+        parts = key.split(":", 2)
+        if len(parts) != 3 or parts[1] != ma.ARMED or not parts[2].startswith("leg:"):
+            continue
+        sym, lvl = parts[0], parts[2]
+        if now - float(ts) > cfg.stand_down_window_min * 60 or f"{sym}:{ma.STAND_DOWN}:{lvl}" in last or sym in fired:
+            continue
+        info = (trigger_info or {}).get(sym) or {}
+        state = str(trigger_states.get(sym, "")).upper()
+        same_leg = info.get("leg_high") is not None and f"leg:{float(info['leg_high']):.4f}" == lvl
+        if state == "ARMED" and same_leg and (info.get("armed_bars") or 0) <= cfg.armed_max_bars:
+            continue                                   # still a live setup
+        if not state:
+            continue                                   # not scored this pass: no evidence either way
+        reason = ("the setup went stale — no break after "
+                  f"{info.get('armed_bars')} min" if state == "ARMED" and same_leg
+                  else "the setup broke down without triggering")
+        out.append(ma.Candidate(symbol=sym, lane="", ign=0.0, fsm_state=state, kind_hint=ma.STAND_DOWN,
+                                level_key=lvl, stand_down_reason=reason, session_date=day))
+    return out
+
+
 def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigger_states, *,
                     day: str, dry_run: bool = False, now: Optional[float] = None,
-                    source: Optional[MoomooSource] = None, send_fn=None) -> dict:
+                    source: Optional[MoomooSource] = None, send_fn=None,
+                    trigger_info: Optional[Mapping[str, Mapping[str, Any]]] = None) -> dict:
     acfg = ma.AlertConfig.from_mapping(cfg.get("active_trader_alerts"))
     now = time.time() if now is None else now
-    cands = build_candidates(results, trigger_fires, trigger_states, day=day)
+    tai = trade_ai_today(conn, [r.get("symbol") for r in results], day)
+    cands = build_candidates(results, trigger_fires, trigger_states, day=day, trigger_info=trigger_info,
+                             trig_cfg=cfg.get("trigger"), trade_ai=tai)
     interesting = [c for c in cands if ma.alert_kind(c, now=now, cfg=acfg)]
     interesting.sort(key=lambda c: (ma.alert_kind(c, now=now, cfg=acfg) != ma.TRIGGERED, -c.ign))
     interesting = interesting[:MAX_CANDIDATES]
+    fired = {f.get("symbol") for f in trigger_fires if f.get("symbol")}
+    interesting += stand_down_candidates(ma.load_throttle_state() if not dry_run else {}, trigger_states,
+                                         trigger_info or {}, fired, now=now, cfg=acfg, day=day)
     if not interesting:
         res = {"evaluated": 0, "alerts": 0, "sent": 0, "vetoes": 0, "mode": acfg.mode}
         if not dry_run:
@@ -75,6 +165,8 @@ def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigge
     src = source or MoomooSource(levels=acfg.book_levels, prints=acfg.tape_prints)
     floats = float_lookup(conn) if conn is not None else (lambda s: None)
     for c in interesting:
+        if c.kind_hint == ma.STAND_DOWN:
+            continue                 # a closing note needs no quote or book (and no L2 subscription)
         try:
             c.last, c.quote_ts_epoch = src.quote(c.symbol)
         except Exception:  # noqa: BLE001 — no quote → QUOTE_STALE veto
