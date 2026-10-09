@@ -3784,6 +3784,17 @@ GATES = [
         "cron_stale_fixes_20261009",
         ["tests/test_cron_stale_fixes_20261009.py"],
     ),
+    (
+        # ANCHOR: SYSTEM_TELEGRAM_INTERDICT_SCOPE — 2026-10-09: C4's lowest-layer interdict keyed on
+        # CIO_TELEGRAM_INTERDICT alone blocked every TRADE_AI_SYSTEM send since 2026-09-19. Scoped by a typed
+        # SendFamily the transport confirms (caller module, ops bot, ops chat, SYSTEM_TELEGRAM_ENABLED): CIO and
+        # financial sends stay interdicted, SYSTEM_OPS answers to SYSTEM_TELEGRAM_INTERDICT, pytest blocks all,
+        # spoofing refused; heartbeat once per NY date, one alert per transition kind per date; what-would-send.
+        "SYSTEM_TELEGRAM_INTERDICT_SCOPE",
+        [
+            "tests/test_system_telegram_interdict_scope_20261009.py",
+        ],
+    ),
 ]
 
 
