@@ -66,7 +66,9 @@ Preconditions found 2026-10-09 (read-only `gh api repos/PatsKiller/tardeai` and 
   `cio-hardening` and `release-readiness` is a separate PR (workflow files are governed).
 - Required checks measured 2026-10-09 (`gh api repos/:owner/:repo/branches/main/protection/required_status_checks`):
   `cio-hardening`, `agent-governance`, `release-readiness` — the three §23.13 condition (b) names.
-  The 2026-09-25 measurement above predates `release-readiness` becoming required.
+  The 2026-09-25 measurement above predates `release-readiness` becoming required, and `strict` now
+  reads `false` (the operator turned strict up-to-date protection off on 2026-10-09); the ruleset below
+  keeps it off.
 
 Steps (UI): Settings → Rules → Rulesets → New branch ruleset → name `main-merge-queue`, enforcement
 **Active**, target `main` (Include default branch) → enable **Require merge queue** (merge method
@@ -86,11 +88,11 @@ gh api -X POST repos/PatsKiller/tardeai/rulesets --input - <<'JSON'
   "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
   "rules": [
     {"type": "merge_queue", "parameters": {
-      "merge_method": "SQUASH", "grouping_strategy": "ALLGREEN",
+      "merge_method": "MERGE", "grouping_strategy": "ALLGREEN",
       "max_entries_to_build": 1, "min_entries_to_merge": 1, "max_entries_to_merge": 1,
       "min_entries_to_merge_wait_minutes": 0, "check_response_timeout_minutes": 60}},
     {"type": "required_status_checks", "parameters": {
-      "strict_required_status_checks_policy": true,
+      "strict_required_status_checks_policy": false,
       "required_status_checks": [
         {"context": "agent-governance"}, {"context": "cio-hardening"}, {"context": "release-readiness"}]}}
   ]

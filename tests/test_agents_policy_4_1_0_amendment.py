@@ -481,3 +481,54 @@ def test_the_scalp_exception_is_accepted_only_while_it_meets_the_4_0_0_condition
 
 def test_a_plain_report_lane_is_eligible():
     assert dispatcher_eligible(_entry("ok", ["$PY", "scripts/storage_watch.py"], live=("--write",))) == (True, "ok")
+
+
+# ---------------------------------------------------------------- read-only guard carve-out (4.1.0)
+
+PROJECTION = ROOT / "scripts" / "lib" / "approval_board_projection.py"
+GUARD_READ_SUBCOMMANDS = frozenset({"list", "state", "read", "audit"})
+GUARD_WRITE_SUBCOMMANDS = frozenset(
+    {"grant", "consume", "revoke", "revoke-all", "init", "recover", "doctor", "request", "approve", "settle"}
+)
+
+
+def test_23_14_states_the_read_only_guard_carve_out():
+    f = _flat(_subsection("23.14"))
+    assert "Read-only guard carve-out" in f
+    assert "approval_board_projection.py" in f
+    for verb in ("request", "grant", "revoke", "consume"):
+        assert verb in f, verb
+    assert "never" in f.lower()
+
+
+def test_allowlist_never_list_still_blocks_guard():
+    assert "guard" in ALLOW["never"]
+    for lane_id, entry in ALLOW_LANES.items():
+        argv = [*entry.get("command", []), *(entry.get("dry_run_arg") or []), *(entry.get("live_arg") or [])]
+        for tok in argv:
+            low = tok.lower()
+            assert "bin/guard" not in low and "guard_ledger" not in low, (lane_id, tok)
+            assert "guard_request_approval" not in low and "guard_remote_approval" not in low, (lane_id, tok)
+
+
+def test_guard_projection_is_read_only():
+    """The approval router may read guard state only: every subprocess call in the projection passes
+    only read subcommands of the guard CLI, never a write subcommand, and it imports no guard writer."""
+    import ast
+
+    tree = ast.parse(PROJECTION.read_text(encoding="utf-8"))
+    # "grant" is also a row kind on the board, so write subcommands are checked where they would act:
+    # in the argv of every subprocess call (below), never as free strings.
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = [a.name for a in node.names] + [getattr(node, "module", "") or ""]
+            for name in names:
+                assert "guard_request_approval" not in name and "guard_remote_approval" not in name, name
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            owner = node.func.value
+            if isinstance(owner, ast.Name) and owner.id == "subprocess":
+                args = node.args[0] if node.args else None
+                assert isinstance(args, ast.List), "subprocess argv must be a literal list"
+                subs = [e.value for e in args.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+                assert subs and set(subs) <= GUARD_READ_SUBCOMMANDS, subs
+                assert not (set(subs) & GUARD_WRITE_SUBCOMMANDS), subs
