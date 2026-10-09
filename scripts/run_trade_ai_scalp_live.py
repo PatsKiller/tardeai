@@ -38,6 +38,23 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+def _process_age_s() -> float:
+    """Seconds since this PID started. market_day_gate.sh `exec`s python, so the PID is the one `timeout` spawned:
+    its start is when the 295 s cron/executor clock started (gate + interpreter start-up included)."""
+    try:
+        with open("/proc/self/stat", encoding="ascii") as fh:
+            start_ticks = int(fh.read().rsplit(")", 1)[1].split()[19])
+        with open("/proc/uptime", encoding="ascii") as fh:
+            uptime_s = float(fh.read().split()[0])
+        age = uptime_s - start_ticks / os.sysconf("SC_CLK_TCK")
+        return age if 0 <= age < 3600 else 0.0
+    except Exception:  # noqa: BLE001 — non-Linux / no procfs: count from module import
+        return 0.0
+
+
+# Monotonic instant the process started: the per-cycle deadline counts from here, not from enrichment.
+PROCESS_T0 = time.monotonic() - _process_age_s()
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
@@ -47,10 +64,15 @@ RUN_LABEL = "scalp"
 RTH = ((9, 30), (16, 0))
 
 
+def _state_root() -> Path:
+    from scalp_cycle_receipt import state_root
+
+    return state_root()
+
+
 def projection_path() -> Path:
     """The shared scalp universe both engines read (one Finviz pull, one writer: this lane)."""
-    base = os.getenv("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
-    return Path(base) / "data" / "trade_ai" / "scalp_universe_latest.json"
+    return _state_root() / "data" / "trade_ai" / "scalp_universe_latest.json"
 
 
 def write_projection(scored, now: datetime) -> int:
@@ -67,13 +89,11 @@ def write_projection(scored, now: datetime) -> int:
 
 
 def state_path() -> Path:
-    base = os.getenv("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
-    return Path(base) / "state" / "trade_ai_scalp_live_state.json"
+    return _state_root() / "state" / "trade_ai_scalp_live_state.json"
 
 
 def receipt_path() -> Path:
-    base = os.getenv("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
-    return Path(base) / "data" / "runtime" / "trade_ai_scalp_live_last.json"
+    return _state_root() / "data" / "runtime" / "trade_ai_scalp_live_last.json"
 
 
 def write_receipt(status: str, now: datetime, *, universe: int | None = None, go: int | None = None,
@@ -195,7 +215,8 @@ def _cycle_receipt(status: str, day: str, slot: str, t0: datetime, stats: dict, 
             alerts_sent=(None if triggers is None else (int(triggers) if stats.get("alert_sent") else 0)),
             alerts_deduped=len(go_now & go_before) if status == "ok" else None,
             deadline_s=deadline_s, enrich_budget_s=enrich_s,
-            errors=list(stats.get("errors") or []) + list(extra_errors), release=ROOT.name))
+            errors=list(stats.get("errors") or []) + list(extra_errors), phase_s=stats.get("phase_s"),
+            budget_skips=stats.get("budget_skips") or (), release=ROOT.name))
     except Exception as e:  # noqa: BLE001 — the receipt is evidence, not a dependency of the cycle
         print(f"[scalp-live] cycle receipt write failed: {type(e).__name__}: {e}")
 
@@ -212,7 +233,6 @@ def main(argv=None) -> int:
     ap.add_argument("--force", action="store_true", help="run outside 09:30-16:00 ET")
     ap.add_argument("--dry-run", action="store_true", help="print the plan; no scan, write or send")
     a = ap.parse_args(argv)
-    proc_t0 = time.monotonic()   # the cron/executor timeout counts from (about) here, not from enrichment
     try:  # cron appends stdout to a file: block buffering lost every line of a killed cycle
         sys.stdout.reconfigure(line_buffering=True)
         sys.stderr.reconfigure(line_buffering=True)
@@ -244,6 +264,11 @@ def main(argv=None) -> int:
     def _on_term(signum, _frame):  # the cron/executor timeout: record the kill before dying
         _cycle_receipt("killed", day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s,
                        go_before=go_before, finished=datetime.now(ET), extra_errors=(f"signal {signum}",))
+        try:
+            write_receipt(scr.LEGACY_STATUS["killed"], datetime.now(ET),
+                          seconds=(datetime.now(ET) - t0).total_seconds())
+        except Exception:  # noqa: BLE001 — dying anyway; the ledger record above is the evidence
+            pass
         print(f"[scalp-live] {datetime.now(ET):%H:%M:%S} ET killed by signal {signum} in phase "
               f"{stats.get('phase')} after {(datetime.now(ET) - t0).total_seconds():.0f}s")
         os._exit(128 + int(signum))
@@ -254,7 +279,7 @@ def main(argv=None) -> int:
     except (ValueError, OSError):  # not the main thread: no handler, the receipt still covers ok/error
         pass
     try:
-        return _run_cycle(day, slot, now, t0, stats, deadline_s, enrich_s, go_before, proc_t0 + deadline_s)
+        return _run_cycle(day, slot, now, t0, stats, deadline_s, enrich_s, go_before, PROCESS_T0 + deadline_s)
     finally:
         if prev_handler is not None:
             signal.signal(signal.SIGTERM, prev_handler)
@@ -262,6 +287,18 @@ def main(argv=None) -> int:
 
 def _run_cycle(day: str, slot: str, now: datetime, t0: datetime, stats: dict, deadline_s: float,
                enrich_s: Optional[float], go_before: set, deadline_mono: Optional[float] = None) -> int:
+    import scalp_cycle_receipt as scr
+
+    def _failed(reason: str) -> int:
+        # #1589 fail-closed: no state save, no projection, no heartbeat; last_ok_at is carried, not advanced.
+        finished = datetime.now(ET)
+        _cycle_receipt("error", day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s, go_before=go_before,
+                       finished=finished, extra_errors=(reason,))
+        write_receipt(scr.LEGACY_STATUS["error"], finished, seconds=(finished - t0).total_seconds())
+        print(f"[scalp-live] cycle failed label={RUN_LABEL}: {reason} (phase {stats.get('phase')}, "
+              f"at={finished:%Y-%m-%dT%H:%M:%S}, slot={slot})", file=sys.stderr)
+        return 1
+
     try:
         from continuous_runner import run_live_cycle
 
@@ -271,26 +308,21 @@ def _run_cycle(day: str, slot: str, now: datetime, t0: datetime, stats: dict, de
                                 enrich_budget_s=enrich_s, bulk_catalysts=bulk_catalysts(), cycle_stats=stats,
                                 state_saver=lambda s: save_state(day, s), deadline_monotonic=deadline_mono,
                                 post_enrich_reserve_s=post_enrich_reserve())
-        stats["go_now"] = sorted(st.prev_go)
-        save_state(day, st)
-        n = write_projection(scored, datetime.now(ET)) if scored else 0
     except Exception as e:  # noqa: BLE001 — record the failure, then let cron see a non-zero exit
-        _cycle_receipt("error", day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s, go_before=go_before,
-                       finished=datetime.now(ET), extra_errors=(f"{type(e).__name__}: {e}",))
-        print(f"[scalp-live] {datetime.now(ET):%H:%M:%S} ET cycle error in phase {stats.get('phase')}: "
-              f"{type(e).__name__}: {e}")
-        return 1
+        return _failed(f"{type(e).__name__}: {e}")
+    if not isinstance(scored, list) or any(not isinstance(row, dict) for row in scored):
+        return _failed("no valid scored result")
+    stats["go_now"] = sorted(st.prev_go)
+    save_state(day, st)
+    n = write_projection(scored, datetime.now(ET))     # a completed empty cycle publishes a known-empty result
     finished = datetime.now(ET)
     secs = (finished - t0).total_seconds()
-    # run_live_cycle returns early (None) on an ingestion or scoring failure; it records those in stats["errors"]
-    # and never reaches phase "done". An early return with no error (an empty screener) is still an ok cycle.
-    status = "ok" if stats.get("phase") in (None, "start", "done") or not stats.get("errors") else "error"
-    _cycle_receipt(status, day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s, go_before=go_before,
+    _cycle_receipt("ok", day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s, go_before=go_before,
                    finished=finished)
-    write_receipt(status, finished, universe=n, go=len(st.prev_go), seconds=secs)
-    print(f"[scalp-live] heartbeat {status} label={RUN_LABEL} go={len(st.prev_go)} universe={n} seconds={secs:.0f} "
+    write_receipt(scr.LEGACY_STATUS["ok"], finished, universe=n, go=len(st.prev_go), seconds=secs)
+    print(f"[scalp-live] heartbeat ok label={RUN_LABEL} go={len(st.prev_go)} universe={n} seconds={secs:.0f} "
           f"budget_pct={100 * secs / deadline_s:.0f} at={finished:%Y-%m-%dT%H:%M:%S} slot={slot}")
-    return 0 if status == "ok" else 1
+    return 0
 
 
 if __name__ == "__main__":

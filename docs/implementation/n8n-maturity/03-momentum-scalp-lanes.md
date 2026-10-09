@@ -6,7 +6,8 @@
 **Companion docs:**
 - `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md` (#1573 and 4.0.0 lane packet);
 - `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md`;
-- `02-six-workflow-architecture.md` (A-design; not yet on main when this was written, so §3 follows the approved plan).
+- `02-six-workflow-architecture.md` (A-design, #1585). §3 and §5 use its `dispatch`/`watch` blocks (`schemas/registry-dispatch-block.schema.json`).
+- Schemas registered here: [`schemas/scalp-cycle-receipt.schema.json`](schemas/scalp-cycle-receipt.schema.json) (ScalpCycleReceipt@v1) and [`schemas/scalp-cycle-monitor.schema.json`](schemas/scalp-cycle-monitor.schema.json) (ScalpCycleMonitor@v1).
 
 ---
 
@@ -121,13 +122,13 @@ The post-promote sample is 3 slots, because the market closed 14 minutes after t
 
 | Defect | Fix |
 |---|---|
-| Budget counted from enrichment start | `run_live_cycle(deadline_monotonic=, post_enrich_reserve_s=)`. Lookups, and the bulk read, stop once fewer than `post_enrich_reserve_s` (100) remain before `cycle_deadline_s` (295), counted from process start. Deferred names score on the stale cache. Config: `config/trade_ai_scalp_lane.yaml`. |
+| Budget counted from enrichment start | `run_live_cycle(deadline_monotonic=, post_enrich_reserve_s=)`. The deadline counts from **process start** (`/proc/self/stat` start time: `market_day_gate.sh` `exec`s Python, so the PID is the one `timeout` spawned; gate and imports are inside the budget). Ingest is budgeted too: when ingest already ate the budget, the optional market snapshot is skipped, and lookups and the bulk read stop once fewer than `post_enrich_reserve_s` (100) remain before `cycle_deadline_s` (295). Deferred names score on the stale cache. Per-phase seconds (`budget.phase_s`) and skips land in every receipt. Config: `config/trade_ai_scalp_lane.yaml`. |
 | Killed cycles invisible | `ScalpCycleReceipt@v1` ledger: `started` before any work, then `ok`/`error`/`killed`. A SIGTERM handler writes `killed` with the phase reached, then exits 143. A `started` with no final record means SIGKILL or a crash. |
 | Block-buffered, untimestamped log | stdout/stderr line-buffered. Timestamped `cycle start slot=… pid=… release=…` line. The heartbeat line carries `budget_pct`, `at=` and `slot=`, keeping the `[scalp-live] heartbeat ok` prefix. |
 | Dedupe hole on a kill | `CycleState` (the "already alerted" memory) is saved through `state_saver` **before** the Telegram send, not only after the cycle. |
 | Two cycles in one slot (cron then n8n) | Slot guard: if the day's ledger already has an `ok` for this slot, the run exits 0 ("slot done"). The shared flock already stops concurrent runs. |
 | Early-close days | `in_rth` uses `market_session.current_market_session` (holidays and 13:00 closes), with the fixed window as the fallback. |
-| Ingestion/scoring failure read as ok | `run_live_cycle` fills `cycle_stats` (phase, symbols, signals, triggers, alert outcome, errors). An early return with errors is an `error` cycle (exit 1). |
+| Ingestion/scoring failure read as ok | Keeps #1589's fail-closed rule: a result that is not a list of dicts (None from an ingestion/scoring failure or an empty screener) is an `error` cycle: ledger `error`, legacy receipt `cycle_failed`, exit 1, no `save_state`, no projection, no heartbeat, `last_ok_at` not advanced. A completed empty cycle (`[]`) publishes a known-empty projection (#1589). `cycle_stats` records phase, symbols, signals, triggers, alert outcome and errors. |
 
 ### Not fixed here; follow-ups
 - **Deploy af9199ff4.** It is on main; the next promote carries it, together with this PR.
@@ -147,7 +148,7 @@ The post-promote sample is 3 slots, because the market closed 14 minutes after t
 ### 3.1 Minute-dispatcher entry and gate
 - **Registry fields** (rows in §5):
   - `scheduler.cron "*/5 9-15 * * 1-5"`, `scheduler.tz "America/New_York"`;
-  - `dispatch {gate: "rth_regular", class: "realtime", slot_s: 300, deadline_s: 295, start_deadline_s: 60, fire_offset_s: 0}`.
+  - 02 `dispatch` block: `{mode, cron ["*/5 9-15 * * 1-5"], tz, wave W1, class send, priority 1, retry_policy none, catchup_min 1, min_interval_s 240}` (full row in §5).
 - **`coordination/due`:**
   - computes slots with `scripts/lib/cron_schedule.next_run`;
   - emits only when `market_session.current_market_session(now) == "regular"`, which covers weekends, holidays and early closes (78 slots on a full day, 42 on an early close);
@@ -169,9 +170,8 @@ The post-promote sample is 3 slots, because the market closed 14 minutes after t
 | expiry | a request not started by slot + 60 s is never run: `RUN_EXPIRED` (counted MISSED) |
 
 **Executor concurrency request (to B3 and Agent 2):**
-- **Allowlist:** `class: "realtime"` and `start_deadline_s: 60`.
-- **Executor config:** `workers {realtime: 1, default: N, global_max: N+1}`.
-  - The realtime slot is **dedicated**: only `class: realtime` rows may use it, and no other class can borrow it, so a 5-min lane never queues behind a long job.
+- **Use 02's reserved worker:** 02 §executor reserves one worker for priority ≤ 1. The scalp lane registers at `priority: 1`, so it never queues behind a long job; no new class is needed.
+- **Start deadline:** `catchup_min: 1`; a request not started by slot + 60 s is MISSED (02's MISSED state), never run late.
   - The executor also refuses a second `RUNNING` row for the same `lane_id`.
 - **Ledger:**
   - `claim_next(class=…)`;
@@ -219,7 +219,9 @@ The post-promote sample is 3 slots, because the market closed 14 minutes after t
 - **P2 `trade-ai-scalp-live:MISSED_CYCLES`:** the latest due slots end in ≥ 2 consecutive misses.
 - **P1 `trade-ai-scalp-live:NO_CYCLES_30M`:** ≥ 30 min of RTH without an OK cycle.
 - **Incident shape:** each incident uses the fan-in shape with `detected_at` = the day, so the incident router dedupes it to one event per day.
-- **Wiring:** `scripts/n8n_incident_fanin.py` gains **source 3h**, which runs these rules on today's ledger. It stays silent until the ledger exists, so a release without B4 never pages. Source 3g (`STALLED`, last_ok > 12 min) stays as the coarse backstop.
+- **Wiring:** `scripts/n8n_incident_fanin.py` gains **source 3h**, which runs these rules on today's ledger. A **missing ledger during RTH counts as "no cycles"**: only the P1 can fire then (a P2 needs per-slot evidence), and not while the legacy last-run receipt shows an ok inside the P1 window (promote day). Source 3g (`STALLED`, last_ok > 12 min) stays as the coarse backstop.
+- **One status vocabulary:** ledger `ok` / `error` / `killed` map to the legacy receipt's `ok` / `cycle_failed` / `cycle_killed` (`scalp_cycle_receipt.LEGACY_STATUS`, also in the schema as `x-legacy-status-map`).
+- **State root and retention:** paths resolve through the shared `canonical_store_registry.production_state_root` (TRADEAI_STATE_ROOT, then the persistent-state marker). Daily ledger files older than 30 days are pruned when a new day's file is started; files with non-date names are never touched.
 - **The 6-workflow heartbeat watcher** should call the same `evaluate()`, or `check_scalp_cycles.py --exit-code`, rather than a generic 2×cadence mtime rule. The generic rule pages every night for an RTH-only lane.
 
 ### 4.3 Command Center and digest line
@@ -245,20 +247,24 @@ Today, two manual no-timeout runs cost 9 slots.
 
 B1 holds the registry lock, so B4 does not edit `config/lane_registry.json`.
 
-**(a) Amend `trade-ai-scalp-live`.** Add these fields and keep everything else as on main:
+**(a) Amend `trade-ai-scalp-live`.** Add these blocks (shape per 02 `registry-dispatch-block.schema.json`) and keep everything else as on main:
 
 ```json
 {
   "lane_id": "trade-ai-scalp-live",
-  "scheduler": {"kind": "cron", "cron": "*/5 9-15 * * 1-5", "tz": "America/New_York"},
-  "dispatch": {"gate": "rth_regular", "class": "realtime", "slot_s": 300, "deadline_s": 295,
-               "start_deadline_s": 60, "fire_offset_s": 0, "retry": {"max": 0}},
+  "dispatch": {"mode": "dry_run", "cron": ["*/5 9-15 * * 1-5"], "tz": "America/New_York", "wave": "W1",
+               "class": "send", "priority": 1, "retry_policy": "none", "catchup_min": 1, "min_interval_s": 240},
+  "watch": {"factor": 2.0, "severity": "P2", "max_run_s": 295},
   "cycle_monitor": {"kind": "scalp_cycle_ledger", "path": "data/runtime/scalp_cycle_receipts",
                     "schema": "ScalpCycleReceipt@v1", "stale_after_min_rth": 10,
                     "p2_consecutive_missed": 2, "p1_rth_gap_min": 30,
                     "clean_day": {"ok_rate_min": 0.95, "max_p2_episodes": 1, "max_rth_gap_min": 30}}
 }
 ```
+
+- `priority: 1` puts the lane on 02's **reserved worker** (priority ≤ 1), which is the "never queue a 5-min lane behind a long job" guarantee; `catchup_min: 1` means a slot not started within a minute is MISSED, not run late; `retry_policy: none` (a cycle may already have sent).
+- 02's `dispatch` block has no market-session gate field; the RTH gate stays `market_gate: true` on the allowlist plus the runner's calendar-aware `in_rth`, and `coordination/due` should honour `active_days` and skip non-regular sessions (request to A-design: a `session: "rth_regular"` field).
+- `cycle_monitor` is a B4 proposal outside 02's schema; until it is adopted, the rules are code constants in `scripts/lib/scalp_cycle_monitor.py`.
 
 **(b) New rows for lines that today are only in `undeclared_baseline`.** All have `owner: "scalp"` and `state: "ACTIVE"`; the `expression` is the exact crontab text.
 
@@ -295,7 +301,7 @@ B1 must confirm the exact heartbeat filename against the dev tree's `data/active
 ## 6. Cutover wave placement
 
 - **The gate is 3 clean market days.** The program's generic bar is **2 clean RTH days in shadow**. AGENTS.md 4.0.0 §23.3 requires **3 market days** of n8n `RUN_DONE` with no `STALLED` before the cron line retires. **The stricter rule governs.**
-- **Wave:** scalps go in the **first (early) wave**, alone, under `class: realtime`, and only after both of these:
+- **Wave:** scalps go in the **first (early) wave**, alone, on the reserved priority-1 worker, and only after both of these:
   - (a) **2 clean RTH days in shadow**, with the dispatcher firing `--dry-run`;
   - (b) **3 clean live market days**, with the n8n canary and cron still present.
 - **Clean RTH day** (`check_scalp_cycles.py` `clean_day: true`, plus the ledger):
@@ -324,5 +330,5 @@ B1 must confirm the exact heartbeat filename against the dev tree's `data/active
 2. **"3 days of RUN_DONE" is mostly unreachable while cron is live.** Cron fires at the same minute and usually wins the flock, so n8n records `RUN_SKIPPED_LOCK`. The options:
    - a temporary cron offset `2-57/5` (cron grant), so n8n leads and cron is the true fallback; the slot guard makes cron's late run a no-op;
    - define the canary as "every slot done by exactly one runner", which the ledger's `scheduler` field proves.
-3. **Executor readiness.** The serial executor, inline retry sleep, FIFO claim and missing expiry conflict with "a realtime lane never queues". B3 and Agent 2 must land the class and worker change before the scalp canary.
+3. **Executor readiness.** The serial executor, inline retry sleep, FIFO claim and missing expiry conflict with "a 5-min lane never queues". B3 and Agent 2 must land 02's reserved worker, aged priority and MISSED state before the scalp canary.
 4. **Active Trader afternoon coverage** (§1.2).

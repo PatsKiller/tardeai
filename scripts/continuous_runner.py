@@ -466,7 +466,28 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     # errors, so a caller can write a per-cycle receipt (ScalpCycleReceipt@v1) even when the cycle is cut short.
     _cs: Dict = cycle_stats if cycle_stats is not None else {}
     _cs.setdefault("errors", [])
-    _cs["phase"] = "ingest"
+    _phase_t = {"t": time.monotonic()}
+    _cs["phase_s"] = {}
+
+    def _enter(phase: str) -> None:
+        # per-phase wall seconds, so a receipt shows where the 295 s went (ingest included)
+        now_m = time.monotonic()
+        prev = _cs.get("phase")
+        if prev:
+            _cs["phase_s"][prev] = round(_cs["phase_s"].get(prev, 0.0) + now_m - _phase_t["t"], 1)
+        _phase_t["t"] = now_m
+        _cs["phase"] = phase
+
+    def _past_deadline() -> bool:
+        # 2026-10-09 (n8n maturity B4): enrich_budget_s counts from enrichment start, but the 295 s timeout
+        # counts from process start; ingest took 1-3.4 min under load, so a 150 s budget still overran
+        # (2 of 3 cycles killed after the #1572 promote). A wall-clock deadline keeps post_enrich_reserve_s
+        # for scoring + persist + send whatever the earlier phases cost.
+        return (deadline_monotonic is not None
+                and time.monotonic() >= deadline_monotonic - float(post_enrich_reserve_s or 0))
+
+    _cs["phase"] = None
+    _enter("ingest")
 
     try:
         from finviz_ingestion import load_live_candidates
@@ -475,6 +496,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         live = load_live_candidates(root, run_label, date_str, out)
         tickers = live["dataframe"].to_dict(orient="records")
         if not tickers: return
+        _enter("inject")
         try:
             import sys as _sys_uc
             _uc_lib = root / "scripts" / "lib"
@@ -566,15 +588,20 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             pass
 
     _cs["symbols_scanned"] = len(tickers)
-    _cs["phase"] = "market"
+    _enter("market")
     market: Dict = {}
-    try:
-        from market_context import get_market_snapshot
-        market = get_market_snapshot()
-    except Exception as e:
-        print(f"  [live] market error: {e}")
+    if _past_deadline():
+        # ingest already ate the budget: the market snapshot only colours sector momentum and the alert header
+        print("  [live] market snapshot skipped (cycle deadline)")
+        _cs.setdefault("budget_skips", []).append("market")
+    else:
+        try:
+            from market_context import get_market_snapshot
+            market = get_market_snapshot()
+        except Exception as e:
+            print(f"  [live] market error: {e}")
 
-    _cs["phase"] = "catalysts"
+    _enter("catalysts")
     enrichments: Dict = {}
     try:
         from catalyst_cache import get_bulk, set_bulk
@@ -586,15 +613,6 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         fresh, deferred = {}, []
         _enrich_t0 = time.monotonic()
         bulk_note = ""
-
-        def _past_deadline() -> bool:
-            # 2026-10-09 (n8n maturity B4): enrich_budget_s counts from enrichment start, but the 295 s timeout
-            # counts from process start; ingest took 1-3.4 min under load, so a 150 s budget still overran
-            # (2 of 3 cycles killed after the #1572 promote). A wall-clock deadline keeps post_enrich_reserve_s
-            # for scoring + persist + send whatever the earlier phases cost.
-            return (deadline_monotonic is not None
-                    and time.monotonic() >= deadline_monotonic - float(post_enrich_reserve_s or 0))
-
         if bulk_catalysts and bulk_catalysts.get("bulk_enabled") and _past_deadline():
             deferred.extend(miss)
             miss = []
@@ -650,7 +668,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         print(f"  [live] catalyst error: {e}")
         _cs["errors"].append(f"catalysts: {type(e).__name__}: {e}"[:200])
 
-    _cs["phase"] = "score"
+    _enter("score")
     try:
         from scoring import score_all, filter_candidates
         from short_interest import enrich_short_interest, apply_squeeze_bonus_to_scores
@@ -710,7 +728,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             state_saver(state)
         except Exception as _e:  # noqa: BLE001 — the caller saves again after the cycle
             _cs["errors"].append(f"state_save: {type(_e).__name__}: {_e}"[:200])
-    _cs["phase"] = "persist"
+    _enter("persist")
     _cs["signals"] = sum(1 for t in scored if t.get("decision") == "GO")
     _cs["triggers"] = len(triggers)
 
@@ -796,7 +814,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         print(f"  [live] db persist error: {_e}")
         _cs["errors"].append(f"db_persist: {type(_e).__name__}: {_e}"[:200])
 
-    _cs["phase"] = "alert"
+    _enter("alert")
     _cs["alert_sent"] = False
     if triggers:
         print(f"  [live] {len(triggers)} trigger(s): {[t['type'] for t in triggers]}")
@@ -812,7 +830,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             _cs["errors"].append(f"alert: {type(_e).__name__}: {_e}"[:200])
     else:
         print("  [live] no changes  -- alerts suppressed")
-    _cs["phase"] = "done"
+    _enter("done")
 
     # Refresh dashboard (no PDF/DOCX). The 5-min scalp lane scores a scalp-only subset, so it does not
     # overwrite the main dashboard / delta state (publish_dashboard=False).

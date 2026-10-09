@@ -27,11 +27,23 @@ LANE_ID = "trade-ai-scalp-live"
 LEDGER_REL = "data/runtime/scalp_cycle_receipts"
 FINAL_STATUSES = ("ok", "error", "killed")
 STATUSES = ("started",) + FINAL_STATUSES
+# One status vocabulary: the per-cycle ledger status -> the legacy last-run receipt (TradeAIScalpLiveReceipt@v1,
+# read by fan-in 3g and the registry output_signal). "cycle_failed" is #1589's fail-closed status.
+LEGACY_STATUS = {"ok": "ok", "error": "cycle_failed", "killed": "cycle_killed"}
+RETENTION_DAYS = 30           # daily ledger files older than this are pruned when a new day's file is started
 
 
 def state_root() -> Path:
-    base = os.getenv("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
-    return Path(base)
+    """The canonical state root (scripts/lib/canonical_store_registry.production_state_root: TRADEAI_STATE_ROOT,
+    then the persistent-state marker), so the ledger lands where every other lane's receipts land."""
+    import sys
+
+    repo = str(Path(__file__).resolve().parents[2])
+    if repo not in sys.path:      # canonical_store_registry imports `scripts.lib.*`
+        sys.path.append(repo)
+    from scripts.lib.canonical_store_registry import production_state_root
+
+    return Path(production_state_root())
 
 
 def ledger_path(day: str, root: Optional[Path] = None) -> Path:
@@ -52,7 +64,8 @@ def build(status: str, *, day: str, slot: str, started_at: datetime, finished_at
           phase: Optional[str] = None, symbols_scanned: Optional[int] = None, signals: Optional[int] = None,
           triggers: Optional[int] = None, alerts_sent: Optional[int] = None, alerts_deduped: Optional[int] = None,
           deadline_s: Optional[float] = None, enrich_budget_s: Optional[float] = None,
-          errors: Iterable[str] = (), scheduler: Optional[str] = None, release: Optional[str] = None,
+          errors: Iterable[str] = (), phase_s: Optional[dict] = None, budget_skips: Iterable[str] = (),
+          scheduler: Optional[str] = None, release: Optional[str] = None,
           lane_id: str = LANE_ID) -> dict[str, Any]:
     if status not in STATUSES:
         raise ValueError(f"unknown ScalpCycleReceipt status {status!r}")
@@ -66,7 +79,7 @@ def build(status: str, *, day: str, slot: str, started_at: datetime, finished_at
         "symbols_scanned": symbols_scanned, "signals": signals, "triggers": triggers,
         "alerts_sent": alerts_sent, "alerts_deduped": alerts_deduped,
         "budget": {"deadline_s": deadline_s, "enrich_budget_s": enrich_budget_s, "used_s": seconds,
-                   "used_pct": used_pct},
+                   "used_pct": used_pct, "phase_s": dict(phase_s or {}), "skipped": list(budget_skips)},
         "errors": [str(e)[:200] for e in errors][:20],
         "scheduler": scheduler or os.getenv("TRADEAI_SCHEDULER") or ("n8n" if os.getenv("TRADEAI_RUN_ID") else "cron"),
         "run_id": os.getenv("TRADEAI_RUN_ID") or None,
@@ -78,12 +91,33 @@ def append(doc: dict[str, Any], root: Optional[Path] = None) -> Path:
     """Append one record (single write + flush + fsync, so a following SIGKILL cannot lose it)."""
     p = ledger_path(doc["date"], root)
     p.parent.mkdir(parents=True, exist_ok=True)
+    if not p.exists():
+        prune(p.parent, keep_days=RETENTION_DAYS, today=doc["date"])
     line = json.dumps(doc, sort_keys=True) + "\n"
     with open(p, "a", encoding="utf-8") as fh:
         fh.write(line)
         fh.flush()
         os.fsync(fh.fileno())
     return p
+
+
+def prune(directory: Path, *, keep_days: int = RETENTION_DAYS, today: Optional[str] = None) -> list[str]:
+    """Delete daily ledger files whose date is more than keep_days before `today` (retention; files only)."""
+    from datetime import date, timedelta
+
+    try:
+        cutoff = (date.fromisoformat(today) if today else date.today()) - timedelta(days=keep_days)
+    except ValueError:
+        return []
+    removed = []
+    for f in directory.glob("*.jsonl"):
+        try:
+            if date.fromisoformat(f.stem) < cutoff:
+                f.unlink()
+                removed.append(f.name)
+        except (ValueError, OSError):
+            continue          # foreign file names are never touched
+    return removed
 
 
 def read_day(day: str, root: Optional[Path] = None) -> list[dict[str, Any]]:

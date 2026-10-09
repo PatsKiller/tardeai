@@ -117,8 +117,11 @@ def _scalp_lane_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
 
 def _scalp_cycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     """ScalpCycleReceipt@v1 rules (scripts/lib/scalp_cycle_monitor.py): P2 MISSED_CYCLES on 2 consecutive missed
-    RTH slots, P1 NO_CYCLES_30M on 30 min of RTH without an ok cycle. Silent until the day's ledger exists (the
-    receipt ships with n8n maturity B4), so a release without it never pages; outside RTH it is always quiet."""
+    RTH slots, P1 NO_CYCLES_30M on 30 min of RTH without an ok cycle. Outside RTH it is always quiet.
+
+    A MISSING ledger during RTH is "no cycles", not silence: the lane not running at all is exactly what the P1 is
+    for. Only the P1 can fire then (P2 needs per-slot evidence), and not while the legacy last-run receipt shows an
+    ok cycle inside the P1 window (the promote day: the first ledger record is at most one slot away)."""
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
         sys.path.insert(0, str(ROOT / "scripts" / "lib"))
@@ -127,15 +130,23 @@ def _scalp_cycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         from zoneinfo import ZoneInfo
 
         day = now.astimezone(ZoneInfo("America/New_York")).date().isoformat()
-        if not scr.ledger_path(day, root).exists():
-            NOTES["scalp_cycle_source"] = "no_ledger"
-            return []
-        doc = scm.evaluate(scr.read_day(day, root), now, day=day)
+        has_ledger = scr.ledger_path(day, root).exists()
+        doc = scm.evaluate(scr.read_day(day, root) if has_ledger else [], now, day=day)
     except Exception as e:  # noqa: BLE001 — a broken monitor is a note, not a page
         NOTES["scalp_cycle_source"] = f"error:{type(e).__name__}"
         return []
-    NOTES["scalp_cycle_source"] = f"ok:{doc['slots_ok']}/{doc['slots_due']}"
-    return list(doc["incidents"])
+    if has_ledger:
+        NOTES["scalp_cycle_source"] = f"ok:{doc['slots_ok']}/{doc['slots_due']}"
+        return list(doc["incidents"])
+    NOTES["scalp_cycle_source"] = "no_ledger"
+    legacy = _load(root / SCALP_RECEIPT_REL) or {}
+    try:
+        legacy_age_min = (now - datetime.fromisoformat(str(legacy.get("last_ok_at")))).total_seconds() / 60
+    except Exception:  # noqa: BLE001 — no legacy ok reads as no cycles
+        legacy_age_min = None
+    if legacy_age_min is not None and legacy_age_min < scm.P1_GAP_MIN:
+        return []
+    return [i for i in doc["incidents"] if i["severity"] == "P1"]
 
 
 PREV_RECEIPT: dict[str, Any] | None = None   # main() parks the previous fan-in receipt here before collect()

@@ -198,8 +198,14 @@ def test_fanin_source_is_silent_without_a_ledger_and_pages_with_one(tmp_path, mo
 
     monkeypatch.setattr(scm, "_default_session_fn", regular)
     now = at(13, 33).astimezone(timezone.utc)
-    assert F._scalp_cycle_findings(tmp_path, now) == []
+    got = F._scalp_cycle_findings(tmp_path, now)                       # no ledger in RTH = no cycles: P1 only
+    assert [(g["item"], g["severity"]) for g in got] == [("trade-ai-scalp-live:NO_CYCLES_30M", "P1")]
     assert F.NOTES["scalp_cycle_source"] == "no_ledger"
+    (tmp_path / "data" / "runtime").mkdir(parents=True)
+    (tmp_path / F.SCALP_RECEIPT_REL).write_text(json.dumps(
+        {"status": "ok", "last_ok_at": (now - timedelta(minutes=4)).isoformat()}))
+    assert F._scalp_cycle_findings(tmp_path, now) == []                # promote day: legacy ok is recent
+    assert F._scalp_cycle_findings(tmp_path, at(17, 0).astimezone(timezone.utc)) == []
     for r in full_day(until=(13, 0)):
         scr.append(r, tmp_path)
     got = F._scalp_cycle_findings(tmp_path, now)
@@ -251,7 +257,9 @@ def test_runner_records_an_ingestion_failure_as_error(tmp_path, monkeypatch):
     assert r.main(["--force"]) == 1
     recs = scr.read_day(datetime.now(ET).date().isoformat(), tmp_path)
     assert recs[-1]["status"] == "error" and recs[-1]["phase"] == "ingest"
-    assert json.loads(r.receipt_path().read_text())["status"] == "error"
+    legacy = json.loads(r.receipt_path().read_text())
+    assert legacy["status"] == "cycle_failed" and legacy["last_ok_at"] is None   # #1589 vocabulary; not advanced
+    assert not r.state_path().exists() and not r.projection_path().exists()   # fail closed: nothing published
 
     def boom(*a, **k):
         raise RuntimeError("db gone")
@@ -361,10 +369,10 @@ def test_runner_passes_a_wall_clock_deadline(tmp_path, monkeypatch):
 
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     seen = {}
-    monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: seen.update(k))
-    before = time.monotonic()
+    monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: seen.update(k) or [])
     assert r.main(["--force"]) == 0
-    assert before + 290 < seen["deadline_monotonic"] <= time.monotonic() + 295
+    assert seen["deadline_monotonic"] == r.PROCESS_T0 + 295.0          # from process start, not from enrichment
+    assert r.PROCESS_T0 <= time.monotonic()
     assert seen["post_enrich_reserve_s"] == 100.0
 
 
@@ -418,3 +426,33 @@ def test_live_cycle_defers_lookups_past_the_deadline(monkeypatch, tmp_path):
                       deadline_monotonic=time.monotonic() + 50, post_enrich_reserve_s=100)
     assert "lookup" not in calls and "bulk" not in calls and stats["symbols_scanned"] == 2
     assert stats["phase"] == "score" and any(e.startswith("scoring: RuntimeError") for e in stats["errors"])
+
+
+def test_retention_prunes_old_daily_files_only(tmp_path):
+    d = tmp_path / scr.LEDGER_REL
+    d.mkdir(parents=True)
+    for name in ("2026-08-01.jsonl", "2026-09-09.jsonl", "2026-09-10.jsonl", "notes.jsonl"):
+        (d / name).write_text("")
+    scr.append(ok_rec(10, 0), tmp_path)                                # first record of 2026-10-09 prunes
+    assert sorted(f.name for f in d.iterdir()) == ["2026-09-09.jsonl", "2026-09-10.jsonl", "2026-10-09.jsonl",
+                                                    "notes.jsonl"]
+
+
+def test_schemas_are_registered_and_match_the_writers():
+    sdir = ROOT / "docs/implementation/n8n-maturity/schemas"
+    rs = json.loads((sdir / "scalp-cycle-receipt.schema.json").read_text())
+    ms = json.loads((sdir / "scalp-cycle-monitor.schema.json").read_text())
+    rec = ok_rec(10, 0, phase_s={"ingest": 61.2}, budget_skips=["market"])
+    assert rs["properties"]["schema"]["const"] == rec["schema"] == scr.SCHEMA
+    assert set(rs["required"]) <= set(rec) and set(rs["properties"]["status"]["enum"]) == set(scr.STATUSES)
+    assert rs["x-legacy-status-map"] == scr.LEGACY_STATUS and rs["x-retention-days"] == scr.RETENTION_DAYS
+    assert set(rec) <= set(rs["properties"]) and rec["budget"]["phase_s"] == {"ingest": 61.2}
+    doc = scm.evaluate(full_day(), at(16, 30), day=DAY, session_fn=regular)
+    assert ms["properties"]["schema"]["const"] == doc["schema"] and set(ms["required"]) <= set(doc)
+    assert set(doc) <= set(ms["properties"])
+
+
+def test_ledger_uses_the_shared_state_root(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    assert scr.state_root() == tmp_path
+    assert scr.ledger_path(DAY) == tmp_path / "data/runtime/scalp_cycle_receipts/2026-10-09.jsonl"
