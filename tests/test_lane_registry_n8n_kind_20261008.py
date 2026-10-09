@@ -323,13 +323,10 @@ def test_the_gate_fails_on_a_double_scheduler_and_passes_once_the_line_is_retire
 
 
 def test_native_monitor_rows_do_not_flip_a_host_scheduler():
-    """Only existing native monitors are active; pending reminders never hide a host conversion."""
+    """Native monitors, declared N1 ownership and unscheduled reminders remain distinct."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
-    native = {
-        r["lane_id"]: r for r in reg["lanes"]
-        if (r.get("scheduler") or {}).get("kind") == "n8n"
-    }
+    native = {r["lane_id"]: r for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
     monitors = {"n8n-monitor-trade-ai", "n8n-monitor-dof"}
     reminders = {
         "openclaw-reminder-claude-plan-1",
@@ -337,6 +334,78 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "openclaw-reminder-supergrok-expiry",
         "openclaw-reminder-sentinelone-earnings",
     }
-    assert set(native) == monitors | reminders
-    assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
+    migrated = {
+        "crontab-snapshot-for-health-agent",
+        "n8n-pilot-dispatch",
+        "n8n-incident-fanin",
+        "n8n-research-intake-consumer",
+    }
+    assert set(native) == monitors | reminders | migrated
+    assert all(native[lane]["state"] == "ACTIVE" for lane in monitors | migrated)
+    for lane in migrated:
+        assert isinstance(native[lane]["scheduler"].get("cadence"), str)
+        assert lr.validate_row(native[lane]) == []
     assert all(native[lane]["state"] == "NEVER_SCHEDULED" for lane in reminders)
+
+
+@pytest.mark.parametrize(
+    "cadence",
+    [
+        " ".join(["docs"] * 337),
+        "*/5 * * * *\n",
+        "*/5 * * * *\x1b[0m",
+        "٥ * * * *",
+        "",
+        "* * * *",
+        "0 */5 * * * *",
+        "61 * * * *",
+        "*/0 * * * *",
+        "10-2 * * * *",
+        "+5 * * * *",
+        None,
+        ["*/5", "*", "*", "*", "*"],
+    ],
+    ids=[
+        "expanded-directory-list",
+        "newline",
+        "terminal-escape",
+        "non-ascii-digit",
+        "empty",
+        "four-fields",
+        "six-fields",
+        "out-of-range",
+        "zero-step",
+        "descending-range",
+        "signed-number",
+        "null",
+        "list",
+    ],
+)
+def test_n8n_provided_cadence_must_be_a_valid_recurring_cron_expression(cadence):
+    row = _row()
+    row["scheduler"]["cadence"] = cadence
+    errors = lr.validate_row(row)
+    assert any("scheduler.cadence" in error for error in errors), errors
+
+
+@pytest.mark.parametrize(
+    "cadence",
+    [
+        "*/5 * * * *",
+        "25 6-18/3 * * 1-5",
+        "0,30 9-16 * * 1-5",
+        "0 0 29 2 *",
+        "0 0 * * 0,7",
+        "  */15  * * * *  ",
+    ],
+)
+def test_n8n_valid_recurring_cadence_forms_are_accepted(cadence):
+    row = _row()
+    row["scheduler"]["cadence"] = cadence
+    assert lr.validate_row(row) == []
+
+
+def test_n8n_legacy_row_can_omit_scheduler_cadence_when_expected_cadence_is_declared():
+    row = _row()
+    row["scheduler"].pop("cadence")
+    assert lr.validate_row(row) == []

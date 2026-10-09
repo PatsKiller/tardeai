@@ -37,6 +37,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from .cron_schedule import parse as parse_cron
+
 SCHEMA = "LaneRegistry@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
@@ -174,6 +176,21 @@ def validate_row(row: dict[str, Any]) -> list[str]:
         # command text (or timer unit) so the double-scheduler conflict stays detectable.
         errs.append(f"{lane_id}: scheduler.match is required for kind=n8n (the retired cron "
                     "command text or timer unit, kept for host-conflict detection)")
+
+    if isinstance(sched, dict) and sched.get("kind") == SCHEDULER_N8N and "cadence" in sched:
+        cadence = sched["cadence"]
+        problem = f"{lane_id}: scheduler.cadence must be a valid five-field recurring cron expression"
+        if (
+            not isinstance(cadence, str)
+            or any(ord(char) < 32 or ord(char) > 126 for char in cadence)
+            or re.search(r"[^0-9*,/\- ]", cadence)
+        ):
+            errs.append(problem)
+        else:
+            try:
+                parse_cron(cadence)
+            except ValueError:
+                errs.append(problem)
 
     if state == STATE_ACTIVE and not row.get("expected_cadence_hours"):
         errs.append(f"{lane_id}: expected_cadence_hours is required when ACTIVE")

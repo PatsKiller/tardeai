@@ -3114,21 +3114,23 @@
       "lane_id": "crontab-snapshot-for-health-agent",
       "owner": "ops",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
-        "match": "crontab_snapshot.txt.tmp"
+        "kind": "n8n",
+        "expression": "c0d4c7845e5c4fcc",
+        "match": "crontab_snapshot.txt.tmp",
+        "cadence": "*/20 * * * *"
       },
       "expected_cadence_hours": 0.34,
       "state": "ACTIVE",
       "state_since": "2026-09-26",
-      "state_reason": "Declared 2026-09-26 by the P2 audit remediation R-03: the health agent runs under NoNewPrivileges, which strips crontab's setgid bit, so `crontab -l` fails inside the unit and every cron_missing check was silently skipped. This line writes a readable snapshot every 20 minutes that scripts/lib/crontab_snapshot.read_crontab falls back to. Installed under operator cron grant 1d4795f8471a664a (Telegram /approve).",
+      "state_reason": "Declared 2026-09-26 by the P2 audit remediation R-03: the health agent runs under NoNewPrivileges, which strips crontab's setgid bit, so `crontab -l` fails inside the unit and every cron_missing check was silently skipped. This line writes a readable snapshot every 20 minutes that scripts/lib/crontab_snapshot.read_crontab falls back to. Installed under operator cron grant 1d4795f8471a664a (Telegram /approve). Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "/api/v2/health findings hermes_crontab_unreadable + cron_sanity_check_hardened (audit R-03); scripts/lib/crontab_snapshot.py SNAPSHOT_CRON_LINE; tests/test_p2_alarms_truth_20260926.py; grant 1d4795f8471a664a.",
-      "note": "Every 20 min: crontab -l → persistent-state/data/runtime/crontab_snapshot.txt (atomic tmp+mv)."
+      "reason_evidence": "/api/v2/health findings hermes_crontab_unreadable + cron_sanity_check_hardened (audit R-03); scripts/lib/crontab_snapshot.py SNAPSHOT_CRON_LINE; tests/test_p2_alarms_truth_20260926.py; grant 1d4795f8471a664a.; docs/_evidence/runtime-convergence/20261009T004124Z/38-runtime-independent-inspection.json; 38-runtime-consumer-observation.json; 41-source-cadence-correction.md",
+      "note": "Every 20 min: crontab -l → persistent-state/data/runtime/crontab_snapshot.txt (atomic tmp+mv).",
+      "consumer": "scripts/lib/crontab_snapshot.py fallback reader used by the hardened health agent"
     },
     {
       "lane_id": "reconcile-alpaca-paper-options",
@@ -3652,41 +3654,45 @@
       "lane_id": "n8n-pilot-dispatch",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/15 * * * * n8n_pilot_dispatch.py --apply",
-        "match": "scripts/n8n_pilot_dispatch.py"
+        "kind": "n8n",
+        "expression": "078e8fcbea0c5020",
+        "match": "scripts/n8n_pilot_dispatch.py",
+        "cadence": "*/15 * * * *"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts.",
+      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts. Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_pilot_dispatch_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48",
-      "note": "Mirrors the five pilots' real receipts into the coordination ledger; no send, no charge, no production write."
+      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48; docs/_evidence/runtime-convergence/20261009T004124Z/38-runtime-independent-inspection.json; 38-runtime-consumer-observation.json; 41-source-cadence-correction.md",
+      "note": "Mirrors the five pilots' real receipts into the coordination ledger; no send, no charge, no production write.",
+      "consumer": "host coordination ledger and Command Center coordination projection; downstream acknowledgement is measured separately"
     },
     {
       "lane_id": "n8n-incident-fanin",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/5 * * * * n8n_incident_fanin.py --apply",
-        "match": "scripts/n8n_incident_fanin.py"
+        "kind": "n8n",
+        "expression": "722fac0e043ea5c4",
+        "match": "scripts/n8n_incident_fanin.py",
+        "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.1,
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts.",
+      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts. Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_incident_fanin_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48",
-      "note": "Reads breach detector rows (48h), --alert receipts, watchdogs and the lab backup receipt; one event per open finding; auto-closes on recovery."
+      "reason_evidence": "crontab -l (4 lines); persistent-state receipts n8n_pilot_dispatch_last.json / n8n_incident_fanin_last.json / backups/n8n/*_last.json; /api/v2/coordination/events status OK count 48; docs/_evidence/runtime-convergence/20261009T004124Z/38-runtime-independent-inspection.json; 38-runtime-consumer-observation.json; 41-source-cadence-correction.md",
+      "note": "Reads breach detector rows (48h), --alert receipts, watchdogs and the lab backup receipt; one event per open finding; auto-closes on recovery.",
+      "consumer": "host coordination incident ledger and Command Center incident projection"
     },
     {
       "lane_id": "n8n-lab-backup",
@@ -4259,21 +4265,23 @@
       "lane_id": "n8n-research-intake-consumer",
       "owner": "platform",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/15 * * * * n8n_research_intake_consumer.py --apply",
-        "match": "scripts/n8n_research_intake_consumer.py"
+        "kind": "n8n",
+        "expression": "21fd15d5f8a4c4da",
+        "match": "scripts/n8n_research_intake_consumer.py",
+        "cadence": "*/15 * * * *"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "state_since": "2026-10-08",
-      "state_reason": "Installed 2026-10-08 02:11Z under cron grant 6fa4f93c2a15ff9b right after release b18d8087b was promoted (backup ~/.local/state/tradeai/backups/crontab-20261008T021139Z-pre-research-intake.txt; crontab 449 -> 450 job lines). The gateway unit was re-installed in the same window (config-write grant 60bd0c8a7c5a269b) with TRADEAI_N8N_GATEWAY_EXTRA_LANES='incident-fanin research-intake'; /healthz durable:true. Consumer runs every 15 min, enqueues accepted research_request events into ri_research_queue under the RI desk's own cap and the intake daily cap (10).",
+      "state_reason": "Installed 2026-10-08 02:11Z under cron grant 6fa4f93c2a15ff9b right after release b18d8087b was promoted (backup ~/.local/state/tradeai/backups/crontab-20261008T021139Z-pre-research-intake.txt; crontab 449 -> 450 job lines). The gateway unit was re-installed in the same window (config-write grant 60bd0c8a7c5a269b) with TRADEAI_N8N_GATEWAY_EXTRA_LANES='incident-fanin research-intake'; /healthz durable:true. Consumer runs every 15 min, enqueues accepted research_request events into ri_research_queue under the RI desk's own cap and the intake daily cap (10). Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_research_intake_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "First live chain 2026-10-08 02:12Z: producer --apply accepted (durable) with sidecar rq-bb7cf931153b1af70269c67a; consumer --apply receipt data/runtime/n8n_research_intake_last.json listed 1, enqueued_today 1, ok true; ri_research_queue row 420 (topic agd20260810_trending_consumer_discretionary, source n8n-research-intake, status queued). Gate before this row: the */15 line was the one undeclared NEW cron line.",
-      "note": "Coordination only: n8n never calls Hermes or an LLM; the consumer enqueues through the RI desk's own writer (after-close drain, its own cap and LLM wrapper). Hermes subject types are typed refusals (no per-request enqueue path exists)."
+      "reason_evidence": "First live chain 2026-10-08 02:12Z: producer --apply accepted (durable) with sidecar rq-bb7cf931153b1af70269c67a; consumer --apply receipt data/runtime/n8n_research_intake_last.json listed 1, enqueued_today 1, ok true; ri_research_queue row 420 (topic agd20260810_trending_consumer_discretionary, source n8n-research-intake, status queued). Gate before this row: the */15 line was the one undeclared NEW cron line.; docs/_evidence/runtime-convergence/20261009T004124Z/38-runtime-independent-inspection.json; 38-runtime-consumer-observation.json; 41-source-cadence-correction.md",
+      "note": "Coordination only: n8n never calls Hermes or an LLM; the consumer enqueues through the RI desk's own writer (after-close drain, its own cap and LLM wrapper). Hermes subject types are typed refusals (no per-request enqueue path exists).",
+      "consumer": "ri_research_queue and the governed RI desk consumer"
     },
     {
       "lane_id": "lane-governance-packet-weekly",
