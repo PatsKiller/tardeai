@@ -21,6 +21,7 @@ import fcntl
 import hashlib
 import json
 import os
+import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -285,6 +286,8 @@ def list_operator_artifacts(
     path = store_path(root_p)
     rows.extend(_tail_rows(path))
     rows.extend(_buy_ready_rows(root_p, 50))
+    cadi_rows, cadi_status = _cadi_rows(root_p, limit)
+    rows.extend(cadi_rows)
 
     def keep(row: dict[str, Any]) -> bool:
         if schema and row.get("original_schema") != schema:
@@ -296,7 +299,7 @@ def list_operator_artifacts(
         return True
 
     rows = [r for r in rows if keep(r)]
-    rows.sort(key=lambda r: str(r.get("persisted_at") or ""), reverse=True)
+    rows.sort(key=lambda r: str(r.get("persisted_at") or r.get("source_as_of") or ""), reverse=True)
     counts: dict[str, int] = {}
     for r in rows:
         counts[str(r.get("original_schema"))] = counts.get(str(r.get("original_schema")), 0) + 1
@@ -309,7 +312,95 @@ def list_operator_artifacts(
         "total_matched": len(rows),
         "authority": AUTHORITY,
         "as_of": _now(),
+        "cadi_records": {"status": cadi_status, "store": "cross_asset_decisions.sqlite"},
     }
+
+
+def _cadi_rows(root: Path | None, limit: int) -> tuple[list[dict[str, Any]], str]:
+    """Read existing CADI records; never copy them or create a second writer.
+
+    Explicit roots are fixture/import inspection only. Production reads require
+    both source approvals and a separate activation flag; neither is inferred
+    from the presence of code, a file, or a scheduler-shadow receipt.
+    """
+    from scripts.lib.cross_asset.decision_store import DecisionStore, STORE_RELATIVE
+    from scripts.lib.cross_asset.canonical_decision import (
+        ERROR_SCHEMA, SCHEMA as DECISION_SCHEMA, validate_decision, validate_error_receipt,
+    )
+
+    if root is None:
+        registry_path = Path(__file__).resolve().parents[2] / "config" / "data_source_authority.json"
+        try:
+            domains = json.loads(registry_path.read_text())["domains"]
+        except (OSError, ValueError, TypeError, KeyError):
+            return [], "AUTHORITY_UNAVAILABLE"
+        if not isinstance(domains, list) or any(
+            not isinstance(row, dict) or not isinstance(row.get("domain"), str) for row in domains
+        ):
+            return [], "AUTHORITY_UNAVAILABLE"
+        required = {"cross_asset_evaluation_history", "cross_asset_decision_projection"}
+        approved = {
+            row["domain"] for row in domains
+            if row.get("domain") in required
+            and row.get("writer") == "scripts/lib/cross_asset/decision_store.py"
+            and isinstance(row.get("approval"), dict)
+            and all(isinstance(row["approval"].get(key), str) and row["approval"][key].strip()
+                    for key in ("approved_by", "approved_on", "reference", "scope"))
+        }
+        if approved != required:
+            return [], "SOURCE_APPROVAL_REQUIRED"
+        if os.environ.get("TRADEAI_CADI_RECORDS_READ_ENABLED") != "1":
+            return [], "NOT_ACTIVATED"
+        from scripts.lib.canonical_store_registry import production_state_root
+
+        root = Path(production_state_root())
+    store = DecisionStore(root / STORE_RELATIVE)
+    if not store.path.is_file():
+        return [], "UNAVAILABLE"
+    try:
+        records = store.history(limit=limit)
+        for row in records:
+            if not isinstance(row, dict):
+                return [], "STORE_READ_FAILED"
+            if row.get("schema") == DECISION_SCHEMA:
+                errors = validate_decision(row)
+            elif row.get("schema") == ERROR_SCHEMA:
+                errors = validate_error_receipt(row)
+            else:
+                return [], "STORE_READ_FAILED"
+            if errors:
+                return [], "STORE_READ_FAILED"
+        # Use retained decisions as a bounded source for latest views. More
+        # complete cross-asset pagination/ranking belongs to CADI-07.
+        for symbol in sorted({row["identity"]["symbol"] for row in records if isinstance(row.get("identity"), dict)}):
+            try:
+                records.append(store.projection(symbol))
+            except ValueError as exc:
+                # Distinct securities sharing one ticker must not be joined.
+                if str(exc) == "PROJECTION_IDENTITY_CONFLICT":
+                    return [], "IDENTITY_CONFLICT"
+                raise
+        return [
+            {
+                "schema": SCHEMA,
+                "original_schema": row["schema"],
+                "artifact_id": row.get("evaluation_id") or f"projection:{row['symbol']}@{row.get('as_of')}",
+                "artifact_id_basis": "source_evaluation",
+                "producer": "cross_asset.decision_store.DecisionStore",
+                "source_as_of": row.get("as_of"),
+                "persisted_at": None,  # Decision as_of is not a measured append time.
+                "evidence_class": "decision-shadow",
+                "authority": AUTHORITY,
+                "financial_action": False,
+                "source_ref": f"{STORE_RELATIVE}#{row.get('evaluation_id') or row.get('symbol')}",
+                "symbol": ((row.get("symbol") if isinstance(row.get("symbol"), str) else None)
+                           or (row["identity"].get("symbol") if isinstance(row.get("identity"), dict) else None)),
+                "decision_id": row.get("evaluation_id"),
+                "payload": _bounded(row)[0],
+            } for row in records
+        ], "AVAILABLE"
+    except (OSError, ValueError, TypeError, KeyError, sqlite3.Error):
+        return [], "STORE_READ_FAILED"
 
 
 __all__: Iterable[str] = [

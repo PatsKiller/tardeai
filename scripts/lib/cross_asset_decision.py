@@ -1,11 +1,12 @@
-"""Cross-asset decision intelligence primitives.
+"""Legacy event-envelope v1 cross-asset decision intelligence primitives.
 
 This module is deliberately pure and broker-free.  It creates a canonical,
-versioned comparison envelope for an equity signal and the option structures
+versioned compatibility envelope for an equity signal and the option structures
 that are appropriate to compare against it.  It does not price contracts,
 size positions, approve proposals, or submit orders.
 
-Contract: SymbolDecisionObject@v1
+Legacy contract: SymbolDecisionObject@v1. New producers use
+scripts.lib.cross_asset.canonical_decision; adapt_decision preserves this format.
 Authority: READ_ONLY_ADVISORY
 """
 from __future__ import annotations

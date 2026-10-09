@@ -5,6 +5,49 @@
   "as_of": "2026-10-02",
   "entries": [
     {
+      "name": "schema:SymbolDecisionObject@v2",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Canonical advisory evaluation retained in its single-writer SQLite history and read without copying through the existing CIO operator-artifacts audit panel. Production read requires source approval and separate activation. CADI-07 still owns the comparison/ranking UI, not this bounded audit-record view.",
+      "owner_hint": "scripts/lib/cross_asset/canonical_decision.py::build_decision",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts", "path": ["artifacts"],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cross_asset/decision_store.py::append", "store": "cross_asset_decisions.sqlite"
+      }
+    },
+    {
+      "name": "schema:CrossAssetDecisionError@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Per-symbol unknown-action errors remain in the same immutable history and are readable, with raw action and source references, in the existing CIO operator-artifacts audit panel. No duplicate artifact-store writer; production read stays disabled until approved and activated.",
+      "owner_hint": "scripts/lib/cross_asset/canonical_decision.py::error_receipt",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts", "path": ["artifacts"],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cross_asset/decision_store.py::append_error", "store": "cross_asset_decisions.sqlite"
+      }
+    },
+    {
+      "name": "schema:CrossAssetDecisionBatchReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Local batch-processing accounting for fixture/import tests, distinct from scheduler-shadow RunReceipt and organic decision-shadow evidence. Investment decisions and errors are classified separately; this wrapper is not a recommendation.",
+      "owner_hint": "scripts/lib/cross_asset/canonical_decision.py::process_decision_batch"
+    },
+    {
+      "name": "schema:CrossAssetDecisionProjection@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Latest projection is rebuilt from the immutable CADI history and projected read-only in the existing CIO operator-artifacts audit panel for a bounded set of retained subjects. Unknown/multiple-security identities are not joined. This source-level audit path is not runtime activation or the later CADI-07 ranking UI.",
+      "owner_hint": "scripts/lib/cross_asset/decision_store.py::projection",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts", "path": ["artifacts"],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cross_asset/decision_store.py::projection", "store": "cross_asset_decisions.sqlite"
+      }
+    },
+    {
       "name": "route:/api/v2/cio",
       "kind": "route",
       "classification": "RETIRE_CANDIDATE",

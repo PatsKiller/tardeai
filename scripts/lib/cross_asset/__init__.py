@@ -1,9 +1,17 @@
-"""Cross-asset decision intelligence — SymbolDecisionObject and shadow routing.
+"""Cross-asset decision intelligence — canonical v2 and legacy compatibility.
 
 READ_ONLY_ADVISORY. Never submits broker orders.
 """
 from __future__ import annotations
 
+from .canonical_decision import (
+    SCHEMA as CANONICAL_SCHEMA,
+    adapt_decision,
+    build_decision,
+    process_decision_batch,
+    validate_decision,
+)
+from .decision_store import DecisionStore
 from .symbol_decision_object import (
     SCHEMA,
     AUTHORITY,
@@ -23,6 +31,8 @@ from .security_research_spine import (
 )
 
 __all__ = [
+    "CANONICAL_SCHEMA", "adapt_decision", "build_decision", "process_decision_batch", "validate_decision",
+    "DecisionStore",
     "SCHEMA",
     "AUTHORITY",
     "new_symbol_decision",

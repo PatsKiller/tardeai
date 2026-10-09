@@ -1545,6 +1545,8 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 <!-- SOURCE_OF_TRUTH_TABLE_START -->
 | Domain | Class | Store of record | Single writer (how it is written) | Cadence | Stale after | Read path | Primary | Backup (same question) | Retired | No coverage | Approval |
 |---|---|---|---|---|---|---|---|---|---|---|---|
+| **cross_asset_evaluation_history** | derived | `cross_asset_evaluation_history` · `cio/cross_asset_decisions.sqlite` | `scripts/lib/cross_asset/decision_store.py` | explicit fixture/local invocation only; production scheduling is not activated in CADI-01 | 24h | — | native | — | — | `say_so` | **UNAPPROVED** |
+| **cross_asset_decision_projection** | derived | `cross_asset_decision_projection` · `cio/cross_asset_decisions.sqlite` | `scripts/lib/cross_asset/decision_store.py` | same transaction as explicit local evaluation; rebuild only by the single writer | 24h | — | native | — | — | `say_so` | **UNAPPROVED** |
 | **quote_price** | ingested | `market_quotes` | `scripts/lib/writers/market_quotes_writer.py` | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` | operator 2026-09-13 |
 | **symbol_identity** | ingested | `symbol_profiles` | `scripts/lib/writers/symbol_profiles_writer.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` | operator 2026-09-13 |
 | **analyst_opinion** | ingested | `yahoo_analyst_targets_history` | `scripts/pro_analyst_fetch.py` | daily | 168h | `analyst_detail` | yahoo | yfinance_on_demand | fmp, finnhub | `say_so` | operator 2026-09-13 |
