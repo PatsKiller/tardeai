@@ -8,9 +8,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Only a superseded PR run is cancelled. A push/main run is the exact-SHA evidence
+# release_grant_preflight.py requires (completed + success) before promote; cancelling it
+# left 17 main SHAs unpromotable since 10-01 (CI design audit 2026-10-09, Q1/R1).
 concurrency:
   group: agent-governance-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   agent-governance:
@@ -32,6 +35,30 @@ jobs:
           echo "PR_HEAD=$(git rev-parse HEAD)"
           echo "PR_BASE=${{ github.event.pull_request.base.sha }}"
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      # Server-side secrets scan (CI design audit 2026-10-09, S1/Q11). The local hooks can
+      # be skipped (--no-verify, TRADEAI_SKIP_SECRETS_SCAN=1, a commit made in the web UI);
+      # this required check cannot. Scans every commit of the PR (or of the push), file
+      # by file at that commit. No .env exists here, so it enforces the key patterns,
+      # secret FILE names and hardcode rules; the .env value match stays local. The whole
+      # tree is scanned nightly (cio-production-hardening-ci.yml, cio-hardening-full).
+      - name: Secrets scan (PR commits / pushed range)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            python3 scripts/check_no_secrets.py --range "${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif [ "$EVENT_NAME" = "push" ] && [ -n "$PUSH_BEFORE" ] \
+              && ! printf '%s' "$PUSH_BEFORE" | grep -Eq '^0+$' \
+              && git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+            python3 scripts/check_no_secrets.py --range "${PUSH_BEFORE}..${GITHUB_SHA}"
+          else
+            python3 scripts/check_no_secrets.py --tree
+          fi
 
       - uses: actions/setup-python@v5
         with:

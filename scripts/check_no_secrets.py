@@ -7,6 +7,15 @@ or the whole tree with --tree — contains an API-key pattern, a secret FILE, or
 
   python3 scripts/check_no_secrets.py            # scan staged changes (pre-commit)
   python3 scripts/check_no_secrets.py --tree     # scan all tracked files
+  python3 scripts/check_no_secrets.py --range BASE..HEAD   # every commit of a range (pre-push, CI)
+
+--range takes git rev-list arguments (``A..B``, or ``SHA --not --remotes`` for a new
+branch). It scans, for EVERY commit in the range, each file that commit adds or
+modifies, at that commit -- so a secret added in one commit and deleted in a later one
+is still caught (its blob is pushed either way). Merge commits contribute only the
+files that differ from every parent (conflict resolutions), not the merged-in branch.
+Exit 2 (not 0) when the range cannot be resolved, so a caller falls back to --tree
+rather than passing on an empty scan.
 
 WHAT IS AND IS NOT EXEMPTIBLE
 -----------------------------
@@ -103,6 +112,35 @@ def _tree_files():
     return [f for f in out.splitlines() if f.strip()]
 
 
+def _range_blobs(rev_args):
+    """[(display_name, path, commit)] for every A/C/M/R file of every commit in rev_args.
+
+    None when git cannot resolve the range (caller must not treat that as clean).
+    """
+    r = subprocess.run(["git", "rev-list", *rev_args], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    out = []
+    for commit in r.stdout.split():
+        d = subprocess.run(
+            ["git", "diff-tree", "-r", "-c", "--root", "--no-commit-id", "--name-only", "--diff-filter=ACMR", commit],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        if d.returncode != 0:
+            return None
+        for f in dict.fromkeys(x for x in d.stdout.splitlines() if x.strip()):
+            out.append((f"{f}@{commit[:9]}", f, commit))
+    return out
+
+
+def _blob_text(commit, path):
+    try:
+        return subprocess.run(["git", "show", f"{commit}:{path}"], cwd=ROOT, capture_output=True,
+                              text=True, errors="ignore").stdout
+    except Exception:
+        return ""
+
+
 def _content(f, staged):
     try:
         if staged:
@@ -113,21 +151,33 @@ def _content(f, staged):
 
 
 def main():
-    staged = "--tree" not in sys.argv
-    files = _staged_files() if staged else _tree_files()
+    staged = "--tree" not in sys.argv and "--range" not in sys.argv
+    blobs = {}
+    if "--range" in sys.argv:
+        rev_args = sys.argv[sys.argv.index("--range") + 1:]
+        found = _range_blobs(rev_args) if rev_args else None
+        if found is None:
+            print("  ✋ secrets scan: cannot resolve range " + " ".join(rev_args) + " -- scan --tree instead",
+                  file=sys.stderr)
+            sys.exit(2)
+        files = [name for name, _p, _c in found]
+        blobs = {name: (path, commit) for name, path, commit in found}
+    else:
+        files = _staged_files() if staged else _tree_files()
     env_vals = _env_values()
     chat_vals = _chat_id_values()
     secrets, hardcodes = [], []
     for f in files:
-        if ALLOW_FILE_RE.search(f):
+        path = blobs[f][0] if f in blobs else f
+        if ALLOW_FILE_RE.search(path):
             continue
-        if ENV_BAK_FILE_RE.search(f):
+        if ENV_BAK_FILE_RE.search(path):
             secrets.append((f, "env BACKUP file (*.env.bak* / *.env.old* / dot_env) must never be committed — shred, do not stage"))
             continue
-        if SECRET_FILE_RE.search(f):
+        if SECRET_FILE_RE.search(path):
             secrets.append((f, "secret FILE must never be committed"))
             continue
-        txt = _content(f, staged)
+        txt = _blob_text(blobs[f][1], path) if f in blobs else _content(f, staged)
         if not txt:
             continue
         for pat, label in PATTERNS:
@@ -137,7 +187,7 @@ def main():
             if v in txt:
                 secrets.append((f, f"value of {k} from .env"))
         # no-hardcoded-values (chat IDs + broker fallbacks) — .py only, line-aware, '# hardcode-ok' opt-out
-        if f.endswith(".py") and "tg_chat_ids.py" not in f:
+        if path.endswith(".py") and "tg_chat_ids.py" not in path:
             for i, line in enumerate(txt.splitlines(), 1):
                 # The chat-ID rule is LINE-aware and honours the same '# hardcode-ok'
                 # marker the broker rule has always had. It used to be a whole-file
@@ -168,7 +218,8 @@ def main():
         print("  Chat IDs -> tg_chat_ids.chat_ids(); broker/account -> the record's own account / env / DB.\n", file=sys.stderr)
     if secrets or hardcodes:
         sys.exit(1)
-    print(f"  ✓ no secrets or hardcoded values in {'staged change' if staged else 'tree'} ({len(files)} files scanned)")
+    scope = "range" if blobs or "--range" in sys.argv else ("staged change" if staged else "tree")
+    print(f"  ✓ no secrets or hardcoded values in {scope} ({len(files)} files scanned)")
     sys.exit(0)
 
 

@@ -150,6 +150,53 @@ def test_cache_is_rebuilt_when_a_file_changes(tmp_path):
     assert st == "rebuilt"
 
 
+def test_cache_key_is_content_not_mtime(tmp_path):
+    """2026-10-09 (audit Q7): a fresh CI checkout resets every mtime, so the size+mtime key
+    rebuilt the map on 35/35 runs. Same content -> cache hit, whatever the mtime."""
+    import os
+
+    root = _write(tmp_path, {"scripts/x.py": "A = 1\n", "tests/test_x.py": "import x\n"})
+    cache = tmp_path / "cache.json"
+    _m, st = ti.load_map(root, cache)
+    assert st == "rebuilt"
+    for p in (root / "scripts" / "x.py", root / "tests" / "test_x.py"):
+        os.utime(p, (1_000_000, 1_000_000))
+    _m, st = ti.load_map(root, cache)
+    assert st == "cache"
+    # same size, different content: the old key could not see this one either
+    (root / "scripts" / "x.py").write_text("B = 1\n", encoding="utf-8")
+    _m, st = ti.load_map(root, cache)
+    assert st == "rebuilt"
+
+
+def test_incremental_rebuild_reparses_only_changed_files_and_resolves_fresh(tmp_path):
+    files = {
+        "scripts/lib/__init__.py": "",
+        "scripts/lib/b.py": "X = 1\n",
+        "scripts/lib/a.py": "from lib import b\n",
+        "tests/test_a.py": "from scripts.lib.a import *\n",
+        "tests/test_new_target.py": "import lib.c\n",  # names a module that does not exist yet
+    }
+    root = _write(tmp_path, files)
+    cache = tmp_path / "cache.json"
+    m1, _ = ti.load_map(root, cache)
+    assert "tests/test_new_target.py" not in ti.impacted_tests(["scripts/lib/a.py"], m1)
+    # add the module: the UNCHANGED test's cached parse must now resolve to it
+    (root / "scripts" / "lib" / "c.py").write_text("from lib import a\n", encoding="utf-8")
+    m2, st = ti.load_map(root, cache)
+    assert st == "rebuilt"
+    assert m2["parsed"] == 1 and m2["reused"] == len(files)
+    assert m2["rdeps"] == ti.build_map(root)["rdeps"]  # identical to a cold build
+    assert "tests/test_new_target.py" in ti.impacted_tests(["scripts/lib/a.py"], m2)
+
+
+def test_workflow_caches_the_map_for_pr_runs():
+    wf = (ROOT / ".github" / "workflows" / "cio-production-hardening-ci.yml").read_text(encoding="utf-8")
+    assert wf.count("path: .git/tradeai/test_impact_map.json") == 2  # PR restore + nightly save from main
+    assert "restore-keys: |\n            test-impact-map-v2-" in wf
+    assert ti.SCHEMA == "TestImpactMap@v2"
+
+
 def _sel(changed, **kw):
     gates = [
         ("smoke", ["tests/test_s.py"]),
