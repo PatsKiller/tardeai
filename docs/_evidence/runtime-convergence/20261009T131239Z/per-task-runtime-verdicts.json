@@ -1,0 +1,247 @@
+{
+  "schema": "AssignedTaskLiveAssessment@v1",
+  "as_of": "2026-10-09T13:21:19.897921+00:00",
+  "observation_completed_at": "2026-10-09T13:15:21.691428+00:00",
+  "CURRENT_SHA": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+  "runtime_artifact": "/tmp/tradeai-assigned-live-audit-20261009T131149Z.json",
+  "runtime_artifact_sha256": "41b361b9985dfd8a393a2cf7614781fe3fc66896875336547128dabae04649b0",
+  "n8n_artifact": "/tmp/tradeai-assigned-live-audit-n8n-20261009T131149Z.json",
+  "maturity_artifact": "/tmp/tradeai-maturity-live-proof-20261009T131820Z.json",
+  "tasks": [
+    {
+      "task": "CURRENT identity, API and Command Center build",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "release": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+        "api_http": 200,
+        "api_ok": true,
+        "build_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "built_at": "2026-10-09T12:43:10.599Z"
+      },
+      "limitation": null
+    },
+    {
+      "task": "Relay -> gateway -> executor durable run path",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "core_process_sha_matches": true,
+        "gateway_health_http": 200,
+        "current_natural_host_completions": 13
+      },
+      "limitation": "Burst load/SYN-stall acceptance was not re-run by this read-only audit."
+    },
+    {
+      "task": "n8n-pilot-dispatch execution and output",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "current_natural_completion_count": 2,
+        "last_completed": "2026-10-09T13:15:03.622144+00:00",
+        "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-078e8fcbea0c5020-1161.json",
+        "exit_code": 0,
+        "output_advanced": true
+      },
+      "limitation": "Execution/output proof does not establish original shadow/canary ordering, cutover readiness, or downstream acknowledgement."
+    },
+    {
+      "task": "n8n-research-intake-consumer execution and output",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "current_natural_completion_count": 2,
+        "last_completed": "2026-10-09T13:15:04.329576+00:00",
+        "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-21fd15d5f8a4c4da-1160.json",
+        "exit_code": 0,
+        "output_advanced": true
+      },
+      "limitation": "Execution/output proof does not establish original shadow/canary ordering, cutover readiness, or downstream acknowledgement."
+    },
+    {
+      "task": "n8n-incident-fanin execution and output",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "current_natural_completion_count": 4,
+        "last_completed": "2026-10-09T13:15:09.047115+00:00",
+        "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1162.json",
+        "exit_code": 0,
+        "output_advanced": true
+      },
+      "limitation": "Execution/output proof does not establish original shadow/canary ordering, cutover readiness, or downstream acknowledgement."
+    },
+    {
+      "task": "crontab-snapshot-for-health-agent execution and output",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "current_natural_completion_count": 1,
+        "last_completed": "2026-10-09T13:00:03.150685+00:00",
+        "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-1153.json",
+        "exit_code": 0,
+        "output_advanced": true
+      },
+      "limitation": "Execution/output proof does not establish original shadow/canary ordering, cutover readiness, or downstream acknowledgement."
+    },
+    {
+      "task": "N1 strict shadow, canary, lock equivalence and downstream consumer acceptance",
+      "status": "LIVE_UNPROVEN",
+      "proof": {
+        "source_intent": "candidate cron-owned NO_GO; CURRENT n8n-owned",
+        "source_consumers_declared": true,
+        "CURRENT_consumers": [
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "limitation": "Current live completions cannot retroactively satisfy the missing pre-cutover shadow/canary proof. Snapshot original cron was unlocked; consumer acknowledgements were not measured."
+    },
+    {
+      "task": "N2 stored predecessor gates",
+      "status": "LIVE_FAILING",
+      "proof": {
+        "active_unsafe_gates": [
+          "0a170db6744afd7f",
+          "0d48d2951cdc0cd0",
+          "19e0ed9711cfb320",
+          "c7dc5a8273bf6f44"
+        ],
+        "waiting_count": 0
+      },
+      "limitation": "All four request dry_run; no waiting execution or actual live duplicate effect observed. Stored Code violates strict proof and bounded-attempt contracts."
+    },
+    {
+      "task": "N2 corrected templates and offline 48-case gate matrix",
+      "status": "SOURCE_ONLY",
+      "proof": {
+        "prior_test_artifact": "/tmp/tradeai-n2-independent-results-20261009.json",
+        "passed_cases": 48
+      },
+      "limitation": "Source correction is not present in the four stored active workflow definitions."
+    },
+    {
+      "task": "n8n runtime availability",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "health_http": 200,
+        "health_status": "ok"
+      },
+      "limitation": "Availability is distinct from workflow security and execution-status correctness."
+    },
+    {
+      "task": "n8n execution-status reporting",
+      "status": "LIVE_FAILING",
+      "proof": {
+        "db_running_count": 26,
+        "matching_host_done_and_natural_green": 26
+      },
+      "limitation": "This reporting inconsistency is not evidence of in-flight host work or a basis for cancellation."
+    },
+    {
+      "task": "Owner MFA and least-privilege n8n DB role",
+      "status": "LIVE_FAILING",
+      "proof": {
+        "owner_mfa": [
+          {
+            "role": "global:owner",
+            "mfa_enabled": false,
+            "count": 1
+          }
+        ],
+        "db_role": {
+          "rolname": "n8n",
+          "rolsuper": true,
+          "rolcreaterole": true,
+          "rolcreatedb": true,
+          "rolreplication": true,
+          "rolbypassrls": true
+        }
+      },
+      "limitation": "No MFA, role privilege, credential, or authorization changes performed."
+    },
+    {
+      "task": "Independent watchdog timer and recent output",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "timer": {
+          "Id": "tradeai-n8n-lab-watchdog.timer",
+          "LoadState": "loaded",
+          "ActiveState": "active",
+          "SubState": "waiting",
+          "UnitFileState": "enabled",
+          "ActiveEnterTimestamp": "Wed 2026-10-07 11:50:12 EDT",
+          "NextElapseUSecRealtime": "",
+          "LastTriggerUSec": "Fri 2026-10-09 09:13:33 EDT",
+          "Result": "success"
+        },
+        "output_freshness": [
+          "FRESH"
+        ]
+      },
+      "limitation": "Recovery/restore/failure drill is unproven; API still reports watchdog runtime NOT_MEASURED/SOURCE_ONLY despite host observation."
+    },
+    {
+      "task": "Cron snapshot freshness/content",
+      "status": "LIVE_WORKING",
+      "proof": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt",
+        "exists": true,
+        "mtime": "2026-10-09T13:00:02.968949+00:00",
+        "sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+        "matches_current_crontab": true,
+        "consumer_proof": "NOT_MEASURED: no per-read consumer receipt"
+      },
+      "limitation": "Health-agent per-read consumption is NOT_MEASURED."
+    },
+    {
+      "task": "maturity-remeasure new live weekly canary",
+      "status": "LIVE_UNPROVEN",
+      "proof": {
+        "artifact": "/tmp/tradeai-maturity-live-proof-20261009T131820Z.json",
+        "mode": "live",
+        "legacy_cron_active": true,
+        "same_shared_lock": true,
+        "host_run_history_count": 0,
+        "cutover_receipt_count": 0
+      },
+      "limitation": "Observed two scheduler authorities may be canary overlap, but no canary flag, receipt, manual or natural proof establishes acceptance. Last artifact predates activation; no working weekly n8n claim."
+    },
+    {
+      "task": "Candidate cron-intent reconciliation and four-lane rollback",
+      "status": "SOURCE_ONLY",
+      "proof": {
+        "candidate_registry_sha256": "15f467ecd6f19b149a1b2d2d202244b6fdc4c4876054fdcaaa843c3214ab36fd",
+        "live_cron_jobs": 437,
+        "n1_retired_tags": {
+          "n8n-lab-watchdog": 0,
+          "n8n-research-intake-consumer": 1,
+          "crontab-snapshot-for-health-agent": 1,
+          "n8n-incident-fanin": 1,
+          "n8n-pilot-dispatch": 1
+        }
+      },
+      "limitation": "The four legacy lines remain retired and four live workflows remain active. Candidate source changes and tmp-only rollback rehearsals are not applied runtime changes."
+    }
+  ],
+  "no_manual_fires_or_runtime_changes": true,
+  "changes_observed": {
+    "prior_as_of": "2026-10-09T13:00:22.476962+00:00",
+    "added": [
+      {
+        "id": "e18d7849b4142927",
+        "name": "maturity-remeasure",
+        "active": true
+      }
+    ],
+    "removed_ids": [],
+    "changed": [
+      {
+        "id": "a26114588930ae9b",
+        "name": "maturity-remeasure-shadow",
+        "before_active": true,
+        "after_active": false,
+        "version_changed": false,
+        "gate_changed": false
+      }
+    ]
+  },
+  "changing_actor_identity": "NOT_MEASURED"
+}

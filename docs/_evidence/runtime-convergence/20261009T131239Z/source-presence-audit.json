@@ -1,0 +1,1773 @@
+{
+  "authority_config_files_identical_release_to_candidate": true,
+  "candidate_sha": "d04cb3585285ac55e7d8930dfc3dcb5dfd4a3f21",
+  "comparison_method": "Read installed bytes; compare SHA256/exact bytes against git show <sha>:<path>, then inspect source markers and AST. No repository imports, business scripts, provider calls, or runtime mutations.",
+  "current_expected_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+  "current_release_directory": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+  "current_symlink": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+  "deepseek_identity": {
+    "auth_env_name": "deepseek_tradeai",
+    "auth_type": "api_key",
+    "credential_slot_name": "deepseek_tradeai",
+    "enabled": true,
+    "evidence_class": "SOURCE_PRESENT_IN_RELEASE",
+    "kill_switch": false,
+    "logical_policies": {
+      "FAST": {
+        "model": "deepseek_flash",
+        "provider": "deepseek",
+        "reasoning_effort": null,
+        "thinking": "disabled"
+      },
+      "FAST_THINK": {
+        "model": "deepseek_flash",
+        "provider": "deepseek",
+        "reasoning_effort": "high",
+        "thinking": "enabled"
+      },
+      "PRO": {
+        "model": "deepseek_pro",
+        "provider": "deepseek",
+        "reasoning_effort": null,
+        "thinking": "disabled"
+      },
+      "PRO_MAX": {
+        "model": "deepseek_pro",
+        "provider": "deepseek",
+        "reasoning_effort": "max",
+        "thinking": "enabled"
+      },
+      "PRO_THINK": {
+        "model": "deepseek_pro",
+        "provider": "deepseek",
+        "reasoning_effort": "high",
+        "thinking": "enabled"
+      }
+    },
+    "models": {
+      "deepseek_flash": {
+        "display_name": "DeepSeek V4.1 Flash",
+        "enabled": true,
+        "model_id": "deepseek-flash",
+        "thinking_default": "disabled"
+      },
+      "deepseek_pro": {
+        "display_name": "DeepSeek V4.1 Flash (Pro tier retired)",
+        "enabled": true,
+        "model_id": "deepseek-flash",
+        "thinking_default": "enabled"
+      }
+    },
+    "note": "Logical Pro alias is explicitly retired-tier identity and resolves to deepseek-flash. Registry says API-key auth, not OAuth. Only metadata names read; no keys, balances, provider requests, or capability probes.",
+    "runtime_provider_success": "NOT_MEASURED",
+    "source_path": "config/llm_model_registry.json"
+  },
+  "features": [
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 4,
+              "text": "PROJECT_ROOT=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\""
+            }
+          ],
+          "TRADEAI_VENV": [
+            {
+              "line": 55,
+              "text": "PY=\"${TRADEAI_VENV_PYTHON:-${PY:-${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/python}}\""
+            }
+          ]
+        },
+        "release": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 4,
+              "text": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+            }
+          ],
+          "TRADEAI_VENV": []
+        }
+      },
+      "feature_id": "installed_launcher_root:run_pg_backup.sh",
+      "note": "Code-root default must follow installed launcher. Deliberate shared interpreter is separate from code root; no launcher was executed.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "linux_launchers/run_pg_backup.sh"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 3,
+              "text": "PROJECT_ROOT=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\""
+            }
+          ],
+          "TRADEAI_VENV": [
+            {
+              "line": 13,
+              "text": "source \"${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate\""
+            }
+          ]
+        },
+        "release": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 3,
+              "text": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+            }
+          ],
+          "TRADEAI_VENV": []
+        }
+      },
+      "feature_id": "installed_launcher_root:run_portfolio.sh",
+      "note": "Code-root default must follow installed launcher. Deliberate shared interpreter is separate from code root; no launcher was executed.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "linux_launchers/run_portfolio.sh"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 6,
+              "text": "PROJECT_ROOT=\"${PROJECT_ROOT:-$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)}\""
+            }
+          ],
+          "TRADEAI_VENV": [
+            {
+              "line": 18,
+              "text": "source \"${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate\""
+            }
+          ]
+        },
+        "release": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 6,
+              "text": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+            }
+          ],
+          "TRADEAI_VENV": []
+        }
+      },
+      "feature_id": "installed_launcher_root:run_portfolio_weekly.sh",
+      "note": "Code-root default must follow installed launcher. Deliberate shared interpreter is separate from code root; no launcher was executed.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "linux_launchers/run_portfolio_weekly.sh"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 6,
+              "text": "PROJECT_ROOT=\"${PROJECT_ROOT:-$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)}\""
+            }
+          ],
+          "TRADEAI_VENV": [
+            {
+              "line": 18,
+              "text": "source \"${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate\""
+            }
+          ]
+        },
+        "release": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 6,
+              "text": "PROJECT_ROOT=\"${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+            }
+          ],
+          "TRADEAI_VENV": []
+        }
+      },
+      "feature_id": "installed_launcher_root:run_portfolio_monthly.sh",
+      "note": "Code-root default must follow installed launcher. Deliberate shared interpreter is separate from code root; no launcher was executed.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "linux_launchers/run_portfolio_monthly.sh"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 8,
+              "text": "PROJECT_ROOT=\"${1:-$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)}\""
+            }
+          ],
+          "TRADEAI_VENV": [
+            {
+              "line": 33,
+              "text": "source \"${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate\""
+            }
+          ]
+        },
+        "release": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 8,
+              "text": "PROJECT_ROOT=\"${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}\""
+            }
+          ],
+          "TRADEAI_VENV": []
+        }
+      },
+      "feature_id": "installed_launcher_root:run_lookthrough.sh",
+      "note": "Code-root default must follow installed launcher. Deliberate shared interpreter is separate from code root; no launcher was executed.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "linux_launchers/run_lookthrough.sh"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 3,
+              "text": "PROJECT_ROOT=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\""
+            }
+          ],
+          "TRADEAI_VENV": [
+            {
+              "line": 13,
+              "text": "source \"${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate\""
+            }
+          ]
+        },
+        "release": {
+          "PROJECT_ROOT=": [
+            {
+              "line": 3,
+              "text": "PROJECT_ROOT=\"/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild\""
+            }
+          ],
+          "TRADEAI_VENV": []
+        }
+      },
+      "feature_id": "installed_launcher_root:run_price_cache.sh",
+      "note": "Code-root default must follow installed launcher. Deliberate shared interpreter is separate from code root; no launcher was executed.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "linux_launchers/run_price_cache.sh"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "--cadence must match": [
+            {
+              "line": 442,
+              "text": "\"--cadence must match the legacy cron schedule; schedule changes require separate approval\""
+            }
+          ],
+          "def canonical_lane_cadence": [
+            {
+              "line": 287,
+              "text": "def canonical_lane_cadence(expression: str) -> str:"
+            }
+          ],
+          "invalid --cadence": [
+            {
+              "line": 422,
+              "text": "problems.append(f\"invalid --cadence: {exc}\")"
+            }
+          ]
+        },
+        "release": {
+          "--cadence must match": [],
+          "def canonical_lane_cadence": [],
+          "invalid --cadence": []
+        }
+      },
+      "feature_id": "strict_cutover_cadence_validation",
+      "note": "Supplied cron cadence must be valid and match legacy schedule before scheduler/config/backup mutations; no cutover command executed.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/pipelines/cutover/_cutover.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "from .cron_schedule": [
+            {
+              "line": 41,
+              "text": "from .cron_schedule import parse as parse_cron"
+            }
+          ],
+          "from cron_schedule": [
+            {
+              "line": 43,
+              "text": "from cron_schedule import parse as parse_cron"
+            }
+          ],
+          "if __package__:": [
+            {
+              "line": 40,
+              "text": "if __package__:"
+            }
+          ],
+          "parse_cron(cadence)": [
+            {
+              "line": 194,
+              "text": "parse_cron(cadence)"
+            }
+          ],
+          "scheduler.cadence must": [
+            {
+              "line": 185,
+              "text": "problem = f\"{lane_id}: scheduler.cadence must be a valid five-field recurring cron expression\""
+            }
+          ]
+        },
+        "release": {
+          "from .cron_schedule": [],
+          "from cron_schedule": [],
+          "if __package__:": [],
+          "parse_cron(cadence)": [],
+          "scheduler.cadence must": []
+        }
+      },
+      "feature_id": "provided_n8n_registry_cadence_validation",
+      "note": "Release validator lacks supplied n8n cadence guard. Candidate preserves package and bare-import modes; old release bare import is also supported because it lacks the new import entirely.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/lib/lane_registry.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "process.get(\"fallback_allowed\"": [
+            {
+              "line": 682,
+              "text": "alternates = (\"secondary\", \"fallback\") if process.get(\"fallback_allowed\", False) is True else ()"
+            }
+          ]
+        },
+        "release": {
+          "process.get(\"fallback_allowed\"": []
+        }
+      },
+      "feature_id": "explicit_fallback_authority_enforced",
+      "note": "Candidate permits alternates only when process registry explicitly authorizes fallback; absent authorization remains False.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/lib/cio_governed_model_bridge.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "DEFAULT_RECOVERY_SUCCESSES": [
+            {
+              "line": 560,
+              "text": "from lib.provider_health import DEFAULT_RECOVERY_SUCCESSES"
+            },
+            {
+              "line": 576,
+              "text": "and failures > 0 and calls - failures >= DEFAULT_RECOVERY_SUCCESSES"
+            }
+          ],
+          "def _provider_health_is_fresh": [
+            {
+              "line": 525,
+              "text": "def _provider_health_is_fresh(health: dict[str, Any]) -> bool:"
+            }
+          ],
+          "expected_cadence_hours": [
+            {
+              "line": 542,
+              "text": "cadence = lane.get(\"expected_cadence_hours\")"
+            }
+          ],
+          "return \"healthy\"": [
+            {
+              "line": 592,
+              "text": "return \"healthy\""
+            }
+          ]
+        },
+        "release": {
+          "DEFAULT_RECOVERY_SUCCESSES": [],
+          "def _provider_health_is_fresh": [],
+          "expected_cadence_hours": [],
+          "return \"healthy\"": [
+            {
+              "line": 553,
+              "text": "return \"healthy\""
+            }
+          ]
+        }
+      },
+      "feature_id": "fresh_attributable_alternate_health",
+      "note": "Candidate requires aware nonfuture heartbeat within producer cadence and attributable recovery proof. Global health summary cannot qualify alternate; no provider health request made.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/lib/cio_governed_model_bridge.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "Rendering it must never": [
+            {
+              "line": 1942,
+              "text": "# Rendering it must never resolve again or make a second, unaccounted model call."
+            }
+          ],
+          "def _send_stream": [
+            {
+              "line": 1939,
+              "text": "def _send_stream(self, result: dict, messages: list, process_id: str,"
+            }
+          ],
+          "provider.generate(messages": [],
+          "provider.generate_stream(messages": []
+        },
+        "release": {
+          "Rendering it must never": [],
+          "def _send_stream": [
+            {
+              "line": 1895,
+              "text": "def _send_stream(self, result: dict, messages: list, process_id: str,"
+            }
+          ],
+          "provider.generate(messages": [
+            {
+              "line": 1920,
+              "text": "response = provider.generate(messages, model_id, tools=tools, max_tokens=max_tokens, stream=False)"
+            }
+          ],
+          "provider.generate_stream(messages": [
+            {
+              "line": 1931,
+              "text": "chunks = provider.generate_stream(messages, model_id, tools=tools, max_tokens=max_tokens)"
+            }
+          ]
+        }
+      },
+      "feature_id": "single_settled_result_stream",
+      "note": "Release stream method re-resolves then generates again; candidate renders already settled result. Static AST proof only, no paid calls or HTTP completion requests.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/lib/cio_governed_model_bridge.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "_LAST_FIELDS =": [
+            {
+              "line": 50,
+              "text": "_LAST_FIELDS = (\"run_id\", \"lane_id\", \"state\", \"exit_code\", \"finished_at\", \"requested_at\", \"mode\")"
+            }
+          ],
+          "_LAST_OPTIONAL =": [
+            {
+              "line": 52,
+              "text": "_LAST_OPTIONAL = (\"run_id\",)"
+            }
+          ]
+        },
+        "release": {
+          "_LAST_FIELDS =": [
+            {
+              "line": 50,
+              "text": "_LAST_FIELDS = (\"run_id\", \"lane_id\", \"state\", \"finished_at\", \"requested_at\", \"mode\")"
+            }
+          ],
+          "_LAST_OPTIONAL =": [
+            {
+              "line": 52,
+              "text": "_LAST_OPTIONAL = (\"requested_at\", \"mode\", \"run_id\", \"finished_at\", \"lane_id\")"
+            }
+          ]
+        }
+      },
+      "feature_id": "n2_required_exit_proof_projection",
+      "note": "Candidate exposes exit_code and preserves required mode/time/lane proof under response cap; release omits exit_code and can drop mode/requested_at.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/n8n_run_relay.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "body.schema": [
+            {
+              "line": 837,
+              "text": "\"const ok = status === 200 && body.schema === 'N8nRunRelayLast@v1' && body.status === 'OK' &&\","
+            }
+          ],
+          "last.exit_code": [
+            {
+              "line": 839,
+              "text": "\"  last.state === 'RUN_DONE' && last.exit_code === 0 && dayOk && timeOk;\","
+            }
+          ],
+          "last.lane_id": [
+            {
+              "line": 838,
+              "text": "\"  body.lane_id === AFTER && !!last && last.lane_id === AFTER && last.mode === 'live' &&\","
+            }
+          ],
+          "last.mode": [
+            {
+              "line": 838,
+              "text": "\"  body.lane_id === AFTER && !!last && last.lane_id === AFTER && last.mode === 'live' &&\","
+            }
+          ]
+        },
+        "release": {
+          "body.schema": [],
+          "last.exit_code": [],
+          "last.lane_id": [],
+          "last.mode": []
+        }
+      },
+      "feature_id": "n2_live_exit_zero_receipt_gate",
+      "note": "Candidate requires scoped live RUN_DONE/exit0 proof for both live and shadow child gates; no workflow activated.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/n8n_workflow_templates.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "etDay(requested)": [
+            {
+              "line": 831,
+              "text": "\"const requestDay = Number.isFinite(requestTime) ? etDay(requested) : '';\","
+            }
+          ],
+          "finishTime": [
+            {
+              "line": 828,
+              "text": "\"const finishTime = instant(finished);\","
+            },
+            {
+              "line": 832,
+              "text": "\"const finishedDay = Number.isFinite(finishTime) ? etDay(finished) : '';\","
+            },
+            {
+              "line": 835,
+              "text": "\"const timeOk = Number.isFinite(requestTime) && Number.isFinite(finishTime) &&\","
+            },
+            {
+              "line": 836,
+              "text": "\"  requestTime <= finishTime && finishTime <= now;\","
+            }
+          ],
+          "function instant": [
+            {
+              "line": 801,
+              "text": "\"function instant(value) {\","
+            }
+          ],
+          "requestTime": [
+            {
+              "line": 827,
+              "text": "\"const requestTime = instant(requested);\","
+            },
+            {
+              "line": 831,
+              "text": "\"const requestDay = Number.isFinite(requestTime) ? etDay(requested) : '';\","
+            },
+            {
+              "line": 835,
+              "text": "\"const timeOk = Number.isFinite(requestTime) && Number.isFinite(finishTime) &&\","
+            },
+            {
+              "line": 836,
+              "text": "\"  requestTime <= finishTime && finishTime <= now;\","
+            }
+          ]
+        },
+        "release": {
+          "etDay(requested)": [],
+          "finishTime": [],
+          "function instant": [],
+          "requestTime": []
+        }
+      },
+      "feature_id": "n2_aware_nonfuture_business_day_gate",
+      "note": "Candidate anchors business day to requested_at, permits appropriate overnight completion next day, validates aware/nonfuture ordered times, and retains ET/DST calendar semantics.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/n8n_workflow_templates.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "$runIndex": [
+            {
+              "line": 840,
+              "text": "\"const attempt = typeof $runIndex === 'number' && Number.isInteger($runIndex) && $runIndex >= 0\","
+            },
+            {
+              "line": 841,
+              "text": "\"  ? $runIndex + 1 : NaN;\","
+            }
+          ],
+          "Number.isInteger": [
+            {
+              "line": 840,
+              "text": "\"const attempt = typeof $runIndex === 'number' && Number.isInteger($runIndex) && $runIndex >= 0\","
+            },
+            {
+              "line": 842,
+              "text": "\"if (!Number.isInteger(attempt) || attempt > MAX_GATE_RETRIES) {\","
+            }
+          ],
+          "attempt >= MAX": [
+            {
+              "line": 846,
+              "text": "\"if (!ok && attempt >= MAX_GATE_RETRIES) {\","
+            }
+          ]
+        },
+        "release": {
+          "$runIndex": [],
+          "Number.isInteger": [],
+          "attempt >= MAX": []
+        }
+      },
+      "feature_id": "n2_five_total_attempts_run_index",
+      "note": "Candidate uses zero-based Code-node run index instead of output item count; fifth unsatisfied check fails, fifth success passes, at most four waits.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/n8n_workflow_templates.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "crontab-snapshot-for-health-agent": [
+            {
+              "line": 3114,
+              "text": "\"lane_id\": \"crontab-snapshot-for-health-agent\","
+            }
+          ],
+          "n8n-incident-fanin": [
+            {
+              "line": 3674,
+              "text": "\"lane_id\": \"n8n-incident-fanin\","
+            }
+          ],
+          "n8n-pilot-dispatch": [
+            {
+              "line": 3653,
+              "text": "\"lane_id\": \"n8n-pilot-dispatch\","
+            }
+          ],
+          "n8n-research-intake-consumer": [
+            {
+              "line": 4262,
+              "text": "\"lane_id\": \"n8n-research-intake-consumer\","
+            }
+          ]
+        },
+        "release": {
+          "crontab-snapshot-for-health-agent": [
+            {
+              "line": 3114,
+              "text": "\"lane_id\": \"crontab-snapshot-for-health-agent\","
+            }
+          ],
+          "n8n-incident-fanin": [
+            {
+              "line": 3674,
+              "text": "\"lane_id\": \"n8n-incident-fanin\","
+            }
+          ],
+          "n8n-pilot-dispatch": [
+            {
+              "line": 3653,
+              "text": "\"lane_id\": \"n8n-pilot-dispatch\","
+            }
+          ],
+          "n8n-research-intake-consumer": [
+            {
+              "line": 4262,
+              "text": "\"lane_id\": \"n8n-research-intake-consumer\","
+            }
+          ]
+        }
+      },
+      "feature_id": "four_n1_legacy_cron_no_go_source_intent",
+      "note": "Release declares four n8n owners. Candidate declares legacy cron restoration intent with NO_GO; this does not install cron, deactivate workflows, drain requests, or supply natural acceptance proof.",
+      "release_evidence_class": "SOURCE_ABSENT_IN_RELEASE",
+      "release_feature_present": false,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "config/lane_registry.json"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "/api/v2/scheduler-operations": [
+            {
+              "line": 54023,
+              "text": "if base_path == \"/api/v2/scheduler-operations\":"
+            }
+          ]
+        },
+        "release": {
+          "/api/v2/scheduler-operations": [
+            {
+              "line": 54023,
+              "text": "if base_path == \"/api/v2/scheduler-operations\":"
+            }
+          ]
+        }
+      },
+      "feature_id": "scheduler_operations_api",
+      "note": "Installed source presence only; parent independently verifies actually served API/build/route and browser behavior.",
+      "release_evidence_class": "SOURCE_PRESENT_IN_RELEASE",
+      "release_feature_present": true,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/api_v2.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "SchedulerOperations@v1": [
+            {
+              "line": 1,
+              "text": "\"\"\"Read-only SchedulerOperations@v1 projection of intent, host observations and receipts."
+            },
+            {
+              "line": 26,
+              "text": "SCHEMA = \"SchedulerOperations@v1\""
+            }
+          ]
+        },
+        "release": {
+          "SchedulerOperations@v1": [
+            {
+              "line": 1,
+              "text": "\"\"\"Read-only SchedulerOperations@v1 projection of intent, host observations and receipts."
+            },
+            {
+              "line": 26,
+              "text": "SCHEMA = \"SchedulerOperations@v1\""
+            }
+          ]
+        }
+      },
+      "feature_id": "scheduler_operations_read_only_projection",
+      "note": "Installed source presence only; parent independently verifies actually served API/build/route and browser behavior.",
+      "release_evidence_class": "SOURCE_PRESENT_IN_RELEASE",
+      "release_feature_present": true,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "scripts/lib/scheduler_operations.py"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "export default function SchedulerOperations": [
+            {
+              "line": 13,
+              "text": "export default function SchedulerOperations({ active = true }: { active?: boolean }) {"
+            }
+          ]
+        },
+        "release": {
+          "export default function SchedulerOperations": [
+            {
+              "line": 13,
+              "text": "export default function SchedulerOperations({ active = true }: { active?: boolean }) {"
+            }
+          ]
+        }
+      },
+      "feature_id": "scheduler_operations_frontend_component",
+      "note": "Installed source presence only; parent independently verifies actually served API/build/route and browser behavior.",
+      "release_evidence_class": "SOURCE_PRESENT_IN_RELEASE",
+      "release_feature_present": true,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "apps/command-center-v3/src/pages/SchedulerOperations.tsx"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "<SchedulerOperations": [
+            {
+              "line": 81,
+              "text": "{tab === 'operations' ? <SchedulerOperations /> : tab === 'migration' ? ("
+            }
+          ]
+        },
+        "release": {
+          "<SchedulerOperations": [
+            {
+              "line": 81,
+              "text": "{tab === 'operations' ? <SchedulerOperations /> : tab === 'migration' ? ("
+            }
+          ]
+        }
+      },
+      "feature_id": "scheduler_operations_coordination_default_route",
+      "note": "Installed source presence only; parent independently verifies actually served API/build/route and browser behavior.",
+      "release_evidence_class": "SOURCE_PRESENT_IN_RELEASE",
+      "release_feature_present": true,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "apps/command-center-v3/src/pages/CoordinationPage.tsx"
+    },
+    {
+      "candidate_evidence_class": "SOURCE_ONLY",
+      "candidate_feature_present": true,
+      "citations": {
+        "candidate": {
+          "SchedulerOperations@v1": [
+            {
+              "line": 20,
+              "text": "schema: 'SchedulerOperations@v1'; status: string; as_of: string | null; source_sha?: string | null"
+            }
+          ]
+        },
+        "release": {
+          "SchedulerOperations@v1": [
+            {
+              "line": 20,
+              "text": "schema: 'SchedulerOperations@v1'; status: string; as_of: string | null; source_sha?: string | null"
+            }
+          ]
+        }
+      },
+      "feature_id": "scheduler_operations_frontend_contract",
+      "note": "Installed source presence only; parent independently verifies actually served API/build/route and browser behavior.",
+      "release_evidence_class": "SOURCE_PRESENT_IN_RELEASE",
+      "release_feature_present": true,
+      "runtime_feature_proof": "NOT_MEASURED",
+      "source_path": "apps/command-center-v3/src/lib/schedulerOperations.ts"
+    }
+  ],
+  "files": {
+    "AGENTS.md": {
+      "candidate_sha256": "0fcf6542b7fb4d603879de82d9a04e5503e9c691eabe44183d5325018dc6bb90",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/AGENTS.md",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/AGENTS.md",
+      "installed_sha256": "0fcf6542b7fb4d603879de82d9a04e5503e9c691eabe44183d5325018dc6bb90",
+      "main_sha256": "0fcf6542b7fb4d603879de82d9a04e5503e9c691eabe44183d5325018dc6bb90",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "0fcf6542b7fb4d603879de82d9a04e5503e9c691eabe44183d5325018dc6bb90"
+    },
+    "AI_WORK_POLICY.md": {
+      "candidate_sha256": "d024b817f42fa736d788ff2dd8fcde511c55e1a30a306b259b664bacc1289fdf",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/AI_WORK_POLICY.md",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/AI_WORK_POLICY.md",
+      "installed_sha256": "d024b817f42fa736d788ff2dd8fcde511c55e1a30a306b259b664bacc1289fdf",
+      "main_sha256": "d024b817f42fa736d788ff2dd8fcde511c55e1a30a306b259b664bacc1289fdf",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "d024b817f42fa736d788ff2dd8fcde511c55e1a30a306b259b664bacc1289fdf"
+    },
+    "apps/command-center-v3/src/lib/schedulerOperations.ts": {
+      "candidate_sha256": "eac363ca2f1c6790ba1768315e96a8b85ba154a6a9b6747fb797b0a6e47f599e",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/apps/command-center-v3/src/lib/schedulerOperations.ts",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/apps/command-center-v3/src/lib/schedulerOperations.ts",
+      "installed_sha256": "eac363ca2f1c6790ba1768315e96a8b85ba154a6a9b6747fb797b0a6e47f599e",
+      "main_sha256": "eac363ca2f1c6790ba1768315e96a8b85ba154a6a9b6747fb797b0a6e47f599e",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "eac363ca2f1c6790ba1768315e96a8b85ba154a6a9b6747fb797b0a6e47f599e"
+    },
+    "apps/command-center-v3/src/pages/CoordinationPage.tsx": {
+      "candidate_sha256": "b0adc6a0b6b3eee1ec9293023992338fa3040bb8ce9d07a34636a7b0a0f8817a",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/apps/command-center-v3/src/pages/CoordinationPage.tsx",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/apps/command-center-v3/src/pages/CoordinationPage.tsx",
+      "installed_sha256": "b0adc6a0b6b3eee1ec9293023992338fa3040bb8ce9d07a34636a7b0a0f8817a",
+      "main_sha256": "b0adc6a0b6b3eee1ec9293023992338fa3040bb8ce9d07a34636a7b0a0f8817a",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "b0adc6a0b6b3eee1ec9293023992338fa3040bb8ce9d07a34636a7b0a0f8817a"
+    },
+    "apps/command-center-v3/src/pages/SchedulerOperations.tsx": {
+      "candidate_sha256": "b6b67513fbc8862d9dcc9af9e0a4d03efa7898413b8355fbe90c426f6f6edc3a",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/apps/command-center-v3/src/pages/SchedulerOperations.tsx",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/apps/command-center-v3/src/pages/SchedulerOperations.tsx",
+      "installed_sha256": "b6b67513fbc8862d9dcc9af9e0a4d03efa7898413b8355fbe90c426f6f6edc3a",
+      "main_sha256": "b6b67513fbc8862d9dcc9af9e0a4d03efa7898413b8355fbe90c426f6f6edc3a",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "b6b67513fbc8862d9dcc9af9e0a4d03efa7898413b8355fbe90c426f6f6edc3a"
+    },
+    "config/lane_registry.json": {
+      "candidate_sha256": "15f467ecd6f19b149a1b2d2d202244b6fdc4c4876054fdcaaa843c3214ab36fd",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/lane_registry.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/lane_registry.json",
+      "installed_sha256": "90301157a44b051f22596365310953c82b44a8fb5e29b6aa741a23194fe9b1a7",
+      "main_sha256": "90301157a44b051f22596365310953c82b44a8fb5e29b6aa741a23194fe9b1a7",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "15f467ecd6f19b149a1b2d2d202244b6fdc4c4876054fdcaaa843c3214ab36fd"
+    },
+    "config/llm_model_registry.json": {
+      "candidate_sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/llm_model_registry.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/llm_model_registry.json",
+      "installed_sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072",
+      "main_sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072"
+    },
+    "config/llm_process_registry.json": {
+      "candidate_sha256": "98680e6266a263f21bca007d2d3fc2a3bf26c87c751a37874663499d784351f9",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/llm_process_registry.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/llm_process_registry.json",
+      "installed_sha256": "98680e6266a263f21bca007d2d3fc2a3bf26c87c751a37874663499d784351f9",
+      "main_sha256": "98680e6266a263f21bca007d2d3fc2a3bf26c87c751a37874663499d784351f9",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "98680e6266a263f21bca007d2d3fc2a3bf26c87c751a37874663499d784351f9"
+    },
+    "config/llm_routing_policy.json": {
+      "candidate_sha256": "d1b527d4de78280ae26f918f85a7c0808867d2adb7ff7a4800c5ff32f7a864b6",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/llm_routing_policy.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/llm_routing_policy.json",
+      "installed_sha256": "d1b527d4de78280ae26f918f85a7c0808867d2adb7ff7a4800c5ff32f7a864b6",
+      "main_sha256": "d1b527d4de78280ae26f918f85a7c0808867d2adb7ff7a4800c5ff32f7a864b6",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "d1b527d4de78280ae26f918f85a7c0808867d2adb7ff7a4800c5ff32f7a864b6"
+    },
+    "config/n8n_run_allowlist.json": {
+      "candidate_sha256": "2a237db0d3e8dbce2dc003d6cc7a86f4d63130e6b131c28ae3ef8adbef8d3a87",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/n8n_run_allowlist.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/n8n_run_allowlist.json",
+      "installed_sha256": "2a237db0d3e8dbce2dc003d6cc7a86f4d63130e6b131c28ae3ef8adbef8d3a87",
+      "main_sha256": "2a237db0d3e8dbce2dc003d6cc7a86f4d63130e6b131c28ae3ef8adbef8d3a87",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "2a237db0d3e8dbce2dc003d6cc7a86f4d63130e6b131c28ae3ef8adbef8d3a87"
+    },
+    "config/secret_registry.yaml": {
+      "candidate_sha256": "10a2b9a27c21b215b22e0c1b142715f183bc96a2727fad58fd67de8c870aa9c2",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/secret_registry.yaml",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/config/secret_registry.yaml",
+      "installed_sha256": "10a2b9a27c21b215b22e0c1b142715f183bc96a2727fad58fd67de8c870aa9c2",
+      "main_sha256": "10a2b9a27c21b215b22e0c1b142715f183bc96a2727fad58fd67de8c870aa9c2",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "10a2b9a27c21b215b22e0c1b142715f183bc96a2727fad58fd67de8c870aa9c2"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json": {
+      "candidate_sha256": "ff7c849a4e521fdbb84b02c71fab83a525ad534122c30b68cfdecc9077ec453f",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "installed_sha256": "e404aeb3563ed84debcaf0f964e5aca8ca25f363d49470c985138d7ea8a31f94",
+      "main_sha256": "e404aeb3563ed84debcaf0f964e5aca8ca25f363d49470c985138d7ea8a31f94",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "ff7c849a4e521fdbb84b02c71fab83a525ad534122c30b68cfdecc9077ec453f"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json": {
+      "candidate_sha256": "b4d77d6dd176cff4ef53b21009bf894c266fd1d5061e9953965ce9c570be5125",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "installed_sha256": "e545e23f77ba268b8c2d72410a13a2ab0767a99a8f008c25cd8da734a4a051ed",
+      "main_sha256": "e545e23f77ba268b8c2d72410a13a2ab0767a99a8f008c25cd8da734a4a051ed",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "b4d77d6dd176cff4ef53b21009bf894c266fd1d5061e9953965ce9c570be5125"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json": {
+      "candidate_sha256": "04eb04b608bf72264f570a859edb607047be4113e631515c6c9106fa783eb1c5",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "installed_sha256": "cf1c745fb1b70c6f10e088f335d509238d5d088403d8adc706ee8c766dd9a2e5",
+      "main_sha256": "cf1c745fb1b70c6f10e088f335d509238d5d088403d8adc706ee8c766dd9a2e5",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "04eb04b608bf72264f570a859edb607047be4113e631515c6c9106fa783eb1c5"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json": {
+      "candidate_sha256": "971908501cfff5a2e2f488fb7b2c0391f8d6d3ad01b2bb87b92f598ee7991d68",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "installed_sha256": "9f6b5fe8231384cb6ab9a4808dea87416a65e70e8ea8e1d3d1d454f94ef56510",
+      "main_sha256": "9f6b5fe8231384cb6ab9a4808dea87416a65e70e8ea8e1d3d1d454f94ef56510",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "971908501cfff5a2e2f488fb7b2c0391f8d6d3ad01b2bb87b92f598ee7991d68"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json": {
+      "candidate_sha256": "f82febbc20984dde58611a7c679c85386505e0d9248be52f4588b668cb70cb2e",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "installed_sha256": "4fa94da93d694061148bbad78b451aab66e7b7e682ebd4346efeffea19194a6f",
+      "main_sha256": "4fa94da93d694061148bbad78b451aab66e7b7e682ebd4346efeffea19194a6f",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "f82febbc20984dde58611a7c679c85386505e0d9248be52f4588b668cb70cb2e"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json": {
+      "candidate_sha256": "85b0190ab1942af660dd62871be1cb58c191dc5ad964cff0aeb9b2ce4a25f3c6",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "installed_sha256": "7658ddbf60eefc200fe26e9bff72dad8612972c591d155f984599508c3440a1e",
+      "main_sha256": "7658ddbf60eefc200fe26e9bff72dad8612972c591d155f984599508c3440a1e",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "85b0190ab1942af660dd62871be1cb58c191dc5ad964cff0aeb9b2ce4a25f3c6"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json": {
+      "candidate_sha256": "2a52320580f5a65a8554b38ae213019e09210e1aef940037b685df2177c5bb62",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "installed_sha256": "3aeb7eabb40768ca0b9b708b1ad85d1e2110f45a8096ce4240b16e52a14cee87",
+      "main_sha256": "3aeb7eabb40768ca0b9b708b1ad85d1e2110f45a8096ce4240b16e52a14cee87",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "2a52320580f5a65a8554b38ae213019e09210e1aef940037b685df2177c5bb62"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json": {
+      "candidate_sha256": "2f8b7ac89881f1ab5f05346d1cb24259b148f19b45f04429f6d57faf008f60fc",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "installed_sha256": "948a62c38f9e30ae7ed566478546c935ae62023e1b04671a976d5937b2421abb",
+      "main_sha256": "948a62c38f9e30ae7ed566478546c935ae62023e1b04671a976d5937b2421abb",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "2f8b7ac89881f1ab5f05346d1cb24259b148f19b45f04429f6d57faf008f60fc"
+    },
+    "linux_launchers/run_lookthrough.sh": {
+      "candidate_sha256": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_lookthrough.sh",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_lookthrough.sh",
+      "installed_sha256": "8f32309d9b2483b6cfc3f61a3570df473d021328d0ce47a929b197d0f74f4238",
+      "main_sha256": "8f32309d9b2483b6cfc3f61a3570df473d021328d0ce47a929b197d0f74f4238",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c"
+    },
+    "linux_launchers/run_pg_backup.sh": {
+      "candidate_sha256": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_pg_backup.sh",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_pg_backup.sh",
+      "installed_sha256": "bb23df726fb4147e81bc5c5fe74c5e6026e49c7b904c9e1e7f7e716f10ac92bb",
+      "main_sha256": "bb23df726fb4147e81bc5c5fe74c5e6026e49c7b904c9e1e7f7e716f10ac92bb",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513"
+    },
+    "linux_launchers/run_portfolio.sh": {
+      "candidate_sha256": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_portfolio.sh",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_portfolio.sh",
+      "installed_sha256": "42c895c5cce37833e02c016631a6d912768f92f3ed81e46cf41cac7c7b5847be",
+      "main_sha256": "42c895c5cce37833e02c016631a6d912768f92f3ed81e46cf41cac7c7b5847be",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f"
+    },
+    "linux_launchers/run_portfolio_monthly.sh": {
+      "candidate_sha256": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_portfolio_monthly.sh",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_portfolio_monthly.sh",
+      "installed_sha256": "5c94a47ec3893e41c2d72f6c3a4a4dd1e00497fadba9a2f39d4f83bcddec79ad",
+      "main_sha256": "5c94a47ec3893e41c2d72f6c3a4a4dd1e00497fadba9a2f39d4f83bcddec79ad",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23"
+    },
+    "linux_launchers/run_portfolio_weekly.sh": {
+      "candidate_sha256": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_portfolio_weekly.sh",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_portfolio_weekly.sh",
+      "installed_sha256": "5a95320131942fbbd5d5e452769c75197be90eba9cfc627a9543ea996588e849",
+      "main_sha256": "5a95320131942fbbd5d5e452769c75197be90eba9cfc627a9543ea996588e849",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764"
+    },
+    "linux_launchers/run_price_cache.sh": {
+      "candidate_sha256": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_price_cache.sh",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/linux_launchers/run_price_cache.sh",
+      "installed_sha256": "f79f18e8f86c91f6b56b897599b0414cafe258b73dfd9dce4370c7873e4ed38b",
+      "main_sha256": "f79f18e8f86c91f6b56b897599b0414cafe258b73dfd9dce4370c7873e4ed38b",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2"
+    },
+    "scripts/api_v2.py": {
+      "candidate_sha256": "b107efc5beff6fe2707332f267129f0145c8e3b69c9b5a1278e73c832f846be8",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/api_v2.py",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/api_v2.py",
+      "installed_sha256": "b107efc5beff6fe2707332f267129f0145c8e3b69c9b5a1278e73c832f846be8",
+      "main_sha256": "b107efc5beff6fe2707332f267129f0145c8e3b69c9b5a1278e73c832f846be8",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "b107efc5beff6fe2707332f267129f0145c8e3b69c9b5a1278e73c832f846be8"
+    },
+    "scripts/lib/cio_governed_model_bridge.py": {
+      "candidate_sha256": "315276f8160a19f6a6dc8735c14596dc47a728849bb2221dc01f2ca6531ae726",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/cio_governed_model_bridge.py",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/cio_governed_model_bridge.py",
+      "installed_sha256": "2de856afe540c95ad612059caa0f63b988fb87a1b50c9a3176e9ceb1c75ce6f7",
+      "main_sha256": "2de856afe540c95ad612059caa0f63b988fb87a1b50c9a3176e9ceb1c75ce6f7",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "315276f8160a19f6a6dc8735c14596dc47a728849bb2221dc01f2ca6531ae726"
+    },
+    "scripts/lib/lane_registry.py": {
+      "candidate_sha256": "033b9bbd61aacad266c2b7d41a7ba1b0d2e08fb14341f03c47ec4e7851201ae2",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/lane_registry.py",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/lane_registry.py",
+      "installed_sha256": "3268311a4e186531cc182bb8271eb601fa88dd746a3794d8c14921a87f70cedf",
+      "main_sha256": "3268311a4e186531cc182bb8271eb601fa88dd746a3794d8c14921a87f70cedf",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "033b9bbd61aacad266c2b7d41a7ba1b0d2e08fb14341f03c47ec4e7851201ae2"
+    },
+    "scripts/lib/scheduler_operations.py": {
+      "candidate_sha256": "d943a972d50f8e4c3bec111503c5b0767f2437cf5b693b1ed62536301469eb42",
+      "installed_matches_candidate": true,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/scheduler_operations.py",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/scheduler_operations.py",
+      "installed_sha256": "d943a972d50f8e4c3bec111503c5b0767f2437cf5b693b1ed62536301469eb42",
+      "main_sha256": "d943a972d50f8e4c3bec111503c5b0767f2437cf5b693b1ed62536301469eb42",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "d943a972d50f8e4c3bec111503c5b0767f2437cf5b693b1ed62536301469eb42"
+    },
+    "scripts/n8n_run_relay.py": {
+      "candidate_sha256": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/n8n_run_relay.py",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/n8n_run_relay.py",
+      "installed_sha256": "af33e0a75552fa917af78d37665d15d19b82a90cddb5baa08958f81b8aac79a4",
+      "main_sha256": "af33e0a75552fa917af78d37665d15d19b82a90cddb5baa08958f81b8aac79a4",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc"
+    },
+    "scripts/n8n_workflow_templates.py": {
+      "candidate_sha256": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/n8n_workflow_templates.py",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/n8n_workflow_templates.py",
+      "installed_sha256": "60a11fbe1a77455d52d3e52b61a9dd64dc87a1663805dd82666af74f121501b3",
+      "main_sha256": "60a11fbe1a77455d52d3e52b61a9dd64dc87a1663805dd82666af74f121501b3",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345"
+    },
+    "scripts/pipelines/cutover/_cutover.py": {
+      "candidate_sha256": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+      "installed_matches_candidate": false,
+      "installed_matches_main_blob": true,
+      "installed_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/pipelines/cutover/_cutover.py",
+      "installed_resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/pipelines/cutover/_cutover.py",
+      "installed_sha256": "227ad5f1cb00b06641c661294858430c176ceefe15ec5ada4e5fad2555ee4c3b",
+      "main_sha256": "227ad5f1cb00b06641c661294858430c176ceefe15ec5ada4e5fad2555ee4c3b",
+      "working_tree_matches_candidate_blob": true,
+      "working_tree_sha256": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39"
+    }
+  },
+  "generated_n2_artifacts": [
+    {
+      "candidate": {
+        "active": false,
+        "id": "77a473aea9df8833",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "release": {
+        "active": false,
+        "id": "77a473aea9df8833",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    },
+    {
+      "candidate": {
+        "active": false,
+        "id": "0d48d2951cdc0cd0",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "release": {
+        "active": false,
+        "id": "0d48d2951cdc0cd0",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    },
+    {
+      "candidate": {
+        "active": false,
+        "id": "02709b160025d4ea",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "release": {
+        "active": false,
+        "id": "02709b160025d4ea",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    },
+    {
+      "candidate": {
+        "active": false,
+        "id": "19e0ed9711cfb320",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "release": {
+        "active": false,
+        "id": "19e0ed9711cfb320",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    },
+    {
+      "candidate": {
+        "active": false,
+        "id": "9d53936aacec05f0",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "release": {
+        "active": false,
+        "id": "9d53936aacec05f0",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    },
+    {
+      "candidate": {
+        "active": false,
+        "id": "c7dc5a8273bf6f44",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "release": {
+        "active": false,
+        "id": "c7dc5a8273bf6f44",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    },
+    {
+      "candidate": {
+        "active": false,
+        "id": "4e66cb561681065f",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "release": {
+        "active": false,
+        "id": "4e66cb561681065f",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    },
+    {
+      "candidate": {
+        "active": false,
+        "id": "0a170db6744afd7f",
+        "run_index_retry": true,
+        "strict_live_exit_proof": true
+      },
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "release": {
+        "active": false,
+        "id": "0a170db6744afd7f",
+        "run_index_retry": false,
+        "strict_live_exit_proof": false
+      }
+    }
+  ],
+  "identity_commands": [
+    "git rev-parse HEAD origin/main",
+    "readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+  ],
+  "missing_candidate_deployment_features": [
+    "installed_launcher_root:run_pg_backup.sh",
+    "installed_launcher_root:run_portfolio.sh",
+    "installed_launcher_root:run_portfolio_weekly.sh",
+    "installed_launcher_root:run_portfolio_monthly.sh",
+    "installed_launcher_root:run_lookthrough.sh",
+    "installed_launcher_root:run_price_cache.sh",
+    "strict_cutover_cadence_validation",
+    "provided_n8n_registry_cadence_validation",
+    "explicit_fallback_authority_enforced",
+    "fresh_attributable_alternate_health",
+    "single_settled_result_stream",
+    "n2_required_exit_proof_projection",
+    "n2_live_exit_zero_receipt_gate",
+    "n2_aware_nonfuture_business_day_gate",
+    "n2_five_total_attempts_run_index",
+    "four_n1_legacy_cron_no_go_source_intent"
+  ],
+  "n1_source_intent": {
+    "candidate": {
+      "crontab-snapshot-for-health-agent": {
+        "consumer": "scripts/lib/crontab_snapshot.py fallback reader used by the hardened health agent",
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "scheduler": {
+          "expression": "*/20 * * * *",
+          "kind": "cron",
+          "match": "crontab_snapshot.txt.tmp"
+        },
+        "state": "ACTIVE",
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover."
+      },
+      "n8n-incident-fanin": {
+        "consumer": "host coordination incident ledger and Command Center incident projection",
+        "lane_id": "n8n-incident-fanin",
+        "scheduler": {
+          "expression": "*/5 * * * *",
+          "kind": "cron",
+          "match": "scripts/n8n_incident_fanin.py"
+        },
+        "state": "ACTIVE",
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover."
+      },
+      "n8n-pilot-dispatch": {
+        "consumer": "host coordination ledger and Command Center coordination projection; downstream acknowledgement is measured separately",
+        "lane_id": "n8n-pilot-dispatch",
+        "scheduler": {
+          "expression": "*/15 * * * *",
+          "kind": "cron",
+          "match": "scripts/n8n_pilot_dispatch.py"
+        },
+        "state": "ACTIVE",
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover."
+      },
+      "n8n-research-intake-consumer": {
+        "consumer": "ri_research_queue and the governed RI desk consumer",
+        "lane_id": "n8n-research-intake-consumer",
+        "scheduler": {
+          "expression": "*/15 * * * *",
+          "kind": "cron",
+          "match": "scripts/n8n_research_intake_consumer.py"
+        },
+        "state": "ACTIVE",
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover."
+      }
+    },
+    "release": {
+      "crontab-snapshot-for-health-agent": {
+        "consumer": null,
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "scheduler": {
+          "cadence": "*/20 * * * *",
+          "expression": "c0d4c7845e5c4fcc",
+          "kind": "n8n",
+          "match": "crontab_snapshot.txt.tmp"
+        },
+        "state": "ACTIVE",
+        "state_reason": "Declared 2026-09-26 by the P2 audit remediation R-03: the health agent runs under NoNewPrivileges, which strips crontab's setgid bit, so `crontab -l` fails inside the unit and every cron_missing check was silently skipped. This line writes a readable snapshot every 20 minutes that scripts/lib/crontab_snapshot.read_crontab falls back to. Installed under operator cron grant 1d4795f8471a664a (Telegram /approve)."
+      },
+      "n8n-incident-fanin": {
+        "consumer": null,
+        "lane_id": "n8n-incident-fanin",
+        "scheduler": {
+          "cadence": "*/5 * * * *",
+          "expression": "722fac0e043ea5c4",
+          "kind": "n8n",
+          "match": "scripts/n8n_incident_fanin.py"
+        },
+        "state": "ACTIVE",
+        "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts."
+      },
+      "n8n-pilot-dispatch": {
+        "consumer": null,
+        "lane_id": "n8n-pilot-dispatch",
+        "scheduler": {
+          "cadence": "*/15 * * * *",
+          "expression": "078e8fcbea0c5020",
+          "kind": "n8n",
+          "match": "scripts/n8n_pilot_dispatch.py"
+        },
+        "state": "ACTIVE",
+        "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts."
+      },
+      "n8n-research-intake-consumer": {
+        "consumer": null,
+        "lane_id": "n8n-research-intake-consumer",
+        "scheduler": {
+          "cadence": "*/15 * * * *",
+          "expression": "21fd15d5f8a4c4da",
+          "kind": "n8n",
+          "match": "scripts/n8n_research_intake_consumer.py"
+        },
+        "state": "ACTIVE",
+        "state_reason": "Installed 2026-10-08 02:11Z under cron grant 6fa4f93c2a15ff9b right after release b18d8087b was promoted (backup ~/.local/state/tradeai/backups/crontab-20261008T021139Z-pre-research-intake.txt; crontab 449 -> 450 job lines). The gateway unit was re-installed in the same window (config-write grant 60bd0c8a7c5a269b) with TRADEAI_N8N_GATEWAY_EXTRA_LANES='incident-fanin research-intake'; /healthz durable:true. Consumer runs every 15 min, enqueues accepted research_request events into ri_research_queue under the RI desk's own cap and the intake daily cap (10)."
+      }
+    }
+  },
+  "oauth_governance": {
+    "bridge_real_transport_scope": "DeepSeek only; non-DeepSeek canary policy is refused as provider_not_configured before reservation.",
+    "default_routing_policy_id": "default",
+    "default_routing_process_count": 74,
+    "evidence_class": "SOURCE_PRESENT_IN_RELEASE",
+    "note": "Existing governed OAuth process declarations do not prove successful live OAuth calls. No credential read or provider request.",
+    "oauth_named_or_described_processes": [
+      {
+        "allowed_lanes": null,
+        "description": "Evidence challenge review through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "aegis_steph_review",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Scheduled advisory synthesis through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "aegis_synthesis",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Merges keywords from governed Grok + ChatGPT OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "directive_keyword_enhancer",
+        "lane_policy": "ensemble"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Cross-source research synthesis through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "hermes_cross_source_synthesizer",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": [
+          "fast",
+          "deepseek-flash",
+          "deepseek-flash"
+        ],
+        "description": "Symbol-level external research challenge via governed DeepSeek V4 Flash. Replaces the free ChatGPT OAuth lane (gpt-5.4) that produced hourly near-duplicate 'research update' Telegram noise. Read-only advisory. No tools. No fallback.",
+        "fallback_allowed": false,
+        "id": "hermes_external_research",
+        "lane_policy": "deepseek_only"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "OAuth enrichment \u2014 grok preferred",
+        "fallback_allowed": null,
+        "id": "hermes_scalp_review",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Controlled-vocabulary judgment tags through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "hermes_tag_engine",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Scheduled advisory-only stop/trail review through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "holding_protection_advisor",
+        "lane_policy": "grok_only"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Scheduled holdings health advisory through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "holdings_llm_refresh",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Taxonomy classification through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "iris_taxonomy_agent",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Scheduled dashboard narratives through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "llm_intelligence_enrichment",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Token roll pings (Grok + ChatGPT cron)",
+        "fallback_allowed": null,
+        "id": "oauth_lane_keepalive",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": [
+          "grok",
+          "chatgpt",
+          "deepseek-flash"
+        ],
+        "description": "Aegis options review: Grok + ChatGPT (OAuth) + DeepSeek flash against house facts. No local model (operator 2026-09-26). READ_ONLY_ADVISORY.",
+        "fallback_allowed": null,
+        "id": "options_ensemble",
+        "lane_policy": "ensemble"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "AI Analyst page sections (bond/dividend/IRA/Roth/V/defense/deep-holdings) through the governed free OAuth lane. Advisory only, no tools. Was calling local_llm's retired local endpoint and failing closed on every run.",
+        "fallback_allowed": false,
+        "id": "portfolio_ai_analyst",
+        "lane_policy": "grok_only"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Monthly portfolio narratives (8 sections) via OAuth LLM",
+        "fallback_allowed": null,
+        "id": "portfolio_monthly_report",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Factual surveillance summary through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "portfolio_orchestrator",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Weekly portfolio narratives (6 sections) via OAuth LLM",
+        "fallback_allowed": null,
+        "id": "portfolio_weekly_report",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Research entity and query curation through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "topic_curator",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Research query, quality, and normalization through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "topic_ingestion",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Advisory entry-plan narratives through governed OAuth; no local generation",
+        "fallback_allowed": null,
+        "id": "watchlist_entry_planner",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "OAuth Maria narratives for portfolio holdings, top WAIT setups, and manual refresh \u2014 ~30-80 calls/day",
+        "fallback_allowed": null,
+        "id": "watchlist_maria_priority",
+        "lane_policy": "either"
+      },
+      {
+        "allowed_lanes": null,
+        "description": "Free OAuth (grok then chatgpt) as an explicit SOFT fallback for risk_agent/steph/tax_agent watchlist reviews, used only after their governed DeepSeek Flash pool has already failed. Never preempts Flash. Carries the non-professional LEGACY_WATCH_RESEARCH provenance, like the Maria OAuth tier.",
+        "fallback_allowed": false,
+        "id": "watchlist_agent_oauth_fallback",
+        "lane_policy": "either"
+      }
+    ],
+    "primary_provider_counts": {
+      "deepseek": 67,
+      "grok": 7
+    },
+    "process_registry_path": "config/llm_process_registry.json",
+    "runtime_oauth_success": "NOT_MEASURED"
+  },
+  "observed_at": "2026-10-09T13:19:24.312447+00:00",
+  "ollama": {
+    "listener": {
+      "command": "ss -ltnH sport = :11434",
+      "evidence_class": "OBSERVED_HOST",
+      "observed": "LISTEN 0 4096 *:11434 *:*"
+    },
+    "note": "Actual system runtime contradicts RETIRED source intent. No service changes or model requests. Main PID and runner process name observed via ps without command-line arguments.",
+    "registry": {
+      "candidate": {
+        "lane_id": "ollama-retired-host-runtime",
+        "scheduler": {
+          "expression": "ollama.service",
+          "kind": "systemd",
+          "scope": "system"
+        },
+        "state": "RETIRED",
+        "state_reason": "Operator instruction in this runtime-convergence task: Ollama is retired. Source records retirement intent; it does not stop or disable the observed active host service."
+      },
+      "release": {
+        "lane_id": "ollama-retired-host-runtime",
+        "scheduler": {
+          "expression": "ollama.service",
+          "kind": "systemd",
+          "scope": "system"
+        },
+        "state": "RETIRED",
+        "state_reason": "Operator instruction in this runtime-convergence task: Ollama is retired. Source records retirement intent; it does not stop or disable the observed active host service."
+      }
+    },
+    "retirement_runtime_complete": false,
+    "system_service": {
+      "ActiveState": "active",
+      "FragmentPath": "/etc/systemd/system/ollama.service",
+      "LoadState": "loaded",
+      "MainPID": 5135,
+      "SubState": "running",
+      "UnitFileState": "enabled",
+      "command": "systemctl show ollama.service -p LoadState -p ActiveState -p SubState -p UnitFileState -p FragmentPath -p MainPID",
+      "evidence_class": "OBSERVED_HOST"
+    },
+    "user_service": {
+      "ActiveState": "inactive",
+      "LoadState": "not-found",
+      "SubState": "dead",
+      "command": "systemctl --user show ollama.service -p LoadState -p ActiveState -p SubState -p UnitFileState -p FragmentPath",
+      "evidence_class": "OBSERVED_HOST"
+    }
+  },
+  "origin_main_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+  "runtime_acceptance_claim": false,
+  "schema": "TradeAIRuntimeFeatureSourcePresenceAudit@v1",
+  "source_presence_is_live_working_claim": false,
+  "stream_method_called_symbols": {
+    "candidate": [
+      "call.get",
+      "choice.get",
+      "choices.append",
+      "dict",
+      "enumerate",
+      "f'data: {json.dumps(frame)}\\n\\n'.encode",
+      "final_choices.append",
+      "int",
+      "isinstance",
+      "json.dumps",
+      "message.get",
+      "result.get",
+      "result['error'].get",
+      "self._send_json",
+      "self.end_headers",
+      "self.send_header",
+      "self.send_response",
+      "self.wfile.flush",
+      "self.wfile.write"
+    ],
+    "release": [
+      "MockProvider.instance",
+      "RealProvider.instance",
+      "_stream_slot.acquire",
+      "_stream_slot.release",
+      "chunk.encode",
+      "int",
+      "json.dumps",
+      "policy.get",
+      "provider.generate",
+      "provider.generate_stream",
+      "provider_semaphore",
+      "resolve_model_policy",
+      "response['choices'][0]['message'].get",
+      "self._send_json",
+      "self.end_headers",
+      "self.send_header",
+      "self.send_response",
+      "self.wfile.flush",
+      "self.wfile.write",
+      "str",
+      "stream_policy_refusal"
+    ]
+  },
+  "verifier_session": "108959db-36a9-4b25-bebe-138940578687",
+  "worktree": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008"
+}

@@ -1,0 +1,1223 @@
+{
+  "schema": "IndependentLiveN8nGateMetadata@v1",
+  "as_of": "2026-10-09T13:15:10.143777+00:00",
+  "evidence_class": "OBSERVED_N8N",
+  "no_mutations": true,
+  "no_workflow_payload_or_credentials_returned": true,
+  "observations": {
+    "workflows": [
+      {
+        "id": "078e8fcbea0c5020",
+        "name": "n8n-pilot-dispatch",
+        "active": true,
+        "activeVersionId": "721fb59b-eb8e-4760-99e4-60282b987581",
+        "versionId": "721fb59b-eb8e-4760-99e4-60282b987581",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "live",
+            "contains_live_mode": true,
+            "contains_dry_run_mode": false
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "0a170db6744afd7f",
+        "name": "hermes-overnight-pipeline-night-shadow",
+        "active": true,
+        "activeVersionId": "b2678933-b7e1-402e-b565-3bd989a27f5a",
+        "versionId": "b2678933-b7e1-402e-b565-3bd989a27f5a",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [
+          {
+            "node_name": "Evaluate predecessor",
+            "code_fingerprint_md5": "515816738f5e3488b75ec4b870673f7b",
+            "uses_run_index": false,
+            "counts_wait_output_items": true,
+            "requires_live_predecessor": false,
+            "requires_exit_zero": false,
+            "checks_request_business_day": false,
+            "checks_finish_not_future": false,
+            "max_gate_retries": "5"
+          }
+        ],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "20 2 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "0d48d2951cdc0cd0",
+        "name": "after-close-pipeline-broker-truth-shadow",
+        "active": true,
+        "activeVersionId": "d6e47033-441c-4589-bd4e-b3bbecedee4c",
+        "versionId": "d6e47033-441c-4589-bd4e-b3bbecedee4c",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [
+          {
+            "node_name": "Evaluate predecessor",
+            "code_fingerprint_md5": "179a5cb29724f7f2167da7ee71207d8a",
+            "uses_run_index": false,
+            "counts_wait_output_items": true,
+            "requires_live_predecessor": false,
+            "requires_exit_zero": false,
+            "checks_request_business_day": false,
+            "checks_finish_not_future": false,
+            "max_gate_retries": "5"
+          }
+        ],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "25 17 * * 1-5"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "128dfb29e4faec7f",
+        "name": "hermes-overnight-pipeline-close-shadow",
+        "active": true,
+        "activeVersionId": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24",
+        "versionId": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "13 23 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "18b20ea58617ffc2",
+        "name": "platform-maintenance-monthly-shadow",
+        "active": true,
+        "activeVersionId": "267ad403-f2d8-4655-9138-e31571ce7bf8",
+        "versionId": "267ad403-f2d8-4655-9138-e31571ce7bf8",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 1 * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "19e0ed9711cfb320",
+        "name": "after-close-pipeline-planning-shadow",
+        "active": true,
+        "activeVersionId": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7",
+        "versionId": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [
+          {
+            "node_name": "Evaluate predecessor",
+            "code_fingerprint_md5": "cef014ded57aaaedffec227089f30759",
+            "uses_run_index": false,
+            "counts_wait_output_items": true,
+            "requires_live_predecessor": false,
+            "requires_exit_zero": false,
+            "checks_request_business_day": false,
+            "checks_finish_not_future": false,
+            "max_gate_retries": "5"
+          }
+        ],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "35 17 * * 1-5"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "21fd15d5f8a4c4da",
+        "name": "n8n-research-intake-consumer",
+        "active": true,
+        "activeVersionId": "d2719005-4750-44d2-b7fc-51aad9f86dee",
+        "versionId": "d2719005-4750-44d2-b7fc-51aad9f86dee",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "live",
+            "contains_live_mode": true,
+            "contains_dry_run_mode": false
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "283ceeb030de5e66",
+        "name": "catalyst-calibration-monitor-shadow",
+        "active": true,
+        "activeVersionId": "67b62cb8-e575-4c72-b1e1-79eac4520b3c",
+        "versionId": "67b62cb8-e575-4c72-b1e1-79eac4520b3c",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "40 5 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "2c725c7dfd4ac62f",
+        "name": "finviz-view-contracts-shadow",
+        "active": true,
+        "activeVersionId": "25c3c54d-c170-445e-8752-ac3e52a430f1",
+        "versionId": "25c3c54d-c170-445e-8752-ac3e52a430f1",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "5 6 * * 1-5"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "2yPuOGW9yYtJsoYk",
+        "name": "n8n-bench-nodes",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "257ee2a5-3b61-44d4-8b2e-e2c8b290e2c4",
+        "post_modes": [],
+        "gates": [],
+        "schedules": []
+      },
+      {
+        "id": "498d749165a93ff9",
+        "name": "source-attribution-monitor-shadow",
+        "active": true,
+        "activeVersionId": "4cbfc3ab-30ca-48dd-92ce-d2c1f576dac0",
+        "versionId": "4cbfc3ab-30ca-48dd-92ce-d2c1f576dac0",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "4a447dec9837c273",
+        "name": "portfolio-lookthrough-cadence-shadow",
+        "active": true,
+        "activeVersionId": "7fee50e1-507f-4b75-9f08-447ee3965b5b",
+        "versionId": "7fee50e1-507f-4b75-9f08-447ee3965b5b",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "30 6 1-7 * 0"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "4b11eabaa6735a90",
+        "name": "platform-maintenance-weekly-shadow",
+        "active": true,
+        "activeVersionId": "8d6df53f-fd8c-406d-b326-f6f88331d102",
+        "versionId": "8d6df53f-fd8c-406d-b326-f6f88331d102",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * 0"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "5439cd4d82e1f305",
+        "name": "crontab-snapshot-for-health-agent-shadow",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "a69e14b6-6b7a-4880-a023-c9ebf5fa1eb5",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/20 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "577f9dfaede632f3",
+        "name": "n8n-research-intake-consumer-shadow",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "d60156e8-c875-47cb-bdb6-7610a5c527e8",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "5966437c872aa18b",
+        "name": "watch-directives-monitor-shadow",
+        "active": true,
+        "activeVersionId": "d7cef80a-1a0c-46bd-95ac-828f6ed979e5",
+        "versionId": "d7cef80a-1a0c-46bd-95ac-828f6ed979e5",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "20 6 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "6c04dc250b7d6a04",
+        "name": "portfolio-daily-cadence-shadow",
+        "active": true,
+        "activeVersionId": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb",
+        "versionId": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "30 7 * * 1-5"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "active": true,
+        "activeVersionId": "e6844480-561f-4f16-ba43-9879cfa07538",
+        "versionId": "e6844480-561f-4f16-ba43-9879cfa07538",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "live",
+            "contains_live_mode": true,
+            "contains_dry_run_mode": false
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "8a9162783109e7bb",
+        "name": "platform-maintenance-nightly-shadow",
+        "active": true,
+        "activeVersionId": "b830c2c1-de89-4812-a7ce-208bd036818a",
+        "versionId": "b830c2c1-de89-4812-a7ce-208bd036818a",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "15 1 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "active": true,
+        "activeVersionId": "d4191382-aa72-44c4-93ef-64ca80ff788e",
+        "versionId": "d4191382-aa72-44c4-93ef-64ca80ff788e",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "Bi002YOPSpZOQpEo",
+        "name": "n8n-bench-error",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "adb965c1-57da-438e-8dde-e3248bfe00e0",
+        "post_modes": [],
+        "gates": [],
+        "schedules": []
+      },
+      {
+        "id": "GXwhbRkwsGcYZxgn",
+        "name": "n8n-monitor-dof",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "8ced2415-3edb-4044-8eb6-fc8df273d3b1",
+        "post_modes": [],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        ]
+      },
+      {
+        "id": "a26114588930ae9b",
+        "name": "maturity-remeasure-shadow",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "02df9385-f8df-43cd-8c0d-fa1389479760",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "40 6 * * 1"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "a33cd415e30d6f01",
+        "name": "hermes-learning-pipeline-learn-shadow",
+        "active": true,
+        "activeVersionId": "c80e187e-0b61-4795-a673-2416d6c942ce",
+        "versionId": "c80e187e-0b61-4795-a673-2416d6c942ce",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "50 10 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "a8b8cbf625caebb0",
+        "name": "portfolio-monthly-cadence-shadow",
+        "active": true,
+        "activeVersionId": "934d34eb-56a2-4322-b838-fff6dcc8f2be",
+        "versionId": "934d34eb-56a2-4322-b838-fff6dcc8f2be",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "35 7 1 * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "aac827ce00ff8ae4",
+        "name": "after-close-pipeline-close-capture-shadow",
+        "active": true,
+        "activeVersionId": "12acb54b-1339-4937-9f27-845e89a36549",
+        "versionId": "12acb54b-1339-4937-9f27-845e89a36549",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "5 16 * * 1-5"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "ae61fa66dba00c9f",
+        "name": "portfolio-weekly-cadence-shadow",
+        "active": true,
+        "activeVersionId": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd",
+        "versionId": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "30 20 * * 0"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "baddad5487f9c288",
+        "name": "n8n-pilot-dispatch-shadow",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "b7949bcc-c8c1-4bf5-9533-01417961da97",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "bcbcc68b9c8c5e56",
+        "name": "governance-pipeline-shadow",
+        "active": true,
+        "activeVersionId": "975a7e41-48e2-424f-80f3-e69af419c515",
+        "versionId": "975a7e41-48e2-424f-80f3-e69af419c515",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "40 7 * * 1-5"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * 0"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "c0d4c7845e5c4fcc",
+        "name": "crontab-snapshot-for-health-agent",
+        "active": true,
+        "activeVersionId": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda",
+        "versionId": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "live",
+            "contains_live_mode": true,
+            "contains_dry_run_mode": false
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/20 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "c7dc5a8273bf6f44",
+        "name": "hermes-learning-pipeline-tune-shadow",
+        "active": true,
+        "activeVersionId": "cdb973be-e2c4-442f-9a84-7a1721e13a44",
+        "versionId": "cdb973be-e2c4-442f-9a84-7a1721e13a44",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [
+          {
+            "node_name": "Evaluate predecessor",
+            "code_fingerprint_md5": "e2d9163d12a71e34c039333ac396f275",
+            "uses_run_index": false,
+            "counts_wait_output_items": true,
+            "requires_live_predecessor": false,
+            "requires_exit_zero": false,
+            "checks_request_business_day": false,
+            "checks_finish_not_future": false,
+            "max_gate_retries": "5"
+          }
+        ],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "0 17 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "e18d7849b4142927",
+        "name": "maturity-remeasure",
+        "active": true,
+        "activeVersionId": "339361a0-4d0f-4fba-be6a-7da7caf42341",
+        "versionId": "339361a0-4d0f-4fba-be6a-7da7caf42341",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "live",
+            "contains_live_mode": true,
+            "contains_dry_run_mode": false
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "40 6 * * 1"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "e511583d42831b8b",
+        "name": "n8n-incident-fanin-shadow",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "f70c3aeb-376e-4387-8a89-f50665f5a0e9",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "e6f62397d5ae2aa2",
+        "name": "lane-governance-packet-weekly-shadow",
+        "active": true,
+        "activeVersionId": "2b037961-d9d0-4dfc-861c-44f380534cc6",
+        "versionId": "2b037961-d9d0-4dfc-861c-44f380534cc6",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "20 6 * * 1"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "f4553ff360e21a9f",
+        "name": "premarket-data-pipeline-shadow",
+        "active": true,
+        "activeVersionId": "faf1e382-6146-45e6-97b5-78d2c46c501c",
+        "versionId": "faf1e382-6146-45e6-97b5-78d2c46c501c",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "45 5 * * *"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "ffa6bbfa93ad4056",
+        "name": "generate-analyst-daily-digest-shadow",
+        "active": true,
+        "activeVersionId": "9804816e-54fe-4a36-9986-dfd89fe350aa",
+        "versionId": "9804816e-54fe-4a36-9986-dfd89fe350aa",
+        "post_modes": [
+          {
+            "node_name": "POST relay /run",
+            "mode": "dry_run",
+            "contains_live_mode": false,
+            "contains_dry_run_mode": true
+          }
+        ],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "cronExpression",
+              "expression": "30 7 * * 1-5"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "s57KBllvqf6Jb5xF",
+        "name": "n8n-monitor-trade-ai",
+        "active": false,
+        "activeVersionId": null,
+        "versionId": "dd9dd637-841f-4265-91ba-dee14947d4cf",
+        "post_modes": [],
+        "gates": [],
+        "schedules": [
+          [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        ]
+      }
+    ],
+    "execution_status_counts": [
+      {
+        "status": "error",
+        "mode": "manual",
+        "count": 1,
+        "oldest_started": "2026-10-08T13:20:54.564+00:00",
+        "latest_started": "2026-10-08T13:20:54.564+00:00"
+      },
+      {
+        "status": "error",
+        "mode": "trigger",
+        "count": 15,
+        "oldest_started": "2026-10-08T16:55:00.061+00:00",
+        "latest_started": "2026-10-08T19:00:00.037+00:00"
+      },
+      {
+        "status": "error",
+        "mode": "webhook",
+        "count": 1,
+        "oldest_started": "2026-10-06T22:30:05.894+00:00",
+        "latest_started": "2026-10-06T22:30:05.894+00:00"
+      },
+      {
+        "status": "running",
+        "mode": "trigger",
+        "count": 26,
+        "oldest_started": "2026-10-09T12:35:00.017+00:00",
+        "latest_started": "2026-10-09T13:15:00.057+00:00"
+      },
+      {
+        "status": "success",
+        "mode": "error",
+        "count": 1,
+        "oldest_started": "2026-10-06T22:30:06.007+00:00",
+        "latest_started": "2026-10-06T22:30:06.007+00:00"
+      },
+      {
+        "status": "success",
+        "mode": "manual",
+        "count": 3,
+        "oldest_started": "2026-10-06T22:18:21.214+00:00",
+        "latest_started": "2026-10-08T13:22:15.071+00:00"
+      },
+      {
+        "status": "success",
+        "mode": "trigger",
+        "count": 413,
+        "oldest_started": "2026-10-06T22:20:41.031+00:00",
+        "latest_started": "2026-10-07T15:45:51.016+00:00"
+      },
+      {
+        "status": "success",
+        "mode": "webhook",
+        "count": 2,
+        "oldest_started": "2026-10-06T22:30:05.522+00:00",
+        "latest_started": "2026-10-06T22:30:05.798+00:00"
+      }
+    ],
+    "waiting_summary": {
+      "count": 0,
+      "oldest_started": null,
+      "next_wait_until": null
+    },
+    "active_executions_metadata": [
+      {
+        "id": 1138,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:35:00.017+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1139,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:35:00.019+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1140,
+        "workflow_id": "c0d4c7845e5c4fcc",
+        "name": "crontab-snapshot-for-health-agent",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:40:00.028+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1141,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:40:00.031+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1142,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:40:00.035+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1143,
+        "workflow_id": "21fd15d5f8a4c4da",
+        "name": "n8n-research-intake-consumer",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:45:00.03+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1144,
+        "workflow_id": "078e8fcbea0c5020",
+        "name": "n8n-pilot-dispatch",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:45:00.03+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1145,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:45:00.037+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1146,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:45:00.04+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1147,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:50:00.08+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1148,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:50:00.084+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1149,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:55:00.028+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1150,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T12:55:00.028+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1151,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:00:00.073+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1152,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:00:00.076+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1153,
+        "workflow_id": "c0d4c7845e5c4fcc",
+        "name": "crontab-snapshot-for-health-agent",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:00:00.078+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1154,
+        "workflow_id": "21fd15d5f8a4c4da",
+        "name": "n8n-research-intake-consumer",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:00:00.08+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1155,
+        "workflow_id": "078e8fcbea0c5020",
+        "name": "n8n-pilot-dispatch",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:00:00.083+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1156,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:05:00.045+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1157,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:05:00.047+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1158,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:10:00.047+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1159,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:10:00.047+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1160,
+        "workflow_id": "21fd15d5f8a4c4da",
+        "name": "n8n-research-intake-consumer",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:15:00.048+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1161,
+        "workflow_id": "078e8fcbea0c5020",
+        "name": "n8n-pilot-dispatch",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:15:00.048+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1162,
+        "workflow_id": "722fac0e043ea5c4",
+        "name": "n8n-incident-fanin",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:15:00.055+00:00",
+        "wait_until": null
+      },
+      {
+        "id": 1163,
+        "workflow_id": "9208ac827e514183",
+        "name": "n8n-lab-watchdog-shadow",
+        "status": "running",
+        "mode": "trigger",
+        "started_at": "2026-10-09T13:15:00.057+00:00",
+        "wait_until": null
+      }
+    ],
+    "owner_mfa": [
+      {
+        "role": "global:owner",
+        "mfa_enabled": false,
+        "count": 1
+      }
+    ],
+    "db_role": {
+      "rolname": "n8n",
+      "rolsuper": true,
+      "rolcreaterole": true,
+      "rolcreatedb": true,
+      "rolreplication": true,
+      "rolbypassrls": true
+    }
+  }
+}

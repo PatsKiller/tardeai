@@ -323,7 +323,7 @@ def test_the_gate_fails_on_a_double_scheduler_and_passes_once_the_line_is_retire
 
 
 def test_native_monitor_rows_do_not_flip_a_host_scheduler():
-    """Native monitors, restored legacy N1 intent and unscheduled reminders remain distinct."""
+    """Native monitors retain n8n; N1 cron recovery intent and retained OpenClaw events stay explicit."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
     native = {r["lane_id"]: r for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
@@ -340,7 +340,7 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "n8n-incident-fanin",
         "n8n-research-intake-consumer",
     }
-    assert set(native) == monitors | reminders
+    assert set(native) == monitors
     assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
     source_rows = {row["lane_id"]: row for row in reg["lanes"]}
     for lane in migrated:
@@ -348,7 +348,18 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         assert source_rows[lane]["scheduler"]["kind"] == "cron"
         assert len(source_rows[lane]["scheduler"]["expression"].split()) == 5
         assert lr.validate_row(source_rows[lane]) == []
-    assert all(native[lane]["state"] == "NEVER_SCHEDULED" for lane in reminders)
+    assert not reminders & set(native)
+    rows = {r["lane_id"]: r for r in reg["lanes"]}
+    for lane in reminders:
+        sched = rows[lane]["scheduler"]
+        assert sched["kind"] == "event" and sched["emitted_by"] == "openclaw-scheduler"
+        assert sched["expression"] == f"openclaw-cron:{sched['match']}"
+        assert rows[lane]["state"] == "ACTIVE"
+        assert "AGENTS.md §23.3" in rows[lane]["note"]
+        # kind event has no scheduler that can go missing: never ORPHANED, and with no output signal
+        # the lane monitor says UNVERIFIABLE rather than inventing a finding
+        verdict = lr.evaluate_lane(rows[lane], found={"cron": [], "systemd": []})["verdict"]
+        assert verdict == "UNVERIFIABLE"
 
 
 @pytest.mark.parametrize(

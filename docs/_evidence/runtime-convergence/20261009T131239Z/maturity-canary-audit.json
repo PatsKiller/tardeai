@@ -1,0 +1,105 @@
+{
+  "schema": "IndependentMaturityLiveProof@v1",
+  "as_of": "2026-10-09T13:19:23.006088+00:00",
+  "no_mutations": true,
+  "manual_fire": false,
+  "actor_identity": "NOT_MEASURED",
+  "CURRENT_SHA": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+  "workflow_post_metadata": [
+    {
+      "id": "a26114588930ae9b",
+      "name": "maturity-remeasure-shadow",
+      "active": false,
+      "updated_at": "2026-10-09T13:03:09.508+00:00",
+      "active_version_id": null,
+      "version_id": "02df9385-f8df-43cd-8c0d-fa1389479760",
+      "post_metadata": [
+        {
+          "node_name": "POST relay /run",
+          "lane_id": "maturity-remeasure",
+          "mode": "dry_run",
+          "canary_true_literal": false,
+          "canary_field_present": false
+        }
+      ]
+    },
+    {
+      "id": "e18d7849b4142927",
+      "name": "maturity-remeasure",
+      "active": true,
+      "updated_at": "2026-10-09T13:03:06.947+00:00",
+      "active_version_id": "339361a0-4d0f-4fba-be6a-7da7caf42341",
+      "version_id": "339361a0-4d0f-4fba-be6a-7da7caf42341",
+      "post_metadata": [
+        {
+          "node_name": "POST relay /run",
+          "lane_id": "maturity-remeasure",
+          "mode": "live",
+          "canary_true_literal": false,
+          "canary_field_present": false
+        }
+      ]
+    }
+  ],
+  "CURRENT_registry": [
+    {
+      "lane_id": "maturity-remeasure",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 6 * * 1 maturity_remeasure.py --write",
+        "match": "maturity_remeasure.py"
+      },
+      "owner": "platform",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/governance/maturity_latest.json"
+      },
+      "consumer": null
+    }
+  ],
+  "CURRENT_allowlist": [
+    {
+      "lane_id": "maturity-remeasure",
+      "lock": "/tmp/tradeai_maturity_remeasure.lock",
+      "lock_kind": "flock",
+      "timeout_seconds": null,
+      "output_signal": "data/governance/maturity_latest.json",
+      "market_day_gate": null,
+      "canary": null
+    }
+  ],
+  "cron": {
+    "exit": 0,
+    "sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+    "matching_rows": [
+      {
+        "active": true,
+        "retired_tag": false,
+        "schedule": "40 6 * * 1",
+        "same_declared_lock": true,
+        "bare_flock": true,
+        "safe_flock": false,
+        "line_sha256": "883a1fa4b0c4a09842bf858f24c41612b5aff6ad01fa83d2297fbea86414fc4d"
+      }
+    ]
+  },
+  "run_mode_history": [],
+  "last_host_runs": [],
+  "cutover_receipts": [],
+  "output": {
+    "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/governance/maturity_latest.json",
+    "exists": true,
+    "mtime": "2026-10-05T10:40:02.711911+00:00",
+    "sha256": "a89e39e5467284b9ae4f2b4776670dce1c57413ec66d3000152cd0718d9d6627",
+    "metadata": {
+      "schema": "MaturityScore@v1",
+      "as_of": "2026-10-05T10:40:01.163779+00:00",
+      "code_sha": null,
+      "served_sha": null,
+      "authority": "READ_ONLY_ADVISORY",
+      "mode": null,
+      "ok": null
+    }
+  }
+}

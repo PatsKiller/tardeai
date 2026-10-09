@@ -1,0 +1,5458 @@
+{
+  "schema": "IndependentAssignedTaskLiveProof@v1",
+  "as_of": "2026-10-09T13:15:08.857618+00:00",
+  "since": "2026-10-09T12:00:00Z",
+  "no_mutations": true,
+  "manual_fires": false,
+  "credential_values_accessed": false,
+  "CURRENT": {
+    "release": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+    "sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970"
+  },
+  "api_health": {
+    "url": "http://127.0.0.1:7777/api/health",
+    "http_status": 200,
+    "data": {
+      "ok": true,
+      "status": null,
+      "git_sha": null,
+      "served_sha": null,
+      "current_sha": null,
+      "mode": null,
+      "authority": null
+    }
+  },
+  "command_center_build": {
+    "url": "http://127.0.0.1:7777/v3/build-meta.json",
+    "http_status": 200,
+    "data": {
+      "sha": null,
+      "git_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+      "build_sha": "a9fa8b89b616",
+      "built_at": "2026-10-09T12:43:10.599Z",
+      "builtAt": null
+    }
+  },
+  "n8n_health": {
+    "url": "http://127.0.0.1:5678/healthz",
+    "http_status": 200,
+    "data": {
+      "status": "ok"
+    }
+  },
+  "gateway_health": {
+    "url": "http://127.0.0.1:18091/healthz",
+    "http_status": 200,
+    "data": {
+      "ok": true,
+      "status": null,
+      "authority": null,
+      "expected_origin_sha": null,
+      "served_sha": null,
+      "code_sha": null
+    }
+  },
+  "relay_unauthenticated_route": {
+    "url": "http://172.19.0.1:18092/status",
+    "http_status": 401
+  },
+  "units": {
+    "portfolio-server.service": {
+      "exit": 0,
+      "properties": {
+        "Id": "portfolio-server.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 08:55:52 EDT",
+        "MainPID": "3876930",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+        "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+        "process_executable": "/usr/bin/python3.14",
+        "process_code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970"
+      },
+      "permission_denied": false
+    },
+    "tradeai-n8n-coordination-gateway.service": {
+      "exit": 0,
+      "properties": {
+        "Id": "tradeai-n8n-coordination-gateway.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 08:56:09 EDT",
+        "MainPID": "3894683",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+        "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+        "process_executable": "/usr/bin/python3.14",
+        "process_code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970"
+      },
+      "permission_denied": false
+    },
+    "tradeai-n8n-run-relay.service": {
+      "exit": 0,
+      "properties": {
+        "Id": "tradeai-n8n-run-relay.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 09:03:01 EDT",
+        "MainPID": "3936246",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+        "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+        "process_executable": "/usr/bin/python3.14",
+        "process_code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970"
+      },
+      "permission_denied": false
+    },
+    "tradeai-n8n-run-executor.service": {
+      "exit": 0,
+      "properties": {
+        "Id": "tradeai-n8n-run-executor.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 08:56:15 EDT",
+        "MainPID": "3895768",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+        "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+        "process_executable": "/usr/bin/python3.14",
+        "process_code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970"
+      },
+      "permission_denied": false
+    },
+    "tradeai-n8n-lab-watchdog.timer": {
+      "exit": 0,
+      "properties": {
+        "Id": "tradeai-n8n-lab-watchdog.timer",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "waiting",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Wed 2026-10-07 11:50:12 EDT",
+        "NextElapseUSecRealtime": "",
+        "LastTriggerUSec": "Fri 2026-10-09 09:13:33 EDT",
+        "Result": "success"
+      },
+      "permission_denied": false
+    },
+    "tradeai-health-agent.service": {
+      "exit": 0,
+      "properties": {
+        "Id": "tradeai-health-agent.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 08:55:56 EDT",
+        "MainPID": "3878722",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+        "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+        "process_executable": "/usr/bin/python3.14",
+        "process_code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970"
+      },
+      "permission_denied": false
+    }
+  },
+  "n8n_metadata_artifact": "/tmp/tradeai-assigned-live-audit-n8n-20261009T131149Z.json",
+  "n8n_metadata_collect_exit": 0,
+  "n8n_metadata": {
+    "schema": "IndependentLiveN8nGateMetadata@v1",
+    "as_of": "2026-10-09T13:15:10.143777+00:00",
+    "evidence_class": "OBSERVED_N8N",
+    "no_mutations": true,
+    "no_workflow_payload_or_credentials_returned": true,
+    "observations": {
+      "workflows": [
+        {
+          "id": "078e8fcbea0c5020",
+          "name": "n8n-pilot-dispatch",
+          "active": true,
+          "activeVersionId": "721fb59b-eb8e-4760-99e4-60282b987581",
+          "versionId": "721fb59b-eb8e-4760-99e4-60282b987581",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "live",
+              "contains_live_mode": true,
+              "contains_dry_run_mode": false
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/15 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "0a170db6744afd7f",
+          "name": "hermes-overnight-pipeline-night-shadow",
+          "active": true,
+          "activeVersionId": "b2678933-b7e1-402e-b565-3bd989a27f5a",
+          "versionId": "b2678933-b7e1-402e-b565-3bd989a27f5a",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [
+            {
+              "node_name": "Evaluate predecessor",
+              "code_fingerprint_md5": "515816738f5e3488b75ec4b870673f7b",
+              "uses_run_index": false,
+              "counts_wait_output_items": true,
+              "requires_live_predecessor": false,
+              "requires_exit_zero": false,
+              "checks_request_business_day": false,
+              "checks_finish_not_future": false,
+              "max_gate_retries": "5"
+            }
+          ],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "20 2 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "0d48d2951cdc0cd0",
+          "name": "after-close-pipeline-broker-truth-shadow",
+          "active": true,
+          "activeVersionId": "d6e47033-441c-4589-bd4e-b3bbecedee4c",
+          "versionId": "d6e47033-441c-4589-bd4e-b3bbecedee4c",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [
+            {
+              "node_name": "Evaluate predecessor",
+              "code_fingerprint_md5": "179a5cb29724f7f2167da7ee71207d8a",
+              "uses_run_index": false,
+              "counts_wait_output_items": true,
+              "requires_live_predecessor": false,
+              "requires_exit_zero": false,
+              "checks_request_business_day": false,
+              "checks_finish_not_future": false,
+              "max_gate_retries": "5"
+            }
+          ],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "25 17 * * 1-5"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "128dfb29e4faec7f",
+          "name": "hermes-overnight-pipeline-close-shadow",
+          "active": true,
+          "activeVersionId": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24",
+          "versionId": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "13 23 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "18b20ea58617ffc2",
+          "name": "platform-maintenance-monthly-shadow",
+          "active": true,
+          "activeVersionId": "267ad403-f2d8-4655-9138-e31571ce7bf8",
+          "versionId": "267ad403-f2d8-4655-9138-e31571ce7bf8",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "0 6 1 * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "19e0ed9711cfb320",
+          "name": "after-close-pipeline-planning-shadow",
+          "active": true,
+          "activeVersionId": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7",
+          "versionId": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [
+            {
+              "node_name": "Evaluate predecessor",
+              "code_fingerprint_md5": "cef014ded57aaaedffec227089f30759",
+              "uses_run_index": false,
+              "counts_wait_output_items": true,
+              "requires_live_predecessor": false,
+              "requires_exit_zero": false,
+              "checks_request_business_day": false,
+              "checks_finish_not_future": false,
+              "max_gate_retries": "5"
+            }
+          ],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "35 17 * * 1-5"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "21fd15d5f8a4c4da",
+          "name": "n8n-research-intake-consumer",
+          "active": true,
+          "activeVersionId": "d2719005-4750-44d2-b7fc-51aad9f86dee",
+          "versionId": "d2719005-4750-44d2-b7fc-51aad9f86dee",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "live",
+              "contains_live_mode": true,
+              "contains_dry_run_mode": false
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/15 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "283ceeb030de5e66",
+          "name": "catalyst-calibration-monitor-shadow",
+          "active": true,
+          "activeVersionId": "67b62cb8-e575-4c72-b1e1-79eac4520b3c",
+          "versionId": "67b62cb8-e575-4c72-b1e1-79eac4520b3c",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "40 5 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "2c725c7dfd4ac62f",
+          "name": "finviz-view-contracts-shadow",
+          "active": true,
+          "activeVersionId": "25c3c54d-c170-445e-8752-ac3e52a430f1",
+          "versionId": "25c3c54d-c170-445e-8752-ac3e52a430f1",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "5 6 * * 1-5"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "2yPuOGW9yYtJsoYk",
+          "name": "n8n-bench-nodes",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "257ee2a5-3b61-44d4-8b2e-e2c8b290e2c4",
+          "post_modes": [],
+          "gates": [],
+          "schedules": []
+        },
+        {
+          "id": "498d749165a93ff9",
+          "name": "source-attribution-monitor-shadow",
+          "active": true,
+          "activeVersionId": "4cbfc3ab-30ca-48dd-92ce-d2c1f576dac0",
+          "versionId": "4cbfc3ab-30ca-48dd-92ce-d2c1f576dac0",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "0 6 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "4a447dec9837c273",
+          "name": "portfolio-lookthrough-cadence-shadow",
+          "active": true,
+          "activeVersionId": "7fee50e1-507f-4b75-9f08-447ee3965b5b",
+          "versionId": "7fee50e1-507f-4b75-9f08-447ee3965b5b",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "30 6 1-7 * 0"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "4b11eabaa6735a90",
+          "name": "platform-maintenance-weekly-shadow",
+          "active": true,
+          "activeVersionId": "8d6df53f-fd8c-406d-b326-f6f88331d102",
+          "versionId": "8d6df53f-fd8c-406d-b326-f6f88331d102",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "0 3 * * 0"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "5439cd4d82e1f305",
+          "name": "crontab-snapshot-for-health-agent-shadow",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "a69e14b6-6b7a-4880-a023-c9ebf5fa1eb5",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/20 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "577f9dfaede632f3",
+          "name": "n8n-research-intake-consumer-shadow",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "d60156e8-c875-47cb-bdb6-7610a5c527e8",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/15 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "5966437c872aa18b",
+          "name": "watch-directives-monitor-shadow",
+          "active": true,
+          "activeVersionId": "d7cef80a-1a0c-46bd-95ac-828f6ed979e5",
+          "versionId": "d7cef80a-1a0c-46bd-95ac-828f6ed979e5",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "20 6 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "6c04dc250b7d6a04",
+          "name": "portfolio-daily-cadence-shadow",
+          "active": true,
+          "activeVersionId": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb",
+          "versionId": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "30 7 * * 1-5"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "active": true,
+          "activeVersionId": "e6844480-561f-4f16-ba43-9879cfa07538",
+          "versionId": "e6844480-561f-4f16-ba43-9879cfa07538",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "live",
+              "contains_live_mode": true,
+              "contains_dry_run_mode": false
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/5 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "8a9162783109e7bb",
+          "name": "platform-maintenance-nightly-shadow",
+          "active": true,
+          "activeVersionId": "b830c2c1-de89-4812-a7ce-208bd036818a",
+          "versionId": "b830c2c1-de89-4812-a7ce-208bd036818a",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "15 1 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "active": true,
+          "activeVersionId": "d4191382-aa72-44c4-93ef-64ca80ff788e",
+          "versionId": "d4191382-aa72-44c4-93ef-64ca80ff788e",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/5 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "Bi002YOPSpZOQpEo",
+          "name": "n8n-bench-error",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "adb965c1-57da-438e-8dde-e3248bfe00e0",
+          "post_modes": [],
+          "gates": [],
+          "schedules": []
+        },
+        {
+          "id": "GXwhbRkwsGcYZxgn",
+          "name": "n8n-monitor-dof",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "8ced2415-3edb-4044-8eb6-fc8df273d3b1",
+          "post_modes": [],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "minutes",
+                "minutesInterval": 5
+              }
+            ]
+          ]
+        },
+        {
+          "id": "a26114588930ae9b",
+          "name": "maturity-remeasure-shadow",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "02df9385-f8df-43cd-8c0d-fa1389479760",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "40 6 * * 1"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "a33cd415e30d6f01",
+          "name": "hermes-learning-pipeline-learn-shadow",
+          "active": true,
+          "activeVersionId": "c80e187e-0b61-4795-a673-2416d6c942ce",
+          "versionId": "c80e187e-0b61-4795-a673-2416d6c942ce",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "50 10 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "a8b8cbf625caebb0",
+          "name": "portfolio-monthly-cadence-shadow",
+          "active": true,
+          "activeVersionId": "934d34eb-56a2-4322-b838-fff6dcc8f2be",
+          "versionId": "934d34eb-56a2-4322-b838-fff6dcc8f2be",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "35 7 1 * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "aac827ce00ff8ae4",
+          "name": "after-close-pipeline-close-capture-shadow",
+          "active": true,
+          "activeVersionId": "12acb54b-1339-4937-9f27-845e89a36549",
+          "versionId": "12acb54b-1339-4937-9f27-845e89a36549",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "5 16 * * 1-5"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "ae61fa66dba00c9f",
+          "name": "portfolio-weekly-cadence-shadow",
+          "active": true,
+          "activeVersionId": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd",
+          "versionId": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "30 20 * * 0"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "baddad5487f9c288",
+          "name": "n8n-pilot-dispatch-shadow",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "b7949bcc-c8c1-4bf5-9533-01417961da97",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/15 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "bcbcc68b9c8c5e56",
+          "name": "governance-pipeline-shadow",
+          "active": true,
+          "activeVersionId": "975a7e41-48e2-424f-80f3-e69af419c515",
+          "versionId": "975a7e41-48e2-424f-80f3-e69af419c515",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "40 7 * * 1-5"
+              },
+              {
+                "field": "cronExpression",
+                "expression": "0 18 * * 0"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "c0d4c7845e5c4fcc",
+          "name": "crontab-snapshot-for-health-agent",
+          "active": true,
+          "activeVersionId": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda",
+          "versionId": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "live",
+              "contains_live_mode": true,
+              "contains_dry_run_mode": false
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/20 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "c7dc5a8273bf6f44",
+          "name": "hermes-learning-pipeline-tune-shadow",
+          "active": true,
+          "activeVersionId": "cdb973be-e2c4-442f-9a84-7a1721e13a44",
+          "versionId": "cdb973be-e2c4-442f-9a84-7a1721e13a44",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [
+            {
+              "node_name": "Evaluate predecessor",
+              "code_fingerprint_md5": "e2d9163d12a71e34c039333ac396f275",
+              "uses_run_index": false,
+              "counts_wait_output_items": true,
+              "requires_live_predecessor": false,
+              "requires_exit_zero": false,
+              "checks_request_business_day": false,
+              "checks_finish_not_future": false,
+              "max_gate_retries": "5"
+            }
+          ],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "0 17 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "e18d7849b4142927",
+          "name": "maturity-remeasure",
+          "active": true,
+          "activeVersionId": "339361a0-4d0f-4fba-be6a-7da7caf42341",
+          "versionId": "339361a0-4d0f-4fba-be6a-7da7caf42341",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "live",
+              "contains_live_mode": true,
+              "contains_dry_run_mode": false
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "40 6 * * 1"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "e511583d42831b8b",
+          "name": "n8n-incident-fanin-shadow",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "f70c3aeb-376e-4387-8a89-f50665f5a0e9",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "*/5 * * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "e6f62397d5ae2aa2",
+          "name": "lane-governance-packet-weekly-shadow",
+          "active": true,
+          "activeVersionId": "2b037961-d9d0-4dfc-861c-44f380534cc6",
+          "versionId": "2b037961-d9d0-4dfc-861c-44f380534cc6",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "20 6 * * 1"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "f4553ff360e21a9f",
+          "name": "premarket-data-pipeline-shadow",
+          "active": true,
+          "activeVersionId": "faf1e382-6146-45e6-97b5-78d2c46c501c",
+          "versionId": "faf1e382-6146-45e6-97b5-78d2c46c501c",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "45 5 * * *"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "ffa6bbfa93ad4056",
+          "name": "generate-analyst-daily-digest-shadow",
+          "active": true,
+          "activeVersionId": "9804816e-54fe-4a36-9986-dfd89fe350aa",
+          "versionId": "9804816e-54fe-4a36-9986-dfd89fe350aa",
+          "post_modes": [
+            {
+              "node_name": "POST relay /run",
+              "mode": "dry_run",
+              "contains_live_mode": false,
+              "contains_dry_run_mode": true
+            }
+          ],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "cronExpression",
+                "expression": "30 7 * * 1-5"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "s57KBllvqf6Jb5xF",
+          "name": "n8n-monitor-trade-ai",
+          "active": false,
+          "activeVersionId": null,
+          "versionId": "dd9dd637-841f-4265-91ba-dee14947d4cf",
+          "post_modes": [],
+          "gates": [],
+          "schedules": [
+            [
+              {
+                "field": "minutes",
+                "minutesInterval": 5
+              }
+            ]
+          ]
+        }
+      ],
+      "execution_status_counts": [
+        {
+          "status": "error",
+          "mode": "manual",
+          "count": 1,
+          "oldest_started": "2026-10-08T13:20:54.564+00:00",
+          "latest_started": "2026-10-08T13:20:54.564+00:00"
+        },
+        {
+          "status": "error",
+          "mode": "trigger",
+          "count": 15,
+          "oldest_started": "2026-10-08T16:55:00.061+00:00",
+          "latest_started": "2026-10-08T19:00:00.037+00:00"
+        },
+        {
+          "status": "error",
+          "mode": "webhook",
+          "count": 1,
+          "oldest_started": "2026-10-06T22:30:05.894+00:00",
+          "latest_started": "2026-10-06T22:30:05.894+00:00"
+        },
+        {
+          "status": "running",
+          "mode": "trigger",
+          "count": 26,
+          "oldest_started": "2026-10-09T12:35:00.017+00:00",
+          "latest_started": "2026-10-09T13:15:00.057+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "error",
+          "count": 1,
+          "oldest_started": "2026-10-06T22:30:06.007+00:00",
+          "latest_started": "2026-10-06T22:30:06.007+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "manual",
+          "count": 3,
+          "oldest_started": "2026-10-06T22:18:21.214+00:00",
+          "latest_started": "2026-10-08T13:22:15.071+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "trigger",
+          "count": 413,
+          "oldest_started": "2026-10-06T22:20:41.031+00:00",
+          "latest_started": "2026-10-07T15:45:51.016+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "webhook",
+          "count": 2,
+          "oldest_started": "2026-10-06T22:30:05.522+00:00",
+          "latest_started": "2026-10-06T22:30:05.798+00:00"
+        }
+      ],
+      "waiting_summary": {
+        "count": 0,
+        "oldest_started": null,
+        "next_wait_until": null
+      },
+      "active_executions_metadata": [
+        {
+          "id": 1138,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:35:00.017+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1139,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:35:00.019+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1140,
+          "workflow_id": "c0d4c7845e5c4fcc",
+          "name": "crontab-snapshot-for-health-agent",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:40:00.028+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1141,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:40:00.031+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1142,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:40:00.035+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1143,
+          "workflow_id": "21fd15d5f8a4c4da",
+          "name": "n8n-research-intake-consumer",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:45:00.03+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1144,
+          "workflow_id": "078e8fcbea0c5020",
+          "name": "n8n-pilot-dispatch",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:45:00.03+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1145,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:45:00.037+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1146,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:45:00.04+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1147,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:50:00.08+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1148,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:50:00.084+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1149,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:55:00.028+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1150,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T12:55:00.028+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1151,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:00:00.073+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1152,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:00:00.076+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1153,
+          "workflow_id": "c0d4c7845e5c4fcc",
+          "name": "crontab-snapshot-for-health-agent",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:00:00.078+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1154,
+          "workflow_id": "21fd15d5f8a4c4da",
+          "name": "n8n-research-intake-consumer",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:00:00.08+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1155,
+          "workflow_id": "078e8fcbea0c5020",
+          "name": "n8n-pilot-dispatch",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:00:00.083+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1156,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:05:00.045+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1157,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:05:00.047+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1158,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:10:00.047+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1159,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:10:00.047+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1160,
+          "workflow_id": "21fd15d5f8a4c4da",
+          "name": "n8n-research-intake-consumer",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:15:00.048+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1161,
+          "workflow_id": "078e8fcbea0c5020",
+          "name": "n8n-pilot-dispatch",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:15:00.048+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1162,
+          "workflow_id": "722fac0e043ea5c4",
+          "name": "n8n-incident-fanin",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:15:00.055+00:00",
+          "wait_until": null
+        },
+        {
+          "id": 1163,
+          "workflow_id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "status": "running",
+          "mode": "trigger",
+          "started_at": "2026-10-09T13:15:00.057+00:00",
+          "wait_until": null
+        }
+      ],
+      "owner_mfa": [
+        {
+          "role": "global:owner",
+          "mfa_enabled": false,
+          "count": 1
+        }
+      ],
+      "db_role": {
+        "rolname": "n8n",
+        "rolsuper": true,
+        "rolcreaterole": true,
+        "rolcreatedb": true,
+        "rolreplication": true,
+        "rolbypassrls": true
+      }
+    }
+  },
+  "n8n_last_executions": [
+    {
+      "id": 1163,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:15:00.057+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1162,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:15:00.055+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1161,
+      "workflow_id": "078e8fcbea0c5020",
+      "name": "n8n-pilot-dispatch",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:15:00.048+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1160,
+      "workflow_id": "21fd15d5f8a4c4da",
+      "name": "n8n-research-intake-consumer",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:15:00.048+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1159,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:10:00.047+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1158,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:10:00.047+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1157,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:05:00.047+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1156,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:05:00.045+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1155,
+      "workflow_id": "078e8fcbea0c5020",
+      "name": "n8n-pilot-dispatch",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:00:00.083+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1154,
+      "workflow_id": "21fd15d5f8a4c4da",
+      "name": "n8n-research-intake-consumer",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:00:00.08+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1153,
+      "workflow_id": "c0d4c7845e5c4fcc",
+      "name": "crontab-snapshot-for-health-agent",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:00:00.078+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1152,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:00:00.076+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1151,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T13:00:00.073+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1150,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:55:00.028+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1149,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:55:00.028+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1148,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:50:00.084+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1147,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:50:00.08+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1146,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:45:00.04+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1145,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:45:00.037+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1144,
+      "workflow_id": "078e8fcbea0c5020",
+      "name": "n8n-pilot-dispatch",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:45:00.03+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1143,
+      "workflow_id": "21fd15d5f8a4c4da",
+      "name": "n8n-research-intake-consumer",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:45:00.03+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1142,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:40:00.035+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1141,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:40:00.031+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1140,
+      "workflow_id": "c0d4c7845e5c4fcc",
+      "name": "crontab-snapshot-for-health-agent",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:40:00.028+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1139,
+      "workflow_id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:35:00.019+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    },
+    {
+      "id": 1138,
+      "workflow_id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "status": "running",
+      "mode": "trigger",
+      "started_at": "2026-10-09T12:35:00.017+00:00",
+      "stopped_at": null,
+      "wait_until": null
+    }
+  ],
+  "workflow_update_metadata": [
+    {
+      "id": "078e8fcbea0c5020",
+      "name": "n8n-pilot-dispatch",
+      "active": true,
+      "updated_at": "2026-10-09T01:58:31.035+00:00",
+      "version_id": "721fb59b-eb8e-4760-99e4-60282b987581",
+      "active_version_id": "721fb59b-eb8e-4760-99e4-60282b987581"
+    },
+    {
+      "id": "0a170db6744afd7f",
+      "name": "hermes-overnight-pipeline-night-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:12.985+00:00",
+      "version_id": "b2678933-b7e1-402e-b565-3bd989a27f5a",
+      "active_version_id": "b2678933-b7e1-402e-b565-3bd989a27f5a"
+    },
+    {
+      "id": "0d48d2951cdc0cd0",
+      "name": "after-close-pipeline-broker-truth-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:39:42.735+00:00",
+      "version_id": "d6e47033-441c-4589-bd4e-b3bbecedee4c",
+      "active_version_id": "d6e47033-441c-4589-bd4e-b3bbecedee4c"
+    },
+    {
+      "id": "128dfb29e4faec7f",
+      "name": "hermes-overnight-pipeline-close-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:06.831+00:00",
+      "version_id": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24",
+      "active_version_id": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24"
+    },
+    {
+      "id": "18b20ea58617ffc2",
+      "name": "platform-maintenance-monthly-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:30.786+00:00",
+      "version_id": "267ad403-f2d8-4655-9138-e31571ce7bf8",
+      "active_version_id": "267ad403-f2d8-4655-9138-e31571ce7bf8"
+    },
+    {
+      "id": "19e0ed9711cfb320",
+      "name": "after-close-pipeline-planning-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:39:52.478+00:00",
+      "version_id": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7",
+      "active_version_id": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7"
+    },
+    {
+      "id": "21fd15d5f8a4c4da",
+      "name": "n8n-research-intake-consumer",
+      "active": true,
+      "updated_at": "2026-10-09T01:58:38.556+00:00",
+      "version_id": "d2719005-4750-44d2-b7fc-51aad9f86dee",
+      "active_version_id": "d2719005-4750-44d2-b7fc-51aad9f86dee"
+    },
+    {
+      "id": "283ceeb030de5e66",
+      "name": "catalyst-calibration-monitor-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:59:09.975+00:00",
+      "version_id": "67b62cb8-e575-4c72-b1e1-79eac4520b3c",
+      "active_version_id": "67b62cb8-e575-4c72-b1e1-79eac4520b3c"
+    },
+    {
+      "id": "2c725c7dfd4ac62f",
+      "name": "finviz-view-contracts-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:59:17.944+00:00",
+      "version_id": "25c3c54d-c170-445e-8752-ac3e52a430f1",
+      "active_version_id": "25c3c54d-c170-445e-8752-ac3e52a430f1"
+    },
+    {
+      "id": "2yPuOGW9yYtJsoYk",
+      "name": "n8n-bench-nodes",
+      "active": false,
+      "updated_at": "2026-10-07T00:12:00.857+00:00",
+      "version_id": "257ee2a5-3b61-44d4-8b2e-e2c8b290e2c4",
+      "active_version_id": null
+    },
+    {
+      "id": "498d749165a93ff9",
+      "name": "source-attribution-monitor-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:59:12.245+00:00",
+      "version_id": "4cbfc3ab-30ca-48dd-92ce-d2c1f576dac0",
+      "active_version_id": "4cbfc3ab-30ca-48dd-92ce-d2c1f576dac0"
+    },
+    {
+      "id": "4a447dec9837c273",
+      "name": "portfolio-lookthrough-cadence-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:53.942+00:00",
+      "version_id": "7fee50e1-507f-4b75-9f08-447ee3965b5b",
+      "active_version_id": "7fee50e1-507f-4b75-9f08-447ee3965b5b"
+    },
+    {
+      "id": "4b11eabaa6735a90",
+      "name": "platform-maintenance-weekly-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:24.642+00:00",
+      "version_id": "8d6df53f-fd8c-406d-b326-f6f88331d102",
+      "active_version_id": "8d6df53f-fd8c-406d-b326-f6f88331d102"
+    },
+    {
+      "id": "5439cd4d82e1f305",
+      "name": "crontab-snapshot-for-health-agent-shadow",
+      "active": false,
+      "updated_at": "2026-10-09T02:03:48.091+00:00",
+      "version_id": "a69e14b6-6b7a-4880-a023-c9ebf5fa1eb5",
+      "active_version_id": null
+    },
+    {
+      "id": "577f9dfaede632f3",
+      "name": "n8n-research-intake-consumer-shadow",
+      "active": false,
+      "updated_at": "2026-10-09T02:03:45.199+00:00",
+      "version_id": "d60156e8-c875-47cb-bdb6-7610a5c527e8",
+      "active_version_id": null
+    },
+    {
+      "id": "5966437c872aa18b",
+      "name": "watch-directives-monitor-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:59:14.783+00:00",
+      "version_id": "d7cef80a-1a0c-46bd-95ac-828f6ed979e5",
+      "active_version_id": "d7cef80a-1a0c-46bd-95ac-828f6ed979e5"
+    },
+    {
+      "id": "6c04dc250b7d6a04",
+      "name": "portfolio-daily-cadence-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:39.744+00:00",
+      "version_id": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb",
+      "active_version_id": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb"
+    },
+    {
+      "id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "active": true,
+      "updated_at": "2026-10-09T01:58:34.873+00:00",
+      "version_id": "e6844480-561f-4f16-ba43-9879cfa07538",
+      "active_version_id": "e6844480-561f-4f16-ba43-9879cfa07538"
+    },
+    {
+      "id": "8a9162783109e7bb",
+      "name": "platform-maintenance-nightly-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:18.533+00:00",
+      "version_id": "b830c2c1-de89-4812-a7ce-208bd036818a",
+      "active_version_id": "b830c2c1-de89-4812-a7ce-208bd036818a"
+    },
+    {
+      "id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "active": true,
+      "updated_at": "2026-10-08T17:10:27.652+00:00",
+      "version_id": "d4191382-aa72-44c4-93ef-64ca80ff788e",
+      "active_version_id": "d4191382-aa72-44c4-93ef-64ca80ff788e"
+    },
+    {
+      "id": "Bi002YOPSpZOQpEo",
+      "name": "n8n-bench-error",
+      "active": false,
+      "updated_at": "2026-10-07T00:08:46.669+00:00",
+      "version_id": "adb965c1-57da-438e-8dde-e3248bfe00e0",
+      "active_version_id": null
+    },
+    {
+      "id": "GXwhbRkwsGcYZxgn",
+      "name": "n8n-monitor-dof",
+      "active": false,
+      "updated_at": "2026-10-09T13:04:51.203+00:00",
+      "version_id": "8ced2415-3edb-4044-8eb6-fc8df273d3b1",
+      "active_version_id": null
+    },
+    {
+      "id": "a26114588930ae9b",
+      "name": "maturity-remeasure-shadow",
+      "active": false,
+      "updated_at": "2026-10-09T13:03:09.508+00:00",
+      "version_id": "02df9385-f8df-43cd-8c0d-fa1389479760",
+      "active_version_id": null
+    },
+    {
+      "id": "a33cd415e30d6f01",
+      "name": "hermes-learning-pipeline-learn-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:39:57.378+00:00",
+      "version_id": "c80e187e-0b61-4795-a673-2416d6c942ce",
+      "active_version_id": "c80e187e-0b61-4795-a673-2416d6c942ce"
+    },
+    {
+      "id": "a8b8cbf625caebb0",
+      "name": "portfolio-monthly-cadence-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:49.906+00:00",
+      "version_id": "934d34eb-56a2-4322-b838-fff6dcc8f2be",
+      "active_version_id": "934d34eb-56a2-4322-b838-fff6dcc8f2be"
+    },
+    {
+      "id": "aac827ce00ff8ae4",
+      "name": "after-close-pipeline-close-capture-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:39:47.183+00:00",
+      "version_id": "12acb54b-1339-4937-9f27-845e89a36549",
+      "active_version_id": "12acb54b-1339-4937-9f27-845e89a36549"
+    },
+    {
+      "id": "ae61fa66dba00c9f",
+      "name": "portfolio-weekly-cadence-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:44.785+00:00",
+      "version_id": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd",
+      "active_version_id": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd"
+    },
+    {
+      "id": "baddad5487f9c288",
+      "name": "n8n-pilot-dispatch-shadow",
+      "active": false,
+      "updated_at": "2026-10-09T02:03:40.454+00:00",
+      "version_id": "b7949bcc-c8c1-4bf5-9533-01417961da97",
+      "active_version_id": null
+    },
+    {
+      "id": "bcbcc68b9c8c5e56",
+      "name": "governance-pipeline-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:35.294+00:00",
+      "version_id": "975a7e41-48e2-424f-80f3-e69af419c515",
+      "active_version_id": "975a7e41-48e2-424f-80f3-e69af419c515"
+    },
+    {
+      "id": "c0d4c7845e5c4fcc",
+      "name": "crontab-snapshot-for-health-agent",
+      "active": true,
+      "updated_at": "2026-10-08T19:58:55.867+00:00",
+      "version_id": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda",
+      "active_version_id": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda"
+    },
+    {
+      "id": "c7dc5a8273bf6f44",
+      "name": "hermes-learning-pipeline-tune-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:40:01.222+00:00",
+      "version_id": "cdb973be-e2c4-442f-9a84-7a1721e13a44",
+      "active_version_id": "cdb973be-e2c4-442f-9a84-7a1721e13a44"
+    },
+    {
+      "id": "e18d7849b4142927",
+      "name": "maturity-remeasure",
+      "active": true,
+      "updated_at": "2026-10-09T13:03:06.947+00:00",
+      "version_id": "339361a0-4d0f-4fba-be6a-7da7caf42341",
+      "active_version_id": "339361a0-4d0f-4fba-be6a-7da7caf42341"
+    },
+    {
+      "id": "e511583d42831b8b",
+      "name": "n8n-incident-fanin-shadow",
+      "active": false,
+      "updated_at": "2026-10-09T02:03:42.899+00:00",
+      "version_id": "f70c3aeb-376e-4387-8a89-f50665f5a0e9",
+      "active_version_id": null
+    },
+    {
+      "id": "e6f62397d5ae2aa2",
+      "name": "lane-governance-packet-weekly-shadow",
+      "active": true,
+      "updated_at": "2026-10-08T17:10:05.838+00:00",
+      "version_id": "2b037961-d9d0-4dfc-861c-44f380534cc6",
+      "active_version_id": "2b037961-d9d0-4dfc-861c-44f380534cc6"
+    },
+    {
+      "id": "f4553ff360e21a9f",
+      "name": "premarket-data-pipeline-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:39:37.379+00:00",
+      "version_id": "faf1e382-6146-45e6-97b5-78d2c46c501c",
+      "active_version_id": "faf1e382-6146-45e6-97b5-78d2c46c501c"
+    },
+    {
+      "id": "ffa6bbfa93ad4056",
+      "name": "generate-analyst-daily-digest-shadow",
+      "active": true,
+      "updated_at": "2026-10-09T12:59:07.747+00:00",
+      "version_id": "9804816e-54fe-4a36-9986-dfd89fe350aa",
+      "active_version_id": "9804816e-54fe-4a36-9986-dfd89fe350aa"
+    },
+    {
+      "id": "s57KBllvqf6Jb5xF",
+      "name": "n8n-monitor-trade-ai",
+      "active": false,
+      "updated_at": "2026-10-09T13:04:48.681+00:00",
+      "version_id": "dd9dd637-841f-4265-91ba-dee14947d4cf",
+      "active_version_id": null
+    }
+  ],
+  "n8n_natural_event_metadata": {
+    "files": [
+      {
+        "name": "n8nEventLog-1.log",
+        "size": 36016,
+        "invalid_lines": 0
+      },
+      {
+        "name": "n8nEventLog-2.log",
+        "size": 28764,
+        "invalid_lines": 0
+      },
+      {
+        "name": "n8nEventLog-3.log",
+        "size": 2658686,
+        "invalid_lines": 0
+      },
+      {
+        "name": "n8nEventLog.log",
+        "size": 57057,
+        "invalid_lines": 0
+      }
+    ],
+    "events": [
+      {
+        "ts": "2026-10-09T13:00:00.101+00:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1151",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:00:00.176-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1152",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:00:00.177-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1154",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:00:00.178-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1153",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:00:00.216-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1155",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:00:00.256-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1151",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:00:00.260-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1154",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:00:00.264-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1152",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:00:00.266-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1153",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:00:00.267-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1155",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T12:50:00.109+00:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1147",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:50:00.202-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1148",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:50:00.290-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1147",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:50:00.300-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1148",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:55:00.042-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1150",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:55:00.077-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1150",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:55:00.099-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1149",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:55:00.126-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1149",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:00:00.048-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1116",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:00:00.080-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1116",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:00:00.089-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1118",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:00:00.090-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1119",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:00:00.105-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1120",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:00:00.107-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1117",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:00:00.126-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1118",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:00:00.128-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1119",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:00:00.140-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1120",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:00:00.144-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1117",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:05:00.025-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1121",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:05:00.048-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1121",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:05:00.063-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1122",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:05:00.083-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1122",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:10:00.034-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1123",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:10:00.061-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1123",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:10:00.077-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1124",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:10:00.101-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1124",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:15:00.046-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1125",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:15:00.079-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1125",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:15:00.090-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1126",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:15:00.092-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1127",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:15:00.102-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1128",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:15:00.117-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1126",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:15:00.120-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1127",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:15:00.126-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1128",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:20:00.044-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1129",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:20:00.076-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1129",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:20:00.092-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1131",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:20:00.110-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1130",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:20:00.119-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1131",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:20:00.135-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1130",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:25:00.031-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1132",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:25:00.058-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1132",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:25:00.089-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1133",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:25:00.112-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1133",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:30:00.059-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1134",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:30:00.102-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1135",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:30:00.104-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1134",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:30:00.120-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1137",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:30:00.134-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1136",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:30:00.145-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1135",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:30:00.153-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1137",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:30:00.163-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1136",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:35:00.031-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1138",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:35:00.058-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1138",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:35:00.072-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1139",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:35:00.095-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1139",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:40:00.051-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1140",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:40:00.097-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1140",
+        "workflowId": "c0d4c7845e5c4fcc",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:40:00.124-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1141",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:40:00.125-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1142",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:40:00.169-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1141",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:40:00.177-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1142",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:45:00.054-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1144",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:45:00.094-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1144",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:45:00.104-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1143",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:45:00.114-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1145",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:45:00.133-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1143",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:45:00.143-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1146",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T08:45:00.145-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1145",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T08:45:00.168-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1146",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T13:05:00.062+00:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1156",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:05:00.108-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1157",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:05:00.255-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1156",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:05:00.259-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1157",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:10:00.065-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1158",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:10:00.164-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1158",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:10:00.225-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1159",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:10:00.263-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1159",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:15:00.078-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1161",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:15:00.155-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1161",
+        "workflowId": "078e8fcbea0c5020",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:15:00.171-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1160",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:15:00.197-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1162",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:15:00.201-04:00",
+        "eventName": "n8n.workflow.started",
+        "executionId": "1163",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger"
+      },
+      {
+        "ts": "2026-10-09T09:15:00.234-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1160",
+        "workflowId": "21fd15d5f8a4c4da",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:15:00.259-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1162",
+        "workflowId": "722fac0e043ea5c4",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      },
+      {
+        "ts": "2026-10-09T09:15:00.267-04:00",
+        "eventName": "n8n.workflow.success",
+        "executionId": "1163",
+        "workflowId": "9208ac827e514183",
+        "isManual": false,
+        "mode": "trigger",
+        "success": true
+      }
+    ]
+  },
+  "host_runs": [
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1121",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:05:00.035829+00:00",
+      "started_at": "2026-10-09T12:05:01.278233+00:00",
+      "finished_at": "2026-10-09T12:05:01.387401+00:00",
+      "exit_code": 0,
+      "duration_s": 0.105,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1121",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.105,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791547360.8668375,
+        "output_signal_mtime_after": 1791547360.8668375,
+        "started_at": "2026-10-09T12:05:01.282804+00:00",
+        "finished_at": "2026-10-09T12:05:01.387401+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1121.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:05:00.025-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1121",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:05:00.048-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1121",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1122",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:05:00.071843+00:00",
+      "started_at": "2026-10-09T12:05:01.390228+00:00",
+      "finished_at": "2026-10-09T12:05:03.206002+00:00",
+      "exit_code": 0,
+      "duration_s": 1.813,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1122",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.813,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791547205.7885842,
+        "output_signal_mtime_after": 1791547503.0940907,
+        "started_at": "2026-10-09T12:05:01.392575+00:00",
+        "finished_at": "2026-10-09T12:05:03.206002+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1122.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:05:00.063-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1122",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:05:00.083-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1122",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1123",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:10:00.046198+00:00",
+      "started_at": "2026-10-09T12:10:03.224196+00:00",
+      "finished_at": "2026-10-09T12:10:03.332643+00:00",
+      "exit_code": 0,
+      "duration_s": 0.106,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1123",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.106,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791547662.5590625,
+        "output_signal_mtime_after": 1791547662.5590625,
+        "started_at": "2026-10-09T12:10:03.226799+00:00",
+        "finished_at": "2026-10-09T12:10:03.332643+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1123.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:10:00.034-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1123",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:10:00.061-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1123",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1124",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:10:00.088613+00:00",
+      "started_at": "2026-10-09T12:10:03.335691+00:00",
+      "finished_at": "2026-10-09T12:10:05.057199+00:00",
+      "exit_code": 0,
+      "duration_s": 1.719,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1124",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.719,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791547503.0940907,
+        "output_signal_mtime_after": 1791547804.9454415,
+        "started_at": "2026-10-09T12:10:03.338085+00:00",
+        "finished_at": "2026-10-09T12:10:05.057199+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1124.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:10:00.077-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1124",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:10:00.101-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1124",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-078e8fcbea0c5020-1125",
+      "lane_id": "n8n-pilot-dispatch",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:15:00.063984+00:00",
+      "started_at": "2026-10-09T12:15:00.079801+00:00",
+      "finished_at": "2026-10-09T12:15:00.505118+00:00",
+      "exit_code": 0,
+      "duration_s": 0.423,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-078e8fcbea0c5020-1125",
+        "lane_id": "n8n-pilot-dispatch",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.423,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+        "output_signal_mtime_before": 1791547202.5831218,
+        "output_signal_mtime_after": 1791548100.346531,
+        "started_at": "2026-10-09T12:15:00.082431+00:00",
+        "finished_at": "2026-10-09T12:15:00.505118+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-078e8fcbea0c5020-1125.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:15:00.046-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1125",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:15:00.079-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1125",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-21fd15d5f8a4c4da-1126",
+      "lane_id": "n8n-research-intake-consumer",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:15:00.103486+00:00",
+      "started_at": "2026-10-09T12:15:00.507979+00:00",
+      "finished_at": "2026-10-09T12:15:00.765723+00:00",
+      "exit_code": 0,
+      "duration_s": 0.255,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-21fd15d5f8a4c4da-1126",
+        "lane_id": "n8n-research-intake-consumer",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.255,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_research_intake_last.json",
+        "output_signal_mtime_before": 1791547206.1146016,
+        "output_signal_mtime_after": 1791548100.6556196,
+        "started_at": "2026-10-09T12:15:00.510327+00:00",
+        "finished_at": "2026-10-09T12:15:00.765723+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-21fd15d5f8a4c4da-1126.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:15:00.090-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1126",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:15:00.117-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1126",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1127",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:15:00.103903+00:00",
+      "started_at": "2026-10-09T12:15:00.769323+00:00",
+      "finished_at": "2026-10-09T12:15:02.598500+00:00",
+      "exit_code": 0,
+      "duration_s": 1.826,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1127",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.826,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791547804.9454415,
+        "output_signal_mtime_after": 1791548102.4534028,
+        "started_at": "2026-10-09T12:15:00.772254+00:00",
+        "finished_at": "2026-10-09T12:15:02.598500+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1127.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:15:00.092-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1127",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:15:00.120-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1127",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1128",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:15:00.109360+00:00",
+      "started_at": "2026-10-09T12:15:02.601846+00:00",
+      "finished_at": "2026-10-09T12:15:02.708857+00:00",
+      "exit_code": 0,
+      "duration_s": 0.105,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1128",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.105,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791547966.6230803,
+        "output_signal_mtime_after": 1791547966.6230803,
+        "started_at": "2026-10-09T12:15:02.604265+00:00",
+        "finished_at": "2026-10-09T12:15:02.708857+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1128.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:15:00.102-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1128",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:15:00.126-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1128",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-c0d4c7845e5c4fcc-1129",
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:20:00.062556+00:00",
+      "started_at": "2026-10-09T12:20:02.728277+00:00",
+      "finished_at": "2026-10-09T12:20:02.959635+00:00",
+      "exit_code": 0,
+      "duration_s": 0.229,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-c0d4c7845e5c4fcc-1129",
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.229,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/crontab_snapshot.txt",
+        "output_signal_mtime_before": 1791547202.8407216,
+        "output_signal_mtime_after": 1791548402.8121243,
+        "started_at": "2026-10-09T12:20:02.730803+00:00",
+        "finished_at": "2026-10-09T12:20:02.959635+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-1129.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:20:00.044-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1129",
+          "workflowId": "c0d4c7845e5c4fcc",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:20:00.076-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1129",
+          "workflowId": "c0d4c7845e5c4fcc",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1131",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:20:00.099564+00:00",
+      "started_at": "2026-10-09T12:20:02.974997+00:00",
+      "finished_at": "2026-10-09T12:20:03.085063+00:00",
+      "exit_code": 0,
+      "duration_s": 0.105,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1131",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.105,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791548276.4847274,
+        "output_signal_mtime_after": 1791548276.4847274,
+        "started_at": "2026-10-09T12:20:02.979843+00:00",
+        "finished_at": "2026-10-09T12:20:03.085063+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1131.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:20:00.092-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1131",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:20:00.119-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1131",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1130",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:20:00.120627+00:00",
+      "started_at": "2026-10-09T12:20:03.088266+00:00",
+      "finished_at": "2026-10-09T12:20:04.706712+00:00",
+      "exit_code": 0,
+      "duration_s": 1.616,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1130",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.616,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791548102.4534028,
+        "output_signal_mtime_after": 1791548404.6477883,
+        "started_at": "2026-10-09T12:20:03.090642+00:00",
+        "finished_at": "2026-10-09T12:20:04.706712+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1130.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:20:00.110-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1130",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:20:00.135-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1130",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1132",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:25:00.042660+00:00",
+      "started_at": "2026-10-09T12:25:04.724666+00:00",
+      "finished_at": "2026-10-09T12:25:06.852869+00:00",
+      "exit_code": 0,
+      "duration_s": 2.126,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1132",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 2.126,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791548404.6477883,
+        "output_signal_mtime_after": 1791548706.7307758,
+        "started_at": "2026-10-09T12:25:04.727306+00:00",
+        "finished_at": "2026-10-09T12:25:06.852869+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1132.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:25:00.031-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1132",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:25:00.058-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1132",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1133",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:25:00.099494+00:00",
+      "started_at": "2026-10-09T12:25:06.856799+00:00",
+      "finished_at": "2026-10-09T12:25:07.066329+00:00",
+      "exit_code": 0,
+      "duration_s": 0.206,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1133",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.206,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791548580.869797,
+        "output_signal_mtime_after": 1791548580.869797,
+        "started_at": "2026-10-09T12:25:06.860812+00:00",
+        "finished_at": "2026-10-09T12:25:07.066329+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1133.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:25:00.089-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1133",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:25:00.112-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1133",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1134",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:30:00.081240+00:00",
+      "started_at": "2026-10-09T12:30:02.082351+00:00",
+      "finished_at": "2026-10-09T12:30:04.675534+00:00",
+      "exit_code": 0,
+      "duration_s": 2.591,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1134",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 2.591,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791548706.7307758,
+        "output_signal_mtime_after": 1791549004.5363941,
+        "started_at": "2026-10-09T12:30:02.084965+00:00",
+        "finished_at": "2026-10-09T12:30:04.675534+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1134.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:30:00.059-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1134",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:30:00.104-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1134",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1135",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:30:00.116730+00:00",
+      "started_at": "2026-10-09T12:30:04.678902+00:00",
+      "finished_at": "2026-10-09T12:30:04.885977+00:00",
+      "exit_code": 0,
+      "duration_s": 0.205,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1135",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.205,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791548881.2003121,
+        "output_signal_mtime_after": 1791548881.2003121,
+        "started_at": "2026-10-09T12:30:04.681462+00:00",
+        "finished_at": "2026-10-09T12:30:04.885977+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1135.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:30:00.102-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1135",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:30:00.145-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1135",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-078e8fcbea0c5020-1137",
+      "lane_id": "n8n-pilot-dispatch",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:30:00.131880+00:00",
+      "started_at": "2026-10-09T12:30:04.888862+00:00",
+      "finished_at": "2026-10-09T12:30:05.317019+00:00",
+      "exit_code": 0,
+      "duration_s": 0.426,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-078e8fcbea0c5020-1137",
+        "lane_id": "n8n-pilot-dispatch",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.426,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+        "output_signal_mtime_before": 1791548100.346531,
+        "output_signal_mtime_after": 1791549005.1638916,
+        "started_at": "2026-10-09T12:30:04.891134+00:00",
+        "finished_at": "2026-10-09T12:30:05.317019+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-078e8fcbea0c5020-1137.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:30:00.120-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1137",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:30:00.153-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1137",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-21fd15d5f8a4c4da-1136",
+      "lane_id": "n8n-research-intake-consumer",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:30:00.146481+00:00",
+      "started_at": "2026-10-09T12:30:05.320017+00:00",
+      "finished_at": "2026-10-09T12:30:05.649479+00:00",
+      "exit_code": 0,
+      "duration_s": 0.327,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-21fd15d5f8a4c4da-1136",
+        "lane_id": "n8n-research-intake-consumer",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.327,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_research_intake_last.json",
+        "output_signal_mtime_before": 1791548100.6556196,
+        "output_signal_mtime_after": 1791549005.513606,
+        "started_at": "2026-10-09T12:30:05.322350+00:00",
+        "finished_at": "2026-10-09T12:30:05.649479+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-21fd15d5f8a4c4da-1136.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:30:00.134-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1136",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:30:00.163-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1136",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1138",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:35:00.043822+00:00",
+      "started_at": "2026-10-09T12:35:00.664103+00:00",
+      "finished_at": "2026-10-09T12:35:02.498782+00:00",
+      "exit_code": 0,
+      "duration_s": 1.829,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1138",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.829,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791549004.5363941,
+        "output_signal_mtime_after": 1791549302.4021616,
+        "started_at": "2026-10-09T12:35:00.669353+00:00",
+        "finished_at": "2026-10-09T12:35:02.498782+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1138.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:35:00.031-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1138",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:35:00.058-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1138",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1139",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:35:00.083017+00:00",
+      "started_at": "2026-10-09T12:35:02.502082+00:00",
+      "finished_at": "2026-10-09T12:35:02.709544+00:00",
+      "exit_code": 0,
+      "duration_s": 0.205,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1139",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.205,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791549181.1869829,
+        "output_signal_mtime_after": 1791549181.1869829,
+        "started_at": "2026-10-09T12:35:02.504555+00:00",
+        "finished_at": "2026-10-09T12:35:02.709544+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1139.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:35:00.072-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1139",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:35:00.095-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1139",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-c0d4c7845e5c4fcc-1140",
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:40:00.077325+00:00",
+      "started_at": "2026-10-09T12:40:02.725237+00:00",
+      "finished_at": "2026-10-09T12:40:03.088821+00:00",
+      "exit_code": 0,
+      "duration_s": 0.361,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-c0d4c7845e5c4fcc-1140",
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.361,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/crontab_snapshot.txt",
+        "output_signal_mtime_before": 1791548402.8121243,
+        "output_signal_mtime_after": 1791549602.8985386,
+        "started_at": "2026-10-09T12:40:02.727876+00:00",
+        "finished_at": "2026-10-09T12:40:03.088821+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-1140.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:40:00.051-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1140",
+          "workflowId": "c0d4c7845e5c4fcc",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:40:00.097-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1140",
+          "workflowId": "c0d4c7845e5c4fcc",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1141",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:40:00.144570+00:00",
+      "started_at": "2026-10-09T12:40:03.092157+00:00",
+      "finished_at": "2026-10-09T12:40:05.759767+00:00",
+      "exit_code": 0,
+      "duration_s": 2.665,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1141",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 2.665,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791549302.4021616,
+        "output_signal_mtime_after": 1791549605.6304545,
+        "started_at": "2026-10-09T12:40:03.094676+00:00",
+        "finished_at": "2026-10-09T12:40:05.759767+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1141.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:40:00.124-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1141",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:40:00.169-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1141",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1142",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:40:00.144929+00:00",
+      "started_at": "2026-10-09T12:40:05.763139+00:00",
+      "finished_at": "2026-10-09T12:40:05.970450+00:00",
+      "exit_code": 0,
+      "duration_s": 0.205,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1142",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.205,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791549481.7997198,
+        "output_signal_mtime_after": 1791549481.7997198,
+        "started_at": "2026-10-09T12:40:05.765530+00:00",
+        "finished_at": "2026-10-09T12:40:05.970450+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1142.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:40:00.125-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1142",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:40:00.177-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1142",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-078e8fcbea0c5020-1144",
+      "lane_id": "n8n-pilot-dispatch",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:45:00.077135+00:00",
+      "started_at": "2026-10-09T12:45:00.992133+00:00",
+      "finished_at": "2026-10-09T12:45:01.422614+00:00",
+      "exit_code": 0,
+      "duration_s": 0.422,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-078e8fcbea0c5020-1144",
+        "lane_id": "n8n-pilot-dispatch",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.422,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+        "output_signal_mtime_before": 1791549005.1638916,
+        "output_signal_mtime_after": 1791549901.2731473,
+        "started_at": "2026-10-09T12:45:01.000488+00:00",
+        "finished_at": "2026-10-09T12:45:01.422614+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-078e8fcbea0c5020-1144.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:45:00.054-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1144",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:45:00.094-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1144",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-21fd15d5f8a4c4da-1143",
+      "lane_id": "n8n-research-intake-consumer",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:45:00.115266+00:00",
+      "started_at": "2026-10-09T12:45:01.425966+00:00",
+      "finished_at": "2026-10-09T12:45:01.666019+00:00",
+      "exit_code": 0,
+      "duration_s": 0.237,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-21fd15d5f8a4c4da-1143",
+        "lane_id": "n8n-research-intake-consumer",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.237,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_research_intake_last.json",
+        "output_signal_mtime_before": 1791549005.513606,
+        "output_signal_mtime_after": 1791549901.5781963,
+        "started_at": "2026-10-09T12:45:01.428547+00:00",
+        "finished_at": "2026-10-09T12:45:01.666019+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-21fd15d5f8a4c4da-1143.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:45:00.104-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1143",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:45:00.133-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1143",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1145",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:45:00.127126+00:00",
+      "started_at": "2026-10-09T12:45:01.669377+00:00",
+      "finished_at": "2026-10-09T12:45:03.931881+00:00",
+      "exit_code": 0,
+      "duration_s": 2.26,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1145",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 2.26,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791549605.6304545,
+        "output_signal_mtime_after": 1791549903.7912679,
+        "started_at": "2026-10-09T12:45:01.672055+00:00",
+        "finished_at": "2026-10-09T12:45:03.931881+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1145.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:45:00.114-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1145",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:45:00.145-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1145",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1146",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:45:00.153752+00:00",
+      "started_at": "2026-10-09T12:45:03.935131+00:00",
+      "finished_at": "2026-10-09T12:45:04.042721+00:00",
+      "exit_code": 0,
+      "duration_s": 0.105,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1146",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.105,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791549782.6307838,
+        "output_signal_mtime_after": 1791549782.6307838,
+        "started_at": "2026-10-09T12:45:03.937564+00:00",
+        "finished_at": "2026-10-09T12:45:04.042721+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1146.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:45:00.143-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1146",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:45:00.168-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1146",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1147",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:50:00.202352+00:00",
+      "started_at": "2026-10-09T12:50:04.057445+00:00",
+      "finished_at": "2026-10-09T12:50:04.164551+00:00",
+      "exit_code": 0,
+      "duration_s": 0.104,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1147",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.104,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791550082.8323605,
+        "output_signal_mtime_after": 1791550082.8323605,
+        "started_at": "2026-10-09T12:50:04.060075+00:00",
+        "finished_at": "2026-10-09T12:50:04.164551+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1147.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T12:50:00.109+00:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1147",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:50:00.290-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1147",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1148",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:50:00.218006+00:00",
+      "started_at": "2026-10-09T12:50:04.167677+00:00",
+      "finished_at": "2026-10-09T12:50:05.892011+00:00",
+      "exit_code": 0,
+      "duration_s": 1.722,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1148",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.722,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791549903.7912679,
+        "output_signal_mtime_after": 1791550205.7636135,
+        "started_at": "2026-10-09T12:50:04.170075+00:00",
+        "finished_at": "2026-10-09T12:50:05.892011+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1148.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:50:00.202-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1148",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:50:00.300-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1148",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1150",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:55:00.059283+00:00",
+      "started_at": "2026-10-09T12:55:00.912985+00:00",
+      "finished_at": "2026-10-09T12:55:01.019903+00:00",
+      "exit_code": 0,
+      "duration_s": 0.104,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1150",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.104,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791550404.1565683,
+        "output_signal_mtime_after": 1791550404.1565683,
+        "started_at": "2026-10-09T12:55:00.915482+00:00",
+        "finished_at": "2026-10-09T12:55:01.019903+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1150.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:55:00.042-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1150",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:55:00.077-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1150",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1149",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T12:55:00.111446+00:00",
+      "started_at": "2026-10-09T12:55:01.023201+00:00",
+      "finished_at": "2026-10-09T12:55:03.040677+00:00",
+      "exit_code": 0,
+      "duration_s": 2.015,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1149",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 2.015,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791550205.7636135,
+        "output_signal_mtime_after": 1791550502.8985648,
+        "started_at": "2026-10-09T12:55:01.025591+00:00",
+        "finished_at": "2026-10-09T12:55:03.040677+00:00",
+        "code_sha": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1149.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T08:55:00.099-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1149",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T08:55:00.126-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1149",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": false
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1151",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:00:00.181355+00:00",
+      "started_at": "2026-10-09T13:00:00.273477+00:00",
+      "finished_at": "2026-10-09T13:00:02.003645+00:00",
+      "exit_code": 0,
+      "duration_s": 1.719,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1151",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.719,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791550502.8985648,
+        "output_signal_mtime_after": 1791550801.927207,
+        "started_at": "2026-10-09T13:00:00.284783+00:00",
+        "finished_at": "2026-10-09T13:00:02.003645+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1151.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T13:00:00.101+00:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1151",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:00:00.256-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1151",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-21fd15d5f8a4c4da-1154",
+      "lane_id": "n8n-research-intake-consumer",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:00:00.198128+00:00",
+      "started_at": "2026-10-09T13:00:02.008283+00:00",
+      "finished_at": "2026-10-09T13:00:02.578093+00:00",
+      "exit_code": 0,
+      "duration_s": 0.567,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-21fd15d5f8a4c4da-1154",
+        "lane_id": "n8n-research-intake-consumer",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.567,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_research_intake_last.json",
+        "output_signal_mtime_before": 1791549901.5781963,
+        "output_signal_mtime_after": 1791550802.359906,
+        "started_at": "2026-10-09T13:00:02.010926+00:00",
+        "finished_at": "2026-10-09T13:00:02.578093+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-21fd15d5f8a4c4da-1154.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:00:00.177-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1154",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:00:00.260-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1154",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1152",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:00:00.199390+00:00",
+      "started_at": "2026-10-09T13:00:02.581581+00:00",
+      "finished_at": "2026-10-09T13:00:02.832129+00:00",
+      "exit_code": 0,
+      "duration_s": 0.248,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1152",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.248,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791550704.310901,
+        "output_signal_mtime_after": 1791550704.310901,
+        "started_at": "2026-10-09T13:00:02.584129+00:00",
+        "finished_at": "2026-10-09T13:00:02.832129+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1152.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:00:00.176-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1152",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:00:00.264-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1152",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-c0d4c7845e5c4fcc-1153",
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:00:00.209704+00:00",
+      "started_at": "2026-10-09T13:00:02.836321+00:00",
+      "finished_at": "2026-10-09T13:00:03.150685+00:00",
+      "exit_code": 0,
+      "duration_s": 0.312,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-c0d4c7845e5c4fcc-1153",
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.312,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/crontab_snapshot.txt",
+        "output_signal_mtime_before": 1791549602.8985386,
+        "output_signal_mtime_after": 1791550802.968949,
+        "started_at": "2026-10-09T13:00:02.838871+00:00",
+        "finished_at": "2026-10-09T13:00:03.150685+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-1153.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:00:00.178-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1153",
+          "workflowId": "c0d4c7845e5c4fcc",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:00:00.266-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1153",
+          "workflowId": "c0d4c7845e5c4fcc",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-078e8fcbea0c5020-1155",
+      "lane_id": "n8n-pilot-dispatch",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:00:00.233426+00:00",
+      "started_at": "2026-10-09T13:00:03.154255+00:00",
+      "finished_at": "2026-10-09T13:00:03.800673+00:00",
+      "exit_code": 0,
+      "duration_s": 0.644,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-078e8fcbea0c5020-1155",
+        "lane_id": "n8n-pilot-dispatch",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.644,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+        "output_signal_mtime_before": 1791549901.2731473,
+        "output_signal_mtime_after": 1791550803.6640348,
+        "started_at": "2026-10-09T13:00:03.156709+00:00",
+        "finished_at": "2026-10-09T13:00:03.800673+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-078e8fcbea0c5020-1155.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:00:00.216-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1155",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:00:00.267-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1155",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1156",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:05:00.118801+00:00",
+      "started_at": "2026-10-09T13:05:03.817506+00:00",
+      "finished_at": "2026-10-09T13:05:03.924800+00:00",
+      "exit_code": 0,
+      "duration_s": 0.104,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1156",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.104,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791551004.6145058,
+        "output_signal_mtime_after": 1791551004.6145058,
+        "started_at": "2026-10-09T13:05:03.820318+00:00",
+        "finished_at": "2026-10-09T13:05:03.924800+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1156.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T13:05:00.062+00:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1156",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:05:00.255-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1156",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1157",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:05:00.123080+00:00",
+      "started_at": "2026-10-09T13:05:03.928380+00:00",
+      "finished_at": "2026-10-09T13:05:05.851267+00:00",
+      "exit_code": 0,
+      "duration_s": 1.92,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1157",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 1.92,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791550801.927207,
+        "output_signal_mtime_after": 1791551105.7642648,
+        "started_at": "2026-10-09T13:05:03.930985+00:00",
+        "finished_at": "2026-10-09T13:05:05.851267+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1157.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:05:00.108-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1157",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:05:00.259-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1157",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1158",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:10:00.118224+00:00",
+      "started_at": "2026-10-09T13:10:00.870024+00:00",
+      "finished_at": "2026-10-09T13:10:01.079226+00:00",
+      "exit_code": 0,
+      "duration_s": 0.206,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1158",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.206,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791551305.7888172,
+        "output_signal_mtime_after": 1791551305.7888172,
+        "started_at": "2026-10-09T13:10:00.872833+00:00",
+        "finished_at": "2026-10-09T13:10:01.079226+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1158.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:10:00.065-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1158",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:10:00.164-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1158",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1159",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:10:00.241765+00:00",
+      "started_at": "2026-10-09T13:10:01.083788+00:00",
+      "finished_at": "2026-10-09T13:10:05.316993+00:00",
+      "exit_code": 0,
+      "duration_s": 4.23,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1159",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 4.23,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791551105.7642648,
+        "output_signal_mtime_after": 1791551405.1548612,
+        "started_at": "2026-10-09T13:10:01.086546+00:00",
+        "finished_at": "2026-10-09T13:10:05.316993+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1159.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:10:00.225-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1159",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:10:00.263-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1159",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-078e8fcbea0c5020-1161",
+      "lane_id": "n8n-pilot-dispatch",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:15:00.128502+00:00",
+      "started_at": "2026-10-09T13:15:00.333235+00:00",
+      "finished_at": "2026-10-09T13:15:03.622144+00:00",
+      "exit_code": 0,
+      "duration_s": 3.286,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-078e8fcbea0c5020-1161",
+        "lane_id": "n8n-pilot-dispatch",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 3.286,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_pilot_dispatch_last.json",
+        "output_signal_mtime_before": 1791550803.6640348,
+        "output_signal_mtime_after": 1791551703.4011564,
+        "started_at": "2026-10-09T13:15:00.335848+00:00",
+        "finished_at": "2026-10-09T13:15:03.622144+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-078e8fcbea0c5020-1161.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:15:00.078-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1161",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:15:00.155-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1161",
+          "workflowId": "078e8fcbea0c5020",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-21fd15d5f8a4c4da-1160",
+      "lane_id": "n8n-research-intake-consumer",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:15:00.201953+00:00",
+      "started_at": "2026-10-09T13:15:03.629456+00:00",
+      "finished_at": "2026-10-09T13:15:04.329576+00:00",
+      "exit_code": 0,
+      "duration_s": 0.688,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-21fd15d5f8a4c4da-1160",
+        "lane_id": "n8n-research-intake-consumer",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.688,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_research_intake_last.json",
+        "output_signal_mtime_before": 1791550802.359906,
+        "output_signal_mtime_after": 1791551704.0774722,
+        "started_at": "2026-10-09T13:15:03.641140+00:00",
+        "finished_at": "2026-10-09T13:15:04.329576+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-21fd15d5f8a4c4da-1160.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:15:00.171-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1160",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:15:00.234-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1160",
+          "workflowId": "21fd15d5f8a4c4da",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-722fac0e043ea5c4-1162",
+      "lane_id": "n8n-incident-fanin",
+      "mode": "live",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:15:00.223224+00:00",
+      "started_at": "2026-10-09T13:15:04.337873+00:00",
+      "finished_at": "2026-10-09T13:15:09.047115+00:00",
+      "exit_code": 0,
+      "duration_s": 4.707,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-722fac0e043ea5c4-1162",
+        "lane_id": "n8n-incident-fanin",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 4.707,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_incident_fanin_last.json",
+        "output_signal_mtime_before": 1791551405.1548612,
+        "output_signal_mtime_after": 1791551708.7054408,
+        "started_at": "2026-10-09T13:15:04.340465+00:00",
+        "finished_at": "2026-10-09T13:15:09.047115+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-722fac0e043ea5c4-1162.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:15:00.197-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1162",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:15:00.259-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1162",
+          "workflowId": "722fac0e043ea5c4",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    },
+    {
+      "run_id": "n8n-wf-9208ac827e514183-1163",
+      "lane_id": "n8n-lab-watchdog",
+      "mode": "dry_run",
+      "state": "RUN_DONE",
+      "requested_at": "2026-10-09T13:15:00.223610+00:00",
+      "started_at": "2026-10-09T13:15:09.051951+00:00",
+      "finished_at": "2026-10-09T13:15:09.380459+00:00",
+      "exit_code": 0,
+      "duration_s": 0.319,
+      "receipt": {
+        "schema": "RunReceipt@v1",
+        "run_id": "n8n-wf-9208ac827e514183-1163",
+        "lane_id": "n8n-lab-watchdog",
+        "mode": "dry_run",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "duration_s": 0.319,
+        "lock_skipped": false,
+        "timed_out": false,
+        "output_signal": "data/runtime/n8n_lab_watchdog_last.json",
+        "output_signal_mtime_before": 1791551614.398344,
+        "output_signal_mtime_after": 1791551614.398344,
+        "started_at": "2026-10-09T13:15:09.061016+00:00",
+        "finished_at": "2026-10-09T13:15:09.380459+00:00",
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "durable_receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-1163.json",
+      "durable_receipt_matches_ledger": true,
+      "n8n_execution_events": [
+        {
+          "ts": "2026-10-09T09:15:00.201-04:00",
+          "eventName": "n8n.workflow.started",
+          "executionId": "1163",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger"
+        },
+        {
+          "ts": "2026-10-09T09:15:00.267-04:00",
+          "eventName": "n8n.workflow.success",
+          "executionId": "1163",
+          "workflowId": "9208ac827e514183",
+          "isManual": false,
+          "mode": "trigger",
+          "success": true
+        }
+      ],
+      "natural_execution_green": true,
+      "host_completed_current": true
+    }
+  ],
+  "consumer_receipts": [],
+  "operations_projection": {
+    "envelope_ok": true,
+    "schema": "SchedulerOperations@v1",
+    "as_of": "2026-10-09T13:15:21.281134Z",
+    "rows": [
+      {
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "scheduler_type": "n8n",
+        "runtime_state": "LIVE",
+        "schedule": "*/20 * * * *",
+        "receipt": "n8n-wf-c0d4c7845e5c4fcc-1153",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+        },
+        "output_age": 918.31,
+        "freshness": "FRESH",
+        "scheduler_drift": false,
+        "evidence_class": "OBSERVED_N8N",
+        "consumer": null,
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "last_requested": "2026-10-09T13:00:00.209704+00:00",
+        "last_started": "2026-10-09T13:00:02.836321+00:00",
+        "last_completed": "2026-10-09T13:00:03.150685+00:00",
+        "last_exit": 0,
+        "failures_24h": 0,
+        "lock_skips_24h": 0
+      },
+      {
+        "lane_id": "n8n-pilot-dispatch",
+        "scheduler_type": "n8n",
+        "runtime_state": "LIVE",
+        "schedule": "*/15 * * * *",
+        "receipt": "n8n-wf-078e8fcbea0c5020-1161",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_pilot_dispatch_last.json"
+        },
+        "output_age": 17.88,
+        "freshness": "FRESH",
+        "scheduler_drift": false,
+        "evidence_class": "OBSERVED_N8N",
+        "consumer": null,
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "last_requested": "2026-10-09T13:15:00.128502+00:00",
+        "last_started": "2026-10-09T13:15:00.333235+00:00",
+        "last_completed": "2026-10-09T13:15:03.622144+00:00",
+        "last_exit": 0,
+        "failures_24h": 0,
+        "lock_skips_24h": 0
+      },
+      {
+        "lane_id": "n8n-incident-fanin",
+        "scheduler_type": "n8n",
+        "runtime_state": "LIVE",
+        "schedule": "*/5 * * * *",
+        "receipt": "n8n-wf-722fac0e043ea5c4-1162",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_incident_fanin_last.json"
+        },
+        "output_age": 12.58,
+        "freshness": "FRESH",
+        "scheduler_drift": false,
+        "evidence_class": "OBSERVED_N8N",
+        "consumer": null,
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "last_requested": "2026-10-09T13:15:00.223224+00:00",
+        "last_started": "2026-10-09T13:15:04.337873+00:00",
+        "last_completed": "2026-10-09T13:15:09.047115+00:00",
+        "last_exit": 0,
+        "failures_24h": 0,
+        "lock_skips_24h": 1
+      },
+      {
+        "lane_id": "n8n-lab-watchdog",
+        "scheduler_type": "systemd",
+        "runtime_state": "NOT_MEASURED",
+        "schedule": "tradeai-n8n-lab-watchdog.timer (5m)",
+        "receipt": null,
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_lab_watchdog_last.json"
+        },
+        "output_age": 106.88,
+        "freshness": "FRESH",
+        "scheduler_drift": null,
+        "evidence_class": "SOURCE_ONLY",
+        "consumer": null,
+        "code_sha": null,
+        "last_requested": null,
+        "last_started": null,
+        "last_completed": null,
+        "last_exit": null,
+        "failures_24h": null,
+        "lock_skips_24h": null
+      },
+      {
+        "lane_id": "n8n-research-intake-consumer",
+        "scheduler_type": "n8n",
+        "runtime_state": "LIVE",
+        "schedule": "*/15 * * * *",
+        "receipt": "n8n-wf-21fd15d5f8a4c4da-1160",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_research_intake_last.json"
+        },
+        "output_age": 17.2,
+        "freshness": "FRESH",
+        "scheduler_drift": false,
+        "evidence_class": "OBSERVED_N8N",
+        "consumer": null,
+        "code_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "last_requested": "2026-10-09T13:15:00.201953+00:00",
+        "last_started": "2026-10-09T13:15:03.629456+00:00",
+        "last_completed": "2026-10-09T13:15:04.329576+00:00",
+        "last_exit": 0,
+        "failures_24h": 0,
+        "lock_skips_24h": 0
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_pilot_dispatch_last.json",
+      "mtime": "2026-10-09T13:15:03.401156+00:00",
+      "sha256": "e47af19d9ff89a247ee1e364eebcea92dc2b82f29694effce0b69ada544cb2c4",
+      "metadata": {
+        "schema": "N8nPilotDispatchRun@v1",
+        "as_of": "2026-10-09T13:15:00.505328+00:00",
+        "mode": "apply",
+        "served_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "ok": true,
+        "fired": 4,
+        "listed": null,
+        "enqueued_today": null,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "pilot_rows": [
+        {
+          "lane_id": "morning-brief-0730",
+          "fired": true,
+          "outcome": "ARTIFACT_WRITTEN",
+          "observation_status": "OBSERVED"
+        },
+        {
+          "lane_id": "research-scheduler-holdings",
+          "fired": true,
+          "outcome": "ARTIFACT_WRITTEN",
+          "observation_status": null
+        },
+        {
+          "lane_id": "material-change-digest",
+          "fired": false,
+          "outcome": "NO_FIRE",
+          "observation_status": "NOT_MEASURED (no read-only query supplied)"
+        },
+        {
+          "lane_id": "llm-spend-report-daily",
+          "fired": true,
+          "outcome": "ARTIFACT_WRITTEN",
+          "observation_status": "OBSERVED"
+        },
+        {
+          "lane_id": "approval-package-reminder",
+          "fired": true,
+          "outcome": "ARTIFACT_WRITTEN",
+          "observation_status": "OBSERVED"
+        }
+      ],
+      "request_count": 0
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_incident_fanin_last.json",
+      "mtime": "2026-10-09T13:15:08.705441+00:00",
+      "sha256": "ef6d1bc80d14010c3b733a64918384129315e3d158bae2165d510ad368650a4d",
+      "metadata": {
+        "schema": "N8nIncidentFanin@v1",
+        "as_of": "2026-10-09T13:15:04.662314+00:00",
+        "mode": "apply",
+        "served_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "ok": true,
+        "fired": null,
+        "listed": null,
+        "enqueued_today": null,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "pilot_rows": [],
+      "request_count": 0
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_research_intake_last.json",
+      "mtime": "2026-10-09T13:15:04.077472+00:00",
+      "sha256": "c2dd8d76e768594bb40c00795f0bd8599c4982ba57527c741213dd243ac03f3e",
+      "metadata": {
+        "schema": "N8nResearchIntake@v1",
+        "as_of": "2026-10-09T13:15:04.047367+00:00",
+        "mode": "apply",
+        "served_sha": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+        "ok": true,
+        "fired": null,
+        "listed": 0,
+        "enqueued_today": 0,
+        "authority": "READ_ONLY_ADVISORY"
+      },
+      "pilot_rows": [],
+      "request_count": 0
+    }
+  ],
+  "cron": {
+    "exit": 0,
+    "permission_denied": false,
+    "raw_sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+    "raw_lines": 1047,
+    "jobs": 437,
+    "n1_retired_tags": {
+      "n8n-lab-watchdog": 0,
+      "n8n-research-intake-consumer": 1,
+      "crontab-snapshot-for-health-agent": 1,
+      "n8n-incident-fanin": 1,
+      "n8n-pilot-dispatch": 1
+    },
+    "snapshot": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt",
+      "exists": true,
+      "mtime": "2026-10-09T13:00:02.968949+00:00",
+      "sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+      "matches_current_crontab": true,
+      "consumer_proof": "NOT_MEASURED: no per-read consumer receipt"
+    }
+  },
+  "registry_metadata": {
+    "CURRENT": {
+      "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/config/lane_registry.json",
+      "sha256": "90301157a44b051f22596365310953c82b44a8fb5e29b6aa741a23194fe9b1a7",
+      "rows": [
+        {
+          "lane_id": "crontab-snapshot-for-health-agent",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "n8n",
+            "expression": "c0d4c7845e5c4fcc",
+            "match": "crontab_snapshot.txt.tmp",
+            "cadence": "*/20 * * * *"
+          },
+          "consumer": null,
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+          },
+          "owner": "ops"
+        },
+        {
+          "lane_id": "n8n-pilot-dispatch",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "n8n",
+            "expression": "078e8fcbea0c5020",
+            "match": "scripts/n8n_pilot_dispatch.py",
+            "cadence": "*/15 * * * *"
+          },
+          "consumer": null,
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_pilot_dispatch_last.json"
+          },
+          "owner": "platform"
+        },
+        {
+          "lane_id": "n8n-incident-fanin",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "n8n",
+            "expression": "722fac0e043ea5c4",
+            "match": "scripts/n8n_incident_fanin.py",
+            "cadence": "*/5 * * * *"
+          },
+          "consumer": null,
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_incident_fanin_last.json"
+          },
+          "owner": "platform"
+        },
+        {
+          "lane_id": "n8n-lab-watchdog",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "systemd",
+            "expression": "tradeai-n8n-lab-watchdog.timer (5m)",
+            "match": "tradeai-n8n-lab-watchdog.timer"
+          },
+          "consumer": null,
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_lab_watchdog_last.json"
+          },
+          "owner": "platform"
+        },
+        {
+          "lane_id": "n8n-research-intake-consumer",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "n8n",
+            "expression": "21fd15d5f8a4c4da",
+            "match": "scripts/n8n_research_intake_consumer.py",
+            "cadence": "*/15 * * * *"
+          },
+          "consumer": null,
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_research_intake_last.json"
+          },
+          "owner": "platform"
+        }
+      ]
+    },
+    "candidate_SOURCE_ONLY": {
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/config/lane_registry.json",
+      "sha256": "15f467ecd6f19b149a1b2d2d202244b6fdc4c4876054fdcaaa843c3214ab36fd",
+      "rows": [
+        {
+          "lane_id": "crontab-snapshot-for-health-agent",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "cron",
+            "expression": "*/20 * * * *",
+            "match": "crontab_snapshot.txt.tmp"
+          },
+          "consumer": "scripts/lib/crontab_snapshot.py fallback reader used by the hardened health agent",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+          },
+          "owner": "ops"
+        },
+        {
+          "lane_id": "n8n-pilot-dispatch",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "cron",
+            "expression": "*/15 * * * *",
+            "match": "scripts/n8n_pilot_dispatch.py"
+          },
+          "consumer": "host coordination ledger and Command Center coordination projection; downstream acknowledgement is measured separately",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_pilot_dispatch_last.json"
+          },
+          "owner": "platform"
+        },
+        {
+          "lane_id": "n8n-incident-fanin",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "cron",
+            "expression": "*/5 * * * *",
+            "match": "scripts/n8n_incident_fanin.py"
+          },
+          "consumer": "host coordination incident ledger and Command Center incident projection",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_incident_fanin_last.json"
+          },
+          "owner": "platform"
+        },
+        {
+          "lane_id": "n8n-lab-watchdog",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "systemd",
+            "expression": "tradeai-n8n-lab-watchdog.timer (5m)",
+            "match": "tradeai-n8n-lab-watchdog.timer"
+          },
+          "consumer": null,
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_lab_watchdog_last.json"
+          },
+          "owner": "platform"
+        },
+        {
+          "lane_id": "n8n-research-intake-consumer",
+          "state": "ACTIVE",
+          "scheduler": {
+            "kind": "cron",
+            "expression": "*/15 * * * *",
+            "match": "scripts/n8n_research_intake_consumer.py"
+          },
+          "consumer": "ri_research_queue and the governed RI desk consumer",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_research_intake_last.json"
+          },
+          "owner": "platform"
+        }
+      ]
+    }
+  },
+  "changed_workflow_metadata_since_1300": {
+    "prior_as_of": "2026-10-09T13:00:22.476962+00:00",
+    "added": [
+      {
+        "id": "e18d7849b4142927",
+        "name": "maturity-remeasure",
+        "active": true
+      }
+    ],
+    "removed_ids": [],
+    "changed": [
+      {
+        "id": "a26114588930ae9b",
+        "name": "maturity-remeasure-shadow",
+        "before_active": true,
+        "after_active": false,
+        "version_changed": false,
+        "gate_changed": false
+      }
+    ]
+  },
+  "completed_at": "2026-10-09T13:15:21.691428+00:00"
+}

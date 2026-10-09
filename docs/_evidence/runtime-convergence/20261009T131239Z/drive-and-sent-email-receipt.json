@@ -1,0 +1,65 @@
+{
+  "schema": "CrossAssetDocumentAndStatusReceipt@v1",
+  "evidence_class": "OBSERVED_CURRENT",
+  "docs": [
+    {
+      "title": "CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md",
+      "id": "1ntERzUpBlu_wZgaAw0gepobOn0zdferF",
+      "url": "https://drive.google.com/file/d/1ntERzUpBlu_wZgaAw0gepobOn0zdferF/view?usp=drivesdk",
+      "mime_type": "text/markdown",
+      "modified_at": "2026-09-29T23:05:22.009Z",
+      "fetched": true,
+      "content_characters": 12849
+    },
+    {
+      "title": "CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md",
+      "id": "17vCFx0IpBT_hrgKamfq1gt10raEnTH0L",
+      "url": "https://drive.google.com/file/d/17vCFx0IpBT_hrgKamfq1gt10raEnTH0L/view?usp=drivesdk",
+      "mime_type": "text/markdown",
+      "modified_at": "2026-09-29T23:05:29.566Z",
+      "fetched": true,
+      "content_characters": 5941
+    },
+    {
+      "title": "CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md",
+      "id": "176dKmKVUU0GGJaMMaTmCCuYpJecCbmrr",
+      "url": "https://drive.google.com/file/d/176dKmKVUU0GGJaMMaTmCCuYpJecCbmrr/view?usp=drivesdk",
+      "mime_type": "text/markdown",
+      "modified_at": "2026-09-29T23:05:05.414Z",
+      "fetched": true,
+      "content_characters": 3940
+    },
+    {
+      "title": "CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md",
+      "id": "14IlIrSB1U7MnN2JnPFCzmDuf6RRL9iGA",
+      "url": "https://drive.google.com/file/d/14IlIrSB1U7MnN2JnPFCzmDuf6RRL9iGA/view?usp=drivesdk",
+      "mime_type": "text/markdown",
+      "modified_at": "2026-09-29T23:05:19.103Z",
+      "fetched": true,
+      "content_characters": 2631
+    },
+    {
+      "title": "CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md",
+      "id": "1P53oYazH-Cbz2niCe4emiXHtG10Nrl4n",
+      "url": "https://drive.google.com/file/d/1P53oYazH-Cbz2niCe4emiXHtG10Nrl4n/view?usp=drivesdk",
+      "mime_type": "text/markdown",
+      "modified_at": "2026-09-29T23:05:09.522Z",
+      "fetched": true,
+      "content_characters": 4818
+    }
+  ],
+  "email": {
+    "message_id": "1a0ee7f1435b86e9",
+    "labels": [
+      "UNREAD",
+      "SENT",
+      "INBOX"
+    ],
+    "internal_date_ms": "1790707700000",
+    "sent_folder_present": true,
+    "recipient_and_sender_omitted": true,
+    "body_redacted": "Cross-asset decision intelligence handoff status\r\n\r\nPushed branch: wt/options-operator-truth-20260929\r\nExact HEAD: 8a91e7dccd322d89487c69e5506318dac3d87861\r\nDraft PR: https://github.com/PatsKiller/tardeai/pull/1357\r\n\r\nDrive sync: COMPLETE\r\nSynced documents:\r\n- CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md\r\n- CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md\r\n- CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md\r\n- INDEX.md\r\n\r\nValidation:\r\n- Cross-asset targeted tests: 11 passed\r\n- Bridge regression: 11/11 passed\r\n- Maturity suite: 2068 passed, 2 skipped\r\n- Docs index suite: 7 passed\r\n- Secret scan: passed\r\n- Full acceptance remains not fully green because of two environment/host-state gates:\r\n  1) cc_header_truth_v2: /usr/bin/python3 lacks ruff, while the tooling-venv ruff check passes\r\n  2) overnight_g6_missing_stores: pre-existing host notifications.outbox state\r\n\r\nReadiness: INTERIM — NOT READY. The reviewed implementation is pushed and documented, but it is not deployed. No merge, broker access, order submission, or trading action was performed.\r\n\r\nThe one-use git-push grant was consumed and revoked after the push.\r\n"
+  },
+  "production_acceptance_claim": false,
+  "recipient_read_or_delivery_receipt": "NOT_MEASURED"
+}

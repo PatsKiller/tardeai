@@ -102,7 +102,8 @@ def test_phases_risks_rollback_and_readiness_from_fixture_receipts(tmp_path, mon
     un = by["lane-unregistered"]
     assert un["registry_row"] is False and un["scheduler_of_record"] == "unregistered" and un["risk_flags"] == ["NO_REGISTRY_ROW"] and un["phase"] == "NOT_STARTED"
     s = board["summary"]
-    assert s["by_phase"] == {"NOT_STARTED": 2, "SHADOW": 1, "CANARY": 1, "CUT_OVER": 1, "ROLLED_BACK": 1}
+    assert s["by_phase"] == {"NOT_STARTED": 2, "SHADOW": 1, "CANARY": 1, "CUT_OVER": 1, "ROLLED_BACK": 1, "RETAINED": 0}
+    assert board["in_scope_lane_count"] == 6 and board["retained_lane_count"] == 0
     assert s["per_tranche"]["N1"]["by_phase"]["CUT_OVER"] == 1 and s["per_tranche"]["N2"]["no_registry_row"] == 1
     assert sorted(f["flag"] for f in s["open_risks"]) == ["DOUBLE_SCHEDULER", "OUTPUT_SIGNAL_STALE", "RUN_FAILED_AFTER_CUTOVER"]
     assert s["open_risk_count"] == 3 and s["no_registry_row"] == 1
@@ -160,6 +161,57 @@ def test_program_config_lists_71_unique_lanes_and_registered_ones_exist():
     # every lane without a registry row names what the doc named (a script or a workflow) or says why
     assert all(l.get("match") or l.get("note") for l in unregistered), unregistered
     assert "scripts/n8n_migration_board.py" in B.NO_CONSUMER_REASON or "migration-board" in B.NO_CONSUMER_REASON
+
+
+def test_retained_tranche_lanes_read_retained_not_not_started(tmp_path, monkeypatch):
+    """2026-10-09 N6 option 1: a tranche closed by policy keeps its lanes on their current scheduler.
+    The board shows them RETAINED with the per-lane reason and leaves them out of the in-scope total."""
+    monkeypatch.setattr(B, "served_sha", lambda: None)
+    reg = {"schema": "LaneRegistry@v1", "lanes": [_lane("a", "cron"), _lane("r1", "cron"), _lane("r2", "n8n", expression="wf-r2")]}
+    tr = {"schema": "N8nMigrationTranches@v1", "tranches": {
+        "N1": {"lanes": [{"lane_id": "a"}]},
+        "N6": {"status": B.TRANCHE_RETAINED, "decided": "2026-10-09", "reason": "policy",
+               "lanes": [{"lane_id": "r1", "retained_on": "cron", "retained_reason": "SQL writer"},
+                         {"lane_id": "r2", "retained_on": "openclaw", "retained_reason": "sender"}]}}}
+    board = B.build_board(root=tmp_path, registry=reg, tranches=tr, ledger=tmp_path / "none.sqlite", now=NOW, cron_text="", units=[])
+    by = {r["lane_id"]: r for r in board["lanes"]}
+    assert by["a"]["phase"] == "NOT_STARTED" and by["a"]["retained"] is False and by["a"]["retained_reason"] is None
+    assert by["r1"]["phase"] == "RETAINED" and by["r1"]["retained_on"] == "cron" and by["r1"]["retained_reason"] == "SQL writer"
+    # a retained lane whose registry row says n8n is a contradiction, surfaced as a risk, never a CUT_OVER
+    assert by["r2"]["phase"] == "RETAINED" and "RETAINED_LANE_ON_N8N" in by["r2"]["risk_flags"]
+    assert board["lane_count"] == 3 and board["in_scope_lane_count"] == 1 and board["retained_lane_count"] == 2
+    s = board["summary"]
+    assert s["by_phase"]["RETAINED"] == 2 and s["by_phase"]["NOT_STARTED"] == 1
+    assert s["per_tranche"]["N6"]["status"] == B.TRANCHE_RETAINED and s["per_tranche"]["N1"]["status"] is None
+    assert "(1 in scope / 2 retained)" in B.render_markdown(board)
+
+
+def test_program_n6_is_retained_by_policy_and_scope_is_65():
+    tr = B.load_tranches()
+    n6 = tr["tranches"]["N6"]
+    assert n6["status"] == B.TRANCHE_RETAINED and n6["decided"] == "2026-10-09" and "23.3" in n6["reason"]
+    assert [t for t, body in tr["tranches"].items() if body.get("status") == B.TRANCHE_RETAINED] == ["N6"]
+    on = {l["lane_id"]: l["retained_on"] for l in n6["lanes"]}
+    assert on == {"dof-run-pipeline": "cron", "dof-rescan-tickets": "cron",
+                  "openclaw-reminder-claude-plan-1": "openclaw", "openclaw-reminder-claude-plan-2": "openclaw",
+                  "openclaw-reminder-supergrok-expiry": "openclaw", "openclaw-reminder-sentinelone-earnings": "openclaw"}
+    assert all("23.3" in l["retained_reason"] for l in n6["lanes"])
+    assert tr["in_scope_lane_count"] == 65 and tr["retained_lane_count"] == 6 and tr["lane_count"] == 71
+    board = B.build_board(root=Path("/nonexistent-state-root"), tranches=tr, ledger=Path("/nonexistent.sqlite"),
+                          now=NOW, cron_text="", units=[])
+    assert board["in_scope_lane_count"] == 65 and board["retained_lane_count"] == 6
+    assert {r["lane_id"] for r in board["lanes"] if r["phase"] == "RETAINED"} == set(on)
+
+
+def test_retained_tranche_lanes_are_never_in_the_run_allowlist():
+    """A lane closed by policy must not be runnable through coordination/run (AGENTS.md §23.3)."""
+    tr = B.load_tranches()
+    retained = {l["lane_id"] for body in tr["tranches"].values() if body.get("status") == B.TRANCHE_RETAINED
+                for l in body["lanes"]}
+    assert retained
+    allow = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))
+    allowed = {str(row.get("lane_id")) for row in allow.get("lanes") or []}
+    assert not retained & allowed, sorted(retained & allowed)
 
 
 def test_board_and_fanin_read_the_heartbeat_where_the_executor_writes_it():

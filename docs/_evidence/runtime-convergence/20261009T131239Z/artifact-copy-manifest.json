@@ -1,0 +1,73 @@
+{
+  "as_of": "2026-10-09T13:35:45.907447+00:00",
+  "observations_only": true,
+  "source_artifacts_unchanged": true,
+  "artifacts": [
+    {
+      "artifact": "host-and-schedulers.json",
+      "sha256": "2ddb528742b7461b565dffcb86597d798e46a867f36a89de8882588da2f479a7",
+      "bytes": 413284,
+      "copied_from": "/tmp/tradeai-all-task-audit-20261009T131239Z/host-and-schedulers.json"
+    },
+    {
+      "artifact": "queues-and-embeddings.json",
+      "sha256": "1cf87386abe3c1cb17c033ac303488902aab1ef3c2df218fdc26a87f9920e8b2",
+      "bytes": 278064,
+      "copied_from": "/tmp/tradeai-all-task-audit-20261009T131239Z/queues-and-embeddings.json"
+    },
+    {
+      "artifact": "current-audit-live-browser-acceptance.json",
+      "sha256": "c12bb991b7877dcc20672f9630d2981571aa7d48090a95f11a37d862695753f9",
+      "bytes": 1349,
+      "copied_from": "/tmp/tradeai-all-task-audit-20261009T131239Z/current-audit-live-browser-acceptance.json"
+    },
+    {
+      "artifact": "current-audit-live-api-projection.json",
+      "sha256": "32dd189d567fa6d701c32b1793a68831a1aae40fd7099b9b5a4bbf6c186fa88d",
+      "bytes": 1313264,
+      "copied_from": "/tmp/tradeai-all-task-audit-20261009T131239Z/current-audit-live-api-projection.json"
+    },
+    {
+      "artifact": "current-audit-live-scheduler-mobile.png",
+      "sha256": "8d72e8738760dd017c390d6eeb20b3b1b46dc0486701967789d00951f8b6af2d",
+      "bytes": 35781,
+      "copied_from": "/tmp/tradeai-all-task-audit-20261009T131239Z/current-audit-live-scheduler-mobile.png"
+    },
+    {
+      "artifact": "live-process-and-receipt-audit.json",
+      "sha256": "41b361b9985dfd8a393a2cf7614781fe3fc66896875336547128dabae04649b0",
+      "bytes": 181867,
+      "copied_from": "/tmp/tradeai-assigned-live-audit-20261009T131149Z.json"
+    },
+    {
+      "artifact": "live-n8n-metadata.json",
+      "sha256": "c64a8e07c5cd391d34971d588b79a8198130b2a949467e4112ebb8a2d5a4d669",
+      "bytes": 34126,
+      "copied_from": "/tmp/tradeai-assigned-live-audit-n8n-20261009T131149Z.json"
+    },
+    {
+      "artifact": "per-task-runtime-verdicts.json",
+      "sha256": "6b56c2159cbf1d5f0aa4c990ae63b6477c72448c7223bf6130741679cdc4c2bb",
+      "bytes": 9566,
+      "copied_from": "/tmp/tradeai-assigned-live-verdicts-20261009T132000Z.json"
+    },
+    {
+      "artifact": "source-presence-audit.json",
+      "sha256": "8cb42a91f116a0a3cab7db6b9af6b87205ba61fa0107d1435582a113dd719b25",
+      "bytes": 82769,
+      "copied_from": "/tmp/tradeai-source-presence-audit-20261009T131657Z.json"
+    },
+    {
+      "artifact": "maturity-canary-audit.json",
+      "sha256": "7413b087ba0941c18656e36b1ac547a496727c8efca49b7b9668e2e18d3fafa9",
+      "bytes": 3068,
+      "copied_from": "/tmp/tradeai-maturity-live-proof-20261009T131820Z.json"
+    },
+    {
+      "artifact": "host-collector.py",
+      "sha256": "413730bd7d055f9d61aedbb810d48d443fd4de4cd17f707b6e45ba4a4b411e86",
+      "bytes": 9657,
+      "copied_from": "/tmp/tradeai-all-task-runtime-audit.py"
+    }
+  ]
+}
