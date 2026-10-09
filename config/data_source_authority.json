@@ -484,9 +484,9 @@
       "domain": "cross_asset_evaluation_history",
       "class": "derived",
       "approval": {
-        "approved_by": null,
-        "approved_on": null,
-        "reference": "PENDING CADI-01 named operator approval under AGENTS.md sections 7A/17",
+        "approved_by": "operator",
+        "approved_on": "2026-10-09",
+        "reference": "docs/governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009",
         "scope": "Immutable advisory evaluation and per-symbol error history; single writer DecisionStore; no production activation"
       },
       "store": {
@@ -503,15 +503,15 @@
       "retired": [],
       "no_coverage": "say_so",
       "on_gap": [{"vector": "operator_ask", "cost_class": "free", "max_per_day": 1, "expected_seconds": 0}],
-      "_writer_note": "DecisionStore.append and append_error are the only writer. SymbolDecisionObject@v2 and CrossAssetDecisionError@v1 share this history. UPDATE/DELETE/replacement refused; legacy import is additive and explicit. Bounded read path: CIO operator-artifacts, with approval and activation required; never copied into its artifact store. Approval is pending, not inferred from implementation permission."
+      "_writer_note": "DecisionStore.append and append_error are the only writer. SymbolDecisionObject@v2 and CrossAssetDecisionError@v1 share this history. UPDATE/DELETE/replacement refused; legacy import is additive and explicit. Bounded read path: CIO operator-artifacts, with approval and separate activation required; never copied into its artifact store. Named registration approved by the operator on 2026-10-09; no production activation."
     },
     {
       "domain": "cross_asset_decision_projection",
       "class": "derived",
       "approval": {
-        "approved_by": null,
-        "approved_on": null,
-        "reference": "PENDING CADI-01 named operator approval under AGENTS.md sections 7A/17",
+        "approved_by": "operator",
+        "approved_on": "2026-10-09",
+        "reference": "docs/governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009",
         "scope": "Rebuildable latest advisory decision projection, derived only from approved history; no production activation"
       },
       "store": {

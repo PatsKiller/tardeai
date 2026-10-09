@@ -2,13 +2,27 @@
 
 Status: ACTIVE  
 Owner: Agent A (program supervisor); CADI implementation agent (ticket delivery)
-as_of: 2026-10-09T11:17:14-04:00
+as_of: 2026-10-09T11:42:14-04:00
 Measured at: isolated CADI-01 clone, base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; fixture evidence, not live behavior
 Program readiness: **NOT READY**
-Current ticket: **CADI-01 LOCAL IMPLEMENTATION; AUTHORITY APPROVAL PENDING**
+Current ticket: **CADI-01 SOURCE REGISTRATIONS APPROVED; FINAL ACCEPTANCE PENDING**
 Current tests: **121 combined PASS; 80 core PASS (overlapping); 15 adversarial PASS**; full acceptance not green
 Authority: approved revised CADI plan and Agent A's four binding additions, recorded in the operator conversation
 Canonical repo path: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
+
+### Latest checkpoint — named registration approval
+
+John replied "approved" to the explicit request naming `cross_asset_evaluation_history`,
+`cross_asset_decision_projection`, their sole writer `scripts/lib/cross_asset/decision_store.py`
+and **no production activation**. Both registry rows now reference
+[`CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md`](governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009).
+This supersedes the pending-approval states in the earlier local checkpoint retained below;
+it does not relabel that failed acceptance run as green. Latest main is being integrated,
+then native authority and full local acceptance must pass before an exact-SHA push request.
+Production read activation, production store writes, scheduling and all downstream tickets
+remain off/not started. Agent A owns review, merge and release. Program remains NOT READY.
+Peer leases on the backlog/readiness report and docs index are respected; their earlier status
+text is historical until its owner incorporates this checkpoint.
 
 ## Current governing revision — 2026-10-09
 

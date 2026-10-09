@@ -2,11 +2,21 @@
 
 Status: ACTIVE
 Owner: Agent A (release coordination); John (operator authorization)
-as_of: 2026-10-09T11:17:14-04:00
+as_of: 2026-10-09T11:42:14-04:00
 Measured at: local CADI-01 fixtures on base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; no current release verification
-Current ticket: **CADI-01 LOCAL IMPLEMENTATION; AUTHORITY APPROVAL PENDING**
+Current ticket: **CADI-01 SOURCE REGISTRATIONS APPROVED; FINAL ACCEPTANCE PENDING**
 Full cross-asset recommendation: **NOT READY**
 Current test results: **121 combined PASS; 80 core PASS (overlap); 15 adversarial PASS**; full acceptance not green
+
+### Latest authority checkpoint
+
+John approved the two named CADI-01 registrations with sole writer
+`scripts/lib/cross_asset/decision_store.py`, explicitly without production activation.
+Both DSA rows reference the
+[approval archive manifest](governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009).
+The pending-source descriptions and failed test counts below are retained before-state records.
+Post-approval native authority/full acceptance, an exact-SHA push grant and Agent A review/merge
+remain required. This is neither a release grant nor a READY recommendation.
 
 ## Current bill and authority boundaries — 2026-10-09
 
