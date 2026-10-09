@@ -456,3 +456,24 @@ def test_source_no_go_n1_lanes_preserve_legacy_scheduler_intent() -> None:
     for row in document["lanes"]:
         if row["lane_id"] in n1_lanes and "NO_GO" in row.get("state_reason", ""):
             assert row["scheduler"]["kind"] == "cron", row["lane_id"]
+
+
+def test_every_n8n_row_cadence_is_one_valid_five_field_cron():
+    """2026-10-09: an unquoted shell loop passed '*/5 * * * *' to cutover_lane.sh --cadence; each bare '*' glob-expanded
+    to the repo's top-level file names and three registry rows shipped a cadence of '*/5 <126 file names>'. A cadence is
+    exactly five fields, each a valid cron field, or absent."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("n8n_wf_gen", ROOT / "scripts" / "n8n_workflow_templates.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    reg = lr.load_registry()
+    bad = {}
+    for row in reg["lanes"]:
+        sched = row.get("scheduler") or {}
+        if sched.get("kind") != "n8n" or not sched.get("cadence"):
+            continue
+        cad = sched["cadence"]
+        if len(cad.split()) != 5 or gen.validate_cron(cad):
+            bad[row["lane_id"]] = cad[:60]
+    assert bad == {}, bad

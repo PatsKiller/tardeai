@@ -46,7 +46,7 @@ E           File "<frozen importlib._bootstrap>", line 491, in _call_with_frames
 E           File "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/lane_registry.py", line 40, in <module>
 E             from .cron_schedule import parse as parse_cron
 E         ImportError: attempted relative import with no known parent package
-E         
+E
 E       assert 1 == 0
 E        +  where 1 = CompletedProcess(args=['/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/bin/python', '-c', '\nimpor...from .cron_schedule import parse as parse_cron\nImportError: attempted relative import with no known parent package\n').returncode
 

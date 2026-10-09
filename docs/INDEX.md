@@ -147,7 +147,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261009T004124Z/48-w4-source-remediation.md` | Host routing and streaming source remediation | review_required | OK | `36d436457e8c` |
 | `docs/_evidence/runtime-convergence/20261009T004124Z/51-n2-receipt-gating-correction.md` | N2 predecessor proof and bounded polling correction | review_required | OK | `d0481f395ec6` |
 | `docs/_evidence/runtime-convergence/20261009T004124Z/55-corrective-rollout-plan.md` | Corrective deployment and N1 recovery plan | review_required | OK | `d6cbd2d641aa` |
-| `docs/_evidence/runtime-convergence/20261009T004124Z/60-corrective-status.md` | TradeAI corrective status supplement — 2026-10-09 | review_required | MISSING HEADER | `1971e4e4f6df` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/60-corrective-status.md` | TradeAI corrective status supplement — 2026-10-09 | review_required | MISSING HEADER | `9c6bf52614eb` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |
