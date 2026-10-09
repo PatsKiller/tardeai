@@ -117,3 +117,15 @@ def test_the_script_still_parses():
     import subprocess
     r = subprocess.run(["bash", "-n", str(DEPLOY)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_overlay_ships_tracked_docs_data_but_not_runtime_data():
+    """2026-10-09: the bare ``--exclude='data/'`` also dropped tracked
+    ``docs/implementation/n8n-maturity/data/*`` (PR #1597), so every new release
+    failed the CURRENT pin check with tree_diff:4. The docs include must come
+    before the data exclude (rsync uses the first matching rule)."""
+    body = DEPLOY.read_text(encoding="utf-8")
+    block = body[body.index("overlay_main() {"):]
+    inc = block.index("--include='docs/**/data/***'")
+    exc = block.index("--exclude='data/'")
+    assert inc < exc
