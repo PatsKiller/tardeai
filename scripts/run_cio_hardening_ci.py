@@ -3677,6 +3677,17 @@ GATES = [
             "tests/test_bridge_executor_hardening_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: N8N_AGENT_GATE_BRIDGE — AGENTS.md 3.0.0 §23.10 bridge preconditions (2026-10-09):
+        # P4 sanitise_for_external on every governed call (TRADEAI_EGRESS_SANITISER report default, enforce
+        # redacts); P5 per-process tool allowlist (typed 400 before reservation, tool_calls refused typed);
+        # P6 n8n_* output schema + behaviour scan; P21 cost_ceiling_usd / latency_budget_ms / advisory_only;
+        # n8n routing Grok -> ChatGPT -> DeepSeek with transport failover.
+        "n8n_agent_gate_bridge_20261009",
+        [
+            "tests/test_bridge_agent_preconditions_20261009.py",
+        ],
+    ),
 ]
 
 

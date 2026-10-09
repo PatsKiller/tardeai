@@ -709,11 +709,11 @@
         },
         "n8n_material_digest_draft": {
           "primary": {
-            "provider": "deepseek",
+            "provider": "grok",
             "policy": "FAST"
           },
           "secondary": {
-            "provider": "deepseek",
+            "provider": "chatgpt",
             "policy": "FAST"
           },
           "fallback": {
@@ -722,15 +722,16 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "transport_failover": true
         },
         "n8n_ops_summary_draft": {
           "primary": {
-            "provider": "deepseek",
+            "provider": "grok",
             "policy": "FAST"
           },
           "secondary": {
-            "provider": "deepseek",
+            "provider": "chatgpt",
             "policy": "FAST"
           },
           "fallback": {
@@ -739,7 +740,8 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1
+          "cost_ceiling_usd": 0.1,
+          "transport_failover": true
         },
         "oauth_lane_keepalive": {
           "primary": {
