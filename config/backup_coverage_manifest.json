@@ -1,0 +1,862 @@
+{
+ "schema": "BackupCoverageManifest@v1",
+ "as_of": "2026-10-09",
+ "authority": "READ_ONLY_ADVISORY",
+ "_why": "Operator question 2026-10-09: keep backup and recovery in sync with what each change adds. scripts/check_backup_coverage.py --fail-on-new fails when a repo-declared asset has no asset class here, or when an asset falls into a NONE/PARTIAL class and is not in config/backup_coverage_baseline.json. The gate never edits a recovery script.",
+ "_how_to_add": "New store/unit/secret/persistent tree: add its exact id to the covers list of the class whose mechanism backs it up. If nothing does, add it to a NONE class (or create one with mechanism NONE and a gap note) and add the id to the baseline with a reason. Tables are matched by schema pattern; a new schema needs a pattern. Never claim a mechanism that does not copy the asset.",
+ "_inventory": "docs/implementation/backup/restore-drill-proposal-20261009.md section 1 (commands and file:line citations, measured 2026-10-09)",
+ "mechanisms": {
+  "pg_dump_local": {
+   "what": "plain pg_dump of the trade_ai database, gzip -9, --no-owner --no-acl; table DATA of intelligence.* and memory_r10_m2.* is excluded (FORCE ROW LEVEL SECURITY blocks COPY for the trade_ai role); their DDL is kept",
+   "script": "linux_launchers/run_pg_backup.sh (step portfolio_backup of scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence backup)",
+   "scheduler": "tradeai-portfolio-backup-cadence.timer, daily 02:30 local (lane portfolio-backup-cadence)",
+   "destination": "~/db_backups/trade_ai_<stamp>.sql.gz on the same disk",
+   "retention": "1 full dump (config/backup_policy.yaml local_pg.max_count; scripts/backup_enforcer.py hourly)",
+   "offsite": false,
+   "pg_exclude_table_data": [
+    "intelligence.*",
+    "memory_r10_m2.*"
+   ],
+   "evidence": "data/runtime/portfolio_maintenance_backup_last_run.json 2026-10-09T06:51:32Z portfolio_backup ok; ~/db_backups/trade_ai_20261009_023000.sql.gz 2,914,763,010 bytes",
+   "restore": "gunzip -c trade_ai_<stamp>.sql.gz | psql -U trade_ai trade_ai into an empty database (docs/runbooks/BARE_METAL_RECOVERY.md step 5)",
+   "last_restore_drill": null,
+   "drill_note": "NEVER DRILLED: no receipt of a pg restore into a scratch database exists; scripts/backup_verify.py checks existence/size only and on 2026-10-01 failed because it looks under <release>/backups/db instead of ~/db_backups"
+  },
+  "db_offsite": {
+   "what": "newest local pg dump, gpg AES-256 symmetric, uploaded to Drive",
+   "script": "scripts/backup_secrets_state.sh db (weekly-gated step db_offsite_backup, stamp data/runtime/last_db_offsite_backup.stamp)",
+   "scheduler": "tradeai-portfolio-backup-cadence.timer 02:30, runs when the stamp is >= 6 days old",
+   "destination": "Google Drive folder Trade_AI_Backups (id in config/backup_policy.yaml drive_db.folder_id), db_backup_<stamp>.sql.gz.gpg",
+   "retention": "1 (config/backup_policy.yaml drive_db.max_count)",
+   "offsite": true,
+   "evidence": "stamp last_db_offsite_backup.stamp mtime 2026-10-08 02:56 local",
+   "restore": "gpg --batch --passphrase-file <pass> -d db_backup_<stamp>.sql.gz.gpg > dump.sql.gz, then as pg_dump_local",
+   "last_restore_drill": "2026-07-17",
+   "drill_note": "decrypt round-trip of one artifact per family claimed in docs/runbooks/BARE_METAL_RECOVERY.md (line 88: 'proven 2026-07-17'); no receipt file; no load into Postgres"
+  },
+  "env_offsite": {
+   "what": "LOCAL-ONLY secrets Bitwarden SM cannot restore: config/broker_credentials.env (SCHWAB_TOKEN_ENC_KEY) + .env and .env.* snapshots (dereferenced)",
+   "script": "scripts/backup_secrets_state.sh env (step of run_portfolio_maintenance_pipeline.sh --cadence backup; also scripts/backup_all.sh)",
+   "scheduler": "tradeai-portfolio-backup-cadence.timer 02:30 local, daily (step secrets_backup_env)",
+   "destination": "Google Drive folder Trade_AI_Backups, gpg AES-256 symmetric (passphrase file ~/.openclaw/credentials/env_data_backup.pass; copy in the operator's Bitwarden vault)",
+   "retention": "7 (config/backup_policy.yaml drive_other)",
+   "offsite": true,
+   "evidence": "backup_last_run 2026-10-09 secrets_backup_env ok",
+   "restore": "gpg --batch --passphrase-file <pass> -d <file>.tar.gz.gpg | tar xzf - (scripts/backup_secrets_state.sh header; docs/runbooks/BARE_METAL_RECOVERY.md step 6-7)",
+   "last_restore_drill": "2026-07-17",
+   "drill_note": "decrypt round-trip claimed in docs/runbooks/BARE_METAL_RECOVERY.md line 88; no receipt file; the runbook's quarterly re-verify has no later record"
+  },
+  "memory_offsite": {
+   "what": "Claude file memory dir ~/.claude/projects/-home-johnclaw/memory",
+   "script": "scripts/backup_secrets_state.sh memory (step of run_portfolio_maintenance_pipeline.sh --cadence backup; also scripts/backup_all.sh)",
+   "scheduler": "tradeai-portfolio-backup-cadence.timer 02:30 local, daily (step memory_backup)",
+   "destination": "Google Drive folder Trade_AI_Backups, gpg AES-256 symmetric (passphrase file ~/.openclaw/credentials/env_data_backup.pass; copy in the operator's Bitwarden vault)",
+   "retention": "7 (config/backup_policy.yaml drive_other)",
+   "offsite": true,
+   "evidence": "backup_last_run 2026-10-09 memory_backup ok",
+   "restore": "gpg --batch --passphrase-file <pass> -d <file>.tar.gz.gpg | tar xzf - (scripts/backup_secrets_state.sh header; docs/runbooks/BARE_METAL_RECOVERY.md step 6-7)",
+   "last_restore_drill": "2026-07-17",
+   "drill_note": "decrypt round-trip claimed in docs/runbooks/BARE_METAL_RECOVERY.md line 88; no receipt file; the runbook's quarterly re-verify has no later record"
+  },
+  "ops_offsite": {
+   "what": "crontab -l, ~/.config/systemd/user/*.service and *.timer (NOT *.d drop-in dirs), list-timers, dpkg/pip/ollama manifests, postgresql.conf + pg_hba.conf, ~/.pgpass, gog CLI config+keyring",
+   "script": "scripts/backup_secrets_state.sh ops (step of run_portfolio_maintenance_pipeline.sh --cadence backup; also scripts/backup_all.sh)",
+   "scheduler": "tradeai-portfolio-backup-cadence.timer 02:30 local, daily (step ops_state_backup)",
+   "destination": "Google Drive folder Trade_AI_Backups, gpg AES-256 symmetric (passphrase file ~/.openclaw/credentials/env_data_backup.pass; copy in the operator's Bitwarden vault)",
+   "retention": "7 (config/backup_policy.yaml drive_other)",
+   "offsite": true,
+   "evidence": "backup_last_run 2026-10-09 ops_state_backup ok",
+   "restore": "gpg --batch --passphrase-file <pass> -d <file>.tar.gz.gpg | tar xzf - (scripts/backup_secrets_state.sh header; docs/runbooks/BARE_METAL_RECOVERY.md step 6-7)",
+   "last_restore_drill": "2026-07-17",
+   "drill_note": "decrypt round-trip claimed in docs/runbooks/BARE_METAL_RECOVERY.md line 88; no receipt file; the runbook's quarterly re-verify has no later record"
+  },
+  "data_offsite": {
+   "what": "dev-tree data/ dereferenced (-h) so the symlinked persistent-state dirs audit, cio, health, paper_trading, portfolios/state, state are included; data/runtime EXCLUDED (--exclude=data/runtime); persistent-state dirs not symlinked from the dev tree are NOT included",
+   "script": "scripts/backup_secrets_state.sh data (step of run_portfolio_maintenance_pipeline.sh --cadence backup; also scripts/backup_all.sh)",
+   "scheduler": "tradeai-portfolio-backup-cadence.timer 02:30 local, weekly-gated (step secrets_backup_data, stamp last_secrets_data_backup.stamp)",
+   "destination": "Google Drive folder Trade_AI_Backups, gpg AES-256 symmetric (passphrase file ~/.openclaw/credentials/env_data_backup.pass; copy in the operator's Bitwarden vault)",
+   "retention": "1 (config/backup_policy.yaml drive_other)",
+   "offsite": true,
+   "evidence": "stamp last_secrets_data_backup.stamp mtime 2026-10-08 02:52 local",
+   "restore": "gpg --batch --passphrase-file <pass> -d <file>.tar.gz.gpg | tar xzf - (scripts/backup_secrets_state.sh header; docs/runbooks/BARE_METAL_RECOVERY.md step 6-7)",
+   "last_restore_drill": "2026-07-17",
+   "drill_note": "decrypt round-trip claimed in docs/runbooks/BARE_METAL_RECOVERY.md line 88; no receipt file; the runbook's quarterly re-verify has no later record"
+  },
+  "apps_offsite": {
+   "what": "~/.openclaw credentials/agents/memory/state/openclaw.json/exec-approvals.json + ~/nyc-dof-auction (excl. venv/caches)",
+   "script": "scripts/backup_secrets_state.sh apps (step of run_portfolio_maintenance_pipeline.sh --cadence backup; also scripts/backup_all.sh)",
+   "scheduler": "tradeai-portfolio-backup-cadence.timer 02:30 local, weekly-gated (step apps_backup, stamp last_apps_backup.stamp)",
+   "destination": "Google Drive folder Trade_AI_Backups, gpg AES-256 symmetric (passphrase file ~/.openclaw/credentials/env_data_backup.pass; copy in the operator's Bitwarden vault)",
+   "retention": "1 (config/backup_policy.yaml drive_other)",
+   "offsite": true,
+   "evidence": "stamp last_apps_backup.stamp mtime 2026-10-08 02:56 local",
+   "restore": "gpg --batch --passphrase-file <pass> -d <file>.tar.gz.gpg | tar xzf - (scripts/backup_secrets_state.sh header; docs/runbooks/BARE_METAL_RECOVERY.md step 6-7)",
+   "last_restore_drill": "2026-07-17",
+   "drill_note": "decrypt round-trip claimed in docs/runbooks/BARE_METAL_RECOVERY.md line 88; no receipt file; the runbook's quarterly re-verify has no later record"
+  },
+  "n8n_lab_dump_local": {
+   "what": "pg_dump -Fc of the n8n lab database from inside container m8m-n8n-db (workflows, executions, credentials encrypted with the n8n key)",
+   "script": "scripts/n8n_lab_backup.sh --apply (step n8n_lab_backup of scripts/pipelines/run_platform_maintenance_pipeline.sh nightly)",
+   "scheduler": "tradeai-platform-maintenance-nightly.timer 01:15 local (lane platform-maintenance-nightly; legacy lane n8n-lab-backup RETIRED)",
+   "destination": "persistent-state/backups/n8n/n8n-lab-<stamp>.dump on the same disk",
+   "retention": "14 dumps (N8N_BACKUP_KEEP)",
+   "offsite": false,
+   "evidence": "persistent-state/backups/n8n/n8n_lab_backup_last.json N8nLabBackupReceipt@v1 2026-10-09T05:15:07Z ok, 157 TABLE DATA entries",
+   "restore": "pg_restore --no-owner --no-privileges into an empty database inside m8m-n8n-db; credentials need the n8n encryption key",
+   "last_restore_drill": "2026-10-07",
+   "drill_note": "persistent-state/backups/n8n/n8n_lab_restore_drill_last.json N8nLabRestoreDrill@v1 2026-10-07T14:40Z ok: 157/157 tables, 4 workflows, drill db dropped; weekly drill (platform-maintenance-weekly, Sun 03:00) has not fired yet"
+  },
+  "n8n_lab_restore_drill": {
+   "what": "weekly proof that the newest n8n lab dump restores (throwaway db inside the lab container, table-count compare, drop)",
+   "script": "scripts/n8n_lab_restore_drill.sh --apply (step n8n_lab_restore_drill of run_platform_maintenance_pipeline.sh weekly)",
+   "scheduler": "tradeai-platform-maintenance-weekly.timer Sun 03:00 local (first fire 2026-10-11)",
+   "destination": "receipt only: persistent-state/backups/n8n/n8n_lab_restore_drill_last.json",
+   "retention": "n/a",
+   "offsite": false,
+   "evidence": "N8nLabRestoreDrill@v1 2026-10-07 ok",
+   "restore": "n/a (this is the drill)",
+   "last_restore_drill": "2026-10-07",
+   "drill_note": "the only scheduled restore drill in the system"
+  },
+  "git_remote": {
+   "what": "tracked repository files (code, config, docs, workflow JSON, unit files) on GitHub PatsKiller/tardeai",
+   "script": "git push (every merged PR)",
+   "scheduler": "per change",
+   "destination": "GitHub",
+   "retention": "full history",
+   "offsite": true,
+   "evidence": "origin/main",
+   "restore": "git clone, then the release prepare/promote path for served copies",
+   "last_restore_drill": null,
+   "drill_note": "every worktree creation is a clone-equivalent restore of tracked files; no bare-metal clone drill receipt"
+  },
+  "generated_docs_git": {
+   "what": "gitignored generated docs (reports/briefs/status snapshots) committed to branch generated-docs-backup by git plumbing",
+   "script": "linux_launchers/backup_generated_docs.sh",
+   "scheduler": "crontab 50 23 * * * (lane backup-generated-docs, NO_SIGNAL: no per-run receipt)",
+   "destination": "GitHub branch generated-docs-backup",
+   "retention": "branch history",
+   "offsite": true,
+   "evidence": "lane_registry backup-generated-docs note",
+   "restore": "git checkout generated-docs-backup -- <paths>",
+   "last_restore_drill": null,
+   "drill_note": "never drilled"
+  },
+  "drive_docs_sync": {
+   "what": "docs/ of CURRENT pushed to Drive (sync-docs-to-drive.sh) and the dev hub code mirror archived to Drive (sync_code_mirror_to_drive.sh)",
+   "script": "scripts/run_drive_syncs.sh --apply",
+   "scheduler": "crontab 5 * * * * (lane drive-syncs-hourly)",
+   "destination": "Google Drive (Trade_AI_Docs_v2 and the code mirror folder)",
+   "retention": "mirror (latest)",
+   "offsite": true,
+   "evidence": "data/runtime/drive_syncs_last.json (DriveSyncsReceipt@v1)",
+   "restore": "download from Drive; git remains the authority for tracked docs",
+   "last_restore_drill": null,
+   "drill_note": "never drilled; a mirror, not a versioned backup"
+  },
+  "claude_memory_drive": {
+   "what": "Claude file memory tarball to Drive (external script outside the repo)",
+   "script": "~/.claude/sync-memory-to-drive.sh (not in repo)",
+   "scheduler": "crontab 10 3 * * * (lane sync-memory-to-drive, NO_SIGNAL)",
+   "destination": "Google Drive",
+   "retention": "delete-before-upload (1)",
+   "offsite": true,
+   "evidence": "lane_registry sync-memory-to-drive note: archive mtime proves packing, not upload",
+   "restore": "download the tarball and untar into ~/.claude/projects/",
+   "last_restore_drill": null,
+   "drill_note": "never drilled"
+  },
+  "bitwarden_sm": {
+   "what": "secret values; Bitwarden Secrets Manager is the source of truth since 2026-07-21 and render_env writes /run/user/<uid>/tradeai/env from it",
+   "script": "config/secret_registry.yaml (names) + the sm-render lane (tradeai-sm-render.service)",
+   "scheduler": "per rotation; rendered on every sm-render run",
+   "destination": "Bitwarden Secrets Manager (vendor-hosted)",
+   "retention": "vendor",
+   "offsite": true,
+   "evidence": "scripts/backup_secrets_state.sh lines 29-33; config/secret_registry.yaml header",
+   "restore": "re-render the env from SM (sm-render) on a host holding the BWS access token; the BWS token itself is excluded from the registry by design",
+   "last_restore_drill": null,
+   "drill_note": "every sm-render run reads every secret back from SM (continuous read proof); no restore-to-new-host drill receipt"
+  },
+  "bitwarden_vault_operator": {
+   "what": "operator-held recovery secrets: gpg backup passphrase and gog keyring password",
+   "script": "manual (operator)",
+   "scheduler": "on rotation",
+   "destination": "operator's Bitwarden vault (items 'TradeAI backup gpg passphrase', 'TradeAI gog keyring password')",
+   "retention": "vendor",
+   "offsite": true,
+   "evidence": "docs/runbooks/BARE_METAL_RECOVERY.md P0 prerequisite, round-trip verified 2026-07-17",
+   "restore": "copy from the vault into ~/.openclaw/credentials/ (0600)",
+   "last_restore_drill": "2026-07-17",
+   "drill_note": "round-trip verified at push per the runbook; no receipt file"
+  }
+ },
+ "asset_classes": [
+  {
+   "id": "stores_pg_public",
+   "description": "Authority stores whose store is a public-schema table",
+   "mechanism": [
+    "pg_dump_local",
+    "db_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "pg_dump_local restore (gunzip | psql into an empty trade_ai); offsite copy via db_offsite (weekly)",
+   "covers": [
+    "store:agent_debate",
+    "store:agent_opinion",
+    "store:ai_reports",
+    "store:analyst_opinion",
+    "store:catalyst_news",
+    "store:data_gaps",
+    "store:dividends",
+    "store:earnings_date",
+    "store:fundamentals",
+    "store:macro",
+    "store:market_regime",
+    "store:operator_conversation",
+    "store:options_iv",
+    "store:positions_store",
+    "store:private_company",
+    "store:quote_price",
+    "store:research_thesis",
+    "store:symbol_identity",
+    "store:watch_directives",
+    "store:watch_discovery"
+   ]
+  },
+  {
+   "id": "stores_pg_public_and_state_file",
+   "description": "Authority stores with a public table and a portfolios/state file",
+   "mechanism": [
+    "pg_dump_local",
+    "db_offsite",
+    "data_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "pg_dump_local restore (gunzip | psql into an empty trade_ai); offsite copy via db_offsite (weekly); file via data_offsite",
+   "covers": [
+    "store:technicals"
+   ]
+  },
+  {
+   "id": "stores_state_files",
+   "description": "Authority stores that are files under data/cio or data/portfolios/state (symlinked into persistent-state, dereferenced by data_offsite)",
+   "mechanism": [
+    "data_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg and untar into the dev-tree data/; symlinked dirs land in persistent-state",
+   "covers": [
+    "store:agent_checkpoints",
+    "store:capital_plan_decisions",
+    "store:cio_operator_artifacts",
+    "store:contradiction_verdicts",
+    "store:counterfactual_ledger",
+    "store:edge_fanout_work_items",
+    "store:holdings_accounts",
+    "store:intelligence_memory_contexts",
+    "store:intelligence_retrieval_receipts",
+    "store:lesson_promotions",
+    "store:opportunity_assessment",
+    "store:redeploy_analytics",
+    "store:research_write_path_receipts",
+    "store:sec_filing_events"
+   ]
+  },
+  {
+   "id": "stores_git",
+   "description": "Authority stores that are tracked repo files",
+   "mechanism": [
+    "git_remote"
+   ],
+   "coverage": "FULL",
+   "restore": "git clone / checkout",
+   "covers": [
+    "store:agent_registry"
+   ]
+  },
+  {
+   "id": "stores_pg_public_runtime_projection",
+   "description": "Authority stores with a public table and a data/runtime projection file",
+   "mechanism": [
+    "pg_dump_local",
+    "db_offsite"
+   ],
+   "coverage": "PARTIAL",
+   "restore": "pg_dump_local restore (gunzip | psql into an empty trade_ai); offsite copy via db_offsite (weekly); runtime file is regenerated by its writer",
+   "gap": "the data/runtime file is not backed up: backup_secrets_state.sh excludes data/runtime (line 126). Restore = rerun the writer.",
+   "covers": [
+    "store:sector_momentum"
+   ]
+  },
+  {
+   "id": "stores_runtime_files",
+   "description": "Authority stores that are files under data/runtime only",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "data/runtime is excluded from data_offsite (scripts/backup_secrets_state.sh:126, 5.4G of logs) and no other mechanism copies these files; append-only receipt ledgers here (model_chooser, supervisor_ladder, supervisor_recoveries) are lost on disk loss; *_latest.json projections are rebuildable only by rerunning their writer",
+   "covers": [
+    "store:industry_momentum",
+    "store:inverse_stoplights",
+    "store:model_chooser_receipts",
+    "store:supervisor_ladder_receipts",
+    "store:supervisor_recoveries",
+    "store:web_search"
+   ]
+  },
+  {
+   "id": "stores_governance_files",
+   "description": "Authority stores under persistent-state/data/governance",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "persistent-state/data/governance is not symlinked from the dev-tree data/ that data_offsite tars, so no backup reaches it (measured 2026-10-09: dev-tree data/governance absent)",
+   "covers": [
+    "store:conformance_gate_receipts",
+    "store:maturity_scores",
+    "store:platform_conformance"
+   ]
+  },
+  {
+   "id": "stores_intelligence_schema",
+   "description": "Authority stores whose table is in the intelligence schema (some also write a runtime/governance file)",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "run_pg_backup.sh passes --exclude-table-data='intelligence.*' (RLS blocks COPY for the trade_ai role); DDL only is dumped; the companion files are in data/runtime or governance, also unbacked. Needs a privileged dump.",
+   "covers": [
+    "store:approval_packages",
+    "store:intelligence_gir_projection",
+    "store:intelligence_research_index",
+    "store:supervisor_breaches",
+    "store:supervisor_heartbeats"
+   ]
+  },
+  {
+   "id": "stores_active_trader",
+   "description": "Active Trader microstructure files",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "the live copy is persistent-state/data/active_trader (79 files written since 2026-10-08); the dev-tree data/active_trader that data_offsite tars is a stale fork (3 files)",
+   "covers": [
+    "store:active_trader_microstructure"
+   ]
+  },
+  {
+   "id": "persistent_trees_data_offsite",
+   "description": "Persistent trees reached by data_offsite through dev-tree symlinks",
+   "mechanism": [
+    "data_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg and untar into the dev-tree data/; symlinked dirs land in persistent-state",
+   "covers": [
+    "persistent_tree:data/audit",
+    "persistent_tree:data/cio",
+    "persistent_tree:data/health",
+    "persistent_tree:data/paper_trading",
+    "persistent_tree:data/portfolios/state",
+    "persistent_tree:data/state"
+   ]
+  },
+  {
+   "id": "persistent_trees_forked",
+   "description": "Persistent trees that exist both as dev-tree directories and persistent-state directories",
+   "mechanism": [
+    "data_offsite"
+   ],
+   "coverage": "PARTIAL",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg and untar into the dev-tree data/; symlinked dirs land in persistent-state (dev-tree copy only)",
+   "gap": "the dev-tree copy is backed up; the persistent-state copy (declared in PERSISTENT_TREES) is a separate directory and is not",
+   "covers": [
+    "persistent_tree:data/hermes",
+    "persistent_tree:data/research"
+   ]
+  },
+  {
+   "id": "persistent_trees_unbacked",
+   "description": "Persistent trees no backup copies",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "data/runtime is excluded from data_offsite (backup_secrets_state.sh:126); logs/ (persistent-state/logs, 660M) is not in any family. Runtime holds receipts, heartbeats, stamps and the cutover evidence",
+   "covers": [
+    "persistent_tree:data/runtime",
+    "persistent_tree:logs"
+   ]
+  },
+  {
+   "id": "repo_systemd_units",
+   "description": "Unit files and drop-in dirs tracked under config/systemd/user",
+   "mechanism": [
+    "git_remote",
+    "ops_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "reinstall from the repo (config-write grant); installed *.service/*.timer copies also in ops_backup systemd_user/",
+   "covers": [
+    "unit:cio-governed-bridge.service",
+    "unit:hermes-autonomous-loop.service",
+    "unit:hermes-autonomous-loop.timer",
+    "unit:hermes-deep-research-local.service",
+    "unit:hermes-deep-research-local.timer",
+    "unit:hermes-external-feedback.service",
+    "unit:portfolio-server.service.d",
+    "unit:trade-ai-lab-moomoo-opend.service",
+    "unit:trade-ai-lab-moomoo-opend.service.d",
+    "unit:trade-ai-news-monitor.service",
+    "unit:trade-ai-news-monitor.service.d",
+    "unit:trade-ai-news-monitor.timer",
+    "unit:tradeai-advisory-lessons-reflect.service",
+    "unit:tradeai-advisory-lessons-reflect.timer",
+    "unit:tradeai-advisory-notif-broker.service",
+    "unit:tradeai-advisory-notif-broker.timer",
+    "unit:tradeai-advisory-outcome-scorer.service",
+    "unit:tradeai-advisory-outcome-scorer.timer",
+    "unit:tradeai-advisory-shadow-seed.service",
+    "unit:tradeai-advisory-shadow-seed.timer",
+    "unit:tradeai-advisory-shadow-session.service",
+    "unit:tradeai-advisory-shadow-session.service.d",
+    "unit:tradeai-advisory-shadow-session.timer",
+    "unit:tradeai-aec-command-center-cycle.service",
+    "unit:tradeai-aec-command-center-cycle.timer",
+    "unit:tradeai-agent-runtime-health.service",
+    "unit:tradeai-agent-runtime-producer.service",
+    "unit:tradeai-agent-runtime@.service.d",
+    "unit:tradeai-autonomy-watchdog.service",
+    "unit:tradeai-autonomy-watchdog.timer",
+    "unit:tradeai-backup-enforcer.service",
+    "unit:tradeai-backup-enforcer.timer",
+    "unit:tradeai-cio-defer-revisit.service",
+    "unit:tradeai-cio-defer-revisit.timer",
+    "unit:tradeai-cio-delivery-shadow.service",
+    "unit:tradeai-cio-delivery.service",
+    "unit:tradeai-cio-delivery.timer",
+    "unit:tradeai-cio-desk-memo-regen.service",
+    "unit:tradeai-cio-desk-memo-regen.timer",
+    "unit:tradeai-cio-event-brief.service",
+    "unit:tradeai-cio-event-brief.timer",
+    "unit:tradeai-cio-material-scan-dry.service",
+    "unit:tradeai-cio-material-scan.service",
+    "unit:tradeai-cio-material-scan.service.d",
+    "unit:tradeai-cio-material-scan.timer",
+    "unit:tradeai-cio-memory-shadow-measure.service",
+    "unit:tradeai-cio-memory-shadow-measure.service.d",
+    "unit:tradeai-cio-memory-shadow-measure.timer",
+    "unit:tradeai-cio-nightly-reflection.service",
+    "unit:tradeai-cio-nightly-reflection.timer",
+    "unit:tradeai-cio-reactive.service",
+    "unit:tradeai-cio-reactive.service.d",
+    "unit:tradeai-cio-reactive.timer",
+    "unit:tradeai-cio-telegram.service",
+    "unit:tradeai-cio-telegram.service.d",
+    "unit:tradeai-cio-whatsapp.service",
+    "unit:tradeai-contradiction-adjudicator.service",
+    "unit:tradeai-contradiction-adjudicator.timer",
+    "unit:tradeai-data-plausibility.service",
+    "unit:tradeai-data-plausibility.timer",
+    "unit:tradeai-data-source-health.service",
+    "unit:tradeai-data-source-health.timer",
+    "unit:tradeai-edge-fanout-consumer.service",
+    "unit:tradeai-edge-fanout-consumer.timer",
+    "unit:tradeai-eod-consolidated-close.service",
+    "unit:tradeai-eod-consolidated-close.timer",
+    "unit:tradeai-expected-services.service",
+    "unit:tradeai-expected-services.timer",
+    "unit:tradeai-finviz-view-contracts.service",
+    "unit:tradeai-finviz-view-contracts.timer",
+    "unit:tradeai-free-first-circulation.service",
+    "unit:tradeai-free-first-circulation.timer",
+    "unit:tradeai-gap-resolution.service",
+    "unit:tradeai-gap-resolution.timer",
+    "unit:tradeai-gir-projector.service",
+    "unit:tradeai-gir-projector.timer",
+    "unit:tradeai-governance-pipeline.service",
+    "unit:tradeai-governance-pipeline.timer",
+    "unit:tradeai-health-tick.service",
+    "unit:tradeai-health-tick.timer",
+    "unit:tradeai-hermes-cio-worker.service",
+    "unit:tradeai-hermes-cio-worker.timer",
+    "unit:tradeai-holdings-agent-enqueue.service",
+    "unit:tradeai-holdings-agent-enqueue.service.d",
+    "unit:tradeai-holdings-agent-enqueue.timer",
+    "unit:tradeai-memory-consolidator-shadow.service",
+    "unit:tradeai-memory-shadow-project.service",
+    "unit:tradeai-n8n-coordination-gateway.service",
+    "unit:tradeai-n8n-lab-watchdog.service",
+    "unit:tradeai-n8n-lab-watchdog.timer",
+    "unit:tradeai-n8n-run-executor.service",
+    "unit:tradeai-n8n-run-relay.service",
+    "unit:tradeai-operator-answer-quality.service",
+    "unit:tradeai-operator-answer-quality.timer",
+    "unit:tradeai-platform-maintenance-monthly.service",
+    "unit:tradeai-platform-maintenance-monthly.timer",
+    "unit:tradeai-platform-maintenance-nightly.service",
+    "unit:tradeai-platform-maintenance-nightly.timer",
+    "unit:tradeai-platform-maintenance-weekly.service",
+    "unit:tradeai-platform-maintenance-weekly.timer",
+    "unit:tradeai-portfolio-daily-cadence.service",
+    "unit:tradeai-portfolio-daily-cadence.timer",
+    "unit:tradeai-portfolio-lookthrough-cadence.service",
+    "unit:tradeai-portfolio-lookthrough-cadence.timer",
+    "unit:tradeai-portfolio-monthly-cadence.service",
+    "unit:tradeai-portfolio-monthly-cadence.timer",
+    "unit:tradeai-portfolio-report-ms.service",
+    "unit:tradeai-portfolio-report-ms.timer",
+    "unit:tradeai-portfolio-weekly-cadence.service",
+    "unit:tradeai-portfolio-weekly-cadence.timer",
+    "unit:tradeai-provider-cost-reconcile.service",
+    "unit:tradeai-provider-cost-reconcile.timer",
+    "unit:tradeai-research-lane-health.service",
+    "unit:tradeai-research-lane-health.timer",
+    "unit:tradeai-served-copy-split.service",
+    "unit:tradeai-served-copy-split.timer",
+    "unit:tradeai-sm-render.service",
+    "unit:tradeai-sm-render.service.d",
+    "unit:tradeai-sm-render.timer",
+    "unit:tradeai-source-litmus.service",
+    "unit:tradeai-source-litmus.timer",
+    "unit:tradeai-stance-organic-observe-early.timer",
+    "unit:tradeai-stance-organic-observe.service",
+    "unit:tradeai-stance-organic-observe.timer",
+    "unit:tradeai-supervisor-breach-detector.service",
+    "unit:tradeai-supervisor-breach-detector.timer",
+    "unit:tradeai-tax-lots-rebuild.service",
+    "unit:tradeai-tax-lots-rebuild.timer",
+    "unit:tradeai-telegram-callback-poller.service",
+    "unit:tradeai-watch-decision-scheduler.service",
+    "unit:tradeai-watch-decision-scheduler.service.d",
+    "unit:tradeai-watch-decision-scheduler.timer"
+   ]
+  },
+  {
+   "id": "registry_secrets",
+   "description": "Secret names in config/secret_registry.yaml (values never in the repo)",
+   "mechanism": [
+    "bitwarden_sm"
+   ],
+   "coverage": "FULL",
+   "restore": "re-render from Bitwarden SM (sm-render); SCHWAB_TOKEN_ENC_KEY also in env_offsite via config/broker_credentials.env",
+   "covers": [
+    "secret:ADMIN_WRITE_TOKEN",
+    "secret:ALPACA_API_KEY",
+    "secret:ALPACA_IRA_API_KEY",
+    "secret:ALPACA_IRA_SECRET_KEY",
+    "secret:ALPACA_SECRET_KEY",
+    "secret:ALPACA_TAXABLE_API_KEY",
+    "secret:ALPACA_TAXABLE_SECRET_KEY",
+    "secret:ANTHROPIC_API_KEY",
+    "secret:DB_PASSWORD",
+    "secret:FINVIZ_API_TOKEN",
+    "secret:FINVIZ_COOKIE",
+    "secret:OPENAI_API_KEY",
+    "secret:SCHWAB_APP_KEY",
+    "secret:SCHWAB_APP_SECRET",
+    "secret:SMTP_PASSWORD",
+    "secret:SNAPTRADE_CONSUMER_KEY",
+    "secret:SNAPTRADE_USER_SECRET",
+    "secret:TELEGRAM_BOT_TOKEN",
+    "secret:TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N",
+    "secret:TRADEAI_N8N_RELAY_BEARER",
+    "secret:XAI_API_KEY"
+   ]
+  },
+  {
+   "id": "pg_tables_excluded_data",
+   "description": "Tables in schemas whose DATA run_pg_backup.sh excludes",
+   "mechanism": [
+    "pg_dump_local"
+   ],
+   "coverage": "PARTIAL",
+   "restore": "DDL restores from pg_dump_local; data cannot be restored",
+   "gap": "--exclude-table-data for intelligence.* and memory_r10_m2.* (linux_launchers/run_pg_backup.sh:82-83): embeddings, GIR, heartbeats, R10 memory facts have no backup. A new table in these schemas is a new gap.",
+   "covers": [
+    "pg_table:intelligence.*",
+    "pg_table:memory_r10_m2.*"
+   ]
+  },
+  {
+   "id": "pg_tables_dumped",
+   "description": "Tables in every other schema created by migrations (pg_dump dumps all schemas not excluded)",
+   "mechanism": [
+    "pg_dump_local",
+    "db_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "pg_dump_local restore (gunzip | psql into an empty trade_ai); offsite copy via db_offsite (weekly)",
+   "covers": [
+    "pg_table:public.*",
+    "pg_table:agentic_runtime.*",
+    "pg_table:memory_r10_shadow.*",
+    "pg_table:tradeai_memory_shadow.*"
+   ]
+  },
+  {
+   "id": "pg_database_trade_ai",
+   "description": "The trade_ai database (23 GB measured 2026-10-09)",
+   "mechanism": [
+    "pg_dump_local",
+    "db_offsite"
+   ],
+   "coverage": "PARTIAL",
+   "restore": "pg_dump_local restore (gunzip | psql into an empty trade_ai); offsite copy via db_offsite (weekly)",
+   "gap": "intelligence.* and memory_r10_m2.* data excluded; local copy keeps 1 on the same disk; offsite is weekly (RPO up to 7 days); a full restore has never been drilled",
+   "covers": [
+    "pg_database:trade_ai"
+   ]
+  },
+  {
+   "id": "pg_database_postgres",
+   "description": "The postgres maintenance database",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "not dumped; holds no application data (7.5 MB) - recreated by initdb",
+   "covers": [
+    "pg_database:postgres"
+   ]
+  },
+  {
+   "id": "pg_cluster_roles",
+   "description": "Cluster-global roles and grants (trade_ai role, RLS-bypass roles)",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "pg_dump does not dump roles and no pg_dumpall --globals-only runs; the runbook recreates the trade_ai role by hand (BARE_METAL_RECOVERY.md step 5); role timeouts from DB_HANG_PREVENTION.md must be re-applied",
+   "covers": [
+    "pg_cluster:roles"
+   ]
+  },
+  {
+   "id": "n8n_lab_db",
+   "description": "n8n lab database (workflows, executions, credentials)",
+   "mechanism": [
+    "n8n_lab_dump_local",
+    "n8n_lab_restore_drill"
+   ],
+   "coverage": "PARTIAL",
+   "restore": "pg_restore the newest persistent-state/backups/n8n dump into the lab container (n8n_lab_restore_drill.sh shows the commands)",
+   "gap": "local only: persistent-state/backups is in no offsite family, so a disk loss takes the dumps with it",
+   "covers": [
+    "n8n:lab_db"
+   ]
+  },
+  {
+   "id": "n8n_workflows",
+   "description": "Generated n8n workflow JSON",
+   "mechanism": [
+    "git_remote",
+    "n8n_lab_dump_local"
+   ],
+   "coverage": "FULL",
+   "restore": "re-import from docs/implementation/n8n-parallel/workflows/ under an operator grant (AGENTS.md 23.2)",
+   "covers": [
+    "n8n:workflows"
+   ]
+  },
+  {
+   "id": "n8n_encryption_key",
+   "description": "n8n credential encryption key",
+   "mechanism": [
+    "bitwarden_sm"
+   ],
+   "coverage": "FULL",
+   "restore": "restore the key into the n8n volume/env from SM escrow before importing credentials",
+   "covers": [
+    "n8n:encryption_key"
+   ],
+   "note": "escrow in Bitwarden SM is stated by scripts/n8n_lab_backup.sh:13 and the receipt note; not independently verified by this manifest"
+  },
+  {
+   "id": "coordination_ledger",
+   "description": "n8n coordination ledger sqlite (runs, claims, nonces) at persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "lives under persistent-state/data/governance, which no backup reaches; RunReceipt history and nonce state are lost on disk loss",
+   "covers": [
+    "coordination_ledger:n8n_coordination_ledger.sqlite"
+   ]
+  },
+  {
+   "id": "crontab",
+   "description": "User crontab",
+   "mechanism": [
+    "ops_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "crontab ops_state/crontab.txt from the newest ops_backup (BARE_METAL_RECOVERY.md step 7); per-edit snapshots also in ~/.local/state/tradeai/backups/",
+   "covers": [
+    "crontab:user"
+   ]
+  },
+  {
+   "id": "host_units_installed",
+   "description": "Installed *.service and *.timer files in ~/.config/systemd/user",
+   "mechanism": [
+    "ops_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "copy ops_state/systemd_user/* into ~/.config/systemd/user, daemon-reload, enable",
+   "covers": [
+    "host_systemd:installed_units"
+   ]
+  },
+  {
+   "id": "host_dropins_installed",
+   "description": "Installed *.d drop-in dirs in ~/.config/systemd/user (35 on 2026-10-09)",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "ops_offsite copies only *.service and *.timer (backup_secrets_state.sh:74); drop-ins such as 20-exact-sha-release.conf exist only on the host unless the repo carries them (12 do under config/systemd/user)",
+   "covers": [
+    "host_systemd:installed_dropins"
+   ]
+  },
+  {
+   "id": "code_repo",
+   "description": "Tracked code and config",
+   "mechanism": [
+    "git_remote"
+   ],
+   "coverage": "FULL",
+   "restore": "git clone",
+   "covers": [
+    "code:repo"
+   ]
+  },
+  {
+   "id": "docs_repo",
+   "description": "Tracked docs",
+   "mechanism": [
+    "git_remote",
+    "drive_docs_sync"
+   ],
+   "coverage": "FULL",
+   "restore": "git clone; Drive mirror",
+   "covers": [
+    "docs:repo_docs"
+   ]
+  },
+  {
+   "id": "docs_generated",
+   "description": "Gitignored generated docs",
+   "mechanism": [
+    "generated_docs_git"
+   ],
+   "coverage": "FULL",
+   "restore": "git checkout generated-docs-backup",
+   "covers": [
+    "docs:generated_docs"
+   ]
+  },
+  {
+   "id": "local_secret_broker_env",
+   "description": "config/broker_credentials.env (SCHWAB_TOKEN_ENC_KEY)",
+   "mechanism": [
+    "env_offsite",
+    "bitwarden_sm"
+   ],
+   "coverage": "FULL",
+   "restore": "decrypt env_backup and copy; also mirrored to SM 2026-07-22 per backup_secrets_state.sh:31",
+   "covers": [
+    "local_secret:broker_credentials_env"
+   ]
+  },
+  {
+   "id": "local_secret_gpg_pass",
+   "description": "gpg passphrase that decrypts every offsite family",
+   "mechanism": [
+    "bitwarden_vault_operator"
+   ],
+   "coverage": "FULL",
+   "restore": "operator copies it from the vault (BARE_METAL_RECOVERY.md P0)",
+   "covers": [
+    "local_secret:backup_gpg_passphrase"
+   ]
+  },
+  {
+   "id": "claude_memory",
+   "description": "Claude file memory",
+   "mechanism": [
+    "memory_offsite",
+    "claude_memory_drive"
+   ],
+   "coverage": "FULL",
+   "restore": "decrypt memory_backup and untar into ~/.claude/projects/",
+   "covers": [
+    "claude_memory:file_memory"
+   ]
+  },
+  {
+   "id": "apps_openclaw_dof",
+   "description": "OpenClaw state/credentials and nyc-dof-auction working tree",
+   "mechanism": [
+    "apps_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "decrypt apps_backup and untar into $HOME",
+   "covers": [
+    "apps:openclaw_and_dof"
+   ]
+  },
+  {
+   "id": "ps_backed_up",
+   "description": "persistent-state/data subdirs reached by data_offsite via dev-tree symlinks",
+   "mechanism": [
+    "data_offsite"
+   ],
+   "coverage": "FULL",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg and untar into the dev-tree data/; symlinked dirs land in persistent-state",
+   "covers": [
+    "ps:data/audit",
+    "ps:data/cio",
+    "ps:data/health",
+    "ps:data/paper_trading",
+    "ps:data/portfolios",
+    "ps:data/state"
+   ]
+  },
+  {
+   "id": "ps_forked",
+   "description": "persistent-state/data subdirs that are separate from their dev-tree namesakes",
+   "mechanism": [
+    "data_offsite"
+   ],
+   "coverage": "PARTIAL",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg and untar into the dev-tree data/; symlinked dirs land in persistent-state (dev-tree copy only)",
+   "gap": "only the dev-tree copy is in data_offsite; the persistent-state copy is not (both last written in Aug 2026)",
+   "covers": [
+    "ps:data/hermes",
+    "ps:data/research"
+   ]
+  },
+  {
+   "id": "ps_container",
+   "description": "persistent-state/data itself (mixed: see the ps:data/* rows)",
+   "mechanism": [
+    "data_offsite"
+   ],
+   "coverage": "PARTIAL",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg and untar into the dev-tree data/; symlinked dirs land in persistent-state",
+   "gap": "only the subdirs listed in ps_backed_up are covered",
+   "covers": [
+    "ps:data"
+   ]
+  },
+  {
+   "id": "ps_unbacked",
+   "description": "persistent-state entries no backup copies",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "none of these is symlinked from the dev-tree data/ (the only path data_offsite follows) and no other family names persistent-state. Live writes measured 2026-10-09: active_trader 79 files, governance 6 (incl. the coordination ledger), options_intent 3 since 2026-10-08; state/ holds data_broker (283M); backups/ holds the n8n dumps",
+   "covers": [
+    "ps:PERSISTENT_STATE_ROOT.json",
+    "ps:archive",
+    "ps:backups",
+    "ps:config",
+    "ps:exports",
+    "ps:logs",
+    "ps:state",
+    "ps:tools",
+    "ps:data/active_trader",
+    "ps:data/governance",
+    "ps:data/options_intent",
+    "ps:data/runtime"
+   ]
+  }
+ ]
+}
