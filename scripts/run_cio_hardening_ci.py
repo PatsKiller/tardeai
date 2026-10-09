@@ -3628,6 +3628,15 @@ GATES = [
             "tests/test_llm_routing_policy_20261008.py",
         ],
     ),
+    (
+        # ANCHOR: BRIDGE_EXECUTOR_HARDENING — 2026-10-09 guardrail audit B: H1 one provider call per streamed
+        # bridge request; H2 caller auth off|report|enforce (report default, enforce refuses before reservation);
+        # M1 executor unit carries the crontab-wide lane env; M2 lanes inherit no n8n secret.
+        "bridge_executor_hardening_20261009",
+        [
+            "tests/test_bridge_executor_hardening_20261009.py",
+        ],
+    ),
 ]
 
 
