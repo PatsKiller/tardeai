@@ -1049,6 +1049,12 @@ GATES = [
         "active_trader_momentum_alerts_20261004",
         ["tests/test_active_trader_momentum_alerts_20261004.py"],
     ),
+    # Active Trader ARMED quality + stand-down + Trade-AI verdict + recorder reconnect (operator 2026-10-09:
+    # 18 of 19 ARMED alerts never fired; ARMED printed last price as entry; dedupe keyed on price).
+    (
+        "active_trader_armed_quality_20261009",
+        ["tests/test_active_trader_armed_quality_20261009.py"],
+    ),
     # Active Trader alerts live: comms-editor exemption (missing-CIO hold only), Telegram path, feed API.
     (
         "active_trader_live_alerts_20261004",
@@ -1149,6 +1155,18 @@ GATES = [
     (
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
+    ),
+    # Symbol-thesis job repair (operator 2026-10-09 "fix the thesis job"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop
+    # backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies.
+    (
+        "thesis_job_fix_20261009",
+        ["tests/test_thesis_job_fix_20261009.py"],
+    ),
+    # Opportunity actions (operator 2026-10-09): Request CIO review (symbol-thesis priority queue; operator flags and the
+    # CIO's top-ranked names served first), Add to watchlist, CIO-memory fallback, quote-page news filter.
+    (
+        "opportunity_actions_20261009",
+        ["tests/test_opportunity_actions_20261009.py"],
     ),
     # Trade-AI scalp scan every 5 min + one feed for Trade-AI and Active Trader + runner GO with catalyst
     # (operator 2026-10-09).

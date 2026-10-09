@@ -164,3 +164,42 @@ bottom third of ranked names (440 of 1,412).
 - Live reward list (95 items): QTEX 83, then CSCO, MU and AAON first; VCIG 34 last.
 - Digest dry run: 56 entry setups ranked, 4 collapsed below the floor.
 - Gate: `conviction_ordering_20261008`.
+
+## Opportunity view: flag for CIO review, add to watchlist, CIO-memory fallback (2026-10-09)
+
+Your feedback: "why no CIO review is on list and CIO memory, still no way to flag or add to watch list". BRCC was
+rank #2 with "No CIO thesis on file".
+
+**Why top names had no CIO review:**
+- The governed symbol-thesis acquisition (weekdays 17:17 ET, 3 LLM syntheses per run) picks names from an older
+  ranking, so it never looked at the new CIO top-ranked names.
+- It also publishes very little. In the 5 days to 2026-10-09 it made 315 attempts:
+
+  | Outcome | Attempts |
+  |---|---|
+  | Published | 6 (about one a day) |
+  | Blocked: duplicate evidence, deferred off-peak | 160 |
+  | Synthesis failed (17 were `parse:no_json_object`) | 108 |
+  | LLM budget exhausted | 41 |
+
+  That is a separate fix.
+
+**What changed:**
+- **Request CIO review button.** `POST /api/v3/opportunities/{SYM}/review-request` files a
+  `SymbolThesisPriorityRequest` from source `operator_opportunity_view`. An already-open request is not duplicated.
+- **Automatic requests.** Each curator `--apply` run requests a review for the top `cio_review.auto_top_n` ranked
+  names (10) that have no current thesis and no open request. The source is `cio_opportunity_curator`. On
+  2026-10-09 the dry run would request BRCC, FIGS, QTEX, DD, PRIM and SRFM.
+- **Serving order.** `symbol_thesis_priority.open_requests_ranked` serves your flags first, then the curator's
+  top-ranked requests, then all other sources oldest first. The acquisition run and the news-curation monitor both
+  use it. Previously a new flag waited behind 27 open requests.
+- **Add to watchlist button.** It uses the existing operator path `POST /api/v2/watch/directives` (kind ticker,
+  `created_by=operator_opportunity_view`). When the name is already on the watchlist it shows "✓ On watchlist".
+- **CIO summary fallback.** With no thesis, the summary shows the CIO-memory assessment: stance and rationale,
+  conviction, rank, R:R and the strongest factors. It also shows whether a review is queued and its place in the
+  queue.
+- **News filter.** Quote pages and option-contract listings are no longer treated as news, wherever news is read
+  (`catalyst_record.NOT_NEWS_PATTERNS`). In the 7 days to 2026-10-09, 594 of 4,908 articles matched. BRCC had no
+  real news in 60 days; all of it was quote pages.
+
+**Gate:** `opportunity_actions_20261009`.

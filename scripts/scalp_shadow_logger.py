@@ -533,6 +533,7 @@ def run(args) -> int:
     results = []
     trigger_fires = []
     trigger_states = {}      # symbol → current FSM state (trace[-1]); drives the moomoo L2 arm
+    trigger_info = {}        # symbol → trigger engine final levels + armed_bars (Active Trader alerts)
     ef = ucurve[minute] if 0 <= minute < len(ucurve) else (minute + 1) / n_min
     for a in assembled:
         # RVOL_tod: per-symbol profile, else universe-proxy (§3.1)
@@ -583,6 +584,15 @@ def run(args) -> int:
         # M3-S5: run the entry-trigger state machine over the symbol's session bars; log TRIGGER fires
         tr = trig.run_trigger_engine(bars, cfg)
         trigger_states[a["_symbol"]] = (tr["trace"][-1] if tr.get("trace") else "IDLE")  # current FSM state
+        # 2026-10-09: the machine's own setup levels + how many trailing minutes it has sat ARMED, so an
+        # ARMED alert states the real break / pullback low and a stale setup can stand down
+        _trace = tr.get("trace") or []
+        _armed_bars = 0
+        for _st in reversed(_trace):
+            if _st != "ARMED":
+                break
+            _armed_bars += 1
+        trigger_info[a["_symbol"]] = {**(tr.get("final") or {}), "armed_bars": _armed_bars}
         for fe in trig.triggered_fires(tr):
             _fms = apply_min_stop(fe.get("entry"), fe.get("stop"), a.get("atr_1m"), row["spread_bps"], cfg)
             fe = {**fe, "stop": _fms["stop"], "r_dollars": _fms["r_dollars"], "stop_pct": _fms["stop_pct"],
@@ -789,7 +799,8 @@ def run(args) -> int:
             from active_trader.momentum_alert_pass import run_from_logger
             from active_trader.momentum_alert_scoring import score_pending
             at_dry = bool(getattr(args, "dry_run", False)) or not args.apply
-            res = run_from_logger(conn, cfg, results, trigger_fires, trigger_states, day=day, dry_run=at_dry)
+            res = run_from_logger(conn, cfg, results, trigger_fires, trigger_states, day=day, dry_run=at_dry,
+                                  trigger_info=trigger_info)
             print(f"  [at-alerts]{' DRY' if at_dry else ''} {res}")
             if not at_dry:
                 scored = score_pending(lambda s, d: session_rth_bars(s, cfg, d, fetch_days), now=as_of.timestamp())

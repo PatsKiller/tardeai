@@ -137,3 +137,12 @@ profile_lane:
 # the messages stay in the Communications ledger. 55 ≈ the bottom third of ranked names (440 of 1,412 on 2026-10-08).
 advice:
   conviction_floor: 55
+
+# CIO review for top-ranked names (operator 2026-10-09: "why no CIO review" — BRCC was rank #2 with no CIO thesis,
+# because the governed symbol-thesis acquisition picks names from an older ranking). Each curator --apply run files a
+# SymbolThesisPriorityRequest (lib/symbol_thesis_priority) for the top auto_top_n ranked names that have no current
+# symbol thesis and no open request. The acquisition run (weekdays 17:17 ET, LIMIT 10 / MAX_LLM 3 per run) serves open
+# requests first, so a backlog drains over a few runs. The operator can also flag any name from the opportunity view.
+cio_review:
+  enabled: true
+  auto_top_n: 10
