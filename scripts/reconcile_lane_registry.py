@@ -132,7 +132,7 @@ def _systemctl_show(units: list[str], props: Iterable[str]) -> dict[str, dict[st
     cmd = ["systemctl", "--user", "show", *units]
     for p in props:
         cmd += ["-p", p]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=180).stdout
     blocks = [b for b in out.split("\n\n")]
     res: dict[str, dict[str, str]] = {}
     for unit, block in zip(units, blocks):
@@ -145,7 +145,7 @@ def _unit_stdout_targets(units: list[str]) -> dict[str, str]:
     reports only the mode (``append``), never the path, so the files are read with ``systemctl cat``."""
     if not units:
         return {}
-    out = subprocess.run(["systemctl", "--user", "cat", *units], capture_output=True, text=True, timeout=60).stdout
+    out = subprocess.run(["systemctl", "--user", "cat", *units], capture_output=True, text=True, timeout=180).stdout
     res: dict[str, str] = {}
     cur = ""
     for line in out.splitlines():
