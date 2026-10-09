@@ -28,6 +28,13 @@ from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerRunSto
 T0 = 1_791_000_000.0
 
 
+@pytest.fixture(autouse=True)
+def _v1_serial_path(monkeypatch):
+    """These are the v1 tests. TRADEAI_N8N_EXECUTOR_WORKERS=1 is the executor v2 rollback flag: it must run the
+    exact v1 serial path, so every assertion below stays unchanged (n8n maturity B5.5)."""
+    monkeypatch.setenv("TRADEAI_N8N_EXECUTOR_WORKERS", "1")
+
+
 @pytest.fixture
 def bench(tmp_path, monkeypatch):
     """A scratch code root holding the real safe_flock.sh and a fake runner; a scratch state root; a ledger."""

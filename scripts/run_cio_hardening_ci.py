@@ -3641,6 +3641,14 @@ GATES = [
         ["tests/test_n8n_sched_fixes_20261009.py"],
     ),
     (
+        # ANCHOR: N8N_MATURITY_EXECUTOR_V2 — n8n maturity B5.5 (design 02 §5): executor v2 — N workers, per-lane
+        # lock (claim_next_v2), global/class caps, reserved priority worker, stale-RUNNING reaper, verdict/DLQ/
+        # breaker via finalize_outcome, RunReceipt@v2 + ExecutorStatus@v1; workers=1 is the v1 path. Hermetic:
+        # tmp_path ledgers, fake clock, gated fake runners, tiny real subprocesses.
+        "n8n_maturity_executor_v2_20261009",
+        ["tests/test_n8n_maturity_executor_v2_20261009.py"],
+    ),
+    (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
         # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
