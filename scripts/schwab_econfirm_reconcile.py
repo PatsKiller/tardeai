@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +38,18 @@ class GmailAccessError(RuntimeError):
     pass
 
 
+def _gog_bin() -> str:
+    """The gog CLI path. Cron's PATH has no ~/.local/bin, so a bare "gog" raised FileNotFoundError on the
+    18:35 run (2026-10-08). Same convention as scripts/gog_broker.sh: $GOG_BIN, else ~/.local/bin/gog."""
+    env_bin = os.environ.get("GOG_BIN", "").strip()
+    if env_bin:
+        return env_bin
+    local = Path.home() / ".local" / "bin" / "gog"
+    if os.access(local, os.X_OK):
+        return str(local)
+    return shutil.which("gog") or "gog"
+
+
 def _gog(*args) -> str:
     """P0-2: nonzero exit / timeout / auth stderr / empty response = FAILURE,
     surfaced — never silently treated as 'zero emails'."""
@@ -45,10 +58,12 @@ def _gog(*args) -> str:
     if kp.exists():
         env["GOG_KEYRING_PASSWORD"] = kp.read_text().strip()
     try:
-        r = subprocess.run(["gog", *args, "--account", ACCOUNT],
+        r = subprocess.run([_gog_bin(), *args, "--account", ACCOUNT],
                            capture_output=True, text=True, timeout=120, env=env)
     except subprocess.TimeoutExpired as e:
         raise GmailAccessError(f"gog timeout: {e}")
+    except FileNotFoundError as e:
+        raise GmailAccessError(f"gog not found (set GOG_BIN): {e}")
     if r.returncode != 0:
         raise GmailAccessError(f"gog exit {r.returncode}: {r.stderr[:200]}")
     if re.search(r"auth|credential|token|denied", r.stderr or "", re.I):
@@ -266,7 +281,7 @@ def reconcile_one_to_one(cur, conn) -> dict:
                         float(chg) if chg is not None else None, float(qty or 0))
 
         def _cands(date_col_val):
-            cur.execute(f"""SELECT dedupe_key, price, fees FROM trade_transactions
+            cur.execute("""SELECT dedupe_key, price, fees FROM trade_transactions
                             WHERE trade_date=%s AND upper(symbol)=%s AND action ILIKE %s
                               AND abs(quantity-%s) < 0.01
                               AND (%s IS NULL OR account=%s)""",

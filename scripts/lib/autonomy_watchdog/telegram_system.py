@@ -2,8 +2,15 @@
 
 Uses the generic ops bot (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID).
 Never uses TELEGRAM_CIO_* or CIO notification lineage.
-CIO_TELEGRAM_INTERDICT does not apply to this family.
-CI / pytest never send.
+CIO_TELEGRAM_INTERDICT does not apply to this family: sends pass
+``family=SendFamily.SYSTEM_OPS`` and the transport confirms the claim (this
+module, the ops bot token, the ops chat, SYSTEM_TELEGRAM_ENABLED on). The switch
+for this family is SYSTEM_TELEGRAM_INTERDICT. CI / pytest never send.
+
+Volume: one daily heartbeat per NY date (identity ``system-heartbeat:<date>``)
+and at most one alert per transition kind per NY date
+(``system-alert:<date>:<kind>``). A recorded ok send makes every later run that
+day a dedupe that never reaches the transport.
 """
 from __future__ import annotations
 
@@ -122,15 +129,16 @@ def send_system(
     # bypassed CIO disagreement holds — 2026-09-18 audit.
     try:
         try:
-            from telegram_transport import deliver_text
+            from telegram_transport import SendFamily, deliver_text
         except ImportError:
-            from scripts.telegram_transport import deliver_text  # type: ignore
+            from scripts.telegram_transport import SendFamily, deliver_text  # type: ignore
 
         def _post(url: str, payload: dict[str, Any]):
             body, status = _http_post(url, payload)
             return {"ok": bool(body.get("ok")), "status_code": status, "response": body}
 
-        result = deliver_text(token=token, chat_id=chat, text=text, parse_mode=None, post=_post)
+        result = deliver_text(token=token, chat_id=chat, text=text, parse_mode=None, post=_post,
+                              family=SendFamily.SYSTEM_OPS)
         if result.get("suppressed"):
             rec.update({
                 "ok": True,
@@ -199,3 +207,49 @@ def send_alert(kind: str, text: str, *, root=None, env=None, now=None) -> dict[s
         "TRADE AI SYSTEM ALERT\n" + text,
         identity=ident, kind=kind, root=root, env=env,
     )
+
+
+def preview_send(text: str, *, identity: str, kind: str, root=None, env=None) -> dict[str, Any]:
+    """What ``send_system`` WOULD do now, without sending or recording anything."""
+    src = env or os.environ
+    out: dict[str, Any] = {"identity": identity, "kind": kind, "family": FAMILY, "would_send": False,
+                           "text": text, "dry_run": True}
+    if _ci_locked(src):
+        out["reason"] = "ci_or_interdict"
+        return out
+    if not configured(src)["ready"]:
+        out["reason"] = "not_configured"
+        return out
+    prior = already_sent(identity, root=root)
+    if prior:
+        out.update({"reason": "deduped", "prior_at": prior.get("at"), "prior_message_id": prior.get("message_id")})
+        return out
+    token = str(src.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat = str(src.get("TELEGRAM_CHAT_ID") or "").split(",")[0].strip()
+    try:
+        try:
+            from telegram_transport import system_send_gate
+        except ImportError:
+            from scripts.telegram_transport import system_send_gate  # type: ignore
+        gate = system_send_gate(token=token, chat_id=chat)
+    except Exception as e:  # noqa: BLE001 — a preview never raises
+        out["reason"] = f"gate_unavailable:{type(e).__name__}"
+        return out
+    out["transport_gate"] = gate
+    if gate.get("interdicted"):
+        out["reason"] = f"interdicted:{gate.get('governing_switch')}"
+        return out
+    out.update({"would_send": True, "reason": "would_send"})
+    return out
+
+
+def preview_daily(text: str, *, root=None, env=None, now=None) -> dict[str, Any]:
+    if not after_daily_window(now):
+        return {"identity": daily_identity(now), "kind": "daily_heartbeat", "would_send": False,
+                "reason": "before_0815_et", "deferred": True, "dry_run": True}
+    return preview_send(text, identity=daily_identity(now), kind="daily_heartbeat", root=root, env=env)
+
+
+def preview_alert(kind: str, text: str, *, root=None, env=None, now=None) -> dict[str, Any]:
+    return preview_send("TRADE AI SYSTEM ALERT\n" + text, identity=f"{ALERT_PREFIX}{ny_date(now)}:{kind}",
+                        kind=kind, root=root, env=env)

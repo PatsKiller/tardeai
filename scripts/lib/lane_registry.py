@@ -463,12 +463,59 @@ def discover_systemd() -> list[dict[str, Any]]:
 
 
 def discover_all(*, cron_text: Optional[str] = None,
-                 include_systemd: bool = True) -> dict[str, Any]:
-    return {
+                 include_systemd: bool = True,
+                 include_n8n: Optional[bool] = None) -> dict[str, Any]:
+    out = {
         "cron": discover_cron(cron_text),
         "cron_commented": discover_commented_cron(cron_text),
         "systemd": discover_systemd() if include_systemd else [],
     }
+    if include_n8n is None:
+        include_n8n = os.environ.get(N8N_DISCOVERY_ENV, "") == "1"
+    if include_n8n:
+        try:
+            out["n8n"] = discover_n8n_live()
+        except Exception as exc:   # noqa: BLE001 — could-not-look is a note, never "nothing there"
+            out["n8n_unavailable"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+    return out
+
+
+# ── n8n as a scheduler source (AGENTS.md 3.0.0 §23.10 P17, audit C G10) ────────────────────────────
+#
+# An ACTIVE n8n workflow schedules host work exactly like a crontab line, so it is discovered the same
+# way: one discovery row per active workflow, keyed by its id. It is declared when a registry row names
+# that id as scheduler.expression (kind n8n) or when the id is one the workflow generator emitted
+# (docs/implementation/n8n-parallel/workflows/generated/INDEX.json, live and shadow ids — the allowlist
+# of known ids). Anything else is UNDECLARED_N8N_WORKFLOW and fails `check_lane_registry --fail-on-new`.
+# The live read is a single SELECT through `docker exec` (scripts/lib/n8n_live_inventory.py); CI reads
+# the committed snapshot instead. The lane monitor reads live only when TRADEAI_LANE_REGISTRY_N8N=1.
+
+N8N_DISCOVERY_ENV = "TRADEAI_LANE_REGISTRY_N8N"
+UNDECLARED_N8N_WORKFLOW = "UNDECLARED_N8N_WORKFLOW"
+
+
+def discover_n8n_live(**kw: Any) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib import n8n_live_inventory as inv
+    except ImportError:                                   # imported as lib.lane_registry
+        from lib import n8n_live_inventory as inv  # type: ignore
+    return inv.discover_n8n(inv.read_active_workflows(**kw))
+
+
+def discover_n8n_snapshot(path: Optional[Path] = None) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib import n8n_live_inventory as inv
+    except ImportError:
+        from lib import n8n_live_inventory as inv  # type: ignore
+    return inv.discover_n8n(inv.load_active_snapshot(path))
+
+
+def n8n_known_workflow_ids(index_path: Optional[Path] = None) -> dict[str, str]:
+    try:
+        from scripts.lib import n8n_live_inventory as inv
+    except ImportError:
+        from lib import n8n_live_inventory as inv  # type: ignore
+    return inv.known_workflow_ids(path=index_path)
 
 
 # ── evaluating one lane ────────────────────────────────────────────────────
@@ -772,12 +819,17 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
 _BARE_CRON_SCHEDULE = re.compile(r"^\s*(?:[\d*/,\-]+\s+){4}[\d*/,\-]+\s*$")
 
 
-def find_undeclared(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str, Any]]:
+def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
+                    n8n_known_ids: Optional[Iterable[str]] = None) -> list[dict[str, Any]]:
     """Scheduled jobs with no registry row, minus the inherited-debt baseline.
 
     The baseline is what makes the gate adoptable: green on day one, and it can
     only shrink. Same precedent as the dark-contract gate and the CI test
     coverage gate.
+
+    n8n (P17): an active workflow id is declared by a kind-n8n row's expression or
+    by the generated INDEX (``n8n_known_ids``; loaded from the committed INDEX when
+    None). The inherited baseline does NOT apply to n8n — there is no n8n debt.
     """
     declared: set[str] = set()
     for row in reg.get("lanes") or []:
@@ -809,6 +861,43 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str
         if expr in baseline or any(d in expr for d in declared if d):
             continue
         out.append({"kind": "cron", "expression": expr})
+    n8n_rows = found.get("n8n") or []
+    if n8n_rows:
+        n8n_declared = {str((r.get("scheduler") or {}).get("expression") or "")
+                        for r in reg.get("lanes") or []
+                        if (r.get("scheduler") or {}).get("kind") == SCHEDULER_N8N}
+        known = set(n8n_known_ids) if n8n_known_ids is not None else set(n8n_known_workflow_ids())
+        for wf in n8n_rows:
+            wid = str(wf.get("expression") or "")
+            if wid and (wid in n8n_declared or wid in known):
+                continue
+            out.append({"kind": "n8n", "expression": wid, "name": str(wf.get("name") or ""),
+                        "code": UNDECLARED_N8N_WORKFLOW})
+    return out
+
+
+#: An ACTIVE kind-n8n row whose workflow is not active in n8n (2026-10-09 audit: n8n-monitor-trade-ai and
+#: n8n-monitor-dof were deactivated 13:04Z yet the registry still said ACTIVE and the gate printed "clean").
+INACTIVE_N8N_WORKFLOW = "INACTIVE_N8N_WORKFLOW"
+
+
+def find_inactive_n8n_rows(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str, Any]]:
+    """ACTIVE kind-n8n rows whose workflow id is absent from the active-workflow discovery.
+
+    Only meaningful when n8n was actually looked at (``"n8n" in found``); with no n8n source the
+    answer is "not measured", never "all fine", so this returns [] and the caller reports the source.
+    """
+    if "n8n" not in found:
+        return []
+    active_ids = {str(wf.get("expression") or "") for wf in found.get("n8n") or []}
+    out: list[dict[str, Any]] = []
+    for row in reg.get("lanes") or []:
+        sched = row.get("scheduler") or {}
+        if row.get("state") != STATE_ACTIVE or sched.get("kind") != SCHEDULER_N8N:
+            continue
+        wid = str(sched.get("expression") or "")
+        if wid not in active_ids:
+            out.append({"lane_id": row.get("lane_id"), "expression": wid, "code": INACTIVE_N8N_WORKFLOW})
     return out
 
 
@@ -860,6 +949,9 @@ def collect_lane_registry_report(*, now: Optional[datetime] = None,
         "undeclared": undeclared,
         "lanes": rows,
         "registry_path": str(registry_path or REGISTRY_PATH),
+        # P17: whether n8n was looked at, and why not when it could not be (never "nothing there").
+        "n8n_discovery": ("unavailable: " + found["n8n_unavailable"]) if found.get("n8n_unavailable")
+                         else ("live" if "n8n" in found else "off"),
     }
 
 

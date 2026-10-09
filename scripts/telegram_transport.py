@@ -11,6 +11,7 @@ retry into editMessageText.
 """
 from __future__ import annotations
 
+import enum
 import logging
 import re as _re_html
 from typing import Any, Callable, Optional
@@ -115,6 +116,86 @@ def _base_payload(
     return payload
 
 
+_TRUTHY = ("1", "true", "yes", "on")
+
+
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in _TRUTHY
+
+
+class SendFamily(enum.Enum):
+    """Which interdict switch governs a send. Typed, never a string.
+
+    2026-10-09: C4 moved the interdict here, to the lowest layer, keyed on
+    ``CIO_TELEGRAM_INTERDICT`` alone. The autonomy watchdog's unit sets that flag
+    ("Financial CIO interdict stays on for CIO path; SYSTEM telegram uses generic
+    ops bot") AND ``SYSTEM_TELEGRAM_ENABLED=1``. From 2026-09-19 every SYSTEM
+    heartbeat and health alert was refused as INTERDICTED_TEST_OR_FLAG -- 21 days
+    with no successful TRADE_AI_SYSTEM send -- because the switch named for the CIO
+    family silently became the switch for every family.
+
+    ``OPERATOR`` (the default) is every CIO, financial and general send and stays
+    under ``CIO_TELEGRAM_INTERDICT``. ``SYSTEM_OPS`` is honoured only when the
+    transport itself confirms the claim (see ``_resolve_system_grant``); a string,
+    another module, the CIO bot or a CIO chat all fall back to ``OPERATOR``.
+    """
+
+    OPERATOR = "operator"
+    SYSTEM_OPS = "system_ops"
+
+
+#: The only modules whose SYSTEM_OPS claim is honoured. Decided here, from the
+#: caller's own frame, so no producer can declare itself SYSTEM by argument alone.
+SYSTEM_FAMILY_CALLERS = frozenset({
+    "scripts.lib.autonomy_watchdog.telegram_system",
+    "lib.autonomy_watchdog.telegram_system",
+})
+
+#: Private capability minted only by ``_resolve_system_grant``. It never leaves
+#: this module (a ratchet test scans the tree for the name).
+_SYSTEM_GRANT = object()
+
+
+def _csv_env(name: str) -> set[str]:
+    import os
+    return {p.strip() for p in str(os.environ.get(name) or "").split(",") if p.strip()}
+
+
+def _resolve_system_grant(family: Any, *, token: str, chat_id: Any, caller: str | None) -> tuple[Any, str]:
+    """Return ``(_SYSTEM_GRANT, "granted")`` or ``(None, refusal_reason)``.
+
+    Every condition is checked server-side, here, not taken from the caller:
+    the family is the enum member itself, the calling module is on the allowlist,
+    ``SYSTEM_TELEGRAM_ENABLED`` is explicitly on, the token is the generic ops bot
+    and not a CIO bot, and the chat is the ops chat and not a CIO chat.
+    """
+    import os
+    if family is SendFamily.OPERATOR:
+        return None, "operator_family"
+    if family is not SendFamily.SYSTEM_OPS:
+        return None, "family_not_typed"
+    if caller not in SYSTEM_FAMILY_CALLERS:
+        return None, "caller_not_system_module"
+    if not _truthy(os.environ.get("SYSTEM_TELEGRAM_ENABLED")):
+        return None, "system_telegram_not_enabled"
+    tok = str(token or "").strip()
+    ops_tok = str(os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    if not tok or tok != ops_tok:
+        return None, "token_not_ops_bot"
+    cio_tokens = {
+        str(v).strip() for k, v in os.environ.items()
+        if k.startswith("TELEGRAM_CIO") and "TOKEN" in k and str(v or "").strip()
+    }
+    if tok in cio_tokens:
+        return None, "token_is_cio_bot"
+    chat = str(chat_id or "").strip()
+    if chat not in _csv_env("TELEGRAM_CHAT_ID"):
+        return None, "chat_not_ops_chat"
+    if chat in (_csv_env("TELEGRAM_CIO_CHAT_IDS") | _csv_env("TELEGRAM_CIO_ALLOWLIST")):
+        return None, "chat_is_cio_chat"
+    return _SYSTEM_GRANT, "granted"
+
+
 def _interdicted() -> bool:
     """Is outbound Telegram delivery interdicted right now?
 
@@ -130,13 +211,49 @@ def _interdicted() -> bool:
 
     The check now sits at the LOWEST COMMON LAYER -- the function that actually
     performs the HTTP -- so no caller can reach a send that skips it.
+
+    2026-10-09: this is the switch for every CIO, financial and general send,
+    unchanged. A send the transport confirmed as SYSTEM_OPS is checked by
+    ``_system_interdicted`` instead (see ``_blocked``).
     """
     import os
     return bool(
         os.environ.get("PYTEST_CURRENT_TEST")
-        or os.environ.get("CIO_TELEGRAM_INTERDICT", "").lower()
-        in ("1", "true", "yes", "on")
+        or _truthy(os.environ.get("CIO_TELEGRAM_INTERDICT"))
     )
+
+
+def _system_interdicted() -> bool:
+    """The SYSTEM_OPS family's own switch. PYTEST_CURRENT_TEST still interdicts."""
+    import os
+    return bool(
+        os.environ.get("PYTEST_CURRENT_TEST")
+        or _truthy(os.environ.get("SYSTEM_TELEGRAM_INTERDICT"))
+    )
+
+
+def _blocked(grant: Any = None) -> bool:
+    """Family-scoped interdict: a confirmed SYSTEM_OPS grant answers to
+    SYSTEM_TELEGRAM_INTERDICT, everything else to CIO_TELEGRAM_INTERDICT."""
+    return _system_interdicted() if grant is _SYSTEM_GRANT else _interdicted()
+
+
+def system_send_gate(*, token: str, chat_id: Any) -> dict:
+    """Read-only: would a SYSTEM_OPS send from the calling module pass the interdict now?
+
+    For the watchdog's what-would-send preview. Sends nothing; the caller check is
+    the same one ``deliver_text`` applies, so a preview cannot report a pass the
+    real send would not get.
+    """
+    import sys
+    caller = sys._getframe(1).f_globals.get("__name__")
+    grant, why = _resolve_system_grant(SendFamily.SYSTEM_OPS, token=token, chat_id=chat_id, caller=caller)
+    return {
+        "family": SendFamily.SYSTEM_OPS.value if grant is _SYSTEM_GRANT else SendFamily.OPERATOR.value,
+        "grant": why,
+        "interdicted": _blocked(grant),
+        "governing_switch": "SYSTEM_TELEGRAM_INTERDICT" if grant is _SYSTEM_GRANT else "CIO_TELEGRAM_INTERDICT",
+    }
 
 
 _log = logging.getLogger(__name__)
@@ -316,6 +433,7 @@ def deliver_text(
     post: Optional[Callable] = None,
     link_preview_options: dict | None = None,
     primary_symbols: list[str] | None = None,
+    family: SendFamily = SendFamily.OPERATOR,
 ) -> dict:
     """Every operator message passes the Communications Editor, then the raw send.
 
@@ -330,8 +448,20 @@ def deliver_text(
 
     ``primary_symbols`` scopes footer chrome to the active turn (no residual
     ticker bleed from prior-turn text still present in the body).
+
+    ``family`` selects the interdict switch (see ``SendFamily``). A SYSTEM_OPS
+    claim is confirmed here from the calling module, token and chat; a refused
+    claim is logged and the send is treated as OPERATOR.
     """
-    if _interdicted():
+    import sys
+    grant = None
+    if family is not SendFamily.OPERATOR:
+        caller = sys._getframe(1).f_globals.get("__name__")
+        grant, why = _resolve_system_grant(family, token=token, chat_id=chat_id, caller=caller)
+        if grant is None:
+            _log.warning("telegram_system_family_refused", extra={
+                "event": "telegram_system_family_refused", "reason": why, "caller": str(caller)})
+    if _blocked(grant):
         return _interdicted_result()
     ce = _comms_editor()
     decision = None
@@ -355,7 +485,7 @@ def deliver_text(
         result = _deliver_text_raw(
             token=token, chat_id=chat_id, text=decision.text, thread_id=thread_id, reply_markup=reply_markup,
             parse_mode="HTML", idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
-            link_preview_options=link_preview_options,
+            link_preview_options=link_preview_options, _grant=grant,
         )
         if result.get("ok"):
             ce.commit(decision, chat_id=chat_id)
@@ -364,7 +494,7 @@ def deliver_text(
     result = _deliver_text_raw(
         token=token, chat_id=chat_id, text=text, thread_id=thread_id, reply_markup=reply_markup,
         parse_mode=parse_mode, idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
-            link_preview_options=link_preview_options,
+            link_preview_options=link_preview_options, _grant=grant,
     )
     if decision is not None:  # shadow: record what the editor would have done
         try:
@@ -386,6 +516,7 @@ def _deliver_text_raw(
     reply_to_message_id: Any = None,
     post: Optional[Callable] = None,
     link_preview_options: dict | None = None,
+    _grant: Any = None,
 ) -> dict:
     """Send or edit one Telegram message.
 
@@ -393,8 +524,10 @@ def _deliver_text_raw(
     - First sendMessage with parse_mode. On parse/HTTP failure of that first
       attempt, if no message exists yet, send plaintext ONCE. If a message_id
       exists, edit it. Never sendMessage twice for the same key.
+
+    ``_grant`` is only ever the value ``deliver_text`` resolved; it is private.
     """
-    if _interdicted():
+    if _blocked(_grant):
         return _interdicted_result()
     # Resolve the markup language from the body before any attempt, so an HTML
     # producer is not sent under Markdown and rendered with its tags showing.

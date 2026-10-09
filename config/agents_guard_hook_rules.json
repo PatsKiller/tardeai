@@ -1,0 +1,593 @@
+{
+  "schema": "AgentsGuardHookRules@v1",
+  "version": "1.0.0",
+  "as_of": "2026-10-09",
+  "authority": "READ_ONLY_ADVISORY",
+  "agents_md_version": "3.0.0",
+  "description": "Data for scripts/hooks/agents_guard_pretooluse.py, the Claude Code PreToolUse hook that enforces the AGENTS.md hard rails. Matching logic per rule family lives in the hook; every pattern, path, unit, host and tier lives here. A rule with action=log never denies, even in deny mode. Paths may start with ~ (expanded to the running user's home at load time).",
+  "mode": "log",
+  "mode_note": "TRADEAI_AGENTS_GUARD_MODE (log|deny) overrides this field. Operator approval 2026-10-09: log-only for the first week, then deny after the log review in docs/ops/AGENTS_GUARD_HOOK.md.",
+  "log_relpath": "data/runtime/agents_guard_hook.jsonl",
+  "default_state_root": "~/trade-ai-releases/persistent-state",
+  "grant_ledger": {
+    "dir_env": "GUARD_APPROVALS_DIR",
+    "default_dir": "~/.cursor/approvals",
+    "file": "grants.json",
+    "note": "Read-only. The hook never consumes or writes a grant. Active = expires > now and uses != 0 (same rule as .cursor/hooks/guard_ledger.py ledger_list)."
+  },
+  "temp_allowlist": [
+    "/tmp/claude-*",
+    "/tmp/pytest-of-*",
+    "~/tradeai-wt-*/build",
+    "~/tradeai-wt-*/dist",
+    "~/tradeai-wt-*/node_modules",
+    "~/tradeai-wt-*/**/node_modules",
+    "~/tradeai-wt-*/**/dist",
+    "~/tradeai-wt-*/**/__pycache__",
+    "~/tradeai-wt-*/.pytest_cache",
+    "~/tradeai-wt-*/.ruff_cache",
+    "~/tradeai-wt-*/.mypy_cache",
+    "~/tradeai-wt-*/htmlcov",
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/.mypy_cache"
+  ],
+  "archive_expiry_exception": {
+    "enabled": false,
+    "status": "OPERATOR DECISION PENDING RATIFICATION",
+    "note": "AGENTS.md §0 rule 6 (never delete) and §17 (deleting anything is operator-only). When ratified, deletes under these paths of archives past their declared expiry would be allowed. Stays OFF until the operator ratifies it; flipping it is an AGENTS.md amendment (§20), not a config tweak.",
+    "paths": [
+      "~/trade-ai-releases/archive/*"
+    ]
+  },
+  "shell_wrappers": [
+    "sudo",
+    "doas",
+    "env",
+    "nohup",
+    "nice",
+    "ionice",
+    "timeout",
+    "time",
+    "command",
+    "exec",
+    "builtin",
+    "stdbuf",
+    "setsid",
+    "chronic",
+    "flock",
+    "xargs",
+    "systemd-run",
+    "runuser",
+    "unbuffer",
+    "caffeinate"
+  ],
+  "shells": [
+    "bash",
+    "sh",
+    "zsh",
+    "dash",
+    "ksh",
+    "fish"
+  ],
+  "rules": [
+    {
+      "id": "broker.live_host_call",
+      "family": "broker",
+      "section": "AGENTS.md §0 rule 2, §22 (A4/A5)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "No agent ever calls a live broker. Live broker hosts are reachable only by the deterministic execution path.",
+      "live_hosts_regex": "(?<![\\w.-])(api\\.schwabapi\\.com|api\\.alpaca\\.markets|api\\.snaptrade\\.com|openapi\\.moomoo\\.com|(127\\.0\\.0\\.1|localhost):11111)",
+      "network_clients": [
+        "curl",
+        "wget",
+        "http",
+        "https",
+        "httpie",
+        "xh",
+        "nc",
+        "ncat",
+        "socat",
+        "telnet",
+        "openssl"
+      ],
+      "inline_code_programs": [
+        "python",
+        "python3",
+        "node",
+        "deno",
+        "ruby",
+        "perl",
+        "php"
+      ],
+      "mcp_tool_regex": "^mcp__.*(fetch|http|request|navigate|curl|browse)",
+      "github_api_regex": "api\\.github\\.com"
+    },
+    {
+      "id": "broker.order_invoke",
+      "family": "broker",
+      "section": "AGENTS.md §0 rule 2, §22 (A5)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "No agent ever calls place_order or POSTs to an order route; broker order authority (A5) belongs to the deterministic execution path only.",
+      "inline_code_regex": "\\b(place_order|submit_order|replace_order|cancel_order|place_oco|place_bracket)\\s*\\(",
+      "order_route_regex": "/(v\\d+/)?(accounts/[^/\\s]+/)?orders\\b",
+      "execution_entrypoints": [
+        "scripts/brokers/broker_entry_pilot.py",
+        "scripts/brokers/options_order_pilot.py",
+        "scripts/brokers/protective_stop_pilot.py",
+        "scripts/brokers/snaptrade_protective_stop_pilot.py",
+        "scripts/brokers/snaptrade_trade.py",
+        "scripts/brokers/snaptrade_trade_pilot.py",
+        "scripts/brokers/intent_submit_router.py",
+        "scripts/brokers/schwab_order_adapter.py",
+        "scripts/schwab_oco_bracket.py",
+        "scripts/schwab_transport.py",
+        "scripts/moomoo/client.py"
+      ],
+      "inline_broker_import_regex": "(import|from)\\s+[\\w.]*(brokers|schwab|alpaca|moomoo|futu|snaptrade|ib_insync|robin_stocks)",
+      "inline_note": "Inline code must both call an order function and import a broker module; a script that only edits source text containing place_order( is not an invocation."
+    },
+    {
+      "id": "broker.live_flag",
+      "family": "broker",
+      "section": "AGENTS.md §0 rule 2, §17 (live flags are operator-only, A4)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Setting a live-trading flag is A4 live activation, which only the operator holds.",
+      "flag_regex": "^(BROKER_LIVE_ENABLED|[A-Z0-9_]*LIVE_(TRADING|ORDERS?|EXECUTION)[A-Z0-9_]*|TRADEAI_LIVE[A-Z0-9_]*|ALPACA_LIVE[A-Z0-9_]*|SCHWAB_LIVE[A-Z0-9_]*|MOOMOO_LIVE[A-Z0-9_]*)$",
+      "safe_values": [
+        "0",
+        "false",
+        "False",
+        "no",
+        "off",
+        ""
+      ]
+    },
+    {
+      "id": "broker.execution_code_edit",
+      "family": "broker",
+      "section": "AGENTS.md §0 rule 2, §22 (A1/A2 only under an execution-engineering grant)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "The broker execution file set is editable only under an active operator execution-engineering grant naming the files, purpose and expiry.",
+      "grant_tier": "execution-engineering",
+      "path_globs": [
+        "**/scripts/brokers/**",
+        "**/scripts/active_trader/**",
+        "**/scripts/moomoo/**",
+        "**/scripts/lib/trading_session_grant.py",
+        "**/scripts/schwab_transport.py",
+        "**/scripts/schwab_oco_bracket.py",
+        "**/scripts/schwab_token_manager.py"
+      ]
+    },
+    {
+      "id": "broker.live_credential",
+      "family": "broker",
+      "section": "AGENTS.md §0 rule 2, §2A, §17",
+      "action": "deny",
+      "enabled": true,
+      "reason": "No agent ever reads or writes a live broker credential.",
+      "path_globs": [
+        "**/broker_credentials.env",
+        "**/*schwab*token*.json",
+        "**/*alpaca*cred*",
+        "**/*snaptrade*cred*",
+        "**/.futu/**",
+        "**/.moomoo/**"
+      ],
+      "sql_regex": "\\b(FROM|UPDATE|INTO|TABLE)\\s+[\\w.\"]*(schwab_tokens?|broker_tokens?|oauth_tokens?)\\b"
+    },
+    {
+      "id": "delete.recursive_rm",
+      "family": "delete",
+      "section": "AGENTS.md §0 rule 6, §17 (deleting anything is operator-only)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Never delete; archive with a tripwire. Recursive rm is allowed only under the temp allowlist."
+    },
+    {
+      "id": "delete.find_delete",
+      "family": "delete",
+      "section": "AGENTS.md §0 rule 6, §17",
+      "action": "deny",
+      "enabled": true,
+      "reason": "find -delete / -exec rm outside the temp allowlist deletes files.",
+      "safe_name_patterns": [
+        "__pycache__",
+        "*.pyc",
+        "*.pyo",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache"
+      ]
+    },
+    {
+      "id": "delete.git_clean",
+      "family": "delete",
+      "section": "AGENTS.md §0 rule 6",
+      "action": "deny",
+      "enabled": true,
+      "reason": "git clean -f deletes untracked work irrecoverably; use -n to look, archive what must go."
+    },
+    {
+      "id": "delete.shred_truncate",
+      "family": "delete",
+      "section": "AGENTS.md §0 rule 6, §9.4 (additive only)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "shred / truncate destroy file contents outside the temp allowlist.",
+      "programs": [
+        "shred",
+        "truncate",
+        "wipe",
+        "srm"
+      ]
+    },
+    {
+      "id": "delete.sql_destructive",
+      "family": "delete",
+      "section": "AGENTS.md §0 rule 6, §9.4 (ids removed = 0), §17",
+      "action": "deny",
+      "enabled": true,
+      "reason": "DROP / TRUNCATE / DELETE without WHERE removes rows or objects; store writes are additive only.",
+      "db_context_regex": "\\.execute(many)?\\s*\\(|\\bsession\\.exec|\\bpsycopg|\\bsqlite3\\.connect|\\bcreate_engine\\(",
+      "statement_regexes": [
+        "\\bDROP\\s+(TABLE|SCHEMA|DATABASE|VIEW|MATERIALIZED\\s+VIEW|INDEX|EXTENSION|TYPE|FUNCTION)\\b",
+        "\\bTRUNCATE\\s+(TABLE\\s+)?[\\w.\"]+",
+        "\\bDELETE\\s+FROM\\s+[\\w.\"]+\\s*(;|$|\"|'|\\)|RETURNING\\b)",
+        "(^|\\s)dropdb\\s"
+      ],
+      "db_programs": [
+        "psql",
+        "sqlite3",
+        "duckdb",
+        "mysql",
+        "pgcli",
+        "mariadb",
+        "dropdb"
+      ],
+      "scope_note": "Scanned: a DB client's argv and heredocs, and inline python/node code that executes SQL. Not scanned: heredocs written to files, commit messages, PR bodies."
+    },
+    {
+      "id": "delete.docker_volume",
+      "family": "delete",
+      "section": "AGENTS.md §0 rule 6, §17",
+      "action": "deny",
+      "enabled": true,
+      "reason": "docker volume rm / prune and system prune delete persistent container data (n8n scheduler-of-record DB lives in a volume).",
+      "regex": "\\bdocker(-compose)?\\s+((volume\\s+(rm|remove|prune))|(system\\s+prune)|(container\\s+prune)|(image\\s+prune)|(compose\\s+.*\\bdown\\b.*(-v\\b|--volumes))|(\\bdown\\b.*(-v\\b|--volumes))|(rm\\s+.*(-v\\b|--volumes)))"
+    },
+    {
+      "id": "remote.hook_bypass",
+      "family": "remote",
+      "section": "AGENTS.md §0 rule 3 (never route around a permission denial), AI_WORK_POLICY.md",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Never bypass a hook: --no-verify, an emptied core.hooksPath or a skipped secrets scan routes around the local gates.",
+      "bypass_env_regex": "^(TRADEAI_SKIP_[A-Z0-9_]*|SKIP_SECRETS_SCAN|HUSKY|GIT_HOOKS_DISABLED)$",
+      "commit_like": [
+        "commit",
+        "push",
+        "merge",
+        "rebase",
+        "am",
+        "cherry-pick",
+        "revert",
+        "pull"
+      ],
+      "hooks_dir": ".githooks"
+    },
+    {
+      "id": "remote.non_origin_push",
+      "family": "remote",
+      "section": "AGENTS.md §0 rule 3 (no alternate remote)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Pushes go to origin only; an alternate remote or a raw URL routes around branch protection and the push budget.",
+      "allowed_remotes": [
+        "origin"
+      ]
+    },
+    {
+      "id": "remote.push_to_main",
+      "family": "remote",
+      "section": "AGENTS.md §0 rule 3 (no direct-to-main push), §0 rule 4",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Never push (force or not) to main/master; changes reach main through a reviewed PR.",
+      "protected_branches": [
+        "main",
+        "master"
+      ],
+      "applies_to_cwd_globs": [
+        "~/trade-ai-v12-rebuild",
+        "~/tradeai-wt-*",
+        "~/trade-ai-worktrees",
+        "~/trade-ai-releases",
+        "/tmp/claude-*"
+      ],
+      "scope_note": "Both push rules apply when the cwd (or git -C dir) is inside one of these, or is unknown. Pushes from other repos (agent memory repo, DOF project, n8n lab) are out of scope."
+    },
+    {
+      "id": "remote.gh_api_ref_write",
+      "family": "remote",
+      "section": "AGENTS.md §0 rule 3 (no API call substituting for a blocked CLI; no branch rename)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "gh api calls that merge, update a branch, move a ref or rename a branch substitute for the CLI and branch protection.",
+      "path_regex": "(/pulls/\\d+/(merge|update-branch)\\b|/merges\\b|/git/refs\\b|/branches/[^\\s/]+/rename\\b|/rename\\b|/branches/[^\\s/]+/protection\\b)",
+      "graphql_regex": "\\b(mergePullRequest|updatePullRequestBranch|updateRef|createRef|deleteRef|updateRefs|enablePullRequestAutoMerge)\\b"
+    },
+    {
+      "id": "remote.branch_rename",
+      "family": "remote",
+      "section": "AGENTS.md §0 rule 3 (no branch rename to reset a budget)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Renaming a branch resets the push budget; push from the branch you have."
+    },
+    {
+      "id": "remote.pr_merge",
+      "family": "remote",
+      "section": "AGENTS.md §22 (merge is not separately enforced; operator merges), operator rail 'never merge'",
+      "action": "log",
+      "enabled": true,
+      "reason": "gh pr merge by an agent. LOG-ONLY even in deny mode until the operator decides whether agents may merge.",
+      "mcp_tool_regex": "^mcp__.*(merge_pull_request|update_pull_request_branch|push_files|create_or_update_file|delete_branch|create_ref|update_ref)"
+    },
+    {
+      "id": "secrets.read",
+      "family": "secrets",
+      "section": "AGENTS.md §2A (the contents of .env in any form never leave this box)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Printing a secret file puts its values in the transcript. Name the variable, never its content; read NAMES with grep -o '^[A-Z_]*='.",
+      "read_programs": [
+        "cat",
+        "tac",
+        "less",
+        "more",
+        "head",
+        "tail",
+        "bat",
+        "batcat",
+        "strings",
+        "xxd",
+        "od",
+        "hexdump",
+        "base64",
+        "grep",
+        "egrep",
+        "fgrep",
+        "rg",
+        "ag",
+        "awk",
+        "gawk",
+        "sed",
+        "cut",
+        "sort",
+        "uniq",
+        "diff",
+        "nl",
+        "jq",
+        "yq",
+        "cp",
+        "scp",
+        "rsync",
+        "tar",
+        "zip",
+        "gzip",
+        "openssl",
+        "gpg",
+        "vim",
+        "vi",
+        "nano",
+        "view",
+        "pr",
+        "fold",
+        "paste",
+        "column",
+        "tr",
+        "iconv",
+        "dd"
+      ],
+      "path_globs": [
+        "**/.env",
+        "**/*.env",
+        "**/.env.*",
+        "**/*.env.bak*",
+        "/run/user/*/tradeai/env",
+        "/run/user/*/tradeai/*",
+        "~/.config/bws/**",
+        "**/credentials",
+        "**/credentials/**",
+        "**/credentials.*",
+        "**/*credentials*.env",
+        "**/*.pem",
+        "**/*.key",
+        "**/id_rsa*",
+        "**/id_ed25519*",
+        "**/.pgpass",
+        "**/.netrc",
+        "~/.hermes/auth.json",
+        "~/.config/gh/hosts.yml",
+        "~/.git-credentials",
+        "/proc/*/environ",
+        "~/.config/tradeai/*.env",
+        "~/.config/tradeai/*.env.*",
+        "~/.config/tradeai/**/*.env"
+      ],
+      "path_allow_globs": [
+        "**/.env.example",
+        "**/.env.sample",
+        "**/.env.template",
+        "**/*.env.example"
+      ],
+      "secret_var_regex": "(?i)^[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|APIKEY|PRIVATE_KEY|COOKIE|CREDENTIAL|ACCESS_KEY|DSN|AUTH)[A-Z0-9_]*$",
+      "bws_regex": "\\bbws\\s+(secret|secrets|project)\\b",
+      "echo_programs": [
+        "echo",
+        "printf",
+        "printenv",
+        "print"
+      ]
+    },
+    {
+      "id": "secrets.write",
+      "family": "secrets",
+      "section": "AGENTS.md §2A, ENGINEERING_HARD_RULES.md (secrets live in Bitwarden)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Agents never create or edit credential files."
+    },
+    {
+      "id": "secrets.env_dump",
+      "family": "secrets",
+      "section": "AGENTS.md §2A",
+      "action": "log",
+      "enabled": true,
+      "reason": "A bare env/printenv/set/export -p dumps the whole environment, which may carry loaded secrets. LOG-ONLY: the Claude Code environment normally carries none."
+    },
+    {
+      "id": "liveops.service",
+      "family": "liveops",
+      "section": "AGENTS.md §9.3, §10, §17 (any production systemd change is operator-only)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Starting, stopping or restarting a production unit needs an active operator 'service' grant.",
+      "grant_tier": "service",
+      "verbs": [
+        "start",
+        "stop",
+        "restart",
+        "reload",
+        "try-restart",
+        "reload-or-restart",
+        "try-reload-or-restart",
+        "kill",
+        "enable",
+        "disable",
+        "reenable",
+        "mask",
+        "unmask",
+        "edit",
+        "revert",
+        "set-property",
+        "daemon-reload",
+        "isolate"
+      ],
+      "no_unit_verbs": [
+        "daemon-reload"
+      ],
+      "prod_unit_regex": "^(tradeai-|trade-ai-|portfolio-|hermes-|openclaw-|aegis-|cio-|heartbeat-|high-llm-|chatgpt-oauth-proxy|grok-oauth-proxy|dof-|n8n|m8m|recovery-watch|power-watch|at-observation|postgresql|docker)",
+      "docker_prod_container_regex": "^(m8m-|n8n|tradeai-|trade-ai-|searxng|openclaw|hermes)",
+      "docker_verbs": [
+        "restart",
+        "stop",
+        "start",
+        "kill",
+        "rm",
+        "pause",
+        "unpause",
+        "update"
+      ],
+      "compose_verbs": [
+        "up",
+        "down",
+        "restart",
+        "stop",
+        "start",
+        "kill",
+        "rm",
+        "pause",
+        "create"
+      ]
+    },
+    {
+      "id": "liveops.cron",
+      "family": "liveops",
+      "section": "AGENTS.md §9.3 (installing, editing or removing a scheduler entry is operator-only), §17",
+      "action": "deny",
+      "enabled": true,
+      "reason": "crontab -r / -e / replace needs an active operator 'cron' grant (crontab -l is fine).",
+      "grant_tier": "cron"
+    },
+    {
+      "id": "liveops.deploy",
+      "family": "liveops",
+      "section": "AGENTS.md §10, §22 (A3 needs an exact-SHA operator grant)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Deploy prepare / promote / rollback needs an active operator 'release-write' grant naming the PR or SHA.",
+      "grant_tier": "release-write",
+      "entrypoints": [
+        "cio_phase2_exact_main_deploy.sh",
+        "cio_phase13_canary_deploy.sh",
+        "deploy_portfolio_server.sh"
+      ],
+      "actions": [
+        "prepare",
+        "promote",
+        "rollback",
+        "deploy",
+        "activate",
+        "cutover"
+      ]
+    },
+    {
+      "id": "liveops.self_grant",
+      "family": "liveops",
+      "section": "AGENTS.md §0 rule 3, §17 (the operator grants; an agent never widens its own scope)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "An agent must not issue itself a grant or write the approval ledger. Ask with 'bin/guard request'.",
+      "ledger_dir_regex": "\\.cursor/approvals"
+    },
+    {
+      "id": "governed.served_edit",
+      "family": "governed",
+      "section": "AGENTS.md §7A, §10, §20 (governed files change through a reviewed PR, never in the served release or persistent-state)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Governed files are edited in a worktree and land by PR; editing the served copy bypasses review and the release manifest.",
+      "served_roots": [
+        "~/trade-ai-releases/portfolio-server",
+        "~/trade-ai-releases/CURRENT",
+        "~/trade-ai-releases/persistent-state",
+        "~/trade-ai-deployments"
+      ],
+      "governed_globs": [
+        "AGENTS.md",
+        "AI_WORK_POLICY.md",
+        "CLAUDE.md",
+        "config/data_source_authority*.json",
+        ".githooks/**",
+        ".github/workflows/**",
+        "config/guard*",
+        "config/agents_guard_hook_rules.json",
+        "scripts/hooks/**",
+        ".cursor/hooks/**",
+        "bin/guard"
+      ]
+    },
+    {
+      "id": "governed.hook_config",
+      "family": "governed",
+      "section": "AGENTS.md §0 rule 3 (never route around a permission denial)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Editing Claude Code settings can uninstall or weaken this hook; settings changes are the operator's.",
+      "path_globs": [
+        "~/.claude/settings.json",
+        "~/.claude/settings.local.json",
+        "/etc/claude-code/**"
+      ]
+    }
+  ],
+  "mcp_shell_tool_regex": "^mcp__.*(bash|shell|exec|run_command|terminal|execute_command)"
+}

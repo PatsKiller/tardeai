@@ -1131,6 +1131,20 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Report-only diagnostic of guardrail audit B H2 report mode (TRADEAI_BRIDGE_CALLER_AUTH=report, the default): an infrastructure rollout record (data/runtime/bridge_caller_auth_report.jsonl, one line per unverified bridge caller per hour) listing which governed-bridge callers still need a TRADEAI_BRIDGE_CALLER_KEY_<CALLER> before enforce mode. It carries caller names, verdicts and key env names only, no investment content; the operator reads it as an ops checklist (and the counter on the bridge's GET /health), not through a CIO surface.",
       "owner_hint": "scripts/lib/cio_governed_model_bridge.py"
+    },
+    {
+      "name": "schema:EgressSanitiserReport@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Report-only diagnostic of the AGENTS.md §2A single egress sanitiser (sanitise_for_external, §23.10 P4; TRADEAI_EGRESS_SANITISER=report, the default): one line per governed-bridge call whose outbound messages matched a §2A category (data/runtime/egress_sanitiser_report.jsonl). It carries process id, request id, mode, action and per-category counts only, never content or a matched value, and no investment content; the operator reads it as the evidence for moving report to enforce (and the counter on the bridge's GET /health), not through a CIO surface.",
+      "owner_hint": "scripts/lib/cio_egress_sanitiser.py"
+    },
+    {
+      "name": "schema:EgressSanitiserPolicy@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Rules-as-data for the AGENTS.md §2A single egress sanitiser (config/egress_sanitiser_policy.json): the categories and regular expressions sanitise_for_external() applies before every governed-bridge provider call, plus the §2A permitted set as documentation. Read only by scripts/lib/cio_egress_sanitiser.py; a change is a reviewed config PR. No investment content and no operator surface.",
+      "owner_hint": "scripts/lib/cio_egress_sanitiser.py"
     }
   ]
 }

@@ -32,7 +32,11 @@ import psycopg2
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [hermes-coordinator] %(message)s")
 log = logging.getLogger("hermes_coordinator")
 
-PY = str(ROOT / ".venv" / "bin" / "python")
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+PY = venv_python(ROOT)
 sys.path.insert(0, str(ROOT / "scripts"))
 # Canonical kill-switch via the shared helper (Phase 214) — never the retired sidecar path.
 # COORDINATOR_DISABLED is a coordinator-only extra stop file.

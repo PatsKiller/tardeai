@@ -1,21 +1,29 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      3.0.0
+Policy-Version:      4.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
-Last-Reviewed:       2026-10-09T12:00:00-04:00
+Status:              ACTIVE
+Effective-Date:      2026-10-09
+Last-Reviewed:       2026-10-09T15:25:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          2.0.1
+Supersedes:          3.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**3.0.0 is PROPOSED (MAJOR) — governed LLM and Agent capability in n8n (§23 amendment).** Awaiting
-operator ratification (`APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`, §20). Until then **2.0.1 is the
-governing text** and nothing 3.0.0 adds grants anything. It replaces §23.3's first bullet, §23.4 and
+**4.0.0 is ACTIVE (MAJOR) — one named n8n live-lane exception: `trade-ai-scalp-live` (§23.3).**
+Ratified by the operator 2026-10-09 15:25 ET in session (`APPROVE_AGENTS_POLICY_4_0_0`, verbatim:
+"APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix"; §20), after the operator decision of the
+same day "n8n drives a governed lane (Recommended)". The 5-minute Trade-AI scalp scan — a Finviz
+ingest through the data broker, a `trade_ai_scans` writer and a `send_telegram` caller — may run in
+`live` mode from n8n under the conditions in §23.3; it is the only such lane, and the never-list
+is otherwise unchanged. MAJOR because it widens what the n8n actor may cause (version policy).
+
+**3.0.0 is ACTIVE (MAJOR) — governed LLM and Agent capability in n8n (§23 amendment).** Ratified by
+the operator 2026-10-09 (`APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9`, §20).
+§23.10 still grants nothing until each precondition is measured true with a receipt. It replaces §23.3's first bullet, §23.4 and
 §23.5's first bullet, and adds §23.8 (n8n Agent nodes), §23.9 (governance parity) and §23.10
 (preconditions before the first Agent node, which grant nothing until each is measured true with a
 receipt). It records five operator decisions of 2026-10-09: ratify the proposal's §3 text; n8n
@@ -3423,7 +3431,7 @@ retiring a data source, or a writer of an authoritative store** (§7A — an age
 registry row; the operator's grant is recorded in its `approval`; the gate fails an ungranted
 source) · **activating, editing or deactivating an n8n workflow that schedules a Trade AI lane**
 (§23 — a `cron` grant; ACTIVE in 2.0.0) · **activating an n8n Agent node, or creating the n8n bridge
-token** (§23.8, §23.10 — a grant naming the workflow id; PROPOSED in 3.0.0) · branch-protection or
+token** (§23.8, §23.10 — a grant naming the workflow id; ACTIVE in 3.0.0) · branch-protection or
 required-context changes ·
 provisioning or funding any model or data
 plan · deleting anything · live broker authority (A4/A5): live flags, live sessions, 2FA, credentials, the
@@ -3872,12 +3880,14 @@ superseded).
 
 ---
 
-# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 2.0.0 · 3.0.0 PROPOSED
+# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 4.0.0
 
 **Status: 2.0.0 ACTIVE since 2026-10-08** (`APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d`).
-**3.0.0 PROPOSED** — §23.3 first bullet, §23.4 and §23.5 first bullet replaced, §23.8–§23.10 added;
-awaiting `APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`. Until then the 2.0.1 text of those subsections
-governs (recorded in §23.7) and nothing 3.0.0 adds grants anything. Operator direction 2026-10-09:
+**3.0.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9`**)** —
+§23.3 first bullet, §23.4 and §23.5 first bullet replaced, §23.8–§23.10 added; the replaced 2.0.1 text
+is recorded in §23.7; §23.10 still grants nothing until each precondition is measured true with a receipt.
+**4.0.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_4_0_0`**)** — §23.3 gains the one named
+live-lane exception `trade-ai-scalp-live`. Operator direction 2026-10-09:
 n8n gets governed AI capability, never unrestricted AI access or provider credentials; no capability
 expands until a guardrail audit proves governance parity or better. Operator direction
 2026-10-08: *"make agents.md carve out just for n8n"*, after the three decisions of the same day —
@@ -3978,6 +3988,21 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   fails that test does not enter the allowlist, whatever its owner says. *Cause: the ADR threat
   model — a stolen bearer must not place an order, mint a grant, satisfy 2FA, promote a release, bid
   or open a DOF SQL path — is only true if the set of runnable commands cannot contain one.*
+- **Exception (4.0.0) — `trade-ai-scalp-live` only.** This one lane may run in `live` mode from n8n
+  although its live cycle ingests the Finviz screener through the data broker, writes `trade_ai_scans`
+  and the shared scalp projection, and sends a new GO through `send_telegram`. Conditions, each a test
+  (`tests/test_agents_policy_4_0_0_scalp_lane.py`): it runs the exact cron argv
+  (`scripts/run_trade_ai_scalp_live.py`) under the cron line's lock `/tmp/tradeai_scalp_live.lock`
+  (`flock -n`), `timeout_s` 295 and `market_day_gate.sh`; n8n holds no provider key (Finviz stays
+  behind the data broker on the host); the send stays the host chokepoint with GO de-duplication
+  persisted in `state/trade_ai_scalp_live_state.json`; live is reachable only when the lane is also in
+  the relay's `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant) and the live workflow is activated
+  (grant naming the workflow id). The cron line stays live as the fallback until n8n has 3 market days
+  of `RUN_DONE` with no `trade-ai-scalp-live:STALLED` finding; it is then retired as
+  `# RETIRED <date> n8n-cutover trade-ai-scalp-live` under a cron grant. No other ingest writer or
+  sender enters the allowlist by analogy. *Cause (§20): 2026-10-09 13:30–15:00 the cron-run scan
+  stalled unseen for 90 minutes (cold catalyst cache, every run killed at 295 s); operator: "n8n drives
+  a governed lane", then "APPROVE_AGENTS_POLICY_4_0_0".*
 - **The gateway never spawns.** It validates the claim and writes a `RunRequested@v1` row to the
   ledger `runs` table and stops. `tradeai-n8n-run-executor.service` (own cgroup) runs the lane's
   existing runner under the lane's existing lock (`safe_flock.sh`, `market_day_gate.sh` where the
@@ -4089,7 +4114,7 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
 - `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` moves from "no n8n credential" (PROPOSED) to
   ACCEPTED with exactly one; the superseded text is kept there under its own heading.
 
-3.0.0 (PROPOSED; the replaced 2.0.1 text stays readable at `origin/main` `bbff99766`):
+3.0.0 (ACTIVE 2026-10-09; the replaced 2.0.1 text stays readable at `origin/main` `bbff99766`):
 
 - §23.3 first bullet: "n8n may request a run only through the coordination gateway" now reads "n8n
   workflows and n8n Agent nodes may cause host work only through the relay … and the read-only
@@ -4109,6 +4134,13 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   (audit C G11).
 - `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md`: its Policy line no longer says "PROPOSED
   2.0.0" (audit C G11), and it gains a 3.0.0 addendum (second credential only after §23.10; MFA waiver).
+
+4.0.0 (ACTIVE 2026-10-09; the 3.0.0 text stays readable at `origin/main` `113c6f3a4`):
+
+- §23.3 gains the exception bullet for `trade-ai-scalp-live`; the allowlist bullet's never-list is
+  unchanged for every other lane. `config/n8n_run_allowlist.json` `never` names the exception.
+- The §23 status line now names both ratification tokens; its stale "awaiting
+  `APPROVE_AGENTS_POLICY_3_0_0` … the 2.0.1 text governs" sentence (left by #1552) is removed.
 
 No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
 
@@ -4207,7 +4239,8 @@ CRITICAL or HIGH for Agent enablement maps to one item here.*
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 3.0.0 | 2026-10-09 | PROPOSED | MAJOR | §23 amended for governed LLM and Agent capability in n8n: §23.3 first bullet replaced (n8n workflows **and Agent nodes** cause host work only through the relay → gateway `coordination/run` for allowlisted lanes and the read-only coordination endpoints; Agent tools = those endpoints; never-list incl. DOF SQL applies to Agent tools; per-process tool allowlist enforced at the bridge with typed refusal; container internet egress BLOCKED by a DOCKER-USER rule, host reach only `172.19.0.1:18092`); §23.4 replaced (capability not provider: registered `n8n_*` process + versioned template + optional routing policy through the governed bridge; default routing Grok OAuth → ChatGPT OAuth → DeepSeek metered; free text only after `sanitise_for_external` for `free_text_allowed` processes; output schema + behaviour-field scan at the bridge; caps and typed refusal kept); §23.5 first bullet replaced (at most two credentials — relay bearer, and a bridge token only after §23.10; owner MFA waived; non-superuser `n8n_app` role still required); §23.8 n8n Agent nodes (registry row, receipt per turn, grant naming the workflow id, model node → bridge only, tool nodes excluded, turn/token/wall caps, no streaming until audit B H1 is fixed; first Agent read-only "explain why lane X failed", coordination-read tools only, shadowed first); §23.9 governance parity; §23.10 preconditions P2–P9, P11–P13, P15–P22 as a checklist that grants nothing until each is measured true with a receipt. §17 gains Agent-node activation / bridge-token creation; §23 and top-of-file 2.0.0 status lines corrected; ADR_COORDINATION_SECRETS Policy line fixed + 3.0.0 addendum. Proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`; audits `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md`, `guardrail-audit-b-code-20261009.md`, `guardrail-audit-c-policy-n8n-20261009.md`. MAJOR: egress policy and the n8n actor's authority change; nothing in §0, §2, §2A, §2B or §7A is weakened for any actor. | **PENDING** — `APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`; operator decisions recorded 2026-10-09: (1) ratify the proposal's §3 text as 3.0.0; (2) routing Grok → ChatGPT → DeepSeek; (3) container internet egress blocked, not proxied; (4) first Agent read-only lane-failure explainer, shadowed first; (5) owner MFA waived, `n8n_app` role still required. |
+| 4.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23.3 gains one named live-lane exception: `trade-ai-scalp-live` (Finviz ingest via the data broker, `trade_ai_scans` writer, `send_telegram` caller) may run `live` from n8n, only under the cron line's argv, lock, 295 s timeout and market gate, no provider key in n8n, relay live-lane listing and a workflow-id grant; cron stays the fallback until 3 clean market days. §23 status line corrected (stale 3.0.0 "awaiting" sentence). Allowlist `never` names the exception; `live_arg: []`. Evidence: `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md`, PR #1573, `tests/test_agents_policy_4_0_0_scalp_lane.py`. | Operator 2026-10-09 15:25 ET in session: "APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix" (`APPROVE_AGENTS_POLICY_4_0_0`), after "n8n drives a governed lane (Recommended)". |
+| 3.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for governed LLM and Agent capability in n8n: §23.3 first bullet replaced (n8n workflows **and Agent nodes** cause host work only through the relay → gateway `coordination/run` for allowlisted lanes and the read-only coordination endpoints; Agent tools = those endpoints; never-list incl. DOF SQL applies to Agent tools; per-process tool allowlist enforced at the bridge with typed refusal; container internet egress BLOCKED by a DOCKER-USER rule, host reach only `172.19.0.1:18092`); §23.4 replaced (capability not provider: registered `n8n_*` process + versioned template + optional routing policy through the governed bridge; default routing Grok OAuth → ChatGPT OAuth → DeepSeek metered; free text only after `sanitise_for_external` for `free_text_allowed` processes; output schema + behaviour-field scan at the bridge; caps and typed refusal kept); §23.5 first bullet replaced (at most two credentials — relay bearer, and a bridge token only after §23.10; owner MFA waived; non-superuser `n8n_app` role still required); §23.8 n8n Agent nodes (registry row, receipt per turn, grant naming the workflow id, model node → bridge only, tool nodes excluded, turn/token/wall caps, no streaming until audit B H1 is fixed; first Agent read-only "explain why lane X failed", coordination-read tools only, shadowed first); §23.9 governance parity; §23.10 preconditions P2–P9, P11–P13, P15–P22 as a checklist that grants nothing until each is measured true with a receipt. §17 gains Agent-node activation / bridge-token creation; §23 and top-of-file 2.0.0 status lines corrected; ADR_COORDINATION_SECRETS Policy line fixed + 3.0.0 addendum. Proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`; audits `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md`, `guardrail-audit-b-code-20261009.md`, `guardrail-audit-c-policy-n8n-20261009.md`. MAJOR: egress policy and the n8n actor's authority change; nothing in §0, §2, §2A, §2B or §7A is weakened for any actor. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9` (operator, 2026-10-09, in session); merged #1547 as 3b5c24856; operator decisions recorded 2026-10-09: (1) ratify the proposal's §3 text as 3.0.0; (2) routing Grok → ChatGPT → DeepSeek; (3) container internet egress blocked, not proxied; (4) first Agent read-only lane-failure explainer, shadowed first; (5) owner MFA waived, `n8n_app` role still required. |
 | 2.0.1 | 2026-10-08 | ACTIVE on merge | PATCH | On top of 2.0.0: Telegram/Communications section gains the Investment Command Center rule: opportunity rules in `config/opportunity_conviction.yaml`; curated assessments persisted only by `cio_opportunity_curator.py` into the CIO opportunity store (never as a thesis version); no behaviour keys; the Telegram opportunity line only via `send_telegram`. Adds obligations, weakens nothing; §0/§2/§17 untouched. | Operator-directed 2026-10-08 (/plan Investment Command Center; "make sure all data is curated by and persistent in CIO memory"; "resonate in telegram alerts"). |
 | 2.0.0 | 2026-10-08 | ACTIVE | MAJOR | §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n only)" added: scope limited to the `m8m-n8n` compose project; n8n workflows are §9.3 scheduler entries (registry row with `output_signal` first, grant-gated install/activate/edit/retire, shadow → canary → cutover → per-line rollback, `# RETIRED <date> n8n-cutover <lane_id>` never deleted, double scheduler fails the registry gate); the only trigger path is the gateway `coordination/run` operation for lanes in `config/n8n_run_allowlist.json` (never broker/order/stop/position/paper-execution/sender/secret-render/guard/release-deploy/destructive-retention/memory-writer/authoritative-ingest), gateway never spawns, executor reuses the lane's lock, RunReceipt is the evidence; n8n may pick registered `n8n_*` process ids, versioned template ids and named routing policies but never a model, provider, raw prompt or caller identity, every call capped by the process registry and the $2.00/day cap with typed refusal; exactly one n8n credential (relay bearer from Bitwarden SM, weekly rotation, valid only at the relay), HMAC key host-side, `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` + prune ≤168 h as the precondition; n8n is replaceable. §9.3 and §17 amended in place; ADR_COORDINATION_SECRETS moves to ACCEPTED (one credential). MAJOR: routing and scheduler reach widen for one actor; nothing weakened for any other. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d88ac4943612b6703402f638ba3ed9af` (operator, 2026-10-08, in session: "i approve"); merged #1513 at 2026-10-08T09:06:46-04:00; operator direction 2026-10-08 ("make agents.md carve out just for n8n"; decisions 1–3 of the n8n program plan). |
 | 1.6.1 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications rule extended to the Watchlist: Watch decision standards live in `config/watch_decision_standards.yaml` via `lib/data_broker/watch_decision.py`; the signal expires, never the membership. No rule weakened; §0/§2/§17 untouched. | Operator-directed 2026-10-07 ("watchlist etc"; "start the watchlist"). |

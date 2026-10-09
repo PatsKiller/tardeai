@@ -65,6 +65,26 @@ def validate(doc: dict) -> list[str]:
             errs.append(f"{t}: tax/brokerage table must be KEEP_FOREVER, not {cls}")
         if r.get("status"):
             errs.append(f"{t}: unresolved status {r['status']!r}")
+        sw = r.get("source_windows")
+        if sw is not None:
+            # 2026-10-09: per-source windows are enforced (db_retention.enforced_source_windows),
+            # always archive-first, and must be shorter than the row's own window to mean anything.
+            if not isinstance(sw, dict) or not sw:
+                errs.append(f"{t}: source_windows must be a non-empty object")
+                sw = {}
+            if not r.get("source_column"):
+                errs.append(f"{t}: source_windows requires source_column")
+            if r.get("source_windows_class") != "ARCHIVE_THEN_DELETE":
+                errs.append(f"{t}: source_windows_class must be ARCHIVE_THEN_DELETE")
+            for src, days in sw.items():
+                if not isinstance(days, int) or isinstance(days, bool) or days < 7:
+                    errs.append(f"{t}: source_windows[{src}] must be an int >= 7")
+                elif isinstance(r.get("window_days"), int) and days >= r["window_days"]:
+                    errs.append(f"{t}: source_windows[{src}] {days} d is not shorter than window_days")
+            for k in ("source_windows_batch_rows", "source_windows_max_rows_per_run"):
+                v = r.get(k)
+                if v is not None and (not isinstance(v, int) or isinstance(v, bool) or v <= 0):
+                    errs.append(f"{t}: {k} must be a positive int")
     for t in TAX:
         if t not in seen:
             errs.append(f"{t}: tax/brokerage table must be declared KEEP_FOREVER")

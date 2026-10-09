@@ -87,7 +87,17 @@ def run_cycle(
                     )
                 )
         elif dry_run:
-            telegram["daily"] = {"dry_run": True, "would_send": TG.after_daily_window(now), "identity": TG.daily_identity(now)}
+            # What the next real run WOULD send: the same window, dedupe and transport
+            # gate as send_system, with nothing sent and nothing recorded.
+            telegram["daily"] = TG.preview_daily(format_text(rec), root=root, env=env, now=now)
+            for tr in transitions:
+                telegram["alerts"].append(
+                    TG.preview_alert(
+                        tr["kind"],
+                        f"{tr['component']}: {tr['from']} -> {tr['to']}",
+                        root=root, env=env, now=now,
+                    )
+                )
         state = {
             "at": rec["generated_at"],
             "overall": rec.get("overall"),

@@ -34,6 +34,10 @@ decision_rules:
   GO:
     min_score: 40
     description: "Trade-ready. Meets minimum threshold for entry consideration."
+    # Operator 2026-10-09 "allow GO for 40+ with catalyst": warrior runners (high-RVOL / momentum / low-price)
+    # at or above min_score (+ VIX add-on) with a verified catalyst are GO instead of MANUAL_REVIEW.
+    # Reverse-split squeezes and micro-float runners keep the MANUAL_REVIEW ceiling. false = old behaviour.
+    catalyst_runner_go: true
   WAIT:
     min_score: 30
     max_score: 39

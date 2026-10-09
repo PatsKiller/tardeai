@@ -1,0 +1,91 @@
+{
+  "schema": "EgressSanitiserPolicy@v1",
+  "version": 1,
+  "as_of": "2026-10-09",
+  "authority": "AGENTS.md §2A (Data egress) — the single egress point; built for §23.10 P4 (guardrail audit B H3)",
+  "note": "Data, not code: scripts/lib/cio_egress_sanitiser.py compiles these patterns and sanitise_for_external() applies them to every governed-bridge call before any provider call. Mode is TRADEAI_EGRESS_SANITISER=off|report|enforce (default report). Report sends unchanged and records counts; enforce replaces each match with [REDACTED:<category>]. Reports carry counts only, never content or a matched value.",
+  "permitted_to_external_provider": [
+    "symbol",
+    "thesis text",
+    "public price and fundamental data",
+    "aggregate exposure",
+    "research questions"
+  ],
+  "categories": [
+    {
+      "id": "env_contents",
+      "section": "§2A never leaves this box: the contents of .env in any form",
+      "class": "NEVER",
+      "patterns": [
+        "(?m)^[ \\t]*(?:export[ \\t]+)?[A-Z][A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|DSN|PAT|COOKIE|CREDENTIAL|CREDENTIALS|BEARER)[A-Z0-9_]*[ \\t]*=[ \\t]*\\S+"
+      ]
+    },
+    {
+      "id": "credential",
+      "section": "§2A never leaves this box: credentials, API keys, tokens, session cookies",
+      "class": "NEVER",
+      "patterns": [
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+        "\\bsk-(?:proj-|ant-[a-z0-9]+-)?[A-Za-z0-9_-]{20,}",
+        "\\bxai-[A-Za-z0-9]{20,}",
+        "\\bgh[pousr]_[A-Za-z0-9]{30,}",
+        "\\bgithub_pat_[A-Za-z0-9_]{30,}",
+        "\\bAKIA[0-9A-Z]{16}\\b",
+        "\\bxox[abprs]-[A-Za-z0-9-]{10,}",
+        "\\bAIza[0-9A-Za-z_-]{35}\\b",
+        "\\b\\d{8,10}:AA[A-Za-z0-9_-]{30,}",
+        "\\beyJ[A-Za-z0-9_-]{8,}\\.eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}",
+        "(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]{16,}",
+        "(?i)\\b[a-z][a-z0-9+.-]*://[^\\s:/@\"']+:[^\\s@/\"']+@",
+        "(?i)[\\w.-]*(?:api[_-]?key|secret|(?<![a-z])token|passw(?:or)?d|private[_-]?key|session[_-]?(?:id|cookie)|cookie|client[_-]?secret|refresh[_-]?token|access[_-]?token)\\b[\"']?\\s*[:=]\\s*[\"']?[^\\s\"',;}{]{6,}"
+      ]
+    },
+    {
+      "id": "account_number",
+      "section": "§2A never leaves this box: account numbers and broker account identifiers",
+      "class": "NEVER",
+      "patterns": [
+        "(?i)[\"']?\\b(?:account_?(?:number|num|no|id|hash)|acct_?(?:number|num|no|id)?|accountnumber|accountid|hashvalue|account_hash)\\b[\"']?\\s*[:=]\\s*[\"']?[A-Za-z0-9*#-]*\\d[A-Za-z0-9*#-]{3,}",
+        "(?i)\\b(?:account|acct)\\s*(?:#|no\\.?|number)\\s*:?\\s*[A-Z0-9*-]*\\d{4,}[A-Z0-9*-]*",
+        "(?i)\\b(?:account|acct)\\b[^\\n]{0,24}?\\bending\\s+in\\s+\\d{3,}"
+      ]
+    },
+    {
+      "id": "personal_identifier",
+      "section": "§2A never leaves this box: anything personally identifying",
+      "class": "NEVER",
+      "patterns": [
+        "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}\\b",
+        "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+        "(?<![\\d.])(?:\\+?1[ .-]?)?\\(?\\d{3}\\)?[ .-]\\d{3}[ .-]\\d{4}(?![\\d.])",
+        "\\b(?:\\d{4}[ -]){3}\\d{4}\\b",
+        "(?i)\\b(?:date_of_birth|dob|birth_?date)\\b[\"']?\\s*[:=]\\s*[\"']?[\\d/.-]{6,10}"
+      ]
+    },
+    {
+      "id": "internal_host_path",
+      "section": "§2A / §23.5: name the variable, never its content; host paths, internal hostnames and addresses stay on the box",
+      "class": "NEVER",
+      "patterns": [
+        "/home/[A-Za-z0-9._-]+(?:/[^\\s\"'<>)\\]]*)?",
+        "/root/[^\\s\"'<>)\\]]*",
+        "(?i)\\bms01-openclaw\\b",
+        "\\b10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b",
+        "\\b192\\.168\\.\\d{1,3}\\.\\d{1,3}\\b",
+        "\\b172\\.(?:1[6-9]|2\\d|3[01])\\.\\d{1,3}\\.\\d{1,3}\\b",
+        "\\b100\\.(?:6[4-9]|[7-9]\\d|1[01]\\d|12[0-7])\\.\\d{1,3}\\.\\d{1,3}\\b",
+        "(?i)\\b[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:ts\\.net|internal|lan)\\b",
+        "(?i)\\b(?:127\\.0\\.0\\.1|localhost):\\d{2,5}\\b"
+      ]
+    },
+    {
+      "id": "position_dollars",
+      "section": "§2A permitted set OPERATOR DECISION PENDING: until settled, treat position dollars and account-level detail as not permitted",
+      "class": "PENDING_OPERATOR_DECISION",
+      "patterns": [
+        "(?i)[\"']?\\b(?:market_?value|position_?(?:value|usd|dollars|size)|cost_?basis(?:_usd)?|basis_usd|unrealized_?(?:pl|pnl|gain|gain_usd)|realized_?(?:pl|pnl)|account_?(?:value|balance|equity)|net_?liq(?:uidation)?(?:_value)?|buying_?power|cash_?balance|total_?(?:value|equity)|size_usd|notional(?:_usd)?|recommended_delta_usd|shares|qty|quantity)\\b[\"']?\\s*[:=]\\s*[\"']?-?\\$?\\d[\\d,]*(?:\\.\\d+)?",
+        "(?i)\\b(?:position|holding|stake)s?\\s+(?:of|worth|size|value)\\s*:?\\s*\\$\\s?\\d[\\d,]*(?:\\.\\d+)?(?:\\s?[kKmM]\\b)?"
+      ]
+    }
+  ]
+}
