@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Bearer-authenticated n8n run relay; never spawns and never holds provider credentials."""
+"""Bearer-authenticated n8n run relay; never spawns and never holds provider credentials.
+
+During rotation the relay accepts TRADEAI_N8N_RELAY_BEARER or TRADEAI_N8N_RELAY_BEARER_PREVIOUS.
+A missing previous bearer is the pre-rotation state. A short one refuses to start.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.lib.n8n_coordination_gateway import RUN_ID_RE, SCOPE_RUN, RELAY_CALLER, sign_claim
+from scripts.lib.n8n_coordination_projection import ledger_path, project_runs
 from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
 
 NO_CONSUMER_REASON = (
@@ -34,11 +39,17 @@ NO_CONSUMER_REASON = (
 )
 
 BEARER_ENV = "TRADEAI_N8N_RELAY_BEARER"
+BEARER_PREVIOUS_ENV = "TRADEAI_N8N_RELAY_BEARER_PREVIOUS"
 N8N_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N"
 LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"
 DEFAULT_GATEWAY = "http://127.0.0.1:18091"
 MAX_BODY = 1024
 MIN_KEY_BYTES = 32
+LAST_SCHEMA = "N8nRunRelayLast@v1"
+_LANE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_LAST_FIELDS = ("run_id", "lane_id", "state", "finished_at", "requested_at", "mode")
+# Dropped first when the body would exceed MAX_BODY. state and finished_at stay until nothing else will.
+_LAST_OPTIONAL = ("requested_at", "mode", "run_id", "finished_at", "lane_id")
 REFUSALS = frozenset(
     {
         "relay_bad_path",
@@ -83,6 +94,17 @@ def _secret(environ: dict[str, str], name: str) -> bytes:
     return value
 
 
+def _optional_secret(environ: dict[str, str], name: str) -> bytes | None:
+    """Empty is absent. A present value shorter than MIN_KEY_BYTES refuses startup."""
+    raw = environ.get(name, "")
+    if raw == "":
+        return None
+    value = raw.encode()
+    if len(value) < MIN_KEY_BYTES:
+        raise ValueError("relay_missing_secret")
+    return value
+
+
 def _safe_run_id(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -95,6 +117,54 @@ def _derived_run_id(workflow_id: Any, execution_id: Any) -> str | None:
     raw = f"n8n-wf-{workflow_id}-{execution_id}"
     value = re.sub(r"[^A-Za-z0-9._:-]", "", raw)
     return value if RUN_ID_RE.fullmatch(value) else None
+
+
+def parse_last_path(path: str) -> str | None:
+    """Return the lane id for exactly /runs/<lane_id>/last, else None.
+
+    lane_id is letters, digits, and . _ - only. Extra segments, a query, or any other character
+    are not a last-run route (the caller answers relay_bad_path).
+    """
+    parts = path.split("/")
+    if len(parts) != 4 or parts[0] != "" or parts[1] != "runs" or parts[3] != "last":
+        return None
+    lane_id = parts[2]
+    if not _LANE_ID_RE.fullmatch(lane_id):
+        return None
+    return lane_id
+
+
+def _encoded(payload: dict[str, Any]) -> bytes:
+    return json.dumps(payload, separators=(",", ":")).encode()
+
+
+def _compact_last(lane_id: str, proj: dict[str, Any]) -> dict[str, Any] | None:
+    """Small stable last-run body, or None when it cannot be made to fit MAX_BODY."""
+    items = proj.get("items") or []
+    item = items[0] if items else None
+    last: dict[str, Any] | None
+    if isinstance(item, dict):
+        last = {key: item.get(key) for key in _LAST_FIELDS}
+    else:
+        last = None
+    payload: dict[str, Any] = {
+        "schema": LAST_SCHEMA,
+        "lane_id": lane_id,
+        "status": proj.get("status"),
+        "last": last,
+    }
+    if len(_encoded(payload)) <= MAX_BODY:
+        return payload
+    if isinstance(payload["last"], dict):
+        for key in _LAST_OPTIONAL:
+            payload["last"].pop(key, None)
+            if len(_encoded(payload)) <= MAX_BODY:
+                return payload
+        if not payload["last"]:
+            payload["last"] = None
+            if len(_encoded(payload)) <= MAX_BODY:
+                return payload
+    return None
 
 
 def _requested_by(workflow_id: Any) -> str:
@@ -124,6 +194,7 @@ class Relay:
     ) -> None:
         self.environ = dict(environ or os.environ)
         self.bearer = _secret(self.environ, BEARER_ENV)
+        self.bearer_previous = _optional_secret(self.environ, BEARER_PREVIOUS_ENV)
         self.key = _secret(self.environ, N8N_KEY_ENV)
         self.allowlist = allowlist if allowlist is not None else load_run_allowlist(DEFAULT_RUN_ALLOWLIST)
         self.live_lanes = frozenset(x for x in self.environ.get(LIVE_LANES_ENV, "").split() if x)
@@ -174,11 +245,13 @@ class Relay:
 
     def _auth(self, authorization: str | None) -> bool:
         prefix = "Bearer "
-        return bool(
-            authorization
-            and authorization.startswith(prefix)
-            and hmac.compare_digest(authorization[len(prefix) :].encode(), self.bearer)
-        )
+        if not authorization or not authorization.startswith(prefix):
+            return False
+        presented = authorization[len(prefix) :].encode()
+        if hmac.compare_digest(presented, self.bearer):
+            return True
+        previous = self.bearer_previous
+        return previous is not None and hmac.compare_digest(presented, previous)
 
     def status(self, authorization: str | None) -> tuple[int, dict[str, Any]]:
         if not self._auth(authorization):
@@ -264,6 +337,17 @@ class Relay:
         reply["gateway_http_status"] = gateway_status
         return status, reply
 
+    def last_run(self, authorization: str | None, lane_id: str) -> tuple[int, dict[str, Any]]:
+        """Read-only newest runs row for one lane. Never calls the gateway and never runs a command."""
+        if not self._auth(authorization):
+            self.counts["auth_failures"] += 1
+            return self._refuse("relay_bad_bearer", 401)
+        proj = project_runs(ledger_path(self.environ), lane_id=lane_id, limit=1)
+        payload = _compact_last(lane_id, proj)
+        if payload is None:
+            return self._refuse("relay_body_too_large", 413, lane_id=lane_id)
+        return 200, payload
+
 
 class RelayServer(ThreadingHTTPServer):
     """2026-10-08: listen backlog 64 (stock 5) so a :00 burst of n8n workflows does not wait on the kernel's
@@ -272,9 +356,7 @@ class RelayServer(ThreadingHTTPServer):
     request_queue_size = 64
 
 
-def serve(host: str, port: int, relay: Relay) -> None:
-    guard_bind(host, port)
-
+def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -282,10 +364,14 @@ def serve(host: str, port: int, relay: Relay) -> None:
             return
 
         def do_GET(self) -> None:  # noqa: N802
-            if self.path != "/status":
+            lane_id = parse_last_path(self.path)
+            if self.path == "/status":
+                status, payload = relay.status(self.headers.get("Authorization"))
+            elif lane_id is not None:
+                status, payload = relay.last_run(self.headers.get("Authorization"), lane_id)
+            else:
                 _json_response(self, 404, {"state": "REFUSED", "reason": "relay_bad_path"})
                 return
-            status, payload = relay.status(self.headers.get("Authorization"))
             _json_response(self, status, payload)
 
         def do_POST(self) -> None:  # noqa: N802
@@ -308,7 +394,12 @@ def serve(host: str, port: int, relay: Relay) -> None:
         do_DELETE = do_PUT
         do_PATCH = do_PUT
 
-    server = RelayServer((host, port), Handler)
+    return Handler
+
+
+def serve(host: str, port: int, relay: Relay) -> None:
+    guard_bind(host, port)
+    server = RelayServer((host, port), handler_for(relay))
     print(json.dumps({"ok": True, "host": host, "port": port, "authority": "READ_ONLY_ADVISORY"}), flush=True)
     server.serve_forever()
 
