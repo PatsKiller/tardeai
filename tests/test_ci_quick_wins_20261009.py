@@ -187,6 +187,75 @@ def test_q11_range_scan_blocks_a_secret_file_name(scan_repo):
     assert r.returncode == 1 and "secret FILE" in r.stderr
 
 
+def _hook_repo(tmp_path: Path) -> tuple[Path, dict]:
+    """A repo wired with the REAL pre-push hook and the REAL scanner, pushing to a bare remote."""
+    src, remote, adir = tmp_path / "src", tmp_path / "remote.git", tmp_path / "approvals"
+    src.mkdir()
+    _git(tmp_path, "init", "-q", "--bare", str(remote))
+    _git(src, "init", "-q", "-b", "main")
+    _git(src, "config", "user.email", "t@test.local")
+    _git(src, "config", "user.name", "t")
+    (src / ".githooks").mkdir()
+    shutil.copy2(ROOT / ".githooks" / "pre-push", src / ".githooks" / "pre-push")
+    (src / "scripts" / "lib").mkdir(parents=True)
+    for rel in ("scripts/check_no_secrets.py", "scripts/lib/tradeai_push_budget.py", "scripts/lib/guard_push_auth.py"):
+        shutil.copy2(ROOT / rel, src / rel)
+    (src / ".cursor" / "hooks").mkdir(parents=True)
+    shutil.copy2(ROOT / ".cursor" / "hooks" / "guard_ledger.py", src / ".cursor" / "hooks" / "guard_ledger.py")
+    (src / "README").write_text("mini\n", encoding="utf-8")
+    _git(src, "add", "-A")
+    _git(src, "commit", "-q", "-m", "init")
+    _git(src, "remote", "add", "origin", str(remote))
+    _git(src, "config", "core.hooksPath", ".githooks")
+    env = {
+        **os.environ,
+        "GUARD_APPROVALS_DIR": str(adir),
+        "PYTHONPATH": str(src),
+        "TRADEAI_PUSH_BUDGET_PATH": str(src / ".git" / "budget.json"),
+    }
+    env.pop("TRADEAI_SKIP_SECRETS_SCAN", None)
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / ".cursor" / "hooks" / "guard_ledger.py"),
+            "grant",
+            "--tier",
+            "git-push",
+            "--expires",
+            str(int(__import__("time").time()) + 3600),
+            "--uses",
+            "9",
+            "--reason",
+            "test",
+        ],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return src, env
+
+
+def test_q11_real_pre_push_hook_scans_the_pushed_commits(tmp_path):
+    src, env = _hook_repo(tmp_path)
+    first = subprocess.run(
+        ["git", "push", "-q", "-u", "origin", "main"], cwd=src, env=env, capture_output=True, text=True
+    )
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "--not --remotes" in first.stdout + first.stderr  # new branch: commits no remote has
+    fake_key = "AKIA" + "Z" * 16
+    (src / "leak.txt").write_text(f"{fake_key}\n", encoding="utf-8")
+    _git(src, "add", "leak.txt")
+    _git(src, "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "leak")  # pre-commit skipped
+    (src / "leak.txt").write_text("gone\n", encoding="utf-8")
+    _git(src, "-c", "core.hooksPath=/dev/null", "commit", "-q", "-am", "unleak")
+    blocked = subprocess.run(["git", "push", "-q", "origin", "main"], cwd=src, env=env, capture_output=True, text=True)
+    assert blocked.returncode != 0
+    assert "AWS access key" in blocked.stderr
+    assert ".." in blocked.stdout  # scanned remote..local, not the whole tree
+    assert _git(tmp_path / "remote.git", "rev-parse", "main") != _git(src, "rev-parse", "HEAD")
+
+
 # ── release-readiness is required for promote ─────────────────────────────────────
 
 

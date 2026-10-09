@@ -9,9 +9,11 @@ cd "$repo_root"
 # first (nothing below reads stdin). A manual run with no input times out and falls back
 # to the whole-tree secrets scan.
 push_updates=""
-while IFS= read -r -t 10 push_line; do
-  push_updates+="${push_line}"$'\n'
-done || true
+if [[ ! -t 0 ]]; then
+  while IFS= read -r -t 10 push_line; do
+    push_updates+="${push_line}"$'\n'
+  done || true
+fi
 export PYTHONPATH="${repo_root}${PYTHONPATH:+:$PYTHONPATH}"
 
 echo
