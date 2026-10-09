@@ -3623,6 +3623,8 @@ GATES = [
             "tests/test_n8n_workflow_drift_20261009.py",
             "tests/test_n8n_activation_grants_20261009.py",
             "tests/test_n8n_agent_identity_parity_20261009.py",
+            # incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)
+            "tests/test_n8n_incident_fanin_governance_20261009.py",
         ],
     ),
     (
@@ -3865,6 +3867,20 @@ GATES = [
         "N8N_MATURITY_REGISTRY_RECONCILE",
         [
             "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_PLATFORM_MATURITY — 2026-10-09 n8n maturity program C1: scripts/n8n_platform_maturity.py
+        # scores 12 dimensions 0-10 from evidence only (N8nPlatformMaturity@v1); the probe refuses any
+        # non-read-only command; missing evidence scores 0 (UNVERIFIED). Hermetic: tmp state/proj roots,
+        # fake command runner, fixed clock. Listing them here schedules nothing.
+        "N8N_PLATFORM_MATURITY",
+        [
+            "tests/test_n8n_platform_maturity_core_20261009.py",
+            "tests/test_n8n_platform_maturity_scheduling_20261009.py",
+            "tests/test_n8n_platform_maturity_signal_20261009.py",
+            "tests/test_n8n_platform_maturity_healing_20261009.py",
+            "tests/test_n8n_platform_maturity_governance_20261009.py",
         ],
     ),
 ]
