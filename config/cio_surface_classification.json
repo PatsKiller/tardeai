@@ -1117,6 +1117,13 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Append-only CIO-memory version history (data/cio/cio_opportunity_assessments.jsonl) of the same assessment the operator sees through schema:OpportunityProjection@v1; a version is written only on a material change and exists for audit and learning. The opportunity modal shows only the version count and change reasons, read via CIOOpportunityStore.history.",
       "owner_hint": "scripts/lib/cio_opportunity_store.py"
+    },
+    {
+      "name": "schema:LlmRoutingPolicy@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Server-side map from a registered process id to a provider lane (config/llm_routing_policy.json), read only by the governed model bridge. The operator does not read this document. A call's chosen lane is on that call's routing_decision receipt; an unknown policy or an unhealthy lane is a typed refusal, not a CIO surface.",
+      "owner_hint": "scripts/lib/cio_governed_model_bridge.py"
     }
   ]
 }
