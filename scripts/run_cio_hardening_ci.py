@@ -2051,6 +2051,8 @@ GATES = [
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.
             "tests/test_agents_policy_1_3_0_amendment.py",
+            # AGENTS.md 3.0.0 (PROPOSED 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
+            "tests/test_agents_policy_3_0_0_amendment.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
