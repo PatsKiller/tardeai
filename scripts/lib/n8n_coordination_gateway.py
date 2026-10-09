@@ -149,6 +149,8 @@ REFUSAL_REASONS = frozenset({
     # key or no durable run store on this gateway; a caller_id that maps to no key.
     "run_lane_not_allowlisted", "run_bad_mode", "run_scope_unavailable", "unknown_caller",
     "process_not_registered",   # 2026-10-08 model_job: job.process_id outside n8n_model_job.PROCESS_TASK_TYPE
+    # 2026-10-09 agent reads. forbidden_route:<token> stays a prefix.
+    "read_method_refused", "read_path_refused", "read_bad_n", "read_registry_unreadable",
 })
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})

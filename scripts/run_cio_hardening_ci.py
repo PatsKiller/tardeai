@@ -3639,6 +3639,16 @@ GATES = [
             "tests/test_bridge_executor_hardening_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: N8N_AGENT_GATE_EXPLAINER — first n8n Agent payload (2026-10-09):
+        # read-only lane-failure explainer. Gateway and relay GET reads, the proposed
+        # process row, the output schema's behaviour-field refusal, and the shadow
+        # workflow's tool URLs. Hermetic. Imports nothing into n8n.
+        "n8n_agent_explainer_20261009",
+        [
+            "tests/test_n8n_agent_explainer_20261009.py",
+        ],
+    ),
 ]
 
 
