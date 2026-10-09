@@ -32,10 +32,13 @@ unit). A table may be admitted by a schema pattern (pg_table:public.*), because 
 covers a schema, not a table list.
 
 Ratchet: an asset whose class has coverage NONE or PARTIAL is a gap. Today's gaps are
-listed in config/backup_coverage_baseline.json. A gap not in the baseline fails; a
-baseline entry that is no longer a gap is reported so the baseline can shrink.
+listed in config/backup_coverage_baseline.json. A gap not in the baseline fails, and so
+does a baseline entry that is no longer a gap: left in place it would let a later
+regression of the same asset pass as "known". A FULL claim on a table whose data
+run_pg_backup.sh excludes fails whether it is made by exact id or by pattern.
 
-Exit codes: 0 pass (or report mode), 1 a new unmapped asset or new gap, 2 could not run.
+Exit codes: 0 pass (or report mode), 1 an unmapped asset, a new gap, a stale baseline
+entry or a manifest error, 2 could not run.
 
 AUTHORITY: READ_ONLY_ADVISORY. Static analysis of repo files (plus an optional read-only
 directory listing). It never runs a backup, a restore or a delete.
@@ -270,6 +273,39 @@ def check_pg_exclusions(repo: Path, manifest: dict[str, Any]) -> list[str]:
     for pat in live:
         if f"pg_table:{pat}" not in partial:
             errors.append(f"pg_table:{pat} has its data excluded by {PG_BACKUP_SCRIPT} but is not in a PARTIAL/NONE class")
+    # Exact ids are resolved before patterns, so an exact id (or a broader pattern) in a FULL
+    # class could otherwise claim full coverage for a table whose data pg_dump excludes.
+    for cls in manifest.get("asset_classes") or []:
+        if cls.get("coverage") != "FULL":
+            continue
+        for entry in cls.get("covers") or []:
+            entry = str(entry)
+            if not entry.startswith("pg_table:"):
+                continue
+            for pat in live:
+                if fnmatch.fnmatchcase(entry, f"pg_table:{pat}"):
+                    errors.append(
+                        f"{cls.get('id')}: claims FULL coverage for {entry}, but {PG_BACKUP_SCRIPT} "
+                        f"excludes its data (--exclude-table-data={pat}); move it to a PARTIAL/NONE class"
+                    )
+    return errors
+
+
+def excluded_full_assets(repo: Path, declared: dict[str, str], classes: list[dict[str, Any]]) -> list[str]:
+    """Declared tables whose data pg_dump excludes but which resolve to a FULL class (any match path)."""
+    script = repo / PG_BACKUP_SCRIPT
+    if not script.is_file():
+        return []
+    live = sorted(set(PG_EXCLUDE.findall(script.read_text(encoding="utf-8"))))
+    errors = []
+    for asset in sorted(a for a in declared if a.startswith("pg_table:")):
+        if not any(fnmatch.fnmatchcase(asset, f"pg_table:{pat}") for pat in live):
+            continue
+        cls = resolve(asset, classes)
+        if cls is not None and cls.get("coverage") == "FULL":
+            errors.append(
+                f"{asset} resolves to FULL class {cls.get('id')}, but {PG_BACKUP_SCRIPT} excludes its data"
+            )
     return errors
 
 
@@ -313,6 +349,7 @@ def audit(repo: Path, state_root: Path | None = None,
     if state_root is not None:
         declared.update(collect_host_state(state_root))
     baseline_gaps: dict[str, Any] = baseline.get("gaps") or {}
+    errors += excluded_full_assets(repo, declared, classes)
 
     unmapped, new_gaps, known_gaps, covered = [], [], [], 0
     for asset in sorted(declared):
@@ -346,7 +383,9 @@ def audit(repo: Path, state_root: Path | None = None,
         "known_gaps": known_gaps,
         "baseline_shrinkable": shrinkable,
         "host_checked": state_root is not None,
-        "ok": not errors and not unmapped and not new_gaps,
+        # A stale baseline entry fails too: left in place, it would let a later regression of the
+        # same asset pass as a "known gap".
+        "ok": not errors and not unmapped and not new_gaps and not shrinkable,
     }
 
 
@@ -371,7 +410,7 @@ def render(report: dict[str, Any]) -> str:
     for cid, n in sorted(by_class.items()):
         lines.append(f"  [known gap] {cid}: {n} asset(s)")
     for a in report["baseline_shrinkable"]:
-        lines.append(f"  [baseline can shrink] {a} is no longer a gap (or no longer declared); remove it from {BASELINE_REL}")
+        lines.append(f"  [STALE BASELINE] {a} is no longer a gap (or no longer declared); remove it from {BASELINE_REL}")
     lines.append("PASS" if report["ok"] else "FAIL")
     return "\n".join(lines)
 

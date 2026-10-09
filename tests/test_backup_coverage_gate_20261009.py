@@ -161,12 +161,50 @@ def test_store_in_none_class_is_a_new_gap_until_baselined(repo, capsys):
     assert "[known gap] unbacked: 1 asset(s)" in out
 
 
-def test_baseline_entry_no_longer_a_gap_is_reported_not_failed(repo, capsys):
+def test_stale_baseline_entry_fails_in_ci_but_not_in_report_mode(repo, capsys):
+    # store:quote_price is FULL; a baseline entry for it is stale and would later let a
+    # regression of the same asset pass as a "known gap".
     (repo / cbc.BASELINE_REL).write_text(json.dumps(
         {"schema": "BackupCoverageBaseline@v1", "gaps": {"store:quote_price": "NONE: was unbacked"}}))
     rc, out = _run(repo, capsys)
-    assert rc == 0, out
-    assert "[baseline can shrink] store:quote_price" in out
+    assert rc == 1, out
+    assert "[STALE BASELINE] store:quote_price" in out
+    assert cbc.main(["--repo", str(repo)]) == 0
+
+
+def test_stale_baseline_would_have_hidden_a_regression(repo, capsys):
+    (repo / cbc.BASELINE_REL).write_text(json.dumps(
+        {"schema": "BackupCoverageBaseline@v1", "gaps": {"store:quote_price": "NONE: fixed long ago"}}))
+    # regression: the store loses its backup
+    def regress(d):
+        _cls(d, "stores_pg")["covers"].remove("store:quote_price")
+        _cls(d, "unbacked")["covers"].append("store:quote_price")
+    _edit_manifest(repo, regress)
+    rc, out = _run(repo, capsys)
+    assert rc == 0  # the stale entry absorbs it -- which is why the stale state itself must fail first
+    assert "[known gap] unbacked" in out
+
+
+def test_exact_id_cannot_claim_full_for_excluded_table(repo, capsys):
+    _write(repo / "migrations/2026-10-09_vec.sql", "CREATE TABLE intelligence.new_vectors (id int);\n")
+    _edit_manifest(repo, lambda d: _cls(d, "pg_dumped")["covers"].append("pg_table:intelligence.new_vectors"))
+    rc, out = _run(repo, capsys)
+    assert rc == 1, out
+    assert "claims FULL coverage for pg_table:intelligence.new_vectors" in out
+    assert "pg_table:intelligence.new_vectors resolves to FULL class pg_dumped" in out
+
+
+def test_broad_full_pattern_ahead_of_excluded_schema_fails(repo, capsys):
+    _write(repo / "migrations/2026-10-09_vec.sql", "CREATE TABLE intelligence.new_vectors (id int);\n")
+    def broaden(d):
+        full = _cls(d, "pg_dumped")
+        full["covers"] = ["pg_table:*"]
+        d["asset_classes"].remove(full)
+        d["asset_classes"].insert(0, full)
+    _edit_manifest(repo, broaden)
+    rc, out = _run(repo, capsys)
+    assert rc == 1, out
+    assert "resolves to FULL class pg_dumped" in out
 
 
 def test_new_unit_and_secret_fail(repo, capsys):
