@@ -1,0 +1,57 @@
+{
+ "schema": "N8nActiveWorkflowSnapshot@v1",
+ "captured_at": "2026-10-09T16:00:39+00:00",
+ "source": "docker exec m8m-n8n-db psql -U n8n -d n8n -tAc (SELECT, active only)",
+ "authority": "READ_ONLY_ADVISORY",
+ "count": 12,
+ "workflows": [
+  {
+   "id": "078e8fcbea0c5020",
+   "name": "n8n-pilot-dispatch"
+  },
+  {
+   "id": "21fd15d5f8a4c4da",
+   "name": "n8n-research-intake-consumer"
+  },
+  {
+   "id": "283ceeb030de5e66",
+   "name": "catalyst-calibration-monitor-shadow"
+  },
+  {
+   "id": "2c725c7dfd4ac62f",
+   "name": "finviz-view-contracts-shadow"
+  },
+  {
+   "id": "498d749165a93ff9",
+   "name": "source-attribution-monitor-shadow"
+  },
+  {
+   "id": "5966437c872aa18b",
+   "name": "watch-directives-monitor-shadow"
+  },
+  {
+   "id": "722fac0e043ea5c4",
+   "name": "n8n-incident-fanin"
+  },
+  {
+   "id": "9208ac827e514183",
+   "name": "n8n-lab-watchdog-shadow"
+  },
+  {
+   "id": "c0d4c7845e5c4fcc",
+   "name": "crontab-snapshot-for-health-agent"
+  },
+  {
+   "id": "e18d7849b4142927",
+   "name": "maturity-remeasure"
+  },
+  {
+   "id": "e6f62397d5ae2aa2",
+   "name": "lane-governance-packet-weekly-shadow"
+  },
+  {
+   "id": "ffa6bbfa93ad4056",
+   "name": "generate-analyst-daily-digest-shadow"
+  }
+ ]
+}

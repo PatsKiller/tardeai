@@ -79,6 +79,13 @@ run_windows:
     label: close_read
     expected_min_symbols: 40
     active_screeners: [pm_volume_continuation, quality_pullback, defensive_quality, oversold_quality, core_index_etfs]
+  # 5-minute RTH scalp scan (operator 2026-10-09: "these are scalps should be every 5 minutes at least").
+  # Scalp screeners only, own label so it never shares a run with the slot runs (the PARTIAL 55/40 cause).
+  # Driven by scripts/run_trade_ai_scalp_live.py (deterministic live cycle, no paid LLM).
+  'scalp':
+    label: scalp_5min
+    expected_min_symbols: 5
+    active_screeners: [prime_setups, watchlist_setups, pm_breakout_confirmation, pm_volume_continuation]
   '1730':
     label: post_close
     expected_min_symbols: 15

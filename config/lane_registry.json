@@ -4138,7 +4138,7 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 9,10,12,14,16 * * 1-5 + 30 17 * * 1-5 run_orchestrator_slot.sh",
+        "expression": "0 12,14,16 * * 1-5 + 30 17 * * 1-5 run_orchestrator_slot.sh",
         "match": "scripts/run_orchestrator_slot.sh"
       },
       "expected_cadence_hours": 24.0,
@@ -4151,7 +4151,7 @@
       ],
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Installed 2026-10-07 19:58Z under cron grant 20d1d2c9dec32d5a (backup ~/.local/state/tradeai/backups/crontab-20261007T195826Z-pre-tranche-c.txt) alongside the six trade_ai_orchestrator --run-label 0900/1000/1200/1400/1600/1730 lines, which stay until two receipts are observed; overlap is lock-safe (each step keeps its original /tmp lock, flock -n -E 75 -> LOCK_HELD). The old lines are deleted and their lanes flipped RETIRED, naming this lane as their successor, in the follow-up PR (docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md step 3). Step 3 done 2026-10-07 22:40Z: the old lines were deleted (backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-c-step3.txt); this lane is the only scheduler of its steps.",
+      "state_reason": "2026-10-09: the 09:00 and 10:00 slots are dropped. The continuous runner's FULL runs fire at the same anchors (09:03/09:53), process_reaper allows one trade_ai_orchestrator at a time, so the cron slot was killed (10:00 'Terminated') and both writers stamped run_label 0900 (the PARTIAL 55/40 header). RTH scalp coverage is the new trade-ai-scalp-live lane (every 5 min). | Installed 2026-10-07 19:58Z under cron grant 20d1d2c9dec32d5a (backup ~/.local/state/tradeai/backups/crontab-20261007T195826Z-pre-tranche-c.txt) alongside the six trade_ai_orchestrator --run-label 0900/1000/1200/1400/1600/1730 lines, which stay until two receipts are observed; overlap is lock-safe (each step keeps its original /tmp lock, flock -n -E 75 -> LOCK_HELD). The old lines are deleted and their lanes flipped RETIRED, naming this lane as their successor, in the follow-up PR (docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md step 3). Step 3 done 2026-10-07 22:40Z: the old lines were deleted (backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-c-step3.txt); this lane is the only scheduler of its steps.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l 2026-10-07 lines 142/144/145/147/148/205 (verbatim in the proposal); scripts/run_orchestrator_slot.sh; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md Installed 2026-10-07: plan-only dry runs from the served tree (options_tick.py --tick-minute 7|52, hermes_subject_enhance_dispatch.py --stats/--now, run_orchestrator_slot.sh --now 0900|1730 --dry-run, run_drive_syncs.sh --dry-run) all rc=0; crontab job lines 454 -> 459.",
       "output_signal": {
@@ -4357,6 +4357,50 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/ADVICE_DIGESTS_2026-10-08.md; tests/test_advice_digests_20261008.py"
+    },
+    {
+      "lane_id": "n8n-workflow-drift-check",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P18, audit C G9): scripts/check_n8n_workflow_drift.py compares every ACTIVE n8n workflow with its generated git copy (relay URL placeholder substituted) and writes data/runtime/n8n_workflow_drift_last.json with --write. Registry row first (§9.3): the allowlist entry exists (--dry-run / --write) but no workflow is generated or imported and nothing schedules it. Activation = generated workflow + operator import under a grant naming the workflow id, then shadow -> canary -> live, then this row flips to kind n8n ACTIVE.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_workflow_drift_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_workflow_drift_20261009.py (fixture workflows: OK after relay substitution, DRIFT on a node edit, MISSING_IN_GIT on an unknown id; --dry-run writes nothing, --write writes the receipt under tmp_path); live dry run 2026-10-09 from the worktree read the n8n DB with one SELECT and wrote nothing.",
+      "note": "Read-only governance lane for the n8n Agent preconditions (P18). Daily cadence proposed; no send (fan-in findings are shaped in the receipt but not wired)."
+    },
+    {
+      "lane_id": "trade-ai-scalp-live",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1  # TRADEAI_LANE trade-ai-scalp-live",
+        "match": "scripts/run_trade_ai_scalp_live.py"
+      },
+      "expected_cadence_hours": 0.084,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-09",
+      "state_reason": "Trade-AI scalp scan every 5 min in RTH (operator 2026-10-09: \"these are scalps should be every 5 minutes at least … same should be feeding both tradeai and also active trader\"). Deterministic live cycle over the scalp screeners (assets/screeners.yaml window `scalp`), own run_label `scalp`, no paid LLM; writes trade_ai_scans and the shared scalp universe projection that Active Trader reads. Cycle ~204 s warm (470 s cold) — flock -n skips a start while one is running.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-releases/persistent-state/data/trade_ai/scalp_universe_latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md; tests/test_trade_ai_scalp_5min_20261009.py; dry run 2026-10-09 (writes/sends stubbed): 104 scored, 13 rows, 0 alerts, 470 s cold / 204 s warm"
     }
   ],
   "undeclared_baseline": [

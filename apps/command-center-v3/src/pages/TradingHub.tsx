@@ -36,6 +36,7 @@ import {
 } from '../lib/scannerSelection'
 import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
 import ScalpSetupsPanel from '../components/ScalpSetupsPanel'
+import ActiveTraderFiresStrip from '../components/tradeai/ActiveTraderFiresStrip'
 import ScalpStrategyModal, { type Setup } from '../components/ScalpStrategyModal'
 import { fmt$, fmtVol } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -493,6 +494,7 @@ export default function TradingHub({ onDrill }: Props) {
         ]
         return (
           <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <ActiveTraderFiresStrip tradeAiTickers={tickers} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
               <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)' }}>Market Opportunities Scanner</div>
               <div style={{ fontSize: 10, color: 'var(--text3)' }}>
