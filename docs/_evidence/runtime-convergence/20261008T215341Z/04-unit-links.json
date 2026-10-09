@@ -1,0 +1,1560 @@
+{
+  "as_of": "2026-10-08T22:58:21.899126+00:00",
+  "evidence_class": "OBSERVED_HOST",
+  "links": [
+    {
+      "unit": "hermes-source-discovery-dryrun.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-source-discovery-dryrun.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-source-discovery-dryrun.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-disk-pressure-guard.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-disk-pressure-guard.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-disk-pressure-guard.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-tax-lots-rebuild.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-tax-lots-rebuild.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-tax-lots-rebuild.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-outcome-scorer.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-outcome-scorer.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-outcome-scorer.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-defer-revisit.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-defer-revisit.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-defer-revisit.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-flash-llm-intelligence.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-flash-llm-intelligence.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-flash-llm-intelligence.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "trade-ai-news-monitor.service",
+      "path": "/home/johnclaw/.config/systemd/user/trade-ai-news-monitor.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/trade-ai-news-monitor.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-desk-memo-regen.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-desk-memo-regen.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-desk-memo-regen.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-free-first-circulation.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-free-first-circulation.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-free-first-circulation.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@steph.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@steph.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@steph.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-update-check.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-update-check.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-update-check.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-delivery.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-delivery.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-delivery.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-external-feedback.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-external-feedback.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-external-feedback.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-governance-pipeline.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-governance-pipeline.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-governance-pipeline.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-embedding-promotion-review.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-embedding-promotion-review.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-embedding-promotion-review.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-data-plausibility.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-data-plausibility.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-data-plausibility.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-flash-portfolio-risk.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-flash-portfolio-risk.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-flash-portfolio-risk.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime-producer.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-producer.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-producer.service",
+      "target_exists": true
+    },
+    {
+      "unit": "trade-ai-news-monitor.timer",
+      "path": "/home/johnclaw/.config/systemd/user/trade-ai-news-monitor.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/trade-ai-news-monitor.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-momentum-catalyst-morning.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-momentum-catalyst-morning.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-momentum-catalyst-morning.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-hermes-research-remediation.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-hermes-research-remediation.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-hermes-research-remediation.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-platform-maintenance-monthly.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-monthly.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-monthly.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-edge-fanout-consumer.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-edge-fanout-consumer.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-edge-fanout-consumer.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-iris-taxonomy.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-iris-taxonomy.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-iris-taxonomy.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-defer-revisit.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-defer-revisit.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-defer-revisit.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-expected-services.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-expected-services.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-expected-services.service",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-price-cache.timer",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-price-cache.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-price-cache.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-shadow-scorer.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-shadow-scorer.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-shadow-scorer.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-advisory-cache-worker.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-advisory-cache-worker.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-advisory-cache-worker.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-notif-broker.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-notif-broker.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-notif-broker.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-intelligence-remediation.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-intelligence-remediation.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-intelligence-remediation.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-gateway.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-gateway.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-gateway.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-flash-llm-intelligence.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-flash-llm-intelligence.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-flash-llm-intelligence.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-iris-taxonomy.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-iris-taxonomy.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-iris-taxonomy.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-advisory-cache-worker.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-advisory-cache-worker.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-advisory-cache-worker.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-tax-lots-rebuild.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-tax-lots-rebuild.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-tax-lots-rebuild.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-stance-organic-observe-early.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-stance-organic-observe-early.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-stance-organic-observe-early.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-weekly-cadence.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-weekly-cadence.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-weekly-cadence.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-worktree-retention.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-worktree-retention.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-worktree-retention.service",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-backup.timer",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-backup.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-backup.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-disk-hygiene-enforcer.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-disk-hygiene-enforcer.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-disk-hygiene-enforcer.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-maturity-board.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-maturity-board.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-maturity-board.service",
+      "target_exists": true
+    },
+    {
+      "unit": "trade-ai-lab-moomoo-gateway.service",
+      "path": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-gateway.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-gateway.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-librarian-retention.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-librarian-retention.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-librarian-retention.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-external-feedback.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-external-feedback.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-external-feedback.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-contradiction-adjudicator.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-contradiction-adjudicator.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-contradiction-adjudicator.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-stance-organic-observe.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-stance-organic-observe.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-stance-organic-observe.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-monthly-cadence.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-monthly-cadence.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-monthly-cadence.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-backup-enforcer.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-backup-enforcer.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-backup-enforcer.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-backup-enforcer.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-backup-enforcer.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-backup-enforcer.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-maturity-feeds.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-maturity-feeds.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-maturity-feeds.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@aegis.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@aegis.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@aegis.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-postgres-main-watchdog.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-postgres-main-watchdog.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-postgres-main-watchdog.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-flash-portfolio-risk-hourly.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-flash-portfolio-risk-hourly.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-flash-portfolio-risk-hourly.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-watch-decision-scheduler.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-watch-decision-scheduler.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-watch-decision-scheduler.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-governance-pipeline.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-governance-pipeline.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-governance-pipeline.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-postgres-main-watchdog.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-postgres-main-watchdog.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-postgres-main-watchdog.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-deep-research-local.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-deep-research-local.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-deep-research-local.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-memory-shadow-measure.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-memory-shadow-measure.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-memory-shadow-measure.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime-health.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-health.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-health.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-worktree-retention.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-worktree-retention.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-worktree-retention.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-main-desk-free-llm-weekly.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-main-desk-free-llm-weekly.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-main-desk-free-llm-weekly.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@morgan.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@morgan.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@morgan.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-source-litmus.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-source-litmus.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-source-litmus.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-weekly-cadence.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-weekly-cadence.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-weekly-cadence.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-shadow-seed.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-seed.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-seed.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-daily-cadence.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-daily-cadence.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-daily-cadence.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@iris.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@iris.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@iris.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-price-cache.service",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-price-cache.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-price-cache.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-continuous.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-continuous.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-continuous.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-desk-memo-regen.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-desk-memo-regen.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-desk-memo-regen.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@reflection.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@reflection.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@reflection.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@concierge.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@concierge.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@concierge.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-telegram.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-telegram.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-telegram.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-operator-readiness.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-operator-readiness.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-operator-readiness.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-notif-broker.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-notif-broker.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-notif-broker.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-due-checkpoints.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-due-checkpoints.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-due-checkpoints.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-slo-burn-rate.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-slo-burn-rate.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-slo-burn-rate.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-due-checkpoints.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-due-checkpoints.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-due-checkpoints.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-platform-maintenance-nightly.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-nightly.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-nightly.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-disk-hygiene-enforcer.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-disk-hygiene-enforcer.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-disk-hygiene-enforcer.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-monthly.timer",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-monthly.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-monthly.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-nightly-reflection.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-nightly-reflection.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-nightly-reflection.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@sentinel.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@sentinel.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@sentinel.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-maturity-board.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-maturity-board.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-maturity-board.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-governance-facts.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-governance-facts.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-governance-facts.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-flash-watchlist-daily.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-flash-watchlist-daily.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-flash-watchlist-daily.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-served-copy-split.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-served-copy-split.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-served-copy-split.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-gap-resolution.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-gap-resolution.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-gap-resolution.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-librarian-backlog-loop.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-librarian-backlog-loop.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-librarian-backlog-loop.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-ops-agent.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-ops-agent.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-ops-agent.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@atlas.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@atlas.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@atlas.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-platform-maintenance-weekly.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-weekly.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-weekly.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-shadow-seed.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-seed.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-seed.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-n8n-coordination-gateway.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-coordination-gateway.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-n8n-coordination-gateway.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-memory-shadow-measure.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-memory-shadow-measure.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-memory-shadow-measure.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime-health.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-health.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-health.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-n8n-lab-watchdog.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-lab-watchdog.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-n8n-lab-watchdog.service",
+      "target_exists": true
+    },
+    {
+      "unit": "at-observation-01.timer",
+      "path": "/home/johnclaw/.config/systemd/user/at-observation-01.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/at-observation-01.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-flash-portfolio-risk-weekend.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-flash-portfolio-risk-weekend.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-flash-portfolio-risk-weekend.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@tax_agent.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@tax_agent.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@tax_agent.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-disk-pressure-guard.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-disk-pressure-guard.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-disk-pressure-guard.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-reactive.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-reactive.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-reactive.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-n8n-run-relay.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-run-relay.service",
+      "is_symlink": true,
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-relay.service",
+      "target_exists": false
+    },
+    {
+      "unit": "tradeai-advisory-outcome-scorer.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-outcome-scorer.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-outcome-scorer.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-lessons-reflect.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-lessons-reflect.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-lessons-reflect.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-provider-cost-reconcile.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-provider-cost-reconcile.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-provider-cost-reconcile.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "at-observation-01-closeout.timer",
+      "path": "/home/johnclaw/.config/systemd/user/at-observation-01-closeout.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/at-observation-01-closeout.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-librarian-backlog-loop.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-librarian-backlog-loop.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-librarian-backlog-loop.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-supervisor-breach-detector.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-supervisor-breach-detector.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-supervisor-breach-detector.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-active-trader-motion.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-active-trader-motion.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-active-trader-motion.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-supervisor-breach-detector.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-supervisor-breach-detector.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-supervisor-breach-detector.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@alex.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@alex.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@alex.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-hermes-research-remediation.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-hermes-research-remediation.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-hermes-research-remediation.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-platform-maintenance-monthly.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-monthly.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-monthly.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-lessons-reflect.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-lessons-reflect.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-lessons-reflect.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-observation-check.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-observation-check.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-observation-check.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-operator-answer-quality.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-operator-answer-quality.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-operator-answer-quality.service",
+      "target_exists": true
+    },
+    {
+      "unit": "trade-ai-lab-moomoo-feature-engine.service",
+      "path": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-feature-engine.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-feature-engine.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-aec-command-center-cycle.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-aec-command-center-cycle.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-aec-command-center-cycle.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-slo-burn-rate.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-slo-burn-rate.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-slo-burn-rate.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-shadow-session.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-session.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-session.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-contradiction-adjudicator.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-contradiction-adjudicator.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-contradiction-adjudicator.service",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-weekly.service",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-weekly.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-weekly.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-maturity-feeds.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-maturity-feeds.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-maturity-feeds.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-n8n-run-executor.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-run-executor.service",
+      "is_symlink": true,
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-executor.service",
+      "target_exists": false
+    },
+    {
+      "unit": "hermes-backlog-health-check.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-backlog-health-check.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-backlog-health-check.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-holdings-agent-enqueue.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-holdings-agent-enqueue.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-holdings-agent-enqueue.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-health-agent.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-health-agent.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-health-agent.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-shadow-scorer.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-shadow-scorer.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-shadow-scorer.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-material-scan-dry.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-material-scan-dry.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-material-scan-dry.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-stance-organic-observe.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-stance-organic-observe.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-stance-organic-observe.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-holdings-agent-enqueue.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-holdings-agent-enqueue.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-holdings-agent-enqueue.service",
+      "target_exists": true
+    },
+    {
+      "unit": "openclaw-gateway.service",
+      "path": "/home/johnclaw/.config/systemd/user/openclaw-gateway.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/openclaw-gateway.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-watch-decision-scheduler.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-watch-decision-scheduler.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-watch-decision-scheduler.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-source-discovery-dryrun.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-source-discovery-dryrun.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-source-discovery-dryrun.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-eod-consolidated-close.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-eod-consolidated-close.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-eod-consolidated-close.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-lookthrough.timer",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-lookthrough.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-lookthrough.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-momentum-catalyst-morning.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-momentum-catalyst-morning.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-momentum-catalyst-morning.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-edge-fanout-consumer.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-edge-fanout-consumer.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-edge-fanout-consumer.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-flash-watchlist-daily.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-flash-watchlist-daily.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-flash-watchlist-daily.service",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-lookthrough.service",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-lookthrough.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-lookthrough.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-backup-cadence.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-backup-cadence.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-backup-cadence.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "trade-ai-lab-moomoo-opend.service",
+      "path": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-opend.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-opend.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-governance-facts.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-governance-facts.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-governance-facts.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-free-first-circulation.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-free-first-circulation.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-free-first-circulation.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-governance-status.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-governance-status.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-governance-status.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-embedding-promotion-review.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-embedding-promotion-review.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-embedding-promotion-review.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-delivery.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-delivery.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-delivery.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-served-copy-split.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-served-copy-split.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-served-copy-split.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-sm-render.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-sm-render.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-sm-render.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@vega.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@vega.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@vega.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-platform-maintenance-weekly.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-weekly.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-weekly.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-monthly.service",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-monthly.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-monthly.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-main-desk-free-llm-weekly.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-main-desk-free-llm-weekly.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-main-desk-free-llm-weekly.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-weekly-disk-cleanup.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-weekly-disk-cleanup.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-weekly-disk-cleanup.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@risk_agent.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@risk_agent.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@risk_agent.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-research-lane-health.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-research-lane-health.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-research-lane-health.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-nightly-reflection.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-nightly-reflection.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-nightly-reflection.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-governance-status.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-governance-status.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-governance-status.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-daily-cadence.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-daily-cadence.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-daily-cadence.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-material-scan.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-material-scan.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-material-scan.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-backup-cadence.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-backup-cadence.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-backup-cadence.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-provider-cost-reconcile.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-provider-cost-reconcile.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-provider-cost-reconcile.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-aec-command-center-cycle.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-aec-command-center-cycle.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-aec-command-center-cycle.service",
+      "target_exists": true
+    },
+    {
+      "unit": "trade-ai-lab-moomoo-health-monitor.service",
+      "path": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-health-monitor.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-health-monitor.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-telegram-callback-poller.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-telegram-callback-poller.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-telegram-callback-poller.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-lookthrough-cadence.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-lookthrough-cadence.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-lookthrough-cadence.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-data-plausibility.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-data-plausibility.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-data-plausibility.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-monthly-cadence.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-monthly-cadence.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-monthly-cadence.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "trade-ai-lab-moomoo-replay-writer.service",
+      "path": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-replay-writer.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/trade-ai-lab-moomoo-replay-writer.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-autonomy-watchdog.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-autonomy-watchdog.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-autonomy-watchdog.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-operator-answer-quality.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-operator-answer-quality.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-operator-answer-quality.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-xai-proxy.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-xai-proxy.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-xai-proxy.service",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-daily.service",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-daily.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-daily.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-n8n-lab-watchdog.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-lab-watchdog.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-n8n-lab-watchdog.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-backup.service",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-backup.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-backup.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-source-litmus.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-source-litmus.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-source-litmus.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-weekly-disk-cleanup.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-weekly-disk-cleanup.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-weekly-disk-cleanup.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-autonomous-loop.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-autonomous-loop.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-autonomous-loop.service",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-server.service",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-server.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-server.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-health-tick.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-health-tick.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-health-tick.service",
+      "target_exists": true
+    },
+    {
+      "unit": "cio-governed-bridge.service",
+      "path": "/home/johnclaw/.config/systemd/user/cio-governed-bridge.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/cio-governed-bridge.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-finviz-view-contracts.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-finviz-view-contracts.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-finviz-view-contracts.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-reactive.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-reactive.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-reactive.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-hermes-cio-worker.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-hermes-cio-worker.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-hermes-cio-worker.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-data-source-health.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-data-source-health.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-data-source-health.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-backlog-health-check.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-backlog-health-check.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-backlog-health-check.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-autonomy-watchdog.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-autonomy-watchdog.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-autonomy-watchdog.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-health-tick.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-health-tick.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-health-tick.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-advisory-shadow-session.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-session.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-advisory-shadow-session.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@argus.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@argus.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@argus.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@darwin.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@darwin.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@darwin.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@pulse.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@pulse.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@pulse.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-eod-consolidated-close.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-eod-consolidated-close.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-eod-consolidated-close.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-sm-render.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-sm-render.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-sm-render.service",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-daily.timer",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-daily.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-daily.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-deep-research-local.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-deep-research-local.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-deep-research-local.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-research-lane-health.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-research-lane-health.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-research-lane-health.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "portfolio-weekly.timer",
+      "path": "/home/johnclaw/.config/systemd/user/portfolio-weekly.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/portfolio-weekly.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-material-scan.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-material-scan.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-material-scan.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-platform-maintenance-nightly.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-nightly.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-platform-maintenance-nightly.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-cio-delivery-shadow.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-cio-delivery-shadow.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-cio-delivery-shadow.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-operator-readiness.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-operator-readiness.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-operator-readiness.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-update-check.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-update-check.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-update-check.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime-producer.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-producer.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime-producer.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-expected-services.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-expected-services.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-expected-services.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-lab-postgres.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-lab-postgres.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-lab-postgres.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-gir-projector.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-gir-projector.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-gir-projector.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-hermes-cio-worker.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-hermes-cio-worker.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-hermes-cio-worker.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@maria.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@maria.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@maria.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-continuous.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-continuous.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-continuous.service",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-librarian-retention.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-librarian-retention.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-librarian-retention.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-observation-check.service",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-observation-check.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-observation-check.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-gap-resolution.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-gap-resolution.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-gap-resolution.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-finviz-view-contracts.service",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-finviz-view-contracts.service",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-finviz-view-contracts.service",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-data-source-health.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-data-source-health.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-data-source-health.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-agent-runtime@hermes.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@hermes.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-agent-runtime@hermes.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-intelligence-remediation.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-intelligence-remediation.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-intelligence-remediation.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-portfolio-lookthrough-cadence.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-lookthrough-cadence.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-portfolio-lookthrough-cadence.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "tradeai-gir-projector.timer",
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-gir-projector.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/tradeai-gir-projector.timer",
+      "target_exists": true
+    },
+    {
+      "unit": "hermes-autonomous-loop.timer",
+      "path": "/home/johnclaw/.config/systemd/user/hermes-autonomous-loop.timer",
+      "is_symlink": false,
+      "target": "/home/johnclaw/.config/systemd/user/hermes-autonomous-loop.timer",
+      "target_exists": true
+    }
+  ]
+}

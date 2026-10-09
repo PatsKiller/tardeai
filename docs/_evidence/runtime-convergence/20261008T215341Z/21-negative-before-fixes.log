@@ -1,0 +1,53 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+________________ test_office_truth_is_not_replaceable_by_memory ________________
+
+cio = PosixPath('/tmp/pytest-of-johnclaw/pytest-109472/test_office_truth_is_not_repla0/data/cio')
+
+    def test_office_truth_is_not_replaceable_by_memory(cio):
+        _write(cio / "memory_contexts.jsonl", [{
+            "context_id": "ctx-price", "price": 999.0, "holdings": {"AAA": 10}, "cash": 1,
+            "summary": "remembered price", "created_at": "2026-10-01T10:00:00Z",
+        }])
+        # Metadata clocks may contain the digits of a withheld price.
+        import os
+        os.utime(cio / "memory_contexts.jsonl", ns=(1799999999999999999, 1799999999999999999))
+        block = _cognition(cio)
+        assert block["office_truth"]["sourced_from_memory"] is False
+        assert block["office_truth"]["replaceable_by_cognition"] is False
+        assert set(block["office_truth"]["categories"]) == {"price", "holdings", "cash", "orders", "broker_state", "risk_limits"}
+        item = block["items"][0]
+        assert item["office_truth_fields_withheld"] == ["cash", "holdings", "price"]
+        assert "price" not in item and "holdings" not in item and "cash" not in item
+        assert item["authority"] == "NON_AUTHORITATIVE_CONTEXT"
+>       assert "999" not in json.dumps(block)
+E       assert '999' not in '{"office_tr...r_evidence"}'
+E
+E         '999' is contained here:
+E         ?           ^^^^^^^^^^^^^^^^^^
+E           9999999999999", "source_as_of": "2026-10-01T10:00:00Z", "row_count": 1, "row_scope": "RECENT_WINDOW", "evidence_class": "DURABLE_RUNTIME_ARTIFACT"}, {"source": "intelligence_lineages.jsonl", "source_ref": "/tmp/pytest-of-johnclaw/pytest-109472/test_office_truth_is_not_repla0/data/cio/intelligence_lineages.jsonl", "source_sha": null, "source_version": null, "source_as_of": null, "row_count": 0, "row_scope": "RECENT_WINDOW", "evidence_class": "UNAVAILABLE"}, {"source": "context_use_receipts.jsonl", "source_ref": "/tmp/pytest-of-johnclaw/py...
+E
+E         ...Full output truncated (2 lines hidden), use '-vv' to show
+
+tests/test_cio_operator_evidence_receipts_20261002.py:164: AssertionError
+_____________ test_mismatched_or_future_receipt_never_proves_live ______________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-109472/test_mismatched_or_future_rece0')
+
+    def test_mismatched_or_future_receipt_never_proves_live(tmp_path):
+        import os
+        out=tmp_path/'data/result.json';out.parent.mkdir();out.write_text('{}')
+        os.utime(out,(NOW.timestamp(),NOW.timestamp()))
+        base={'lane_id':'test-lane','run_id':'run-1','mode':'live','state':'RUN_DONE','exit_code':0,'requested_at':NOW.isoformat(),'finished_at':NOW.isoformat()}
+        for bad in ({'lane_id':'other'}, {'run_id':'other'}, {'mode':'dry_run'}, {'schema':'Unknown'}, {'exit_code':1}, {'finished_at':'2027-01-01T00:00:00Z'}):
+            receipt={'schema':'RunReceipt@v1','lane_id':'test-lane','run_id':'run-1','mode':'live','state':'RUN_DONE','exit_code':0,'finished_at':NOW.isoformat()}
+            row=project(tmp_path,[lane()],observations('*/5 * * * * python scripts/test_lane.py'),[{**base,'receipt':{**receipt,**bad}}])['rows'][0]
+>           assert row['runtime_state']!='LIVE', bad
+E           AssertionError: {'lane_id': 'other'}
+E           assert 'LIVE' != 'LIVE'
+
+tests/test_scheduler_operations.py:267: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_cio_operator_evidence_receipts_20261002.py::test_office_truth_is_not_replaceable_by_memory
+FAILED tests/test_scheduler_operations.py::test_mismatched_or_future_receipt_never_proves_live
+2 failed in 0.35s

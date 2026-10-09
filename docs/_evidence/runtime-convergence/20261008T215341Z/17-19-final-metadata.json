@@ -1,0 +1,83 @@
+{
+  "as_of": "2026-10-08T23:19:23.597175+00:00",
+  "evidence_class": "OBSERVED_DB",
+  "queries": {
+    "native_vectors": {
+      "sql": "SELECT count(*) AS total_rows,count(*) FILTER(WHERE vec IS NOT NULL) AS vector_rows,pg_total_relation_size('intelligence.embedding') AS bytes FROM intelligence.embedding",
+      "rows": [
+        {
+          "total_rows": 0,
+          "vector_rows": 0,
+          "bytes": 16384
+        }
+      ]
+    },
+    "json_embedding_population": {
+      "sql": "SELECT count(*) AS total_rows,count(*) FILTER(WHERE embedding IS NOT NULL) AS json_embedding_rows,count(*) FILTER(WHERE embedding IS NULL) AS null_embedding_rows FROM content_embeddings",
+      "rows": [
+        {
+          "total_rows": 1322836,
+          "json_embedding_rows": 1322836,
+          "null_embedding_rows": 0
+        }
+      ]
+    }
+  },
+  "file_queues": [
+    {
+      "path": "data/cio/hermes_research_requests.jsonl",
+      "exists": true,
+      "evidence_class": "NOT_MEASURED"
+    },
+    {
+      "path": "data/cio/hermes_challenge_queue.jsonl",
+      "exists": true,
+      "evidence_class": "OBSERVED_HOST",
+      "record_count": 1034,
+      "status_counts": {
+        "UNKNOWN": 1034
+      },
+      "size_bytes": 1105358,
+      "mtime": "2026-10-08T14:01:15.627812+00:00",
+      "note": "Event row counts are not materialized pending queue lengths; payloads excluded."
+    },
+    {
+      "path": "data/cio/agent_handoffs.jsonl",
+      "exists": false,
+      "evidence_class": "NOT_MEASURED"
+    },
+    {
+      "path": "data/cio/persistent_agent_wake.jsonl",
+      "exists": false,
+      "evidence_class": "NOT_MEASURED"
+    },
+    {
+      "path": "data/cio/approval_queue.jsonl",
+      "exists": false,
+      "evidence_class": "NOT_MEASURED"
+    },
+    {
+      "path": "logs/claude_escalation_queue.json",
+      "exists": true,
+      "evidence_class": "OBSERVED_HOST",
+      "record_count": 36,
+      "status_counts": {
+        "UNKNOWN": 27,
+        "warning": 9
+      },
+      "size_bytes": 9214,
+      "mtime": "2026-10-08T23:15:33.496203+00:00",
+      "note": "Event row counts are not materialized pending queue lengths; payloads excluded."
+    },
+    {
+      "path": "data/watchlist_research_queue.json",
+      "exists": false,
+      "evidence_class": "NOT_MEASURED"
+    },
+    {
+      "path": "data/runtime/hermes_embedding_queue.json",
+      "exists": false,
+      "evidence_class": "NOT_MEASURED"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "as_of": "2026-10-08 23:30:56 UTC",
+  "evidence_class": "OBSERVED_N8N",
+  "commands": [
+    {
+      "command": "docker exec m8m-n8n n8n --version",
+      "result": "2.43.0"
+    },
+    {
+      "command": "curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:5678/healthz",
+      "http_status": 200
+    },
+    {
+      "command": "curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:5678/metrics",
+      "http_status": 404
+    }
+  ],
+  "note": "Endpoint statuses only; no response payload or credentials. Metrics endpoint is not exposed at the measured root path. Tool wall times are not HTTP latency evidence."
+}

@@ -1,0 +1,133 @@
+{
+  "schema": "RuntimeRemediationPlan@v1",
+  "rows": [
+    {
+      "priority": "P1",
+      "classification": "FIX_NOW_SOURCE",
+      "finding": "n8n frozen root/restart verification",
+      "action": "Default deployment source covers relay/executor; restart/root mismatches now fail"
+    },
+    {
+      "priority": "P1",
+      "classification": "FIX_NOW_SOURCE",
+      "finding": "governance dev PROJ",
+      "action": "Three wrappers resolve installed release from BASH_SOURCE"
+    },
+    {
+      "priority": "P1",
+      "classification": "FIX_NOW_SOURCE",
+      "finding": "honest scheduler projection",
+      "action": "Matching receipts, output freshness, mode separation, nullable unknowns, partial discovery"
+    },
+    {
+      "priority": "P2",
+      "classification": "FIX_NOW_SOURCE",
+      "finding": "operator view visibility",
+      "action": "Read-only table/filter/timeline/fixture CI, no live deploy"
+    },
+    {
+      "priority": "P2",
+      "classification": "FIX_NOW_SOURCE",
+      "finding": "retired Ollama / monitor source intent",
+      "action": "Retired system lane and explicit NO_SIGNAL monitor reasons"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_OPERATOR_GRANT",
+      "finding": "n8n missing unit definitions",
+      "action": "Stable regular unit copies, daemon reload and restart exact approved release"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_OPERATOR_GRANT",
+      "finding": "Ollama system service still running",
+      "action": "Retirement stop/disable only after residual consumer decision; no automatic re-enable"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_OPERATOR_GRANT",
+      "finding": "MFA / Postgres superuser / API",
+      "action": "Owner MFA only; isolated PG17 role/migration; compose API disable and healthcheck"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_DESIGN",
+      "finding": "unmatched registry and incomplete ACTIVE chains",
+      "action": "395 unmatched observations need process ownership/contracts; no invented rows"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_DESIGN",
+      "finding": "N1 natural proof retention and current pin",
+      "action": "Two natural fires after all fixes, green metadata + receipts, live canary + per-lane rollback"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_DESIGN",
+      "finding": "N2 receipt gating defects",
+      "action": "Actual reviewed JS accepts shadow, exit1, future predecessor; no merge/cutover"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_DESIGN",
+      "finding": "quote shared-lock collision",
+      "action": "Compare command flags/consumer contract; do not justify duplicates with locks"
+    },
+    {
+      "priority": "P2",
+      "classification": "NEEDS_DESIGN",
+      "finding": "runtime vs cadence and lock skips",
+      "action": "Quotes ~58.1%, ATM ~9.5% observed skip ratios; derive family SLA before cadence change"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_DESIGN",
+      "finding": "dev-root portfolio children",
+      "action": "Exact six-launcher source list; preserve state/send authority; no blind wrapper rewrite"
+    },
+    {
+      "priority": "P1",
+      "classification": "NEEDS_DESIGN",
+      "finding": "queue exclusivity and old claims",
+      "action": "Measure claims/reclaimers/inflow; SELECT-then-UPDATE source needs original lock proof"
+    },
+    {
+      "priority": "P2",
+      "classification": "NEEDS_DESIGN",
+      "finding": "OAuth-first scope and embedding replacement",
+      "action": "No global reordering of DeepSeek-only/free-only contracts; no chat vectors substitute"
+    },
+    {
+      "priority": "P2",
+      "classification": "NEEDS_DESIGN",
+      "finding": "JSON embedding/vector migration",
+      "action": "1.32M JSON rows, 0 native vector rows; separate operator schema/volume/backfill decision"
+    },
+    {
+      "priority": "P0",
+      "classification": "RETAIN_WITH_REASON",
+      "finding": "independent broker/safety/recovery",
+      "action": "No consolidation/mutations; financial runtime acceptance not inferred"
+    },
+    {
+      "priority": "P3",
+      "classification": "RETAIN_WITH_REASON",
+      "finding": "shared interpreter and disjoint session reviews",
+      "action": "Shared venv is intentional; separate 12:05/16:10 windows remain"
+    },
+    {
+      "priority": "P3",
+      "classification": "NO_ACTION",
+      "finding": "HTTP backlog historical defect",
+      "action": "Current source already backlog64; fixture64 burst passed; no unnecessary rewrite"
+    },
+    {
+      "priority": "P2",
+      "classification": "RETIRE",
+      "finding": "Ollama runtime intent",
+      "action": "Operator-stated retirement; apply only with exact service/consumer grant"
+    }
+  ],
+  "FIX_NOW_SAFE_RUNTIME": "NONE: no separately authorized runtime mutations were available",
+  "live_actions_applied": false
+}

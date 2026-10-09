@@ -5,6 +5,27 @@
   "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink — the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours → holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00. 2026-10-07: cron consolidation ranks 3-4 + tranche C install; 15 baseline entries pruned with their crontab deletion (the 9 absorbed lines that live in the 2026-09-28 inherited tranche stay in that pinned record and are named in the health-tick / platform-maintenance-* state_reason).",
   "lanes": [
     {
+      "lane_id": "ollama-retired-host-runtime",
+      "business_domain": "model-runtime",
+      "owner": "platform",
+      "state": "RETIRED",
+      "state_since": "2026-10-08",
+      "state_reason": "Operator instruction in this runtime-convergence task: Ollama is retired. Source records retirement intent; it does not stop or disable the observed active host service.",
+      "scheduler": {
+        "kind": "systemd",
+        "scope": "system",
+        "expression": "ollama.service"
+      },
+      "expected_cadence_hours": 24.0,
+      "output_signal": {
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: retired runtime; no business output or freshness is expected"
+      },
+      "consumer": "none (retired)",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator statement 2026-10-08; OBSERVED_HOST systemctl list-units in runtime-convergence/20261008T215341Z/00-host.json still reports active/running; stop/disable needs operator grant."
+    },
+    {
       "lane_id": "n8n-monitor-trade-ai",
       "owner": "platform",
       "scheduler": {
@@ -16,7 +37,8 @@
       "expected_cadence_hours": 0.08333333333333333,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id s57KBllvqf6Jb5xF, Schedule Every 5 minutes -> GET build-meta. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10e7c19321c906a is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
       "state_since": "2026-10-08"
@@ -33,7 +55,8 @@
       "expected_cadence_hours": 0.08333333333333333,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id GXwhbRkwsGcYZxgn, Schedule Every 5 minutes -> GET run-scope. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10087387b964e87 is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
       "state_since": "2026-10-08"
