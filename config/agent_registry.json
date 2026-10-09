@@ -349,6 +349,29 @@
       ],
       "model_caller": null,
       "status": "ACTIVE"
+    },
+    {
+      "agent_id": "n8n",
+      "aliases": [
+        "n8n-relay",
+        "n8n_relay",
+        "m8m-n8n"
+      ],
+      "role": "n8n lab scheduler / requester actor (AGENTS.md 3.0.0 §23.10 P20): fires allowlisted lanes through the relay -> coordination gateway; not an LLM agent, never a broker or sender",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "SCHEDULER",
+      "authority": "READ_ONLY_ADVISORY",
+      "gateway_scopes": [
+        "coordination_run",
+        "coordination_read"
+      ],
+      "broker": false,
+      "send": false,
+      "client_registry": "config/agent_clients.yaml#n8n",
+      "lane_source": "config/lane_registry.json rows with scheduler.kind n8n (lanes are declared there, not here)"
     }
   ],
   "superseded_lists": {

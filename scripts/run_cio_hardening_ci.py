@@ -3564,6 +3564,20 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_AGENT_GATE_GOVERNANCE — 2026-10-09 AGENTS.md 3.0.0 §23.10 preconditions before any n8n
+        # Agent node: P16 activation attribution (n8n publish evidence vs guard grants naming the workflow id),
+        # P17 registry-first (active n8n workflows are a lane-registry discovery source; UNDECLARED_N8N_WORKFLOW
+        # fails --fail-on-new), P18 git-vs-live workflow drift, P20 n8n identity rows + gateway denylist parity
+        # with agent_runtime_mvl global_denied_tools. Hermetic: fixtures under tmp_path, fake psql runner.
+        "n8n_agent_gate_governance_20261009",
+        [
+            "tests/test_n8n_registry_first_20261009.py",
+            "tests/test_n8n_workflow_drift_20261009.py",
+            "tests/test_n8n_activation_grants_20261009.py",
+            "tests/test_n8n_agent_identity_parity_20261009.py",
+        ],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
