@@ -168,8 +168,12 @@ def main(argv=None) -> int:
     t0 = datetime.now(ET)
     scored = run_live_cycle(ROOT, RUN_LABEL, day, st, now.strftime("%H:%M"), publish_dashboard=False,
                             enrich_budget_s=enrich_budget(), bulk_catalysts=bulk_catalysts())
+    if not isinstance(scored, list) or any(not isinstance(row, dict) for row in scored):
+        print(f"[scalp-live] cycle failed label={RUN_LABEL}: no valid scored result", file=sys.stderr)
+        write_receipt("cycle_failed", datetime.now(ET), seconds=(datetime.now(ET) - t0).total_seconds())
+        return 1
     save_state(day, st)
-    n = write_projection(scored, datetime.now(ET)) if scored else 0
+    n = write_projection(scored, datetime.now(ET))
     write_receipt("ok", datetime.now(ET), universe=n, go=len(st.prev_go),
                   seconds=(datetime.now(ET) - t0).total_seconds())
     print(f"[scalp-live] heartbeat ok label={RUN_LABEL} go={len(st.prev_go)} universe={n} "

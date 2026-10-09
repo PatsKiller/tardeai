@@ -29,8 +29,9 @@ Rules (fail-closed):
     only when ``RESEARCH_FREE_FALLBACK`` is on — ``free_search.search`` (free,
     metered in the same ledger). Neither opens a socket in this module.
   * A research object is created only after a real provider result is returned.
-  * Dedupe by stable identity (research_id == idempotency key); a duplicate
-    result never writes a second feed row.
+  * Wake-feed identity is subject + canonical URL + article content, independent
+    of scheduler capture time. Existing feed identities are never rewritten.
+    Publication-based ResearchObject identity is retained as research_record_id.
   * ``nothing eligible`` (no targets) is reported separately from ``broken``
     (provider unavailable / budget denied / corrupt quota).
   * Feed writes are atomic (tmp + rename); the feed is append-only.
@@ -48,6 +49,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
+from uuid import NAMESPACE_URL, uuid5
 
 SCHEMA = "GovernedResearchProducer@v1"
 FEATURE_FLAG = "GOVERNED_RESEARCH_PRODUCER_ENABLED"
@@ -148,12 +150,36 @@ def _load_feed(path: Path) -> list[dict]:
     return rows
 
 
+def _feed_article_id(row: Mapping[str, Any]) -> str | None:
+    """Version article content in this feed without changing ResearchObject IDs.
+
+    Search results lack publication dates, so the general object builder uses
+    capture time for its record identity. The recurring feed needs the same
+    unchanged article to stay consumed across later scheduler fires/releases.
+    Include content to keep revisions, and subject to keep separate consumers.
+    Legacy rows already carry these fields; derive their keys without re-minting
+    or rewriting any persisted identity.
+    """
+    from scripts.lib.campaign_interfaces_c import canonical_url
+
+    subject = str(row.get("subject_guid") or "").strip()
+    url = str(row.get("source_url_canonical") or row.get("source_url") or "").strip()
+    content = str(row.get("content_hash") or "").strip()
+    if not subject or not url or not content:
+        return None
+    key = json.dumps([subject, canonical_url(url), content], separators=(",", ":"))
+    return str(uuid5(NAMESPACE_URL, "GovernedResearchFeedArticle@v1:" + key))
+
+
 def _feed_ids(path: Path) -> set[str]:
     out: set[str] = set()
     for row in _load_feed(path):
         rid = str(row.get("research_object_id") or row.get("id") or row.get("research_id") or "")
         if rid:
             out.add(rid)
+        article_id = _feed_article_id(row)
+        if article_id:
+            out.add(article_id)
     return out
 
 
@@ -229,10 +255,12 @@ def _build_feed_row(
     hash, created time, source SHA, and trigger provenance.
     """
     d = ro.to_dict() if hasattr(ro, "to_dict") else dict(ro)
-    rid = str(d.get("research_id") or "")
+    record_id = str(d.get("research_id") or "")
+    rid = _feed_article_id(d) or record_id
     return {
         "research_object_id": rid,
         "id": rid,
+        "research_record_id": record_id,
         "subject_guid": str(subject_guid),
         "symbol": symbol,
         "source_url": d.get("source_url"),
@@ -374,7 +402,7 @@ def produce_research(
                     # Deferring the amendment inverts it. A crash before the append now
                     # leaves spilled_to null — which is TRUE, nothing was durably
                     # answered — the monitor counts it, and the next scheduled pass
-                    # re-asks the same query and dedupes by research_id if it lands
+                    # re-asks the same query and dedupes by feed article identity if it lands
                     # twice. The failure mode becomes loud, honest, and self-healing.
                     if resp.receipt:
                         pending_spill = (resp.receipt, free.provider)
@@ -421,16 +449,16 @@ def produce_research(
                 clock=clock,
                 provenance_extra={"trigger": trigger, "reservation_id": resp.reservation_id},
             )
-            rid = ro.research_id
+            row = _build_feed_row(ro, symbol=sym, subject_guid=sg, sha=sha, trigger=trigger)
+            rid = row["research_object_id"]
             if rid in feed_id_set:
                 deduped += 1
-                durable_here += 1   # already on disk from an earlier pass
+                durable_here += 1  # already on disk from an earlier pass
                 continue
-            row = _build_feed_row(ro, symbol=sym, subject_guid=sg, sha=sha, trigger=trigger)
             new_rows.append(row)
             feed_id_set.add(rid)
             produced += 1
-            durable_here += 1       # pending the append below
+            durable_here += 1  # pending the append below
             last_success = _iso(now)
 
         if pending_spill:
