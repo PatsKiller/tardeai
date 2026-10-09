@@ -3589,8 +3589,9 @@ GATES = [
     ),
     (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
+        # 2026-10-09 B2-D2: env allowlist (dedicated EnvironmentFile render, strict fail-closed, scrub).
         "N8N_RUN_RELAY",
-        ["tests/test_n8n_run_relay_20261008.py"],
+        ["tests/test_n8n_run_relay_20261008.py", "tests/test_n8n_relay_env_allowlist_20261009.py"],
     ),
     (
         # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only
