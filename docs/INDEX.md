@@ -1449,10 +1449,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md` | 19 — N1 cutover packet (2026-10-08) | review_required | OK | `1c12618061f9` |
 | `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |
 | `docs/implementation/n8n-parallel/21-agent2-w2-n6-20261008.md` | Agent 2 W2 — N6 schedules and explicit activation blockers | review_required | OK | `5fd263547725` |
+| `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md` | Guardrail Audit A — Config/Data guardrails vs the n8n path | review_required | MISSING HEADER | `83561a170728` |
+| `docs/implementation/n8n-parallel/audits/guardrail-audit-b-code-20261009.md` | Guardrail Audit B: code and runtime enforcement (2026-10-09) | review_required | MISSING HEADER | `a5936ee4f201` |
+| `docs/implementation/n8n-parallel/audits/guardrail-audit-c-policy-n8n-20261009.md` | Guardrail Audit C: policy and procedure rails, and n8n-side controls | review_required | OK | `b463c91f9e86` |
 | `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `9d5cc13f4722` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
 | `docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md` | Proposal S2 — DOF app exposure and database role | review_required | OK | `df85877b88a0` |
+| `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md` | Proposal — AGENTS.md 3.0.0: governed LLM and Agent capability in n8n (2026-10-09) | review_required | OK | `705dce33f2cc` |
 | `docs/implementation/n8n-parallel/proposals/config-write-grant-n1-20261008.md` | Config-write grant packet — N1 night (2026-10-08) | review_required | OK | `d766579de909` |
 | `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `77196f9bf014` |
 | `docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md` | Cron consolidation RANK 4 — platform maintenance pipeline (PROPOSAL) | review_required | OK | `91ba4c978d19` |
