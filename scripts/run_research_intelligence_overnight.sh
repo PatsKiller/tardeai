@@ -17,7 +17,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PROJ="$(pwd)"
-PY="${PROJ}/.venv/bin/python"
+# 2026-10-09: release directories have no .venv, so "${PROJ}/.venv/bin/python" made every step fail since
+# the CURRENT cutover ("flock: failed to execute .../CURRENT/.venv/bin/python", logged as SKIP/FAIL lock busy).
+# Same order as market_day_gate.sh: $TRADEAI_VENV_PYTHON, a local venv, the canonical venv, then python3.
+PY=""
+for cand in "${TRADEAI_VENV_PYTHON:-}" "${PROJ}/.venv/bin/python" "$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"; do
+  if [[ -n "$cand" && -x "$cand" ]]; then PY="$cand"; break; fi
+done
+PY="${PY:-python3}"
 LOG_DIR="${PROJ}/logs"
 mkdir -p "$LOG_DIR"
 LOG="${LOG_DIR}/ri_overnight.log"
@@ -54,7 +61,7 @@ run_step() {
   if flock -n "/tmp/ri_overnight_${name}.lock" "$@"; then
     log "OK $name"
   else
-    log "SKIP/FAIL $name (lock busy or exit non-zero)"
+    log "SKIP/FAIL $name (lock busy or exit non-zero; PY=$PY)"
   fi
 }
 

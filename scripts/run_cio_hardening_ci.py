@@ -3736,6 +3736,14 @@ GATES = [
             "tests/test_retention_source_windows_junk_20261009.py",
         ],
     ),
+    (
+        # 2026-10-09 cron audit, stale/silent jobs: document_mentions watermark + budget + flushed log;
+        # job_coverage_monitor schedule-aware (last due fire), systemd timers, dev-tree logs, moved schedulers;
+        # schwab stream reconnects while open + line-buffered log; ri_overnight / paper post-close processors
+        # resolve a real interpreter in release dirs; BOOK checkpoints never price-resolvable.
+        "cron_stale_fixes_20261009",
+        ["tests/test_cron_stale_fixes_20261009.py"],
+    ),
 ]
 
 

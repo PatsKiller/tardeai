@@ -365,14 +365,14 @@ class AlpacaPaperAdapter:
             try:
                 import subprocess
                 subprocess.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                    [sys.executable,  # release dirs have no .venv
                      str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
                     cwd=str(PROJECT_ROOT),
                     stdout=open(str(PROJECT_ROOT / "logs/post_trade_thesis_auto.log"), "a"),
                     stderr=subprocess.STDOUT,
                 )
                 subprocess.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                    [sys.executable,  # release dirs have no .venv
                      str(PROJECT_ROOT / "scripts/paper_outcome_analytics.py"), "--since", "7", "--apply"],
                     cwd=str(PROJECT_ROOT),
                     stdout=open(str(PROJECT_ROOT / "logs/paper_outcome_analytics_auto.log"), "a"),

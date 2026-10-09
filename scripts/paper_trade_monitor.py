@@ -603,7 +603,7 @@ def monitor(dry_run=False):
             conn.commit()
             results.append({
                 "symbol": dbt['symbol'], "action": "phantom_closed",
-                "reason": f"DB open but no Alpaca position — auto-closed",
+                "reason": "DB open but no Alpaca position — auto-closed",
                 "pnl": _pnl, "pnl_pct": _pnl_pct, "r_multiple": _r_mult or 0,
             })
 
@@ -634,7 +634,7 @@ def monitor(dry_run=False):
             import subprocess
             # Thesis reviewer: compares plan vs actual, classifies thesis outcome
             subprocess.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [sys.executable,  # release dirs have no .venv
                  str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
                 cwd=str(PROJECT_ROOT),
                 stdout=open(str(PROJECT_ROOT / "logs/post_trade_thesis_auto.log"), "a"),
@@ -643,7 +643,7 @@ def monitor(dry_run=False):
             # Scored thesis review → trade_thesis_reviews (journal-learning lane). Idempotent
             # (skips already-reviewed trades); previously had no scheduled runner.
             subprocess.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [sys.executable,  # release dirs have no .venv
                  str(PROJECT_ROOT / "scripts/trade_thesis_review_engine.py"), "--apply", "--json"],
                 cwd=str(PROJECT_ROOT),
                 stdout=open(str(PROJECT_ROOT / "logs/trade_thesis_review_engine_auto.log"), "a"),
@@ -651,7 +651,7 @@ def monitor(dry_run=False):
             )
             # Outcome analytics: builds R-multiple, MFE/MAE, plan adherence stats
             subprocess.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [sys.executable,  # release dirs have no .venv
                  str(PROJECT_ROOT / "scripts/paper_outcome_analytics.py"), "--since", "7", "--apply"],
                 cwd=str(PROJECT_ROOT),
                 stdout=open(str(PROJECT_ROOT / "logs/paper_outcome_analytics_auto.log"), "a"),

@@ -97,7 +97,7 @@ def _run_post_close(trade_id, symbol):
     # Reconciliation
     try:
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"),
+            [sys.executable,  # release dirs have no .venv
              str(PROJECT_ROOT / "scripts/alpaca_paper_reconciler.py"), "--apply"],
             capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT),
         )
@@ -108,7 +108,7 @@ def _run_post_close(trade_id, symbol):
     # TCA (execution quality)
     try:
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"),
+            [sys.executable,  # release dirs have no .venv
              str(PROJECT_ROOT / "scripts/paper_execution_quality_analyzer.py"),
              "--recent", "--apply"],
             capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT),
@@ -120,7 +120,7 @@ def _run_post_close(trade_id, symbol):
     # Thesis review (outcome comparison → trade_thesis_outcomes)
     try:
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"),
+            [sys.executable,  # release dirs have no .venv
              str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
             capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT),
         )
@@ -134,7 +134,7 @@ def _run_post_close(trade_id, symbol):
     # only writes the just-closed trade (+ any un-reviewed backlog, bounded LIMIT 100).
     try:
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"),
+            [sys.executable,  # release dirs have no .venv
              str(PROJECT_ROOT / "scripts/trade_thesis_review_engine.py"), "--apply", "--json"],
             capture_output=True, text=True, timeout=180, cwd=str(PROJECT_ROOT),
         )
