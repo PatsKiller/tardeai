@@ -53467,6 +53467,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # Investment Command Center (operator 2026-10-09): flag a symbol for a CIO review (symbol-thesis priority queue)
+    if (
+        method == "POST"
+        and base_path.startswith("/api/v3/opportunities/")
+        and base_path.rstrip("/").endswith("/review-request")
+    ):
+        try:
+            import api_v3_opportunities as _opp
+
+            sym = base_path[len("/api/v3/opportunities/") :].strip("/").split("/")[0]
+            return _opp.request_review(sym, body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # Investment Command Center (operator 2026-10-08): curated opportunities from CIO memory — read-only
     if method == "GET" and base_path.startswith("/api/v3/opportunities/"):
         try:
