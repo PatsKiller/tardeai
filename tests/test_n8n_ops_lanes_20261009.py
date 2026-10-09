@@ -78,8 +78,15 @@ def fake_connect_factory(responder):
 
 @pytest.fixture(autouse=True)
 def _as_string(monkeypatch):
-    """psycopg2.sql objects need a connection for as_string; render identifiers plainly for the fake."""
-    from psycopg2 import sql
+    """psycopg2.sql objects need a connection for as_string; render identifiers plainly for the fake.
+
+    GitHub CI installs no Postgres driver: the fixture is then a no-op, and only the end-to-end drill
+    tests (which build psycopg2.sql) skip; every guard test is pure and still runs.
+    """
+    try:
+        from psycopg2 import sql
+    except ImportError:
+        return
 
     def render(obj, _ctx=None):
         if isinstance(obj, sql.Composed):
@@ -461,6 +468,7 @@ def _drill_responder(comment_holder):
 
 
 def test_run_drill_creates_restores_compares_then_drops_only_its_database():
+    pytest.importorskip("psycopg2")
     holder: dict = {}
     connect, log = fake_connect_factory(_drill_responder(holder))
     restored = []
@@ -477,6 +485,7 @@ def test_run_drill_creates_restores_compares_then_drops_only_its_database():
 
 
 def test_run_drill_drops_even_when_the_restore_blows_up():
+    pytest.importorskip("psycopg2")
     holder: dict = {}
     connect, log = fake_connect_factory(_drill_responder(holder))
 
@@ -489,6 +498,7 @@ def test_run_drill_drops_even_when_the_restore_blows_up():
 
 
 def test_run_drill_never_drops_when_the_marker_is_not_its_own():
+    pytest.importorskip("psycopg2")
     connect, log = fake_connect_factory(lambda text, params: [("someone else",)] if "shobj_description" in text else [])
     result = rd.run_drill(
         CFG["restore_drill"], _plan(), {"user": "drill", "dbname": "trade_ai"}, run_id="r1", connect=connect,
