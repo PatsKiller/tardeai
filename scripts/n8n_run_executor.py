@@ -23,6 +23,12 @@ moved nothing is visible as exactly that.
 
 This process never authenticates a caller, never binds a socket, never sends.
 Dry-run before live: the gateway's ``mode`` is passed through verbatim.
+
+2026-10-09 (n8n maturity B5.5, design 02 §5): executor v2 — ``ExecutorV2`` below. N worker threads
+(``--workers`` / ``TRADEAI_N8N_EXECUTOR_WORKERS``, default 3, max 8) with a per-lane lock in the ledger claim,
+class caps, a reserved priority worker, a stale-RUNNING reaper, verdict/DLQ/breaker via
+``n8n_retry_policy.finalize_outcome``, RunReceipt@v2 per run and ExecutorStatus@v1 as the last file.
+``TRADEAI_N8N_EXECUTOR_WORKERS=1`` is the rollback flag: the v1 serial ``drain`` and RunReceipt@v1, unchanged.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,8 +57,11 @@ if str(ROOT) not in sys.path:
 from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
     RUN_FINISHED_STATES,
     CoordinationLedger,
+    LedgerError,
     LedgerRunStore,
 )
+from scripts.lib.n8n_retry_policy import RetryPolicyError, finalize_outcome, load_policies  # noqa: E402
+from scripts.lib.n8n_retry_policy import verdict as retry_verdict  # noqa: E402
 from scripts.n8n_coordination_gateway import default_ledger_path  # noqa: E402
 
 RECEIPT_SCHEMA = "RunReceipt@v1"
@@ -336,7 +346,7 @@ def _finish(receipt: dict[str, Any], state: str, *, reason: str | None, started:
     return receipt
 
 
-def write_receipt(receipt: Mapping[str, Any], *, state_root: Path) -> Path:
+def write_receipt(receipt: Mapping[str, Any], *, state_root: Path, write_last: bool = True) -> Path:
     run_id = str(receipt["run_id"])
     if not RUN_ID_RE.fullmatch(run_id):
         run_id = re.sub(r"[^A-Za-z0-9._:-]", "_", run_id)[:128]
@@ -347,6 +357,8 @@ def write_receipt(receipt: Mapping[str, Any], *, state_root: Path) -> Path:
     tmp = out.with_suffix(".json.tmp")
     tmp.write_text(body, encoding="utf-8")
     os.replace(tmp, out)
+    if not write_last:  # executor v2: n8n_run_executor_last.json holds ExecutorStatus@v1 instead
+        return out
     last = state_root / LAST_REL
     last.parent.mkdir(parents=True, exist_ok=True)
     tmp = last.with_suffix(".json.tmp")
@@ -401,6 +413,436 @@ def drain(
     return out
 
 
+# ── Executor v2 (n8n maturity B5.5, design 02 §5, §3.4, F4/F10/F19) ─────────────────────────────────────────────
+# One process: a scheduler loop plus N worker threads, each running one subprocess (the unchanged build_argv
+# result). N = --workers / TRADEAI_N8N_EXECUTOR_WORKERS (default 3, max 8). ROLLBACK FLAG: N == 1 runs the v1
+# serial ``drain`` above, byte-for-byte the old behaviour and RunReceipt@v1. N >= 2: per-lane exclusivity in the
+# ledger claim (claim_next_v2), a global cap of N, class caps from config/n8n_retry_policies.json#class_caps, one
+# worker reserved for priority <= reserved_priority_max, a stale-RUNNING reaper (RUN_TIMEOUT executor_lost), the
+# verdict / dead letter / breaker through n8n_retry_policy.finalize_outcome, RunReceipt@v2 per run and
+# ExecutorStatus@v1 in n8n_run_executor_last.json every loop. Still never authenticates, binds or sends.
+
+RECEIPT_SCHEMA_V2 = "RunReceipt@v2"
+STATUS_SCHEMA = "ExecutorStatus@v1"
+WORKERS_ENV = "TRADEAI_N8N_EXECUTOR_WORKERS"
+DEFAULT_WORKERS = 3
+MAX_WORKERS = 8
+HEAVY_TIMEOUT_S = 1800  # an allowlist timeout_s at or above this derives class "heavy" when runs.class is NULL
+DEFAULT_CLASS = "report"
+NON_CLASS_CAP_KEYS = frozenset({"global", "reserved_priority_max"})
+HEARTBEAT_S = 30.0
+STALE_HEARTBEAT_S = 90.0
+REAP_EVERY_S = 60.0
+LOST_GRACE_S = 120.0
+LOST_REASON = "executor_lost"
+UNKNOWN_LANE_TIMEOUT_S = 3600
+DLQ_WINDOW_S = 86400.0
+V2_POLL_S = 2.0
+RETRY_POLICIES_REL = Path("config") / "n8n_retry_policies.json"
+
+
+def resolve_workers(cli_value: int | None, env: Mapping[str, str]) -> int:
+    """--workers, else TRADEAI_N8N_EXECUTOR_WORKERS, else 3; clamped to 1..8; an unparseable env value is 3."""
+    raw: Any = cli_value if cli_value is not None else env.get(WORKERS_ENV)
+    try:
+        n = int(raw) if raw not in (None, "") else DEFAULT_WORKERS
+    except (TypeError, ValueError):
+        n = DEFAULT_WORKERS
+    return max(1, min(MAX_WORKERS, n))
+
+
+def derived_class(entry: Mapping[str, Any] | None) -> str:
+    """Class for a run whose ``runs.class`` is NULL: heavy when the allowlist timeout_s >= 1800, else report."""
+    t = (entry or {}).get("timeout_s")
+    return "heavy" if isinstance(t, (int, float)) and not isinstance(t, bool) and t >= HEAVY_TIMEOUT_S else DEFAULT_CLASS
+
+
+def _dispatch_loader():
+    """The B5.2 registry dispatch-block parser when it has merged, else None."""
+    try:
+        from scripts.lib import lane_dispatch  # type: ignore[attr-defined]
+
+        fn = getattr(lane_dispatch, "parse_dispatch_block", None)
+        if callable(fn):
+            return fn
+    except ImportError:
+        pass
+    try:
+        from scripts.lib import lane_registry
+
+        fn = getattr(lane_registry, "parse_dispatch_block", None)
+        return fn if callable(fn) else None
+    except ImportError:
+        return None
+
+
+def _registry_row(lane_id: str, registry_rows) -> Mapping[str, Any] | None:
+    for row in registry_rows or ():
+        if isinstance(row, Mapping) and row.get("lane_id") == lane_id:
+            return row
+    return None
+
+
+def resolve_retry_policy(lane_id: str, policies, registry_rows=None):
+    """The lane's RetryPolicy: registry ``dispatch.retry_policy`` once the B5.2 loader is importable and names a
+    defined policy; otherwise ``policies.default_policy``."""
+    loader = _dispatch_loader()
+    row = _registry_row(lane_id, registry_rows)
+    if loader is not None and row is not None:
+        block: Any = None
+        try:
+            block = loader(row)
+        except Exception:  # noqa: BLE001 — a bad dispatch block falls back to the default, never crashes a run
+            block = None
+        if not isinstance(block, Mapping):
+            block = row.get("dispatch") if isinstance(row.get("dispatch"), Mapping) else {}
+        name = block.get("retry_policy") if isinstance(block, Mapping) else None
+        if isinstance(name, str) and name in policies.policies:
+            return policies.get(name)
+    return policies.get(None)
+
+
+def _lane_severity(lane_id: str, registry_rows) -> str | None:
+    watch = (_registry_row(lane_id, registry_rows) or {}).get("watch")
+    sev = watch.get("severity") if isinstance(watch, Mapping) else None
+    return sev if sev in ("P1", "P2", "P3") else None
+
+
+def pid_alive(pid: int | None) -> bool:
+    if not pid or int(pid) <= 0:
+        return False
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _ts(value: Any) -> float | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
+
+
+def heartbeat_runner(on_spawn, on_beat, heartbeat_s: float = HEARTBEAT_S):
+    """A runner (same contract as ``_subprocess_runner``) that reports the child pid on spawn and every
+    ``heartbeat_s`` while it runs, so the ledger row's heartbeat_at/pid stay fresh for the reaper."""
+
+    def run(argv: list[str], *, timeout: float, env: dict[str, str], cwd: Path):
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env, cwd=str(cwd))
+        on_spawn(proc.pid)
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                proc.kill()
+                proc.communicate()
+                raise subprocess.TimeoutExpired(argv, timeout)
+            try:
+                out, err = proc.communicate(timeout=min(heartbeat_s, remaining))
+                return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+            except subprocess.TimeoutExpired:
+                on_beat(proc.pid)
+
+    return run
+
+
+def upgrade_receipt(receipt: Mapping[str, Any], row: Mapping[str, Any], *, klass: str, priority: int,
+                    worker_id: str | None, verdict: str, retry_policy: str) -> dict[str, Any]:
+    """RunReceipt@v1 fields + the v2 dispatch fields. Pure."""
+    started, requested = _ts(row.get("started_at")), _ts(row.get("requested_at"))
+    out = dict(receipt)
+    out.update({
+        "schema": RECEIPT_SCHEMA_V2,
+        "slot_key": row.get("slot_key"),
+        "attempt": int(row.get("attempt") or 1),
+        "parent_run_id": row.get("parent_run_id"),
+        "class": klass,
+        "priority": int(priority),
+        "worker_id": worker_id,
+        "queue_wait_s": None if started is None or requested is None else round(max(0.0, started - requested), 3),
+        "verdict": verdict,
+        "retry_policy": retry_policy,
+    })
+    return out
+
+
+class ExecutorV2:
+    """Scheduler loop + N worker threads over one LedgerRunStore (design 02 §5). ``clock``, ``runner_factory``,
+    ``pid_alive`` and every interval are injectable so tests run on a fake clock with fake runners."""
+
+    def __init__(self, store: LedgerRunStore, allowlist: Mapping[str, Mapping[str, Any]], *, env: Mapping[str, str],
+                 state_root: Path, code_root: Path, workers: int, policies, registry_rows=None, clock=time.time,
+                 runner_factory=None, pid_alive=pid_alive, heartbeat_s: float = HEARTBEAT_S,
+                 stale_heartbeat_s: float = STALE_HEARTBEAT_S, reap_every_s: float = REAP_EVERY_S,
+                 lost_grace_s: float = LOST_GRACE_S, worker_prefix: str | None = None, quiet: bool = False) -> None:
+        if not 2 <= int(workers) <= MAX_WORKERS:
+            raise ValueError("ExecutorV2 needs 2..8 workers; 1 is the v1 serial drain")
+        self.store, self.allowlist, self.env = store, allowlist, env
+        self.state_root, self.code_root = state_root, code_root
+        self.workers, self.policies, self.registry_rows = int(workers), policies, registry_rows
+        self.clock, self.runner_factory, self.pid_alive = clock, runner_factory, pid_alive
+        self.heartbeat_s, self.stale_heartbeat_s = float(heartbeat_s), float(stale_heartbeat_s)
+        self.reap_every_s, self.lost_grace_s = float(reap_every_s), float(lost_grace_s)
+        self.quiet = quiet
+        self.caps = {k: int(v) for k, v in policies.class_caps.items() if k not in NON_CLASS_CAP_KEYS}
+        self.reserved_priority_max = int(policies.class_caps.get("reserved_priority_max", 1))
+        self.default_classes = {lane: derived_class(e) for lane, e in allowlist.items()}
+        self.worker_prefix = worker_prefix or f"{os.uname().nodename}:{os.getpid()}"
+        self._lock = threading.Lock()
+        self._slots: list[dict[str, Any] | None] = [None] * self.workers
+        self._threads: list[threading.Thread | None] = [None] * self.workers
+        self._wake = threading.Event()
+        self._last_reap: float | None = None
+        self.reaped_total = 0
+        self.receipts: list[dict[str, Any]] = []
+        self._findings: dict[str, dict[str, Any]] = {}
+        self._last_receipt: dict[str, Any] | None = None
+
+    # -- helpers --
+    def worker_id(self, i: int) -> str:
+        return f"{self.worker_prefix}:w{i}"
+
+    def class_of(self, row: Mapping[str, Any]) -> str:
+        return str(row.get("effective_class") or row.get("class") or self.default_classes.get(str(row["lane_id"]))
+                   or DEFAULT_CLASS)
+
+    def busy(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(s) for s in self._slots if s is not None]
+
+    def _log(self, doc: Mapping[str, Any]) -> None:
+        if not self.quiet:
+            print(json.dumps(dict(doc), default=str), flush=True)
+
+    # -- scheduler --
+    def step(self) -> int:
+        """One scheduler iteration: reap when due, fill free workers, write ExecutorStatus@v1. Returns runs started."""
+        now = self.clock()
+        if self._last_reap is None or now - self._last_reap >= self.reap_every_s:
+            self.reap(now)
+            self._last_reap = now
+        started = self.fill(self.clock())
+        self.write_status(self.clock())
+        return started
+
+    def fill(self, now: float) -> int:
+        started = 0
+        while True:
+            with self._lock:
+                free = [i for i, s in enumerate(self._slots) if s is None]
+            if not free:
+                return started
+            busy = self.workers - len(free)
+            counts: dict[str, int] = {}
+            for r in self.store.list_running():
+                k = self.class_of(r)
+                counts[k] = counts.get(k, 0) + 1
+            exclude = sorted(c for c, cap in self.caps.items() if counts.get(c, 0) >= cap)
+            # the last free worker is the reserved one: it only takes priority <= reserved_priority_max
+            max_p = self.reserved_priority_max if busy >= self.workers - 1 else None
+            i = free[0]
+            row = self.store.claim_next_v2(worker_id=self.worker_id(i), exclude_classes=exclude, max_priority=max_p,
+                                           now=now, default_classes=self.default_classes)
+            if row is None:
+                return started
+            self._start(i, row)
+            started += 1
+
+    def _start(self, i: int, row: dict[str, Any]) -> None:
+        slot = {"worker_id": self.worker_id(i), "run_id": str(row["run_id"]), "lane_id": str(row["lane_id"]),
+                "class": self.class_of(row), "priority": int(row.get("effective_priority") or 0),
+                "started_at": row.get("started_at")}
+        with self._lock:
+            self._slots[i] = slot
+        t = threading.Thread(target=self._work, args=(i, row, slot), name=f"n8n-exec-w{i}", daemon=True)
+        self._threads[i] = t
+        t.start()
+
+    def _work(self, i: int, row: dict[str, Any], slot: Mapping[str, Any]) -> None:
+        run_id = str(row["run_id"])
+        try:
+            def beat(pid: int | None) -> None:
+                try:
+                    self.store.touch_heartbeat(run_id, pid, self.clock())
+                except Exception:  # noqa: BLE001 — a missed beat is survivable; the reaper allows 3
+                    pass
+
+            factory = self.runner_factory or (lambda on_spawn, on_beat: heartbeat_runner(on_spawn, on_beat,
+                                                                                          self.heartbeat_s))
+            receipt = execute(row, self.allowlist.get(str(row["lane_id"])), env=self.env, state_root=self.state_root,
+                              code_root=self.code_root, runner=factory(beat, beat))
+            self.complete(row, receipt, klass=str(slot["class"]), priority=int(slot["priority"]),
+                          worker_id=str(slot["worker_id"]))
+        except Exception as exc:  # noqa: BLE001 — never lose a worker; the row stays RUNNING for the reaper
+            self._log({"run_id": run_id, "worker_error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+        finally:
+            with self._lock:
+                self._slots[i] = None
+            self._wake.set()
+
+    def complete(self, row: Mapping[str, Any], receipt: Mapping[str, Any], *, klass: str, priority: int,
+                 worker_id: str | None) -> dict[str, Any]:
+        """finish + verdict + finalize_outcome + receipt file for one executed (or reaped) run."""
+        lane = str(row["lane_id"])
+        policy = resolve_retry_policy(lane, self.policies, self.registry_rows)
+        exit_code = receipt.get("exit_code")
+        v = retry_verdict(str(receipt["state"]), exit_code if isinstance(exit_code, int) else None,
+                          receipt.get("reason"), policy)
+        out = upgrade_receipt(receipt, row, klass=klass, priority=priority, worker_id=worker_id, verdict=v,
+                              retry_policy=policy.name)
+        dead = False
+        try:
+            finished = self.store.finish(str(row["run_id"]), state=str(out["state"]), receipt=out, now=self.clock())
+        except LedgerError as exc:  # reaped (or finished) meanwhile: the ledger row already holds a verdict
+            out["finish_error"] = exc.reason
+        else:
+            outcome = finalize_outcome(self.store, finished, policy, breaker_threshold=self.policies.breaker_threshold,
+                                       now=self.clock(), severity=_lane_severity(lane, self.registry_rows))
+            dead = outcome.dead_letter is not None
+            with self._lock:
+                for f in outcome.findings:
+                    self._findings[str(f["item"])] = dict(f)
+        try:
+            write_receipt(out, state_root=self.state_root, write_last=False)
+        except OSError as exc:
+            self._log({"run_id": row["run_id"], "receipt_file": f"failed:{type(exc).__name__}"})
+        with self._lock:
+            self._last_receipt = out
+            self.receipts.append(out)
+            del self.receipts[:-200]
+        self._log({**{k: out.get(k) for k in ("run_id", "lane_id", "mode", "state", "exit_code", "duration_s",
+                                             "lock_skipped", "timed_out", "class", "priority", "worker_id",
+                                             "verdict")}, "dead_letter": dead})
+        return out
+
+    # -- reaper (F4) --
+    def reap(self, now: float) -> list[dict[str, Any]]:
+        """RUNNING rows not owned by a live worker here whose heartbeat is stale and pid dead, or whose
+        started_at + timeout_s + grace has passed, finish RUN_TIMEOUT / executor_lost (verdict per policy)."""
+        with self._lock:
+            own = {s["run_id"] for s in self._slots if s is not None}
+        reaped: list[dict[str, Any]] = []
+        for r in self.store.list_running():
+            if str(r["run_id"]) in own:
+                continue
+            entry = self.allowlist.get(str(r["lane_id"])) or {}
+            timeout_s = float(entry.get("timeout_s") or UNKNOWN_LANE_TIMEOUT_S)
+            started = _ts(r.get("started_at"))
+            hb = _ts(r.get("heartbeat_at")) or started
+            stale = hb is None or now - hb > self.stale_heartbeat_s
+            overdue = started is not None and started + timeout_s + self.lost_grace_s < now
+            if not ((stale and not self.pid_alive(r.get("pid"))) or overdue):
+                continue
+            receipt = {
+                "schema": RECEIPT_SCHEMA, "run_id": r["run_id"], "lane_id": r["lane_id"], "mode": r["mode"],
+                "exit_code": None, "duration_s": None if started is None else round(max(0.0, now - started), 3),
+                "lock_skipped": False, "timed_out": False, "output_signal": entry.get("output_signal"),
+                "output_signal_mtime_before": None, "output_signal_mtime_after": None,
+                "started_at": r.get("started_at"), "finished_at": _iso(now), "code_sha": _code_sha(self.code_root),
+                "state": "RUN_TIMEOUT", "reason": LOST_REASON, "argv": None, "stdout_tail": None, "stderr_tail": None,
+                "authority": "READ_ONLY_ADVISORY",
+                "lost": {"pid": r.get("pid"), "heartbeat_at": r.get("heartbeat_at"), "overdue": overdue},
+            }
+            prio = r.get("priority")
+            reaped.append(self.complete(r, receipt, klass=self.class_of(r),
+                                        priority=int(prio) if prio is not None else 5,
+                                        worker_id=r.get("worker_id")))
+        self.reaped_total += len(reaped)
+        return reaped
+
+    # -- status --
+    def status(self, now: float) -> dict[str, Any]:
+        queued = self.store.list(state="REQUESTED", limit=5000)
+        depth: dict[str, int] = {}
+        oldest: float | None = None
+        for r in queued:
+            k = self.class_of(r)
+            depth[k] = depth.get(k, 0) + 1
+            t = _ts(r.get("requested_at"))
+            if t is not None and (oldest is None or t < oldest):
+                oldest = t
+        dead = [d for d in self.store.list_dead_letters()
+                if (_ts(d.get("dead_at")) or 0) >= now - DLQ_WINDOW_S]
+        dlq_24h = len([d for d in self.store.list_dead_letters(include_released=True)
+                       if (_ts(d.get("dead_at")) or 0) >= now - DLQ_WINDOW_S])
+        breakers = self.store.list_breakers()
+        open_items = {f"dlq:{d['lane_id']}" for d in dead} | {f"breaker:{b['lane_id']}" for b in breakers}
+        with self._lock:
+            for item in list(self._findings):
+                if item not in open_items:
+                    del self._findings[item]       # released / closed: the finding disappears, the fan-in closes it
+            for d in dead:                          # seed after a restart: the ledger is the record of truth
+                self._findings.setdefault(f"dlq:{d['lane_id']}", {
+                    "source": "dlq", "item": f"dlq:{d['lane_id']}", "severity": "P2",
+                    "detail": f"{d['slot_key']} {d['last_state']} {d['last_reason'] or ''} attempts {d['attempts']}"[:160],
+                    "detected_at": d.get("dead_at")})
+            for b in breakers:
+                self._findings.setdefault(f"breaker:{b['lane_id']}", {
+                    "source": "dlq", "item": f"breaker:{b['lane_id']}", "severity": "P2",
+                    "detail": f"{b.get('consecutive')} consecutive dead slots; lane paused", "detected_at": b.get("opened_at")})
+            findings = [dict(self._findings[k]) for k in sorted(self._findings)]
+            busy = [dict(s) for s in self._slots if s is not None]
+            last = self._last_receipt
+        return {
+            "schema": STATUS_SCHEMA,
+            "as_of": _iso(now),
+            "pid": os.getpid(),
+            "code_sha": _code_sha(self.code_root),
+            "workers": self.workers,
+            "workers_busy": len(busy),
+            "busy": busy,
+            "class_caps": dict(self.caps),
+            "reserved_priority_max": self.reserved_priority_max,
+            "queue_depth": dict(sorted(depth.items())),
+            "queue_total": len(queued),
+            "oldest_requested_age_s": None if oldest is None else round(max(0.0, now - oldest), 3),
+            "reaped_total": self.reaped_total,
+            "dlq_24h": dlq_24h,
+            "breakers_open": sorted(b["lane_id"] for b in breakers),
+            "findings": findings,
+            "last_receipt": None if last is None else {k: last.get(k) for k in (
+                "run_id", "lane_id", "mode", "state", "exit_code", "finished_at", "verdict", "worker_id")},
+            "retry_policies_sha256": getattr(self.policies, "sha256", None),
+            "authority": "READ_ONLY_ADVISORY",
+        }
+
+    def write_status(self, now: float) -> Path:
+        last = self.state_root / LAST_REL
+        last.parent.mkdir(parents=True, exist_ok=True)
+        tmp = last.with_name(f"{last.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(self.status(now), indent=1, sort_keys=True, default=str) + "\n", encoding="utf-8")
+        os.replace(tmp, last)
+        return last
+
+    # -- loops --
+    def wait(self, timeout: float) -> None:
+        self._wake.wait(timeout)
+        self._wake.clear()
+
+    def drain_until_idle(self, *, poll_s: float = 0.05, deadline_s: float | None = None) -> None:
+        """--once: dispatch until no worker is busy and nothing more can be claimed."""
+        end = None if deadline_s is None else time.monotonic() + deadline_s
+        while True:
+            started = self.step()
+            if not started and not self.busy():
+                return
+            if end is not None and time.monotonic() > end:
+                return
+            self.wait(poll_s)
+
+    def serve(self, *, poll_s: float = V2_POLL_S) -> None:
+        while True:
+            self.step()
+            self.wait(poll_s)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="n8n run executor (drains the coordination ledger runs table)")
     ap.add_argument(
@@ -413,6 +855,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state-root", default=None, help="TRADEAI_STATE_ROOT override")
     ap.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_S, help="poll interval seconds")
     ap.add_argument("--once", action="store_true", help="drain the queue once and exit (tests, manual fires)")
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help=f"worker threads (default ${WORKERS_ENV} or {DEFAULT_WORKERS}, max {MAX_WORKERS}); 1 = v1 serial path",
+    )
     args = ap.parse_args(argv)
     env = dict(os.environ)
     code_root = Path(args.code_root).resolve() if args.code_root else ROOT
@@ -428,6 +876,22 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"error": f"allowlist:{type(exc).__name__}", "path": str(allowlist_path)}), file=sys.stderr)
         return 2
     (state_root / RUNS_REL / "shadow").mkdir(parents=True, exist_ok=True)
+    workers = resolve_workers(args.workers, env)
+    policies = None
+    if workers > 1:
+        try:
+            policies = load_policies(code_root / RETRY_POLICIES_REL)
+        except RetryPolicyError as exc:  # no caps/verdicts without policies: fall back to the v1 serial path
+            print(json.dumps({"executor": "v2_unavailable", "reason": f"retry_policies:{exc}"[:300]}), flush=True)
+            workers = 1
+    registry_rows = None
+    if workers > 1:
+        try:
+            from scripts.lib.lane_registry import load_registry
+
+            registry_rows = load_registry(code_root / "config" / "lane_registry.json").get("lanes") or []
+        except (OSError, ValueError, ImportError):
+            registry_rows = None
     ledger = CoordinationLedger(ledger_path)
     store = LedgerRunStore(ledger)
     print(
@@ -439,10 +903,23 @@ def main(argv: list[str] | None = None) -> int:
                 "lanes": sorted(allowlist),
                 "code_root": str(code_root),
                 "once": bool(args.once),
+                "workers": workers,
             }
         ),
         flush=True,
     )
+    if workers > 1:
+        ex = ExecutorV2(store, allowlist, env=env, state_root=state_root, code_root=code_root, workers=workers,
+                        policies=policies, registry_rows=registry_rows)
+        try:
+            if args.once:
+                ex.drain_until_idle()
+                return 0
+            ex.serve(poll_s=max(0.5, min(float(args.interval), V2_POLL_S)))
+        except KeyboardInterrupt:
+            return 0
+        finally:
+            ledger.close()
     try:
         while True:
             drain(store, allowlist, env=env, state_root=state_root, code_root=code_root)
