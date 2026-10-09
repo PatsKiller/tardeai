@@ -344,6 +344,23 @@
       ],
       "market_gate": false,
       "output_signal": "data/runtime/trade_ai_restore_drill_last.json"
+    },
+    {
+      "lane_id": "trade-ai-scalp-live",
+      "source": "crontab 2026-10-09 (PR #1553): */5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py (lane trade-ai-scalp-live). Operator 2026-10-09: \"n8n drives a governed lane (Recommended)\" — n8n owns the 5-min schedule, heartbeat watch and retry; cron stays the fallback. SHADOW ONLY: dry_run_arg --dry-run is read-only (no scan, no write, no send). live_arg is null on purpose: the live cycle ingests the Finviz screener, writes trade_ai_scans and Telegram-alerts a new GO, and AGENTS.md 3.0.0 §23.3 keeps senders and ingest writers out of this list. Live waits for the operator's ratification of the §23.3 amendment proposed in docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md. Same lock as the cron line so the two can never overlap",
+      "command": [
+        "$PY",
+        "scripts/run_trade_ai_scalp_live.py"
+      ],
+      "lock": "/tmp/tradeai_scalp_live.lock",
+      "lock_kind": "flock",
+      "timeout_s": 295,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": true,
+      "output_signal": "data/runtime/trade_ai_scalp_live_last.json"
     }
   ],
   "blocked_reasons": {
