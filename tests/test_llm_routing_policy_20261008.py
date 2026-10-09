@@ -140,7 +140,9 @@ def test_named_processes_keep_today_requested_policy() -> None:
 
     digest = bridge.resolve_model_policy("n8n_material_digest_draft")
     assert digest["requested_policy"] == "FAST"
-    assert digest["provider"] == "deepseek"
+    # AGENTS.md 3.0.0 §23.4 decision 2 (2026-10-09): n8n rows route Grok -> ChatGPT -> DeepSeek; the live
+    # transport walks to DeepSeek (tests/test_bridge_agent_preconditions_20261009.py).
+    assert digest["provider"] == "grok"
 
     smoke = bridge.resolve_model_policy("deepseek_flash_operator_smoke")
     assert smoke["requested_policy"] == "FAST"
@@ -683,3 +685,80 @@ def test_semaphore_size_is_the_configured_integer() -> None:
     missing = bridge.provider_semaphore("not-a-configured-provider")
     assert missing._initial_value == 1
     assert 32 not in policy["policies"]["default"]["provider_concurrency"].values()
+
+
+@pytest.mark.parametrize("fallback_allowed", [False, None, 1])
+def test_transport_failover_cannot_bypass_process_fallback_authority(monkeypatch, fallback_allowed):
+    from lib import llm_consumption
+
+    process_id = "n8n_material_digest_draft"
+    row = dict(llm_consumption._registry_process(process_id))
+    if fallback_allowed is None:
+        row.pop("fallback_allowed")
+    else:
+        row["fallback_allowed"] = fallback_allowed
+    monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+    monkeypatch.setattr(bridge, "read_health_snapshot", lambda _: {"lanes": {"deepseek": "healthy"}})
+    monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+    provider = MagicMock()
+    provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+    monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+    with _governed(monkeypatch) as reserve:
+        result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+    assert result["error"]["code"] == "provider_not_configured"
+    assert result["error"]["status"] == 503
+    assert reserve.call_count == provider.generate.call_count == 0
+
+
+@pytest.mark.parametrize("proof", ["absent", "global_only", "future", "stale", "unattributable", "naive"])
+def test_transport_failover_requires_current_attributable_alternate_health(monkeypatch, tmp_path, proof):
+    from datetime import datetime, timedelta, timezone
+    from lib import llm_consumption
+
+    process_id = "n8n_material_digest_draft"
+    row = dict(llm_consumption._registry_process(process_id))
+    row["fallback_allowed"] = True  # explicitly granted fixture only; real registry stays unchanged
+    monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+    if proof != "absent":
+        health = _fresh_recovered_health("deepseek")
+        if proof == "global_only":
+            health["findings"] = []
+        elif proof == "future":
+            health["checked_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        elif proof == "stale":
+            health["checked_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        elif proof == "unattributable":
+            health["findings"][0]["lane"] = "other_deepseek_audit"
+        elif proof == "naive":
+            health["checked_at"] = datetime.now().isoformat()
+        path = tmp_path / "transport-health.json"
+        path.write_text(json.dumps(health))
+        monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+    monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+    provider = MagicMock()
+    provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+    monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+    with _governed(monkeypatch) as reserve:
+        result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+    assert result["error"]["code"] == "provider_not_configured"
+    assert result["error"]["status"] == 503
+    assert reserve.call_count == provider.generate.call_count == 0
+
+
+def test_transport_failover_uses_explicit_authority_and_verified_current_alternate(monkeypatch, tmp_path):
+    from lib import llm_consumption
+
+    process_id = "n8n_material_digest_draft"
+    row = dict(llm_consumption._registry_process(process_id))
+    row["fallback_allowed"] = True
+    monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+    path = tmp_path / "transport-health.json"
+    path.write_text(json.dumps(_fresh_recovered_health("deepseek")))
+    monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+    policy = bridge.resolve_model_policy(process_id)
+    assert policy["provider"] == "grok"
+    resolved = bridge.transport_failover_policy(process_id, "default", policy, ["FAST"])
+    assert resolved["provider"] == "deepseek"
+    assert resolved["routing_decision"]["lane_chosen"] == "fallback"
+    assert resolved["routing_decision"]["health_snapshot"]["lanes"]["deepseek"] == "healthy"
+    assert resolved["routing_decision"]["reason"] == "transport_failover_fallback"

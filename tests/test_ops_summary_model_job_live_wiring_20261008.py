@@ -26,14 +26,37 @@ PROC = "n8n_ops_summary_draft"
 
 
 @pytest.fixture
-def bridge_plumbing(monkeypatch):
-    """The bridge's cost/cap/reservation collaborators, stubbed; process registration stays REAL (the file)."""
+def bridge_plumbing(monkeypatch, tmp_path):
+    """File registration stays real; a positive fixture explicitly grants fallback and current health.
+
+    Database and provider collaborators are injected. This grants no production registry authority.
+    """
     import scripts.lib.cio_governed_model_bridge as B
     B._reset_circuit()
     monkeypatch.setenv("LLM_GLOBAL_DAILY_USD_CAP", "0.50")
     import lib.llm_consumption as lc  # noqa: F401 — path set by the bridge's import helper
     lc._REGISTRY = None   # re-read the registry file for this test
+    original_process = lc._registry_process
+
+    def explicitly_authorized_process(process_id):
+        row = original_process(process_id)
+        if row is not None and process_id in {PROC, "n8n_material_digest_draft"}:
+            return {**row, "fallback_allowed": True}
+        return row
+
+    monkeypatch.setattr(lc, "_registry_process", explicitly_authorized_process)
+    monkeypatch.setattr(B, "BIND_MODE", "mock")
+    health = tmp_path / "positive-provider-health.json"
+    health.write_text(json.dumps({
+        "checked_at": datetime.now(timezone.utc).isoformat(), "worst_severity": "OK",
+        "findings": [{"lane": "deepseek", "recovered": True, "calls": 4, "failures": 1}],
+    }))
+    monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(health))
+    monkeypatch.setenv("TRADEAI_DEEPSEEK_BALANCE_HISTORY", str(tmp_path / "absent-balance.jsonl"))
     patches = [
+        patch("lib.llm_consumption.ensure_schema", side_effect=RuntimeError("offline fixture forbids DB")),
+        patch("lib.llm_consumption._conn", side_effect=RuntimeError("offline fixture forbids DB")),
+        patch("lib.llm_consumption.calibrated_projected_usd", return_value={"projected_usd": 0.002, "basis": "test"}),
         patch("lib.llm_model_registry.reject_legacy_model_id", return_value=None),
         patch("lib.consumption_run_manual.validate_paid_cap_config", return_value=None),
         patch("lib.consumption_run_manual.projected_max_cost_usd", return_value=0.002),
@@ -68,8 +91,21 @@ def test_caller_task_type_selects_the_ops_process_server_side_and_cannot_escalat
     assert resolve_caller("n8n_model_job", task_type="alex_cio_synthesis") == "n8n_material_digest_draft"
 
 
-def test_governance_passes_with_the_entry_present_and_refuses_without_it(bridge_plumbing):
+def _schema_valid_mock(monkeypatch, B, answer: dict) -> None:
+    """2026-10-09 (AGENTS.md 3.0.0 §23.10 P6): the bridge validates n8n_* output against the process schema, so
+    the MockProvider's prose is refused there; these tests swap in a schema-valid answer at the provider."""
+    real = B.MockProvider.generate
+
+    def generate(self, *a, **k):
+        out = real(self, *a, **k)
+        out["choices"][0]["message"]["content"] = json.dumps(answer)
+        return out
+    monkeypatch.setattr(B.MockProvider, "generate", generate)
+
+
+def test_governance_passes_with_the_entry_present_and_refuses_without_it(bridge_plumbing, monkeypatch):
     B = bridge_plumbing
+    _schema_valid_mock(monkeypatch, B, OPS_ANSWER)
     ok = B.execute_governed_call([{"role": "user", "content": "weekly ops summary"}], process_id=PROC,
                                  response_format={"type": "json_object"}, max_tokens=512)
     assert "error" not in ok, ok.get("error")
@@ -175,11 +211,11 @@ def test_a_real_bridge_success_through_execute_governed_call_is_accepted_by_run_
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
     seen = {}
 
+    _schema_valid_mock(monkeypatch, B, OPS_ANSWER)   # mock prose -> schema-valid answer at the provider; envelope untouched
+
     def governed(messages, *, process_id, response_format, request_id, task_type=None, **named):
         seen.update(process_id=process_id, request_id=request_id, task_type=task_type)
-        out = B.execute_governed_call(messages, process_id=process_id, response_format=response_format, max_tokens=512, request_id=request_id)
-        out["choices"][0]["message"]["content"] = json.dumps(OPS_ANSWER)   # mock prose -> schema-valid answer; envelope untouched
-        return out
+        return B.execute_governed_call(messages, process_id=process_id, response_format=response_format, max_tokens=512, request_id=request_id)
     rec = M.run_model_job(_ops_job(root, "corr-ops-weekly-2026-W41"), governed_call=governed, now=NOW, root=root)
     assert (rec["state"], rec["reason"]) == ("ARTIFACT_WRITTEN", None), rec
     assert rec["cost"]["reservation_id"] == 42 and rec["cost"]["mock"] is True and rec["cost"]["bridge_request_id"] == "corr-ops-weekly-2026-W41"

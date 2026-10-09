@@ -21,6 +21,7 @@ import math
 import os
 import re
 import sys
+import contextvars
 import threading
 import time
 import uuid
@@ -39,6 +40,10 @@ log = logging.getLogger("tradeai.cio_bridge")
 
 # Single source of truth for the exact DeepSeek model id (registry + env override).
 from lib.llm_model_registry import deepseek_model_id  # noqa: E402
+# 2026-10-09 (AGENTS.md 3.0.0 §23.10 P4/P5/P6/P21): the single egress sanitiser and the n8n Agent
+# preconditions run inside execute_governed_call for every process (see those modules' docstrings).
+from lib import bridge_agent_preconditions as agent_gate  # noqa: E402
+from lib import cio_egress_sanitiser as egress_sanitiser  # noqa: E402
 
 # ── Bind / port config ─────────────────────────────────────────────────
 BIND_HOST = os.environ.get("CIO_BRIDGE_HOST", "127.0.0.1")
@@ -214,7 +219,7 @@ def read_body_with_deadline(resp: Any, started: float, deadline_s: float | None 
     Keep-alive bytes from a provider that is holding the request still turn this loop, so the deadline
     is checked even when no single read ever times out.
     """
-    limit = UPSTREAM_DEADLINE_S if deadline_s is None else float(deadline_s)
+    limit = effective_upstream_deadline_s() if deadline_s is None else float(deadline_s)
     buf = bytearray()
     try:
         for chunk in resp.iter_content(chunk_size=8192):
@@ -1145,7 +1150,7 @@ class RealProvider:
                     "User-Agent": "tradeai-cio-bridge/1.0",
                     "X-TradeAI-Request-Id": client_rid,
                 },
-                timeout=(10.0, min(UPSTREAM_READ_TIMEOUT_S, UPSTREAM_DEADLINE_S)),
+                timeout=(10.0, min(UPSTREAM_READ_TIMEOUT_S, effective_upstream_deadline_s())),
                 stream=True,
             )
             raw = read_body_with_deadline(r, t0)
@@ -1295,6 +1300,92 @@ class RealProvider:
 #  GOVERNANCE PIPELINE
 # ══════════════════════════════════════════════════════════════════════════
 
+# ── Per-call latency budget + transport failover (AGENTS.md 3.0.0 §23.4, §23.10 P21) ─────────────
+# The routing policy's latency_budget_ms is the provider deadline for that call: the bridge's wall-clock
+# deadline is min(UPSTREAM_DEADLINE_S, budget). Every row measured 2026-10-09 carries 150000 ms, equal to
+# the 150 s default, so no current process's deadline moves. Set per call, in the calling thread's context.
+_CALL_LATENCY_BUDGET_S: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "tradeai_bridge_latency_budget_s", default=None
+)
+
+# Providers the live (canary) transport can reach. RealProvider speaks DeepSeek only today.
+BRIDGE_TRANSPORT_PROVIDERS = frozenset({"deepseek"})
+
+
+def set_call_latency_budget(policy: dict[str, Any] | None) -> float | None:
+    budget = agent_gate.latency_budget_s(policy)
+    _CALL_LATENCY_BUDGET_S.set(budget)
+    return budget
+
+
+def effective_upstream_deadline_s() -> float:
+    budget = _CALL_LATENCY_BUDGET_S.get()
+    if budget is not None and budget > 0:
+        return min(float(UPSTREAM_DEADLINE_S), float(budget))
+    return float(UPSTREAM_DEADLINE_S)
+
+
+def transport_failover_policy(
+    process_id: str,
+    routing_policy: str | None,
+    policy: dict[str, Any],
+    allowed_policies: list[str] | None = None,
+) -> dict[str, Any]:
+    """Walk the routing row past lanes the live transport cannot reach, for rows that opt in.
+
+    Only a row with `"transport_failover": true` (today the n8n_* rows, operator decision 2 of AGENTS.md
+    3.0.0: Grok -> ChatGPT -> DeepSeek) is walked; every other row keeps the provider_not_configured
+    refusal. The walk keeps the policy order, skips a lane whose provider has no bridge transport or is
+    health-indicted, and records each skip on routing_decision. No usable lane returns `policy` unchanged
+    (the caller then refuses provider_not_configured, as before).
+    """
+    if str(policy.get("provider") or "deepseek") in BRIDGE_TRANSPORT_PROVIDERS:
+        return policy
+    policy_id = normalize_routing_policy_header(routing_policy)
+    block = _policy_block(policy_id) or {}
+    processes = block.get("processes") if isinstance(block.get("processes"), dict) else {}
+    row = processes.get(process_id) if isinstance(processes, dict) else None
+    if not isinstance(row, dict) or row.get("transport_failover") is not True:
+        return policy
+    from lib.llm_consumption import _registry_process
+
+    # Transport availability cannot widen the process registry's fallback authority.
+    process = _registry_process(process_id) or {}
+    if process.get("fallback_allowed", False) is not True:
+        return policy
+    decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
+    snapshot = decision.get("health_snapshot") if isinstance(decision.get("health_snapshot"), dict) else read_health_snapshot(row)
+    lanes = snapshot.get("lanes") if isinstance(snapshot.get("lanes"), dict) else {}
+    start = decision.get("lane_chosen") or "primary"
+    order = ["primary", "secondary", "fallback"]
+    skipped: list[dict[str, Any]] = []
+    for lane_name in order[order.index(start) if start in order else 0:]:
+        spec = row.get(lane_name)
+        if not isinstance(spec, dict):
+            continue
+        provider = str(spec.get("provider") or "")
+        if provider not in BRIDGE_TRANSPORT_PROVIDERS:
+            skipped.append({"lane": lane_name, "provider": provider, "reason": "no_bridge_transport"})
+            continue
+        if lanes.get(provider) != "healthy":
+            reason = "lane_unhealthy" if lanes.get(provider) == "unhealthy" else "lane_health_unproven"
+            skipped.append({"lane": lane_name, "provider": provider, "reason": reason})
+            continue
+        policy_name = _lane_policy_name(spec)
+        if allowed_policies and policy_name not in allowed_policies:
+            skipped.append({"lane": lane_name, "provider": provider, "reason": "policy_not_allowed"})
+            continue
+        resolved = dict(POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"]))
+        resolved.update({k: policy[k] for k in ("health_gate", "latency_budget_ms", "cost_ceiling_usd") if k in policy})
+        resolved["provider"] = provider
+        resolved["requested_policy"] = policy_name
+        new_decision = _routing_decision(policy_id, lane_name, f"transport_failover_{lane_name}", snapshot)
+        new_decision.update({"provider": provider, "requested_policy": policy_name, "skipped_lanes": skipped})
+        resolved["routing_decision"] = new_decision
+        return resolved
+    return policy
+
+
 def execute_governed_call(
     messages: list[dict],
     *,
@@ -1422,12 +1513,25 @@ def execute_governed_call(
             status=403,
         )
 
+    # §23.4 decision 2 (n8n rows: Grok -> ChatGPT -> DeepSeek): walk past lanes with no live transport.
+    # Mock mode walks too, so a mock receipt names the provider the live path would use.
+    policy = transport_failover_policy(process_id, selected_policy_id, policy, ds_pols)
+    model_id = policy["model_id"]
+    requested_policy = policy.get("requested_policy", "PRO")
+    if isinstance(policy.get("routing_decision"), dict):
+        routing_box["decision"] = policy["routing_decision"]
+
     if BIND_MODE == "canary" and str(policy.get("provider") or "deepseek") != "deepseek":
         return _error(
             "provider_not_configured",
             "Live bridge transport is DeepSeek only; this lane's provider is not configured",
             status=503,
         )
+
+    # ── Step 4b: Agent preconditions (§23.10 P5 tools, P6 schema present, P21 advisory_only) ──
+    _pre = agent_gate.pre_reservation_refusal(process_id, tools, tool_choice)
+    if _pre is not None:
+        return _error(_pre["code"], _pre["message"], status=_pre["status"], **_pre["extra"])
 
     # ── Step 5: Cost cap checks ────────────────────────────────────────
     import lib.consumption_run_manual as crm
@@ -1463,6 +1567,14 @@ def execute_governed_call(
             f"Cost cap would be exceeded: {cap_check}",
             status=429,
         )
+
+    # ── Step 5b: Routing policy cost ceiling (§23.10 P21) — refuse before reservation ──
+    _ceiling = agent_gate.cost_ceiling_refusal(policy, projected)
+    if _ceiling is not None:
+        from scripts.lib.cio_provider_retry_v1 import classify_failure as _classify
+
+        return _error(_ceiling["code"], _ceiling["message"], status=_ceiling["status"],
+                      retry=_classify("COST_CAP_EXCEEDED"), **_ceiling["extra"])
 
     # ── Step 6: Reservation ────────────────────────────────────────────
     reservation_id: int | None = None
@@ -1534,6 +1646,16 @@ def execute_governed_call(
 
     if isinstance(routing_box.get("decision"), dict) and reservation_id is not None:
         routing_box["decision"]["reservation_id"] = reservation_id
+
+    # ── Step 6b: Egress sanitiser (§2A, §23.10 P4) for EVERY process + latency budget (P21) ──
+    _egress = egress_sanitiser.apply_egress_sanitiser(messages, process_id, rid)
+    if "refused" in _egress:
+        lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=False)
+        if provider_journal is not None and provider_semantic_key is not None:
+            provider_journal.record(provider_semantic_key, state="NON_RETRYABLE", error_class="EGRESS_POLICY_UNAVAILABLE")
+        return _error(_egress["refused"]["code"], _egress["refused"]["message"], status=_egress["refused"]["status"])
+    messages = _egress["messages"]
+    set_call_latency_budget(policy)
 
     # ── Step 7: Provider (mock or real based on BIND_MODE) ──────────────
     if BIND_MODE == "canary":
@@ -1686,6 +1808,26 @@ def execute_governed_call(
 
     _reset_circuit()
 
+    # ── Step 9b: Output checks (§23.10 P5 tool_calls, P6 n8n schema + behaviour scan) ──
+    # The call is settled and billed; a refused answer never reaches the caller, and says why.
+    _out = agent_gate.output_refusal(process_id, response, agent_gate.registry_row(process_id))
+    if _out is not None:
+        from scripts.lib.cio_provider_retry_v1 import classify_failure as _classify
+
+        try:
+            lc.log_call(
+                lane=requested_policy.lower(), process_id=process_id, task_summary=sanitize_log_summary(messages),
+                trigger_mode="manual" if str(cfg.get("mode") or "") == "manual" else "automated",
+                success=False, model_name=model_id, error_message=_out["code"], estimated_cost_usd=actual_cost,
+                cost_basis="provider_usage_x_registry_snapshot", requested_policy=requested_policy,
+                requested_model_id=model_id, returned_model=returned_model, provider_request_id=rid,
+                metadata={"governance": "cio_bridge_v1", "reservation_id": reservation_id, "output_refused": _out["code"]},
+            )
+        except Exception:  # noqa: BLE001 -- logging must not change the refusal
+            pass
+        return _error(_out["code"], _out["message"], status=_out["status"], retry=_classify("VALIDATION_ERROR"),
+                      billed_cost_estimate=actual_cost, reservation_id=reservation_id, **_out["extra"])
+
     # ── Step 10: Assemble response with provenance ─────────────────────
     latency_ms = int((time.time() - t0) * 1000)
     is_mock = BIND_MODE != "canary"
@@ -1718,6 +1860,8 @@ def execute_governed_call(
             if provider_semantic_key else None
         ),
     }
+
+    agent_gate.annotate_response(response, process_id, _egress.get("verdict"))
 
     # ── Step 11: Log (sanitized) — must run before return ──────────────
     try:
@@ -1976,6 +2120,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
             "last_error": _CIRCUIT.get("last_error"),
             "upstream_deadline_s": UPSTREAM_DEADLINE_S,
             "caller_auth": caller_auth_snapshot(),
+            "egress_sanitiser": egress_sanitiser.snapshot(),
             **inflight_snapshot(),
         })
 

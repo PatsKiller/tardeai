@@ -4359,6 +4359,24 @@
       "reason_evidence": "docs/ops/ADVICE_DIGESTS_2026-10-08.md; tests/test_advice_digests_20261008.py"
     },
     {
+      "lane_id": "n8n-workflow-drift-check",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P18, audit C G9): scripts/check_n8n_workflow_drift.py compares every ACTIVE n8n workflow with its generated git copy (relay URL placeholder substituted) and writes data/runtime/n8n_workflow_drift_last.json with --write. Registry row first (§9.3): the allowlist entry exists (--dry-run / --write) but no workflow is generated or imported and nothing schedules it. Activation = generated workflow + operator import under a grant naming the workflow id, then shadow -> canary -> live, then this row flips to kind n8n ACTIVE.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_workflow_drift_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_workflow_drift_20261009.py (fixture workflows: OK after relay substitution, DRIFT on a node edit, MISSING_IN_GIT on an unknown id; --dry-run writes nothing, --write writes the receipt under tmp_path); live dry run 2026-10-09 from the worktree read the n8n DB with one SELECT and wrote nothing.",
+      "note": "Read-only governance lane for the n8n Agent preconditions (P18). Daily cadence proposed; no send (fan-in findings are shaped in the receipt but not wired)."
+    },
+    {
       "lane_id": "trade-ai-scalp-live",
       "owner": "scalp",
       "scheduler": {
