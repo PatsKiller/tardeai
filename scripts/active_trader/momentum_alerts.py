@@ -35,7 +35,11 @@ APPROACHING = "APPROACHING"            # the trigger is about to fire (price wit
 EXTENDED = "EXTENDED"                  # it fired but price ran past entry: don't chase, here is the buy zone
 PULLBACK_ZONE = "PULLBACK_ZONE"        # price came back into the buy zone after an EXTENDED
 TRIGGER_CANCELLED = "TRIGGER_CANCELLED"  # an intrabar TRIGGERED did not hold at the bar close
-KINDS = (ARMED, TRIGGERED, APPROACHING, EXTENDED, PULLBACK_ZONE, TRIGGER_CANCELLED)
+# Operator 2026-10-09 ("keeps giving this alert"): an ARMED that was sent and then went stale or broke
+# down without firing now gets a closing message instead of going quiet.
+STAND_DOWN = "STAND_DOWN"
+KINDS = (ARMED, TRIGGERED, APPROACHING, EXTENDED, PULLBACK_ZONE, TRIGGER_CANCELLED, STAND_DOWN)
+_INFO_KINDS = (TRIGGER_CANCELLED, STAND_DOWN)   # corrections of an alert already sent: never vetoed
 _TAPE_KINDS = (TRIGGERED, PULLBACK_ZONE)
 _STRONG_BOOK_KINDS = (TRIGGERED, PULLBACK_ZONE)
 ALERT = "ALERT"
@@ -81,6 +85,17 @@ class AlertConfig:
     zone_above_r: float = 0.5               # buy zone high = entry + zone_above_r·R
     zone_stop_buffer_r: float = 0.25
     zone_watch_min: float = 20.0            # a buy zone stays armed this long after EXTENDED
+    # ARMED quality floor (operator 2026-10-09, XNDU ARMED at RVOL 0.6x, R $0.04, setup n/a). All 19 ARMED
+    # alerts ever sent came from the trigger state machine alone (lane BELOW, no setup) and 1 of 19 fired.
+    # A state-machine ARMED reaches Telegram only with real participation, a real stop distance and a
+    # fresh setup; otherwise it is journaled as a VETO (still visible on the Active Trader page).
+    armed_min_rvol: float = 1.5             # time-of-day relative volume
+    armed_min_r_pct: float = 1.5            # (entry − stop) / entry, in %
+    armed_max_bars: int = 15                # minutes the machine may sit ARMED before the setup is stale
+    stand_down_window_min: float = 90.0     # an ARMED sent this recently that went stale/void gets a stand-down
+    # Trade-AI link (2026-10-09): its verdict is shown on every alert; an explicit AVOID blocks the
+    # heads-up kinds only. not_tradeable is NOT a gate — it is set on ~90% of scalp names (27/30, 10-05..09).
+    trade_ai_block_headsup: tuple = ("AVOID",)
 
     @classmethod
     def from_mapping(cls, raw: Optional[Mapping[str, Any]]) -> "AlertConfig":
@@ -212,6 +227,13 @@ class Candidate:
     zone_low: Optional[float] = None
     zone_high: Optional[float] = None
     source: str = "pass5"                     # pass5 = 5-min logger pass; fast = sub-minute loop
+    # 2026-10-09: the state machine's own setup levels (ARMED entry/stop are the break and the pullback
+    # low, not "last price minus an ATR"), how long it has been ARMED, and today's Trade-AI verdict
+    armed_bars: Optional[int] = None
+    leg_high: Optional[float] = None
+    pullback_low: Optional[float] = None
+    trade_ai: Optional[dict] = None           # {decision, not_tradeable, scanned_at} or None
+    stand_down_reason: Optional[str] = None
 
     @property
     def r_dollars(self) -> Optional[float]:
@@ -269,6 +291,10 @@ def level_key(c: Candidate, kind: str) -> str:
         return c.level_key
     if kind in (TRIGGERED, EXTENDED, TRIGGER_CANCELLED) and c.fire_ts_epoch is not None:
         return f"fire:{int(c.fire_ts_epoch)}"
+    if kind in (ARMED, STAND_DOWN) and c.leg_high is not None:
+        # one setup = one leg: a 1-cent move in the last price is not a new alert (the old entry:{price}
+        # key let the same ARMED XNDU setup through again and again)
+        return f"leg:{c.leg_high:.4f}"
     if kind == PULLBACK_ZONE and c.zone_low is not None:
         return f"zone:{c.zone_low:.4f}-{c.zone_high:.4f}"
     if c.entry_ref is not None:
@@ -279,8 +305,20 @@ def level_key(c: Candidate, kind: str) -> str:
 def decide(c: Candidate, kind: str, l2: dict, tape: dict, *, now: float, cfg: AlertConfig) -> dict:
     """ALERT or VETO with every reason. Pure function of its inputs."""
     reasons: list[str] = []
-    if kind == TRIGGER_CANCELLED:   # an informational correction of an alert already sent
+    if kind in _INFO_KINDS:   # an informational correction of an alert already sent
         return {"verdict": ALERT, "veto_reasons": [], "quote_age_s": None}
+    if kind == ARMED and c.lane not in cfg.armed_lanes:
+        # state-machine-only ARMED: hold to the quality floor (2026-10-09)
+        if c.rvol is None or c.rvol < cfg.armed_min_rvol:
+            reasons.append("ARMED_LOW_RVOL")
+        r = c.r_dollars
+        if r is None or not c.entry_ref or (r / c.entry_ref * 100.0) < cfg.armed_min_r_pct:
+            reasons.append("ARMED_R_TOO_SMALL")
+        if c.armed_bars is not None and c.armed_bars > cfg.armed_max_bars:
+            reasons.append("ARMED_STALE")
+    if kind in (ARMED, APPROACHING) and c.trade_ai and \
+            str(c.trade_ai.get("decision") or "").upper() in cfg.trade_ai_block_headsup:
+        reasons.append(f"TRADE_AI_{str(c.trade_ai.get('decision')).upper()}")
     q_age = (now - c.quote_ts_epoch) if c.quote_ts_epoch is not None else None
     if q_age is None or q_age > cfg.max_quote_age_s:
         reasons.append("QUOTE_STALE")
@@ -386,6 +424,10 @@ def build_message(c: Candidate, kind: str, l2: dict, tape: dict, decision: dict)
                     f"now {_fmt(c.last)}")
     elif kind == TRIGGER_CANCELLED:
         headline = f"⚪ TRIGGER FAILED · {c.symbol} · the intrabar break did not hold at the close — stand down"
+    elif kind == STAND_DOWN:
+        headline = f"⚪ STAND DOWN · {c.symbol} · {c.stand_down_reason or 'the setup is no longer valid'}"
+    elif c.break_level is not None:
+        headline = f"🟡 ARMED · {c.symbol} · setting up — trigger above {_fmt(c.break_level)}, now {_fmt(c.last)}"
     else:
         headline = f"🟡 ARMED · {c.symbol} · setting up — watch it"
     title = f"{AT_SCALP_ALERT_HEADER}\n{headline}"
@@ -400,12 +442,24 @@ def build_message(c: Candidate, kind: str, l2: dict, tape: dict, decision: dict)
         lines.append(f"buy zone {zone} (entry {_fmt(c.entry_ref)}, stop {_fmt(c.stop_ref)})")
     if tape:
         lines.append(f"tape {tape.get('source')}: {_pct(tape.get('buy_ratio'))} buys of {tape.get('prints', 0)} prints")
+    lines.append(trade_ai_line(c.trade_ai))
     lines.append(f"data age: quote {_u(decision.get('quote_age_s'), 0, 's')} · book {_u(l2.get('age_s'), 0, 's')}"
                  + (f" · tape {_u(tape.get('age_s'), 0, 's')}" if tape else ""))
     base = _cc_base()
     if base:
         lines.append(f"Active Trader: {base}/v3/active-trader?tab=Alerts")
     return title, "\n".join(lines)
+
+
+def trade_ai_line(t: Optional[Mapping[str, Any]]) -> str:
+    """Today's Trade-AI verdict for the symbol, stated plainly (the 🟢 Trade-AI pill on every house message
+    is the sender, not a verdict)."""
+    if not t:
+        return "Trade-AI: no scan today"
+    at = str(t.get("scanned_at") or "")
+    hhmm = at[11:16] if len(at) >= 16 else ""
+    return (f"Trade-AI today: {str(t.get('decision') or '?').upper()}" + (f" {hhmm}" if hhmm else "")
+            + (" · not tradeable" if t.get("not_tradeable") else ""))
 
 
 def _cc_base() -> str:
@@ -580,14 +634,14 @@ def evaluate_pass(candidates: Iterable[Candidate], *, cfg: AlertConfig, now: Opt
             lvl = level_key(c, kind)
             if throttle.check(c.symbol, kind, now, lvl) == "DUPLICATE":
                 continue
-            book = _safe(fetch_primary_book, c.symbol)
+            book = None if kind == STAND_DOWN else _safe(fetch_primary_book, c.symbol)
             ticks = _safe(fetch_primary_tape, c.symbol) if kind in (*_TAPE_KINDS, APPROACHING) else None
             l2 = l2_evidence(book, now=now, cfg=cfg, source="moomoo")
             tape = tape_evidence(ticks, now=now, cfg=cfg, source="moomoo") if ticks is not None or kind in _TAPE_KINDS else {}
             if kind == APPROACHING and not ticks:
                 tape = {}
             compare = l2_evidence(_safe(fetch_compare_book, c.symbol), now=now, cfg=cfg, source="schwab") \
-                if fetch_compare_book else None
+                if fetch_compare_book and kind != STAND_DOWN else None
             d = decide(c, kind, l2, tape, now=now, cfg=cfg)
             if d["verdict"] == ALERT:
                 blocked = throttle.check(c.symbol, kind, now, lvl)

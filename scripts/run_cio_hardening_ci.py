@@ -1049,6 +1049,12 @@ GATES = [
         "active_trader_momentum_alerts_20261004",
         ["tests/test_active_trader_momentum_alerts_20261004.py"],
     ),
+    # Active Trader ARMED quality + stand-down + Trade-AI verdict + recorder reconnect (operator 2026-10-09:
+    # 18 of 19 ARMED alerts never fired; ARMED printed last price as entry; dedupe keyed on price).
+    (
+        "active_trader_armed_quality_20261009",
+        ["tests/test_active_trader_armed_quality_20261009.py"],
+    ),
     # Active Trader alerts live: comms-editor exemption (missing-CIO hold only), Telegram path, feed API.
     (
         "active_trader_live_alerts_20261004",

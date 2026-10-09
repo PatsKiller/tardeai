@@ -1645,6 +1645,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operations/overnight_activity_repair/overnight_activity_root_cause.md` | Root Cause Analysis | review_required | OK | `61a9562332b7` |
 | `docs/operations/overnight_activity_repair/overnight_activity_safety_audit.md` | Safety Audit | review_required | OK | `0dd95c6daa05` |
 | `docs/operator/ATM_RUNBOOK.md` | ATM Operator Runbook | review_required | OK | `b273f679aff3` |
+| `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) | review_required | MISSING HEADER | `a9da923f94da` |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) | review_required | MISSING HEADER | `b4e24d80618c` |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result | review_required | OK | `51a39935be0a` |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
