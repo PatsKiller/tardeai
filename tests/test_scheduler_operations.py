@@ -533,3 +533,39 @@ def test_fresh_shared_output_cannot_mask_an_old_run_receipt(tmp_path):
     row = project(tmp_path, [lane()], observations("*/5 * * * * python scripts/test_lane.py"), [run])["rows"][0]
     assert row["runtime_state"] != "LIVE"
     assert row["run_freshness"] == "STALE"
+
+
+def test_n8n_and_openclaw_schedule_objects_render_as_operator_expressions(tmp_path):
+    obs = observations(
+        "",
+        [
+            {
+                "id": "wf-new",
+                "active": True,
+                "schedules": [{"interval": [{"field": "cronExpression", "expression": "*/5 * * * *"}]}],
+            }
+        ],
+    )
+    obs["openclaw"] = {
+        "measured": True,
+        "jobs": [
+            {
+                "id": "job-new",
+                "enabled": True,
+                "schedule": {"kind": "cron", "expr": "0 9 * * 1-5", "tz": "America/New_York"},
+            }
+        ],
+    }
+    rows = project(tmp_path, [], obs)["rows"]
+    assert next(r for r in rows if r["scheduler_type"] == "n8n")["schedule"] == "*/5 * * * *"
+    assert next(r for r in rows if r["scheduler_type"] == "openclaw")["schedule"] == "0 9 * * 1-5 (America/New_York)"
+
+
+def test_inventory_current_directory_is_not_proof_of_child_execution_pin(tmp_path):
+    from scripts.report_scheduler_inventory import normalize
+
+    current = tmp_path / "CURRENT"
+    result = project(tmp_path, [lane()], observations(f"*/5 * * * * cd {current} && python scripts/test_lane.py"))
+    row = normalize(result, {"lanes": [lane()]}, {"lanes": []}, {"units": []})[0]
+    assert row["current_pinned"] is None
+    assert row["declared_current_root"] is True

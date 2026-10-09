@@ -446,6 +446,31 @@ def cron_collides(a: dict[str, Any], b: dict[str, Any], now: datetime) -> bool:
     )
 
 
+def schedule_label(value: Any) -> str | None:
+    """Project known schedule forms as expressions, never scheduler JSON/repr."""
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, list):
+        labels = [schedule_label(item) for item in value]
+        return "; ".join(label for label in labels if label) or None
+    if not isinstance(value, dict):
+        return None
+    if isinstance(value.get("interval"), list):
+        labels = []
+        for item in value["interval"]:
+            if isinstance(item, dict) and item.get("field") == "cronExpression":
+                labels.append(item.get("expression") or item.get("cronExpression"))
+        return "; ".join(label for label in labels if isinstance(label, str)) or None
+    if value.get("kind") == "cron" and isinstance(value.get("expr"), str):
+        tz = value.get("tz")
+        return value["expr"] + (f" ({tz})" if isinstance(tz, str) and tz else "")
+    if value.get("kind") == "at" and isinstance(value.get("at"), str):
+        return "Once " + value["at"]
+    if value.get("kind") == "every" and isinstance(value.get("everyMs"), (int, float)):
+        return f"Every {value['everyMs'] / 1000:g}s" if value["everyMs"] > 0 else None
+    return None
+
+
 def _base_row(lane: dict[str, Any]) -> dict[str, Any]:
     sched = lane.get("scheduler") or {}
     return {
@@ -565,6 +590,7 @@ def build_projection(
             measured = bool(n8n.get("measured"))
             present = bool(workflow and workflow.get("active")) if measured else None
             if workflow:
+                row["schedule"] = schedule_label(workflow.get("schedules"))
                 claimed_workflows.add(str(workflow["id"]))
                 row["scheduler_observations"] = [{"id": workflow["id"], "kind": "n8n", "active": workflow["active"]}]
             row["duplicate_scheduler"] = bool(host_matches) if cron.get("measured") else None
@@ -784,7 +810,7 @@ def build_projection(
             {
                 "lane_id": "unregistered-n8n-" + str(workflow.get("id")),
                 "state": "UNDECLARED",
-                "scheduler": {"kind": "n8n", "expression": str(workflow.get("schedules"))},
+                "scheduler": {"kind": "n8n", "expression": schedule_label(workflow.get("schedules"))},
             }
         )
         row.update(
@@ -812,7 +838,7 @@ def build_projection(
                 "lane_id": "openclaw-" + str(job.get("id")),
                 "owner": job.get("agentId"),
                 "state": "UNDECLARED",
-                "scheduler": {"kind": "openclaw", "expression": str(job.get("schedule"))},
+                "scheduler": {"kind": "openclaw", "expression": schedule_label(job.get("schedule"))},
             }
         )
         row.update(

@@ -122,7 +122,6 @@ def normalize(projection: dict, registry: dict, allowlist: dict, expected: dict)
     for r in projection["rows"]:
         lane = declarations.get(r["lane_id"], {})
         allow = allows.get(r["lane_id"], {})
-        sched = lane.get("scheduler") or {}
         observations = r["scheduler_observations"]
         commands = [e.get("command") or e.get("properties", {}).get("ExecStart") for e in observations]
         commands = [c for c in commands if c]
@@ -134,7 +133,8 @@ def normalize(projection: dict, registry: dict, allowlist: dict, expected: dict)
             business_domain=r["domain"],
             owner=r["owner"],
             declared_state=r["declared_state"],
-            actual_scheduler=r["scheduler_type"],
+            declared_scheduler=r["scheduler_type"],
+            actual_scheduler=r["scheduler_type"] if observations else None,
             scheduler_expression=r["schedule"],
             runtime_kind="daemon_or_timer" if r["scheduler_type"] == "systemd" else r["scheduler_type"],
             command=command,
@@ -143,7 +143,9 @@ def normalize(projection: dict, registry: dict, allowlist: dict, expected: dict)
             else None,
             actual_executable=props.get("process_executable"),
             working_directory=props.get("WorkingDirectory"),
-            expected_code_root="/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+            expected_code_root="/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+            if lane.get("state") == "ACTIVE" and r["scheduler_type"] in {"cron", "systemd", "n8n", "event"}
+            else None,
             lock=allow.get("lock"),
             lock_kind=allow.get("lock_kind"),
             timeout=allow.get("timeout_s"),
@@ -173,9 +175,15 @@ def normalize(projection: dict, registry: dict, allowlist: dict, expected: dict)
             row["market_day_gate"] = (
                 row["market_day_gate"] if row["market_day_gate"] is not None else "market_day_gate" in command
             )
-            row["current_pinned"] = bool(
-                "/CURRENT" in command or "$PROJ" in command or "/CURRENT" in (row["working_directory"] or "")
-            )
+        # A top-level path declaration does not prove the executable/child chain.
+        # Keep actual pinning unknown until an explicit recursive runtime trace exists.
+        row["declared_current_root"] = (
+            bool("/CURRENT" in command or "$PROJ" in command or "/CURRENT" in (row["working_directory"] or ""))
+            if command
+            else None
+        )
+        row["declared_current_root_evidence_class"] = "SOURCE_ONLY"
+        row["current_pinned_evidence_class"] = "NOT_MEASURED"
         row["authority"] = "READ_ONLY_ADVISORY"
         row["unknown_fields"] = [k for k in FIELDS if row[k] is None]
         rows.append(row)
