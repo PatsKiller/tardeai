@@ -2057,6 +2057,8 @@ GATES = [
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.
             "tests/test_agents_policy_1_3_0_amendment.py",
+            # AGENTS.md 3.0.0 (PROPOSED 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
+            "tests/test_agents_policy_3_0_0_amendment.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3632,6 +3634,15 @@ GATES = [
         "n8n_w4_routing_20261008",
         [
             "tests/test_llm_routing_policy_20261008.py",
+        ],
+    ),
+    (
+        # ANCHOR: BRIDGE_EXECUTOR_HARDENING — 2026-10-09 guardrail audit B: H1 one provider call per streamed
+        # bridge request; H2 caller auth off|report|enforce (report default, enforce refuses before reservation);
+        # M1 executor unit carries the crontab-wide lane env; M2 lanes inherit no n8n secret.
+        "bridge_executor_hardening_20261009",
+        [
+            "tests/test_bridge_executor_hardening_20261009.py",
         ],
     ),
 ]
