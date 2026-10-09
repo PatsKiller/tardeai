@@ -45,6 +45,8 @@ NO_CONSUMER_REASON = (
     "no cron line exists until the operator installs it (lane n8n-incident-fanin, NEVER_SCHEDULED)."
 )
 LANE = "incident-fanin"
+# This script's own receipt, relative to the state root. scripts/incident_notifier.py reads it from here.
+RECEIPT_REL = "data/runtime/n8n_incident_fanin_last.json"
 NOTES: dict[str, str] = {}   # per-source availability notes, copied onto the receipt (2026-10-08)
 LANE_REGISTRY_RECEIPT_REL = "data/runtime/n8n_lane_registry_drift_last.json"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -580,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(timezone.utc)
     day = now.strftime("%Y-%m-%d")
     sha = served_sha() or ""
-    out = Path(args.receipt) if args.receipt else (root / "data" / "runtime" / "n8n_incident_fanin_last.json")
+    out = Path(args.receipt) if args.receipt else (root / RECEIPT_REL)
     prev = _load(out) or {}
     global PREV_RECEIPT
     PREV_RECEIPT = prev
