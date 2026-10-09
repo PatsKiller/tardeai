@@ -2093,8 +2093,10 @@ GATES = [
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.
             "tests/test_agents_policy_1_3_0_amendment.py",
-            # AGENTS.md 3.0.0 (PROPOSED 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
+            # AGENTS.md 3.0.0 (ACTIVE 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
             "tests/test_agents_policy_3_0_0_amendment.py",
+            # AGENTS.md 4.1.0 (PROPOSED 2026-10-09): registry dispatch, wave ladder, program push budget, 48 h merge approval.
+            "tests/test_agents_policy_4_1_0_amendment.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3594,6 +3596,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_GENERIC_WORKFLOWS (2026-10-09, design 02 §11, B5.6): the six generic
+        # registry-driven workflows (build-generic). Static only: byte-determinism, node allowlist, /run body keys,
+        # bridge-IP relay, errorWorkflow, no lane constants beyond SYSTEM_FILTER_LANES. Imports nothing into n8n.
+        "n8n_maturity_generic_workflows_20261009",
+        [
+            "tests/test_n8n_maturity_generic_workflows_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_AGENT_GATE_GOVERNANCE — 2026-10-09 AGENTS.md 3.0.0 §23.10 preconditions before any n8n
         # Agent node: P16 activation attribution (n8n publish evidence vs guard grants naming the workflow id),
         # P17 registry-first (active n8n workflows are a lane-registry discovery source; UNDECLARED_N8N_WORKFLOW
@@ -3645,6 +3656,13 @@ GATES = [
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
         "n8n_scalp_lane_20261009",
         ["tests/test_n8n_scalp_lane_20261009.py", "tests/test_agents_policy_4_0_0_scalp_lane.py"],
+    ),
+    (
+        # ANCHOR: SCALP_CYCLE_RECEIPT_B4 — n8n maturity B4 2026-10-09: ScalpCycleReceipt@v1 per 5-min cycle
+        # (started/ok/error/killed on SIGTERM), market-hours-aware monitor (P2 2 missed RTH slots, P1 30 min),
+        # fan-in source 3h, state saved before the send, slot guard. Hermetic: tmp state root, fakes, no send.
+        "scalp_cycle_receipt_b4_20261009",
+        ["tests/test_scalp_cycle_receipt_b4_20261009.py"],
     ),
     (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
