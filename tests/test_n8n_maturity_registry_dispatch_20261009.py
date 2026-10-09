@@ -19,7 +19,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib import lane_dispatch as LD  # noqa: E402
 from scripts.lib import lane_registry as LR  # noqa: E402
-from scripts.lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS  # noqa: E402
+from scripts.lib import n8n_coordination_gateway as GW  # noqa: E402
+from scripts.lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS, SECRET_KEYS  # noqa: E402
 from scripts.pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS  # noqa: E402
 
 SCHEMA_PATH = ROOT / "docs" / "implementation" / "n8n-maturity" / "schemas" / "registry-dispatch-block.schema.json"
@@ -84,8 +85,11 @@ def test_issue_codes_align_with_due_response_schema():
 def test_forbidden_tokens_derive_from_sources_of_truth():
     assert set(FORBIDDEN_ROUTE_TOKENS) <= LD.FORBIDDEN_LANE_TOKENS
     assert set(FORBIDDEN_COMMAND_TOKENS) <= set(LD.FORBIDDEN_LANE_SUBSTRINGS)
-    assert {"secret", "secrets", "stop", "positions", "guard", "deploy"} <= LD.FORBIDDEN_LANE_TOKENS
-    assert {"sm-render", "sm_render"} <= set(LD.FORBIDDEN_LANE_SUBSTRINGS)
+    assert set(SECRET_KEYS) <= set(LD.FORBIDDEN_LANE_SUBSTRINGS)
+    assert {"secret", "stop", "position", "guard", "deploy", "sender", "sm-render", "sm_render"} <= set(
+        LD.FORBIDDEN_LANE_SUBSTRINGS)
+    # The gateway's matcher is imported, not copied.
+    assert LD._gateway_forbidden_token is GW.forbidden_route_token
 
 
 # ── parsing ──────────────────────────────────────────────────────────────────────────────────────
@@ -238,11 +242,120 @@ def test_forbidden_token_in_command_or_script_field():
     assert LD.dispatch_eligible(_row(script="scripts/sync_basis_from_broker.py"))[0] is False
 
 
-def test_token_boundary_not_substring():
-    # "order" inside "reorder" and "stop" inside "nonstop" are not tokens.
-    row = _row(lane_id="reorder-watchlist-nonstop", expression="0 7 * * 1-5 $PY scripts/reorder_watchlist.py",
-               match="scripts/reorder_watchlist.py")
-    assert LD.dispatch_eligible(row) == (True, "eligible")
+# Blocker 2 (review of #1595): the gateway refuses substrings, so eligibility must too.
+SUBSTRING_LANES = ["schwab-brokers-sync", "placeorders", "liveorders", "n8n-activation-grants",
+                   "trailingstop-manager", "positionsync", "schwab-token-refresh", "reorder-watchlist"]
+
+
+@pytest.mark.parametrize("lane_id", SUBSTRING_LANES)
+def test_substrings_are_forbidden_like_the_gateway(lane_id):
+    row = _row(lane_id=lane_id, expression="0 7 * * 1-5 $PY scripts/report.py", match="scripts/report.py")
+    ok, why = LD.dispatch_eligible(row)
+    assert ok is False and why.startswith("forbidden_token:"), why
+    assert LD.dispatch_eligible(_row(expression=f"0 7 * * 1-5 $PY scripts/{lane_id}.py"))[0] is False
+
+
+@pytest.mark.parametrize("route", ["/placeorders", "/n8n-activation-grants", "/liveorders", "/two_factor"])
+def test_at_least_as_strict_as_gateway_route_matcher(route):
+    assert GW.forbidden_route_token(route) is not None
+    assert LD.dispatch_eligible(_row(lane_id=route.strip("/")))[0] is False
+
+
+@pytest.mark.parametrize("word", sorted(SECRET_KEYS))
+def test_gateway_secret_words_forbidden(word):
+    assert LD.dispatch_eligible(_row(expression=f"0 6 * * * $PY scripts/refresh_{word}.py"))[0] is False
+
+
+def test_bash_c_wrapper_and_string_scheduler_are_checked():
+    wrapped = "0 9 * * 1-5 bash -c 'cd $PROJ && $PY scripts/schwab_trade_executor.py --apply'"
+    assert LD.dispatch_eligible(_row(expression=wrapped))[0] is False
+    string_sched = _row()
+    string_sched["scheduler"] = wrapped                  # a plain-string scheduler is checked whole
+    assert LD.dispatch_eligible(string_sched)[0] is False
+    string_ok = _row()
+    string_ok["scheduler"] = "0 7 * * 1-5 $PY scripts/daily_report.py"
+    assert LD.dispatch_eligible(string_ok) == (True, "eligible")
+
+
+def test_exec_start_and_service_checked():
+    row = _row(lane_id="nightly-refresh", expression="nightly-refresh.timer", match=None,
+               exec_start="/bin/bash ~/.config/mcporter/refresh_token.sh")
+    assert LD.dispatch_eligible(row)[0] is False
+    assert LD.dispatch_eligible(_row(service="tradeai-n8n-run-executor.service"))[0] is False
+
+
+def test_allowlist_argv_checked():
+    row = _row(lane_id="daily-report")
+    assert LD.dispatch_eligible(row, allowlist_argv={}) == (True, "eligible")
+    argv = {"daily-report": "$PY scripts/place_order_worker.py --live"}
+    ok, why = LD.dispatch_eligible(row, allowlist_argv=argv)
+    assert ok is False and why.endswith("@allowlist.argv")
+
+
+def test_allowlist_loader_reads_real_argv(tmp_path):
+    p = tmp_path / "allow.json"
+    p.write_text(json.dumps({"lanes": [
+        {"lane_id": "a", "command": ["$PY", "scripts/a.py"], "dry_run_arg": ["--dry-run"], "live_arg": [],
+         "market_gate": True},
+        {"lane_id": "b", "command": ["$PY", "scripts/b.py"], "dry_run_arg": None, "live_arg": ["--send"]},
+        "junk"]}), encoding="utf-8")
+    got = LD.load_run_allowlist_argv(p)
+    assert got == {"a": "scripts/market_day_gate.sh $PY scripts/a.py --dry-run", "b": "$PY scripts/b.py --send"}
+    assert LD.load_run_allowlist_argv(tmp_path / "missing.json") == {}
+    real = LD.load_run_allowlist_argv()
+    assert real, "config/n8n_run_allowlist.json must load"
+    assert all(isinstance(v, str) and v for v in real.values())
+
+
+@pytest.mark.parametrize("marker", [
+    {"stay_on_cron": {"class": "secret", "token": "token"}},
+    {"stay_on_cron": True},
+    {"recommendation": "KEEP_ON_CRON"},
+    {"rationalization": {"recommendation": "KEEP_ON_CRON"}},
+])
+def test_stay_on_cron_and_keep_on_cron_are_hard_ineligible(marker):
+    row = _good_row(**marker)
+    ok, why = LD.dispatch_eligible(row)
+    assert ok is False and why in ("stay_on_cron", "keep_on_cron")
+    assert LD.dispatchable(row) is False
+    assert "forbidden_lane" in [i.code for i in LD.validate_dispatch_block(row)]
+
+
+def test_dispatchable_requires_mode_and_eligibility():
+    assert LD.dispatchable(_good_row(), allowlist_argv={}) is True
+    assert LD.dispatchable(_row(), allowlist_argv={}) is False                     # no block: mode off
+    off = _good_row()
+    off["dispatch"]["mode"] = "off"
+    assert LD.dispatchable(off, allowlist_argv={}) is False
+    bad = _good_row()
+    bad["dispatch"]["mode"] = "sometimes"                                           # malformed: fail closed
+    assert LD.dispatchable(bad, allowlist_argv={}) is False
+    assert LD.dispatchable(_good_row(lane_id="trailingstop-manager"), allowlist_argv={}) is False
+    assert LR.dispatchable is LD.dispatchable
+
+
+# ── PR #1597 reconcile rows (fixture extract) ────────────────────────────────────────────────────
+
+FIXTURE_1597 = ROOT / "tests" / "fixtures" / "lane_registry_1597_keep_on_cron_extract.json"
+NAMED_IN_REVIEW = ["paper-execution-sweep", "atm-auto-approver", "at-observation-01",
+                   "at-observation-01-closeout", "mcporter-token-refresh", "tradeai-n8n-run-executor-service",
+                   "alpaca-paper-adapter", "options-lifecycle-run", "options-tick"]
+
+
+def test_1597_stay_on_cron_and_keep_on_cron_rows_never_eligible():
+    rows = json.loads(FIXTURE_1597.read_text(encoding="utf-8"))["lanes"]
+    by_id = {r["lane_id"]: r for r in rows}
+    stay = [r for r in rows if r.get("stay_on_cron")]
+    keep = [r for r in rows if r.get("recommendation") == "KEEP_ON_CRON"
+            or (r.get("rationalization") or {}).get("recommendation") == "KEEP_ON_CRON"]
+    assert len(stay) >= 60 and len(keep) >= 120
+    for row in rows:
+        live = dict(row, dispatch=copy.deepcopy(GOOD_DISPATCH))
+        assert LD.dispatch_eligible(live)[0] is False, row["lane_id"]
+        assert LD.dispatchable(live) is False, row["lane_id"]
+    for lane in NAMED_IN_REVIEW:
+        assert lane in by_id, lane
+        assert LD.dispatch_eligible(by_id[lane])[0] is False, lane
 
 
 def test_benign_report_lane_eligible_and_clean():
