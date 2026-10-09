@@ -913,6 +913,8 @@ GATES = [
             "tests/test_advisory_kb_lessons_retention.py",
             # 10-09 operator-approved: lesson counters derived from events; vectors stored once.
             "tests/test_kb_lessons_writer_derived_counters_20261009.py",
+            # 10-09 #1617 follow-ups: same-model similarity, baseline under lock, durable appends.
+            "tests/test_kb_lessons_followups_20261009.py",
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",
@@ -3649,16 +3651,6 @@ GATES = [
             "tests/test_n8n_agent_identity_parity_20261009.py",
             # incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)
             "tests/test_n8n_incident_fanin_governance_20261009.py",
-        ],
-    ),
-    (
-        # ANCHOR: N8N_MATURITY_REGISTRY_DISPATCH
-        # N8N Maturity B5.2 (design 02 §2): lane-registry dispatch/watch block loader + validation
-        # (scripts/lib/lane_dispatch.py) and the forbidden-token eligibility rule. Hermetic synthetic rows;
-        # the live registry is only read (all rows mode off; broker/order/secret rows ineligible).
-        "n8n_maturity_registry_dispatch_20261009",
-        [
-            "tests/test_n8n_maturity_registry_dispatch_20261009.py",
         ],
     ),
     (

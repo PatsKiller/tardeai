@@ -25,6 +25,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+try:
+    import kb_lesson_counters as _kb_counters  # scripts/lib on sys.path
+except ImportError:  # imported as scripts.lib.lesson_promotion
+    from scripts.lib import kb_lesson_counters as _kb_counters  # type: ignore
+
 SCHEMA = "LessonPromotion@v1"
 PROCEDURE_SCHEMA = "Procedure@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -56,6 +61,35 @@ def _cio_dir(root: Path | None, env: dict) -> Path:
 def queue_path(root: Path | None = None, env: dict | None = None) -> Path:
     env = os.environ if env is None else env
     return Path(env.get("TRADEAI_LESSON_QUEUE_PATH") or (_cio_dir(root, env) / "lesson_promotions.jsonl"))
+
+
+def _kb_lessons_latest_with_counters(runtime: Path) -> list[dict]:
+    """Advisory KB lessons as readers see them: the LATEST content row per id
+    (streamed; the log is hundreds of MB) with counters derived from the counter
+    events in advisory_kb_lesson_applications.jsonl (kb_lesson_counters).
+
+    2026-10-09: this used the FIRST row per id, so status and applications /
+    hit_rate were the ones at proposal time and never moved.
+    """
+    path = runtime / "advisory_kb_lessons.jsonl"
+    by_id: dict[str, dict] = {}
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(r, dict):
+                    lid = str(r.get("id") or r.get("lesson_id") or "")
+                    if lid:
+                        by_id[lid] = r
+    except OSError:
+        return []
+    return _kb_counters.apply_counter_events(list(by_id.values()),
+                                             runtime / "advisory_kb_lesson_applications.jsonl")
 
 
 def _read_jsonl(path: Path, limit: int = 200_000) -> list[dict]:
@@ -113,12 +147,17 @@ def gather(root: Path | None = None, env: dict | None = None) -> list[dict]:
                            symbols=r.get("symbols") or []))
     # 2. advisory KB: candidates + iris-ratified rows (ratified by a machine ≠ promoted by the operator)
     seen_kb: set[str] = set()
-    for fname, src in (("advisory_kb_lessons.jsonl", "advisory_kb_ratified"), ("advisory_kb_lesson_candidates.jsonl", "advisory_kb_candidate")):
-        for r in _read_jsonl(runtime / fname):
+    for rows, src in ((_kb_lessons_latest_with_counters(runtime), "advisory_kb_ratified"),
+                      (_read_jsonl(runtime / "advisory_kb_lesson_candidates.jsonl"), "advisory_kb_candidate")):
+        for r in rows:
             lid = str(r.get("lesson_id") or r.get("id") or "")
-            if not lid or lid in seen_kb or str(r.get("status") or "").lower() == "retired":
+            if not lid or lid in seen_kb:
                 continue
+            # mark before the retired check: the never-pruned candidates file still
+            # holds a retired lesson's candidate row, which must not re-emit it.
             seen_kb.add(lid)
+            if str(r.get("status") or "").lower() == "retired":
+                continue
             add(_procedure(statement=r.get("statement") or r.get("text") or r.get("title") or "", source=src, source_id=lid,
                            kind="PLAYBOOK" if r.get("source") == "reflection_ips" else "LESSON",
                            applies_to={"scope": "advisory", "source": r.get("source")},
