@@ -156,14 +156,91 @@ def test_stale_only_empty_results_not_broken(tmp_path: Path, env: dict):
 
 
 def test_duplicate_result_deduped(tmp_path: Path, env: dict):
+    clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
     t = _fixture_transport()
-    first = produce_research(targets=_targets(), env=env, root=tmp_path, transport=t)
-    second = produce_research(targets=_targets(), env=env, root=tmp_path, transport=t)
+    first = produce_research(targets=_targets(), env=env, root=tmp_path, transport=t, clock=clock)
+    feed = Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"])
+    original = feed.read_bytes()
+    # Distinct natural scheduler fires and source releases do not make new articles.
+    clock.advance(hours=1)
+    env["TRADEAI_SOURCE_SHA"] = "new-release"
+    second = produce_research(targets=_targets(), env=env, root=tmp_path, transport=t, clock=clock)
     assert first.produced == 1
     assert second.produced == 0 and second.deduped == 1
+    assert feed.read_bytes() == original
+    assert second.feed_rows == 1
+
+
+def test_changed_content_in_same_second_is_preserved(tmp_path: Path, env: dict):
+    clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+    payload = {
+        "web": {
+            "results": [
+                {
+                    "title": "Visa guidance",
+                    "url": "https://www.reuters.com/markets/v-earnings",
+                    "description": "Guidance unchanged",
+                }
+            ]
+        }
+    }
+    transport = _fixture_transport(payload)
+    first = produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+    payload["web"]["results"][0]["description"] = "Guidance increased"
+    # A different query receives fresh content instead of the router's cached answer.
+    updated_targets = [{**_targets()[0], "query": "Visa updated earnings guidance"}]
+    changed = produce_research(targets=updated_targets, env=env, root=tmp_path, transport=transport, clock=clock)
+    assert first.produced == changed.produced == 1
     feed = Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"])
-    rows = [json.loads(l) for l in feed.read_text().splitlines() if l.strip()]
-    assert len(rows) == 1
+    rows = [json.loads(line) for line in feed.read_text().splitlines()]
+    assert len(rows) == 2
+    assert rows[0]["content_hash"] != rows[1]["content_hash"]
+    assert rows[0]["research_object_id"] != rows[1]["research_object_id"]
+    # The underlying publication-based record remains unchanged; the feed versions content.
+    assert rows[0]["research_record_id"] == rows[1]["research_record_id"]
+    clock.advance(days=1)
+    repeated = produce_research(targets=updated_targets, env=env, root=tmp_path, transport=transport, clock=clock)
+    assert repeated.produced == 0 and repeated.deduped == 1 and repeated.feed_rows == 2
+
+
+def test_new_feed_identity_independent_of_capture_time(tmp_path: Path, env: dict):
+    clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+    transport = _fixture_transport()
+    produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+    first = json.loads(Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"]).read_text().splitlines()[0])
+    clock.advance(days=1)
+    env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"] = str(tmp_path / "separate-feed.jsonl")
+    produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+    second = json.loads(Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"]).read_text().splitlines()[0])
+    assert first["research_object_id"] == second["research_object_id"]
+    assert first["captured_at"] != second["captured_at"]
+    assert first["research_record_id"] != second["research_record_id"]
+
+
+def test_legacy_feed_content_deduped_without_rewriting_identity(tmp_path: Path, env: dict):
+    clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+    transport = _fixture_transport()
+    produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+    feed = Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"])
+    row = json.loads(feed.read_text().splitlines()[0])
+    row["research_object_id"] = row["id"] = "legacy-publication-bound-id"
+    row.pop("research_record_id", None)
+    feed.write_text(json.dumps(row) + "\n")
+    before = feed.read_bytes()
+    clock.advance(days=1)
+    result = produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+    assert result.produced == 0 and result.deduped == 1
+    assert feed.read_bytes() == before
+
+
+def test_identical_article_for_distinct_subjects_is_not_deduped(tmp_path: Path, env: dict):
+    clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+    targets = _targets() + [{"symbol": "MA", "subject_guid": "sg-ma", "query": "card networks"}]
+    result = produce_research(targets=targets, env=env, root=tmp_path, transport=_fixture_transport(), clock=clock)
+    assert result.produced == 2 and result.deduped == 0
+    rows = [json.loads(line) for line in Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"]).read_text().splitlines()]
+    assert {row["subject_guid"] for row in rows} == {"sg-v", "sg-ma"}
+    assert len({row["research_object_id"] for row in rows}) == 2
 
 
 def test_source_sha_without_env_resolves_via_runtime_identity(tmp_path: Path, env: dict):
