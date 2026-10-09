@@ -12,6 +12,25 @@ Actions (all throttled + logged + Telegram-notified):
   STALE          -> re-run the job's remediate command (bounded attempts).
   NO_SIGNAL      -> notify only (first run before any heartbeat exists).
 
+Not cron-only any more (2026-10-09, n8n maturity B3.1):
+  - `$PY` expands to the interpreter that actually exists (PY / TRADEAI_PY from
+    the environment the crontab header and the health-tick unit both set, else
+    <project>/.venv/bin/python when present, else this interpreter). It used to
+    be hard-wired to <project>/.venv/bin/python, which does not exist in the
+    served tree (CURRENT) this script has run from since the health-tick cutover:
+    every rerun would have exited 127 and counted as a failed heal, and every
+    re-add would have installed a crontab line with a dead interpreter.
+  - A lane the lane registry says is scheduled by something other than cron
+    (systemd / n8n / a health-tick or nightly step table — `superseded_by`) is
+    not "NOT_SCHEDULED" just because its crontab line is gone: re-adding it would
+    run it twice. Such a lane is still checked for staleness. A lane the registry
+    RETIRED without a successor is left alone.
+
+Why "acted": [] is the normal output: the six managed lanes are scheduled and
+fresh (cadence_h=80 against daily runs). It last acted 2026-09-21 06:00 (two
+STALE reruns, both ok) — see tests/test_cron_self_heal_acts_20261009.py for the
+proof that it still acts on a healable case.
+
 Self-protection:
   - One heal action per job per cooldown window (no tight re-add/rerun loops).
   - Attempt cap: after N consecutive failed heals, back off and keep notifying only.
@@ -99,11 +118,57 @@ def _save_state(state: dict) -> None:
         pass
 
 
+LANE_REGISTRY = PROJECT_ROOT / "config" / "lane_registry.json"
+
+
+def _python() -> str:
+    """The interpreter `$PY` means here — one that exists."""
+    for cand in (os.environ.get("PY"), os.environ.get("TRADEAI_PY"),
+                 str(PROJECT_ROOT / ".venv" / "bin" / "python")):
+        if cand and Path(cand).is_file() and os.access(cand, os.X_OK):
+            return cand
+    return sys.executable
+
+
+def _project() -> str:
+    proj = os.environ.get("PROJ")
+    return proj if proj and Path(proj).is_dir() else str(PROJECT_ROOT)
+
+
 def _expand(cmd: str) -> str:
     """Expand $PROJ / $PY to absolute paths so re-add/re-run works even without the
     crontab env header."""
-    return cmd.replace("$PROJ", str(PROJECT_ROOT)).replace(
-        "$PY", str(PROJECT_ROOT / ".venv" / "bin" / "python"))
+    return cmd.replace("$PROJ", _project()).replace("$PY", _python())
+
+
+def _registry_scheduler(match: str, registry_path: Path | None = None) -> tuple[str, str] | None:
+    """What the lane registry says schedules `match` when it is NOT plain cron.
+
+    Returns ("elsewhere", why) for a non-cron scheduler or a RETIRED row with a
+    successor, ("retired", why) for a RETIRED row without one, None when the
+    registry has no opinion (no row, or an ACTIVE cron row — crontab is truth)."""
+    path = registry_path or LANE_REGISTRY
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    rows = data.get("lanes") if isinstance(data, dict) else data
+    for row in rows or []:
+        sched = row.get("scheduler") or {}
+        if match not in str(sched.get("match") or "") and match not in str(sched.get("expression") or ""):
+            continue
+        kind = str(sched.get("kind") or "")
+        state = str(row.get("state") or "")
+        if state == "RETIRED":
+            if row.get("superseded_by"):
+                return ("elsewhere", f"{row.get('lane_id')} superseded_by {row['superseded_by']}")
+            return ("retired", f"{row.get('lane_id')} RETIRED")
+        if kind and kind != "cron":
+            return ("elsewhere", f"{row.get('lane_id')} scheduled by {kind}")
+        if state == "ACTIVE":
+            return None      # an ACTIVE cron row: crontab is truth; stop scanning (a later
+                             # RETIRED row sharing the match must not override it)
+    return None
 
 
 def _re_add(cron_line: str) -> bool:
@@ -156,7 +221,12 @@ def _job_status(job: dict) -> tuple[str, float | None]:
     kind, arg = job["signal"]
     age = _log_age_h(arg) if kind == "log" else _db_age_h(arg)
     if not scheduled:
-        return ("NOT_SCHEDULED", age)
+        elsewhere = _registry_scheduler(job["schedule_match"])
+        if elsewhere and elsewhere[0] == "retired":
+            return ("RETIRED", age)
+        if not elsewhere:
+            return ("NOT_SCHEDULED", age)
+        # Scheduled by systemd / n8n / a step table: judge freshness only.
     if age is None:
         return ("NO_SIGNAL", age)
     if age > job["cadence_h"]:

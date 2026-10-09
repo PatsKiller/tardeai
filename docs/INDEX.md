@@ -40,10 +40,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CONSOLIDATION_CHECKPOINT_2026_06_04.md` | Consolidation & Verification Checkpoint — 2026-06-04 | review_required | OK | `6e1fbd7c7d43` |
 | `docs/COST_INTELLIGENCE_ARCHITECTURE.md` | Investment Cost Intelligence — Architecture (v1.2, 2026-07-19) | review_required | OK | `940b9795fc24` |
 | `docs/COST_MODEL.md` | Trade AI v12 -- Cloud Operating Cost Model | review_required | OK | `4de73e25bfea` |
-| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md` | Cross-Asset Decision Intelligence — Executable Backlog | review_required | OK | `be6748c69dca` |
+| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md` | Cross-Asset Decision Intelligence — Executable Backlog | review_required | OK | `df97334ca713` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md` | Cross-Asset Decision Intelligence — Master Implementation Plan | review_required | OK | `f8561824a8a9` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md` | Production bill — what “READY” means for Cross-Asset Decision Intelligence | review_required | OK | `43c975c30ede` |
-| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md` | Cross-Asset Decision Intelligence — Readiness Report | review_required | OK | `a57bf20350e4` |
+| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md` | Cross-Asset Decision Intelligence — Readiness Report | review_required | OK | `4321eb99cb99` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md` | Cross-Asset Decision Intelligence — Test Plan | review_required | OK | `e4481cfa8888` |
 | `docs/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | OK | `5233c7dcd2e0` |
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
@@ -1090,7 +1090,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | Phase 182B: Live Readiness Scoring Model | review_required | OK | `a4b194f75fab` |
 | `docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md` | Agent operating standards v1 (companion to AGENTS.md) | review_required | MISSING HEADER | `607b53ab566b` |
 | `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md` | AGENTS.md 1.3.0 — authority amendment (RATIFIED 2026-09-27) | review_required | OK | `4f3b0923ca4c` |
-| `docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` | Repository protection — actions only a repository administrator can take | review_required | MISSING HEADER | `9adc27a4862c` |
+| `docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` | Repository protection — actions only a repository administrator can take | review_required | MISSING HEADER | `8d451c290ade` |
 | `docs/governance/agent-standards/TRADING_SESSION_GRANT_CONTRACT.md` | TradingSessionGrant@v1 — contract and enforcement point | review_required | OK | `98355d33c64d` |
 | `docs/governance/phase9c_scheduled_maturity_board/00_README.md` | Phase 9C — Scheduled Maturity Control Board | current_phase_keep | OK | `514ad61e8c46` |
 | `docs/governance/phase_gov1_scheduled_facts_a1a/00_README.md` | GOV-1 — Scheduled System Facts and A1A Checks | current_phase_keep | OK | `174c5a2c8411` |
@@ -1413,6 +1413,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/ACTIVE_TRADER_ROUTE_API_DB_MAP.md` | Active Trader — Route / API / DB map (Stage 0 inventory) | review_required | OK | `0401a69b4224` |
 | `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline | review_required | OK | `1dbd606d89d5` |
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) | review_required | OK | `8f4ed9463ca3` |
+| `docs/implementation/CADI_OFFLINE_HISTORICAL_REPLAY_ARCHIVE_CONTRACT.md` | Offline CADI historical replay archive contract | review_required | OK | `5894b3a89ad6` |
 | `docs/implementation/backup/restore-drill-proposal-20261009.md` | Backup and recovery coverage: inventory, gate, and monthly restore drill proposal | review_required | OK | `c5a718b394d9` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_00_PREFLIGHT.md` | Stage 0 · Pre-flight | review_required | OK | `a502f2f7191b` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix | review_required | OK | `2d04326c1ac7` |
@@ -1423,7 +1424,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
-| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `9ff8ae2ffa76` |
+| `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `247c47f5ac52` |
+| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `bba647ff6d2c` |
+| `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `7ebd947c4dfa` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |
 | `docs/implementation/n8n-parallel/00-fact-reconciliation.md` | Fact reconciliation | review_required | MISSING HEADER | `f0da125c7130` |
 | `docs/implementation/n8n-parallel/01-disposition-and-pilots.md` | Phase 1 — disposition and five pilot contracts | review_required | MISSING HEADER | `91f823ffb010` |
@@ -1459,7 +1462,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
 | `docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md` | Proposal S2 — DOF app exposure and database role | review_required | OK | `df85877b88a0` |
 | `docs/implementation/n8n-parallel/proposals/config-write-grant-n1-20261008.md` | Config-write grant packet — N1 night (2026-10-08) | review_required | OK | `d766579de909` |
-| `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `77196f9bf014` |
+| `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `58aced1385fa` |
 | `docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md` | Cron consolidation RANK 4 — platform maintenance pipeline (PROPOSAL) | review_required | OK | `91ba4c978d19` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-a-decisions.md` | Cron tranche A — operator decisions (2026-10-07) | review_required | MISSING HEADER | `cff41e44423f` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-b-cutover-plan-20261008.md` | Cron tranche B — cutover readiness and compressed plan (2026-10-08) | review_required | OK | `335afbe4b093` |

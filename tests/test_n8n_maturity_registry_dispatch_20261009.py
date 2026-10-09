@@ -428,5 +428,12 @@ def test_scalp_lane_trips_market_day_gate_token_and_is_not_carved_out():
     rows = {r["lane_id"]: r for r in _live_rows()}
     if "trade-ai-scalp-live" not in rows:
         pytest.skip("scalp row not present")
-    ok, why = LD.dispatch_eligible(rows["trade-ai-scalp-live"])
+    row = rows["trade-ai-scalp-live"]
+    # Post-#1597 the B1 reconcile stamps stay_on_cron (token market_day_gate.sh) and KEEP_ON_CRON on this row,
+    # which short-circuit first; the forbidden-token rule must still trip on its own once the markers are stripped.
+    if row.get("stay_on_cron"):
+        assert row["stay_on_cron"].get("token") == "market_day_gate.sh"
+        assert LD.dispatch_eligible(row) == (False, "stay_on_cron")
+    row = {k: v for k, v in row.items() if k not in ("stay_on_cron", "recommendation", "rationalization")}
+    ok, why = LD.dispatch_eligible(row)
     assert (ok, why) == (False, "forbidden_token:market_day_gate.sh@scheduler.expression")

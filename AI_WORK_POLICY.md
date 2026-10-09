@@ -99,6 +99,16 @@ caught in the local acceptance process.
 
 A third push requires explicit operator authorization.
 
+Program exception (operator decision 3, 2026-10-09; AGENTS.md 4.1.0 §23.13;
+status ACTIVE with AGENTS.md 4.1.0, ratified 2026-10-09): a branch whose name starts with exactly
+`n8nmat/` (case-sensitive, at least one character after the slash) has a budget
+of 4 authorized pushes instead of 2, until 2026-10-12T23:59:59-04:00. After that
+instant, and for every other branch, the budget is 2. The pre-push hook enforces
+it from the `PROGRAM_WINDOWS` table in `scripts/lib/tradeai_push_budget.py`; the
+hook change takes effect only when merged, which happens only after
+AGENTS.md 4.1.0 is ratified. Renaming or re-creating a branch under `n8nmat/` to
+gain budget is routing around a denial (AGENTS.md §0 rail 3) and is forbidden.
+
 The following are NOT valid reasons to push:
 
 - "see whether CI passes"
@@ -310,6 +320,26 @@ avoid further pushes unless CI identifies a genuine unresolved problem.
 
 PR descriptions may summarize the complete local validation result.
 
+Merge authority: an agent does not merge without operator approval, except
+under a standing approval written into AGENTS.md. AGENTS.md 4.1.0 §23.13
+(PROPOSED) grants a standing 48 h merge approval for `n8nmat/*` PRs only when
+all three hold:
+
+1. Agent A's review verdict for the exact head is recorded on the program
+   board (a GitHub review comment by Agent A on a PR it merges is blocked as
+   self-approval);
+2. the required checks `agent-governance`, `cio-hardening` and
+   `release-readiness` are green on the exact head SHA being merged;
+3. nothing goes live until main CI is green on the exact merged SHA (the
+   promote gate).
+
+There is no merge queue (the repository is user-owned) and strict up-to-date
+protection is off, so main CI on the merged SHA is the check that a green PR
+still works on the `main` it merged into.
+
+It expires at the `Expires-At` timestamp stated in §23.13 (never later than
+2026-10-12T23:59:59-04:00) and does not cover the PR classes §23.13 excludes.
+
 ---
 
 # 12. DOCS-ONLY WORK
@@ -462,6 +492,13 @@ The pre-push hook:
 - increments only after an authorized push is allowed to proceed;
 - allows pushes 1 and 2 for the current branch tranche;
 - blocks push 3+ unless a separate override is set.
+
+Program exception (ACTIVE with AGENTS.md 4.1.0, §23.13; see §3): on a branch
+named `n8nmat/<something>` the hook allows pushes 1 through 4 and blocks push 5+
+unless the override is set, until 2026-10-12T23:59:59-04:00; after that the
+two-push rule above applies to those branches too. The block message prints the
+effective budget. Renaming a branch to gain budget is routing around a denial
+(AGENTS.md §0 rail 3).
 
 Override (not the normal path; requires explicit operator approval):
 

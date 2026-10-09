@@ -1,0 +1,321 @@
+{
+  "schema": "N8nPlatformMaturityConfig@v1",
+  "authority": "docs/implementation/n8n-maturity plan 2026-10-09 (12-dimension maturity table, 8.0 gates)",
+  "note": "Thresholds the scorer applies. Each dimension: gate_rule (the plan table's 8.0 gate, verbatim intent), baseline (the plan's estimate, for reference only; never used in scoring) and the numeric thresholds its collector reads. Meeting a gate scores >= 8.0; 10 needs the stretch where defined.",
+  "target_overall": 8.0,
+  "stretch_overall": 9.5,
+  "gate_score": 8.0,
+  "gate_cap": 7.9,
+  "window_hours": 24,
+  "receipt": {
+    "latest": "data/governance/n8n_platform_maturity_latest.json",
+    "history": "data/governance/n8n_platform_maturity_history.jsonl"
+  },
+  "dimensions": {
+    "registry_truth": {
+      "n": 1,
+      "title": "Registry truth",
+      "baseline": 2,
+      "gate_rule": "undeclared_baseline = 0 and every live crontab line has a registry row",
+      "baseline_initial": 589
+    },
+    "rationalization": {
+      "n": 2,
+      "title": "Rationalization",
+      "baseline": 1,
+      "gate_rule": "R0 done (37 eliminated), >= 60 merged, 8 pipelines live",
+      "plan_rows_path": "docs/implementation/n8n-maturity/data/F_rationalization.json",
+      "plan_cron_rows_path": "docs/implementation/n8n-maturity/data/cron_rows.json",
+      "r0_target": 37,
+      "merged_target": 60,
+      "merged_stretch": 120,
+      "pipelines_live_target": 8,
+      "pipelines_live_stretch": 16,
+      "pipeline_receipt_max_age_hours": 192,
+      "eliminate_prefixes": [
+        "ELIMINATE"
+      ],
+      "merge_prefixes": [
+        "MERGE",
+        "CONSOLIDATE"
+      ],
+      "n8n_active_snapshot": "docs/implementation/n8n-parallel/workflows/active_workflows_snapshot.json",
+      "health_tick_steps": "config/health_tick_steps.json"
+    },
+    "scheduler_coverage": {
+      "n": 3,
+      "title": "Scheduler coverage",
+      "baseline": 1,
+      "gate_rule": ">= 60% of movable lanes run by the dispatcher; the rest watched",
+      "dispatched_min_fraction": 0.6,
+      "watched_min_fraction": 1.0,
+      "dispatcher_kinds": [
+        "n8n",
+        "dispatcher"
+      ],
+      "schedulable_kinds": [
+        "cron",
+        "systemd",
+        "n8n",
+        "dispatcher"
+      ],
+      "run_states": [
+        "RUN_DONE",
+        "RUN_SKIPPED_LOCK"
+      ],
+      "run_modes": [
+        "live"
+      ],
+      "stay_tokens": [
+        "broker",
+        "order",
+        "orders",
+        "stop",
+        "stops",
+        "alpaca",
+        "moomoo",
+        "opend",
+        "schwab",
+        "secret",
+        "secrets",
+        "token",
+        "tokens",
+        "credential",
+        "credentials",
+        "bws",
+        "oauth",
+        "daemon",
+        "service",
+        "fill",
+        "fills",
+        "positions"
+      ],
+      "stay_substrings": [
+        "options_tick",
+        "options-tick",
+        "scalp_live",
+        "scalp-live",
+        "portfolio_reconcile",
+        ".service"
+      ],
+      "stay_lane_ids": [],
+      "stay_note_markers": [
+        "retained on cron",
+        "stays on cron",
+        "stay on cron",
+        "keep on cron",
+        "keep on systemd",
+        "stays on systemd"
+      ],
+      "run_window_cadence_multiple": 2
+    },
+    "observability": {
+      "n": 4,
+      "title": "Observability",
+      "baseline": 3,
+      "gate_rule": "100% of registry lanes have an output_signal and a staleness alert",
+      "registry": "config/lane_registry.json",
+      "lane_states": [
+        "ACTIVE"
+      ],
+      "monitor_receipt": "data/runtime/research_lane_health.json",
+      "monitor_lane_key": "lane-registry",
+      "monitor_max_age_hours": 1.0,
+      "monitor_timer": "tradeai-research-lane-health.timer",
+      "monitor_service": "tradeai-research-lane-health.service",
+      "monitor_script": "research_lane_health.py",
+      "monitor_alert_flag": "--alert",
+      "unjudged_verdicts": [
+        "UNVERIFIABLE"
+      ],
+      "gate_coverage": 1.0
+    },
+    "alert_delivery": {
+      "n": 5,
+      "title": "Alert delivery",
+      "baseline": 0,
+      "gate_rule": "system Telegram ok >= 99%; P1/P2 fan-in delivered to a human",
+      "ledgers": [
+        "data/cio/system_telegram_sends.jsonl"
+      ],
+      "ok_rate_basis": "rows",
+      "gate_ok_rate": 0.99,
+      "fanin_receipt": "data/runtime/n8n_incident_fanin_last.json",
+      "fanin_max_age_hours": 1.0,
+      "severities": [
+        "P1",
+        "P2"
+      ],
+      "gate_p1p2_delivered": 1.0,
+      "quiet_period_heartbeat": {
+        "note": "Operator decision 2026-10-09: with no open P1/P2 the delivery gate passes ONLY on a fresh SYSTEM Telegram heartbeat delivery receipt (ok:true, not deduped); otherwise delivery is unproven.",
+        "ledger": "data/cio/system_telegram_sends.jsonl",
+        "kind": "daily_heartbeat",
+        "max_age_hours": 26
+      }
+    },
+    "self_healing": {
+      "n": 6,
+      "title": "Self-healing proven",
+      "baseline": 3,
+      "gate_rule": ">= 80% of mechanisms with a successful runtime action; health_tick exits 0",
+      "inventory": "config/self_healing_mechanisms.json",
+      "proven_ratio_gate": 0.8,
+      "proof_window_hours": 336,
+      "health_tick_ok_rate_gate": 0.99,
+      "health_tick_window_hours": 24,
+      "health_tick_min_samples": 12,
+      "health_tick_max_age_minutes": 15,
+      "health_tick_last": "data/runtime/health_tick_last.json",
+      "health_tick_history": "data/runtime/health_tick_history.jsonl",
+      "undated_tail_lines": 0
+    },
+    "governance": {
+      "n": 7,
+      "title": "Governance enforced",
+      "baseline": 3,
+      "gate_rule": "100% of active workflows granted; P16/P18 checks scheduled and alerting; guard hook installed",
+      "grant_tiers": [
+        "cron",
+        "config-write",
+        "service"
+      ],
+      "grant_skew_s": 120,
+      "count_name_only_as_granted": false,
+      "receipt_max_age_hours": 26,
+      "n8n_container": "m8m-n8n",
+      "n8n_db_container": "m8m-n8n-db",
+      "n8n_db_user": "n8n",
+      "n8n_db_name": "n8n",
+      "p16": {
+        "script": "check_n8n_activation_grants",
+        "lane": "n8n-activation-grants",
+        "receipt": "data/runtime/n8n_activation_grants_last.json"
+      },
+      "p18": {
+        "script": "check_n8n_workflow_drift",
+        "lane": "n8n-workflow-drift-check",
+        "receipt": "data/runtime/n8n_workflow_drift_last.json"
+      },
+      "check_weights": {
+        "scheduled": 0.4,
+        "receipt_fresh": 0.3,
+        "alerting": 0.3
+      },
+      "receipt_future_skew_s": 120,
+      "guard_hook_token": "agents_guard_pretooluse",
+      "guard_hook_log": "data/runtime/agents_guard_hook.jsonl"
+    },
+    "security": {
+      "n": 8,
+      "title": "Security",
+      "baseline": 3,
+      "gate_rule": "relay env allowlist, P7 fix, n8n_app role, password out of env \u2014 all 4 done",
+      "full_env_files": [
+        "tradeai/env"
+      ],
+      "app_role": "n8n_app",
+      "n8n_container": "m8m-n8n",
+      "n8n_db_container": "m8m-n8n-db",
+      "n8n_db_user": "n8n",
+      "n8n_db_name": "n8n",
+      "relay_unit": "tradeai-n8n-run-relay.service",
+      "executor_unit": "tradeai-n8n-run-executor.service",
+      "relay_allowlist_module": "scripts/lib/n8n_relay_env.py",
+      "executor_module": "scripts/n8n_run_executor.py",
+      "executor_mode_env": "TRADEAI_EXECUTOR_ENV_ALLOWLIST",
+      "run_allowlist": "config/n8n_run_allowlist.json",
+      "code_stage_weight": 0.25,
+      "app_role_weights": {
+        "exists": 0.3,
+        "least_privilege": 0.3,
+        "container_uses_role": 0.4
+      }
+    },
+    "recovery": {
+      "n": 9,
+      "title": "Recovery",
+      "baseline": 2,
+      "gate_rule": "daily backup-verify receipt green and a passed restore drill receipt",
+      "backup_verify_receipt": "data/runtime/backup_verify_last.json",
+      "backup_verify_max_age_hours": 26,
+      "restore_drill_receipt": "data/runtime/trade_ai_restore_drill_last.json",
+      "restore_drill_max_age_days": 35,
+      "n8n_lab_restore_drill_receipt": "backups/n8n/n8n_lab_restore_drill_last.json",
+      "n8n_lab_restore_drill_credit": 4.0,
+      "backup_ok_score": 10.0,
+      "backup_warn_score": 5.0,
+      "backup_fail_score": 0.0,
+      "restore_drill_pass_score": 10.0,
+      "restore_drill_fail_score": 0.0
+    },
+    "reliability": {
+      "n": 10,
+      "title": "Reliability",
+      "baseline": 5,
+      "gate_rule": "run success >= 99% over 24 h; 0 API SIGKILLs; 0 failed units",
+      "ledger": "n8n_coordination_ledger.sqlite",
+      "success_states": [
+        "RUN_DONE"
+      ],
+      "failure_states": [
+        "RUN_FAILED",
+        "RUN_TIMEOUT",
+        "RUN_REFUSED"
+      ],
+      "gate_success_rate": 0.99,
+      "n8n_db_container": "",
+      "n8n_db_user": "n8n",
+      "n8n_db_name": "n8n",
+      "n8n_error_statuses": [
+        "error",
+        "crashed"
+      ],
+      "api_unit": "portfolio-server.service",
+      "api_kill_pattern": "code=killed, status=9",
+      "failed_unit_ignore": [
+        "^ubuntu-report\\.",
+        "^snap\\.",
+        "^xdg-desktop-portal"
+      ],
+      "count_zero_at": 5
+    },
+    "ci_signal": {
+      "n": 11,
+      "title": "CI signal",
+      "baseline": 5,
+      "gate_rule": "nightly green and ci-gate green on main",
+      "nightly_max_age_hours": 36,
+      "ci_gate_max_age_hours": 48,
+      "nightly_streak_top": 7,
+      "branch": "main",
+      "nightly_event": "schedule",
+      "ci_gate_job": "ci-gate",
+      "runs_limit": 20
+    },
+    "docs_synced": {
+      "n": 12,
+      "title": "Docs synced",
+      "baseline": 5,
+      "gate_rule": "0 drift findings across runbooks, AGENTS.md and the ADR",
+      "findings_zero_at": 20,
+      "agents_path": "AGENTS.md",
+      "adr_paths": [
+        "docs/architecture/n8n/ADR_COORDINATION_SECRETS.md"
+      ],
+      "runbook_paths": [
+        "docs/ops/AGENTS_GUARD_HOOK.md",
+        "docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md",
+        "docs/ops/ROLLBACK_COMMANDS.md",
+        "docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md",
+        "docs/implementation/n8n-parallel/lanes/*.md",
+        "docs/implementation/n8n-maturity/*.md"
+      ],
+      "unit_runbooks": [
+        "docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md",
+        "docs/ops/ROLLBACK_COMMANDS.md"
+      ],
+      "deploy_script": "scripts/cio_phase2_exact_main_deploy.sh"
+    }
+  }
+}

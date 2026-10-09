@@ -120,7 +120,8 @@ jobs:
       # values, not credentials of any live system. Only the test database is created; the live
       # name m2_shadow does not exist here and the guard refuses it under pytest anyway.
       m2:
-        image: pgvector/pgvector:pg16
+        # Docker Hub mirror: unauthenticated hub pulls hit toomanyrequests (2026-10-09).
+        image: mirror.gcr.io/pgvector/pgvector:pg16
         env:
           POSTGRES_USER: m2
           POSTGRES_PASSWORD: m2shadow
