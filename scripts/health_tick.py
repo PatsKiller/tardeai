@@ -25,14 +25,45 @@ What one tick does
          every log-freshness monitor keeps seeing the files it already watches.
   3. Write the receipt `<state_root>/data/runtime/health_tick_last.json`
      (HealthTickReceipt@v1) and append one line to `health_tick_history.jsonl`.
-  4. Exit 1 when any due step failed (non-zero rc, timeout, or deferred past the
-     tick budget) so the unit logs it; 0 otherwise; 2 when the table is unreadable.
+  4. Exit with the TICK's health, not the system's (see "Exit codes" below).
+
+Exit codes (decided 2026-10-09, n8n maturity B3.1)
+  0  the tick ran its table: every due step ran to completion or was lock-skipped.
+     Monitors may still have FOUND something unhealthy; that is reported in the
+     receipt (`status: "unhealthy"`, `findings: [...]`, each row's `outcome:
+     "finding"`) and by the monitors' own alerts — not by failing this unit.
+  1  the tick itself is broken: a due step crashed (rc outside its declared
+     `finding_rc`, or rc in it but stderr ends in an uncaught Python traceback),
+     timed out, could not spawn, was deferred past the budget/deadline, or the
+     receipt could not be written (`status: "broken"`, `broken: [...]`).
+  2  the tick cannot run at all (table unreadable, bad arguments).
+  Why: under the first two days of the timer, `system_health_agent.py` exited 1
+  every 5 minutes because it (correctly) saw a critical component down, and the
+  unit was "failed" ~265 times — so `systemctl --failed` / health_agent's
+  `systemd_unit_failed` finding could no longer tell a broken scheduler from a
+  working monitor reporting a real problem. A step declares which of its exit
+  codes mean "I ran and found something" with `finding_rc` in the table
+  (system_health_agent's critical-down 1, opend_health's data-plane-down 1,
+  pipeline_liveness_report's --fail-on-finding 1). Python's uncaught-exception
+  exit is also 1, so a finding rc whose stderr ENDS in a traceback is a crash.
 
 A wedged step cannot block the next tick: its lock makes the next tick skip it
-(recorded, not hidden), its timeout kills it, and `tick_budget_s` bounds the
-whole tick below the timer period. A lock skip is recorded as `lock_skipped`,
-not as a failure — cron's `flock -n` was silent about it; this is louder.
-A timeout IS a failure.
+(recorded, not hidden), its timeout kills it, and `tick_budget_s` bounds when
+the last step may START. `tick_deadline_s` (below the unit's TimeoutStartSec)
+bounds when the last step must END: a step's timeout is clamped to what is left
+of the deadline, so a slow step is killed and recorded by this script instead of
+systemd killing the whole tick before the receipt is written (2026-10-09: every
+hourly tick from 09:00 died that way while the daemon-shaped
+portfolio_live_monitor.py ran into its 300 s timeout). A lock skip is recorded as
+`lock_skipped`, not as a failure — cron's `flock -n` was silent about it; this
+is louder. A timeout IS a failure.
+
+Processes a step leaves behind in its process group (fire-and-forget children,
+e.g. pipeline_watchdog.py's detached symbol_enrichment.py runs) are given
+`orphan_wait_s` to finish and are then terminated and recorded in the row as
+`orphans`. Under cron they outlived the parent; inside this oneshot unit systemd
+SIGTERMs them when the tick exits, they outlived the 90 s stop timeout, and the
+unit ended `Result=timeout` after a clean receipt (every even hour, 10-07..10-09).
 
     scripts/health_tick.py --dry-run                 # print the due plan, run nothing
     scripts/health_tick.py --dry-run --now 2026-10-07T09:20:00
@@ -80,8 +111,18 @@ SECRET_RE = re.compile(r"(postgres(?:ql)?://\S+|(?<![A-Za-z])sk-[A-Za-z0-9]{6,}|
                        r"(?:token|password|secret|api[_-]?key)=\S+)", re.I)
 
 EXIT_OK = 0
-EXIT_STEP_FAILED = 1
+EXIT_STEP_FAILED = 1          # the tick is broken (a step crashed / timed out / was deferred)
+EXIT_TICK_BROKEN = EXIT_STEP_FAILED
 EXIT_CANNOT_RUN = 2
+# Below the unit's TimeoutStartSec=330 with room for one kill grace + the receipt.
+DEFAULT_TICK_DEADLINE_S = 300.0
+DEFAULT_ORPHAN_WAIT_S = 30.0
+MIN_STEP_WINDOW_S = 5.0
+EXIT_SEMANTICS = ("0=tick completed (findings, if any, in `findings`/status=unhealthy); "
+                  "1=tick broken (a step crashed, timed out, could not spawn or was deferred; "
+                  "or the receipt failed); 2=cannot run")
+# The last non-empty stderr line of an uncaught Python exception: `SomeError: msg` / `SomeError`.
+_EXC_LINE_RE = re.compile(r"^[A-Za-z_][\w.]*(Error|Exception|Interrupt|Exit|Warning)\b")
 
 
 # ── table ───────────────────────────────────────────────────────────────────
@@ -107,6 +148,9 @@ def load_table(path: Path) -> dict[str, Any]:
             raise ValueError(f"{path}: {sid}: cadence_minutes must be > 0")
         if cad >= 60 and cad % 60:
             raise ValueError(f"{path}: {sid}: an hour-and-up cadence must be a whole number of hours")
+        frc = s.get("finding_rc", [])
+        if not isinstance(frc, list) or not all(isinstance(x, int) and x != 0 for x in frc):
+            raise ValueError(f"{path}: {sid}: finding_rc must be a list of non-zero ints")
     return data
 
 
@@ -197,6 +241,76 @@ def _first_stderr_line(stderr: bytes) -> Optional[str]:
     return None
 
 
+def ends_in_traceback(stderr: bytes) -> bool:
+    """True when stderr ends the way an uncaught Python exception ends: a
+    `Traceback (most recent call last):` header followed, as the last non-empty
+    line, by `SomeError: ...`. A traceback a script logged and then carried on
+    from is followed by more output and does not count."""
+    text = (stderr or b"")[-16384:].decode("utf-8", errors="replace")
+    if "Traceback (most recent call last):" not in text:
+        return False
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return False
+    tail = text[text.rfind("Traceback (most recent call last):"):]
+    return bool(_EXC_LINE_RE.match(lines[-1].strip())) and lines[-1] in tail
+
+
+def classify(row: dict[str, Any], finding_rc: list[int], *, crashed: bool) -> str:
+    """One outcome per due row: ok | finding | lock_skipped | timeout | crashed |
+    spawn_failed | deferred | not_run."""
+    if row.get("lock_skipped"):
+        return "lock_skipped"
+    if row.get("deferred"):
+        return "deferred"
+    if not row.get("ran"):
+        return "spawn_failed" if row.get("rc") == 127 else "not_run"
+    if row.get("timeout"):
+        return "timeout"
+    rc = row.get("rc")
+    if rc == 0:
+        return "ok"
+    if rc in set(finding_rc or []) and not crashed:
+        return "finding"
+    return "crashed"
+
+
+def _group_alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def reap_orphans(pgid: int, wait_s: float) -> Optional[dict[str, Any]]:
+    """Wait up to `wait_s` for processes the step left in its process group, then
+    SIGTERM, then SIGKILL after KILL_GRACE_S. None when nothing was left behind."""
+    if not _group_alive(pgid):
+        return None
+    deadline = time.monotonic() + max(0.0, wait_s)
+    while time.monotonic() < deadline:
+        if not _group_alive(pgid):
+            return {"lingered": True, "finished_within_s": round(max(0.0, wait_s), 1), "killed": False}
+        time.sleep(0.1)
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return {"lingered": True, "killed": False}
+    grace = time.monotonic() + KILL_GRACE_S
+    while time.monotonic() < grace:
+        if not _group_alive(pgid):
+            return {"lingered": True, "killed": True, "signal": "SIGTERM", "waited_s": round(wait_s, 1)}
+        time.sleep(0.1)
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    return {"lingered": True, "killed": True, "signal": "SIGKILL", "waited_s": round(wait_s, 1)}
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
     try:
         os.killpg(proc.pid, signal.SIGTERM)
@@ -214,13 +328,22 @@ def _kill_group(proc: subprocess.Popen) -> None:
 
 
 def run_step(step: dict[str, Any], *, py: str, project_root: Path, default_timeout_s: float,
-             log_root: Optional[Path] = None) -> dict[str, Any]:
-    """Run one step under its flock and timeout. Never raises."""
+             log_root: Optional[Path] = None, time_left_s: Optional[float] = None,
+             orphan_wait_s: float = DEFAULT_ORPHAN_WAIT_S) -> dict[str, Any]:
+    """Run one step under its flock and timeout. Never raises.
+
+    `time_left_s` is what remains of the tick deadline: the step's own timeout is
+    clamped to it (minus one kill grace) so the tick always outlives its steps."""
     sid = step["step_id"]
-    timeout_s = float(step.get("timeout_s") or default_timeout_s)
+    declared_timeout_s = float(step.get("timeout_s") or default_timeout_s)
+    timeout_s = declared_timeout_s
+    if time_left_s is not None:
+        timeout_s = max(1.0, min(timeout_s, time_left_s - KILL_GRACE_S))
     row: dict[str, Any] = {"step_id": sid, "due": True, "ran": False, "rc": None,
                            "duration_s": 0.0, "lock_skipped": False, "timeout": False,
-                           "stderr_first_line": None, "error": None}
+                           "stderr_first_line": None, "error": None, "outcome": None,
+                           "effective_timeout_s": round(timeout_s, 1), "orphans": None}
+    finding_rc = list(step.get("finding_rc") or [])
     cmd = render_command(step, py=py, project_root=project_root)
     lock_path = step.get("lock")
     lock_fd = None
@@ -232,11 +355,13 @@ def run_step(step: dict[str, Any], *, py: str, project_root: Path, default_timeo
             os.close(lock_fd)
             row["lock_skipped"] = True
             row["error"] = f"lock held: {lock_path}"
+            row["outcome"] = classify(row, finding_rc, crashed=False)
             return row
         except OSError as exc:
             if lock_fd is not None:
                 os.close(lock_fd)
             row["error"] = f"lock unavailable: {type(exc).__name__}"
+            row["outcome"] = "not_run"
             return row
 
     log_path = None
@@ -261,7 +386,14 @@ def run_step(step: dict[str, Any], *, py: str, project_root: Path, default_timeo
                 out, err = b"", b""
             row["timeout"] = True
             row["rc"] = proc.returncode if proc.returncode is not None else -9
-            row["error"] = f"timeout after {timeout_s:.0f}s"
+            clamped = timeout_s < declared_timeout_s
+            row["error"] = (f"timeout after {timeout_s:.0f}s"
+                            + (f" (clamped from {declared_timeout_s:.0f}s to the tick deadline)" if clamped else ""))
+        if not row["timeout"]:
+            wait = orphan_wait_s
+            if time_left_s is not None:
+                wait = max(0.0, min(wait, time_left_s - (time.monotonic() - started) - 2 * KILL_GRACE_S))
+            row["orphans"] = reap_orphans(proc.pid, wait)
     except (OSError, ValueError) as exc:
         row["rc"] = 127
         row["error"] = f"spawn failed: {type(exc).__name__}: {exc}"[:240]
@@ -273,6 +405,7 @@ def run_step(step: dict[str, Any], *, py: str, project_root: Path, default_timeo
             finally:
                 os.close(lock_fd)
     row["stderr_first_line"] = _first_stderr_line(err)
+    row["outcome"] = classify(row, finding_rc, crashed=ends_in_traceback(err))
     if log_path is not None:
         try:
             log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -283,17 +416,27 @@ def run_step(step: dict[str, Any], *, py: str, project_root: Path, default_timeo
                     fh.write(err if err.endswith(b"\n") else err + b"\n")
                 if row["timeout"]:
                     fh.write(f"[health_tick] {sid} {row['error']}\n".encode())
+                if row.get("orphans") and row["orphans"].get("killed"):
+                    fh.write(f"[health_tick] {sid} left processes in its group; terminated "
+                             f"after {row['orphans'].get('waited_s')}s ({row['orphans'].get('signal')})\n".encode())
         except OSError as exc:
             row["error"] = (row["error"] or "") + f" | log append failed: {type(exc).__name__}"
     return row
 
 
 def step_ok(row: dict[str, Any]) -> bool:
+    """Green: ran clean or lock-skipped. A finding is NOT ok (it is in `failed`),
+    but it is not broken either — see step_broken."""
     if row.get("lock_skipped"):
         return True          # information, not failure: cron's flock -n was silent here
     if not row.get("ran"):
         return False         # deferred / spawn failed
     return (not row.get("timeout")) and row.get("rc") == 0
+
+
+def step_broken(row: dict[str, Any]) -> bool:
+    """The tick could not do this step's job: anything but ok / finding / lock skip."""
+    return row.get("outcome") not in ("ok", "finding", "lock_skipped")
 
 
 # ── receipt ─────────────────────────────────────────────────────────────────
@@ -344,6 +487,10 @@ def run_tick(table: dict[str, Any], *, now: datetime, py: str, project_root: Pat
     tick = snap_to_tick(now, tm)
     default_timeout = float(table.get("default_timeout_s") or 240)
     budget = float(tick_budget_s if tick_budget_s is not None else table.get("tick_budget_s") or 280)
+    deadline = float(table.get("tick_deadline_s") or max(DEFAULT_TICK_DEADLINE_S, budget + 20))
+    deadline = max(deadline, budget)
+    orphan_wait = float(table.get("orphan_wait_s") if table.get("orphan_wait_s") is not None
+                        else DEFAULT_ORPHAN_WAIT_S)
     workers = int(max_parallel if max_parallel is not None else table.get("max_parallel") or 1)
 
     if only_step:
@@ -360,6 +507,8 @@ def run_tick(table: dict[str, Any], *, now: datetime, py: str, project_root: Pat
         rows[s["step_id"]] = {"step_id": s["step_id"], "due": s["step_id"] in due_ids,
                               "ran": False, "rc": None, "duration_s": 0.0,
                               "lock_skipped": False, "timeout": False,
+                              "outcome": None if s["step_id"] in due_ids else "not_due",
+                              "finding_rc": list(s.get("finding_rc") or []),
                               "command": render_command(s, py=py, project_root=project_root),
                               "lock": s.get("lock"), "timeout_s": float(s.get("timeout_s") or default_timeout)}
 
@@ -368,14 +517,17 @@ def run_tick(table: dict[str, Any], *, now: datetime, py: str, project_root: Pat
     if apply and selected:
         def _run(step: dict[str, Any]) -> dict[str, Any]:
             return run_step(step, py=py, project_root=project_root,
-                            default_timeout_s=default_timeout, log_root=log_root)
+                            default_timeout_s=default_timeout, log_root=log_root,
+                            time_left_s=deadline - (time.monotonic() - started),
+                            orphan_wait_s=orphan_wait)
 
         if workers <= 1:
             for step in selected:
                 elapsed = time.monotonic() - started
-                if elapsed >= budget:
+                if elapsed >= budget or deadline - elapsed < KILL_GRACE_S + MIN_STEP_WINDOW_S:
                     deferred.append(step["step_id"])
-                    rows[step["step_id"]].update({"error": f"deferred: tick budget {budget:.0f}s spent"})
+                    rows[step["step_id"]].update({"deferred": True, "outcome": "deferred",
+                                                  "error": f"deferred: tick budget {budget:.0f}s spent"})
                     continue
                 rows[step["step_id"]].update(_run(step))
         else:
@@ -384,6 +536,17 @@ def run_tick(table: dict[str, Any], *, now: datetime, py: str, project_root: Pat
                     rows[step["step_id"]].update(res)
 
     failed = [sid for sid in due_ids if apply and not step_ok(rows[sid])]
+    broken = sorted(sid for sid in failed if step_broken(rows[sid]))
+    findings = sorted(sid for sid in failed if rows[sid].get("outcome") == "finding")
+    orphaned = sorted(sid for sid in due_ids if (rows[sid].get("orphans") or {}).get("killed"))
+    if not apply:
+        status = "planned"
+    elif broken:
+        status = "broken"
+    elif findings:
+        status = "unhealthy"
+    else:
+        status = "healthy"
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "as_of": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -398,6 +561,14 @@ def run_tick(table: dict[str, Any], *, now: datetime, py: str, project_root: Pat
         "timed_out": sorted(sid for sid in due_ids if rows[sid]["timeout"]),
         "deferred": deferred,
         "failed": sorted(failed),
+        "broken": broken,
+        "findings": findings,
+        "orphans_terminated": orphaned,
+        "status": status,
+        "tick_ok": not broken,
+        "exit_semantics": EXIT_SEMANTICS,
+        "tick_budget_s": budget,
+        "tick_deadline_s": deadline,
         "duration_s": round(time.monotonic() - started, 3),
         "ok": not failed,
         "sends": False,
@@ -472,17 +643,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         except OSError as exc:
             print(f"health_tick: receipt write failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             receipt["ok"] = False
+            receipt["tick_ok"] = False
+            receipt["status"] = "broken"
             receipt["failed"] = sorted(set(receipt["failed"]) | {"__receipt__"})
+            receipt["broken"] = sorted(set(receipt["broken"]) | {"__receipt__"})
 
     if args.json:
         print(json.dumps(receipt, indent=2, sort_keys=True))
     else:
         due = [r for r in receipt["steps"] if r["due"]]
         print(f"[health_tick] tick={receipt['tick']} mode={receipt['mode']} due={len(due)} "
-              f"ran={receipt['ran_count']} ok={receipt['ok']} served_sha={receipt['served_sha']}")
+              f"ran={receipt['ran_count']} status={receipt['status']} ok={receipt['ok']} "
+              f"served_sha={receipt['served_sha']}")
         for r in due:
             state = ("LOCK_SKIPPED" if r["lock_skipped"] else "TIMEOUT" if r["timeout"]
                      else f"rc={r['rc']}" if r["ran"] else "PLANNED" if not apply else "DEFERRED")
+            if r.get("outcome") in ("finding", "crashed"):
+                state = f"{state}:{r['outcome']}"
             print(f"  {r['step_id']:<32} {state:<13} {r['duration_s']:>7.1f}s  {' '.join(r['command'])}")
             if r.get("stderr_first_line"):
                 print(f"      stderr: {r['stderr_first_line']}")
@@ -490,7 +667,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"[health_tick] receipt {receipt['receipt_path']}")
     if not apply:
         return EXIT_OK
-    return EXIT_OK if receipt["ok"] else EXIT_STEP_FAILED
+    return EXIT_OK if receipt["tick_ok"] else EXIT_TICK_BROKEN
 
 
 if __name__ == "__main__":

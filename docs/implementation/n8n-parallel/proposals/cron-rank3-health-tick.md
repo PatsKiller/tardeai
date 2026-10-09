@@ -7,7 +7,36 @@ absorbed) that each poll, probe or monitor something become ONE user timer, `tra
 boundary with cron-equivalent arithmetic, runs them sequentially under each line's own `/tmp` flock and a
 per-step timeout, appends their output to the same `logs/*.log` files the cron lines appended to, and
 writes `data/runtime/health_tick_last.json` (`HealthTickReceipt@v1`) plus one line in
-`data/runtime/health_tick_history.jsonl`. Exit 1 when a due step failed or timed out (the unit logs it).
+`data/runtime/health_tick_history.jsonl`. ~~Exit 1 when a due step failed or timed out.~~ Superseded
+2026-10-09 — see "Exit codes" below.
+
+## Exit codes (2026-10-09, n8n maturity B3.1)
+The unit's exit code reports the health of the **tick**, not of the system the monitors watch.
+
+| exit | meaning | receipt |
+|---|---|---|
+| 0 | the tick ran its table: every due step completed or was lock-skipped. Monitors may have FOUND problems | `status: healthy` or `unhealthy`; `findings: [step…]`; rows `outcome: finding` |
+| 1 | the tick is broken: a due step crashed, timed out, could not spawn, was deferred, or the receipt failed | `status: broken`; `broken: [step…]` |
+| 2 | cannot run (table unreadable, bad arguments) | none |
+
+A step declares which exit codes mean "I ran and found something" with `finding_rc` (today `[1]` for
+system-health-agent, moomoo-opend-health and pipeline-liveness-report). A finding rc whose stderr ENDS in
+an uncaught Python traceback is a crash (Python's uncaught-exception exit is also 1). `ok`/`failed` keep
+their old meaning ("everything green") for back-compat; `tick_ok`/`broken`/`findings`/`status` are new.
+
+Why: from 2026-10-07 to 10-09 the unit failed ~265 times. 225 of those were system_health_agent
+correctly reporting a critical component (Pipeline Watchdog) stale — and that component was stale
+*because* the tick was being killed: `portfolio_live_monitor.py` is a market-hours daemon that ran into
+its 300 s timeout on every firing, pushing every hourly tick past `TimeoutStartSec=330`, so systemd
+killed the tick before `pipeline-watchdog` (due :00 of even hours) ran or the receipt was written. On the
+even-hour ticks that did finish, `pipeline_watchdog.py`'s fire-and-forget `symbol_enrichment.py` children
+outlived the tick and systemd ended the unit `Result=timeout` after a clean receipt. Fixes: the live
+monitor runs `--once`; `tick_deadline_s` (300) clamps every step timeout so the tick always outlives its
+steps; leftover process-group members get `orphan_wait_s` (30) and are then terminated and recorded
+(`orphans`, `orphans_terminated`). Real unhealthiness still surfaces: in the receipt
+(`status: unhealthy`), in each monitor's own escalation/alert path, and in the lane monitors that read
+those monitors' outputs; `systemctl --failed` / health_agent's `systemd_unit_failed` now mean what they
+say — the scheduler is broken.
 
 **Nothing in this PR is installed.** The unit files carry a PROPOSAL ONLY header, the lane row is
 `NEVER_SCHEDULED`, the crontab is untouched. Every action below is an operator step under a grant.
@@ -81,8 +110,8 @@ pipeline-freshness-monitor 42; pipeline-freshness-slo 30; system-health-alerts 1
 3. **`:27 → :25`** for symbol-news-curation-monitor (hourly, bounded LLM calls; the 2 minutes do not
    change its SLA window).
 4. **`pipeline_liveness_report.py --fail-on-finding`** exits 1 on a STARVED lane by design. Under cron that
-   exit went to a log; under the tick it marks the step failed and the unit exits 1 every 30 minutes
-   while the finding is open. That is the flag's documented purpose ("exit 1 to gate cron/CI").
+   exit went to a log. Since 2026-10-09 the step declares `finding_rc: [1]`, so the finding lands in the
+   receipt (`findings`, `status: unhealthy`) and the unit stays green; a crash still fails it.
 5. **Lock skip is not a failure.** `flock -n` under cron exited 1 silently; the tick records
    `lock_skipped: true` and keeps `ok`. Three consecutive lock skips on one step mean a wedge that the
    step's own timeout did not catch (another process holds the lock) — visible in `health_tick_history.jsonl`.
