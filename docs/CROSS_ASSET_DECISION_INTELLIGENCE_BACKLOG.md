@@ -133,3 +133,57 @@ Authority: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
 4. CADI-011 → 012 (producer/consumer hooks) — **landed hermetic 2026-09-29**  
 5. CADI-013 → 014; UI deferred until shadow metrics exist  
 6. Organic OBSERVED canary after promote + `CROSS_ASSET_SPINE=1`  
+
+---
+
+## 2026-10-09 supplement — CADI-007 offline adapter implemented
+
+Status: SOURCE_ONLY implementation / TEST_ONLY validation; production **NOT_READY**
+
+The September 29 ticket descriptions and measurements above remain historical.
+At source checkpoint `e9c0b5d5c6fc0ecbdd8e27b5bf66eed1ce948817`, CADI-007 now
+has a working offline archive adapter instead of an existence-only replay stub.
+It evaluates valid archived signals through the existing pure advisory
+expression evaluator, with aware timestamp, identity, price-coverage and
+future-data checks. See the
+[versioned offline archive contract](implementation/CADI_OFFLINE_HISTORICAL_REPLAY_ARCHIVE_CONTRACT.md)
+and the October 9 supplement in the
+[readiness report](CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md).
+
+Completed locally:
+
+- Explicit signal, spot-price and separate evaluator-fact archive contracts.
+- Actual offline signal evaluation, per-window coverage/skips/refusals and
+  deterministic reproduction with explicit `--as-of`.
+- `SCORING_COMPARISON_ONLY` reporting; realized options superiority remains
+  unknown rather than a fabricated zero or an EV claim.
+- **46 TEST_ONLY passing tests**, including the prior zero-evaluation defect,
+  malformed/missing archives, identity binding, future exclusion and offset
+  conflicts. Evidence: `/tmp/tradeai-cadi-replay-source-handoff-20261009.json`.
+
+CADI-007 production acceptance remains blocked; no fresh actual-archive
+30/60/90 result was generated. Next work requires:
+
+1. Immutable historical events/identities and canonical decision receipts.
+   The October 9 live audit found the declared decision ledgers absent; the
+   775-row fresh shared spine is research memory, not expression-decision proof.
+2. Market/event timestamps plus provable availability timestamps. Existing
+   action-signal UPSERT history and late-ingested/updated bars cannot by
+   themselves reconstruct what was known when a signal fired.
+3. Full historical contract economics and justified coverage/retention. All
+   48,419 observed chain snapshots are summary-only, with zero full contracts;
+   summaries cannot be relabeled as option prices or used to invent fills.
+4. Governed actual-archive 30/60/90 replay and independent review of its missing
+   data and counterfactual limits before any expression-EV readiness decision.
+5. Existing CADI-005/009 producer → receipt → ledger → consumer integration
+   and observed operation; offline fixture success does not activate this chain.
+
+Dated audit evidence is in
+`/tmp/crossasset-live-gap-assessment-20261009T134300Z.json` and
+`/tmp/crossasset-archive-asof-audit-20261009T134145Z.json`, measured against
+CURRENT `a9fa8b89b616f685145d27d6d2d62da3a1fab970`. The
+September 29 zero/null replay artifact remains **STALE_HISTORICAL**.
+
+No provider/model selection or call, production data-source writer, scheduler,
+send path or financial authority is introduced by this supplement. Production
+and end-to-end expression-EV acceptance remain **NOT_READY**.
