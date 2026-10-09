@@ -56,6 +56,7 @@ def test_dof_cron_provenance_is_observed_not_n8n_activated():
         assert "nyc-dof-auction" in row["scheduler"]["match"]
         assert row["state"] == "ACTIVE"
         assert "SQL" in row["note"] and "Observed crontab" in row["note"]
+        assert "N6 retained on cron by operator decision 2026-10-09 (AGENTS.md §23.3)" in row["note"]
     assert rows["dof-run-pipeline"]["output_signal"]["kind"] == "none"
     assert "NO_SIGNAL" in rows["dof-run-pipeline"]["note"]
 
@@ -74,19 +75,34 @@ def test_rescan_signal_is_a_bounded_read_of_the_actual_updated_column():
     assert L.observe_signal(signal)["readable"] is False
 
 
-def test_native_reminders_link_existing_generated_ids_but_remain_unscheduled():
+OPENCLAW_JOBS = {
+    "openclaw-reminder-claude-plan-1": ("676c2212-f18a-4913-b96d-e7790b7b173c", "0 9 24 * *"),
+    "openclaw-reminder-claude-plan-2": ("0775cd6b-2186-40fb-9b56-a3e36f6faf14", "0 9 L * *"),
+    "openclaw-reminder-supergrok-expiry": ("9a26d34d-b940-4185-9fe1-32403c0b3bc1", "at 2026-10-20T14:00:00Z"),
+    "openclaw-reminder-sentinelone-earnings": ("a9c337e0-7a4d-4a83-8089-5aa3bf5f5059", "at 2026-12-07T13:00:00Z"),
+}
+
+
+def test_reminders_are_retained_on_the_openclaw_scheduler_not_n8n():
+    """2026-10-09 N6 option 1: the reminders stay on OpenClaw (§23.3: n8n must not trigger a sender).
+    The generated n8n workflows stay in the pending tree, never imported; the row names the OpenClaw job."""
     rows = _rows()
     index = json.loads((ROOT / "docs/implementation/n8n-parallel/workflows/generated/INDEX.json").read_text())
     generated = {row["lane_id"]: row for row in index["lanes"]}
+    tranches = json.loads((ROOT / "config/n8n_migration_tranches.json").read_text())
+    assert tranches["tranches"]["N6"]["status"] == "RETAINED_BY_POLICY"
     for lane, alias in REMINDERS.items():
         row = rows[lane]
-        assert row["scheduler"]["kind"] == "n8n"
-        assert row["scheduler"]["expression"] == generated[alias]["live_workflow_id"]
+        job, cadence = OPENCLAW_JOBS[lane]
+        assert row["scheduler"] == {"kind": "event", "expression": f"openclaw-cron:{job}",
+                                    "emitted_by": "openclaw-scheduler", "match": job, "cadence": cadence}
+        assert generated[alias]["committed"] is False  # pending workflow kept, not deleted, not imported
         assert alias in row["note"]
-        assert row["state"] == "NEVER_SCHEDULED"
+        assert row["state"] == "ACTIVE"
         assert row["reason_confidence"] == "ESTABLISHED"
-        assert "NO_SIGNAL" in row["state_reason"]
+        assert "NO_SIGNAL" in row["state_reason"] and job in row["state_reason"]
         assert row["output_signal"]["kind"] == "none"
+        assert "retained on the OpenClaw scheduler by operator decision 2026-10-09" in row["note"]
 
 
 def test_calendar_and_delivery_defects_are_explicit_not_silently_accepted():

@@ -1,10 +1,12 @@
 {
  "schema": "N8nMigrationTranches@v1",
  "authority": "READ_ONLY_ADVISORY",
- "as_of": "2026-10-08",
+ "as_of": "2026-10-09",
  "source": "docs/implementation/n8n-parallel/16-codex-assessment-review-20261008.md §4.2 (71 lanes, N1–N6)",
- "note": "Program list only. The registry (config/lane_registry.json) stays the scheduler-of-record truth; a lane here without a registry row is reported NO_REGISTRY_ROW by scripts/n8n_migration_board.py until stream D adds it. The doc's N2 'portfolio cadences ×5' overlaps N5's portfolio-backup-cadence; backup is counted once (N5) and portfolio-price-cache fills the fifth N2 slot.",
+ "note": "Program list only. The registry (config/lane_registry.json) stays the scheduler-of-record truth; a lane here without a registry row is reported NO_REGISTRY_ROW by scripts/n8n_migration_board.py until stream D adds it. The doc's N2 'portfolio cadences ×5' overlaps N5's portfolio-backup-cadence; backup is counted once (N5) and portfolio-price-cache fills the fifth N2 slot. 2026-10-09: tranche N6 is RETAINED_BY_POLICY (operator decision 'N6 option 1'); its six lanes stay on their current schedulers, so the program scope is 65 lanes (lane_count stays the full list of 71; in_scope_lane_count is the target).",
  "lane_count": 71,
+ "in_scope_lane_count": 65,
+ "retained_lane_count": 6,
  "tranches": {
   "N1": {
    "title": "coordination-only",
@@ -258,32 +260,47 @@
   },
   "N6": {
    "title": "other projects",
+   "status": "RETAINED_BY_POLICY",
+   "decided": "2026-10-09",
+   "reason": "AGENTS.md §23.3 forbids a DOF SQL path through the run route and forbids n8n triggering a sender; operator decision 2026-10-09 'N6 option 1'.",
    "lanes": [
     {
      "lane_id": "dof-run-pipeline",
      "match": "run_pipeline.py",
-     "note": "DOF six stages; one receipt per stage; after the dof_reader role (operator decision 2)"
+     "note": "DOF six stages; one receipt per stage; after the dof_reader role (operator decision 2)",
+     "retained_on": "cron",
+     "retained_reason": "DOF SQL writer; stays on cron (no DOF SQL path through the run route, AGENTS.md §23.3)."
     },
     {
      "lane_id": "dof-rescan-tickets",
      "match": "rescan_tickets.py",
-     "note": "DOF; after the dof_reader role"
+     "note": "DOF; after the dof_reader role",
+     "retained_on": "cron",
+     "retained_reason": "DOF SQL writer; stays on cron (no DOF SQL path through the run route, AGENTS.md §23.3)."
     },
     {
      "lane_id": "openclaw-reminder-claude-plan-1",
-     "note": "OpenClaw reminder; pure schedule"
+     "note": "OpenClaw reminder; pure schedule",
+     "retained_on": "openclaw",
+     "retained_reason": "Telegram sender; stays on the OpenClaw scheduler (n8n must not trigger a sender, AGENTS.md §23.3)."
     },
     {
      "lane_id": "openclaw-reminder-claude-plan-2",
-     "note": "OpenClaw reminder; pure schedule"
+     "note": "OpenClaw reminder; pure schedule",
+     "retained_on": "openclaw",
+     "retained_reason": "Telegram sender; stays on the OpenClaw scheduler (n8n must not trigger a sender, AGENTS.md §23.3)."
     },
     {
      "lane_id": "openclaw-reminder-supergrok-expiry",
-     "note": "OpenClaw reminder; pure schedule"
+     "note": "OpenClaw reminder; pure schedule",
+     "retained_on": "openclaw",
+     "retained_reason": "Telegram sender; stays on the OpenClaw scheduler (n8n must not trigger a sender, AGENTS.md §23.3)."
     },
     {
      "lane_id": "openclaw-reminder-sentinelone-earnings",
-     "note": "OpenClaw reminder; pure schedule"
+     "note": "OpenClaw reminder; pure schedule",
+     "retained_on": "openclaw",
+     "retained_reason": "Telegram sender; stays on the OpenClaw scheduler (n8n must not trigger a sender, AGENTS.md §23.3)."
     }
    ]
   }
