@@ -260,6 +260,36 @@ def test_report_schema_is_classified_and_gate_registered():
     row = next(row for row in classification["entries"] if row["name"] == "schema:" + X.ENV_ALLOWLIST_REPORT_SCHEMA)
     assert row["classification"] == "NOT_OPERATOR_RELEVANT"
     assert row["owner_hint"] == "scripts/n8n_run_executor.py"
+    assert row["producer_path"] == "scripts/n8n_run_executor.py"
     source = (ROOT / "scripts/run_cio_hardening_ci.py").read_text()
     assert "# ANCHOR: N8N_AGENT_GATE_EXECUTOR_ENV" in source
     assert "tests/test_n8n_executor_env_allowlist_20261009.py" in source
+
+
+def test_external_classification_requires_a_real_schema_definition(tmp_path):
+    from scripts.cio_completeness_measurement import schema_definitions
+
+    (tmp_path / "config").mkdir()
+    (tmp_path / "scripts").mkdir()
+    producer = tmp_path / "scripts/executor.py"
+    producer.write_text('REPORT_SCHEMA = "FixtureEnvReport@v1"\nOTHER_SCHEMA = "UnclassifiedOther@v1"\n')
+    classification = {"entries": [{"name": "schema:FixtureEnvReport@v1", "kind": "schema",
+                                   "producer_path": "scripts/executor.py"}]}
+    (tmp_path / "config/cio_surface_classification.json").write_text(json.dumps(classification))
+    defined, _ = schema_definitions(tmp_path)
+    assert defined == {"FixtureEnvReport@v1": ["scripts/executor.py"]}
+    producer.write_text('REPORT_SCHEMA = "RenamedReport@v1"\n')
+    assert schema_definitions(tmp_path)[0] == {}
+    producer.write_text('_CATALOG = [{"schema": "FixtureEnvReport@v1"}]\n')
+    assert schema_definitions(tmp_path) == ({}, {"FixtureEnvReport@v1": ["scripts/executor.py"]})
+
+
+@pytest.mark.parametrize("source", ["../outside.py", "/tmp/outside.py", "missing.py", "scripts/missing.py"])
+def test_external_classification_does_not_expand_to_unsafe_or_missing_sources(tmp_path, source):
+    from scripts.cio_completeness_measurement import schema_definitions
+
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config/cio_surface_classification.json").write_text(json.dumps({"entries": [
+        {"name": "schema:FixtureEnvReport@v1", "kind": "schema", "producer_path": source},
+    ]}))
+    assert schema_definitions(tmp_path)[0] == {}

@@ -83,10 +83,29 @@ def _catalog_literal_lines(tree: ast.Module) -> set[int]:
 
 def schema_definitions(root: Path) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """(defined, catalog_references): schema -> files.  A schema whose only literal in
-    scripts/lib/cio_*.py is a producer-catalog row is a catalog reference."""
+    scripts/lib/cio_*.py is a producer-catalog row is a catalog reference.
+    Explicit producer_path rows also verify classified schemas outside the CIO library namespace.
+    A declaration alone is not production evidence: the named source must define that schema.
+    """
     defined: dict[str, list[str]] = {}
     references: dict[str, list[str]] = {}
-    for path in sorted((root / "scripts" / "lib").glob("cio_*.py")):
+    paths = set((root / "scripts" / "lib").glob("cio_*.py"))
+    external: dict[Path, set[str]] = {}
+    try:
+        entries = json.loads((root / CLASSIFICATION_PATH).read_text(encoding="utf-8")).get("entries", [])
+    except (OSError, ValueError):
+        entries = []
+    for row in entries:
+        name, source = row.get("name", ""), row.get("producer_path")
+        if row.get("kind") != "schema" or not name.startswith("schema:") or not isinstance(source, str):
+            continue
+        rel = Path(source)
+        if rel.is_absolute() or ".." in rel.parts or not rel.parts or rel.parts[0] != "scripts" or rel.suffix != ".py":
+            continue
+        path = root / rel
+        if path not in paths and path.is_file() and path.resolve().is_relative_to(root.resolve()):
+            external.setdefault(path, set()).add(name.removeprefix("schema:"))
+    for path in sorted(paths | external.keys()):
         text = path.read_text(encoding="utf-8", errors="replace")
         try:
             catalog = _catalog_literal_lines(ast.parse(text))
@@ -94,6 +113,8 @@ def schema_definitions(root: Path) -> tuple[dict[str, list[str]], dict[str, list
             catalog = set()
         rel = str(path.relative_to(root))
         for m in SCHEMA_DEF_RE.finditer(text):
+            if path in external and m.group(1) not in external[path]:
+                continue
             line = text.count("\n", 0, m.start(1)) + 1
             bucket = references if line in catalog else defined
             files = bucket.setdefault(m.group(1), [])
@@ -104,7 +125,7 @@ def schema_definitions(root: Path) -> tuple[dict[str, list[str]], dict[str, list
 
 
 def produced_schemas(root: Path) -> dict[str, list[str]]:
-    """schema -> defining files (scripts/lib/cio_*.py), catalog references excluded."""
+    """schema -> defining files (CIO libraries and declared external producers), catalogs excluded."""
     return schema_definitions(root)[0]
 
 
@@ -512,7 +533,7 @@ def build_measurement(
         "census_schema": census.get("schema"),
         "serving_sha": census.get("serving_sha"),
         "method": {
-            "produced": "census CIO-family backend GET routes (alias groups) + capability coverage rows + Name@vN schemas defined in scripts/lib/cio_*.py (any *SCHEMA* constant incl. bare SCHEMA, or a schema/schema_version/contract key); literals inside module-level producer-catalog rows are catalog_references, not definitions",
+            "produced": "census CIO-family backend GET routes (alias groups) + capability coverage rows + Name@vN schemas defined in scripts/lib/cio_*.py or explicitly classified producer_path sources (any *SCHEMA* constant incl. bare SCHEMA, or a schema/schema_version/contract key); literals inside module-level producer-catalog rows are catalog_references, not definitions",
             "operator_visible": "route: fetched by a component in the routed pages' import closure with its result not discarded, or its handler's output embedded (envelope or one key below it) at a key path the consumer reads; capability rows via a consumer of /api/v3/cio/operator-evidence that renders them; schema: its own block lands (payload flow followed transitively handler -> api getter -> lib builder, with key paths) at a path whose every segment the consumer, or a local child component it hands the payload to as a JSX prop, reads as a property; record schemas only through a verified record edge",
             "classification": "config/cio_surface_classification.json: every produced_not_surfaced item must be classified; NOT_OPERATOR_RELEVANT and RETIRE_CANDIDATE need a specific reason; anything else counts as produced_not_surfaced_operator_relevant",
             "limitations": [
