@@ -40,8 +40,8 @@ Lanes are considered only when the row's dispatch mode is not off, `lane_dispatc
 forbidden lane is skipped silently, whatever its block says — check_lane_registry reports it) and the allowlist
 supports the mode. Per-lane defects go to `errors[]` and never stop other lanes: not_allowlisted,
 unknown_retry_policy, class_not_permitted (pre-R1 classes AND the policy's permitted_classes),
-after_unknown_lane, bad_cron. A malformed dispatch block is mode off (lane_dispatch fails closed) and is
-reported by check_lane_registry, not here.
+after_unknown_lane, bad_cron (an unparseable cron in a block whose mode is dry_run/live). Any other malformed
+dispatch block is mode off (lane_dispatch fails closed) and is reported by check_lane_registry, not here.
 
 `source` "event" and "digest" (design §6, §9) are NOT computed yet: they return the schema shape with no items
 (follow-up: event cursors / digest windows).
@@ -303,7 +303,10 @@ def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: 
             continue
         try:
             block = _ld.parse_dispatch_block(row)
-        except _ld.DispatchBlockError:
+        except _ld.DispatchBlockError as exc:
+            raw = row.get("dispatch") if isinstance(row.get("dispatch"), dict) else {}
+            if exc.code == _ld.ISSUE_BAD_CRON and raw.get("mode") in ("dry_run", "live"):
+                errors.append(_err(lane, "bad_cron", exc.detail))
             continue                                       # fail closed: a malformed block is mode off
         if block is None or block.mode == "off":
             continue

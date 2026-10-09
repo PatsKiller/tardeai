@@ -3652,6 +3652,17 @@ GATES = [
         ["tests/test_n8n_run_relay_20261008.py"],
     ),
     (
+        # ANCHOR: N8N_MATURITY_DUE
+        # N8N Maturity B5.3 (design 02 §3.1-§3.3, §4): pure compute_due (scripts/lib/n8n_due.py), the read route
+        # coordination/due, server-minted d: slot keys validated in the gateway's run operation, relay GET /due
+        # (liveness log line) and mode-aware /runs/<lane>/last. Hermetic: tmp ledgers, fixed clock, injected loaders.
+        "n8n_maturity_due_20261009",
+        [
+            "tests/test_n8n_maturity_due_20261009.py",
+            "tests/test_n8n_maturity_gateway_due_20261009.py",
+        ],
+    ),
+    (
         # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only
         # (bind refusal, HMAC/envelope auth, window, replay, rate, <= 2 KB, no secrets in output).
         "PHONE_STATUS",
