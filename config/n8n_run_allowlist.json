@@ -270,6 +270,12 @@
     }
   ],
   "blocked_reasons": {
+    "dof-run-pipeline": "AGENTS 23.3 forbids a DOF SQL path; the six-stage runner contains SQL writers and a model-scoring stage. No foreign cwd/interpreter contract, shared cron lock, nonzero aggregate failure exit, dry-run or stable receipt. Keep outside runnable lanes until supervisor/operator resolves authority and producer contracts.",
+    "dof-rescan-tickets": "AGENTS 23.3 forbids a DOF SQL path; the existing runner performs SQL UPDATE/DELETE/INSERT. No foreign cwd/interpreter contract, shared cron lock or dry-run. DOF reader role does not authorize executor writes.",
+    "openclaw-reminder-claude-plan-1": "n8n replacement uninstalled; no OpenClaw run receipt; generator lane alias differs from canonical id; OpenClaw agent loops and host senders remain excluded.",
+    "openclaw-reminder-claude-plan-2": "As above, plus generated day-28 cadence is not the legacy last-day-of-month schedule; requires exact calendar handling, not silent approximation.",
+    "openclaw-reminder-supergrok-expiry": "No receipt or safe reminder trigger contract; generated annual cron is not a one-shot and needs bounded activation/deactivation semantics.",
+    "openclaw-reminder-sentinelone-earnings": "No receipt or safe reminder trigger contract; generated annual cron is not a one-shot and needs bounded activation/deactivation semantics.",
     "llm-spend-report-daily": "Cron includes --send: host sender (§23.3).",
     "llm-spend-report-weekly": "Cron includes --send: host sender (§23.3).",
     "llm-spend-report-monthly": "Cron includes --send: host sender (§23.3).",
@@ -301,6 +307,28 @@
     "commit-hermes-daily": "Git commit/push origin main and Drive sync are not relay authority.",
     "n8n-lab-backup": "Registry is RETIRED: already absorbed into platform-maintenance-nightly; do not add a second schedule.",
     "n8n-lab-restore-drill": "Registry is RETIRED: already absorbed into platform-maintenance-weekly; do not add a second schedule."
+  },
+  "proposed_external_contracts": {
+    "dof-run-pipeline": {
+      "runnable": false,
+      "observed_cwd": "$HOME/nyc-dof-auction",
+      "observed_command": [".venv/bin/python3", "scripts/run_pipeline.py"],
+      "observed_schedule": "0 20 * * 6",
+      "observed_lock": null,
+      "observed_timeout_s": null,
+      "dry_run_arg": null,
+      "source": "Read-only crontab -l 2026-10-08: cd ~/nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py >> logs/pipeline.log 2>&1. This proposal is not consumed by the gateway or executor."
+    },
+    "dof-rescan-tickets": {
+      "runnable": false,
+      "observed_cwd": "$HOME/nyc-dof-auction",
+      "observed_command": [".venv/bin/python3", "scripts/rescan_tickets.py"],
+      "observed_schedule": "0 18 * * *",
+      "observed_lock": null,
+      "observed_timeout_s": null,
+      "dry_run_arg": null,
+      "source": "Read-only crontab -l 2026-10-08: cd ~/nyc-dof-auction && .venv/bin/python3 scripts/rescan_tickets.py >> logs/rescan.log 2>&1. The dof_reader SQL role is projection-only, not executor write authority."
+    }
   },
   "pending_tranches": {
     "_note": "Lane ids from the operator-approved move list (PR #1512 tranches table, plan streamed-humming-wolf). Registry lane_ids are used where a row exists; script-derived ids (hyphenated script stem) mark the lanes with no registry row yet (stream D creates them). Listed without commands: a lane here is NOT runnable until it gets an entry in `lanes` with argv copied from its live cron line or unit, in its own PR. The two N1 monitor workflows are n8n-native and have no host command. portfolio-backup-cadence is listed under N2 (the PR table names it in both N2 and N5).",
