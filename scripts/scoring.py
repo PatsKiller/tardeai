@@ -398,6 +398,17 @@ def _vix_now():
     return _VIX_CACHE["v"]
 
 
+def _effective_go_min(weights: Dict[str, Any]) -> float:
+    """The GO threshold _grade uses, including the VIX regime add-on."""
+    go_min = (weights.get("decision_rules", {}).get("GO", {}) or {}).get("min_score", 40)
+    vix = _vix_now()
+    if vix is not None and vix > 32:
+        go_min += 10
+    elif vix is not None and vix > 25:
+        go_min += 5
+    return go_min
+
+
 def _grade(score: int, weights: Dict[str, Any]) -> tuple[str, str]:
     bands = weights.get("grade_bands", {})
     rules = weights.get("decision_rules", {})
@@ -717,7 +728,7 @@ def score_all(
     _sq_lib = _Path_sq(__file__).resolve().parent / "lib"
     if str(_sq_lib) not in _sys_sq.path:
         _sys_sq.path.insert(0, str(_sq_lib))
-    from catalyst_exception import attach_catalyst_exception_tags
+    from catalyst_exception import attach_catalyst_exception_tags, promote_catalyst_go
 
     for row in tickers:
         sym = str(row.get("symbol", "")).upper()
@@ -840,6 +851,12 @@ def score_all(
         results.append(scored)
 
     attach_catalyst_exception_tags(results)
+    # Operator 2026-10-09: a runner scoring at/above the GO threshold with a verified catalyst is a GO.
+    if (weights.get("decision_rules", {}).get("GO", {}) or {}).get("catalyst_runner_go", False):
+        _go_min = _effective_go_min(weights)
+        _n_go = promote_catalyst_go(results, _go_min)
+        if _n_go:
+            print(f"  [scoring] CATALYST_GO_PROMOTED {_n_go} runner(s) (score ≥ {_go_min:.0f}, catalyst verified)")
 
     if disqualified_count:
         print(f"  [scoring] Data quality: {disqualified_count} disqualified, {unverified_count} catalyst unverified")
