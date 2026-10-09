@@ -34,8 +34,10 @@ containment_state() {
   else echo missing
   fi
 }
-TIMEOUT_SEC="${TRADEAI_GOVERNED_THESIS_TIMEOUT_SEC:-300}"
-MAX_LLM="${TRADEAI_GOVERNED_THESIS_MAX_LLM:-3}"
+# 300 -> 900 (2026-10-09): up to MAX_LLM=6 Flash calls (90s timeout each) plus acquisition must fit
+TIMEOUT_SEC="${TRADEAI_GOVERNED_THESIS_TIMEOUT_SEC:-900}"
+# 3 -> 6 (2026-10-09): calls are no longer wasted on DEDUPE_SKIP / truncated replies; Flash ~$0.003-0.004 each
+MAX_LLM="${TRADEAI_GOVERNED_THESIS_MAX_LLM:-6}"
 LIMIT="${TRADEAI_GOVERNED_THESIS_LIMIT:-10}"
 SYMBOLS="${TRADEAI_GOVERNED_THESIS_SYMBOLS:-}"
 DRY_RUN="${TRADEAI_GOVERNED_THESIS_DRY_RUN:-0}"
