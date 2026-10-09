@@ -1,4 +1,5 @@
-"""AGENTS.md 4.1.0 — registry-driven n8n dispatch, wave ladder, program window (§23.11–§23.14), PROPOSED 2026-10-09.
+"""AGENTS.md 4.1.0 — registry-driven n8n dispatch, wave ladder, program window (§23.11–§23.14); PROPOSED 2026-10-09, ACTIVE 2026-10-09
+(ratified `APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079`).
 
 The failures this guards against:
 
@@ -537,3 +538,20 @@ def test_guard_projection_is_read_only():
                 subs = [e.value for e in args.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
                 assert subs and set(subs) <= GUARD_READ_SUBCOMMANDS, subs
                 assert not (set(subs) & GUARD_WRITE_SUBCOMMANDS), subs
+
+
+def test_when_active_the_ratification_is_recorded():
+    """Ratified 2026-10-09 with APPROVE_AGENTS_POLICY_4_1_0 1592 <sha>: an ACTIVE 4.1.0 carries a real date,
+    the token and a concrete §23.13 expiry no later than the program window."""
+    if _version() == (4, 1, 0) and _control("Status") == "ACTIVE":
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date"))
+        assert not _proposed()
+        status, rest = _row().group(1), _row().group(2)
+        assert status == "ACTIVE"
+        assert f"{TOKEN} 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079" in rest
+        assert "4.1.0 is PROPOSED" not in AGENTS
+        assert "4.1.0 PROPOSED" not in AGENTS
+        assert "PROPOSED in 4.1.0" not in AGENTS
+        value = _expires_at()
+        assert value != "PENDING"
+        assert datetime.fromisoformat(value) <= datetime.fromisoformat(WINDOW_END)
