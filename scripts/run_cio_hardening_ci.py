@@ -3585,6 +3585,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_GENERIC_WORKFLOWS (2026-10-09, design 02 §11, B5.6): the six generic
+        # registry-driven workflows (build-generic). Static only: byte-determinism, node allowlist, /run body keys,
+        # bridge-IP relay, errorWorkflow, no lane constants beyond SYSTEM_FILTER_LANES. Imports nothing into n8n.
+        "n8n_maturity_generic_workflows_20261009",
+        [
+            "tests/test_n8n_maturity_generic_workflows_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_AGENT_GATE_GOVERNANCE — 2026-10-09 AGENTS.md 3.0.0 §23.10 preconditions before any n8n
         # Agent node: P16 activation attribution (n8n publish evidence vs guard grants naming the workflow id),
         # P17 registry-first (active n8n workflows are a lane-registry discovery source; UNDECLARED_N8N_WORKFLOW
@@ -3604,6 +3613,13 @@ GATES = [
         # workflows. Hermetic: tmp_path dumps/stamps, fake runners, fake DB connections that record SQL.
         "n8n_ops_lanes_20261009",
         ["tests/test_n8n_ops_lanes_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_RETRY_DLQ — n8n maturity B5.4 (design 02 §3.3/§3.4, F8/F9): N8nRetryPolicies@v1
+        # + program rules, verdict table, additive ledger schema (runs dispatch columns, dead_letters, breakers,
+        # event_cursors), DLQ + breaker after 3, n8n_dlq.py list/release receipts. Hermetic tmp_path ledgers.
+        "n8n_maturity_retry_dlq_20261009",
+        ["tests/test_n8n_maturity_retry_dlq_20261009.py"],
     ),
     (
         # ANCHOR: N8N_SCHED_FIXES — 2026-10-09 audit (operator "fix the broken cron jobs"): watchdog unit lock
