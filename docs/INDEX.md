@@ -1413,6 +1413,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/ACTIVE_TRADER_ROUTE_API_DB_MAP.md` | Active Trader — Route / API / DB map (Stage 0 inventory) | review_required | OK | `0401a69b4224` |
 | `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline | review_required | OK | `1dbd606d89d5` |
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) | review_required | OK | `8f4ed9463ca3` |
+| `docs/implementation/backup/restore-drill-proposal-20261009.md` | Backup and recovery coverage: inventory, gate, and monthly restore drill proposal | review_required | OK | `c5a718b394d9` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_00_PREFLIGHT.md` | Stage 0 · Pre-flight | review_required | OK | `a502f2f7191b` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix | review_required | OK | `2d04326c1ac7` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_DRIVE_MIRROR_VERIFICATION.md` | Stage 1.6 · Drive mirror | review_required | OK | `4dd677d4c67b` |
@@ -1647,6 +1648,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operator/ATM_RUNBOOK.md` | ATM Operator Runbook | review_required | OK | `b273f679aff3` |
 | `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) | review_required | MISSING HEADER | `a9da923f94da` |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) | review_required | MISSING HEADER | `b4e24d80618c` |
+| `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) | review_required | OK | `73eaf7ad75b7` |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result | review_required | OK | `51a39935be0a` |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `e30957166ceb` |
