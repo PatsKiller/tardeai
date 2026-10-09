@@ -3586,6 +3586,12 @@ GATES = [
         ["tests/test_n8n_run_relay_20261008.py"],
     ),
     (
+        # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only
+        # (bind refusal, HMAC/envelope auth, window, replay, rate, <= 2 KB, no secrets in output).
+        "PHONE_STATUS",
+        ["tests/test_phone_status_endpoint_20261009.py"],
+    ),
+    (
         # N8N_AGENT2_W1 — 2026-10-08: observed registry rows, safe routing and durable legacy-job receipts.
         "N8N_AGENT2_W1",
         ["tests/test_n8n_w1_registry_20261008.py"],
@@ -3689,6 +3695,25 @@ GATES = [
         "n8n_agent_gate_bridge_20261009",
         [
             "tests/test_bridge_agent_preconditions_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: BACKUP_COVERAGE_GATE_20261009 — operator question 2026-10-09: every repo-declared asset
+        # (authority store, persistent tree, unit, secret name, migration table, fixed infra) resolves to a
+        # backup class in config/backup_coverage_manifest.json; a new unmapped asset or a new gap fails,
+        # baselined gaps are reported (ratchet). Runs scripts/check_backup_coverage.py on the real repo.
+        "backup_coverage_gate_20261009",
+        [
+            "tests/test_backup_coverage_gate_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: AGENTS_GUARD_HOOK — 2026-10-09 Claude Code PreToolUse hook enforcing the AGENTS.md hard rails
+        # (broker, delete, remote routing, secrets, live ops behind guard grants, governed served paths); log-only
+        # first week, fail-open on its own errors, redacted AgentsGuardDecision@v1 log. Hermetic: tmp HOME/state/ledger.
+        "AGENTS_GUARD_HOOK",
+        [
+            "tests/test_agents_guard_hook_20261009.py",
         ],
     ),
     (
