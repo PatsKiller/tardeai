@@ -1,0 +1,291 @@
+{
+  "schema": "IndependentCadiOfflineReplaySourceReview@v1",
+  "as_of": "2026-10-09T14:08:55.815377+00:00",
+  "reviewer": "runtime_proof",
+  "verdict": "PASS_OFFLINE_SOURCE_CONTRACT",
+  "evidence_class": "TEST_ONLY",
+  "source_identity": {
+    "root": "/home/johnclaw/tradeai-wt-cadi-archive-replay-20261009",
+    "original_reviewed_sha": "e9c0b5d5c6fc0ecbdd8e27b5bf66eed1ce948817",
+    "repair_sha": "1d92fd2c01b00cbc943d52cda904473e605fe288",
+    "reviewed_head": "65d71c7e317e9dd7c7eafc20f5ba5fc43f24105d",
+    "working_tree_clean": true,
+    "repair_files_identical_to_reviewed_head": true,
+    "file_blobs": {
+      "scripts/ops/run_cross_asset_historical_replay.py": {
+        "fix": "f537954283d5058e959902829c694466e1152bb0",
+        "reviewed_head": "f537954283d5058e959902829c694466e1152bb0",
+        "sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57"
+      },
+      "tests/test_cross_asset_decision_intelligence.py": {
+        "fix": "f448b4b0f9b43e3410fed4dd5f4c602fe9fc3a99",
+        "reviewed_head": "f448b4b0f9b43e3410fed4dd5f4c602fe9fc3a99",
+        "sha256": "d6f6119d9cc09ba8b431dd0b514b91d18224c6c8f8954b50bed29b722996b1b9"
+      }
+    }
+  },
+  "scope": {
+    "read_only_review": true,
+    "synthetic_tmp_inputs_only": true,
+    "production_inputs_exported": false,
+    "production_store_writes": false,
+    "provider_model_broker_calls": false,
+    "runtime_scheduler_or_flag_changes": false,
+    "grant_or_lease_consumed": false
+  },
+  "original_findings_corrected": [
+    {
+      "severity": "P1",
+      "defect": "External hardlink output to an archive input bypassed the original directory-only fence and overwrote input bytes.",
+      "old_outcome": "CLI exit0 and changed prices.jsonl SHA256 in synthetic fixture.",
+      "new_outcome": "CLI exit2 before output; all archive input bytes unchanged.",
+      "source": "scripts/ops/run_cross_asset_historical_replay.py:272"
+    },
+    {
+      "severity": "P1",
+      "defect": "An archive input symlink to an external output target bypassed the original directory-only fence and overwrote input bytes.",
+      "old_outcome": "CLI exit0 and changed prices.jsonl SHA256 in synthetic fixture.",
+      "new_outcome": "Resolved-path alias refused exit2 before output; all archive input bytes unchanged.",
+      "source": "scripts/ops/run_cross_asset_historical_replay.py:272"
+    },
+    {
+      "severity": "P1",
+      "defect": "Finite expected_return and capital_required produced an infinite derived score; run_window accepted scoring and CLI raised an uncaught serialization exception.",
+      "old_outcome": "SCORING_COMPARISON_ONLY contained an infinite derived score; main raised ValueError.",
+      "new_outcome": "INVALID_DATA, zero completed evaluations, CLI exit2 and typed finite JSON report.",
+      "source": "scripts/ops/run_cross_asset_historical_replay.py:235"
+    }
+  ],
+  "validation": {
+    "independent_contract_probes": {
+      "passed": 7,
+      "failed": 0,
+      "cases": [
+        {
+          "case": "supported_30_60_90_window_counts_without_option_claim",
+          "pass": true,
+          "signals_evaluated": [
+            1,
+            2,
+            3
+          ],
+          "data_quality": [
+            "INSUFFICIENT_DATA",
+            "INSUFFICIENT_DATA",
+            "INSUFFICIENT_DATA"
+          ]
+        },
+        {
+          "case": "wrong_guid_does_not_satisfy_price_coverage",
+          "pass": true,
+          "signals_evaluated": 0,
+          "signals_skipped": 1
+        },
+        {
+          "case": "supported_signal_price_counts_without_superiority",
+          "pass": true,
+          "summary": {
+            "signals_evaluated": 1,
+            "prices_covered": 1,
+            "scoring_comparisons": 0,
+            "options_superior_rate": null,
+            "data_quality": "INSUFFICIENT_DATA"
+          }
+        },
+        {
+          "case": "malformed_refusal_preserves_inputs",
+          "pass": true,
+          "exit": 2,
+          "source_hashes_before": {
+            "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+            "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+            "signals.jsonl": "9211ed906559d2a87807928b909de754d43e4b52f8e3e2d8fb624bc051d19cfb"
+          },
+          "source_hashes_after": {
+            "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+            "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+            "signals.jsonl": "9211ed906559d2a87807928b909de754d43e4b52f8e3e2d8fb624bc051d19cfb"
+          }
+        },
+        {
+          "case": "external_hardlink_to_input_refused_and_preserved",
+          "pass": true,
+          "exit": 2,
+          "source_hashes_before": {
+            "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+            "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+            "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+          },
+          "source_hashes_after": {
+            "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+            "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+            "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+          },
+          "archive": "/tmp/cadi-independent-3ettdv5j/hardlink-alias/archive",
+          "out": "/tmp/cadi-independent-3ettdv5j/hardlink-alias/external-report.json",
+          "same_inode": true
+        },
+        {
+          "case": "external_target_of_symlink_input_refused_and_preserved",
+          "pass": true,
+          "exit": 2,
+          "source_hashes_before": {
+            "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+            "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+            "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+          },
+          "source_hashes_after": {
+            "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+            "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+            "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+          },
+          "archive": "/tmp/cadi-independent-3ettdv5j/symlink-input-alias/archive",
+          "out": "/tmp/cadi-independent-3ettdv5j/symlink-input-alias/external-price.jsonl"
+        },
+        {
+          "case": "finite_inputs_nonfinite_derived_score_fail_closed",
+          "pass": true,
+          "data_quality": "INVALID_DATA",
+          "all_output_scores_finite": true,
+          "exit": 2,
+          "uncaught_exception": null,
+          "output_exists": true
+        }
+      ],
+      "command": "PYTHONDONTWRITEBYTECODE=1 /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/bin/python -B /tmp/cadi-replay-independent-probes-20261009.py /home/johnclaw/tradeai-wt-cadi-archive-replay-20261009 /tmp/cadi-replay-independent-fixed-probes-20261009.json"
+    },
+    "independent_targeted_suite": {
+      "passed": 52,
+      "failed": 0,
+      "exit_code": 0,
+      "seconds": 2.37,
+      "command": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/bin/python -B -m pytest -p no:cacheprovider -q tests/test_cross_asset_decision_intelligence.py tests/test_cross_asset_symbol_decision_object_20260929.py tests/test_security_research_spine_20260929.py",
+      "cwd": "/home/johnclaw/tradeai-wt-cadi-archive-replay-20261009"
+    },
+    "author_reported_suite_separate": {
+      "passed": 53,
+      "failed": 0,
+      "seconds": 2.29,
+      "evidence": "/tmp/tradeai-cadi-replay-alias-overflow-final-20261009.log",
+      "classification": "TEST_ONLY; separate author suite, not relabeled independent"
+    },
+    "test_selection_correction": "A guessed undated spine filename initially produced pytest exit4/no tests; corrected to the real dated filename before reporting final suite result."
+  },
+  "temporal_identity_provenance_accounting": [
+    {
+      "verdict": "PASS_SOURCE_CONTRACT",
+      "claim": "Aware ISO timestamps are normalized to UTC; every window uses one captured as_of with inclusive boundaries. Future prices/facts cannot satisfy the event; identity and supplied position cannot look ahead.",
+      "source": "scripts/ops/run_cross_asset_historical_replay.py:51,100,132,163"
+    },
+    {
+      "verdict": "PASS_SOURCE_CONTRACT",
+      "claim": "Price match requires exact symbol and security_guid. Confirmed timestamped identity and nonempty event/source provenance are required. Exact duplicate events are ignored; conflicts refuse.",
+      "source": "scripts/ops/run_cross_asset_historical_replay.py:100,199,213"
+    },
+    {
+      "verdict": "PASS_TEST_ONLY",
+      "claim": "Supported synthetic signals/prices yield deterministic 30/60/90 evaluated counts1/2/3; missing option economics keep INSUFFICIENT_DATA, null superiority and financial_action=false. Wrong GUID cannot provide coverage.",
+      "evidence": "/tmp/cadi-replay-independent-fixed-probes-20261009.json"
+    },
+    {
+      "verdict": "PASS_SOURCE_CONTRACT",
+      "claim": "External supplied expression scores remain scoring comparisons only; no realized EV, counterfactual superiority or READY claim is produced. Invalid data clears successful evaluations and scoring totals.",
+      "source": "scripts/ops/run_cross_asset_historical_replay.py:167,258,264"
+    }
+  ],
+  "nonblocking_observations": [
+    {
+      "case": "equivalent_offset_fact_timestamp_observation",
+      "classification": "NONBLOCKING_CONSERVATIVE_REFUSAL",
+      "data_quality": "INVALID_DATA",
+      "refusals": [
+        {
+          "reason": "expression_facts.jsonl:conflicting_fact_snapshot"
+        }
+      ]
+    },
+    {
+      "case": "invalid_report_partial_accounting_observation",
+      "classification": "PARTIAL_DIAGNOSTIC_COUNTERS",
+      "data_quality": "INVALID_DATA",
+      "signals_in_window": 1,
+      "signals_evaluated": 0,
+      "signals_skipped": 0,
+      "refusals": [
+        {
+          "reason": "signals.jsonl:conflicting_event_id"
+        }
+      ]
+    }
+  ],
+  "documented_operational_limits": [
+    "This CLI supports explicit contracted offline archives. It neither resolves nor exports actual governed production DB rows; production replay counts remain unmeasured by these TEST_ONLY fixtures.",
+    "Actual price bars are mutable/backfilled; historic market timestamps alone do not establish availability at a historic decision. Governed archive extraction must preserve genuine available-at provenance.",
+    "Observed plural options_chain_snapshots rows were summary-only and singular option_chain_snapshots rows radar aggregates, not contract quotes. No option EV or realized superiority can be derived from those stores.",
+    "No production decision ledger, scheduled shadow cycle, durable consumer acknowledgement or deployed readiness proof is established by this source patch.",
+    "Equivalent UTC instants with different raw expression-fact timestamp spellings may conservatively conflict. Refusal is safe; canonical normalization is optional later work.",
+    "INVALID_DATA diagnostic counters can reflect validation progress. They must not be interpreted as a completed replay census; evaluations and scoring totals are cleared."
+  ],
+  "minimum_next_advisory_wiring": {
+    "classification": "NEEDS_DESIGN_SOURCE_SCOPE; no activation authorized by this review",
+    "steps": [
+      "Select one existing producer with an explicit supported advisory event. Do not infer BUY from a generic research-complete event.",
+      "Carry actual event_id/digest, source, observed_at and confirmed GUID provenance into one canonical existing SymbolDecisionObject adapter. Resolve the two existing object layouts explicitly.",
+      "Prepare a source-only adapter under existing CROSS_ASSET_SHADOW gating that appends to existing data/cio/symbol_decisions.jsonl through the existing writer with exact-once event/digest conflict handling and durable receipt; do not enable the flag or install a scheduler.",
+      "Keep missing position and option facts NOT_MEASURED, candidates UNSCORED and winner null. Avoid the existing assembler defaults that synthesize a buy signal or treat absent holdings as measured zero.",
+      "Add an additive read-only latest-decision projection and operator drilldown showing event/provenance/as_of/receipt/output. Missing ledger is NO_SIGNAL/NOT_MEASURED; reads never trigger models, providers or writers."
+    ],
+    "required_negative_contracts": [
+      "Unsupported/unconfirmed/future fact is rejected or explicitly unscored",
+      "Duplicate event produces no second append; conflicting digest refuses",
+      "Missing position/options stay unknown without invented economics",
+      "Failed producer/write cannot claim completed durable run",
+      "Read-only projection calls no provider/model/writer"
+    ],
+    "existing_source_paths": [
+      "scripts/lib/cross_asset/events.py:34",
+      "scripts/lib/cross_asset/persistence.py:18",
+      "scripts/lib/cross_asset/persistence.py:38",
+      "scripts/lib/cross_asset/hooks.py",
+      "scripts/lib/cio_hermes_research.py"
+    ],
+    "no_new_model_queue_scheduler_or_execution_authority": true
+  },
+  "evidence": [
+    {
+      "path": "/tmp/cadi-replay-independent-prior-probes-20261009.json",
+      "sha256": "9e36f102852c2aa9bbf141e81e08fc3052360fb7f5b7a97e715d185506f8ec94",
+      "evidence_class": "TEST_ONLY"
+    },
+    {
+      "path": "/tmp/cadi-replay-independent-fixed-probes-20261009.json",
+      "sha256": "6ec675a415c4afef9f19708e053ab761ebd8649667ea6236dd88133c795c90d5",
+      "evidence_class": "TEST_ONLY"
+    },
+    {
+      "path": "/tmp/cadi-replay-independent-probes-20261009.py",
+      "sha256": "5fea5d4fa3db6f72b22b342e2f23c26310cf0dcf0308f884bbdf1950e34c2c9e",
+      "evidence_class": "TEST_ONLY"
+    },
+    {
+      "path": "/tmp/tradeai-cadi-replay-alias-overflow-final-20261009.log",
+      "sha256": "8e675631bfda990a8a192f7c1b249479c40a6bf26fab8797b2bbebdaf484ba31",
+      "evidence_class": "TEST_ONLY"
+    },
+    {
+      "path": "/tmp/crossasset-live-gap-audit-20261009T133138Z.json",
+      "sha256": "861bff79c6aadbfe55d21914895be6becd286ec1f84524a2786124b5e60aa3f0",
+      "evidence_class": "OBSERVED_DB_AND_HOST_BOUNDED_PRIOR_SNAPSHOT"
+    },
+    {
+      "path": "/tmp/crossasset-archive-asof-audit-20261009T134145Z.json",
+      "sha256": "41e25add9f21f8e5809248cf9c297a4f47e825f270abd99cfa40b52fe9db5dd2",
+      "evidence_class": "OBSERVED_DB_AND_HOST_BOUNDED_PRIOR_SNAPSHOT"
+    },
+    {
+      "path": "/tmp/crossasset-live-gap-assessment-20261009T134300Z.json",
+      "sha256": "1b2a004682e63ba5e4b0c3b07b52cc9f52fe4a64c5d7be6f08f6424c3359531c",
+      "evidence_class": "OBSERVED_DB_AND_HOST_BOUNDED_PRIOR_SNAPSHOT"
+    }
+  ]
+}

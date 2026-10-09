@@ -1,0 +1,26 @@
+{
+  "schema": "IndependentGovernedSSESemanticReview@v1",
+  "source_path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cio_governed_model_bridge.py",
+  "source_sha256": "95402e43cb4ae96f0518da756015e44631a68d4782943ce6bbca69da840bbbf8",
+  "evidence_class": "TEST_ONLY",
+  "no_module_import_provider_or_network_calls": true,
+  "checks": {
+    "choice_indexes_preserved": false,
+    "first_choice_text_exact": false,
+    "second_choice_text_exact": false,
+    "reasoning_exact": false,
+    "other_message_field_preserved": false,
+    "tool_fields_exact": false,
+    "all_finish_reasons_preserved": false,
+    "created_zero_preserved": false,
+    "id_model_preserved": true,
+    "usage_provenance_final_exact": true,
+    "empty_choices_not_fabricated": false,
+    "empty_choices_usage_provenance_retained": true,
+    "tool_only_index_and_fields_preserved": false,
+    "one_done": true,
+    "input_not_mutated": true
+  },
+  "pass_count": 5,
+  "case_count": 15
+}

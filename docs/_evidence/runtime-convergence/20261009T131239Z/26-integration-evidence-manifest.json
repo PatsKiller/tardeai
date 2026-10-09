@@ -1,0 +1,210 @@
+{
+  "schema": "CorrectiveIntegrationEvidence@v1",
+  "as_of": "2026-10-09T14:48:10.653723+00:00",
+  "evidence_class": "SOURCE_ONLY",
+  "source_checkpoint": "b1c1a9157ea10a29637cdbb42198c8dd21fe4e9f",
+  "origin_main_checkpoint": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+  "source_sha256": {
+    "config/lane_registry.json": "7ce79da8b1e3fac9ff68418326c008432a5e3eb6f18523423776098356078d71",
+    "linux_launchers/run_lookthrough.sh": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+    "linux_launchers/run_pg_backup.sh": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+    "linux_launchers/run_portfolio.sh": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+    "linux_launchers/run_portfolio_monthly.sh": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+    "linux_launchers/run_portfolio_weekly.sh": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+    "linux_launchers/run_price_cache.sh": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+    "scripts/lib/cio_governed_model_bridge.py": "a05138c886521eebcd79667842a76686806afebfd1ad2afb2067452e5baf9757",
+    "scripts/lib/governed_research_producer.py": "ef2d61ec5a29bd0d79ea3612e9fb47c5312f1201398acf4a960ddbe5b864459d",
+    "scripts/lib/lane_registry.py": "033b9bbd61aacad266c2b7d41a7ba1b0d2e08fb14341f03c47ec4e7851201ae2",
+    "scripts/n8n_run_relay.py": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc",
+    "scripts/n8n_workflow_templates.py": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345",
+    "scripts/ops/run_cross_asset_historical_replay.py": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+    "scripts/pipelines/cutover/_cutover.py": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+    "tests/test_cross_asset_decision_intelligence.py": "d6f6119d9cc09ba8b431dd0b514b91d18224c6c8f8954b50bed29b722996b1b9",
+    "tests/test_governed_research_producer.py": "79d99cb31a7a4a549017ac615f6c9d7881cebe1842e1f357a55d1981dc1df36c",
+    "tests/test_lane_registry_n8n_kind_20261008.py": "99a8c4a648231dceeaadd8fd56284f5a218d950a890899f98ba7480308eac99f",
+    "tests/test_llm_routing_policy_20261008.py": "405316a9a8632542e0040480826cc91867ee51d212717283cff09271b298279e",
+    "tests/test_n8n_lane_cutover_20261008.py": "8a32e154bb972c1b79bd40d98544953278967e8ca0d462dd56c9041714a463ea",
+    "tests/test_n8n_run_relay_20261008.py": "bf34157ece3144e6db9282d4f5cf4419d727dfa1aaafe960ed2b332ac81c9261",
+    "tests/test_n8n_workflow_templates_20261008.py": "c07a01b95bb44ac4b86853652af8c75393edad81d24702207350e4ffcc79e17c",
+    "tests/test_scheduler_launcher_roots.py": "130fa77d2bb24e0b10a64928b80dd872586a717e12c0896d2c6112eddbd34cfa"
+  },
+  "copied_evidence": [
+    {
+      "source": "/tmp/crossasset-live-gap-audit-20261009T133138Z.json",
+      "artifact": "crossasset-live-gap-audit-20261009T133138Z.json",
+      "raw_sha256": "861bff79c6aadbfe55d21914895be6becd286ec1f84524a2786124b5e60aa3f0",
+      "exported_sha256": "861bff79c6aadbfe55d21914895be6becd286ec1f84524a2786124b5e60aa3f0"
+    },
+    {
+      "source": "/tmp/crossasset-archive-asof-audit-20261009T134145Z.json",
+      "artifact": "crossasset-archive-asof-audit-20261009T134145Z.json",
+      "raw_sha256": "41e25add9f21f8e5809248cf9c297a4f47e825f270abd99cfa40b52fe9db5dd2",
+      "exported_sha256": "41e25add9f21f8e5809248cf9c297a4f47e825f270abd99cfa40b52fe9db5dd2"
+    },
+    {
+      "source": "/tmp/crossasset-live-gap-assessment-20261009T134300Z.json",
+      "artifact": "crossasset-live-gap-assessment-20261009T134300Z.json",
+      "raw_sha256": "1b2a004682e63ba5e4b0c3b07b52cc9f52fe4a64c5d7be6f08f6424c3359531c",
+      "exported_sha256": "1b2a004682e63ba5e4b0c3b07b52cc9f52fe4a64c5d7be6f08f6424c3359531c"
+    },
+    {
+      "source": "/tmp/tradeai-cadi-replay-final-source-handoff-20261009.json",
+      "artifact": "tradeai-cadi-replay-final-source-handoff-20261009.json",
+      "raw_sha256": "ef2f596575c67e5ceb240739b981a3af0aa0a0507171967c43e290daf0e1ffba",
+      "exported_sha256": "ef2f596575c67e5ceb240739b981a3af0aa0a0507171967c43e290daf0e1ffba"
+    },
+    {
+      "source": "/tmp/cadi-replay-independent-review-20261009.json",
+      "artifact": "cadi-replay-independent-review-20261009.json",
+      "raw_sha256": "ced05f8618051db299226eef7f62313b5299a0bca85646e32ae9b88a27c40c09",
+      "exported_sha256": "ced05f8618051db299226eef7f62313b5299a0bca85646e32ae9b88a27c40c09"
+    },
+    {
+      "source": "/tmp/cadi-replay-independent-prior-probes-20261009.json",
+      "artifact": "cadi-replay-independent-prior-probes-20261009.json",
+      "raw_sha256": "9e36f102852c2aa9bbf141e81e08fc3052360fb7f5b7a97e715d185506f8ec94",
+      "exported_sha256": "9e36f102852c2aa9bbf141e81e08fc3052360fb7f5b7a97e715d185506f8ec94"
+    },
+    {
+      "source": "/tmp/cadi-replay-independent-fixed-probes-20261009.json",
+      "artifact": "cadi-replay-independent-fixed-probes-20261009.json",
+      "raw_sha256": "6ec675a415c4afef9f19708e053ab761ebd8649667ea6236dd88133c795c90d5",
+      "exported_sha256": "6ec675a415c4afef9f19708e053ab761ebd8649667ea6236dd88133c795c90d5"
+    },
+    {
+      "source": "/tmp/tradeai-sse-semantic-review-prior-20261009.json",
+      "artifact": "tradeai-sse-semantic-review-prior-20261009.json",
+      "raw_sha256": "b74b4fabaf2f8b4a379a1b4ae20161b38d22116c786b0e3388960a980d96d85c",
+      "exported_sha256": "b74b4fabaf2f8b4a379a1b4ae20161b38d22116c786b0e3388960a980d96d85c"
+    },
+    {
+      "source": "/tmp/tradeai-sse-semantic-review-fixed-20261009.json",
+      "artifact": "tradeai-sse-semantic-review-fixed-20261009.json",
+      "raw_sha256": "190ea1e5db4cf840127928c65e56a4a507e7e85620fc6eb65044fe267a8f25c4",
+      "exported_sha256": "190ea1e5db4cf840127928c65e56a4a507e7e85620fc6eb65044fe267a8f25c4"
+    },
+    {
+      "source": "/tmp/tradeai-governed-research-dedupe-remediation.json",
+      "artifact": "tradeai-governed-research-dedupe-remediation.json",
+      "raw_sha256": "cb2a3d197f775db602a32455ab7e8c974d4ef00500e411d03f032b038ddb3552",
+      "exported_sha256": "cb2a3d197f775db602a32455ab7e8c974d4ef00500e411d03f032b038ddb3552"
+    },
+    {
+      "source": "/tmp/tradeai-cadi-replay-negative-prior-20261009.log",
+      "artifact": "tradeai-cadi-replay-negative-prior-20261009.log",
+      "raw_sha256": "42c45b829002f9bcda75d5c054842424a8bc20b6234155a720a3d85100af0472",
+      "exact_raw_copy": "tradeai-cadi-replay-negative-prior-20261009.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "4cc0fcbc2a22b83b87d76ad9f2b8d3476a2617956d396a8bd65534a0a59d6355"
+    },
+    {
+      "source": "/tmp/tradeai-cadi-replay-offset-negative-20261009.log",
+      "artifact": "tradeai-cadi-replay-offset-negative-20261009.log",
+      "raw_sha256": "0a446ff95787388595c025af45dd041de2507321ff81a379831d5503a4b64d84",
+      "exact_raw_copy": "tradeai-cadi-replay-offset-negative-20261009.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "696498cafb76407d94045b7dca69db8bc5d11d6455eb43f4ef624dcb14043b03"
+    },
+    {
+      "source": "/tmp/tradeai-cadi-replay-alias-overflow-prior-20261009.log",
+      "artifact": "tradeai-cadi-replay-alias-overflow-prior-20261009.log",
+      "raw_sha256": "4c6fb888d65a4ab3d6482acb431bdee4f063f1f2baa088ea2fea090683c29961",
+      "exact_raw_copy": "tradeai-cadi-replay-alias-overflow-prior-20261009.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "a4262d7d0789e76b8bb7addf560bf01005da11304b35d97091b99019622f11c8"
+    },
+    {
+      "source": "/tmp/tradeai-cadi-replay-alias-overflow-final-20261009.log",
+      "artifact": "tradeai-cadi-replay-alias-overflow-final-20261009.log",
+      "raw_sha256": "8e675631bfda990a8a192f7c1b249479c40a6bf26fab8797b2bbebdaf484ba31",
+      "exact_raw_copy": "tradeai-cadi-replay-alias-overflow-final-20261009.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "8e675631bfda990a8a192f7c1b249479c40a6bf26fab8797b2bbebdaf484ba31"
+    },
+    {
+      "source": "/tmp/tradeai-governed-research-dedupe-negative-prior.log",
+      "artifact": "tradeai-governed-research-dedupe-negative-prior.log",
+      "raw_sha256": "5aa924db5d8e2d01e3c188357408226d502b6d496c4cf3a4d691623ef6429526",
+      "exact_raw_copy": "tradeai-governed-research-dedupe-negative-prior.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "75d63272bd3ed7bc9ec00956dd77d3d6acf70973f5da1a1198ebf1b772c27ae3"
+    },
+    {
+      "source": "/tmp/tradeai-governed-research-dedupe-focused-final.log",
+      "artifact": "tradeai-governed-research-dedupe-focused-final.log",
+      "raw_sha256": "4bf8d0668a4e66cd355d097fb20836bd4fab2e18e5123210da5c44d18bb523de",
+      "exact_raw_copy": "tradeai-governed-research-dedupe-focused-final.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "4bf8d0668a4e66cd355d097fb20836bd4fab2e18e5123210da5c44d18bb523de"
+    },
+    {
+      "source": "/tmp/tradeai-governed-research-dedupe-regression-final.log",
+      "artifact": "tradeai-governed-research-dedupe-regression-final.log",
+      "raw_sha256": "aaf412c4382d8f067e452e27a447503a3090e4b8bcdaf17b748a4221d00e4121",
+      "exact_raw_copy": "tradeai-governed-research-dedupe-regression-final.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "aaf412c4382d8f067e452e27a447503a3090e4b8bcdaf17b748a4221d00e4121"
+    },
+    {
+      "source": "/tmp/tradeai-governed-research-dedupe-source-authority.log",
+      "artifact": "tradeai-governed-research-dedupe-source-authority.log",
+      "raw_sha256": "e823413a474a0101729184eaf6d26c764846f737a6d23346c30d281035c95959",
+      "exact_raw_copy": "tradeai-governed-research-dedupe-source-authority.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged",
+      "exported_sha256": "e823413a474a0101729184eaf6d26c764846f737a6d23346c30d281035c95959"
+    },
+    {
+      "artifact": "21-final-local-acceptance.log",
+      "raw_sha256": "32ae41e0755e8b1d202a0b13430030531ed12dd84bf000a5027810455f4b3100",
+      "exported_sha256": "32ae41e0755e8b1d202a0b13430030531ed12dd84bf000a5027810455f4b3100",
+      "exact_raw_copy": "21-final-local-acceptance.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged"
+    },
+    {
+      "artifact": "23-stream-integration-negative-prior.log",
+      "raw_sha256": "bcf88bf4cae0ae349b2418741c62c8dbb147443083776b54ad06f291077a9bd6",
+      "exported_sha256": "275a9ed7d3dc040866544e942fa885ff43530a37058de95000152b6b453ceb05",
+      "exact_raw_copy": "23-stream-integration-negative-prior.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged"
+    },
+    {
+      "artifact": "24-stream-integration-final.log",
+      "raw_sha256": "c308144d57df807e112f4e60c5006cb123a7d2176eef77591ac1669411fcb5c4",
+      "exported_sha256": "c308144d57df807e112f4e60c5006cb123a7d2176eef77591ac1669411fcb5c4",
+      "exact_raw_copy": "24-stream-integration-final.log.raw.gz",
+      "export_transformation": "Trailing whitespace only; exact raw bytes retained compressed; verdicts unchanged"
+    }
+  ],
+  "prior_full_acceptance": {
+    "artifact": "21-final-local-acceptance.log",
+    "passed": false,
+    "defect": "governed research duplicate result; fixed source integrated separately"
+  },
+  "stream_integration": {
+    "artifact": "24-stream-integration-final.log",
+    "passed": 94,
+    "evidence_class": "TEST_ONLY"
+  },
+  "independent_sse": {
+    "passed": 15,
+    "evidence_class": "TEST_ONLY"
+  },
+  "cross_asset_author": {
+    "passed": 53,
+    "independent_probes": 7,
+    "evidence_class": "TEST_ONLY"
+  },
+  "research_dedupe": {
+    "focused_passed": 40,
+    "regression_passed": 866,
+    "xfailed": 2,
+    "evidence_class": "TEST_ONLY"
+  },
+  "final_combined_acceptance": "PENDING",
+  "remote_pushes_this_tranche": 0,
+  "corrective_deployment": false,
+  "model_selected_or_called": false,
+  "policy_3_0_0": "PROPOSED; no automatic ratification",
+  "mfa": "RETAIN_WITH_REASON per operator",
+  "program_source_acceptance": "BLOCKED"
+}

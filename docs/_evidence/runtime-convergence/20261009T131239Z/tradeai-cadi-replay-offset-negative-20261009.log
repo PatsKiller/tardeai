@@ -1,0 +1,28 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ test_historical_replay_equal_instant_conflicting_facts_fail_closed_across_offsets _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-115760/test_historical_replay_equal_i0')
+
+    def test_historical_replay_equal_instant_conflicting_facts_fail_closed_across_offsets(tmp_path):
+        from datetime import datetime, timedelta, timezone
+        from scripts.ops.run_cross_asset_historical_replay import run_window
+
+        archive, clock, _, _, facts = _historical_archive(tmp_path)
+        different = json.loads(json.dumps(facts))
+        different["as_of"] = datetime.fromisoformat(facts["as_of"]).astimezone(
+            timezone(timedelta(hours=-4))).isoformat()
+        different["facts_by_structure"]["shares"]["score"] = 999
+        with (archive / "expression_facts.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(different) + "\n")
+        result = run_window(30, archive_dir=archive, as_of=clock.isoformat())
+>       assert result["data_quality"] == "INVALID_DATA"
+E       AssertionError: assert 'SCORING_COMPARISON_ONLY' == 'INVALID_DATA'
+E
+E         - INVALID_DATA
+E         + SCORING_COMPARISON_ONLY
+
+tests/test_cross_asset_decision_intelligence.py:367: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_equal_instant_conflicting_facts_fail_closed_across_offsets
+1 failed, 32 deselected in 1.09s

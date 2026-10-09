@@ -1,0 +1,53 @@
+dark-contract exit=0
+uncompilable modules      : 0
+versioned-schema definers : 597
+zero-consumer             : 79
+  inherited (seeded)      : 22
+  declared NO_CONSUMER_REASON: 57
+    of which declare NOT installed: 3
+      · scripts/check_operator_answer_quality.py
+      · scripts/report_slo_burn_rate.py
+      · scripts/set_goal_predicate.py
+  NEW (unexplained)       : 0
+
+  resolved since baseline (8):
+    ✓ scripts/lib/cio_intelligence_outcomes.py
+    ✓ scripts/lib/decision_rationale.py
+    ✓ scripts/lib/hermes_golden_judge.py
+    ✓ scripts/lib/memory_m2_v2.py
+    ✓ scripts/lib/proactive_cio.py
+    ✓ scripts/lib/symbol_thesis_event_wake.py
+    ✓ scripts/lib/tradeai_record_envelope.py
+    ✓ scripts/repair_health_threshold_tuning_noise.py
+scripts/defense_recommendations.py:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+  "no equity pair qualified (no same-account destination cleared the \$2K-leg rails)")
+
+data-source-authority exit=0
+Data source authority — one source of truth per domain
+==========================================================================
+  domains=52  providers=22  retired=finnhub,fmp,newsapi,polygon
+  operator grants     : providers=22/22  domains=52/52  (schema DataSourceAuthority@v2)
+  writers per store   : {"market_quotes": 1, "symbol_profiles": 1, "yahoo_analyst_targets_history": 1, "news_articles": 1, "ticker_prices": 1, "sector_rs_daily": 1, "market_regime_snapshots": 1, "positions_current": 1, "options_iv_history": 1, "hermes_research_intelligence": 1, "watch_directives": 1, "watch_candidate_events": 1, "private_company_proxies": 1, "ticker_dividend_data": 1, "fred_economic_series": 2, "fundamental_data": 1, "watchlist_agent_results": 1, "agent_debate_log": 2, "ai_reports": 4, "data_gap_registry": 1, "operator_conversation_turns": 1, "intelligence.heartbeat": 1, "intelligence.approval_package": 0, "intelligence.gir_entity": 1, "intelligence.breach": 0, "intelligence.research_index": 1}
+  hub direct reads    : {"market_quotes": 13, "symbol_profiles": 11, "yahoo_analyst_targets_history": 5, "news_articles": 45, "ticker_prices": 0, "sector_rs_daily": 0, "market_regime_snapshots": 3, "options_iv_history": 0, "hermes_research_intelligence": 31, "watch_directives": 11, "watch_candidate_events": 0, "watchlist_agent_results": 46, "agent_debate_log": 9, "ai_reports": 3}
+--------------------------------------------------------------------------
+  findings=0
+
+test-coverage exit=0
+test files              : 1812
+  run by CI             : 886  (48.9%)
+  denied, with reason   : 6
+  unlisted (inherited)  : 920
+  unlisted (NEW)        : 0
+
+  now run by CI since baseline (29):
+    ✓ tests/test_agent_feature_flags.py
+    ✓ tests/test_alarm_capture_selftest.py
+    ✓ tests/test_alarm_coverage.py
+    ✓ tests/test_alarm_fires.py
+    ✓ tests/test_alarm_fires_batch3.py
+    ✓ tests/test_alarm_fires_batch4.py
+    ✓ tests/test_alarm_fires_batch5.py
+    ✓ tests/test_alarm_fires_stop_path.py
+    ✓ tests/test_alarm_imports_resolve.py
+    ✓ tests/test_backup_enforcer.py
+

@@ -1,0 +1,102 @@
+FFFF.                                                                    [100%]
+=================================== FAILURES ===================================
+________________________ test_duplicate_result_deduped _________________________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-117283/test_duplicate_result_deduped0')
+env = {'GOVERNED_RESEARCH_PRODUCER_ENABLED': '1', 'TRADEAI_WAKE_RESEARCH_OBJECTS_PATH': '/tmp/pytest-of-johnclaw/pytest-1172.../tmp/pytest-of-johnclaw/pytest-117283/test_duplicate_result_deduped0/health.json', 'TRADEAI_SOURCE_SHA': 'new-release'}
+
+    def test_duplicate_result_deduped(tmp_path: Path, env: dict):
+        clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+        t = _fixture_transport()
+        first = produce_research(targets=_targets(), env=env, root=tmp_path, transport=t, clock=clock)
+        feed = Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"])
+        original = feed.read_bytes()
+        # Distinct natural scheduler fires and source releases do not make new articles.
+        clock.advance(hours=1)
+        env["TRADEAI_SOURCE_SHA"] = "new-release"
+        second = produce_research(targets=_targets(), env=env, root=tmp_path, transport=t, clock=clock)
+        assert first.produced == 1
+>       assert second.produced == 0 and second.deduped == 1
+E       AssertionError: assert (1 == 0)
+E        +  where 1 = ProducerResult(ok=True, disabled=False, produced=1, deduped=0, failed=0, budget_denied=0, free_answered=0, spills_recorded=0, eligible=1, outcome='produced', errors=[], feed_rows=2, feed_latest_at='2026-10-09T13:00:00Z').produced
+
+tests/test_governed_research_producer.py:169: AssertionError
+_______________ test_changed_content_in_same_second_is_preserved _______________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-117283/test_changed_content_in_same_s0')
+env = {'GOVERNED_RESEARCH_PRODUCER_ENABLED': '1', 'TRADEAI_WAKE_RESEARCH_OBJECTS_PATH': '/tmp/pytest-of-johnclaw/pytest-1172...': '/tmp/pytest-of-johnclaw/pytest-117283/test_changed_content_in_same_s0/health.json', 'TRADEAI_SOURCE_SHA': 'abc123'}
+
+    def test_changed_content_in_same_second_is_preserved(tmp_path: Path, env: dict):
+        clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+        payload = {
+            "web": {
+                "results": [
+                    {
+                        "title": "Visa guidance",
+                        "url": "https://www.reuters.com/markets/v-earnings",
+                        "description": "Guidance unchanged",
+                    }
+                ]
+            }
+        }
+        transport = _fixture_transport(payload)
+        first = produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+        payload["web"]["results"][0]["description"] = "Guidance increased"
+        # A different query receives fresh content instead of the router's cached answer.
+        updated_targets = [{**_targets()[0], "query": "Visa updated earnings guidance"}]
+        changed = produce_research(targets=updated_targets, env=env, root=tmp_path, transport=transport, clock=clock)
+>       assert first.produced == changed.produced == 1
+E       AssertionError: assert 1 == 0
+E        +  where 1 = ProducerResult(ok=True, disabled=False, produced=1, deduped=0, failed=0, budget_denied=0, free_answered=0, spills_recorded=0, eligible=1, outcome='produced', errors=[], feed_rows=1, feed_latest_at='2026-10-09T12:00:00Z').produced
+E        +  and   0 = ProducerResult(ok=False, disabled=False, produced=0, deduped=1, failed=0, budget_denied=0, free_answered=0, spills_recorded=0, eligible=1, outcome='nothing_eligible', errors=[], feed_rows=1, feed_latest_at=None).produced
+
+tests/test_governed_research_producer.py:193: AssertionError
+______________ test_new_feed_identity_independent_of_capture_time ______________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-117283/test_new_feed_identity_indepen0')
+env = {'GOVERNED_RESEARCH_PRODUCER_ENABLED': '1', 'TRADEAI_WAKE_RESEARCH_OBJECTS_PATH': '/tmp/pytest-of-johnclaw/pytest-1172...': '/tmp/pytest-of-johnclaw/pytest-117283/test_new_feed_identity_indepen0/health.json', 'TRADEAI_SOURCE_SHA': 'abc123'}
+
+    def test_new_feed_identity_independent_of_capture_time(tmp_path: Path, env: dict):
+        clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+        transport = _fixture_transport()
+        produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+        first = json.loads(Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"]).read_text().splitlines()[0])
+        clock.advance(days=1)
+        env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"] = str(tmp_path / "separate-feed.jsonl")
+        produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+        second = json.loads(Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"]).read_text().splitlines()[0])
+>       assert first["research_object_id"] == second["research_object_id"]
+E       AssertionError: assert 'e90d19b2-fde...-917c3ca2815c' == 'f5827eb2-526...-e033e26cf0b6'
+E
+E         - f5827eb2-526a-5064-945f-e033e26cf0b6
+E         + e90d19b2-fdef-5af1-a03e-917c3ca2815c
+
+tests/test_governed_research_producer.py:215: AssertionError
+_________ test_legacy_feed_content_deduped_without_rewriting_identity __________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-117283/test_legacy_feed_content_dedup0')
+env = {'GOVERNED_RESEARCH_PRODUCER_ENABLED': '1', 'TRADEAI_WAKE_RESEARCH_OBJECTS_PATH': '/tmp/pytest-of-johnclaw/pytest-1172...': '/tmp/pytest-of-johnclaw/pytest-117283/test_legacy_feed_content_dedup0/health.json', 'TRADEAI_SOURCE_SHA': 'abc123'}
+
+    def test_legacy_feed_content_deduped_without_rewriting_identity(tmp_path: Path, env: dict):
+        clock = FixedClock(datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc))
+        transport = _fixture_transport()
+        produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+        feed = Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"])
+        row = json.loads(feed.read_text().splitlines()[0])
+        row["research_object_id"] = row["id"] = "legacy-publication-bound-id"
+        row.pop("research_record_id", None)
+        feed.write_text(json.dumps(row) + "\n")
+        before = feed.read_bytes()
+        clock.advance(days=1)
+        result = produce_research(targets=_targets(), env=env, root=tmp_path, transport=transport, clock=clock)
+>       assert result.produced == 0 and result.deduped == 1
+E       AssertionError: assert (1 == 0)
+E        +  where 1 = ProducerResult(ok=True, disabled=False, produced=1, deduped=0, failed=0, budget_denied=0, free_answered=0, spills_recorded=0, eligible=1, outcome='produced', errors=[], feed_rows=2, feed_latest_at='2026-10-10T12:00:00Z').produced
+
+tests/test_governed_research_producer.py:232: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_governed_research_producer.py::test_duplicate_result_deduped
+FAILED tests/test_governed_research_producer.py::test_changed_content_in_same_second_is_preserved
+FAILED tests/test_governed_research_producer.py::test_new_feed_identity_independent_of_capture_time
+FAILED tests/test_governed_research_producer.py::test_legacy_feed_content_deduped_without_rewriting_identity
+4 failed, 1 passed, 11 deselected in 1.04s

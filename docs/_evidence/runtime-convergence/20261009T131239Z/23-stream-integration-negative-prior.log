@@ -1,0 +1,290 @@
+FFFFFF                                                                   [100%]
+=================================== FAILURES ===================================
+____ test_stream_reuses_accounted_result_without_resolve_or_provider[mock] _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ded19331cd0>
+mode = 'mock'
+
+    @pytest.mark.parametrize("mode", ["mock", "canary"])
+    def test_stream_reuses_accounted_result_without_resolve_or_provider(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+        import io
+
+        result = {
+            "id": "settled-fixture",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "deepseek-flash",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "exact  whitespace\nUnicode: café",
+                        "reasoning_content": "reason",
+                        "tool_calls": [
+                            {"id": "tool-1", "type": "function", "function": {"name": "fixture", "arguments": "{}"}}
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+            "_tradeai": {"reservation_id": 4242, "routing_decision": {"provider": "deepseek", "lane_chosen": "primary"}},
+        }
+        resolve = MagicMock(return_value={"provider": "grok", "model_id": "deepseek-flash"})
+        generate = MagicMock(side_effect=AssertionError("stream cannot make an unaccounted second call"))
+        monkeypatch.setattr(bridge, "BIND_MODE", mode)
+        monkeypatch.setattr(bridge, "resolve_model_policy", resolve)
+        monkeypatch.setattr(bridge.RealProvider, "generate", generate)
+        monkeypatch.setattr(bridge.MockProvider, "generate_stream", generate)
+        handler = MagicMock()
+        handler.wfile = io.BytesIO()
+        bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
+        assert resolve.call_count == generate.call_count == 0
+        handler.send_response.assert_called_once_with(200)
+        handler._send_json.assert_not_called()
+        raw = handler.wfile.getvalue().decode("utf-8")
+        frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+        assert raw.count("data: [DONE]") == 1
+        assert all(frame["id"] == result["id"] for frame in frames)
+        messages = _settled_messages_from_sse(frames)
+        expected = dict(result["choices"][0]["message"])
+        expected["tool_calls"] = [{**call, "index": index} for index, call in enumerate(expected["tool_calls"])]
+>       assert messages == {0: expected}
+E       AssertionError: assert {0: {'role': ...'index': 0}]}} == {0: {'role': ...'index': 0}]}}
+E
+E         Differing items:
+E         {0: {'role': 'assistant', 'content': 'exact  whitespace\nUnicode: café', 'tool_calls': [{'id': 'tool-1', 'type': 'function', 'function': {'name': 'fixture', 'arguments': '{}'}, 'index': 0}]}} != {0: {'role': 'assistant', 'content': 'exact  whitespace\nUnicode: café', 'reasoning_content': 'reason', 'tool_calls': [{'id': 'tool-1', 'type': 'function', 'function': {'name': 'fixture', 'arguments': '{}'}, 'index': 0}]}}
+E         Use -v to get more diff
+
+tests/test_llm_routing_policy_20261008.py:577: AssertionError
+___ test_stream_reuses_accounted_result_without_resolve_or_provider[canary] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7ded19331940>
+mode = 'canary'
+
+    @pytest.mark.parametrize("mode", ["mock", "canary"])
+    def test_stream_reuses_accounted_result_without_resolve_or_provider(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+        import io
+
+        result = {
+            "id": "settled-fixture",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "deepseek-flash",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "exact  whitespace\nUnicode: café",
+                        "reasoning_content": "reason",
+                        "tool_calls": [
+                            {"id": "tool-1", "type": "function", "function": {"name": "fixture", "arguments": "{}"}}
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+            "_tradeai": {"reservation_id": 4242, "routing_decision": {"provider": "deepseek", "lane_chosen": "primary"}},
+        }
+        resolve = MagicMock(return_value={"provider": "grok", "model_id": "deepseek-flash"})
+        generate = MagicMock(side_effect=AssertionError("stream cannot make an unaccounted second call"))
+        monkeypatch.setattr(bridge, "BIND_MODE", mode)
+        monkeypatch.setattr(bridge, "resolve_model_policy", resolve)
+        monkeypatch.setattr(bridge.RealProvider, "generate", generate)
+        monkeypatch.setattr(bridge.MockProvider, "generate_stream", generate)
+        handler = MagicMock()
+        handler.wfile = io.BytesIO()
+        bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
+        assert resolve.call_count == generate.call_count == 0
+        handler.send_response.assert_called_once_with(200)
+        handler._send_json.assert_not_called()
+        raw = handler.wfile.getvalue().decode("utf-8")
+        frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+        assert raw.count("data: [DONE]") == 1
+        assert all(frame["id"] == result["id"] for frame in frames)
+        messages = _settled_messages_from_sse(frames)
+        expected = dict(result["choices"][0]["message"])
+        expected["tool_calls"] = [{**call, "index": index} for index, call in enumerate(expected["tool_calls"])]
+>       assert messages == {0: expected}
+E       AssertionError: assert {0: {'role': ...'index': 0}]}} == {0: {'role': ...'index': 0}]}}
+E
+E         Differing items:
+E         {0: {'role': 'assistant', 'content': 'exact  whitespace\nUnicode: café', 'tool_calls': [{'id': 'tool-1', 'type': 'function', 'function': {'name': 'fixture', 'arguments': '{}'}, 'index': 0}]}} != {0: {'role': 'assistant', 'content': 'exact  whitespace\nUnicode: café', 'reasoning_content': 'reason', 'tool_calls': [{'id': 'tool-1', 'type': 'function', 'function': {'name': 'fixture', 'arguments': '{}'}, 'index': 0}]}}
+E         Use -v to get more diff
+
+tests/test_llm_routing_policy_20261008.py:577: AssertionError
+_____ test_stream_preserves_empty_tool_only_and_multiple_choices[choices0] _____
+
+choices = []
+
+    @pytest.mark.parametrize(
+        "choices",
+        [
+            [],
+            [
+                {
+                    "index": 2,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {"id": "tool-only", "type": "function", "function": {"name": "fixture", "arguments": "{}"}}
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            [
+                {"index": 3, "message": {"content": ""}, "finish_reason": "stop"},
+                {"index": 7, "message": {"content": "second"}, "finish_reason": "length"},
+            ],
+        ],
+    )
+    def test_stream_preserves_empty_tool_only_and_multiple_choices(choices: list) -> None:
+        import io
+
+        result = {
+            "id": "fixture",
+            "created": 1,
+            "model": "deepseek-flash",
+            "choices": choices,
+            "usage": {"total_tokens": 3},
+            "_tradeai": {"reservation_id": 1},
+        }
+        handler = MagicMock()
+        handler.wfile = io.BytesIO()
+        bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
+        raw = handler.wfile.getvalue().decode("utf-8")
+        frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+        assert raw.count("data: [DONE]") == 1
+>       assert [choice["index"] for choice in frames[0]["choices"]] == [choice["index"] for choice in choices]
+E       assert [0] == []
+E
+E         Left contains one more item: 0
+E         Use -v to get more diff
+
+tests/test_llm_routing_policy_20261008.py:634: AssertionError
+_____ test_stream_preserves_empty_tool_only_and_multiple_choices[choices1] _____
+
+choices = [{'index': 2, 'message': {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'tool-only', 'type': 'function', 'function': {'name': 'fixture', 'arguments': '{}'}}]}, 'finish_reason': 'tool_calls'}]
+
+    @pytest.mark.parametrize(
+        "choices",
+        [
+            [],
+            [
+                {
+                    "index": 2,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {"id": "tool-only", "type": "function", "function": {"name": "fixture", "arguments": "{}"}}
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            [
+                {"index": 3, "message": {"content": ""}, "finish_reason": "stop"},
+                {"index": 7, "message": {"content": "second"}, "finish_reason": "length"},
+            ],
+        ],
+    )
+    def test_stream_preserves_empty_tool_only_and_multiple_choices(choices: list) -> None:
+        import io
+
+        result = {
+            "id": "fixture",
+            "created": 1,
+            "model": "deepseek-flash",
+            "choices": choices,
+            "usage": {"total_tokens": 3},
+            "_tradeai": {"reservation_id": 1},
+        }
+        handler = MagicMock()
+        handler.wfile = io.BytesIO()
+        bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
+        raw = handler.wfile.getvalue().decode("utf-8")
+        frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+        assert raw.count("data: [DONE]") == 1
+>       assert [choice["index"] for choice in frames[0]["choices"]] == [choice["index"] for choice in choices]
+E       assert [0] == [2]
+E
+E         At index 0 diff: 0 != 2
+E         Use -v to get more diff
+
+tests/test_llm_routing_policy_20261008.py:634: AssertionError
+_____ test_stream_preserves_empty_tool_only_and_multiple_choices[choices2] _____
+
+choices = [{'index': 3, 'message': {'content': ''}, 'finish_reason': 'stop'}, {'index': 7, 'message': {'content': 'second'}, 'finish_reason': 'length'}]
+
+    @pytest.mark.parametrize(
+        "choices",
+        [
+            [],
+            [
+                {
+                    "index": 2,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {"id": "tool-only", "type": "function", "function": {"name": "fixture", "arguments": "{}"}}
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            [
+                {"index": 3, "message": {"content": ""}, "finish_reason": "stop"},
+                {"index": 7, "message": {"content": "second"}, "finish_reason": "length"},
+            ],
+        ],
+    )
+    def test_stream_preserves_empty_tool_only_and_multiple_choices(choices: list) -> None:
+        import io
+
+        result = {
+            "id": "fixture",
+            "created": 1,
+            "model": "deepseek-flash",
+            "choices": choices,
+            "usage": {"total_tokens": 3},
+            "_tradeai": {"reservation_id": 1},
+        }
+        handler = MagicMock()
+        handler.wfile = io.BytesIO()
+        bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
+        raw = handler.wfile.getvalue().decode("utf-8")
+        frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+        assert raw.count("data: [DONE]") == 1
+>       assert [choice["index"] for choice in frames[0]["choices"]] == [choice["index"] for choice in choices]
+E       assert [0] == [3, 7]
+E
+E         At index 0 diff: 0 != 3
+E         Right contains one more item: 7
+E         Use -v to get more diff
+
+tests/test_llm_routing_policy_20261008.py:634: AssertionError
+_____________ test_stream_preserves_zero_created_in_settled_result _____________
+
+    def test_stream_preserves_zero_created_in_settled_result() -> None:
+        result = {"id": "zero-time", "created": 0, "model": "fixture", "choices": [], "usage": {}}
+        frames = [json.loads(chunk[6:]) for chunk in bridge.governed_result_sse_chunks(result) if chunk != "data: [DONE]\n\n"]
+>       assert all(frame["created"] == 0 for frame in frames)
+E       assert False
+E        +  where False = all(<generator object test_stream_preserves_zero_created_in_settled_result.<locals>.<genexpr> at 0x7ded18df4ad0>)
+
+tests/test_llm_routing_policy_20261008.py:652: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_llm_routing_policy_20261008.py::test_stream_reuses_accounted_result_without_resolve_or_provider[mock]
+FAILED tests/test_llm_routing_policy_20261008.py::test_stream_reuses_accounted_result_without_resolve_or_provider[canary]
+FAILED tests/test_llm_routing_policy_20261008.py::test_stream_preserves_empty_tool_only_and_multiple_choices[choices0]
+FAILED tests/test_llm_routing_policy_20261008.py::test_stream_preserves_empty_tool_only_and_multiple_choices[choices1]
+FAILED tests/test_llm_routing_policy_20261008.py::test_stream_preserves_empty_tool_only_and_multiple_choices[choices2]
+FAILED tests/test_llm_routing_policy_20261008.py::test_stream_preserves_zero_created_in_settled_result
+6 failed, 42 deselected in 7.48s

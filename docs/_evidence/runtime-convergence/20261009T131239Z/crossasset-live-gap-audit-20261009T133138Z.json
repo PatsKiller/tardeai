@@ -1,0 +1,2711 @@
+{
+  "schema": "CrossAssetLiveGapAudit@v1",
+  "as_of": "2026-10-09T13:31:38.117833+00:00",
+  "no_provider_or_broker_calls": true,
+  "no_production_writes": true,
+  "manual_process_fires": false,
+  "credential_values_printed": false,
+  "authority": "READ_ONLY_ADVISORY",
+  "operator_decisions": {
+    "n8n_mfa": "RETAIN_WITH_REASON: operator explicitly declined MFA",
+    "ollama": "RETIRED: source retirement retained; host retirement measured separately",
+    "llm_choice": "DEFERRED_UNTIL_OPERATOR_NAMES_MODEL",
+    "n8n_db_privilege": "UNRESOLVED_SEPARATE"
+  },
+  "identity": {
+    "CURRENT_SHA": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+    "CURRENT_release": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+    "source_HEAD": "d04cb3585285ac55e7d8930dfc3dcb5dfd4a3f21",
+    "source_origin_main": "bbff99766cd80ea630543abfaa639eb41eae5eb9"
+  },
+  "deployed_source_comparison": [
+    {
+      "file": "docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md",
+      "CURRENT": {
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md",
+        "resolved": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md",
+        "exists": true,
+        "bytes": 3968,
+        "mtime": "2026-10-06T20:43:19.794413+00:00",
+        "sha256": "a57bf20350e4dc374f4c947b10c293bfb699df3a691052bd0ffe228f0afab807"
+      },
+      "SOURCE_ONLY": {
+        "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md",
+        "resolved": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md",
+        "exists": true,
+        "bytes": 3968,
+        "mtime": "2026-10-09T00:41:22.744196+00:00",
+        "sha256": "a57bf20350e4dc374f4c947b10c293bfb699df3a691052bd0ffe228f0afab807"
+      },
+      "equal": true
+    },
+    {
+      "file": "scripts/ops/run_cross_asset_historical_replay.py",
+      "CURRENT": {
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/ops/run_cross_asset_historical_replay.py",
+        "resolved": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/ops/run_cross_asset_historical_replay.py",
+        "exists": true,
+        "bytes": 3000,
+        "mtime": "2026-10-06T20:43:19.849417+00:00",
+        "sha256": "0f36403dae5a8f4231a1b4ab50353c9c08083cf54967a56253909450b0c8c758"
+      },
+      "SOURCE_ONLY": {
+        "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/ops/run_cross_asset_historical_replay.py",
+        "resolved": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/ops/run_cross_asset_historical_replay.py",
+        "exists": true,
+        "bytes": 3000,
+        "mtime": "2026-10-09T00:41:23.161597+00:00",
+        "sha256": "0f36403dae5a8f4231a1b4ab50353c9c08083cf54967a56253909450b0c8c758"
+      },
+      "equal": true
+    },
+    {
+      "file": "scripts/ops/run_cross_asset_shadow_cycle.py",
+      "CURRENT": {
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/ops/run_cross_asset_shadow_cycle.py",
+        "resolved": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/ops/run_cross_asset_shadow_cycle.py",
+        "exists": true,
+        "bytes": 3132,
+        "mtime": "2026-10-06T20:43:19.849417+00:00",
+        "sha256": "1d145f92e199c56b3bdba5ea3ff83813b68317d156dec55e63edab0893c27c63"
+      },
+      "SOURCE_ONLY": {
+        "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/ops/run_cross_asset_shadow_cycle.py",
+        "resolved": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/ops/run_cross_asset_shadow_cycle.py",
+        "exists": true,
+        "bytes": 3132,
+        "mtime": "2026-10-09T00:41:23.161597+00:00",
+        "sha256": "1d145f92e199c56b3bdba5ea3ff83813b68317d156dec55e63edab0893c27c63"
+      },
+      "equal": true
+    },
+    {
+      "file": "scripts/lib/cross_asset/events.py",
+      "CURRENT": {
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/lib/cross_asset/events.py",
+        "resolved": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/cross_asset/events.py",
+        "exists": true,
+        "bytes": 2181,
+        "mtime": "2026-10-06T20:43:19.841708+00:00",
+        "sha256": "ff59c4a08dd0971a41d1a35c95324243dd5e3311fa6056d94682a7d1b53d8707"
+      },
+      "SOURCE_ONLY": {
+        "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset/events.py",
+        "resolved": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset/events.py",
+        "exists": true,
+        "bytes": 2181,
+        "mtime": "2026-10-09T00:41:23.093868+00:00",
+        "sha256": "ff59c4a08dd0971a41d1a35c95324243dd5e3311fa6056d94682a7d1b53d8707"
+      },
+      "equal": true
+    },
+    {
+      "file": "scripts/lib/cross_asset/hooks.py",
+      "CURRENT": {
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/lib/cross_asset/hooks.py",
+        "resolved": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/cross_asset/hooks.py",
+        "exists": true,
+        "bytes": 17379,
+        "mtime": "2026-10-06T20:43:19.841708+00:00",
+        "sha256": "8e3e24628dd39e41e4968d4941a441bccdc9ba5650f0493252b1d7ee2c43986d"
+      },
+      "SOURCE_ONLY": {
+        "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset/hooks.py",
+        "resolved": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset/hooks.py",
+        "exists": true,
+        "bytes": 17379,
+        "mtime": "2026-10-09T00:41:23.093868+00:00",
+        "sha256": "8e3e24628dd39e41e4968d4941a441bccdc9ba5650f0493252b1d7ee2c43986d"
+      },
+      "equal": true
+    },
+    {
+      "file": "scripts/lib/cross_asset/expression_router.py",
+      "CURRENT": {
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/lib/cross_asset/expression_router.py",
+        "resolved": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/cross_asset/expression_router.py",
+        "exists": true,
+        "bytes": 4476,
+        "mtime": "2026-10-06T20:43:19.841708+00:00",
+        "sha256": "cc68e15fa8c279b7f41c6342fd937ed4c8505844cdf459d2a941e6ede1e51489"
+      },
+      "SOURCE_ONLY": {
+        "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset/expression_router.py",
+        "resolved": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset/expression_router.py",
+        "exists": true,
+        "bytes": 4476,
+        "mtime": "2026-10-09T00:41:23.093868+00:00",
+        "sha256": "cc68e15fa8c279b7f41c6342fd937ed4c8505844cdf459d2a941e6ede1e51489"
+      },
+      "equal": true
+    },
+    {
+      "file": "scripts/lib/cross_asset_decision.py",
+      "CURRENT": {
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/lib/cross_asset_decision.py",
+        "resolved": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133/scripts/lib/cross_asset_decision.py",
+        "exists": true,
+        "bytes": 16617,
+        "mtime": "2026-10-06T20:43:19.841708+00:00",
+        "sha256": "c0d3f2dfd392ac69b2f4dec7833aa006aa915c8246b1b41c4ec58eb5f81b16eb"
+      },
+      "SOURCE_ONLY": {
+        "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset_decision.py",
+        "resolved": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset_decision.py",
+        "exists": true,
+        "bytes": 16617,
+        "mtime": "2026-10-09T00:41:23.093868+00:00",
+        "sha256": "c0d3f2dfd392ac69b2f4dec7833aa006aa915c8246b1b41c4ec58eb5f81b16eb"
+      },
+      "equal": true
+    }
+  ],
+  "readiness_report": {
+    "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md",
+    "evidence_class": "STALE_HISTORICAL",
+    "report_as_of": "2026-09-29T17:55:00-04:00",
+    "verdict": "NOT READY",
+    "historical_windows": [
+      {
+        "days": 30,
+        "signals_evaluated": 0,
+        "options_superior_rate": null,
+        "data_quality": "INSUFFICIENT_DATA"
+      },
+      {
+        "days": 60,
+        "signals_evaluated": 0,
+        "options_superior_rate": null,
+        "data_quality": "INSUFFICIENT_DATA"
+      },
+      {
+        "days": 90,
+        "signals_evaluated": 0,
+        "options_superior_rate": null,
+        "data_quality": "INSUFFICIENT_DATA"
+      }
+    ],
+    "fresh_metrics_not_generated": true
+  },
+  "historical_metric_artifacts": [
+    {
+      "path": "/tmp/cadi_hist_metrics.json",
+      "resolved": "/tmp/cadi_hist_metrics.json",
+      "exists": true,
+      "bytes": 1703,
+      "mtime": "2026-09-29T21:47:20.333330+00:00",
+      "sha256": "3774c104affab009f30cc000c5e663c14d3f18d8006df3e3f51f5a0119ca647a",
+      "metadata": {
+        "schema": "CrossAssetHistoricalReplayMetrics@v1",
+        "authority": "READ_ONLY_ADVISORY",
+        "as_of": null,
+        "windows": [
+          {
+            "window_days": 30,
+            "data_quality": "INSUFFICIENT_DATA",
+            "signals_evaluated": 0,
+            "shares_chosen": 0,
+            "options_would_be_superior": 0,
+            "options_superior_rate": null,
+            "note": "Signal/price archives not present \u2014 refusing to invent counterfactuals",
+            "archives": {
+              "signals": false,
+              "prices": false,
+              "option_chains": false,
+              "archive_dir": null
+            },
+            "as_of": "2026-09-29T21:47:20.333227Z",
+            "authority": "READ_ONLY_ADVISORY"
+          },
+          {
+            "window_days": 60,
+            "data_quality": "INSUFFICIENT_DATA",
+            "signals_evaluated": 0,
+            "shares_chosen": 0,
+            "options_would_be_superior": 0,
+            "options_superior_rate": null,
+            "note": "Signal/price archives not present \u2014 refusing to invent counterfactuals",
+            "archives": {
+              "signals": false,
+              "prices": false,
+              "option_chains": false,
+              "archive_dir": null
+            },
+            "as_of": "2026-09-29T21:47:20.333247Z",
+            "authority": "READ_ONLY_ADVISORY"
+          },
+          {
+            "window_days": 90,
+            "data_quality": "INSUFFICIENT_DATA",
+            "signals_evaluated": 0,
+            "shares_chosen": 0,
+            "options_would_be_superior": 0,
+            "options_superior_rate": null,
+            "note": "Signal/price archives not present \u2014 refusing to invent counterfactuals",
+            "archives": {
+              "signals": false,
+              "prices": false,
+              "option_chains": false,
+              "archive_dir": null
+            },
+            "as_of": "2026-09-29T21:47:20.333250Z",
+            "authority": "READ_ONLY_ADVISORY"
+          }
+        ],
+        "state": null,
+        "ok": null
+      },
+      "evidence_class": "STALE_HISTORICAL"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/cross_asset_historical_replay_last.json",
+      "exists": false
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/cross_asset_readiness_last.json",
+      "exists": false
+    }
+  ],
+  "ledgers": [
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/symbol_decisions.jsonl",
+      "exists": false
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/expression_missed_opportunities.jsonl",
+      "exists": false
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/security_research_spine.jsonl",
+      "resolved": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/security_research_spine.jsonl",
+      "exists": true,
+      "bytes": 8986197,
+      "mtime": "2026-10-09T13:31:17.680361+00:00",
+      "sha256": "73fccc99b5835012395680f8f8717005098ac83645e351911d66171d16f637b0",
+      "rows": 775,
+      "invalid_json": 0,
+      "schemas": {
+        "SecurityResearchSpine@v1": 775
+      },
+      "earliest_as_of": "2026-09-29T22:19:15.283660Z",
+      "latest_as_of": "2026-10-09T13:31:17.680820Z",
+      "rows_with_signal_id": 0,
+      "rows_with_subject_guid": 775,
+      "rows_with_nonnull_ev": 0
+    }
+  ],
+  "config/lane_registry.json": [],
+  "config/n8n_run_allowlist.json": [],
+  "scheduler_observations": {
+    "cron": {
+      "exit": 0,
+      "permission_denied": false,
+      "matching_entries": []
+    },
+    "user_units": {
+      "exit": 0,
+      "permission_denied": false,
+      "matching_lines": []
+    },
+    "user_unit_files": {
+      "exit": 0,
+      "permission_denied": false,
+      "matching_lines": []
+    },
+    "openclaw": {
+      "path": "/home/johnclaw/.openclaw/cron/jobs.json",
+      "exists": true,
+      "matching_jobs": []
+    }
+  },
+  "n8n_matching_host_runs": [],
+  "archive_files": [
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/finviz_quote_cache.json",
+      "resolved": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/finviz_quote_cache.json",
+      "exists": true,
+      "bytes": 33902,
+      "mtime": "2026-10-09T13:30:27.037636+00:00",
+      "sha256": "f4372c9ab423a954c1484122f63029712fc1e6b18f4850cc9bed857e123bb45c",
+      "format": "JSON",
+      "metadata": {},
+      "record_count": null
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/price_outlier_quarantine.jsonl",
+      "resolved": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/price_outlier_quarantine.jsonl",
+      "exists": true,
+      "bytes": 15736460,
+      "mtime": "2026-10-09T13:14:10.339419+00:00",
+      "sha256": "8be38b2c1dac47876c470241a4afd2bdc5eb676df5ebf0f60d4754a3578a522d",
+      "format": "jsonl"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/action_signals.json",
+      "resolved": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/action_signals.json",
+      "exists": true,
+      "bytes": 9822,
+      "mtime": "2026-10-09T11:38:57.800052+00:00",
+      "sha256": "088dba3b0ba32708677178cbd098c2a09f62534337409256ad2bd4b03ca793ec",
+      "format": "JSON",
+      "metadata": {},
+      "record_count": null
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/price_ohlc_cache.json",
+      "resolved": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/price_ohlc_cache.json",
+      "exists": true,
+      "bytes": 35266177,
+      "mtime": "2026-10-05T02:00:10.168450+00:00",
+      "sha256": "860acfdf878e25a45166e482e87d57678ee0c259aef9a5974af54a0ce6ea2669",
+      "format": "json"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/price_cache.json",
+      "resolved": "/home/johnclaw/trade-ai-releases/persistent-state/data/portfolios/state/price_cache.json",
+      "exists": true,
+      "bytes": 3220103,
+      "mtime": "2026-10-05T00:39:05.559725+00:00",
+      "sha256": "552fcedce920526a95c2388a7041d1f9bfc4fb9514fa7bddba1e9c21e1a7bcb8",
+      "format": "JSON",
+      "metadata": {},
+      "record_count": null
+    }
+  ],
+  "db_archive_metadata": {
+    "evidence_class": "OBSERVED_DB",
+    "transactions_read_only": true,
+    "queries": {
+      "archive_schema": {
+        "sql": "SELECT table_schema,table_name,column_name,data_type FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog','information_schema') AND (table_name ~ '(^|_)(signal|signals|bar|bars|price|prices|chain|chains)($|_)|option.*quote|options_iv_history|symbol_decision|cross_asset') AND table_name !~ 'position|account|broker|order|fill|credential|secret' ORDER BY table_schema,table_name,ordinal_position",
+        "rows": [
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "signal_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "symbol",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "signal",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "rule",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "portfolio_pct",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "market_value",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "data",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "action_signals_history",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "user_message",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "route",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "chain",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "result",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "agent_chain_runs",
+            "column_name": "dry_run",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "segment_key",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "year",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "make",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "model",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "mileage_band",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "retail",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "wholesale",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "private",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "price_source",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "sources_json",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "price_input_fingerprint",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "last_vehicle_guid",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "sample_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_segment_cache",
+            "column_name": "priced_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "vehicle_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "guid",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "snapshot_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "retail",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "wholesale",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "private",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "suggested_bid",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "price_confidence",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "source_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "ticket_due",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "sources_json",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_price_snapshots",
+            "column_name": "price_input_fingerprint",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "vehicle_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "guid",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "estimated_retail",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "estimated_wholesale",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "price_source",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "price_notes",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "dof_vehicle_prices",
+            "column_name": "priced_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "strategy_type",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "fused_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "catalyst_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "news_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "social_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "sentiment_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "severity",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "direction",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "confidence",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "strategy_alignment",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "portfolio_impact_pct",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "contradictions",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "top_signals",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "reason_codes",
+            "data_type": "ARRAY"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "human_review",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "research_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "fused_signals",
+            "column_name": "research_insight_ids",
+            "data_type": "ARRAY"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "indicator_signal_history",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "indicator_signal_history",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "indicator_signal_history",
+            "column_name": "strategy_name",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "indicator_signal_history",
+            "column_name": "signal",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "indicator_signal_history",
+            "column_name": "value",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "indicator_signal_history",
+            "column_name": "details",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "indicator_signal_history",
+            "column_name": "computed_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "run_id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "region",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "theme",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "headline",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "us_impact",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "direction",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "affected_symbols",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "confidence",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "source_lane",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "source_urls",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "inference_regional_signals",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "timeframe",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "bar_time",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "open",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "high",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "low",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "close",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "volume",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "source",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "market_ohlcv_bars",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "as_of",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "put_oi",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "call_oi",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "put_vol",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "call_vol",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "pc_oi_ratio",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "pc_vol_ratio",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "atm_iv",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "skew25",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "underlying_price",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "option_chain_snapshots",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_chain_snapshots",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_chain_snapshots",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_chain_snapshots",
+            "column_name": "chain_json",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_chain_snapshots",
+            "column_name": "vol_analytics_json",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_chain_snapshots",
+            "column_name": "captured_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "iv_pct",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "atm_strike",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "underlying",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "source",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "captured_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "snapshot_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "options_iv_history",
+            "column_name": "meta_json",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "trade_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "proposal_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "symbol",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "strategy_id",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "entry_price",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "exit_price",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "stop_loss",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "target_1",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "price_15min_after",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "price_1h_after",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "price_4h_after",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "price_eod",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "max_favorable_4h",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "max_adverse_4h",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "stop_too_tight",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "would_have_recovered",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "held_too_short",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "held_too_long",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "thesis_outcome",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "lesson_text",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "lesson_model",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "bars_fetched",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "fetch_errors",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "analyzed_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "post_trade_price_analysis",
+            "column_name": "backfilled",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache",
+            "column_name": "symbol",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache",
+            "column_name": "price_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache",
+            "column_name": "close_price",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache",
+            "column_name": "updated_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache_coverage",
+            "column_name": "symbol",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache_coverage",
+            "column_name": "trading_days",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache_coverage",
+            "column_name": "earliest",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache_coverage",
+            "column_name": "latest",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "price_cache_coverage",
+            "column_name": "last_updated",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "proposal_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "strategy_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "proposing_agent",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "proposal_created",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "proposal_status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "paper_trade_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "trade_status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "trade_pnl",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "trade_r_multiple",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "chain_status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "outcome_fed_back",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "feedback_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "updated_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "trade_instance_id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "option_strategy_guid",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "proposal_outcome_chain",
+            "column_name": "contract_guid",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "cluster_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "strategy_type",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "group_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "cluster_type",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "symbols_involved",
+            "data_type": "ARRAY"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "signal_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "avg_severity",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "dominant_direction",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "portfolio_impact",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "requires_action",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "summary",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_clusters",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "run_label",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "run_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "source_component",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "go_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "aplus_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "strategy_signals_before",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "strategy_signals_after",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "inserted_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "updated_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "skipped_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "error_count",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "details",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_flow_audit",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "strategy_type",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "signal_type",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "signal_source",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "signal_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "signal_confidence",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "price_at_signal",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "price_1d_after",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "price_7d_after",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "price_30d_after",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "accuracy_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "signal_history",
+            "column_name": "evaluated_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "signal_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "snapshot_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "strategy_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "strategy_name",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "signal",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "signal_strength",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "confidence",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "reason",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "supporting_indicators",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "conflicting_indicators",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "current_strategy_status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "recommended_action",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "requires_admin_approval",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "learning_hypothesis_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "learning_recommendation_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "config_proposal_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_rotation_signals",
+            "column_name": "updated_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "strategy_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "signal_type",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "signal_grade",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "signal_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "price",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "rvol",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "float_m",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "gap_pct",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "catalyst",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "catalyst_verified",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "setup_description",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "entry_low",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "entry_high",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "stop_loss",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "target_1",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "target_2",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "risk_reward",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "shares",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "dollar_risk",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "vix_at_signal",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "market_regime",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "sector",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "intel_readiness",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "source_quality",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "status",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "fired_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "expires_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "telegram_sent",
+            "data_type": "boolean"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "trade_journal_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "outcome_verdict",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "outcome_pnl",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "source_table",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "source_record_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "scan_run_label",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "screener_label",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "discovery_source",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "sync_created_by",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "sync_run_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "route_match_reasons",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "route_reject_reasons",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "route_score",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "setup_stack",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "primary_strategy_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "secondary_strategy_ids",
+            "data_type": "jsonb"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "strategy_config_hash",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "strategy_signals",
+            "column_name": "discovery_trace_id",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices",
+            "column_name": "id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices",
+            "column_name": "symbol",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices",
+            "column_name": "price_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices",
+            "column_name": "close_price",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices",
+            "column_name": "source",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "original_id",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "symbol",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "price_date",
+            "data_type": "date"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "close_price",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "source",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "quality_reason",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "baseline",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "deviation_ratio",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "quarantined_at",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "ticker_prices_quarantine",
+            "column_name": "quarantined_by",
+            "data_type": "character varying"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "trade_instance_id",
+            "data_type": "bigint"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "symbol",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "bar_seq",
+            "data_type": "integer"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "bar_time",
+            "data_type": "timestamp with time zone"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "open",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "high",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "low",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "close",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "volume",
+            "data_type": "numeric"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "timeframe",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "source",
+            "data_type": "text"
+          },
+          {
+            "table_schema": "public",
+            "table_name": "trade_intrabar_bars",
+            "column_name": "created_at",
+            "data_type": "timestamp with time zone"
+          }
+        ],
+        "elapsed_s": 0.0553
+      },
+      "coverage:public.action_signals_history": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"action_signals_history\"",
+        "rows": [
+          {
+            "rows": 1726,
+            "distinct_symbols": 38,
+            "earliest_created_at": "2026-07-12 07:30:04.610707-04:00",
+            "latest_created_at": "2026-10-09 06:15:02.765926-04:00",
+            "rows_30d": 542,
+            "rows_60d": 1077,
+            "rows_90d": 1726
+          }
+        ],
+        "elapsed_s": 0.0116
+      },
+      "coverage:public.agent_chain_runs": {
+        "sql": "SELECT count(*) AS rows,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"agent_chain_runs\"",
+        "rows": [
+          {
+            "rows": 0,
+            "earliest_created_at": null,
+            "latest_created_at": null,
+            "rows_30d": 0,
+            "rows_60d": 0,
+            "rows_90d": 0
+          }
+        ],
+        "elapsed_s": 0.0016
+      },
+      "coverage:public.dof_price_segment_cache": {
+        "sql": "SELECT count(*) AS rows FROM \"public\".\"dof_price_segment_cache\"",
+        "rows": [
+          {
+            "rows": 2165
+          }
+        ],
+        "elapsed_s": 0.0026
+      },
+      "coverage:public.dof_price_snapshots": {
+        "sql": "SELECT count(*) AS rows,min(\"snapshot_date\") AS \"earliest_snapshot_date\",max(\"snapshot_date\") AS \"latest_snapshot_date\",count(*) FILTER (WHERE \"snapshot_date\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"snapshot_date\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"snapshot_date\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"dof_price_snapshots\"",
+        "rows": [
+          {
+            "rows": 1441,
+            "earliest_snapshot_date": "2026-05-10",
+            "latest_snapshot_date": "2026-05-11",
+            "rows_30d": 0,
+            "rows_60d": 0,
+            "rows_90d": 0
+          }
+        ],
+        "elapsed_s": 0.0061
+      },
+      "coverage:public.dof_vehicle_prices": {
+        "sql": "SELECT count(*) AS rows FROM \"public\".\"dof_vehicle_prices\"",
+        "rows": [
+          {
+            "rows": 0
+          }
+        ],
+        "elapsed_s": 0.0012
+      },
+      "coverage:public.fused_signals": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"fused_signals\"",
+        "rows": [
+          {
+            "rows": 897409,
+            "distinct_symbols": 5220,
+            "earliest_created_at": "2026-07-13 04:00:02.056902-04:00",
+            "latest_created_at": "2026-10-09 09:30:14.762224-04:00",
+            "rows_30d": 318879,
+            "rows_60d": 651752,
+            "rows_90d": 897409
+          }
+        ],
+        "elapsed_s": 1.7467
+      },
+      "coverage:public.indicator_signal_history": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols FROM \"public\".\"indicator_signal_history\"",
+        "rows": [
+          {
+            "rows": 11,
+            "distinct_symbols": 1
+          }
+        ],
+        "elapsed_s": 0.0016
+      },
+      "coverage:public.inference_regional_signals": {
+        "sql": "SELECT count(*) AS rows,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"inference_regional_signals\"",
+        "rows": [
+          {
+            "rows": 552,
+            "earliest_created_at": "2026-06-21 12:04:00.678444-04:00",
+            "latest_created_at": "2026-10-09 08:01:06.342966-04:00",
+            "rows_30d": 144,
+            "rows_60d": 296,
+            "rows_90d": 431
+          }
+        ],
+        "elapsed_s": 0.004
+      },
+      "coverage:public.market_ohlcv_bars": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"market_ohlcv_bars\"",
+        "rows": [
+          {
+            "rows": 1502868,
+            "distinct_symbols": 1713,
+            "earliest_created_at": "2026-05-07 16:09:54.619193-04:00",
+            "latest_created_at": "2026-10-08 16:40:39.070842-04:00",
+            "rows_30d": 299389,
+            "rows_60d": 779420,
+            "rows_90d": 1447472
+          }
+        ],
+        "elapsed_s": 3.7338
+      },
+      "coverage:public.option_chain_snapshots": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",min(\"as_of\") AS \"earliest_as_of\",max(\"as_of\") AS \"latest_as_of\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"option_chain_snapshots\"",
+        "rows": [
+          {
+            "rows": 1661,
+            "distinct_symbols": 42,
+            "earliest_created_at": "2026-07-18 09:55:09.933163-04:00",
+            "latest_created_at": "2026-10-08 10:00:02.348544-04:00",
+            "earliest_as_of": "2026-07-18",
+            "latest_as_of": "2026-10-08",
+            "rows_30d": 621,
+            "rows_60d": 1207,
+            "rows_90d": 1661
+          }
+        ],
+        "elapsed_s": 0.0049
+      },
+      "coverage:public.options_chain_snapshots": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"captured_at\") AS \"earliest_captured_at\",max(\"captured_at\") AS \"latest_captured_at\",count(*) FILTER (WHERE \"captured_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"captured_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"captured_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"options_chain_snapshots\"",
+        "rows": [
+          {
+            "rows": 48419,
+            "distinct_symbols": 79,
+            "earliest_captured_at": "2026-08-25 09:13:58.264954-04:00",
+            "latest_captured_at": "2026-10-09 08:42:43.352478-04:00",
+            "rows_30d": 29773,
+            "rows_60d": 48419,
+            "rows_90d": 48419
+          }
+        ],
+        "elapsed_s": 0.0489
+      },
+      "coverage:public.options_iv_history": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"snapshot_date\") AS \"earliest_snapshot_date\",max(\"snapshot_date\") AS \"latest_snapshot_date\",min(\"captured_at\") AS \"earliest_captured_at\",max(\"captured_at\") AS \"latest_captured_at\",count(*) FILTER (WHERE \"snapshot_date\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"snapshot_date\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"snapshot_date\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"options_iv_history\"",
+        "rows": [
+          {
+            "rows": 1591,
+            "distinct_symbols": 178,
+            "earliest_snapshot_date": "2026-07-05",
+            "latest_snapshot_date": "2026-10-08",
+            "earliest_captured_at": "2026-07-05 17:29:45.347149-04:00",
+            "latest_captured_at": "2026-10-08 15:45:23.265253-04:00",
+            "rows_30d": 497,
+            "rows_60d": 968,
+            "rows_90d": 1450
+          }
+        ],
+        "elapsed_s": 0.0045
+      },
+      "coverage:public.post_trade_price_analysis": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols FROM \"public\".\"post_trade_price_analysis\"",
+        "rows": [
+          {
+            "rows": 9,
+            "distinct_symbols": 6
+          }
+        ],
+        "elapsed_s": 0.0014
+      },
+      "coverage:public.price_cache": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"price_date\") AS \"earliest_price_date\",max(\"price_date\") AS \"latest_price_date\",min(\"updated_at\") AS \"earliest_updated_at\",max(\"updated_at\") AS \"latest_updated_at\",count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"price_cache\"",
+        "rows": [
+          {
+            "rows": 18462,
+            "distinct_symbols": 118,
+            "earliest_price_date": "2025-10-10",
+            "latest_price_date": "2026-10-02",
+            "earliest_updated_at": "2026-04-20 07:24:56.396092-04:00",
+            "latest_updated_at": "2026-10-04 19:00:02.664790-04:00",
+            "rows_30d": 361,
+            "rows_60d": 844,
+            "rows_90d": 1412
+          }
+        ],
+        "elapsed_s": 0.0785
+      },
+      "coverage:public.price_cache_coverage": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols FROM \"public\".\"price_cache_coverage\"",
+        "rows": [
+          {
+            "rows": 118,
+            "distinct_symbols": 118
+          }
+        ],
+        "elapsed_s": 0.0221
+      },
+      "coverage:public.proposal_outcome_chain": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",min(\"updated_at\") AS \"earliest_updated_at\",max(\"updated_at\") AS \"latest_updated_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"proposal_outcome_chain\"",
+        "rows": [
+          {
+            "rows": 7763,
+            "distinct_symbols": 829,
+            "earliest_created_at": "2026-05-11 10:03:09.044788-04:00",
+            "latest_created_at": "2026-10-08 20:30:02.276757-04:00",
+            "earliest_updated_at": "2026-05-11 10:03:09.044788-04:00",
+            "latest_updated_at": "2026-10-08 20:30:02.276757-04:00",
+            "rows_30d": 2200,
+            "rows_60d": 4400,
+            "rows_90d": 6300
+          }
+        ],
+        "elapsed_s": 0.0202
+      },
+      "coverage:public.signal_clusters": {
+        "sql": "SELECT count(*) AS rows,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"signal_clusters\"",
+        "rows": [
+          {
+            "rows": 0,
+            "earliest_created_at": null,
+            "latest_created_at": null,
+            "rows_30d": 0,
+            "rows_60d": 0,
+            "rows_90d": 0
+          }
+        ],
+        "elapsed_s": 0.0013
+      },
+      "coverage:public.signal_flow_audit": {
+        "sql": "SELECT count(*) AS rows,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"signal_flow_audit\"",
+        "rows": [
+          {
+            "rows": 7817,
+            "earliest_created_at": "2026-05-06 15:25:15.797523-04:00",
+            "latest_created_at": "2026-10-09 09:30:04.524060-04:00",
+            "rows_30d": 2755,
+            "rows_60d": 5030,
+            "rows_90d": 6415
+          }
+        ],
+        "elapsed_s": 0.0093
+      },
+      "coverage:public.signal_history": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"signal_history\"",
+        "rows": [
+          {
+            "rows": 0,
+            "distinct_symbols": 0,
+            "earliest_created_at": null,
+            "latest_created_at": null,
+            "rows_30d": 0,
+            "rows_60d": 0,
+            "rows_90d": 0
+          }
+        ],
+        "elapsed_s": 0.0014
+      },
+      "coverage:public.strategy_rotation_signals": {
+        "sql": "SELECT count(*) AS rows,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",min(\"updated_at\") AS \"earliest_updated_at\",max(\"updated_at\") AS \"latest_updated_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"strategy_rotation_signals\"",
+        "rows": [
+          {
+            "rows": 0,
+            "earliest_created_at": null,
+            "latest_created_at": null,
+            "earliest_updated_at": null,
+            "latest_updated_at": null,
+            "rows_30d": 0,
+            "rows_60d": 0,
+            "rows_90d": 0
+          }
+        ],
+        "elapsed_s": 0.0012
+      },
+      "coverage:public.strategy_signals": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols FROM \"public\".\"strategy_signals\"",
+        "rows": [
+          {
+            "rows": 2707,
+            "distinct_symbols": 321
+          }
+        ],
+        "elapsed_s": 0.0035
+      },
+      "coverage:public.ticker_prices": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"price_date\") AS \"earliest_price_date\",max(\"price_date\") AS \"latest_price_date\",min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"ticker_prices\"",
+        "rows": [
+          {
+            "rows": 1203471,
+            "distinct_symbols": 6572,
+            "earliest_price_date": "2025-10-09",
+            "latest_price_date": "2026-10-09",
+            "earliest_created_at": "2026-04-26 14:13:08.196637-04:00",
+            "latest_created_at": "2026-10-09 09:14:08.003607-04:00",
+            "rows_30d": 113270,
+            "rows_60d": 218649,
+            "rows_90d": 329058
+          }
+        ],
+        "elapsed_s": 1.8602
+      },
+      "coverage:public.ticker_prices_quarantine": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"price_date\") AS \"earliest_price_date\",max(\"price_date\") AS \"latest_price_date\",min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"price_date\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"ticker_prices_quarantine\"",
+        "rows": [
+          {
+            "rows": 92,
+            "distinct_symbols": 31,
+            "earliest_price_date": "2023-02-13",
+            "latest_price_date": "2026-08-16",
+            "earliest_created_at": "2026-05-04 07:11:57.328518-04:00",
+            "latest_created_at": "2026-08-27 10:10:06.970140-04:00",
+            "rows_30d": 0,
+            "rows_60d": 2,
+            "rows_90d": 24
+          }
+        ],
+        "elapsed_s": 0.0022
+      },
+      "coverage:public.trade_intrabar_bars": {
+        "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(\"created_at\") AS \"earliest_created_at\",max(\"created_at\") AS \"latest_created_at\",count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE \"created_at\" >= NOW()-INTERVAL '90 days') AS rows_90d FROM \"public\".\"trade_intrabar_bars\"",
+        "rows": [
+          {
+            "rows": 3045,
+            "distinct_symbols": 17,
+            "earliest_created_at": "2026-06-28 03:30:27.163073-04:00",
+            "latest_created_at": "2026-07-26 03:30:17.896504-04:00",
+            "rows_30d": 0,
+            "rows_60d": 0,
+            "rows_90d": 2263
+          }
+        ],
+        "elapsed_s": 0.0094
+      }
+    }
+  },
+  "ollama_host": {
+    "exit": 0,
+    "properties": {
+      "Id": "ollama.service",
+      "RequiredBy": "",
+      "WantedBy": "graphical.target",
+      "Triggers": "",
+      "TriggeredBy": "",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/ollama.service",
+      "UnitFileState": "enabled",
+      "MainPID": "5135"
+    },
+    "no_stop_or_disable_performed": true
+  },
+  "ollama_operator_packet": {
+    "scope": "operator keyboard only; no agent sudo/native grants consumed",
+    "commands": [
+      "sudo systemctl disable --now ollama.service",
+      "systemctl show ollama.service --property=LoadState,UnitFileState,ActiveState,SubState",
+      "ss -ltnH sport = :11434"
+    ],
+    "success_criteria": "inactive service, disabled unit, no listener on 11434; preserve binaries/models/data; no model replacement or route authority change",
+    "rollback": "Only by a new explicit operator decision: sudo systemctl enable --now ollama.service"
+  },
+  "gaps": [
+    "Historical replay engine is unimplemented even when archives exist; AVAILABLE is not replay proof.",
+    "No stored 30/60/90 current replay measurements found; Sept 29 tmp metrics are STALE_HISTORICAL.",
+    "Shadow CLI creates a synthetic buy signal by default and passes no real signal ID/time, holdings or option packet.",
+    "No registered/observed continuous cross-asset shadow scheduler or canonical symbol decision ledger found.",
+    "Hermes completion hook publishes shared research spine; it does not invoke maybe_reevaluate_on_research_complete.",
+    "Expression router is structural; all candidate EV/POP/max-loss/reward-to-risk remain null and options_hints ignored.",
+    "options_iv_history is ATM-IV history, not full bid/ask/expiry/strike chain archive.",
+    "Provider-independent replay must enforce observed_at<=decision time and price/chain as-of contracts before any superiority claim."
+  ],
+  "completed_at": "2026-10-09T13:31:47.707946+00:00"
+}

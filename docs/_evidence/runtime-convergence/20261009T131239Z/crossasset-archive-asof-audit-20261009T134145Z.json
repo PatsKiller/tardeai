@@ -1,0 +1,162 @@
+{
+  "schema": "CrossAssetArchiveAsOfAudit@v1",
+  "as_of": "2026-10-09T13:41:45.626092+00:00",
+  "no_mutations": true,
+  "no_provider_or_broker_calls": true,
+  "evidence_class": "OBSERVED_DB",
+  "queries": {
+    "chain_structure": {
+      "sql": "SELECT count(*) AS rows,count(*) FILTER (WHERE jsonb_typeof(chain_json::jsonb)='object') AS object_rows,count(*) FILTER (WHERE chain_json::jsonb ? 'expiration_count') AS summary_expiration_count_rows,count(*) FILTER (WHERE jsonb_typeof(chain_json::jsonb->'expirations')='array') AS expiration_array_rows,count(*) FILTER (WHERE chain_json::jsonb ? 'contracts') AS contract_field_rows,count(*) FILTER (WHERE chain_json::jsonb ? 'as_of' OR chain_json::jsonb ? 'captured_at' OR chain_json::jsonb ? 'quote_time') AS embedded_quote_timestamp_rows,count(*) FILTER (WHERE chain_json::jsonb->>'note' LIKE 'summary only%') AS explicitly_summary_only_rows FROM options_chain_snapshots",
+      "rows": [
+        {
+          "rows": 48419,
+          "object_rows": 48419,
+          "summary_expiration_count_rows": 48419,
+          "expiration_array_rows": 0,
+          "contract_field_rows": 0,
+          "embedded_quote_timestamp_rows": 0,
+          "explicitly_summary_only_rows": 48419
+        }
+      ],
+      "elapsed_s": 0.1585
+    },
+    "chain_top_level_keys": {
+      "sql": "SELECT key,count(*) AS row_count FROM options_chain_snapshots CROSS JOIN LATERAL jsonb_object_keys(CASE WHEN jsonb_typeof(chain_json::jsonb)='object' THEN chain_json::jsonb ELSE '{}'::jsonb END) AS key GROUP BY key ORDER BY key",
+      "rows": [
+        {
+          "key": "expiration_count",
+          "row_count": 48419
+        },
+        {
+          "key": "note",
+          "row_count": 48419
+        },
+        {
+          "key": "underlying_price",
+          "row_count": 48419
+        }
+      ],
+      "elapsed_s": 0.0477
+    },
+    "bar_event_time_coverage": {
+      "sql": "SELECT timeframe,count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(bar_time) AS earliest_bar_time,max(bar_time) AS latest_bar_time,count(*) FILTER (WHERE bar_time>=NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE bar_time>=NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE bar_time>=NOW()-INTERVAL '90 days') AS rows_90d,count(*) FILTER (WHERE bar_time>NOW()) AS future_bar_rows,count(*) FILTER (WHERE created_at>bar_time+INTERVAL '1 day') AS ingested_more_than_day_after_bar FROM market_ohlcv_bars GROUP BY timeframe ORDER BY timeframe",
+      "rows": [
+        {
+          "timeframe": "15m",
+          "rows": 378597,
+          "distinct_symbols": 227,
+          "earliest_bar_time": "2026-04-27 09:30:00-04:00",
+          "latest_bar_time": "2026-10-08 15:45:00-04:00",
+          "rows_30d": 43592,
+          "rows_60d": 108168,
+          "rows_90d": 204224,
+          "future_bar_rows": 0,
+          "ingested_more_than_day_after_bar": 357964
+        },
+        {
+          "timeframe": "1h",
+          "rows": 673587,
+          "distinct_symbols": 232,
+          "earliest_bar_time": "2025-10-31 09:30:00-04:00",
+          "latest_bar_time": "2026-10-08 15:30:00-04:00",
+          "rows_30d": 12392,
+          "rows_60d": 30940,
+          "rows_90d": 61310,
+          "future_bar_rows": 0,
+          "ingested_more_than_day_after_bar": 667810
+        },
+        {
+          "timeframe": "1m",
+          "rows": 16364,
+          "distinct_symbols": 9,
+          "earliest_bar_time": "2026-04-29 09:30:00-04:00",
+          "latest_bar_time": "2026-05-07 15:59:00-04:00",
+          "rows_30d": 0,
+          "rows_60d": 0,
+          "rows_90d": 0,
+          "future_bar_rows": 0,
+          "ingested_more_than_day_after_bar": 13157
+        },
+        {
+          "timeframe": "5m",
+          "rows": 38654,
+          "distinct_symbols": 9,
+          "earliest_bar_time": "2026-02-11 09:30:00-05:00",
+          "latest_bar_time": "2026-05-07 15:55:00-04:00",
+          "rows_30d": 0,
+          "rows_60d": 0,
+          "rows_90d": 0,
+          "future_bar_rows": 0,
+          "ingested_more_than_day_after_bar": 37960
+        },
+        {
+          "timeframe": "daily",
+          "rows": 398118,
+          "distinct_symbols": 1713,
+          "earliest_bar_time": "2024-10-09 00:00:00-04:00",
+          "latest_bar_time": "2026-10-08 00:00:00-04:00",
+          "rows_30d": 29091,
+          "rows_60d": 64247,
+          "rows_90d": 99855,
+          "future_bar_rows": 0,
+          "ingested_more_than_day_after_bar": 398118
+        }
+      ],
+      "elapsed_s": 3.2513
+    },
+    "signal_business_date_coverage": {
+      "sql": "SELECT count(*) AS rows,min(signal_date) AS earliest_signal_date,max(signal_date) AS latest_signal_date,count(*) FILTER (WHERE signal_date>=CURRENT_DATE-30) AS rows_30d,count(*) FILTER (WHERE signal_date>=CURRENT_DATE-60) AS rows_60d,count(*) FILTER (WHERE signal_date>=CURRENT_DATE-90) AS rows_90d,count(*) FILTER (WHERE signal_date>created_at::date) AS future_business_date_at_initial_ingest,count(*) FILTER (WHERE created_at::date>signal_date+1) AS initial_ingest_after_next_day FROM action_signals_history",
+      "rows": [
+        {
+          "rows": 1726,
+          "earliest_signal_date": "2026-07-12",
+          "latest_signal_date": "2026-10-09",
+          "rows_30d": 562,
+          "rows_60d": 1099,
+          "rows_90d": 1726,
+          "future_business_date_at_initial_ingest": 0,
+          "initial_ingest_after_next_day": 0
+        }
+      ],
+      "elapsed_s": 0.0037
+    },
+    "strategy_fired_time_coverage": {
+      "sql": "SELECT count(*) AS rows,count(DISTINCT symbol) AS distinct_symbols,min(fired_at) AS earliest_fired_at,max(fired_at) AS latest_fired_at,count(*) FILTER (WHERE fired_at>=NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE fired_at>=NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE fired_at>=NOW()-INTERVAL '90 days') AS rows_90d,count(*) FILTER (WHERE fired_at IS NULL) AS missing_fired_at,count(*) FILTER (WHERE fired_at>NOW()) AS future_fired_at FROM strategy_signals",
+      "rows": [
+        {
+          "rows": 2707,
+          "distinct_symbols": 321,
+          "earliest_fired_at": "2026-05-05 04:01:34.926917-04:00",
+          "latest_fired_at": "2026-10-08 09:45:10.724521-04:00",
+          "rows_30d": 838,
+          "rows_60d": 1473,
+          "rows_90d": 1815,
+          "missing_fired_at": 0,
+          "future_fired_at": 0
+        }
+      ],
+      "elapsed_s": 0.0069
+    },
+    "chain_capture_calendar_coverage": {
+      "sql": "SELECT count(DISTINCT captured_at::date) AS captured_calendar_days,min(captured_at) AS first_capture,max(captured_at) AS last_capture,count(*) FILTER (WHERE captured_at>=NOW()-INTERVAL '30 days') AS rows_30d,count(*) FILTER (WHERE captured_at>=NOW()-INTERVAL '60 days') AS rows_60d,count(*) FILTER (WHERE captured_at>=NOW()-INTERVAL '90 days') AS rows_90d FROM options_chain_snapshots",
+      "rows": [
+        {
+          "captured_calendar_days": 46,
+          "first_capture": "2026-08-25 09:13:58.264954-04:00",
+          "last_capture": "2026-10-09 08:42:43.352478-04:00",
+          "rows_30d": 29773,
+          "rows_60d": 48419,
+          "rows_90d": 48419
+        }
+      ],
+      "elapsed_s": 0.0574
+    }
+  },
+  "source_contract_findings": {
+    "chain_summary_writer": "scripts/options_desk_enterprise.py:1851-1878 persists underlying_price/expiration_count/note only; default retention45d",
+    "signal_upsert": "scripts/db_adapter.py:587-594 ON CONFLICT(signal_date,symbol) updates signal/rule/data without immutable version history",
+    "bar_upsert": "scripts/market_data_snapshot_loader.py:100-104 updates OHLC/source for same(symbol,timeframe,bar_time)",
+    "reader_contract": "ticker_prices via registered technicals/daily_bars; options_iv_history via registered options_iv/option_chain gives ATM IV, not full contracts",
+    "replay_asof_requirement": "Use true event/market time plus availability time; ingestion-time windows are not event coverage. Retrospective mutable tip rows cannot prove point-in-time facts."
+  }
+}

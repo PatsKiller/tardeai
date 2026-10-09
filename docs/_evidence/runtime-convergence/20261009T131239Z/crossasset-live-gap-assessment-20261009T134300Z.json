@@ -1,0 +1,107 @@
+{
+  "schema": "CrossAssetLiveGapAssessment@v1",
+  "as_of": "2026-10-09T13:45:32.899637+00:00",
+  "identity": {
+    "CURRENT_SHA": "a9fa8b89b616f685145d27d6d2d62da3a1fab970",
+    "CURRENT_release": "/home/johnclaw/trade-ai-releases/portfolio-server/a9fa8b89b-main-exact-phase2-20261009-084133",
+    "source_HEAD": "d04cb3585285ac55e7d8930dfc3dcb5dfd4a3f21",
+    "source_origin_main": "bbff99766cd80ea630543abfaa639eb41eae5eb9"
+  },
+  "evidence_artifacts": [
+    {
+      "path": "/tmp/crossasset-live-gap-audit-20261009T133138Z.json",
+      "sha256": "861bff79c6aadbfe55d21914895be6becd286ec1f84524a2786124b5e60aa3f0"
+    },
+    {
+      "path": "/tmp/crossasset-archive-asof-audit-20261009T134145Z.json",
+      "sha256": "41e25add9f21f8e5809248cf9c297a4f47e825f270abd99cfa40b52fe9db5dd2"
+    }
+  ],
+  "cross_asset_verdict": "NOT_READY",
+  "signals_and_prices": "OBSERVED_DB: populated; adapters/point-in-time semantics not yet wired",
+  "full_historical_option_chain": "OBSERVED_DB: all48419 snapshots summary-only; zero expiration arrays/contracts/embedded quote timestamps",
+  "current_30_60_90_replay": "NOT_MEASURED: no fresh metrics; Sep29 zero/null tmp metrics STALE_HISTORICAL",
+  "shadow_scheduler": "OBSERVED_HOST: no matching cron/user-systemd/OpenClaw entries, no lane registry/allowlist row; n8n matching host run count0",
+  "decision_receipt_and_output": "OBSERVED_HOST: canonical symbol_decisions and expression_missed_opportunities ledgers absent at declared paths; no dedicated current RunReceipt found",
+  "shared_research_spine": "OBSERVED_HOST:775 rows,latest13:31:17UTC; this is research memory, not expression-decision proof",
+  "producer_consumer_gaps": [
+    {
+      "edge": "Hermes result -> shared research spine",
+      "status": "SOURCE_WIRED + live ledger growing",
+      "source": "scripts/lib/cio_hermes_research.py:1165; scripts/lib/cross_asset/hooks.py:18"
+    },
+    {
+      "edge": "Hermes/watch/reentry signal -> canonical expression decision",
+      "status": "SOURCE_ONLY dormant; reevaluation hook has no production caller",
+      "source": "scripts/lib/cross_asset/events.py:34"
+    },
+    {
+      "edge": "decision -> durable ledger",
+      "status": "SOURCE_ONLY; declared ledger absent",
+      "source": "scripts/lib/cross_asset/persistence.py:10"
+    },
+    {
+      "edge": "decision output -> UI/downstream consumer",
+      "status": "SOURCE_ONLY; load_latest_by_symbol only library export/definition, no product caller found",
+      "source": "scripts/lib/cross_asset/persistence.py:38"
+    },
+    {
+      "edge": "historical signal/price/chain archives -> 30/60/90 replay",
+      "status": "UNIMPLEMENTED; CLI checks existence only",
+      "source": "scripts/ops/run_cross_asset_historical_replay.py:25"
+    }
+  ],
+  "minimum_source_corrections": [
+    {
+      "finding": "AVAILABLE returned although engine unimplemented and evaluates0",
+      "fix": "Distinguish archive presence from replay execution/readiness; fail closed with explicit NOT_IMPLEMENTED/INSUFFICIENT_DATA. Never emit historical option superiority without contract prices.",
+      "negative_test": "Presence of empty or valid signals/prices files cannot produce AVAILABLE or READY without replayed/validated events."
+    },
+    {
+      "finding": "Synthetic default buy and missing actual event/position/options facts",
+      "fix": "Require an explicit frozen, governed event contract with signal_id/event_time and honest missing-context blocks; never infer live holdings/cash from absent arguments.",
+      "negative_test": "Absent/malformed/future/stale facts cannot rank as priced/ready."
+    },
+    {
+      "finding": "No real replay readers or observation-time semantics",
+      "fix": "Add read-only adapters for existing governed signal/price stores; separate market/event time from known_at/ingest time; report source coverage and per-reason skipped counts.",
+      "negative_test": "Later ingested bars, updated day-tip signals, future chain data and absent contracts cannot satisfy point-in-time option comparison."
+    },
+    {
+      "finding": "No continuous decision chain/output consumer proof",
+      "fix": "Wire existing producer hooks and existing ledger with idempotence, durable RunReceipt and read-only consumer; declare exactly one scheduler before operator-authorized activation.",
+      "negative_test": "Duplicate events cannot duplicate decisions/effects; failed/missing outputs cannot render READY."
+    }
+  ],
+  "operator_design_boundary": "Historical full contract archives do not currently exist in the measured stores. Future approved retention/writer contracts and a validated deterministic EV/risk comparison design are needed for real option-superiority evidence; no provider or model chosen.",
+  "mfa": "RETAIN_WITH_REASON: explicit operator no-MFA exception; no longer a remediation blocker",
+  "db_role": "UNRESOLVED_SEPARATE: elevated n8n DB privileges remain from prior live13:15 observation",
+  "ollama": {
+    "exit": 0,
+    "properties": {
+      "Id": "ollama.service",
+      "RequiredBy": "",
+      "WantedBy": "graphical.target",
+      "Triggers": "",
+      "TriggeredBy": "",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/ollama.service",
+      "UnitFileState": "enabled",
+      "MainPID": "5135"
+    },
+    "no_stop_or_disable_performed": true
+  },
+  "ollama_operator_packet": {
+    "scope": "operator keyboard only; no agent sudo/native grants consumed",
+    "commands": [
+      "sudo systemctl disable --now ollama.service",
+      "systemctl show ollama.service --property=LoadState,UnitFileState,ActiveState,SubState",
+      "ss -ltnH sport = :11434"
+    ],
+    "success_criteria": "inactive service, disabled unit, no listener on 11434; preserve binaries/models/data; no model replacement or route authority change",
+    "rollback": "Only by a new explicit operator decision: sudo systemctl enable --now ollama.service"
+  },
+  "no_runtime_changes_or_native_grants": true
+}

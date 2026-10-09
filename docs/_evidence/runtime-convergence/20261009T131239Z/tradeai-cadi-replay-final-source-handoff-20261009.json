@@ -1,0 +1,123 @@
+{
+  "authority": {
+    "broker_calls": 0,
+    "deployment": false,
+    "financial_action": false,
+    "model_or_provider_calls": 0,
+    "model_selected": false,
+    "notification_sends": 0,
+    "production_archive_exporter_added": false,
+    "production_state_writes": 0,
+    "scheduler_writes": 0
+  },
+  "base_sha": "bbff99766cd80ea630543abfaa639eb41eae5eb9",
+  "branch": "wt/cadi-archive-replay-20261009",
+  "commits_oldest_to_newest": [
+    "e9c0b5d5c6fc0ecbdd8e27b5bf66eed1ce948817",
+    "b5987a5381f88ed49d64638fc22add2db67c2b1b",
+    "1d92fd2c01b00cbc943d52cda904473e605fe288",
+    "65d71c7e317e9dd7c7eafc20f5ba5fc43f24105d"
+  ],
+  "evidence_class": "SOURCE_ONLY",
+  "evidence_logs": {
+    "dark_contracts": {
+      "path": "/tmp/tradeai-cadi-replay-dark-contracts-20261009.log",
+      "sha256": "46653de1af68978b4df9997b1d9b9137495e49e0165e0b9decc2abf522e4a571"
+    },
+    "data_authority": {
+      "path": "/tmp/tradeai-cadi-replay-data-authority-20261009.log",
+      "sha256": "e873c3115028acda0ad4ab53879b934526a918d0a2b3e2681774c33ddf5e7b2a"
+    },
+    "doc_index_pending": {
+      "path": "/tmp/tradeai-cadi-replay-doc-index-pending-20261009.log",
+      "sha256": "bdea1ca458df7b9d084ad6d1939f7e0581cb8faaee56aa735c4c20edcbbace9d"
+    },
+    "final_53_tests": {
+      "path": "/tmp/tradeai-cadi-replay-alias-overflow-final-20261009.log",
+      "sha256": "8e675631bfda990a8a192f7c1b249479c40a6bf26fab8797b2bbebdaf484ba31"
+    },
+    "historical_46_tests": {
+      "path": "/tmp/tradeai-cadi-replay-regression-final-20261009.log",
+      "sha256": "bc82851bf3ecd7a2bf4f63967914433eb5aeccdad81b08a5b22e0c1885372562"
+    },
+    "independent_fixed": {
+      "path": "/tmp/cadi-replay-independent-fixed-probes-20261009.json",
+      "sha256": "6ec675a415c4afef9f19708e053ab761ebd8649667ea6236dd88133c795c90d5"
+    },
+    "independent_prior": {
+      "path": "/tmp/cadi-replay-independent-prior-probes-20261009.json",
+      "sha256": "9e36f102852c2aa9bbf141e81e08fc3052360fb7f5b7a97e715d185506f8ec94"
+    },
+    "prior_alias_overflow": {
+      "path": "/tmp/tradeai-cadi-replay-alias-overflow-prior-20261009.log",
+      "sha256": "4c6fb888d65a4ab3d6482acb431bdee4f063f1f2baa088ea2fea090683c29961"
+    },
+    "prior_equivalent_offset": {
+      "path": "/tmp/tradeai-cadi-replay-offset-negative-20261009.log",
+      "sha256": "0a446ff95787388595c025af45dd041de2507321ff81a379831d5503a4b64d84"
+    },
+    "prior_original_stub": {
+      "path": "/tmp/tradeai-cadi-replay-negative-prior-20261009.log",
+      "sha256": "42c45b829002f9bcda75d5c054842424a8bc20b6234155a720a3d85100af0472"
+    },
+    "test_registration": {
+      "path": "/tmp/tradeai-cadi-replay-test-coverage-20261009.log",
+      "sha256": "f0b79fecb6849ca8034c4986f8fa8c711923c39600a704d6ebe74a18ca202ec4"
+    }
+  },
+  "functional_source_sha": "1d92fd2c01b00cbc943d52cda904473e605fe288",
+  "head_sha": "65d71c7e317e9dd7c7eafc20f5ba5fc43f24105d",
+  "leases_released": {
+    "260f88c9-8739-4962-84d6-8ba289642ac3": true,
+    "cc220c78-b648-4dfd-bd2d-b3794550b941": true
+  },
+  "limits": [
+    "Realized option superiority and shares choice remain null; governed supplied scoring facts support SCORING_COMPARISON_ONLY.",
+    "Immutable canonical decision ledger, full contract economics and point-in-time availability proof remain unproven.",
+    "No source fixtures or scoring results establish production readiness."
+  ],
+  "local_work_status": {
+    "github_ci_cycles_this_tranche": 0,
+    "remaining_local_work": "Parent regenerates docs/INDEX.md and runs combined integration acceptance.",
+    "remote_pushes_this_tranche": 0,
+    "source_frozen": true,
+    "working_tree_clean": true
+  },
+  "native_session_id": "5d9d9866-250a-49c7-bffa-2658b3ea2638",
+  "observed_at": "2026-10-09T14:08:33.936795+00:00",
+  "production_30_60_90_archive_result": "NOT_MEASURED",
+  "production_readiness": "NOT_READY",
+  "schema": "CADIOfflineReplayFinalSourceHandoff@v1",
+  "source_files": {
+    "docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md": {
+      "sha256": "df97334ca71398161a31d842cb21323a0e78077f0e8d9b56c3eea858e40934e1"
+    },
+    "docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md": {
+      "sha256": "4321eb99cb993b1f2c6880aa756f75502bebe1d219faf76dce05598845feedb3"
+    },
+    "docs/implementation/CADI_OFFLINE_HISTORICAL_REPLAY_ARCHIVE_CONTRACT.md": {
+      "sha256": "5894b3a89ad6db0c50134acbba5d2b96851100bb1d9908f63d7c1e0d575e5505"
+    },
+    "scripts/ops/run_cross_asset_historical_replay.py": {
+      "sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57"
+    },
+    "tests/test_cross_asset_decision_intelligence.py": {
+      "sha256": "d6f6119d9cc09ba8b431dd0b514b91d18224c6c8f8954b50bed29b722996b1b9"
+    }
+  },
+  "tests": {
+    "alias_overflow_prior": "7 failed; six input-byte preservation cases and finite-input derived nonfinite score",
+    "final_focused": "53 passed in 2.29s, three CADI test families at functional_source_sha",
+    "full_canonical_acceptance": "NOT_RUN_BY_CHILD; parent owns integration gates",
+    "independent_probes": "7/7 PASS at 2026-10-09T14:03:47.099773+00:00",
+    "native_line_endings": "PASS",
+    "original_stub_prior": "17 failed; original-signature valid archive actually evaluated zero",
+    "preserved_first_checkpoint": "e9c0b5d5c6fc0ecbdd8e27b5bf66eed1ce948817: 46 passed in 1.27s",
+    "raw_diff_check": "PASS",
+    "ruff": "PASS",
+    "same_instant_offset_prior": "1 failed",
+    "staged_secrets": "PASS"
+  },
+  "tests_evidence_class": "TEST_ONLY",
+  "worktree": "/home/johnclaw/tradeai-wt-cadi-archive-replay-20261009"
+}

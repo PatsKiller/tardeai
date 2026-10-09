@@ -1,0 +1,123 @@
+{
+  "schema": "IndependentCadiOfflineReplayProbes@v1",
+  "as_of": "2026-10-09T14:03:47.099773+00:00",
+  "source_root": "/home/johnclaw/tradeai-wt-cadi-archive-replay-20261009",
+  "fixtures_root": "/tmp/cadi-independent-3ettdv5j",
+  "fixtures_evidence_class": "TEST_ONLY",
+  "no_production_inputs_or_writes": true,
+  "probes": [
+    {
+      "case": "supported_30_60_90_window_counts_without_option_claim",
+      "pass": true,
+      "signals_evaluated": [
+        1,
+        2,
+        3
+      ],
+      "data_quality": [
+        "INSUFFICIENT_DATA",
+        "INSUFFICIENT_DATA",
+        "INSUFFICIENT_DATA"
+      ]
+    },
+    {
+      "case": "wrong_guid_does_not_satisfy_price_coverage",
+      "pass": true,
+      "signals_evaluated": 0,
+      "signals_skipped": 1
+    },
+    {
+      "case": "supported_signal_price_counts_without_superiority",
+      "pass": true,
+      "summary": {
+        "signals_evaluated": 1,
+        "prices_covered": 1,
+        "scoring_comparisons": 0,
+        "options_superior_rate": null,
+        "data_quality": "INSUFFICIENT_DATA"
+      }
+    },
+    {
+      "case": "malformed_refusal_preserves_inputs",
+      "pass": true,
+      "exit": 2,
+      "source_hashes_before": {
+        "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+        "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+        "signals.jsonl": "9211ed906559d2a87807928b909de754d43e4b52f8e3e2d8fb624bc051d19cfb"
+      },
+      "source_hashes_after": {
+        "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+        "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+        "signals.jsonl": "9211ed906559d2a87807928b909de754d43e4b52f8e3e2d8fb624bc051d19cfb"
+      }
+    },
+    {
+      "case": "external_hardlink_to_input_refused_and_preserved",
+      "pass": true,
+      "exit": 2,
+      "source_hashes_before": {
+        "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+        "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+        "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+      },
+      "source_hashes_after": {
+        "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+        "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+        "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+      },
+      "archive": "/tmp/cadi-independent-3ettdv5j/hardlink-alias/archive",
+      "out": "/tmp/cadi-independent-3ettdv5j/hardlink-alias/external-report.json",
+      "same_inode": true
+    },
+    {
+      "case": "external_target_of_symlink_input_refused_and_preserved",
+      "pass": true,
+      "exit": 2,
+      "source_hashes_before": {
+        "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+        "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+        "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+      },
+      "source_hashes_after": {
+        "prices.jsonl": "4c9de0e04758cf487e6cad9e59bb5750a49d8acd1d6712e422e1db0e27fa92cf",
+        "expression_facts.jsonl": "0ff9ddc4a5fa80030554a6d90e14eaa641012fb5265faa375fdf64eff1a9c82a",
+        "signals.jsonl": "7deda49fa7af86781170585da9423774fa51312df96c409938748ac5ddb2f2b4"
+      },
+      "archive": "/tmp/cadi-independent-3ettdv5j/symlink-input-alias/archive",
+      "out": "/tmp/cadi-independent-3ettdv5j/symlink-input-alias/external-price.jsonl"
+    },
+    {
+      "case": "finite_inputs_nonfinite_derived_score_fail_closed",
+      "pass": true,
+      "data_quality": "INVALID_DATA",
+      "all_output_scores_finite": true,
+      "exit": 2,
+      "uncaught_exception": null,
+      "output_exists": true
+    },
+    {
+      "case": "equivalent_offset_fact_timestamp_observation",
+      "classification": "NONBLOCKING_CONSERVATIVE_REFUSAL",
+      "data_quality": "INVALID_DATA",
+      "refusals": [
+        {
+          "reason": "expression_facts.jsonl:conflicting_fact_snapshot"
+        }
+      ]
+    },
+    {
+      "case": "invalid_report_partial_accounting_observation",
+      "classification": "PARTIAL_DIAGNOSTIC_COUNTERS",
+      "data_quality": "INVALID_DATA",
+      "signals_in_window": 1,
+      "signals_evaluated": 0,
+      "signals_skipped": 0,
+      "refusals": [
+        {
+          "reason": "signals.jsonl:conflicting_event_id"
+        }
+      ]
+    }
+  ]
+}

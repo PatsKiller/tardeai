@@ -1,0 +1,91 @@
+{
+  "schema": "GovernedResearchFeedDedupeRemediation@v1",
+  "as_of": "2026-10-09T14:35:16.419444+00:00",
+  "evidence_class": "SOURCE_ONLY",
+  "worktree": "/home/johnclaw/tradeai-wt-governed-research-stable-dedupe-20261009",
+  "branch": "wt/governed-research-stable-dedupe-20261009",
+  "base_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+  "commit_sha": "3c7e877da6a9417dca63b93952f60efa3dbee8c1",
+  "paths": [
+    "scripts/lib/governed_research_producer.py",
+    "tests/test_governed_research_producer.py"
+  ],
+  "root_cause": "Missing article publication time made global ResearchObject identity depend on the capture second; same-content later fires duplicated, while changed content in the same second collided. Feed identity now versions canonical article content per subject, retaining original research_record_id; global object identity and existing feed rows are unchanged.",
+  "prior_negative": {
+    "evidence_class": "TEST_ONLY",
+    "exit": 1,
+    "failed": 4,
+    "passed": 1,
+    "duration_s": 1.04,
+    "command": ".venv/bin/python -m pytest -q tests/test_governed_research_producer.py -k \"duplicate_result or changed_content or legacy_feed or distinct_subjects or new_feed_identity\""
+  },
+  "focused": {
+    "evidence_class": "TEST_ONLY",
+    "exit": 0,
+    "passed": 40,
+    "duration_s": 18.82,
+    "command": ".venv/bin/python -m pytest -q tests/test_governed_research_producer.py tests/test_governed_research_producer_runner.py tests/test_free_search_fallback_20260916.py"
+  },
+  "checks": {
+    "ruff_lint": "PASS",
+    "ruff_format": "PASS",
+    "diff": "PASS",
+    "dark_contract": "PASS",
+    "data_source_authority": "PASS",
+    "test_coverage": "PASS",
+    "secret_tree": "PASS",
+    "host_path": "PASS",
+    "optional_network_db_dependencies_shadowed_with_injected_transport": "PASS"
+  },
+  "broader_regression": {
+    "evidence_class": "TEST_ONLY",
+    "exit": 0,
+    "passed": 866,
+    "xfailed": 2,
+    "warnings": 3,
+    "duration_s": 891.93,
+    "scope": "Exact existing campaign_m2_canary_lanes group plus adjacent free-search/router/search-budget/dark/DSA test families",
+    "command_record": "first two lines of /tmp/tradeai-governed-research-dedupe-regression-final.log"
+  },
+  "lease": {
+    "session_id": "c0190f0b-eb8d-406d-ab9d-c20ae487aef0",
+    "lease_id": "77afeddd-817a-4238-a791-3fb30e97be96",
+    "released": true
+  },
+  "runtime_mutations": false,
+  "provider_calls": false,
+  "remote_push": false,
+  "new_authority": false,
+  "artifacts": {
+    "negative-prior": {
+      "path": "/tmp/tradeai-governed-research-dedupe-negative-prior.log",
+      "sha256_at_capture": "5aa924db5d8e2d01e3c188357408226d502b6d496c4cf3a4d691623ef6429526"
+    },
+    "focused-final": {
+      "path": "/tmp/tradeai-governed-research-dedupe-focused-final.log",
+      "sha256_at_capture": "4bf8d0668a4e66cd355d097fb20836bd4fab2e18e5123210da5c44d18bb523de"
+    },
+    "regression-final": {
+      "path": "/tmp/tradeai-governed-research-dedupe-regression-final.log",
+      "sha256_at_capture": "aaf412c4382d8f067e452e27a447503a3090e4b8bcdaf17b748a4221d00e4121"
+    },
+    "source-authority": {
+      "path": "/tmp/tradeai-governed-research-dedupe-source-authority.log",
+      "sha256_at_capture": "e823413a474a0101729184eaf6d26c764846f737a6d23346c30d281035c95959"
+    },
+    "secrets": {
+      "path": "/tmp/tradeai-governed-research-dedupe-secrets.log",
+      "sha256_at_capture": "2c26c1df5f9a29301d57e19b364a79925dc02eaec1ce6fec4de0bdfe689bf3ff"
+    },
+    "host-path": {
+      "path": "/tmp/tradeai-governed-research-dedupe-host-path.log",
+      "sha256_at_capture": "4ace7100eeed6d554fbc994c8f4f704752fdf3b46abee64e3bdca623776b06ce"
+    }
+  },
+  "limitations": [
+    "Local source correction only; parent integration, final combined candidate/remote CI/deployment remain separate.",
+    "Historical duplicate feed rows are preserved, not removed or reminted.",
+    "Global ResearchObject publication-based identity remains unchanged; content-version identity applies only to this producer wake feed.",
+    "No live provider/model calls, production store writes, scheduler changes, remote push or runtime grants."
+  ]
+}

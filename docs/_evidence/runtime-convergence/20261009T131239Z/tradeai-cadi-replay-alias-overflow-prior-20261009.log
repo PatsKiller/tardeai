@@ -1,0 +1,225 @@
+FFFFFFF                                                                  [100%]
+=================================== FAILURES ===================================
+_ test_historical_replay_external_output_alias_preserves_all_input_bytes[signals.jsonl-hardlink] _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa0')
+alias_kind = 'hardlink', filename = 'signals.jsonl'
+
+    @pytest.mark.parametrize("alias_kind", ["hardlink", "input_symlink"])
+    @pytest.mark.parametrize("filename", ["signals.jsonl", "prices.jsonl", "expression_facts.jsonl"])
+    def test_historical_replay_external_output_alias_preserves_all_input_bytes(tmp_path, alias_kind, filename):
+        from scripts.ops.run_cross_asset_historical_replay import main
+
+        archive, _, _, _, _ = _historical_archive(tmp_path)
+        source = archive / filename
+        output = tmp_path / "external-output.json"
+        if alias_kind == "hardlink":
+            output.hardlink_to(source)
+        else:
+            source.rename(output)
+            source.symlink_to(output)
+        assert source.samefile(output)
+        before = {p.name: p.read_bytes() for p in archive.iterdir()}
+        status = main(["--archive-dir", str(archive), "--out", str(output)])
+>       assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
+E       assert {'expression_...: false\n}\n'} == {'expression_...7+00:00"}}\n'}
+E
+E         Omitting 2 identical items, use -vv to show
+E         Differing items:
+E         {'signals.jsonl': b'{\n  "schema": "CrossAssetHistoricalReplayMetrics@v1",\n  "as_of": "2026-10-09T14:00:27.300285+00:...026-07-11T14:00:27.300285+00:00"\n    }\n  ],\n  "authority": "READ_ONLY_ADVISORY",\n  "financial_action": false\n}\n'} != {'signals.jsonl': b'{"schema": "CrossAssetHistoricalReplaySignal@v1", "event": {"schema": "CrossAssetDecisionEvent@v1"..."symbol": "ABC", "security_guid": "sec-abc", "identity_status": "CONFIRMED", "as_of": "2026-10-08T13:59:27+00:00"}}\n'}
+E         Use -v to get more diff
+
+tests/test_cross_asset_decision_intelligence.py:388: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"ok": true, "wrote": "/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa0/external-output.json"}
+_ test_historical_replay_external_output_alias_preserves_all_input_bytes[signals.jsonl-input_symlink] _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa1')
+alias_kind = 'input_symlink', filename = 'signals.jsonl'
+
+    @pytest.mark.parametrize("alias_kind", ["hardlink", "input_symlink"])
+    @pytest.mark.parametrize("filename", ["signals.jsonl", "prices.jsonl", "expression_facts.jsonl"])
+    def test_historical_replay_external_output_alias_preserves_all_input_bytes(tmp_path, alias_kind, filename):
+        from scripts.ops.run_cross_asset_historical_replay import main
+
+        archive, _, _, _, _ = _historical_archive(tmp_path)
+        source = archive / filename
+        output = tmp_path / "external-output.json"
+        if alias_kind == "hardlink":
+            output.hardlink_to(source)
+        else:
+            source.rename(output)
+            source.symlink_to(output)
+        assert source.samefile(output)
+        before = {p.name: p.read_bytes() for p in archive.iterdir()}
+        status = main(["--archive-dir", str(archive), "--out", str(output)])
+>       assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
+E       assert {'signals.jso...ved-spot"}\n'} == {'signals.jso...ved-spot"}\n'}
+E
+E         Omitting 2 identical items, use -vv to show
+E         Differing items:
+E         {'signals.jsonl': b'{\n  "schema": "CrossAssetHistoricalReplayMetrics@v1",\n  "as_of": "2026-10-09T14:00:27.573191+00:...026-07-11T14:00:27.573191+00:00"\n    }\n  ],\n  "authority": "READ_ONLY_ADVISORY",\n  "financial_action": false\n}\n'} != {'signals.jsonl': b'{"schema": "CrossAssetHistoricalReplaySignal@v1", "event": {"schema": "CrossAssetDecisionEvent@v1"..."symbol": "ABC", "security_guid": "sec-abc", "identity_status": "CONFIRMED", "as_of": "2026-10-08T13:59:27+00:00"}}\n'}
+E         Use -v to get more diff
+
+tests/test_cross_asset_decision_intelligence.py:388: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"ok": true, "wrote": "/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa1/external-output.json"}
+_ test_historical_replay_external_output_alias_preserves_all_input_bytes[prices.jsonl-hardlink] _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa2')
+alias_kind = 'hardlink', filename = 'prices.jsonl'
+
+    @pytest.mark.parametrize("alias_kind", ["hardlink", "input_symlink"])
+    @pytest.mark.parametrize("filename", ["signals.jsonl", "prices.jsonl", "expression_facts.jsonl"])
+    def test_historical_replay_external_output_alias_preserves_all_input_bytes(tmp_path, alias_kind, filename):
+        from scripts.ops.run_cross_asset_historical_replay import main
+
+        archive, _, _, _, _ = _historical_archive(tmp_path)
+        source = archive / filename
+        output = tmp_path / "external-output.json"
+        if alias_kind == "hardlink":
+            output.hardlink_to(source)
+        else:
+            source.rename(output)
+            source.symlink_to(output)
+        assert source.samefile(output)
+        before = {p.name: p.read_bytes() for p in archive.iterdir()}
+        status = main(["--archive-dir", str(archive), "--out", str(output)])
+>       assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
+E       assert {'expression_...7+00:00"}}\n'} == {'expression_...7+00:00"}}\n'}
+E
+E         Omitting 2 identical items, use -vv to show
+E         Differing items:
+E         {'prices.jsonl': b'{\n  "schema": "CrossAssetHistoricalReplayMetrics@v1",\n  "as_of": "2026-10-09T14:00:27.871345+00:0...026-07-11T14:00:27.871345+00:00"\n    }\n  ],\n  "authority": "READ_ONLY_ADVISORY",\n  "financial_action": false\n}\n'} != {'prices.jsonl': b'{"schema": "CrossAssetHistoricalPrice@v1", "symbol": "ABC", "security_guid": "sec-abc", "as_of": "2026-10-08T13:59:27+00:00", "price": 100, "source_ref": "fixture:archived-spot"}\n'}
+E         Use -v to get more diff
+
+tests/test_cross_asset_decision_intelligence.py:388: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"ok": true, "wrote": "/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa2/external-output.json"}
+_ test_historical_replay_external_output_alias_preserves_all_input_bytes[prices.jsonl-input_symlink] _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa3')
+alias_kind = 'input_symlink', filename = 'prices.jsonl'
+
+    @pytest.mark.parametrize("alias_kind", ["hardlink", "input_symlink"])
+    @pytest.mark.parametrize("filename", ["signals.jsonl", "prices.jsonl", "expression_facts.jsonl"])
+    def test_historical_replay_external_output_alias_preserves_all_input_bytes(tmp_path, alias_kind, filename):
+        from scripts.ops.run_cross_asset_historical_replay import main
+
+        archive, _, _, _, _ = _historical_archive(tmp_path)
+        source = archive / filename
+        output = tmp_path / "external-output.json"
+        if alias_kind == "hardlink":
+            output.hardlink_to(source)
+        else:
+            source.rename(output)
+            source.symlink_to(output)
+        assert source.samefile(output)
+        before = {p.name: p.read_bytes() for p in archive.iterdir()}
+        status = main(["--archive-dir", str(archive), "--out", str(output)])
+>       assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
+E       assert {'prices.json...7+00:00"}}\n'} == {'prices.json...7+00:00"}}\n'}
+E
+E         Omitting 2 identical items, use -vv to show
+E         Differing items:
+E         {'prices.jsonl': b'{\n  "schema": "CrossAssetHistoricalReplayMetrics@v1",\n  "as_of": "2026-10-09T14:00:27.901580+00:0...026-07-11T14:00:27.901580+00:00"\n    }\n  ],\n  "authority": "READ_ONLY_ADVISORY",\n  "financial_action": false\n}\n'} != {'prices.jsonl': b'{"schema": "CrossAssetHistoricalPrice@v1", "symbol": "ABC", "security_guid": "sec-abc", "as_of": "2026-10-08T13:59:27+00:00", "price": 100, "source_ref": "fixture:archived-spot"}\n'}
+E         Use -v to get more diff
+
+tests/test_cross_asset_decision_intelligence.py:388: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"ok": true, "wrote": "/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa3/external-output.json"}
+_ test_historical_replay_external_output_alias_preserves_all_input_bytes[expression_facts.jsonl-hardlink] _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa4')
+alias_kind = 'hardlink', filename = 'expression_facts.jsonl'
+
+    @pytest.mark.parametrize("alias_kind", ["hardlink", "input_symlink"])
+    @pytest.mark.parametrize("filename", ["signals.jsonl", "prices.jsonl", "expression_facts.jsonl"])
+    def test_historical_replay_external_output_alias_preserves_all_input_bytes(tmp_path, alias_kind, filename):
+        from scripts.ops.run_cross_asset_historical_replay import main
+
+        archive, _, _, _, _ = _historical_archive(tmp_path)
+        source = archive / filename
+        output = tmp_path / "external-output.json"
+        if alias_kind == "hardlink":
+            output.hardlink_to(source)
+        else:
+            source.rename(output)
+            source.symlink_to(output)
+        assert source.samefile(output)
+        before = {p.name: p.read_bytes() for p in archive.iterdir()}
+        status = main(["--archive-dir", str(archive), "--out", str(output)])
+>       assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
+E       assert {'expression_...7+00:00"}}\n'} == {'expression_...7+00:00"}}\n'}
+E
+E         Omitting 2 identical items, use -vv to show
+E         Differing items:
+E         {'expression_facts.jsonl': b'{\n  "schema": "CrossAssetHistoricalReplayMetrics@v1",\n  "as_of": "2026-10-09T14:00:27.9...026-07-11T14:00:27.952147+00:00"\n    }\n  ],\n  "authority": "READ_ONLY_ADVISORY",\n  "financial_action": false\n}\n'} != {'expression_facts.jsonl': b'{"schema": "CrossAssetHistoricalExpressionFacts@v1", "event_id": "evt_fc34acbcd6955985e6e... 7, "as_of": "2026-10-08T13:59:27+00:00"}, "bull_call_spread": {"score": 8, "as_of": "2026-10-08T13:59:27+00:00"}}}\n'}
+E         Use -v to get more diff
+
+tests/test_cross_asset_decision_intelligence.py:388: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"ok": true, "wrote": "/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa4/external-output.json"}
+_ test_historical_replay_external_output_alias_preserves_all_input_bytes[expression_facts.jsonl-input_symlink] _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa5')
+alias_kind = 'input_symlink', filename = 'expression_facts.jsonl'
+
+    @pytest.mark.parametrize("alias_kind", ["hardlink", "input_symlink"])
+    @pytest.mark.parametrize("filename", ["signals.jsonl", "prices.jsonl", "expression_facts.jsonl"])
+    def test_historical_replay_external_output_alias_preserves_all_input_bytes(tmp_path, alias_kind, filename):
+        from scripts.ops.run_cross_asset_historical_replay import main
+
+        archive, _, _, _, _ = _historical_archive(tmp_path)
+        source = archive / filename
+        output = tmp_path / "external-output.json"
+        if alias_kind == "hardlink":
+            output.hardlink_to(source)
+        else:
+            source.rename(output)
+            source.symlink_to(output)
+        assert source.samefile(output)
+        before = {p.name: p.read_bytes() for p in archive.iterdir()}
+        status = main(["--archive-dir", str(archive), "--out", str(output)])
+>       assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
+E       assert {'expression_...8+00:00"}}\n'} == {'expression_...8+00:00"}}\n'}
+E
+E         Omitting 2 identical items, use -vv to show
+E         Differing items:
+E         {'expression_facts.jsonl': b'{\n  "schema": "CrossAssetHistoricalReplayMetrics@v1",\n  "as_of": "2026-10-09T14:00:28.1...026-07-11T14:00:28.130229+00:00"\n    }\n  ],\n  "authority": "READ_ONLY_ADVISORY",\n  "financial_action": false\n}\n'} != {'expression_facts.jsonl': b'{"schema": "CrossAssetHistoricalExpressionFacts@v1", "event_id": "evt_cac1abc9b9bebc267bf... 7, "as_of": "2026-10-08T13:59:28+00:00"}, "bull_call_spread": {"score": 8, "as_of": "2026-10-08T13:59:28+00:00"}}}\n'}
+E         Use -v to get more diff
+
+tests/test_cross_asset_decision_intelligence.py:388: AssertionError
+----------------------------- Captured stdout call -----------------------------
+{"ok": true, "wrote": "/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_externa5/external-output.json"}
+___ test_historical_replay_derived_score_overflow_returns_typed_invalid_data ___
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-116867/test_historical_replay_derived0')
+capsys = <_pytest.capture.CaptureFixture object at 0x7ca2e7438c20>
+
+    def test_historical_replay_derived_score_overflow_returns_typed_invalid_data(tmp_path, capsys):
+        from scripts.ops.run_cross_asset_historical_replay import main, run_window
+
+        archive, clock, _, _, facts = _historical_archive(tmp_path)
+        share_facts = facts["facts_by_structure"]["shares"]
+        share_facts.pop("score")
+        share_facts.update(expected_return=1e308, capital_required=1e-320)
+        (archive / "expression_facts.jsonl").write_text(json.dumps(facts) + "\n", encoding="utf-8")
+        before = {p.name: p.read_bytes() for p in archive.iterdir()}
+        result = run_window(30, archive_dir=archive, as_of=clock.isoformat())
+>       assert result["data_quality"] == "INVALID_DATA"
+E       AssertionError: assert 'SCORING_COMPARISON_ONLY' == 'INVALID_DATA'
+E
+E         - INVALID_DATA
+E         + SCORING_COMPARISON_ONLY
+
+tests/test_cross_asset_decision_intelligence.py:402: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_external_output_alias_preserves_all_input_bytes[signals.jsonl-hardlink]
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_external_output_alias_preserves_all_input_bytes[signals.jsonl-input_symlink]
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_external_output_alias_preserves_all_input_bytes[prices.jsonl-hardlink]
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_external_output_alias_preserves_all_input_bytes[prices.jsonl-input_symlink]
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_external_output_alias_preserves_all_input_bytes[expression_facts.jsonl-hardlink]
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_external_output_alias_preserves_all_input_bytes[expression_facts.jsonl-input_symlink]
+FAILED tests/test_cross_asset_decision_intelligence.py::test_historical_replay_derived_score_overflow_returns_typed_invalid_data
+7 failed, 33 deselected in 7.30s
