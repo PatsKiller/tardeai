@@ -1,0 +1,527 @@
+profile=fast M2_TEST_DATABASE=m2_shadow_test_bfecc8f89a9f
+ensure_m2_test_database: m2_shadow_test_bfecc8f89a9f exists
+== Trade AI local acceptance ==
+python: /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/bin/python
+
+== Policy hook self-test ==
+pre-push blocks unauthorized sync: OK
+
+== Policy unit tests ==
+...........                                                              [100%]
+11 passed in 12.49s
+
+== Target/repository validation ==
+CI-equivalent release proof: PASS (17/17 passed, 206.19s)
+  [PASS] execution_state (exit 0, 0.6s)
+  [PASS] release_readiness (exit 0, 72.82s)
+  [PASS] schwab_write_policy (exit 0, 56.03s)
+  [PASS] no_broker_write_bypass (exit 0, 49.0s)
+  [PASS] execution_readiness (exit 0, 1.01s)
+  [PASS] evidence_bound_approval (exit 0, 0.47s)
+  [PASS] intraday_window_fail_closed (exit 0, 0.27s)
+  [PASS] order_lifecycle (exit 0, 0.26s)
+  [PASS] reconcile_orders (exit 0, 0.21s)
+  [PASS] audit_ledger (exit 0, 1.12s)
+  [PASS] options_hard_risk_blocks_matrix (exit 0, 14.9s)
+  [PASS] options_hard_risk_blocks (exit 0, 4.46s)
+  [PASS] llm_governance_no_override (exit 0, 4.09s)
+  [PASS] kill_switches_status (exit 0, 0.24s)
+  [PASS] journal_ai_critique (exit 0, 0.19s)
+  [PASS] audit_ledger_coverage (exit 0, 0.27s)
+  [PASS] frontend_smoke (exit 0, 0.25s)
+Markdown: /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/project/CI_EVIDENCE_LATEST.md
+
+== Lane registry ==
+declared lanes          : 239  (179 ACTIVE)
+inherited-debt baseline : 476
+inherited tranche 2026-09-28: 107 lines — Installed on the host between 2026-09-27 12:22 ET and 2026-09-28 by the crons-to-CURRENT m…
+inherited tranche 2026-09-28: 6 lines — LP-DEF-19 (LIVEPROOF-20260928, PR #1339): six cron lines that the lane-registry gate had s…
+reason ESTABLISHED     : 96
+reason CORRELATED      : 11 (successor runs; equivalence NOT verified)
+reason UNKNOWN         : 3  ['deep-overnight-llm', 'overnight-batch', 'cio-decision-engine']
+structural errors       : 0
+undeclared (NEW)        : 0
+lane registry: clean
+[plan] profile=fast jobs=8 parallel_units=340 serial_gates=20
+[PASS] maturity_overnight_20260912 (1 files, 1088.5s) 44 passed in 1087.42s (0:18:07)
+[PASS] comms_lineage_join (1 files, 672.7s) 33 passed in 668.61s (0:11:08)
+[PASS] maturity_overnight_20260912 (1 files, 388.3s) 45 passed in 386.75s (0:06:26)
+[PASS] state_migration_rehearsal (1 files, 204.0s) 57 passed, 4 skipped in 201.31s (0:03:21)
+[PASS] maturity_overnight_20260912 (1 files, 407.7s) 32 passed in 405.48s (0:06:45)
+[PASS] overnight_g4_archive_mechanism (1 files, 321.4s) 9 passed, 3 warnings in 320.64s (0:05:20)
+[PASS] operator_turn_identity_binding (1 files, 324.0s) 3 passed in 322.18s (0:05:22)
+[PASS] alarm_fires (1 files, 263.2s) 7 passed, 3 warnings in 261.43s (0:04:21)
+[PASS] alarm_document_sites_20260922 (1 files, 194.6s) 7 passed, 3 warnings in 189.60s (0:03:09)
+[PASS] campaign_m2_canary_lanes (25 files, 45.9s) 160 passed, 2 xfailed in 44.25s
+[PASS] maturity_overnight_20260912 (25 files, 65.4s) 265 passed, 1 skipped in 64.32s (0:01:04)
+[PASS] n8n_parallel_20261007 (25 files, 88.6s) 209 passed in 86.96s (0:01:26)
+[PASS] maturity_overnight_20260912 (6 files, 157.0s) 87 passed in 153.52s (0:02:33)
+[PASS] maturity_overnight_20260912 (4 files, 184.6s) 59 passed in 183.82s (0:03:03)
+[PASS] campaign_m2_canary_lanes (22 files, 70.6s) 222 passed in 68.70s (0:01:08)
+[PASS] campaign_m2_canary_lanes (23 files, 65.7s) 219 passed in 61.61s (0:01:01)
+[PASS] maturity_overnight_20260912 (23 files, 105.5s) 189 passed in 103.70s (0:01:43)
+[PASS] maturity_overnight_20260912 (5 files, 166.3s) 68 passed in 165.33s (0:02:45)
+[PASS] campaign_m2_canary_lanes (22 files, 71.7s) 176 passed in 67.70s (0:01:07)
+[PASS] maturity_overnight_20260912 (23 files, 67.0s) 472 passed in 62.38s (0:01:02)
+[PASS] ci_self_guards (23 files, 615.1s) 188 passed in 602.16s (0:10:02)
+[PASS] architect_remediation_20260915 (18 files, 50.4s) 66 passed in 49.42s
+[PASS] cogx_w1_foundations (21 files, 77.6s) 126 passed in 73.70s (0:01:13)
+[PASS] maturity_overnight_20260912 (1 files, 221.4s) 47 passed in 220.27s (0:03:40)
+[PASS] maturity_overnight_20260912 (1 files, 230.8s) 61 passed in 229.34s (0:03:49)
+[PASS] release_pin_and_validator (19 files, 43.3s) 145 passed in 40.50s
+[PASS] maturity_overnight_20260912 (1 files, 203.7s) 42 passed in 201.03s (0:03:21)
+[PASS] no_swallowed_alarms (1 files, 189.4s) 6 passed, 2 warnings in 187.92s (0:03:07)
+[PASS] maturity_overnight_20260912 (15 files, 71.1s) 294 passed, 1 skipped in 68.36s (0:01:08)
+[PASS] maturity_overnight_20260912 (18 files, 51.5s) 202 passed in 49.76s
+[PASS] comms_gateway_phase0 (17 files, 52.2s) 175 passed in 50.20s
+[PASS] gate_honesty_and_archive_or_wire (4 files, 239.5s) 46 passed, 1 warning in 237.07s (0:03:57)
+[PASS] telegram_notification_normalization (3 files, 168.2s) 76 passed in 167.38s (0:02:47)
+[PASS] agentic_memory_tranche2_20260925 (13 files, 78.6s) 108 passed in 72.99s (0:01:12)
+[PASS] cc_header_truth_v2 (7 files, 152.5s) 119 passed in 147.58s (0:02:27)
+[PASS] alarm_fires (12 files, 81.2s) 63 passed in 76.65s (0:01:16)
+[PASS] holdings_data_clock (1 files, 103.5s) 15 passed in 101.63s (0:01:41)
+[PASS] alarm_imports_resolve (1 files, 179.2s) 4 passed, 1 warning in 173.36s (0:02:53)
+[PASS] r11_operator_value_tier0 (10 files, 39.5s) 83 passed in 34.74s
+[PASS] agent_governance_sop (10 files, 39.3s) 115 passed in 37.46s
+[PASS] agent_runtime_suites_promoted_20260922 (10 files, 39.8s) 109 passed in 32.31s
+[PASS] gate_honesty_p6_20260922 (2 files, 211.1s) 33 passed, 1 warning in 208.59s (0:03:28)
+[PASS] material_change_notice_context (9 files, 44.4s) 95 passed in 42.87s
+[PASS] chain_iv_fallback_20260926 (9 files, 54.3s) 60 passed in 45.26s
+[PASS] llm_cap_admin (2 files, 83.6s) 21 passed in 77.44s (0:01:17)
+[PASS] maturity_overnight_20260912 (8 files, 34.5s) 175 passed in 29.75s
+[PASS] cross_asset_decision_intel_20260929 (8 files, 564.9s) 47 passed in 562.90s (0:09:22)
+[PASS] report_model_and_parity (5 files, 72.8s) 59 passed in 60.99s (0:01:00)
+[PASS] r12_operator_intelligence (7 files, 27.2s) 106 passed in 25.51s
+[PASS] instrument_belief_20260925 (7 files, 40.5s) 149 passed in 35.52s
+[PASS] tip_hygiene_enforcers (3 files, 76.2s) 7 passed in 70.34s (0:01:10)
+[PASS] lane_registry (5 files, 52.6s) 72 passed in 51.31s
+[PASS] cio_cognition_t3_20260925 (6 files, 62.7s) 94 passed in 54.58s
+[PASS] ci_honesty_ws4_20260926 (6 files, 443.8s) 147 passed, 3 warnings in 438.44s (0:07:18)
+[PASS] escalation_queue_reaper (1 files, 96.3s) 12 passed, 1 warning in 93.37s (0:01:33)
+[PASS] options_workflow (5 files, 15.5s) 87 passed, 12 skipped in 9.94s
+[PASS] health_paper_siem_20261003 (5 files, 250.1s) 142 passed in 247.15s (0:04:07)
+[PASS] schd_decision_integrity_20260925 (5 files, 35.1s) 75 passed in 34.23s
+[FAIL] N8N_RUN_ROUTE (5 files, 57.0s) 2 failed, 45 passed in 52.65s
+.......................F.................F.....                          [100%]
+=================================== FAILURES ===================================
+E   assert False
+     +  where False = all(<generator object test_once_drains_oldest_first_and_an_empty_queue_exits_clean.<locals>.<genexpr> at 0x707294acb780>)
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/code", "once": true}
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/code", "once": true}
+{"run_id": "run-order-0000000001", "lane_id": "fake-lane", "mode": "dry_run", "state": "RUN_DONE", "exit_code": 0, "duration_s": 1.035, "lock_skipped": false, "timed_out": false}
+{"run_id": "run-order-0000000002", "lane_id": "fake-lane", "mode": "dry_run", "state": "RUN_TIMEOUT", "exit_code": 124, "duration_s": 3.372, "lock_skipped": false, "timed_out": true}
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_n8n_run_executor_20261008.py:254: assert False
+E   assert 0.44882616286486154 < 0.25
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_n8n_gateway_concurrency_20261008.py:201: assert 0.44882616286486154 < 0.25
+=========================== short test summary info ============================
+FAILED tests/test_n8n_run_executor_20261008.py::test_once_drains_oldest_first_and_an_empty_queue_exits_clean
+FAILED tests/test_n8n_gateway_concurrency_20261008.py::test_expected_concurrent_run_bursts_all_land_as_requested_rows[64]
+2 failed, 45 passed in 52.65s
+
+[PASS] cio_entry_state (3 files, 66.5s) 59 passed in 63.43s (0:01:03)
+[PASS] effective_truth (1 files, 38.9s) 18 passed in 34.07s
+[PASS] money_surface_honesty (4 files, 59.4s) 40 passed in 53.91s
+[PASS] research_observation_contract (4 files, 24.8s) 42 passed in 17.77s
+[PASS] r13_institutional (4 files, 29.1s) 280 passed in 27.50s
+[PASS] symbol_thesis_enrich_20260926 (4 files, 391.6s) 59 passed in 382.28s (0:06:22)
+[PASS] n8n_parallel_20261007 (4 files, 11.3s) 17 passed in 10.21s
+[PASS] state_root_disposition (1 files, 35.0s) 13 passed in 31.54s
+[PASS] cash_letter_rows (2 files, 49.0s) 26 passed in 43.95s
+[PASS] whole_site_surface_truth (2 files, 64.6s) 38 passed in 59.02s
+[PASS] state_root_convergence (2 files, 44.1s) 19 passed in 43.00s
+[PASS] campaign_m2_canary_lanes (3 files, 22.7s) 14 passed in 19.86s
+[PASS] notification_no_network (3 files, 17.8s) 33 passed in 15.02s
+[PASS] finviz_data_producers (3 files, 4.0s) 15 passed in 2.25s
+[PASS] maturity_gate_restatement (3 files, 18.0s) 46 passed in 14.56s
+[PASS] wake_loads_record (3 files, 3.9s) 45 passed in 3.01s
+[PASS] deterministic_integrity (3 files, 12.9s) 39 passed in 9.59s
+[PASS] watch_lock_holders (3 files, 9.7s) 37 passed, 1 skipped in 7.07s
+[PASS] tiered_validation_20260916 (3 files, 9.1s) 41 passed in 6.83s
+[PASS] p1_cron_unit_linters_20260926 (3 files, 7.1s) 14 passed in 5.01s
+[PASS] p2_alarms_truth_20260926 (3 files, 8.8s) 21 passed in 5.29s
+[PASS] options_thesis_20260926 (3 files, 15.9s) 62 passed in 11.67s
+[PASS] fundamentals_feed_20260927 (3 files, 8.9s) 19 passed in 6.67s
+[PASS] hermes_web_research_20260926 (3 files, 26.4s) 67 passed in 21.97s
+[PASS] options_memory_20260926 (3 files, 12.9s) 61 passed in 11.09s
+[PASS] drive_sync_options_export_20260926 (3 files, 19.3s) 23 passed in 13.38s
+[PASS] go_alerts_and_lane_collectors_20260928 (3 files, 8.5s) 34 passed in 7.10s
+[PASS] execution_truth_20260928 (3 files, 23.1s) 35 passed in 16.53s
+[PASS] scheduler_operations (3 files, 25.1s) 70 passed in 23.45s
+[PASS] N8N_LANE_KIND (3 files, 58.0s) 79 passed in 53.96s
+[PASS] n8n_migration_board_20261008 (3 files, 24.5s) 17 passed in 21.55s
+[PASS] n8n_observability_gaps_20261008 (3 files, 10.4s) 17 passed in 6.81s
+[PASS] N8N_MODEL_JOB_SHAPE (3 files, 12.4s) 29 passed in 10.52s
+[PASS] guard_remote_approval (1 files, 15.1s) 39 passed in 10.38s
+[PASS] live_report_parity (1 files, 38.1s) 10 passed in 33.81s
+[PASS] adversarial_phase11 (1 files, 24.5s) 15 passed in 19.09s
+[PASS] financial_truth_gate (2 files, 24.0s) 24 passed in 15.77s
+[PASS] decision_semantics (2 files, 18.6s) 17 passed in 15.15s
+[PASS] strategy_seasonality (2 files, 20.3s) 23 passed in 9.33s
+[PASS] lineage_phase12_20261003 (2 files, 6.3s) 14 passed in 5.03s
+[PASS] fidelity_registry_empty_20261003 (2 files, 12.7s) 16 passed in 7.54s
+[PASS] hermes_escalation_dedupe (2 files, 14.9s) 25 passed in 12.59s
+[PASS] paper_trades_never_page (2 files, 25.7s) 40 passed in 20.10s
+[PASS] pipeline_rows_unknown (2 files, 8.8s) 11 passed in 6.35s
+[PASS] inbound_identity_tagging (2 files, 9.5s) 54 passed in 6.42s
+[PASS] canonical_observation_contract (2 files, 42.3s) 41 passed in 37.31s
+[PASS] comms_ledger_truth (2 files, 12.6s) 11 passed in 10.09s
+[PASS] watchlist_proposal_churn (2 files, 8.2s) 10 passed in 3.59s
+[PASS] watch_card_catalysts (2 files, 11.7s) 10 passed in 6.43s
+[PASS] remediation_followups_20260915 (2 files, 7.8s) 15 passed in 3.36s
+[PASS] cc_runtime_harness (2 files, 20.0s) 12 passed in 12.32s
+[PASS] options_identity_memory_20260924 (2 files, 25.6s) 61 passed in 19.75s
+[PASS] test_host_paths_ratchet_20260925 (2 files, 20.2s) 25 passed in 18.28s
+[PASS] cio_action_notify_20260926 (2 files, 10.4s) 5 passed in 6.87s
+[PASS] contradiction_incremental_20260927 (2 files, 13.7s) 6 passed in 10.49s
+[PASS] symbol_news_curation_20260927 (2 files, 24.0s) 33 passed in 19.67s
+[PASS] options_economics_20260927 (2 files, 14.2s) 19 passed in 11.68s
+[PASS] sec_filing_documents_20260927 (2 files, 18.9s) 15 passed in 12.19s
+[PASS] options_order_authorization_20260927 (2 files, 542.8s) 43 passed in 538.63s (0:08:58)
+[PASS] ui_metric_guide_insight_20260927 (2 files, 18.3s) 12 passed in 14.42s
+[PASS] momentum_scalp_refresh_alarm_20260928 (2 files, 25.2s) 10 passed in 19.28s
+[PASS] lane_registry_inherited_tranche_20260928 (2 files, 14.0s) 7 passed in 8.45s
+[PASS] n8n_workflow_gen_20261008 (2 files, 41.4s) 51 passed in 37.58s
+[PASS] learning_outcome_governance (1 files, 10.7s) 22 passed in 5.93s
+[PASS] learning_research_remediation (1 files, 99.0s) 27 passed in 94.93s (0:01:34)
+[PASS] learning_operator_remediation (1 files, 18.1s) 5 passed in 7.40s
+[PASS] learning_operational_remediation (1 files, 10.4s) 31 passed in 6.44s
+[PASS] cash_as_of_surfaces (1 files, 18.0s) 12 passed in 10.97s
+[PASS] p1_digest_sender (1 files, 20.1s) 14 passed in 15.59s
+[PASS] gog_broker_approval (1 files, 12.3s) 9 passed in 7.64s
+[PASS] provider_billing_alarm (1 files, 18.2s) 22 passed in 12.35s
+[PASS] store_cadence (1 files, 12.5s) 9 passed in 9.58s
+[PASS] signal_flow_regression (1 files, 9.1s) 8 passed in 5.39s
+[PASS] notification_signal_over_spam (1 files, 12.4s) 43 passed in 10.65s
+[PASS] capital_ledger (1 files, 13.2s) 49 passed in 11.14s
+[PASS] freshness_materiality (1 files, 20.7s) 16 passed in 16.07s
+[PASS] sector_taxonomy (1 files, 3.4s) 34 passed in 1.38s
+[PASS] command_center (1 files, 26.0s) 19 passed in 23.05s
+[PASS] release_manifest (1 files, 17.6s) 16 passed in 14.52s
+[PASS] institutional_sizing (1 files, 2.8s) 12 passed in 2.00s
+[PASS] decision_quality (1 files, 16.7s) 48 passed in 9.93s
+[PASS] account_capital_ledger (1 files, 15.5s) 3 passed in 7.19s
+[PASS] decision_field_parity (1 files, 19.6s) 7 passed in 12.20s
+[PASS] advisory_provenance (1 files, 13.8s) 11 passed in 7.70s
+[PASS] acceptance_harness_v4 (1 files, 5.2s) 31 passed in 2.82s
+[PASS] intelligence_lineage (1 files, 9.6s) 9 passed in 7.81s
+[PASS] maturity_closure_v2 (1 files, 3.0s) 20 passed in 1.79s
+[PASS] capital_plan_methodology_20261003 (1 files, 3.8s) 5 passed in 2.56s
+[PASS] cio_desk_degraded_20261003 (1 files, 5.5s) 6 passed in 2.29s
+[PASS] blocked_ledger_comms_20261003 (1 files, 3.7s) 11 passed in 1.74s
+[PASS] meme_squeeze_gate_20261003 (1 files, 2.7s) 5 passed in 1.28s
+[PASS] cio_scorecard_live_counts_20261003 (1 files, 2.8s) 6 passed in 1.56s
+[PASS] cio_operator_artifacts_20261003 (1 files, 284.8s) 11 passed in 283.73s (0:04:43)
+[PASS] alert_quality_producer_20261003 (1 files, 8.5s) 8 passed in 7.71s
+[PASS] cio_plan_expiry_20261003 (1 files, 6.0s) 9 passed in 4.10s
+[PASS] cio_browser_gates_20261003 (1 files, 12.0s) 6 passed in 8.30s
+[PASS] health_finviz_scalp_20261003 (1 files, 5.0s) 5 passed in 3.12s
+[PASS] scalp_advisory_20261003 (1 files, 16.2s) 11 passed in 8.54s
+[PASS] scalp_shadow_schema_20261003 (1 files, 12.4s) 2 passed in 8.29s
+[PASS] cio_learning_finding_20261003 (1 files, 9.8s) 3 passed in 7.61s
+[PASS] cio_heavy_bound_20261003 (1 files, 4.8s) 9 passed in 3.75s
+[PASS] health_make_interval_20261004 (1 files, 4.0s) 1 passed in 2.47s
+[PASS] at_premarket_watch_20261005 (1 files, 14.0s) 13 passed in 9.26s
+[PASS] apply_policy_default_store_20261004 (1 files, 2.2s) 3 passed in 1.19s
+[PASS] at_microstructure_learning_20261005 (1 files, 13.3s) 22 passed in 8.33s
+[PASS] active_trader_momentum_alerts_20261004 (1 files, 8.7s) 35 passed in 5.44s
+[PASS] active_trader_live_alerts_20261004 (1 files, 9.5s) 13 passed in 6.79s
+[PASS] options_intent_20261005 (1 files, 13.9s) 24 passed in 10.43s
+[PASS] repair_cio_event_bus_fork_20261004 (1 files, 5.3s) 4 passed in 3.30s
+[PASS] scalp_universe_failclosed_20261005 (1 files, 5.6s) 12 passed in 3.63s
+[PASS] alpha_vantage_pacing_20261004 (1 files, 14.6s) 7 passed in 7.80s
+[PASS] at_alert_outcomes_20261005 (1 files, 4.1s) 10 passed in 1.08s
+[PASS] secret_single_path_20261005 (1 files, 20.0s) 11 passed in 13.33s
+[PASS] social_multisource_20261005 (1 files, 10.7s) 10 passed in 5.41s
+[PASS] policy_unify_20261003 (1 files, 6.1s) 8 passed in 1.54s
+[PASS] ci_outage_emergency_release_20261005 (1 files, 19.0s) 23 passed in 14.37s
+[PASS] atm_db_gate_fix_20261003 (1 files, 4.3s) 7 passed in 2.04s
+[PASS] alert_single_source_20261005 (1 files, 48.3s) 19 passed in 46.65s
+[PASS] at_alert_sync_20261005 (1 files, 94.9s) 14 passed in 93.38s (0:01:33)
+[PASS] cio_home_memory_20261003 (1 files, 20.9s) 15 passed in 12.83s
+[PASS] portfolio_price_truth_20261005 (1 files, 21.8s) 19 passed in 20.28s
+[PASS] comms_hub_20261007 (1 files, 5.5s) 32 passed in 2.25s
+[PASS] watch_decision_standards_20261008 (1 files, 5.8s) 16 passed in 3.14s
+[PASS] investment_command_center_20261008 (1 files, 10.9s) 27 passed in 5.79s
+[PASS] opportunity_modal_news_20261008 (1 files, 3.9s) 9 passed in 1.53s
+[PASS] conviction_ordering_20261008 (1 files, 10.7s) 6 passed in 8.66s
+[PASS] decision_cards_20261008 (1 files, 4.9s) 18 passed in 3.53s
+[PASS] advice_digests_20261008 (1 files, 11.0s) 15 passed in 7.51s
+[PASS] positions_store_phase1_20261006 (1 files, 29.3s) 24 passed in 26.47s
+[PASS] price_writer_fix_20261006 (1 files, 4.1s) 5 passed in 3.02s
+[PASS] positions_proof_phase2_20261006 (1 files, 14.6s) 8 passed in 11.64s
+[PASS] ledger_transfer_direction_20261006 (1 files, 4.2s) 10 passed in 3.14s
+[PASS] at_soul_review_sim_20261005 (1 files, 2.6s) 12 passed in 1.71s
+[PASS] review_falsifier_20261003 (1 files, 13.7s) 8 passed in 8.89s
+[PASS] ai_analyst_cache_fail_closed (1 files, 2.7s) 16 passed in 1.75s
+[PASS] lineage_phase34_20261003 (1 files, 2.4s) 14 passed in 1.30s
+[PASS] lesson_queue_darwin_20261003 (1 files, 3.0s) 12 passed in 1.73s
+[PASS] dark_wire_rationale_wake_20261003 (1 files, 8.1s) 10 passed in 4.94s
+[PASS] lineage_run_hermes_join_20261003 (1 files, 14.1s) 6 passed in 9.87s
+[PASS] memory_retrieval_attribution_20261003 (1 files, 9.1s) 8 passed in 6.23s
+[PASS] falsifiable_calls_20261003 (1 files, 2.3s) 19 passed in 1.45s
+[PASS] ai_analyst_freshness_sla (1 files, 5.9s) 4 passed in 3.14s
+[PASS] s3_detector_excludes_held (1 files, 6.2s) 9 passed in 3.17s
+[PASS] release_links_reports (1 files, 6.4s) 6 passed in 4.08s
+[PASS] scalp_latest_run_recency (1 files, 3.0s) 6 passed in 2.12s
+[PASS] stop_path_notification (1 files, 5.6s) 4 passed in 4.09s
+[PASS] research_scheduler_child_interpreter (1 files, 5.3s) 3 passed, 1 skipped in 3.07s
+[PASS] decision_field_honesty (1 files, 7.8s) 8 passed in 4.82s
+[PASS] stop_warning_transitions (1 files, 7.0s) 6 passed in 5.46s
+[PASS] notification_memory (1 files, 7.0s) 9 passed in 5.01s
+[PASS] notification_receipts (1 files, 9.5s) 8 passed in 5.99s
+[PASS] notification_integrity_cdeg (1 files, 10.7s) 10 passed in 6.49s
+[PASS] governance_section_zero_parity (1 files, 6.8s) 9 passed in 3.66s
+[PASS] dashboard_no_embedded_key (1 files, 7.8s) 4 passed in 3.62s
+[PASS] agents_type_vocabulary (1 files, 8.2s) 5 passed in 3.60s
+[PASS] agent_brief (1 files, 2.4s) 13 passed in 1.25s
+[PASS] research_reaches_surface (1 files, 5.4s) 7 passed in 3.61s
+[PASS] overnight_b2_b3_failure_surfaces (1 files, 16.7s) 22 passed in 14.04s
+[PASS] overnight_b6_reentry_scope (1 files, 21.3s) 9 passed in 17.20s
+[PASS] overnight_d2_pending_data (1 files, 9.4s) 17 passed in 7.29s
+[PASS] overnight_d3_lesson_provenance (1 files, 7.4s) 11 passed in 3.95s
+[PASS] overnight_wave_e_catalyst (1 files, 5.8s) 29 passed in 3.31s
+[PASS] overnight_f1_f2_search_bound (1 files, 6.1s) 18 passed in 5.12s
+[PASS] overnight_f5_model_cost (1 files, 5.0s) 13 passed in 3.28s
+[PASS] finviz_token_backstop_20261003 (1 files, 6.6s) 10 passed in 4.50s
+[PASS] import_shadowing (1 files, 2.2s) 7 passed in 1.12s
+[PASS] alert_delivery_id (1 files, 4.9s) 6 passed in 3.56s
+[PASS] alert_delivery_wiring (1 files, 6.9s) 31 passed in 5.97s
+[PASS] freshness_reason (1 files, 3.1s) 8 passed in 1.40s
+[PASS] publish_chokepoint_identity (1 files, 7.0s) 14 passed in 4.10s
+[PASS] operator_turn_identity_binding (1 files, 8.8s) 18 passed in 3.89s
+[PASS] comms_lineage_join (1 files, 7.1s) 15 passed in 2.94s
+[PASS] market_quotes_downsample (1 files, 4.0s) 6 passed in 1.37s
+[PASS] escalation_storm_last3 (1 files, 9.7s) 25 passed in 7.53s
+[PASS] legacy_send_captures_message_id (1 files, 9.8s) 6 passed in 4.27s
+[PASS] slo_burn_rate (1 files, 8.1s) 32 passed in 5.76s
+[PASS] search_budget (1 files, 6.3s) 20 passed in 3.04s
+[PASS] overnight_f3_search_budget (1 files, 12.2s) 28 passed in 7.60s
+[PASS] overnight_f4_search_health (1 files, 10.9s) 17 passed in 6.92s
+[PASS] overnight_g1_resolution (1 files, 5.7s) 15 passed in 3.76s
+[PASS] corpus_grades_cost_units (1 files, 8.7s) 9 passed in 5.35s
+[PASS] overnight_d1_m5_cadence (1 files, 7.6s) 9 passed in 5.91s
+[PASS] cio_p1_load_by_subject (1 files, 4.0s) 10 passed in 2.27s
+[PASS] wake_research_persist_hits (1 files, 9.7s) 17 passed in 4.90s
+[PASS] decide_consults_wake_hits (1 files, 12.8s) 16 passed in 6.03s
+[PASS] wake_consult_reaches_the_row (1 files, 10.6s) 12 passed in 8.08s
+[PASS] watch_instrument_admit (1 files, 10.0s) 9 passed in 6.10s
+[PASS] research_identity_tagging (1 files, 9.4s) 12 passed in 7.65s
+[PASS] mentions_retention (1 files, 9.4s) 11 passed in 4.81s
+[PASS] document_mentions (1 files, 8.1s) 13 passed in 6.73s
+[PASS] governed_bridge_cap_semantics (1 files, 7.0s) 7 passed, 12 skipped in 3.89s
+[PASS] subject_identity_spine (1 files, 6.5s) 26 passed in 5.22s
+[PASS] material_change_detector (1 files, 17.1s) 52 passed in 13.11s
+[PASS] material_change_notify (1 files, 5.4s) 32 passed in 3.30s
+[PASS] due_diligence_questions (1 files, 4.5s) 32 passed in 2.23s
+[PASS] price_spike_quarantine (1 files, 4.0s) 13 passed in 2.65s
+[PASS] llm_escalation (1 files, 6.0s) 12 passed in 2.52s
+[PASS] identity_custodian (1 files, 6.5s) 11 passed in 3.96s
+[PASS] librarian_dedup_ttl (1 files, 4.6s) 6 passed in 2.15s
+[PASS] research_provider_truth (1 files, 9.7s) 22 passed in 6.28s
+[PASS] watch_refresh_queue_drain (1 files, 9.4s) 8 passed in 6.22s
+[PASS] overnight_deep_peak_guard (1 files, 2.4s) 4 passed in 1.58s
+[PASS] searxng_engine_pool (1 files, 6.4s) 26 passed in 2.60s
+[PASS] deploy_durable_dirs (1 files, 5.7s) 14 passed in 3.68s
+[PASS] watch_small_cap_labels (1 files, 6.4s) 8 passed in 3.61s
+[PASS] watchlist_agent_job_llm_retries (1 files, 10.1s) 6 passed in 5.48s
+[PASS] watch_goods_consistency (1 files, 5.7s) 8 passed in 2.48s
+[PASS] incubator_promoter_authoritative_levels (1 files, 20.7s) 5 passed in 16.00s
+[PASS] cron_hygiene_20260915 (1 files, 7.0s) 3 passed in 4.18s
+[PASS] agent_maturity_status_and_drain_cap_20260915 (1 files, 7.6s) 2 passed in 4.91s
+[PASS] inbound_checkpoint_seed (1 files, 6.0s) 9 passed in 1.72s
+[PASS] llm_fallback (1 files, 8.4s) 21 passed in 5.02s
+[PASS] freshness_weekend_gate (1 files, 8.1s) 23 passed in 5.51s
+[PASS] alert_curation (1 files, 7.2s) 17 passed in 3.25s
+[PASS] campaign_closeout (1 files, 4.8s) 17 passed in 2.22s
+[PASS] cc_v3_boot_no_reload_loop (1 files, 4.9s) 1 passed in 1.66s
+[PASS] useapi_route_audit (1 files, 3.9s) 7 passed in 2.69s
+[PASS] residual_surfaces (1 files, 21.2s) 49 passed in 18.65s
+[PASS] exited_tax_lot_closure (1 files, 3.1s) 18 passed in 2.38s
+[PASS] tax_lot_duplicate_repair (1 files, 6.7s) 15 passed in 3.85s
+[PASS] tax_lot_rebuild_idempotency (1 files, 4.3s) 6 passed in 1.83s
+[PASS] financial_reconciliation (1 files, 4.6s) 43 passed in 3.60s
+[PASS] surface_state_matrix (1 files, 4.5s) 142 passed in 3.22s
+[PASS] protection_truth (1 files, 2.8s) 18 passed in 2.01s
+[PASS] useapi_authorization_contract (1 files, 3.1s) 11 passed in 1.34s
+[PASS] operator_control_isolated_db (1 files, 21.9s) 35 passed in 18.93s
+[PASS] route_error_containment (1 files, 8.2s) 5 passed in 5.23s
+[PASS] wake_writer_stamp (1 files, 3.2s) 5 passed in 1.77s
+[PASS] overnight_g6_missing_stores (1 files, 7.0s) 7 passed in 6.09s
+[PASS] p2_hygiene_guard_lineage_20260926 (1 files, 8.2s) 5 passed in 6.65s
+[PASS] p2_report_honesty_20260926 (1 files, 4.5s) 6 passed in 3.15s
+[PASS] p2_controls_truth_20260926 (1 files, 42.6s) 15 passed in 39.37s
+[PASS] everything_blocked_20260926 (1 files, 6.9s) 21 passed in 5.01s
+[PASS] thesis_acquisition_containment_20260927 (1 files, 7.1s) 4 passed in 5.29s
+[PASS] lane_breaker_unavailable_20260927 (1 files, 4.6s) 4 passed in 2.18s
+[PASS] local_llm_compat_20260927 (1 files, 2.6s) 2 passed in 1.18s
+[PASS] news_url_column_20260927 (1 files, 10.1s) 1 passed in 4.99s
+[PASS] thesis_evidence_not_circular_20260927 (1 files, 3.3s) 3 passed in 1.53s
+[PASS] weekend_aware_liquidity_20260927 (1 files, 3.3s) 4 passed in 1.70s
+[PASS] options_wave_b_20260927 (1 files, 12.6s) 8 passed in 9.66s
+[PASS] options_fill_truth_20260927 (1 files, 2.6s) 13 passed in 1.70s
+[PASS] options_broker_gates_20260927 (1 files, 286.2s) 18 passed in 281.22s (0:04:41)
+[PASS] cio_review_retry_20260927 (1 files, 5.8s) 6 passed in 4.57s
+[PASS] cio_packet_derived_ratios_20260927 (1 files, 9.6s) 3 passed in 5.14s
+[PASS] wave3_lane_dedupe_lock_bp_20260927 (1 files, 6.7s) 4 passed in 3.88s
+[PASS] options_queue_eligibility_legacy_pins_20260927 (1 files, 25.0s) 5 passed in 23.95s
+[PASS] options_chain_truth_20260928 (1 files, 8.8s) 7 passed, 1 warning in 5.99s
+[PASS] reentry_entry_alerts_lane_20260928 (1 files, 9.3s) 5 passed in 5.41s
+[PASS] buy_ready_packet_verdict_20260928 (1 files, 8.1s) 9 passed in 4.37s
+[PASS] options_lifecycle_inherited_lock_20260928 (1 files, 4.4s) 4 passed in 3.14s
+[PASS] earnings_gate_replay_axti_20260928 (1 files, 10.6s) 14 passed in 8.99s
+[PASS] options_exposure_earnings_20260928 (1 files, 4.7s) 5 passed in 1.81s
+[PASS] options_hedge_recon_yield_labels_20260927 (1 files, 6.0s) 5 passed in 5.30s
+[PASS] options_order_gates_20260927 (1 files, 27.3s) 20 passed in 24.14s
+[PASS] ws7_belief_wake_20260926 (1 files, 9.2s) 7 passed in 7.34s
+[PASS] audit_remaining_phases_20260927 (1 files, 4.0s) 2 passed in 1.85s
+[PASS] audit_rest_20260927 (1 files, 6.3s) 4 passed in 3.87s
+[PASS] audit_all_phases_20260927 (1 files, 5.2s) 2 passed in 2.03s
+[PASS] audit_finish_20260927 (1 files, 4.3s) 2 passed in 3.14s
+[PASS] momentum_scalp_proposal_contract_20260928 (1 files, 15.9s) 14 passed in 14.08s
+[PASS] preopen_window_honesty_20260928 (1 files, 8.6s) 10 passed in 4.17s
+[PASS] social_inject_source_priority_20260928 (1 files, 12.8s) 6 passed in 9.17s
+[PASS] momentum_scalp_lane_refresh_20260928 (1 files, 7.9s) 9 passed in 5.51s
+[PASS] book_map_day_pl_20260928 (1 files, 3.3s) 6 passed in 1.13s
+[PASS] options_proposal_cache_cadence_20260929 (1 files, 5.1s) 4 passed in 1.77s
+[PASS] cross_asset_decision_intelligence_phase1_20260929 (1 files, 9.8s) 40 passed in 7.49s
+[PASS] cio_desk_observability_20260930 (1 files, 3.9s) 7 passed in 2.18s
+[PASS] alert_chrome_stopwords_20260929 (1 files, 5.0s) 4 passed in 2.58s
+[PASS] interim_plus_hermes_queue_20260929 (1 files, 7.8s) 1 passed in 5.44s
+[PASS] operator_watch_research_20260929 (1 files, 8.4s) 8 passed in 5.36s
+[PASS] exit_cause_txn_scope_20261005 (1 files, 4.6s) 5 passed in 2.95s
+[PASS] maturity_score_stale_20261005 (1 files, 10.3s) 12 passed in 7.80s
+[PASS] atm_cursor_txn_scope_20261005 (1 files, 5.2s) 5 passed in 3.58s
+[PASS] wake_operator_turn_selection_20261005 (1 files, 8.7s) 8 passed in 6.32s
+[PASS] N8N_RUN_RELAY (1 files, 7.4s) 23 passed in 4.75s
+[PASS] N8N_AGENT2_W1 (1 files, 5.5s) 12 passed in 3.53s
+[PASS] N8N_AGENT2_W2 (1 files, 10.1s) 47 passed in 8.19s
+[PASS] cron_tranche_b_20261007 (1 files, 27.7s) 18 passed in 24.40s
+[PASS] cadence_timer_units_20261008 (1 files, 4.4s) 6 passed in 2.86s
+[PASS] n8n_w4_routing_20261008 (1 files, 6.7s) 48 passed in 4.73s
+[PASS] bridge_executor_hardening_20261009 (1 files, 26.0s) 24 passed in 22.12s
+[PASS] alarm_fires (1 files, 5.0s) 5 passed in 3.72s
+[PASS] detectors_distinguish_states (1 files, 6.4s) 4 passed in 5.78s
+[PASS] telegram_notification_normalization (2 files, 2.4s) 30 skipped in 1.75s
+[PASS] health_paper_siem_20261003 (1 files, 1.7s) 15 passed, 1 skipped in 1.00s
+[PASS] scripts_lib_bootstrap (1 files, 2.3s) 5 passed in 1.42s
+[PASS] telegram_chokepoint_ratchet (1 files, 21.5s) 4 passed in 20.27s
+[PASS] goal_work_minter_ratchet (1 files, 97.6s) 6 passed in 96.62s (0:01:36)
+[PASS] guard_push_auth (2 files, 10.6s) 16 passed in 9.53s
+[PASS] overnight_g3_docs_index (1 files, 6.5s) 7 passed in 5.49s
+[PASS] overnight_g2_import_normalise (1 files, 1.7s) 9 passed in 1.15s
+[PASS] runtime_state_survives_checkout (1 files, 1.6s) 13 passed in 0.85s
+[PASS] generated_file_merge (1 files, 1.7s) 8 passed in 1.12s
+[PASS] agent_governance_sop (4 files, 7.4s) 30 passed in 6.70s
+[PASS] release_pin_and_validator (2 files, 8.1s) 241 passed in 7.45s
+[PASS] deploy_ff_dev_tree (1 files, 2.9s) 7 passed in 2.25s
+[PASS] ci_fixture_immutability (1 files, 4.4s) 7 passed in 3.86s
+[PASS] comms_gateway_phase0 (1 files, 49.6s) 4 passed in 48.90s
+[PASS] tip_hygiene_enforcers (1 files, 3.2s) 2 passed in 2.52s
+[PASS] alarm_document_sites_20260922 (1 files, 31.1s) 21 passed, 1 warning in 30.20s
+[PASS] test_host_paths_ratchet_20260925 (1 files, 6.8s) 8 passed in 5.90s
+[timing] gates profile=fast jobs=8 wall=2326s
+[PASS] docs/INDEX.md matches inventory (MISSING HEADER=131, md=2380, files=3178, duplicate_groups=9, fingerprint=0b6045464745)
+{
+  "ok": true,
+  "mode": "committed_integrity",
+  "mutated": false,
+  "errors": [],
+  "warnings": [],
+  "disk_canonical_source_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+  "disk_release_content_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+  "disk_release_attestation_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+  "disk_status": "production",
+  "disk_schema": "investment_office_release_manifest_v2",
+  "code_report_version": "report_v2_1.5.0"
+}
+{
+  "written": true,
+  "mode": "candidate",
+  "mutated_committed": false,
+  "md": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate/RELEASE_MANIFEST.md",
+  "json": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate/RELEASE_MANIFEST.json",
+  "canonical_source_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "release_content_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "release_attestation_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "manifest_hash": "c0f5378b3e9631f6d9afe441afbadfecb39c07ac1c88cd0a162d34a48fc79bae",
+  "status": "release_candidate",
+  "manifest_schema": "investment_office_release_manifest_v2"
+}
+[RUN]  docs_index_drift
+[PASS] docs_index_drift
+[RUN]  validate_committed_manifest
+[PASS] validate_committed_manifest
+[RUN]  generate_candidate_manifest
+[PASS] generate_candidate_manifest → /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate
+[info] candidate DIFFERS from committed pin (informational; not a substitute for check-committed)
+--- /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/investment-office/RELEASE_MANIFEST.json	2026-10-08 20:41:22.891206156 -0400
++++ /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate/RELEASE_MANIFEST.json	2026-10-09 11:45:36.245606484 -0400
+@@ -1,17 +1,17 @@
+ {
+   "manifest_schema": "investment_office_release_manifest_v2",
+-  "status": "production",
+-  "branch": "chore/cio-pin-aa037b73",
+-  "release_content_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "release_attestation_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "remote_main_sha_at_manifest": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "canonical_source_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "origin_main_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "frontend_build_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
+-  "backend_release_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "report_source_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/aa037b73-main-exact-phase2-20260814-220259",
+-  "deployed_release_name": "aa037b73-main-exact-phase2-20260814-220259",
++  "status": "release_candidate",
++  "branch": "codex/runtime-n8n-host-recovery-20261008",
++  "release_content_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
++  "release_attestation_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
++  "remote_main_sha_at_manifest": "ac3fddebb35f1d915e476e6da9bf5db64cf2d7b4",
++  "canonical_source_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
++  "origin_main_sha": "ac3fddebb35f1d915e476e6da9bf5db64cf2d7b4",
++  "frontend_build_sha": "3.0.0",
++  "backend_release_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
++  "report_source_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
++  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
++  "deployed_release_name": "3b5c24856-m
+
+CIO HARDENING CI FAILED: ['N8N_RUN_ROUTE']
+...............                                                          [100%]
+15 passed in 6.39s
+[RUN] adversarial: tests/test_cio_phase11_adversarial.py
+[PASS] Phase 11 adversarial suite
+scripts/defense_recommendations.py:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+  "no equity pair qualified (no same-account destination cleared the \$2K-leg rails)")
+uncompilable modules      : 0
+versioned-schema definers : 597
+zero-consumer             : 78
+  inherited (seeded)      : 22
+  declared NO_CONSUMER_REASON: 56
+    of which declare NOT installed: 3
+      · scripts/check_operator_answer_quality.py
+      · scripts/report_slo_burn_rate.py
+      · scripts/set_goal_predicate.py
+  NEW (unexplained)       : 0
+
+  resolved since baseline (8):
+    ✓ scripts/lib/cio_intelligence_outcomes.py
+    ✓ scripts/lib/decision_rationale.py
+    ✓ scripts/lib/hermes_golden_judge.py
+    ✓ scripts/lib/memory_m2_v2.py
+    ✓ scripts/lib/proactive_cio.py
+    ✓ scripts/lib/symbol_thesis_event_wake.py
+    ✓ scripts/lib/tradeai_record_envelope.py
+    ✓ scripts/repair_health_threshold_tuning_noise.py
+line-ending churn: none (0 files examined)
+test host paths: 21 files (baseline 24), new violations: 0
+Data source authority — one source of truth per domain
+==========================================================================
+  domains=52  providers=22  retired=finnhub,fmp,newsapi,polygon
+  operator grants     : providers=22/22  domains=52/52  (schema DataSourceAuthority@v2)
+  writers per store   : {"market_quotes": 1, "symbol_profiles": 1, "yahoo_analyst_targets_history": 1, "news_articles": 1, "ticker_prices": 1, "sector_rs_daily": 1, "market_regime_snapshots": 1, "positions_current": 1, "options_iv_history": 1, "hermes_research_intelligence": 1, "watch_directives": 1, "watch_candidate_events": 1, "private_company_proxies": 1, "ticker_dividend_data": 1, "fred_economic_series": 2, "fundamental_data": 1, "watchlist_agent_results": 1, "agent_debate_log": 2, "ai_reports": 4, "data_gap_registry": 1, "operator_conversation_turns": 1, "intelligence.heartbeat": 1, "intelligence.approval_package": 0, "intelligence.gir_entity": 1, "intelligence.breach": 0, "intelligence.research_index": 1}
+  hub direct reads    : {"market_quotes": 13, "symbol_profiles": 11, "yahoo_analyst_targets_history": 5, "news_articles": 45, "ticker_prices": 0, "sector_rs_daily": 0, "market_regime_snapshots": 3, "options_iv_history": 0, "hermes_research_intelligence": 31, "watch_directives": 11, "watch_candidate_events": 0, "watchlist_agent_results": 46, "agent_debate_log": 9, "ai_reports": 3}
+--------------------------------------------------------------------------
+  findings=0
+stale: none
+
+CIO GATES FAILED: cio_hardening

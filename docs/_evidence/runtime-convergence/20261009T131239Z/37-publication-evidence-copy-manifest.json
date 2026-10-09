@@ -1,0 +1,163 @@
+{
+  "schema": "PublicationEvidenceCopies@v1",
+  "as_of": "2026-10-09T16:31:56.308142+00:00",
+  "evidence_class": "SOURCE_ONLY",
+  "prior_manifest": "26-integration-evidence-manifest.json",
+  "prior_manifest_scope": "Historical b1 checkpoint; this receipt records later export whitespace changes without rewriting the earlier claimed hashes.",
+  "copied_evidence": [
+    {
+      "source": "/tmp/tradeai-final-production-review-76e83b03-20261009-v2.json",
+      "artifact": "tradeai-final-production-review-76e83b03-20261009-v2.json",
+      "raw_sha256": "0fa210c6373d6c341c1623d1c751f373d3536fd1cbdf9dacb4c376aca4b8c61f",
+      "exported_sha256": "0fa210c6373d6c341c1623d1c751f373d3536fd1cbdf9dacb4c376aca4b8c61f"
+    },
+    {
+      "source": "/tmp/tradeai-n8n-timing-failure-inspection-76e83b03-20261009.json",
+      "artifact": "tradeai-n8n-timing-failure-inspection-76e83b03-20261009.json",
+      "raw_sha256": "effd702e54ac625b57a59440388b51b481ee768ffe911a448745588133c15b69",
+      "exported_sha256": "effd702e54ac625b57a59440388b51b481ee768ffe911a448745588133c15b69"
+    },
+    {
+      "source": "/tmp/tradeai-n8n-timing-failure-diagnosis-76e83b03-20261009-v2.json",
+      "artifact": "tradeai-n8n-timing-failure-diagnosis-76e83b03-20261009-v2.json",
+      "raw_sha256": "16ae51bc5a9a312298dca53e958ace9971b4b469fa64a51cab4e02872cf9d7f6",
+      "exported_sha256": "16ae51bc5a9a312298dca53e958ace9971b4b469fa64a51cab4e02872cf9d7f6"
+    },
+    {
+      "source": "/tmp/tradeai-kernel-lock-fixture-review-a14d2fcbb-20261009.json",
+      "artifact": "tradeai-kernel-lock-fixture-review-a14d2fcbb-20261009.json",
+      "raw_sha256": "baf651d318930dcdf1396a5187e9a205a1e979bb3a0bd616b131de50fb1e065d",
+      "exported_sha256": "baf651d318930dcdf1396a5187e9a205a1e979bb3a0bd616b131de50fb1e065d"
+    },
+    {
+      "source": "/tmp/tradeai-current-identity-host-20261009T145200Z.json",
+      "artifact": "tradeai-current-identity-host-20261009T145200Z.json",
+      "raw_sha256": "ac76e6674daa93b9aeaa97fa6861f43967eef5bf87925076f133306a74e13d24",
+      "exported_sha256": "ac76e6674daa93b9aeaa97fa6861f43967eef5bf87925076f133306a74e13d24"
+    },
+    {
+      "source": "/tmp/tradeai-current-feature-coverage-20261009T150248Z.json",
+      "artifact": "tradeai-current-feature-coverage-20261009T150248Z.json",
+      "raw_sha256": "84c7fc4b747c9acc0e62f5df6079d8066ef0bc1855d1df58a6d501b98319050e",
+      "exported_sha256": "84c7fc4b747c9acc0e62f5df6079d8066ef0bc1855d1df58a6d501b98319050e"
+    },
+    {
+      "source": "/tmp/tradeai-historical-replay-feasibility-assessment-20261009T154012Z.json",
+      "artifact": "tradeai-historical-replay-feasibility-assessment-20261009T154012Z.json",
+      "raw_sha256": "10c3636dde04e1e2f713a827882429112cb779f73cfc20698944c8c394af2066",
+      "exported_sha256": "10c3636dde04e1e2f713a827882429112cb779f73cfc20698944c8c394af2066"
+    },
+    {
+      "source": "/tmp/tradeai-historical-replay-aggregates-20261009T152000Z.json",
+      "artifact": "tradeai-historical-replay-aggregates-20261009T152000Z.json",
+      "raw_sha256": "9097e4ed62a51e20111fd9b823d6b276c4b946425d1550926784dff2e9a3e004",
+      "exported_sha256": "9097e4ed62a51e20111fd9b823d6b276c4b946425d1550926784dff2e9a3e004"
+    },
+    {
+      "source": "/tmp/tradeai-runtime-executor-unit-supplement-20261009.md",
+      "artifact": "tradeai-runtime-executor-unit-supplement-20261009.md",
+      "raw_sha256": "71ad5a42edf16055020d638cbb1cd3c5425dc40f880681b22756a4fdbd5d84a6",
+      "exported_sha256": "71ad5a42edf16055020d638cbb1cd3c5425dc40f880681b22756a4fdbd5d84a6"
+    },
+    {
+      "source": "/tmp/tradeai-runtime-executor-unit-readonly-20261009.json",
+      "artifact": "tradeai-runtime-executor-unit-readonly-20261009.json",
+      "raw_sha256": "8ce2aa888bc8dfa0a47cf1fb38a5ccdf2423e91f39f81d6a85b77e891c019b9c",
+      "exported_sha256": "8ce2aa888bc8dfa0a47cf1fb38a5ccdf2423e91f39f81d6a85b77e891c019b9c"
+    },
+    {
+      "source": "/tmp/tradeai-runtime-operator-scheduler-supplement-20261009.md",
+      "artifact": "tradeai-runtime-operator-scheduler-supplement-20261009.md",
+      "raw_sha256": "77a21032e25973c57577570d278c4f8cc4257c5850205befea1ff4131c416027",
+      "exported_sha256": "77a21032e25973c57577570d278c4f8cc4257c5850205befea1ff4131c416027"
+    },
+    {
+      "source": "/tmp/tradeai-n8n-community-capability-security-review-20261009.md",
+      "artifact": "tradeai-n8n-community-capability-security-review-20261009.md",
+      "raw_sha256": "385f692538b6c94f0471f12e334a22ec2f4655aeddce647d22a5cadf6534ef4e",
+      "exported_sha256": "385f692538b6c94f0471f12e334a22ec2f4655aeddce647d22a5cadf6534ef4e"
+    },
+    {
+      "source": "/tmp/tradeai-publication-context-20261009T171000Z.json",
+      "artifact": "tradeai-publication-context-20261009T171000Z.json",
+      "raw_sha256": "3721978365c0991017bca060fae0dd915720a77768bade0575e891c1f178ef07",
+      "exported_sha256": "3721978365c0991017bca060fae0dd915720a77768bade0575e891c1f178ef07"
+    },
+    {
+      "artifact": "28-final-combined-local-acceptance.log",
+      "raw_sha256": "d766416cb07ba3eb9a6e442aa54b449b8485ed0e03816a77ccead5b551eb1456",
+      "exact_raw_copy": "28-final-combined-local-acceptance.log.raw.gz",
+      "previous_export_sha256": "d766416cb07ba3eb9a6e442aa54b449b8485ed0e03816a77ccead5b551eb1456",
+      "exported_sha256": "d766416cb07ba3eb9a6e442aa54b449b8485ed0e03816a77ccead5b551eb1456",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "31-n8n-gate-isolated.log",
+      "raw_sha256": "c63eb882133eebaf8c003dbc7d68ed92066c6a34bfe5af690fd9ebd1a09be243",
+      "exact_raw_copy": "31-n8n-gate-isolated.log.raw.gz",
+      "previous_export_sha256": "c63eb882133eebaf8c003dbc7d68ed92066c6a34bfe5af690fd9ebd1a09be243",
+      "exported_sha256": "8e7f14fc8982075d85d04a7bf2c93c4005709aa158416fa6a8287fd5d3b3404f",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "32-n8n-gate-final.log",
+      "raw_sha256": "d7c21fc3f1eadb40a8fa4d93d089189ec97d2cac68fd1294bb78cb703314e68d",
+      "exact_raw_copy": "32-n8n-gate-final.log.raw.gz",
+      "previous_export_sha256": "d7c21fc3f1eadb40a8fa4d93d089189ec97d2cac68fd1294bb78cb703314e68d",
+      "exported_sha256": "d7c21fc3f1eadb40a8fa4d93d089189ec97d2cac68fd1294bb78cb703314e68d",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "33-incoming-main-integration.log",
+      "raw_sha256": "d2c14df80a08e7092dfcb99c7d3ac4576b4bd5833444f21e962bc38f48f804ed",
+      "exact_raw_copy": "33-incoming-main-integration.log.raw.gz",
+      "previous_export_sha256": "d2c14df80a08e7092dfcb99c7d3ac4576b4bd5833444f21e962bc38f48f804ed",
+      "exported_sha256": "d2c14df80a08e7092dfcb99c7d3ac4576b4bd5833444f21e962bc38f48f804ed",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "34-final-frontend-build.log",
+      "raw_sha256": "e25fb5362a70df8e39679a5ff04beb34f120ec9d02fe017a8e2fa25de964ccdc",
+      "exact_raw_copy": "34-final-frontend-build.log.raw.gz",
+      "previous_export_sha256": "e25fb5362a70df8e39679a5ff04beb34f120ec9d02fe017a8e2fa25de964ccdc",
+      "exported_sha256": "e25fb5362a70df8e39679a5ff04beb34f120ec9d02fe017a8e2fa25de964ccdc",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "34a-frontend-dependency-install.log",
+      "raw_sha256": "a2e17f14b35fef818192324d7cac1bf5cacd32408e73703dee06056e39ae4f03",
+      "exact_raw_copy": "34a-frontend-dependency-install.log.raw.gz",
+      "previous_export_sha256": "a2e17f14b35fef818192324d7cac1bf5cacd32408e73703dee06056e39ae4f03",
+      "exported_sha256": "a2e17f14b35fef818192324d7cac1bf5cacd32408e73703dee06056e39ae4f03",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "34b-final-frontend-build-with-lockfile.log",
+      "raw_sha256": "b8176eca3b719e77a49a185f72a70c07762099407ebda90ad25476c51890e5f1",
+      "exact_raw_copy": "34b-final-frontend-build-with-lockfile.log.raw.gz",
+      "previous_export_sha256": "b8176eca3b719e77a49a185f72a70c07762099407ebda90ad25476c51890e5f1",
+      "exported_sha256": "b8176eca3b719e77a49a185f72a70c07762099407ebda90ad25476c51890e5f1",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "35-scheduler-fixture-playwright.log",
+      "raw_sha256": "d686b52fd3e48385e52982c9da39784dedb080c5838dea8db38562412941ff05",
+      "exact_raw_copy": "35-scheduler-fixture-playwright.log.raw.gz",
+      "previous_export_sha256": "d686b52fd3e48385e52982c9da39784dedb080c5838dea8db38562412941ff05",
+      "exported_sha256": "d686b52fd3e48385e52982c9da39784dedb080c5838dea8db38562412941ff05",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    },
+    {
+      "artifact": "tradeai-governed-research-dedupe-source-authority.log",
+      "raw_sha256": "e823413a474a0101729184eaf6d26c764846f737a6d23346c30d281035c95959",
+      "exact_raw_copy": "tradeai-governed-research-dedupe-source-authority.log.raw.gz",
+      "previous_export_sha256": "e823413a474a0101729184eaf6d26c764846f737a6d23346c30d281035c95959",
+      "exported_sha256": "1ad41fe0c511733cf6d4be39eaa576c6efdb427b47a14d6191905a2709983392",
+      "export_transformation": "Trailing line whitespace and empty EOF lines only; original bytes retained compressed; verdicts unchanged."
+    }
+  ],
+  "model_or_provider_called": false,
+  "corrective_remote_pushes": 0,
+  "corrective_deployed": false,
+  "publication_validation": "PENDING_FINAL_SOURCE_REPAIRS_AND_CANONICAL_ACCEPTANCE"
+}

@@ -1,0 +1,44 @@
+{
+  "evidence_class": "TEST_ONLY",
+  "failure_section": "[FAIL] N8N_RUN_ROUTE (5 files, 57.0s) 2 failed, 45 passed in 52.65s\n.......................F.................F.....                          [100%]\n=================================== FAILURES ===================================\nE   assert False\n     +  where False = all(<generator object test_once_drains_oldest_first_and_an_empty_queue_exits_clean.<locals>.<genexpr> at 0x707294acb780>)\n----------------------------- Captured stdout call -----------------------------\n{\"executor\": \"started\", \"ledger\": \"/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/ledger.sqlite\", \"allowlist\": \"/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/allow.json\", \"lanes\": [\"fake-lane\", \"flock-lane\", \"live-only-lane\"], \"code_root\": \"/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/code\", \"once\": true}\n{\"executor\": \"started\", \"ledger\": \"/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/ledger.sqlite\", \"allowlist\": \"/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/allow.json\", \"lanes\": [\"fake-lane\", \"flock-lane\", \"live-only-lane\"], \"code_root\": \"/tmp/pytest-of-johnclaw/pytest-122400/test_once_drains_oldest_first_0/code\", \"once\": true}\n{\"run_id\": \"run-order-0000000001\", \"lane_id\": \"fake-lane\", \"mode\": \"dry_run\", \"state\": \"RUN_DONE\", \"exit_code\": 0, \"duration_s\": 1.035, \"lock_skipped\": false, \"timed_out\": false}\n{\"run_id\": \"run-order-0000000002\", \"lane_id\": \"fake-lane\", \"mode\": \"dry_run\", \"state\": \"RUN_TIMEOUT\", \"exit_code\": 124, \"duration_s\": 3.372, \"lock_skipped\": false, \"timed_out\": true}\n/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_n8n_run_executor_20261008.py:254: assert False\nE   assert 0.44882616286486154 < 0.25\n/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_n8n_gateway_concurrency_20261008.py:201: assert 0.44882616286486154 < 0.25\n=========================== short test summary info ============================\nFAILED tests/test_n8n_run_executor_20261008.py::test_once_drains_oldest_first_and_an_empty_queue_exits_clean\nFAILED tests/test_n8n_gateway_concurrency_20261008.py::test_expected_concurrent_run_bursts_all_land_as_requested_rows[64]\n2 failed, 45 passed in 52.65s\n\n",
+  "failure_section_sha256": "f53b2f56e903e5a4911f6af38ccae9b8aaa1e4c8712154d7e4745bec60255f20",
+  "fixture_allowlist_metadata": null,
+  "fixture_receipt_metadata": [],
+  "no_secret_values_accessed": true,
+  "no_source_or_host_mutation": true,
+  "observed_at": "2026-10-09T15:36:55.745375+00:00",
+  "resource_snapshot": {
+    "evidence_class": "OBSERVED_HOST",
+    "note": "Read after test failure while canonical suite still running; no resource snapshot at exact failure time, cannot establish causality.",
+    "values": {
+      "cgroup/cpu.stat": "usage_usec 7541945940000\nuser_usec 6568317353000\nsystem_usec 973628587000\nnice_usec 1204627774000\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+      "loadavg": "76.41 82.85 77.94 69/2927 3",
+      "pressure/cpu": "some avg10=70.82 avg60=71.35 avg300=71.54 total=22164044413\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+      "pressure/io": "some avg10=0.00 avg60=0.26 avg300=0.39 total=12115990825\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=11138206892",
+      "pressure/memory": "some avg10=0.03 avg60=0.54 avg300=0.42 total=3660177776\nfull avg10=0.00 avg60=0.05 avg300=0.05 total=3342591793"
+    }
+  },
+  "schema": "N8nTimingFailureIndependentInspection@v1",
+  "source_hashes": {
+    "scripts/lib/n8n_coordination_gateway.py": "c0797ca0255fc1a6b65e2b140910dbca8830c49763cff1b1b8be37ad527001d2",
+    "scripts/lib/n8n_coordination_ledger.py": "7b5483530860818bc894fed56ed055cd89e8b237686040034d037037140350f7",
+    "scripts/n8n_coordination_gateway.py": "ae655fe92220f6f5426ce9977e598fa7e9b32cf9ba333101b9c7b410cb0e9fd2",
+    "scripts/n8n_run_executor.py": "5910febac842a0c952c2f559f68e3e2b63e16fe21ccad401bb706b936f691bdb",
+    "scripts/run_cio_hardening_ci.py": "6614b78eca0c34bffe31c7acda95df5d34c2d44600a456c2cf5fe8ae6fe11919",
+    "scripts/safe_flock.sh": "6c9f5ab93c6822c32db5068d023423da7cafab7615d6cc53c42ce504cc7dbef7",
+    "tests/test_n8n_gateway_concurrency_20261008.py": "373d3370055ec4086fd6a24437c85d83279527f3c9c5aa46ef34b66a9b976ed5",
+    "tests/test_n8n_run_executor_20261008.py": "ab1ea80c98a7105cc32b1778465f3ae63a0516b512ebb0e9630283e0b6fc9c8c"
+  },
+  "source_head": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "source_unchanged_vs_current_main": {
+    "scripts/lib/n8n_coordination_gateway.py": true,
+    "scripts/lib/n8n_coordination_ledger.py": true,
+    "scripts/n8n_coordination_gateway.py": true,
+    "scripts/n8n_run_executor.py": true,
+    "scripts/run_cio_hardening_ci.py": true,
+    "scripts/safe_flock.sh": true,
+    "tests/test_n8n_gateway_concurrency_20261008.py": true,
+    "tests/test_n8n_run_executor_20261008.py": true
+  },
+  "test_runs_performed": 0
+}

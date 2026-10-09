@@ -1,0 +1,453 @@
+{
+  "schema": "BoundedExactCurrentRuntimeIdentity@v1",
+  "as_of": "2026-10-09T15:02:48.179811+00:00",
+  "no_runtime_mutations": true,
+  "provider_model_calls": false,
+  "manual_fires": false,
+  "credential_values_accessed_or_returned": false,
+  "writes_only_tmp_evidence": true,
+  "CURRENT": {
+    "symlink": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+    "release": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+    "sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+    "evidence_class": "OBSERVED_CURRENT"
+  },
+  "corrective_source": {
+    "root": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008",
+    "HEAD": {
+      "exit": 0,
+      "value": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+      "evidence_class": "OBSERVED_CURRENT"
+    },
+    "origin_main_cached": {
+      "exit": 0,
+      "value": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "evidence_class": "OBSERVED_CURRENT"
+    },
+    "merge_base": {
+      "exit": 0,
+      "value": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "evidence_class": "OBSERVED_CURRENT"
+    },
+    "worktree": {
+      "exit": 0,
+      "value": "",
+      "evidence_class": "OBSERVED_CURRENT"
+    }
+  },
+  "primary_source": {
+    "root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "HEAD": {
+      "exit": 0,
+      "value": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "evidence_class": "OBSERVED_CURRENT"
+    }
+  },
+  "github_main": {
+    "sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+    "exit": 0,
+    "command": [
+      "gh",
+      "api",
+      "repos/PatsKiller/tardeai/commits/main",
+      "--jq",
+      ".sha"
+    ],
+    "evidence_class": "OBSERVED_GITHUB"
+  },
+  "units": {
+    "portfolio-server.service": {
+      "command": [
+        "systemctl",
+        "--user",
+        "show",
+        "portfolio-server.service",
+        "--property=Id,LoadState,UnitFileState,ActiveState,SubState,MainPID,WorkingDirectory,Result,ExecMainStatus,ActiveEnterTimestamp"
+      ],
+      "exit": 0,
+      "evidence_class": "OBSERVED_HOST",
+      "properties": {
+        "Id": "portfolio-server.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 10:27:28 EDT",
+        "MainPID": "340955",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833"
+      },
+      "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+      "process_exe": "/usr/bin/python3.14",
+      "process_code_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "process_root_matches_CURRENT": true,
+      "note": "cwd/GIT_SHA prove observed process root; no provider/model execution was tested."
+    },
+    "cio-governed-bridge.service": {
+      "command": [
+        "systemctl",
+        "--user",
+        "show",
+        "cio-governed-bridge.service",
+        "--property=Id,LoadState,UnitFileState,ActiveState,SubState,MainPID,WorkingDirectory,Result,ExecMainStatus,ActiveEnterTimestamp"
+      ],
+      "exit": 0,
+      "evidence_class": "OBSERVED_HOST",
+      "properties": {
+        "Id": "cio-governed-bridge.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 10:27:43 EDT",
+        "MainPID": "343000",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+      },
+      "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+      "process_exe": "/usr/bin/python3.14",
+      "process_code_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "process_root_matches_CURRENT": true,
+      "note": "cwd/GIT_SHA prove observed process root; no provider/model execution was tested."
+    },
+    "tradeai-n8n-coordination-gateway.service": {
+      "command": [
+        "systemctl",
+        "--user",
+        "show",
+        "tradeai-n8n-coordination-gateway.service",
+        "--property=Id,LoadState,UnitFileState,ActiveState,SubState,MainPID,WorkingDirectory,Result,ExecMainStatus,ActiveEnterTimestamp"
+      ],
+      "exit": 0,
+      "evidence_class": "OBSERVED_HOST",
+      "properties": {
+        "Id": "tradeai-n8n-coordination-gateway.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 10:27:54 EDT",
+        "MainPID": "344163",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+      },
+      "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+      "process_exe": "/usr/bin/python3.14",
+      "process_code_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "process_root_matches_CURRENT": true,
+      "note": "cwd/GIT_SHA prove observed process root; no provider/model execution was tested."
+    },
+    "tradeai-n8n-run-relay.service": {
+      "command": [
+        "systemctl",
+        "--user",
+        "show",
+        "tradeai-n8n-run-relay.service",
+        "--property=Id,LoadState,UnitFileState,ActiveState,SubState,MainPID,WorkingDirectory,Result,ExecMainStatus,ActiveEnterTimestamp"
+      ],
+      "exit": 0,
+      "evidence_class": "OBSERVED_HOST",
+      "properties": {
+        "Id": "tradeai-n8n-run-relay.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 10:27:57 EDT",
+        "MainPID": "344533",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+      },
+      "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+      "process_exe": "/usr/bin/python3.14",
+      "process_code_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "process_root_matches_CURRENT": true,
+      "note": "cwd/GIT_SHA prove observed process root; no provider/model execution was tested."
+    },
+    "tradeai-n8n-run-executor.service": {
+      "command": [
+        "systemctl",
+        "--user",
+        "show",
+        "tradeai-n8n-run-executor.service",
+        "--property=Id,LoadState,UnitFileState,ActiveState,SubState,MainPID,WorkingDirectory,Result,ExecMainStatus,ActiveEnterTimestamp"
+      ],
+      "exit": 0,
+      "evidence_class": "OBSERVED_HOST",
+      "properties": {
+        "Id": "tradeai-n8n-run-executor.service",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "running",
+        "UnitFileState": "enabled",
+        "ActiveEnterTimestamp": "Fri 2026-10-09 10:34:31 EDT",
+        "MainPID": "391816",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+      },
+      "process_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+      "process_exe": "/usr/bin/python3.14",
+      "process_code_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+      "process_root_matches_CURRENT": true,
+      "note": "cwd/GIT_SHA prove observed process root; no provider/model execution was tested."
+    }
+  },
+  "http": {
+    "api_health": {
+      "url": "http://127.0.0.1:7777/api/health",
+      "method": "GET",
+      "evidence_class": "OBSERVED_HOST",
+      "http_status": 200,
+      "data": {
+        "ok": true
+      }
+    },
+    "command_center_build": {
+      "url": "http://127.0.0.1:7777/v3/build-meta.json",
+      "method": "GET",
+      "evidence_class": "OBSERVED_HOST",
+      "http_status": 200,
+      "data": {
+        "git_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+        "build_sha": "3b5c24856990",
+        "built_at": "2026-10-09T14:01:13.135Z"
+      }
+    },
+    "coordination_route": {
+      "url": "http://127.0.0.1:7777/v3/coordination",
+      "method": "GET",
+      "evidence_class": "OBSERVED_HOST",
+      "http_status": 200
+    },
+    "bridge_health": {
+      "url": "http://127.0.0.1:8766/health",
+      "method": "GET",
+      "evidence_class": "OBSERVED_HOST",
+      "http_status": 200,
+      "data": {
+        "ok": true,
+        "mode": "canary",
+        "pid": 343000,
+        "uptime_s": 2105.2,
+        "circuit_open": false,
+        "circuit_errors": 0,
+        "upstream_deadline_s": 150.0,
+        "inflight": 0
+      }
+    },
+    "gateway_health": {
+      "url": "http://127.0.0.1:18091/healthz",
+      "method": "GET",
+      "evidence_class": "OBSERVED_HOST",
+      "http_status": 200,
+      "data": {
+        "ok": true
+      }
+    },
+    "relay_unauthenticated_status": {
+      "url": "http://172.19.0.1:18092/status",
+      "method": "GET",
+      "evidence_class": "OBSERVED_HOST",
+      "http_status": 401
+    },
+    "n8n_health": {
+      "url": "http://127.0.0.1:5678/healthz",
+      "method": "GET",
+      "evidence_class": "OBSERVED_HOST",
+      "http_status": 200,
+      "data": {
+        "status": "ok"
+      }
+    }
+  },
+  "ollama_system_unit": {
+    "command": [
+      "systemctl",
+      "show",
+      "ollama.service",
+      "--property=Id,LoadState,UnitFileState,ActiveState,SubState,MainPID,WorkingDirectory,Result,ExecMainStatus,ActiveEnterTimestamp"
+    ],
+    "exit": 0,
+    "evidence_class": "OBSERVED_HOST",
+    "properties": {
+      "Id": "ollama.service",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "UnitFileState": "enabled",
+      "ActiveEnterTimestamp": "Sat 2026-09-12 17:02:32 EDT",
+      "MainPID": "5135",
+      "Result": "success",
+      "ExecMainStatus": "0",
+      "WorkingDirectory": ""
+    },
+    "process_cwd_evidence": "BLOCKED:PermissionError",
+    "process_exe_evidence": "BLOCKED:PermissionError",
+    "note": "cwd/GIT_SHA prove observed process root; no provider/model execution was tested."
+  },
+  "ollama_listener": {
+    "command": [
+      "ss",
+      "-ltnH",
+      "sport = :11434"
+    ],
+    "exit": 0,
+    "listening": true,
+    "evidence_class": "OBSERVED_HOST"
+  },
+  "source_feature_files": {
+    "scripts/lib/cio_governed_model_bridge.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "a05138c886521eebcd79667842a76686806afebfd1ad2afb2067452e5baf9757",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "21526d6b88701c3db219fd5467a5023988fd2fdd0f278a11ae5a8ad00b015e01",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/lib/governed_research_producer.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "ef2d61ec5a29bd0d79ea3612e9fb47c5312f1201398acf4a960ddbe5b864459d",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "9464f7e538f686dbdefbe15ac0ee459ed484079f79146ba9606357a6555f0e65",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/n8n_run_executor.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "5910febac842a0c952c2f559f68e3e2b63e16fe21ccad401bb706b936f691bdb",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "5910febac842a0c952c2f559f68e3e2b63e16fe21ccad401bb706b936f691bdb",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": true,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/n8n_run_relay.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "af33e0a75552fa917af78d37665d15d19b82a90cddb5baa08958f81b8aac79a4",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/n8n_coordination_gateway.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "ae655fe92220f6f5426ce9977e598fa7e9b32cf9ba333101b9c7b410cb0e9fd2",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "ae655fe92220f6f5426ce9977e598fa7e9b32cf9ba333101b9c7b410cb0e9fd2",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": true,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/n8n_workflow_templates.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "60a11fbe1a77455d52d3e52b61a9dd64dc87a1663805dd82666af74f121501b3",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/lib/lane_registry.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "033b9bbd61aacad266c2b7d41a7ba1b0d2e08fb14341f03c47ec4e7851201ae2",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "3268311a4e186531cc182bb8271eb601fa88dd746a3794d8c14921a87f70cedf",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/pipelines/cutover/_cutover.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "227ad5f1cb00b06641c661294858430c176ceefe15ec5ada4e5fad2555ee4c3b",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "scripts/ops/run_cross_asset_historical_replay.py": {
+      "candidate": {
+        "present": true,
+        "sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "0f36403dae5a8f4231a1b4ab50353c9c08083cf54967a56253909450b0c8c758",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    },
+    "docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md": {
+      "candidate": {
+        "present": true,
+        "sha256": "4321eb99cb993b1f2c6880aa756f75502bebe1d219faf76dce05598845feedb3",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "installed_release_source": {
+        "present": true,
+        "sha256": "a57bf20350e4dc374f4c947b10c293bfb699df3a691052bd0ffe228f0afab807",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "identical": false,
+      "feature_execution_evidence": "NOT_MEASURED"
+    }
+  },
+  "limits": [
+    "Installed source and healthy processes do not prove natural lane completion, output freshness or consumer acknowledgement.",
+    "No n8n DB workflow code, security-role state, natural receipts or broad archive/queue census was re-measured in this bounded identity check.",
+    "Corrective candidate source-only differences are not deployed or live accepted.",
+    "MFA OFF retained by operator exception; no model choice, provider test or policy ratification in this audit.",
+    "Ollama observation only; no service stop, disable, removal or data changes."
+  ],
+  "as_of_completed": "2026-10-09T15:02:49.534583+00:00"
+}

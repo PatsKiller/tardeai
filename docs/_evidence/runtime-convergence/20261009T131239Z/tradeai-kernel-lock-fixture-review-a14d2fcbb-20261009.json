@@ -1,0 +1,60 @@
+{
+  "as_of": "2026-10-09T16:07:01.633063+00:00",
+  "assertion_count_entire_module": 46,
+  "case_count": 14,
+  "checks": {
+    "all_flock_contract_assertions_preserved": true,
+    "descriptor_context_closes_before_second_request": true,
+    "every_module_assertion_exact_AST_preserved": true,
+    "fixture_allowlist_timeout_and_fake_runner_unchanged": true,
+    "gateway_timing_assertions_file_byte_unchanged": true,
+    "only_existing_fixture_file_changed": true,
+    "parent_final_same_five_file_gate_pass_observed": true,
+    "prior_fixture_failure_retained": true,
+    "production_executor_byte_unchanged": true,
+    "production_subprocess_closes_unpassed_fds_by_default": true,
+    "raw_diff_whitespace_clean": true,
+    "real_blocking_kernel_lock_acquired": true,
+    "real_explicit_kernel_unlock_in_finally": true,
+    "same_registered_tests_and_names": true
+  },
+  "commands": [
+    "git show --unified=9 a14d2fcbb336a226d6f8a706f83d44fabce0e666 -- tests/test_n8n_run_executor_20261008.py",
+    "git diff --check a14d2fcbb336a226d6f8a706f83d44fabce0e666^ a14d2fcbb336a226d6f8a706f83d44fabce0e666 -- tests/test_n8n_run_executor_20261008.py",
+    "AST assertion and bench function identity comparison on committed old/new bytes",
+    "Read root-owned31 prior and32 final synthetic gate logs"
+  ],
+  "evidence": {
+    "final": {
+      "evidence_class": "TEST_ONLY",
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/_evidence/runtime-convergence/20261009T131239Z/32-n8n-gate-final.log",
+      "result": "47 passed in17.41s; root-owned run, not rerun by reviewer",
+      "sha256": "d7c21fc3f1eadb40a8fa4d93d089189ec97d2cac68fd1294bb78cb703314e68d"
+    },
+    "prior": {
+      "evidence_class": "TEST_ONLY",
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/_evidence/runtime-convergence/20261009T131239Z/31-n8n-gate-isolated.log",
+      "result": "1 failed,46 passed; second attempt RUN_SKIPPED_LOCK after parent wait",
+      "sha256": "c63eb882133eebaf8c003dbc7d68ed92066c6a34bfe5af690fd9ebd1a09be243"
+    }
+  },
+  "final_sha256": "0e72fa5799d5628424eb92504b4166289a152ba0c08d80c0373941a9050b4515",
+  "flock_fixture_assertion_count": 3,
+  "gateway_test_sha256": "373d3370055ec4086fd6a24437c85d83279527f3c9c5aa46ef34b66a9b976ed5",
+  "limits": [
+    "This is source/AST kernel interoperation review; reviewer did not execute kernel calls or tests.",
+    "Real production timeout behavior, lock ownership, gateway performance and runtime acceptance remain separate from a tmp_path fixture.",
+    "The earlier canonical full-fast timing failures remain preserved; this test-only correction does not retroactively change those results."
+  ],
+  "no_edits_test_runs_host_calls_models_providers_network": true,
+  "parent_commit": "fc908efea1cec5cdf41624a4e9cabdaaf5c47d57",
+  "pass_count": 14,
+  "prior_failure_classification": "Observed fixture could retain a lock after waiting only for a killed flock parent; inherited sleep-child descriptor lifetime was not synchronized. This is an explanatory source inference; no process tree was captured at the exact prior failure.",
+  "prior_sha256": "ab1ea80c98a7105cc32b1778465f3ae63a0516b512ebb0e9630283e0b6fc9c8c",
+  "production_executor_sha256": "5910febac842a0c952c2f559f68e3e2b63e16fe21ccad401bb706b936f691bdb",
+  "schema": "IndependentKernelLockFixtureReview@v1",
+  "source_commit": "a14d2fcbb336a226d6f8a706f83d44fabce0e666",
+  "source_conclusion": "The fixture still holds a real Linux kernel flock on the exact lock inode, exercises the production external flock -n -E75 conflict path, then synchronously releases LOCK_UN and closes the held descriptor before requiring RUN_DONE. It removes reliance on parent process exit as a proxy for descendant descriptor closure. No assertion, gate, timeout or latency threshold was weakened.",
+  "source_file": "tests/test_n8n_run_executor_20261008.py",
+  "verdict": "PASS_WITH_LIMITS"
+}

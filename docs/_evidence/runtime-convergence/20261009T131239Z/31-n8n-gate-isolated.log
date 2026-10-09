@@ -1,0 +1,64 @@
+....................F..........................                          [100%]
+=================================== FAILURES ===================================
+E   AssertionError: assert 'RUN_SKIPPED_LOCK' == 'RUN_DONE'
+
+      - RUN_DONE
+      + RUN_SKIPPED_LOCK
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_flock_kind_reuses_a_cron_0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_flock_kind_reuses_a_cron_0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_flock_kind_reuses_a_cron_0/code", "once": true}
+{"run_id": "run-flock-0000000001", "lane_id": "flock-lane", "mode": "live", "state": "RUN_SKIPPED_LOCK", "exit_code": 75, "duration_s": 0.088, "lock_skipped": true, "timed_out": false}
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_flock_kind_reuses_a_cron_0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_flock_kind_reuses_a_cron_0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_flock_kind_reuses_a_cron_0/code", "once": true}
+{"run_id": "run-flock-0000000002", "lane_id": "flock-lane", "mode": "live", "state": "RUN_SKIPPED_LOCK", "exit_code": 75, "duration_s": 0.003, "lock_skipped": true, "timed_out": false}
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_n8n_run_executor_20261008.py:214: AssertionError: assert 'RUN_SKIPPED_LOCK' == 'RUN_DONE'
+==================================== PASSES ====================================
+__________ test_dry_run_passes_the_dry_run_argument_and_moves_nothing __________
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_dry_run_passes_the_dry_ru0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_dry_run_passes_the_dry_ru0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_dry_run_passes_the_dry_ru0/code", "once": true}
+{"run_id": "run-dry00-0000000001", "lane_id": "fake-lane", "mode": "dry_run", "state": "RUN_DONE", "exit_code": 0, "duration_s": 0.384, "lock_skipped": false, "timed_out": false}
+_______________________ test_nonzero_exit_is_run_failed ________________________
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_nonzero_exit_is_run_faile0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_nonzero_exit_is_run_faile0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_nonzero_exit_is_run_faile0/code", "once": true}
+{"run_id": "run-exit3-0000000001", "lane_id": "fake-lane", "mode": "live", "state": "RUN_FAILED", "exit_code": 3, "duration_s": 0.346, "lock_skipped": false, "timed_out": false}
+__________ test_a_live_pid_file_on_the_lane_lock_is_run_skipped_lock ___________
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_a_live_pid_file_on_the_la0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_a_live_pid_file_on_the_la0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_a_live_pid_file_on_the_la0/code", "once": true}
+{"run_id": "run-lock0-0000000001", "lane_id": "fake-lane", "mode": "live", "state": "RUN_SKIPPED_LOCK", "exit_code": 0, "duration_s": 0.144, "lock_skipped": true, "timed_out": false}
+_________________________ test_timeout_is_run_timeout __________________________
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_timeout_is_run_timeout0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_timeout_is_run_timeout0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_timeout_is_run_timeout0/code", "once": true}
+{"run_id": "run-tmout-0000000001", "lane_id": "fake-lane", "mode": "live", "state": "RUN_TIMEOUT", "exit_code": 124, "duration_s": 1.348, "lock_skipped": false, "timed_out": true}
+_____ test_missing_lane_and_unavailable_mode_are_refused_without_spawning ______
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_missing_lane_and_unavaila0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_missing_lane_and_unavaila0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_missing_lane_and_unavaila0/code", "once": true}
+{"run_id": "run-refus-0000000001", "lane_id": "not-in-allowlist", "mode": "live", "state": "RUN_REFUSED", "exit_code": null, "duration_s": 0.003, "lock_skipped": false, "timed_out": false}
+{"run_id": "run-refus-0000000002", "lane_id": "live-only-lane", "mode": "dry_run", "state": "RUN_REFUSED", "exit_code": null, "duration_s": 0.0, "lock_skipped": false, "timed_out": false}
+{"run_id": "run-refus-0000000003", "lane_id": "fake-lane", "mode": "apply", "state": "RUN_REFUSED", "exit_code": null, "duration_s": 0.0, "lock_skipped": false, "timed_out": false}
+_________ test_once_drains_oldest_first_and_an_empty_queue_exits_clean _________
+----------------------------- Captured stdout call -----------------------------
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_once_drains_oldest_first_0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_once_drains_oldest_first_0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_once_drains_oldest_first_0/code", "once": true}
+{"executor": "started", "ledger": "/tmp/pytest-of-johnclaw/pytest-124924/test_once_drains_oldest_first_0/ledger.sqlite", "allowlist": "/tmp/pytest-of-johnclaw/pytest-124924/test_once_drains_oldest_first_0/allow.json", "lanes": ["fake-lane", "flock-lane", "live-only-lane"], "code_root": "/tmp/pytest-of-johnclaw/pytest-124924/test_once_drains_oldest_first_0/code", "once": true}
+{"run_id": "run-order-0000000001", "lane_id": "fake-lane", "mode": "dry_run", "state": "RUN_DONE", "exit_code": 0, "duration_s": 0.485, "lock_skipped": false, "timed_out": false}
+{"run_id": "run-order-0000000002", "lane_id": "fake-lane", "mode": "dry_run", "state": "RUN_DONE", "exit_code": 0, "duration_s": 0.322, "lock_skipped": false, "timed_out": false}
+________ test_bad_allowlist_is_exit_2_and_malformed_entries_are_dropped ________
+----------------------------- Captured stderr call -----------------------------
+{"error": "allowlist:AllowlistError", "path": "/tmp/pytest-of-johnclaw/pytest-124924/test_bad_allowlist_is_exit_2_a0/bad.json"}
+______ test_expected_concurrent_run_bursts_all_land_as_requested_rows[1] _______
+----------------------------- Captured stdout call -----------------------------
+BURST_METRICS {"burst": 1, "dropped_requests": 0, "evidence_class": "TEST_ONLY", "handler_errors": 0, "handler_max_s": 0.0005133911035954952, "queue_delay_reason": "executor not run in gateway-only fixture", "queue_delay_s": null, "request_max_s": 0.004188715945929289, "request_p50_s": 0.004188715945929289, "request_p95_s": 0.004188715945929289}
+______ test_expected_concurrent_run_bursts_all_land_as_requested_rows[5] _______
+----------------------------- Captured stdout call -----------------------------
+BURST_METRICS {"burst": 5, "dropped_requests": 0, "evidence_class": "TEST_ONLY", "handler_errors": 0, "handler_max_s": 0.0016524139791727066, "queue_delay_reason": "executor not run in gateway-only fixture", "queue_delay_s": null, "request_max_s": 0.011274101678282022, "request_p50_s": 0.008336554281413555, "request_p95_s": 0.011274101678282022}
+______ test_expected_concurrent_run_bursts_all_land_as_requested_rows[16] ______
+----------------------------- Captured stdout call -----------------------------
+BURST_METRICS {"burst": 16, "dropped_requests": 0, "evidence_class": "TEST_ONLY", "handler_errors": 0, "handler_max_s": 0.0014182422310113907, "queue_delay_reason": "executor not run in gateway-only fixture", "queue_delay_s": null, "request_max_s": 0.028521493077278137, "request_p50_s": 0.016377110965549946, "request_p95_s": 0.028521493077278137}
+______ test_expected_concurrent_run_bursts_all_land_as_requested_rows[32] ______
+----------------------------- Captured stdout call -----------------------------
+BURST_METRICS {"burst": 32, "dropped_requests": 0, "evidence_class": "TEST_ONLY", "handler_errors": 0, "handler_max_s": 0.0020886147394776344, "queue_delay_reason": "executor not run in gateway-only fixture", "queue_delay_s": null, "request_max_s": 0.090105424169451, "request_p50_s": 0.04919235687702894, "request_p95_s": 0.08739065984264016}
+______ test_expected_concurrent_run_bursts_all_land_as_requested_rows[64] ______
+----------------------------- Captured stdout call -----------------------------
+BURST_METRICS {"burst": 64, "dropped_requests": 0, "evidence_class": "TEST_ONLY", "handler_errors": 0, "handler_max_s": 0.007666170597076416, "queue_delay_reason": "executor not run in gateway-only fixture", "queue_delay_s": null, "request_max_s": 0.32359572499990463, "request_p50_s": 0.11218081740662456, "request_p95_s": 0.3163071689195931}
+_________ test_lock_cost_is_negligible_against_one_sqlite_transaction __________
+----------------------------- Captured stdout call -----------------------------
+
+MEASURED {"event_burst_client_mean_s": 0.027178, "event_burst_handler_mean_ms": 0.694282, "lock_acquire_release_us": 0.173519, "nonce_txn_us": 36.657294, "run_burst_client_max_s": 0.323596, "run_burst_client_mean_s": 0.150301, "run_burst_handler_max_ms": 7.666171, "run_burst_handler_mean_ms": 0.774631, "run_burst_wall_per_request_ms": 6.366505, "run_burst_wall_s": 0.407456}
+1 failed, 46 passed in 11.66s

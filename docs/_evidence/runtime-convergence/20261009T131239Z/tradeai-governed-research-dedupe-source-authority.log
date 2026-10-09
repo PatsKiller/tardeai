@@ -50,4 +50,3 @@ test files              : 1812
     ✓ tests/test_alarm_fires_stop_path.py
     ✓ tests/test_alarm_imports_resolve.py
     ✓ tests/test_backup_enforcer.py
-

@@ -1,0 +1,198 @@
+{
+  "schema": "HistoricalAdvisoryReplayFeasibilityAssessment@v1",
+  "as_of": "2026-10-09T15:42:29.186098+00:00",
+  "verdict": "MISSING_REQUIRED_FACTS_FOR_EXISTING_OFFLINE_ARCHIVE_CONTRACT",
+  "scope": "Bounded read-only schema/aggregate checks of strategy_signals and its declared source references; no exhaustive search of all potential immutable archives.",
+  "evidence_classes": [
+    "OBSERVED_DB",
+    "SOURCE_ONLY"
+  ],
+  "observed_at": "2026-10-09T15:40:11.975355+00:00",
+  "observed_completed_at": "2026-10-09T15:40:12.402211+00:00",
+  "source_head": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "replay_source_sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+  "writes_only_tmp_evidence": true,
+  "production_writes": false,
+  "raw_archive_exports": false,
+  "provider_or_model_calls": false,
+  "model_choice": false,
+  "manual_producer_or_workflow_fires": false,
+  "scheduler_changes": false,
+  "actual_relation": {
+    "present": "public.strategy_signals",
+    "strategy_signals_history_present": false,
+    "evidence": "signal_archive_table_presence; information_schema.tables"
+  },
+  "nonzero_existing_candidate_data": {
+    "classification": "OBSERVED_DB_ARCHIVAL_CANDIDATE; not evaluated replay output",
+    "fired_records": 2707,
+    "positive_finite_stored_prices": 2707,
+    "stored_price_and_source_record_lineage": 2681,
+    "window_event_rows": {
+      "30_days": 827,
+      "60_days": 1473,
+      "90_days": 1815
+    },
+    "all_90d_events_have_stored_price_and_lineage": true,
+    "earliest_fired_at": "2026-05-05 04:01:34.926917-04:00",
+    "latest_fired_at": "2026-10-08 09:45:10.724521-04:00",
+    "future_fired_at": 0,
+    "discovery_trace_rows": 30,
+    "note": "These are genuine stored fired events with in-row prices, not fabricated signals or latest-market joins. They are useful candidate source material for a governed archival adapter, but not current contract-qualified replay counts. Rolling30d count differs from earlier838 because the observation boundary advanced."
+  },
+  "strict_contract_qualified_subset": {
+    "count": 0,
+    "qualification_basis": "Every inspected strategy signal lacks a supported advisory signal_type; confirmed historical GUID/as_of and availability are also absent. This is not a completed replay metric; no offline archive was exported or executed."
+  },
+  "required_field_mapping": [
+    {
+      "contract_field": "event.event_id",
+      "existing_field": "strategy_signals.id primary key; source_table/source_record_id/sync_run_id for2681rows",
+      "status": "ADAPTER_NEEDED",
+      "reason": "A namespaced stable ID may be derived transparently from an actual record identifier. It must retain source_ref/digest; no event ID is currently stored in the replay schema."
+    },
+    {
+      "contract_field": "event.observed_at",
+      "existing_field": "strategy_signals.fired_at timestamptz",
+      "status": "USABLE_TIMESTAMP_CANDIDATE",
+      "reason": "Writer sets fired_at at insertion. Retain the actual instant and source provenance; do not substitute scan day, export time or latest-market timestamp."
+    },
+    {
+      "contract_field": "event.signal",
+      "existing_field": "strategy_signals.signal_type;2681GO,0supportedtypes",
+      "status": "BLOCKED_UNSUPPORTED_SEMANTICS",
+      "reason": "normalize_signal accepts15explicitadvisorytypes and rejectsGO. GO cannot silently becomeBUY. A validated source-semantic mapping or a true recorded advisory event is required."
+    },
+    {
+      "contract_field": "event.source/payload",
+      "existing_field": "strategy_id plus actual source_record lineage; no native CrossAssetDecisionEvent payload",
+      "status": "ADAPTER_NEEDED",
+      "reason": "Use actual provenance and recorded facts only. Do not treat backfilled trade-plan fields or scan score as original option economics or probability."
+    },
+    {
+      "contract_field": "identity.security_guid / identity_status / identity.as_of",
+      "existing_field": "symbol only; no corresponding native columns or nestedGUID/as_of keys in3JSONcolumns",
+      "status": "BLOCKED_HISTORICAL_IDENTITY_MISSING",
+      "reason": "Current symbol lookup cannot by itself prove the confirmed identity known at the historical instant. A retained authoritative point-time identity snapshot is required."
+    },
+    {
+      "contract_field": "price.symbol/security_guid/as_of/source_ref",
+      "existing_field": "strategy_signals.price positivefinite2707rows; no quote_time/available_at/GUID; source_recordlineage2681",
+      "status": "PARTIAL_PRICE_CANDIDATE",
+      "reason": "The in-row price was copied from the scan at insertion and is preferable candidate material to a latest-market lookup. Its historical quote/as-of/availability and identity must be retained/proven before export. Do not relabel scan/execution time as market quote time."
+    },
+    {
+      "contract_field": "expression_facts facts_by_structure plus as_of/source_ref",
+      "existing_field": "signal_score/riskplanfields and routingmetadata; no contracted option/equity expression fact snapshots",
+      "status": "MISSING_OPTIONAL_COMPARISON_FACTS",
+      "reason": "The contract can count signal/price coverage without these facts, leaving all option economics unproven. Scores/probabilities must not be synthesized fromsignal_score or backfilledriskplans."
+    },
+    {
+      "contract_field": "position (optional)",
+      "existing_field": "shares/plan fields are not an as-of held-position snapshot",
+      "status": "OMIT_UNPROVEN_POSITION",
+      "reason": "Do not infer actual holdings, broker positions or covered-call eligibility from a proposed shares count."
+    }
+  ],
+  "availability_and_immutability_limits": [
+    "strategy_signals has no created_at/available_at, identity_guid or identity_as_of column. All2707rows have0top-level and0recursiveGUID/as_of/available_at presence in inspectedJSONfields.",
+    "strategy_signal_sync uses a plainINSERT and sets fired_at while copying scanprice. Existing source also updates plan/description fields later; the whole row is not an immutable decision envelope.",
+    "The declared lineage resolves to trade_ai_scans. The bounded required-field metadata query found id/symbol/price/source, and no security_guid/subject_guid/identity_status/as_of/available_at among queriedkeys. Other scan timing columns were not exhaustively queried; no inference of immutable source availability was made.",
+    "market_ohlcv_bars andticker_prices have market/ingestion times but no GUID/available_at. Earlier observed writers upsert existing prices/bars and include late ingestion. They were not joined to construct point-time proof in this task.",
+    "Currentlatestmarketdata andmutableaction_signals_history were not used. Source journal/backup versions and other potential immutable archives remain NOT_MEASURED in this bounded assessment."
+  ],
+  "minimum_archiver_and_operator_decisions": [
+    {
+      "classification": "NEEDS_DESIGN",
+      "action": "Define a transparent adapter from one genuine stored advisory event or validate the actualGOsource semantics. Preserve unsupportedGOasunsupporteduntil justified; do not auto-mapGOtoBUY."
+    },
+    {
+      "classification": "NEEDS_DESIGN",
+      "action": "Preserve immutable event envelope with stable source record ID/digest, event_observed_at and actualavailable_at; confirmedidentity GUID/status/identity_as_of/source_ref; equityquote marketas_of andavailable_at/source_ref. Do not backdate missing facts."
+    },
+    {
+      "classification": "SOURCE_SCOPE_ONLY",
+      "action": "Build an explicit offline adapter validating the contractedsignals.jsonl/prices.jsonl and an immutable manifest containing capturedwindow/as_of, sourcequery/recordprovenance, exactfileSHA256, counts andrefusals. No scheduler, productionwriter or flag activation."
+    },
+    {
+      "classification": "NEEDS_OPERATOR_GRANT_IF_NEW_AUTHORITY_OR_RUNTIME_WRITER",
+      "action": "Choose the governed archive source/root, retention and any new authorityregistry grant before creating a production archival writer. Start from real capturedfacts; preserve missingfacts and failures. No model choice is needed for metadata/exportvalidation."
+    },
+    {
+      "classification": "RETAIN_WITH_REASON",
+      "action": "Leave optionalposition/expressionfacts absent when notproven. Signal/pricecoverage counts may become nonzero after strictfacts exist; reportINSUFFICIENT_DATA, financial_actionfalse andnullsuperiority."
+    },
+    {
+      "classification": "NEEDS_SEPARATE_DECISION",
+      "action": "If pricedoptioncomparisons are desired, archive actual timestampedcontracts/bid/ask/expiry/strike/right/liquidity and governingquoteavailability, plus authorized point-timeexpressionassumptions. Summary-onlyoptionsrecords cannot satisfy this and no liveprovidercall is implied."
+    }
+  ],
+  "options_ev_ready": false,
+  "production_replay_executed": false,
+  "readiness": "NOT_READY",
+  "safe_queries_passed": 8,
+  "failed_queries": [],
+  "evidence": [
+    {
+      "path": "/tmp/tradeai-historical-replay-aggregates-20261009T152000Z.json",
+      "sha256": "9097e4ed62a51e20111fd9b823d6b276c4b946425d1550926784dff2e9a3e004",
+      "evidence_class": "OBSERVED_DB"
+    },
+    {
+      "path": "/tmp/tradeai-historical-replay-schema-20261009T151000Z.json",
+      "sha256": "cc555b8298cf3163cfa7002b955ff2408df1f9d90f116722229ccad1e65c64ff",
+      "evidence_class": "OBSERVED_DB"
+    },
+    {
+      "path": "/tmp/crossasset-archive-asof-audit-20261009T134145Z.json",
+      "sha256": "41e25add9f21f8e5809248cf9c297a4f47e825f270abd99cfa40b52fe9db5dd2",
+      "evidence_class": "OBSERVED_DB_PRIOR_SNAPSHOT"
+    }
+  ],
+  "source_citations": [
+    {
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/ops/run_cross_asset_historical_replay.py",
+      "sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+      "evidence_class": "SOURCE_ONLY"
+    },
+    {
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/cross_asset_decision.py",
+      "sha256": "c0d3f2dfd392ac69b2f4dec7833aa006aa915c8246b1b41c4ec58eb5f81b16eb",
+      "evidence_class": "SOURCE_ONLY"
+    },
+    {
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/strategy_signal_sync.py",
+      "sha256": "22d0d09a11db5da0acbfa9083529013c525c86a243fa00738e0fcb8b28d101a2",
+      "evidence_class": "SOURCE_ONLY",
+      "lines_of_interest": [
+        482,
+        488,
+        495,
+        518,
+        530
+      ]
+    },
+    {
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/backfill_trade_plans_for_signals.py",
+      "sha256": "0e912ba8ef91b803fb0915d0cc8e5c6413a9588c32e799ae238f3325a62be794",
+      "evidence_class": "SOURCE_ONLY",
+      "lines_of_interest": [
+        215,
+        216
+      ]
+    },
+    {
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/session16b_backfill_signal_descriptions.py",
+      "sha256": "fb5e41b88fd04bc04c91db0688c32e426071fb6d85079188126de0dbbaa0a991",
+      "evidence_class": "SOURCE_ONLY",
+      "lines_of_interest": [
+        73
+      ]
+    },
+    {
+      "path": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/config/data_source_authority.json",
+      "sha256": "d36e96b16428fe04031f65923c65f00ae6b0098310e47a73e990d5b37308f6fb",
+      "evidence_class": "SOURCE_ONLY"
+    }
+  ]
+}

@@ -1,0 +1,491 @@
+
+> command-center-v3@3.0.0 build
+> bash ../../scripts/check_design_tokens.sh && node ../../scripts/check_ui_standards.mjs && node ../../scripts/check_token_contrast.mjs && node ../../scripts/gen_metric_guide_keys.mjs --check && node ../../scripts/test_chip_scope.mjs && node ../../scripts/test_metric_strip_labels.mjs && node src/lib/surfaceFreshness.test.ts && node src/lib/agentModelLabel.test.ts && node src/lib/observationEnvelope.test.ts && node src/lib/setupRunSummary.test.ts && node src/lib/homeWinRate.test.ts && node src/lib/retainedObservation.test.ts && node src/lib/surfaceAuthority.test.ts && node src/lib/operatorBoundary.test.ts && node src/lib/httpOutcome.test.ts && node src/lib/surfaceProjection.test.ts && node src/lib/bookTreemapLayout.test.ts && node src/lib/oscillatorDisplay.test.ts && node src/lib/designTokens.test.ts && node src/lib/tableSort.test.ts && node src/lib/metricGuideEnvelope.test.ts && node src/lib/optionsCardV5.test.ts && node src/lib/optionsDeskTruth.test.ts && node src/lib/optionChainTruth.test.ts && node src/lib/entryAlerts.test.ts && node --experimental-strip-types src/lib/alertsCenter.test.ts && node --experimental-strip-types src/lib/cioHubTabs.test.ts && node --experimental-strip-types src/lib/cioDecisionLineage.test.ts && node --experimental-strip-types src/lib/agentCalibration.test.ts && node --experimental-strip-types src/lib/hermesResearchLinks.test.ts && node --experimental-strip-types src/lib/cioProjection.test.ts && node --experimental-strip-types src/lib/agentRuntimeSurfaceContract.test.ts && node --experimental-strip-types src/lib/cioOperatorArtifacts.test.ts && node --experimental-strip-types src/lib/coordinationEvents.test.ts && node --experimental-strip-types src/lib/outboxProjection.test.ts && node --experimental-strip-types src/lib/approvalBoard.test.ts && node --experimental-strip-types src/lib/migrationBoard.test.ts && tsc && vite build
+
+[design-guard] pass (397 files checked against baseline)
+[ui-standards] pass — 518 files; debt hex=3258 font=1388 radius=2210 shadow=35 guide=133
+[contrast] 141/141 pairs pass across 3 themes (min 4.5:1)
+[metric-guide] keys current (167)
+✓ ranks scoped to rendered list
+✓ new-to-list entrant flagged, no phantom delta
+✓ callout: improvement vs deterioration separated correctly
+ALL CHIP-SCOPE TESTS PASS
+  [PASS] renderer no longer hardcodes the as_of label
+  [PASS] renderer takes the label from the tile
+  [PASS] no tile labels a clock "data_as_of" any more
+  [PASS] the portfolio tile names the position-observation clock
+  [PASS] the today tile names the P&L's own session
+  [PASS] no two tiles share a static clock label
+  [PASS] the value coverage the headline date speaks for still reaches the tooltip
+  [PASS] coverage-% no longer competes for tile-face width
+  [PASS] the oldest contributor carries a stamp and an age, not just a name
+  [PASS] the oldest contributor is on HOVER (tip), not concatenated into face asOfNote
+  [PASS] face portfolio note carries no account census
+  [PASS] the divergence mark is not gated on any design flag
+  [PASS] the four aggregate clocks are rendered as separate lines
+  [PASS] an empty account cannot make TODAY incomplete
+  [PASS] TODAY distinguishes empty accounts from ones that did not report
+  [PASS] today's coverage is stated over FUNDED accounts, not linked ones
+  [PASS] today's coverage names the missing accounts rather than only a count
+  [PASS] the setups tile carries its run id
+  [PASS] unaccounted setup rows are shown on the tile face
+  [PASS] a divergence between the two position-clock copies is shown, not resolved
+  [PASS] accounts holding nothing are named, not counted as unobserved
+  [PASS] undated is counted over contributors, not over every account row
+  [PASS] degraded quotes state their symbol coverage
+  [PASS] the selected quote observation is its own mark
+  [PASS] an UNDATED tile renders a line rather than nothing
+  [PASS] the overview mark names data_as_of and states UNDATED
+  [PASS] every tile renders a fixed three-element subtree, so no ordinal CSS rule can retarget the value
+  [PASS] the value line states its own size rather than inheriting an ordinal override
+  [PASS] no line in a tile may wrap
+  [PASS] the price stamp is clipped, not spilled
+  [PASS] the full price stamp survives in the title rather than being dropped
+  [PASS] run health is read from freshness_status, never inferred from reconciliation
+  [PASS] run health and reconciliation stay separately named on the tile
+  [PASS] the underfill floor is stated beside the scanned count
+  [PASS] the two run clocks are named scheduled vs finished
+  [PASS] an unzoned run stamp is marked unzoned, never given an assumed zone
+  [PASS] the source no longer claims the run zone is stated
+  [PASS] a quiet face still leaves the clock facts stated on hover
+  [PASS] quote coverage stays on the face in the healthy state
+  [PASS] a tile signals state through a rail, at zero width cost
+
+metric_strip_labels: 40 passed, 0 failed
+  [PASS] the TODAY tile no longer attributes an all-accounts figure to one account
+  [PASS] the TODAY tile keeps account census on hover, not face asOfNote
+  [PASS] the TODAY provenance note is derived from the contributing accounts
+  [PASS] the TODAY hover note falls back to a scope, never a single account name
+  [PASS] the TRADING tile labels its win rate
+  [PASS] the TRADING tile labels its trade count
+  [PASS] the TRADING tile labels its P&L
+
+metric_strip_header_truth: 47 passed, 0 failed
+  [PASS] ISO Z parses
+  [PASS] date-only parses
+  [PASS] null → null
+  [PASS] garbage → null
+  [PASS] fresh scan not stale
+  [PASS] fresh has no surfaceLabel
+  [PASS] TTL-stale populated scan is not chrome STALE
+  [PASS] TTL-stale populated has no surfaceLabel
+  [PASS] empty stale cache is stale despite today run_date
+  [PASS] surfaceLabel starts with STALE
+  [PASS] reason mentions empty or cache
+  [PASS] asOf is cached_at
+  [PASS] ageHours ~84h
+  [PASS] prior run_date is stale
+  [PASS] overview fresh data -> not stale
+  [PASS] overview fresh reports dataAsOf
+  [PASS] stale data beats a recent loader run
+  [PASS] age is dated from data_as_of, not as_of
+  [PASS] chip names the account that owns the stale row
+  [PASS] chip reports data_as_of as its asOf
+  [PASS] mutation: as_of would under-report the age by weeks
+  [PASS] no data_as_of -> UNDATED, not fresh
+  [PASS] UNDATED says so
+  [PASS] UNDATED does not invent an age
+  [PASS] UNDATED does not invent a date
+  [PASS] UNDATED renders no date at all
+  [PASS] UNDATED does not borrow the loader-run date
+  [PASS] UNDATED still says UNDATED on the surface
+  [PASS] UNDATED still reports stale
+  [PASS] UNDATED still names the responsible account
+  [PASS] UNDATED with an account still renders no date
+  [PASS] a dated block still exposes the data clock
+  [PASS] a dated block never exposes the loader clock
+  [PASS] WI dataSource is decision_projection
+  [PASS] WI liveClaim false
+  [PASS] WI spine false
+  [PASS] WI surfaceNote mentions InstrumentRecord
+
+surfaceFreshness: 37 passed, 0 failed
+agentModelLabel.test: ok
+  [PASS] business date resolves to an instant
+  [PASS] business date anchors to 16:00 ET = 20:00Z in EDT
+  [PASS] business date handles EST without a DST table
+  [PASS] malformed business date → null
+  [PASS] empty business date → null
+  [PASS] business date is labelled as a session date
+  [PASS] absent business date renders UNDATED, not blank
+  [PASS] fresh envelope is OK transport
+  [PASS] fresh envelope renders no state chip
+  [PASS] current-looking value with stale metadata is labelled STALE
+  [PASS] a stale envelope never reports null chrome
+  [PASS] missing value fails closed to UNKNOWN
+  [PASS] missing value is never FRESH
+  [PASS] value with no clock is PARTIAL, not current
+  [PASS] clockless envelope explains itself
+  [PASS] malformed date is dropped, not coerced
+  [PASS] future business date still parses to a real instant (caller judges skew)
+  [PASS] future-skewed observation is not rendered as fresh
+  [PASS] transport error is visible
+  [PASS] 304 retained + stale renders both facts
+  [PASS] 304 updated receivedAt only
+  [PASS] 304 did NOT advance the observation clock
+  [PASS] retained data is never silently OK
+  [PASS] two identities coalesce to PARTIAL
+  [PASS] mixed-source note names both identities
+  [PASS] one identity stays coherent
+  [PASS] value carries its own clock and freshness
+  [PASS] any stale part makes the whole stale
+  [PASS] unknown part downgrades a fresh whole
+  [PASS] server freshness is echoed, never recomputed from age
+  [PASS] ERROR outranks PARTIAL
+  [PASS] PARTIAL outranks RETAINED
+  [PASS] OK is the floor
+  [PASS] every transport/freshness pair has a non-empty aria label
+  [PASS] fresh+OK speaks as current
+  [PASS] partial speaks its cause
+  [PASS] server FRESH maps
+  [PASS] server STALE maps
+  [PASS] absent observation fails closed
+  [PASS] unrecognised status fails closed
+  [PASS] fallback used only when observation absent
+  [PASS] server STALE beats fallback FRESH
+
+observationEnvelope: 42 passed, 0 failed
+  [PASS] null summary → DATA_UNAVAILABLE
+  [PASS] undefined summary → DATA_UNAVAILABLE
+  [PASS] fully reconciled summary → RECONCILED
+  [PASS] GO+WAIT+NOGO != classified → COUNT_MISMATCH even if wire says RECONCILED
+  [PASS] classified+excluded+unclassified != scanned → COUNT_MISMATCH
+  [PASS] missing classified_count is never RECONCILED
+  [PASS] missing classified_count surfaces a residual verdict
+  [PASS] missing scanned_count → DATA_UNAVAILABLE
+  [PASS] residual server verdict is surfaced
+  [PASS] counts partition the three labels
+  [PASS] population names every non-zero class, omitting none
+  [PASS] a fully accounted run shows no UNACCOUNTED marker
+  [PASS] reconciled render is not degraded
+  [PASS] go>0 marks the strip green
+  [PASS] run id is carried
+  [PASS] run timestamp is carried
+  [PASS] mismatched run renders degraded
+  [PASS] mismatched run carries the integrity verdict
+  [PASS] mismatched run is degraded first, so go>0 cannot light green
+  [PASS] no summary renders an explicit pre-run label
+  [PASS] no summary has no population
+  [PASS] no summary is degraded
+  [PASS] stale render uses the stale label verbatim
+  [PASS] stale render is degraded
+  [PASS] stale render is never goPositive
+  [PASS] zero-GO run is not goPositive
+
+setupRunSummary: 26 passed, 0 failed
+  [PASS] the 12 escalations are named on the tile
+  [PASS] the escalations are not folded into NOGO
+  [PASS] nothing is left for the reader to subtract
+  [PASS] a fully accounted, reconciled run is not degraded
+  [PASS] the run id survives to the tile
+  [PASS] unaccounted rows are stated, never silently dropped
+  [PASS] an unaccounted run is degraded regardless of the wire verdict
+  [PASS] unaccounted count is exposed to callers
+  [PASS] a reconciled run can still be an unhealthy one
+  [PASS] reconciliation stays false-negative-free: degraded is about the tally only
+  [PASS] the raw producer status is carried, not re-derived
+  [PASS] the health tier matches the classifier the Trading panel uses
+  [PASS] a healthy run with an unaccounted tally is still degraded
+  [PASS] a healthy run is not health-degraded
+  [PASS] the two verdicts are independent
+  [PASS] a stale surface still reports the run health it last saw
+  [PASS] an absent summary reports unknown health, never healthy
+  [PASS] paper value from readiness.win_rate
+  [PASS] paper trades from readiness.closed_usable
+  [PASS] paper names its source
+  [PASS] paper names its basis
+  [PASS] paper scope is paper
+  [PASS] paper window is all_time
+  [PASS] paper carries its observation time
+  [PASS] paper with no readiness win_rate is null, not a borrowed journal value
+  [PASS] paper with no readiness win_rate still names its own source
+  [PASS] journal value from overview.journal.win_rate
+  [PASS] journal trades from overview.journal.trade_count
+  [PASS] journal names its source
+  [PASS] journal carries its basis
+  [PASS] journal carries its account scope
+  [PASS] journal carries its window
+  [PASS] journal carries its observation time
+  [PASS] journal with no win_rate is null, not a borrowed readiness value
+  [PASS] journal with no win_rate still names its own source
+  [PASS] paper and journal are two distinct sources
+  [PASS] paper value is not the journal value
+  [PASS] paper trades are not the journal trades
+  [PASS] neither helper mentions the other endpoint
+
+homeWinRate: 22 passed, 0 failed
+  [PASS] retained value is unchanged
+  [PASS] retained identity is unchanged
+  [PASS] retained sourceLabel is unchanged
+  [PASS] retained businessDate is unchanged
+  [PASS] retained observedAt is unchanged
+  [PASS] retained lastRefreshAt is unchanged
+  [PASS] retained freshness is unchanged
+  [PASS] retained transport is RETAINED
+  [PASS] retained receivedAt advances
+  [PASS] retained envelope explains itself
+  [PASS] age is measured from observedAt
+  [PASS] retained observation ages identically
+  [PASS] age grows across repeated 304s
+  [PASS] data clock never moved
+  [PASS] receipt clock tracked each 304
+  [PASS] not stale below threshold
+  [PASS] stale AT the threshold
+  [PASS] stale past the threshold
+  [PASS] retained observation surfaces the retention
+  [PASS] stale + retained renders both facts
+  [PASS] undatable observation has no age
+  [PASS] undatable observation is never stale
+
+retainedObservation: 22 passed, 0 failed
+  [PASS] LIVE_GOVERNED is live
+  [PASS] LIVE_GOVERNED needs no banner
+  [PASS] LIVE_GOVERNED keeps the server reason
+  [PASS] PREVIEW_FIXTURE is not live
+  [PASS] PREVIEW_FIXTURE requires a banner
+  [PASS] PREVIEW_FIXTURE banner is undismissable
+  [PASS] PREVIEW_FIXTURE label names the mode
+  [PASS] FROZEN_SNAPSHOT is not live
+  [PASS] FROZEN_SNAPSHOT requires a banner
+  [PASS] FROZEN_SNAPSHOT banner is undismissable
+  [PASS] FROZEN_SNAPSHOT label names the mode
+  [PASS] UNAVAILABLE is not live
+  [PASS] UNAVAILABLE requires a banner
+  [PASS] UNAVAILABLE banner is undismissable
+  [PASS] UNAVAILABLE label names the mode
+  [PASS] UNKNOWN is not live
+  [PASS] UNKNOWN requires a banner
+  [PASS] UNKNOWN banner is undismissable
+  [PASS] UNKNOWN label names the mode
+  [PASS] missing authority is UNKNOWN
+  [PASS] missing authority is not live
+  [PASS] missing authority still banners
+  [PASS] UNAVAILABLE endpoint is UNKNOWN
+  [PASS] UNAVAILABLE endpoint surfaces the server reason
+  [PASS] a route with no row is UNKNOWN
+  [PASS] a route with no row names itself in the reason
+  [PASS] an unrecognised mode is UNKNOWN, not trusted
+  [PASS] an unrecognised mode is not live
+  [PASS] a malformed surfaces field is UNKNOWN
+  [PASS] the bundled fixture is disclosed
+  [PASS] the fixture path is named
+  [PASS] a fixture may never render as live
+  [PASS] a failed live read does not become live via the fixture
+  [PASS] a failed live read still discloses the fixture
+  [PASS] asking for a different route does not inherit another route verdict
+  [PASS] a mismatched route is not live
+
+surfaceAuthority: 36 passed, 0 failed
+  [PASS] enforced gate reports ENFORCED
+  [PASS] enforced gate lets controls arm
+  [PASS] enforced gate has no disabled reason
+  [PASS] identity is still never verified
+  [PASS] declared-but-unconfigured reports OPEN
+  [PASS] an open door does not arm controls
+  [PASS] the disabled reason names ADMIN_WRITE_TOKEN
+  [PASS] the reason explains declared vs effective
+  [PASS] no declared gate reports OPEN
+  [PASS] no declared gate does not arm controls
+  [PASS] no declared gate says so
+  [PASS] an unanswered boundary is UNKNOWN
+  [PASS] UNKNOWN never arms a control
+  [PASS] UNKNOWN gives an exact disabled reason
+  [PASS] an unanswered boundary is UNKNOWN
+  [PASS] UNKNOWN never arms a control
+  [PASS] UNKNOWN gives an exact disabled reason
+  [PASS] an unanswered boundary is UNKNOWN
+  [PASS] UNKNOWN never arms a control
+  [PASS] UNKNOWN gives an exact disabled reason
+  [PASS] UNKNOWN surfaces the server reason verbatim
+  [PASS] audit label is marked unverified
+  [PASS] an empty name is not silently accepted
+  [PASS] whitespace is not an operator
+  [PASS] a blank operator falls back to unnamed
+
+operatorBoundary: 25 passed, 0 failed
+  [PASS] 401 is UNAUTHORIZED
+  [PASS] 401 is terminal
+  [PASS] 401 is NOT retryable
+  [PASS] 401 does not raise the reconnect banner
+  [PASS] 401 keeps the last-good body
+  [PASS] 401 says waiting will not help
+  [PASS] 401 never says reconnecting
+  [PASS] 403 is FORBIDDEN
+  [PASS] 403 is terminal
+  [PASS] 403 is NOT retryable
+  [PASS] 403 does not raise the reconnect banner
+  [PASS] 403 keeps the last-good body
+  [PASS] 403 says waiting will not help
+  [PASS] 403 never says reconnecting
+  [PASS] 400 is CLIENT_ERROR
+  [PASS] 400 is terminal
+  [PASS] 400 is not retryable
+  [PASS] 404 is CLIENT_ERROR
+  [PASS] 404 is terminal
+  [PASS] 404 is not retryable
+  [PASS] 409 is CLIENT_ERROR
+  [PASS] 409 is terminal
+  [PASS] 409 is not retryable
+  [PASS] 422 is CLIENT_ERROR
+  [PASS] 422 is terminal
+  [PASS] 422 is not retryable
+  [PASS] 408 is TIMEOUT
+  [PASS] 408 is retryable
+  [PASS] 408 is not terminal
+  [PASS] 425 is TIMEOUT
+  [PASS] 425 is retryable
+  [PASS] 425 is not terminal
+  [PASS] 429 is RATE_LIMITED
+  [PASS] 429 is retryable
+  [PASS] 429 is not terminal
+  [PASS] 500 is SERVER_ERROR
+  [PASS] 500 is retryable
+  [PASS] 500 is not terminal
+  [PASS] 502 is SERVER_ERROR
+  [PASS] 502 is retryable
+  [PASS] 502 is not terminal
+  [PASS] 503 is SERVER_BUSY
+  [PASS] 503 is retryable
+  [PASS] 503 is not terminal
+  [PASS] 504 is SERVER_ERROR
+  [PASS] 504 is retryable
+  [PASS] 504 is not terminal
+  [PASS] 503 does not raise the reconnect banner
+  [PASS] 500 does raise the reconnect banner
+  [PASS] 200 is OK
+  [PASS] 304 is NOT_MODIFIED
+  [PASS] 304 keeps the last-good body
+  [PASS] 304 is not an error to retry
+  [PASS] delta-seconds parses
+  [PASS] zero is honoured, not treated as absent
+  [PASS] an HTTP-date parses to a delay
+  [PASS] a past date clamps to zero
+  [PASS] an absurd delay is capped
+  [PASS] garbage is null, not a guess
+  [PASS] missing is null
+  [PASS] empty is null
+  [PASS] 429 carries the server-directed delay
+  [PASS] 503 carries the server-directed delay
+  [PASS] 401 exposes no retry delay to act on
+  [PASS] an abort is a TIMEOUT
+  [PASS] an abort is retryable
+  [PASS] an abort raises the reconnect banner
+  [PASS] a network error is NETWORK
+  [PASS] a network error is retryable
+  [PASS] a network error keeps the last-good body
+  [PASS] authorization and busy are not the same class
+  [PASS] only one of them is retryable
+  [PASS] only one of them is terminal
+
+httpOutcome: 73 passed, 0 failed
+surfaceProjection: every state a surface can reach
+  [PASS] POPULATED is a measurement
+  [PASS] POPULATED carries its reason
+  [PASS] LEGITIMATE_EMPTY is a measurement
+  [PASS] LEGITIMATE_EMPTY carries its reason
+  [PASS] STALE is a measurement
+  [PASS] STALE carries its reason
+  [PASS] PARTIAL is a measurement
+  [PASS] PARTIAL carries its reason
+  [PASS] DEGRADED is a measurement
+  [PASS] DEGRADED carries its reason
+  [PASS] DISCONNECTED measured nothing
+  [PASS] DISCONNECTED may not render a count
+  [PASS] UNAUTHORIZED measured nothing
+  [PASS] UNAUTHORIZED may not render a count
+  [PASS] FORBIDDEN measured nothing
+  [PASS] FORBIDDEN may not render a count
+  [PASS] MALFORMED measured nothing
+  [PASS] MALFORMED may not render a count
+  [PASS] ERROR measured nothing
+  [PASS] ERROR may not render a count
+  [PASS] LOADING measured nothing
+  [PASS] LOADING may not render a count
+  [PASS] POPULATED shows no notice
+  [PASS] LEGITIMATE_EMPTY shows no notice
+  [PASS] STALE shows a notice
+  [PASS] UNAUTHORIZED shows a notice
+  [PASS] a missing envelope is ERROR not empty
+  [PASS] a missing envelope explains itself
+surfaceProjection: a failed read never renders a number
+  [PASS] failed read yields null not 0
+  [PASS] failed read yields null for a real count
+  [PASS] a real empty renders 0
+  [PASS] a populated count renders
+  [PASS] a non-numeric count is null
+  [PASS] NaN is not a count
+surfaceProjection: conflict scope is per record, never global
+  [PASS] one unresolved record is counted
+  [PASS] the disputed field is named
+  [PASS] an unrelated record in the same store is untouched
+  [PASS] an unrelated store is untouched
+  [PASS] every blocked calculation names the record
+  [PASS] nothing global is blocked
+  [PASS] both originals are preserved
+  [PASS] no conflicts blocks nothing
+  [PASS] a missing conflict envelope blocks nothing but counts nothing
+
+surfaceProjection: 43 passed, 0 failed
+surfaceProjection: data mode is about the bytes, not the transport
+  [PASS] LIVE is operational truth
+  [PASS] STALE is still real data
+  [PASS] MOCK is never operational truth
+  [PASS] DIVERGED is never operational truth
+  [PASS] UNAVAILABLE is not operational truth
+  [PASS] a missing data_mode defaults to UNAVAILABLE
+  [PASS] a missing envelope is UNAVAILABLE
+  [PASS] MOCK still reports its state
+
+surfaceProjection(data mode): 51 passed, 0 failed
+BookTreemap squarify: geometry is always finite
+  [PASS] zero height emits no rects
+  [PASS] zero width emits no rects
+  [PASS] negative height emits no rects
+  [PASS] NaN height emits no rects
+  [PASS] Infinity width emits no rects
+  [PASS] a normal box still lays out every item
+  [PASS] a normal box is entirely finite
+  [PASS] a normal box has no negative dimensions
+  [PASS] all-zero sizes emit no rects
+  [PASS] a NaN size is dropped, not laid out
+  [PASS] an empty item list is fine
+  [PASS] a one-pixel strip is finite
+
+BookTreemap squarify: 12 passed, 0 failed
+  [PASS] breadth_pct carries %
+  [PASS] breadth formats as 27%
+  [PASS] rs_score carries no %
+  [PASS] rs_score formats as 100
+  [PASS] RS20 carries no unit
+  [PASS] rel1m carries no unit
+  [PASS] null reading_name carries no unit
+  [PASS] undefined reading_name carries no unit
+  [PASS] null → null, not "never"
+  [PASS] undefined → null
+  [PASS] empty string → null
+  [PASS] unparseable → null, not NaN
+  [PASS] 30 minutes
+  [PASS] 5 hours
+  [PASS] 17 days
+oscillatorDisplay: 15 passed, 0 failed
+✓ every tone resolves to its three css vars
+✓ legacy verdict vocabulary maps onto tones
+✓ chip recipe and token maps are literal-free
+✓ chart hex is the only literal palette, both themes
+node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'react' imported from /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/apps/command-center-v3/src/lib/tableSort.ts
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:768:81)
+    at moduleResolve (node:internal/modules/esm/resolve:855:18)
+    at defaultResolve (node:internal/modules/esm/resolve:985:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.23.2

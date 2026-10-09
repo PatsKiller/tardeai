@@ -1,0 +1,189 @@
+{
+  "schema": "BoundedCurrentSourceFeatureCoverage@v1",
+  "as_of": "2026-10-09T15:04:42.624637+00:00",
+  "base_observation": "/tmp/tradeai-current-identity-host-20261009T145200Z.json",
+  "base_sha256": "ac76e6674daa93b9aeaa97fa6861f43967eef5bf87925076f133306a74e13d24",
+  "CURRENT_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+  "candidate_sha_at_observation": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "scope": "SOURCE_ONLY inspection of installed files versus corrective candidate, with actual service/HTTP identity in separate OBSERVED_HOST artifact",
+  "features": [
+    {
+      "feature": "Settled-result SSE avoids another provider call",
+      "installed_release_source": true,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "The deployed source already re-emits the settled result. Candidate additionally preserves all choices/indices/message fields and typed stream error handling; no paid/provider test occurred.",
+      "paths": [
+        "scripts/lib/cio_governed_model_bridge.py:1724",
+        "scripts/lib/cio_governed_model_bridge.py:2099"
+      ]
+    },
+    {
+      "feature": "Caller auth health reporting and child credential isolation",
+      "installed_release_source": true,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "These incoming main guardrails are installed in source. Reporting does not imply policy ratification or actual child-environment proof.",
+      "paths": [
+        "scripts/lib/cio_governed_model_bridge.py",
+        "scripts/n8n_run_executor.py:93"
+      ]
+    },
+    {
+      "feature": "Fallback flag plus fresh provider-attributable recovery",
+      "installed_release_source": false,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "The deployed source lacks these corrective guards and can qualify alternate health from global receipts; candidate correction remains source-only.",
+      "paths": [
+        "scripts/lib/cio_governed_model_bridge.py"
+      ]
+    },
+    {
+      "feature": "Strict live exit-0 receipt and bounded N2 retry",
+      "installed_release_source": false,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "Installed template source still uses Wait retry .all().length. Existing DB workflow code was not re-read; deploying templates alone never updates DB workflows.",
+      "paths": [
+        "scripts/n8n_workflow_templates.py:797"
+      ]
+    },
+    {
+      "feature": "Relay preserves dependency proof exit_code",
+      "installed_release_source": false,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "Required relay predecessor proof fields remain a candidate correction; no authenticated relay read or run request occurred.",
+      "paths": [
+        "scripts/n8n_run_relay.py:50"
+      ]
+    },
+    {
+      "feature": "Cutover cadence fidelity before mutations",
+      "installed_release_source": false,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "Candidate checks canonical recurring cadence and exact legacy schedule before scheduler/config writes. No helper mutation was performed.",
+      "paths": [
+        "scripts/pipelines/cutover/_cutover.py:284"
+      ]
+    },
+    {
+      "feature": "Registry recurring cadence validation",
+      "installed_release_source": false,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "Candidate source guard remains uninstalled; observation does not decide current runtime ownership.",
+      "paths": [
+        "scripts/lib/lane_registry.py:180"
+      ]
+    },
+    {
+      "feature": "Offline contracted replay preserves aliased archives and refuses derived nonfinite scores",
+      "installed_release_source": false,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "The validated offline replay source is still corrective candidate only. It does not establish actual production counts, option economics or advisory event-to-consumer wiring.",
+      "paths": [
+        "scripts/ops/run_cross_asset_historical_replay.py"
+      ]
+    },
+    {
+      "feature": "Stable article-content research dedupe",
+      "installed_release_source": false,
+      "corrective_candidate_source": true,
+      "evidence_class": "SOURCE_ONLY",
+      "actual_feature_execution_evidence": "NOT_MEASURED",
+      "detail": "Producer source differs; tested candidate repair dedupes stable article content across times/releases, retaining changed content. Runtime journal/natural output was not re-read.",
+      "paths": [
+        "scripts/lib/governed_research_producer.py"
+      ]
+    }
+  ],
+  "selected_N1_source_intent": {
+    "installed_release_source": {
+      "crontab-snapshot-for-health-agent": {
+        "scheduler_kind": "n8n",
+        "cadence": "*/20 * * * *",
+        "expression": "c0d4c7845e5c4fcc",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "n8n-pilot-dispatch": {
+        "scheduler_kind": "n8n",
+        "cadence": "*/15 * * * *",
+        "expression": "078e8fcbea0c5020",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "n8n-incident-fanin": {
+        "scheduler_kind": "n8n",
+        "cadence": "*/5 * * * *",
+        "expression": "722fac0e043ea5c4",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "n8n-research-intake-consumer": {
+        "scheduler_kind": "n8n",
+        "cadence": "*/15 * * * *",
+        "expression": "21fd15d5f8a4c4da",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      }
+    },
+    "corrective_candidate_source": {
+      "crontab-snapshot-for-health-agent": {
+        "scheduler_kind": "cron",
+        "cadence": null,
+        "expression": "*/20 * * * *",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "n8n-pilot-dispatch": {
+        "scheduler_kind": "cron",
+        "cadence": null,
+        "expression": "*/15 * * * *",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "n8n-incident-fanin": {
+        "scheduler_kind": "cron",
+        "cadence": null,
+        "expression": "*/5 * * * *",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "n8n-research-intake-consumer": {
+        "scheduler_kind": "cron",
+        "cadence": null,
+        "expression": "*/15 * * * *",
+        "declared_state": "ACTIVE",
+        "evidence_class": "SOURCE_ONLY"
+      }
+    }
+  },
+  "n8n_DB_workflow_code_refreshed": false,
+  "runtime_grants_or_leases_consumed": false,
+  "manual_fires_or_provider_calls": false,
+  "operator_constraints": [
+    "MFA OFF is RETAIN_WITH_REASON, not an instruction to enable",
+    "No model choice or routing migration",
+    "Policy3.0.0 PROPOSED grants no new authority",
+    "Ollama system retirement unfinished; observed active/listening, no mutation"
+  ],
+  "deployment_limits": [
+    "Exact-main promotion cannot retrospectively prove N1 shadow/canary/lock/consumer gates",
+    "Workflow DB code requires its own governed reviewed update; source template deployment alone is insufficient",
+    "Actual production replay and option EV remain NOT_MEASURED/NOT_READY",
+    "No new archive export, state writer, model call, queue or scheduler was activated"
+  ]
+}

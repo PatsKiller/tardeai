@@ -1,0 +1,705 @@
+{
+  "schema": "HistoricalAdvisoryReplayFeasibilityMetadata@v1",
+  "as_of": "2026-10-09T15:40:11.975355+00:00",
+  "evidence_class": "OBSERVED_DB",
+  "transactions_read_only": true,
+  "production_writes": false,
+  "provider_calls": false,
+  "archive_exports": false,
+  "raw_signal_or_private_position_values_returned": false,
+  "credential_values_returned": false,
+  "queries": {
+    "signal_archive_table_presence": {
+      "sql": "SELECT table_schema,table_name,table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') AND (table_name IN ('strategy_signals_history','strategy_signals','market_ohlcv_bars','ticker_prices') OR table_name ~ '^strategy.*signal.*history$') ORDER BY table_schema,table_name",
+      "rows": [
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "table_type": "BASE TABLE"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "table_type": "BASE TABLE"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "ticker_prices",
+          "table_type": "BASE TABLE"
+        }
+      ],
+      "elapsed_s": 0.0095
+    },
+    "contract_columns": {
+      "sql": "SELECT table_schema,table_name,column_name,data_type,udt_name,is_nullable FROM information_schema.columns WHERE table_schema NOT IN ('pg_catalog','information_schema') AND table_name IN ('strategy_signals_history','strategy_signals','market_ohlcv_bars','ticker_prices') ORDER BY table_schema,table_name,ordinal_position",
+      "rows": [
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "id",
+          "data_type": "integer",
+          "udt_name": "int4",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "symbol",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "timeframe",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "bar_time",
+          "data_type": "timestamp with time zone",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "open",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "high",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "low",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "close",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "volume",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "source",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "market_ohlcv_bars",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone",
+          "udt_name": "timestamptz",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "id",
+          "data_type": "integer",
+          "udt_name": "int4",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "strategy_id",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "symbol",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "signal_type",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "signal_grade",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "signal_score",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "price",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "rvol",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "float_m",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "gap_pct",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "catalyst",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "catalyst_verified",
+          "data_type": "boolean",
+          "udt_name": "bool",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "setup_description",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "entry_low",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "entry_high",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "stop_loss",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "target_1",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "target_2",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "risk_reward",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "shares",
+          "data_type": "integer",
+          "udt_name": "int4",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "dollar_risk",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "vix_at_signal",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "market_regime",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "sector",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "intel_readiness",
+          "data_type": "integer",
+          "udt_name": "int4",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "source_quality",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "status",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "fired_at",
+          "data_type": "timestamp with time zone",
+          "udt_name": "timestamptz",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "expires_at",
+          "data_type": "timestamp with time zone",
+          "udt_name": "timestamptz",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "telegram_sent",
+          "data_type": "boolean",
+          "udt_name": "bool",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "trade_journal_id",
+          "data_type": "integer",
+          "udt_name": "int4",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "outcome_verdict",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "outcome_pnl",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "source_table",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "source_record_id",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "scan_run_label",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "screener_label",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "discovery_source",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "sync_created_by",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "sync_run_id",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "route_match_reasons",
+          "data_type": "jsonb",
+          "udt_name": "jsonb",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "route_reject_reasons",
+          "data_type": "jsonb",
+          "udt_name": "jsonb",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "route_score",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "setup_stack",
+          "data_type": "jsonb",
+          "udt_name": "jsonb",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "primary_strategy_id",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "secondary_strategy_ids",
+          "data_type": "jsonb",
+          "udt_name": "jsonb",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "strategy_config_hash",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "column_name": "discovery_trace_id",
+          "data_type": "text",
+          "udt_name": "text",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "ticker_prices",
+          "column_name": "id",
+          "data_type": "integer",
+          "udt_name": "int4",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "ticker_prices",
+          "column_name": "symbol",
+          "data_type": "character varying",
+          "udt_name": "varchar",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "ticker_prices",
+          "column_name": "price_date",
+          "data_type": "date",
+          "udt_name": "date",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "ticker_prices",
+          "column_name": "close_price",
+          "data_type": "numeric",
+          "udt_name": "numeric",
+          "is_nullable": "NO"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "ticker_prices",
+          "column_name": "source",
+          "data_type": "character varying",
+          "udt_name": "varchar",
+          "is_nullable": "YES"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "ticker_prices",
+          "column_name": "created_at",
+          "data_type": "timestamp with time zone",
+          "udt_name": "timestamptz",
+          "is_nullable": "YES"
+        }
+      ],
+      "elapsed_s": 0.0184
+    },
+    "strategy_constraints": {
+      "sql": "SELECT tc.table_schema,tc.table_name,tc.constraint_type,kcu.column_name FROM information_schema.table_constraints tc LEFT JOIN information_schema.key_column_usage kcu USING(constraint_catalog,constraint_schema,constraint_name) WHERE tc.table_name IN ('strategy_signals_history','strategy_signals') ORDER BY tc.table_name,tc.constraint_type,kcu.ordinal_position",
+      "rows": [
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "constraint_type": "CHECK",
+          "column_name": null
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "constraint_type": "CHECK",
+          "column_name": null
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "constraint_type": "CHECK",
+          "column_name": null
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "constraint_type": "CHECK",
+          "column_name": null
+        },
+        {
+          "table_schema": "public",
+          "table_name": "strategy_signals",
+          "constraint_type": "PRIMARY KEY",
+          "column_name": "id"
+        }
+      ],
+      "elapsed_s": 0.0468
+    },
+    "strategy_event_contract_field_presence": {
+      "sql": "SELECT count(*) AS rows,count(*) FILTER(WHERE fired_at IS NOT NULL) AS rows_with_fired_at,min(fired_at) AS earliest_fired_at,max(fired_at) AS latest_fired_at,count(*) FILTER(WHERE fired_at>NOW()) AS future_fired_at,count(*) FILTER(WHERE price>0 AND price::text NOT IN ('NaN','Infinity','-Infinity')) AS positive_finite_stored_price,count(*) FILTER(WHERE btrim(coalesce(source_table,''))<>'' AND btrim(coalesce(source_record_id,''))<>'') AS source_record_lineage_present,count(*) FILTER(WHERE btrim(coalesce(sync_run_id,''))<>'') AS sync_run_lineage_present,count(*) FILTER(WHERE btrim(coalesce(discovery_trace_id,''))<>'') AS discovery_trace_present,count(*) FILTER(WHERE upper(signal_type)='GO') AS signal_type_go,count(*) FILTER(WHERE upper(signal_type) IN ('BUY','STRONG_BUY','ADD','ADD_ON_PULLBACK','REENTRY','ENTRY_NEAR','UPGRADE','CONVICTION','HOLD','MONITOR','HEDGE','SELL','TRIM','REDUCE','EXIT')) AS supported_advisory_signal_type,count(*) FILTER(WHERE fired_at>=NOW()-INTERVAL '30 days') AS event_rows_30d,count(*) FILTER(WHERE fired_at>=NOW()-INTERVAL '60 days') AS event_rows_60d,count(*) FILTER(WHERE fired_at>=NOW()-INTERVAL '90 days') AS event_rows_90d,count(*) FILTER(WHERE fired_at IS NOT NULL AND price>0 AND price::text NOT IN ('NaN','Infinity','-Infinity') AND btrim(coalesce(source_table,''))<>'' AND btrim(coalesce(source_record_id,''))<>'') AS fired_price_lineage_candidate_subset FROM public.strategy_signals",
+      "rows": [
+        {
+          "rows": 2707,
+          "rows_with_fired_at": 2707,
+          "earliest_fired_at": "2026-05-05 04:01:34.926917-04:00",
+          "latest_fired_at": "2026-10-08 09:45:10.724521-04:00",
+          "future_fired_at": 0,
+          "positive_finite_stored_price": 2707,
+          "source_record_lineage_present": 2681,
+          "sync_run_lineage_present": 2681,
+          "discovery_trace_present": 30,
+          "signal_type_go": 2681,
+          "supported_advisory_signal_type": 0,
+          "event_rows_30d": 827,
+          "event_rows_60d": 1473,
+          "event_rows_90d": 1815,
+          "fired_price_lineage_candidate_subset": 2681
+        }
+      ],
+      "elapsed_s": 0.1019
+    },
+    "embedded_event_identity_availability_presence": {
+      "sql": "SELECT count(*) AS rows,count(*) FILTER(WHERE setup_stack ? 'security_guid' OR route_match_reasons ? 'security_guid' OR route_reject_reasons ? 'security_guid') AS json_top_level_security_guid,count(*) FILTER(WHERE setup_stack ? 'identity' OR route_match_reasons ? 'identity' OR route_reject_reasons ? 'identity') AS json_top_level_identity,count(*) FILTER(WHERE setup_stack ? 'as_of' OR route_match_reasons ? 'as_of' OR route_reject_reasons ? 'as_of') AS json_top_level_as_of,count(*) FILTER(WHERE setup_stack ? 'available_at' OR route_match_reasons ? 'available_at' OR route_reject_reasons ? 'available_at') AS json_top_level_available_at,count(*) FILTER(WHERE setup_stack ? 'event_id' OR route_match_reasons ? 'event_id' OR route_reject_reasons ? 'event_id') AS json_top_level_event_id FROM public.strategy_signals",
+      "rows": [
+        {
+          "rows": 2707,
+          "json_top_level_security_guid": 0,
+          "json_top_level_identity": 0,
+          "json_top_level_as_of": 0,
+          "json_top_level_available_at": 0,
+          "json_top_level_event_id": 0
+        }
+      ],
+      "elapsed_s": 0.0033
+    },
+    "fired_price_provenance_candidate_windows": {
+      "sql": "SELECT CASE WHEN fired_at>=NOW()-INTERVAL '30 days' THEN '0-30d' WHEN fired_at>=NOW()-INTERVAL '60 days' THEN '30-60d' ELSE '60-90d' END AS age_window,count(*) AS events,count(*) FILTER(WHERE price>0 AND price::text NOT IN ('NaN','Infinity','-Infinity')) AS positive_finite_stored_price,count(*) FILTER(WHERE btrim(coalesce(source_table,''))<>'' AND btrim(coalesce(source_record_id,''))<>'') AS source_record_lineage_present,count(*) FILTER(WHERE price>0 AND price::text NOT IN ('NaN','Infinity','-Infinity') AND btrim(coalesce(source_table,''))<>'' AND btrim(coalesce(source_record_id,''))<>'') AS candidate_count FROM public.strategy_signals WHERE fired_at>=NOW()-INTERVAL '90 days' GROUP BY age_window ORDER BY age_window",
+      "rows": [
+        {
+          "age_window": "0-30d",
+          "events": 827,
+          "positive_finite_stored_price": 827,
+          "source_record_lineage_present": 827,
+          "candidate_count": 827
+        },
+        {
+          "age_window": "30-60d",
+          "events": 646,
+          "positive_finite_stored_price": 646,
+          "source_record_lineage_present": 646,
+          "candidate_count": 646
+        },
+        {
+          "age_window": "60-90d",
+          "events": 342,
+          "positive_finite_stored_price": 342,
+          "source_record_lineage_present": 342,
+          "candidate_count": 342
+        }
+      ],
+      "elapsed_s": 0.0184
+    },
+    "lineage_source_table_metadata": {
+      "sql": "SELECT c.table_schema,c.table_name,c.column_name,c.data_type FROM information_schema.columns c WHERE c.table_schema='public' AND c.table_name IN (SELECT DISTINCT source_table FROM public.strategy_signals WHERE btrim(coalesce(source_table,''))<>'') AND c.column_name IN ('id','symbol','security_guid','subject_guid','identity_status','as_of','available_at','fired_at','captured_at','created_at','updated_at','scan_time','scan_timestamp','price','source','source_ref','event_id','metadata','data') ORDER BY c.table_name,c.ordinal_position",
+      "rows": [
+        {
+          "table_schema": "public",
+          "table_name": "trade_ai_scans",
+          "column_name": "id",
+          "data_type": "bigint"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "trade_ai_scans",
+          "column_name": "symbol",
+          "data_type": "text"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "trade_ai_scans",
+          "column_name": "price",
+          "data_type": "real"
+        },
+        {
+          "table_schema": "public",
+          "table_name": "trade_ai_scans",
+          "column_name": "source",
+          "data_type": "text"
+        }
+      ],
+      "elapsed_s": 0.0382
+    },
+    "signal_json_nested_required_key_counts": {
+      "sql": "SELECT count(*) AS rows,count(*) FILTER(WHERE jsonb_path_exists(coalesce(setup_stack,'null'::jsonb),'$.**.security_guid') OR jsonb_path_exists(coalesce(route_match_reasons,'null'::jsonb),'$.**.security_guid') OR jsonb_path_exists(coalesce(route_reject_reasons,'null'::jsonb),'$.**.security_guid')) AS nested_security_guid,count(*) FILTER(WHERE jsonb_path_exists(coalesce(setup_stack,'null'::jsonb),'$.**.available_at') OR jsonb_path_exists(coalesce(route_match_reasons,'null'::jsonb),'$.**.available_at') OR jsonb_path_exists(coalesce(route_reject_reasons,'null'::jsonb),'$.**.available_at')) AS nested_available_at,count(*) FILTER(WHERE jsonb_path_exists(coalesce(setup_stack,'null'::jsonb),'$.**.as_of') OR jsonb_path_exists(coalesce(route_match_reasons,'null'::jsonb),'$.**.as_of') OR jsonb_path_exists(coalesce(route_reject_reasons,'null'::jsonb),'$.**.as_of')) AS nested_as_of FROM public.strategy_signals",
+      "rows": [
+        {
+          "rows": 2707,
+          "nested_security_guid": 0,
+          "nested_available_at": 0,
+          "nested_as_of": 0
+        }
+      ],
+      "elapsed_s": 0.0162
+    }
+  },
+  "candidate_head": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "replay_source_sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+  "as_of_completed": "2026-10-09T15:40:12.402211+00:00"
+}

@@ -1,0 +1,407 @@
+{
+  "base_sha": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+  "blocking_findings": [],
+  "case_count": 60,
+  "checks": [
+    {
+      "name": "valid cadence */15 * * * *",
+      "pass": true
+    },
+    {
+      "name": "valid cadence 0 8 * * 1-5",
+      "pass": true
+    },
+    {
+      "name": "valid cadence 5,35 9-16/2 * * 1-5",
+      "pass": true
+    },
+    {
+      "name": "valid cadence 0 0 1 */3 *",
+      "pass": true
+    },
+    {
+      "name": "valid cadence 0 0 * * 0,7",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence ''",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '* * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '* * * * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '*/0 * * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '59-1 * * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '60 * * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '* 24 * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '* * 0 * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '* * * 13 *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '* * * * 8'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '* * * * MON'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '@reboot'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '*/15\\t* * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '*/15\\n* * * *'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '*/15 * * * *\\x00'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '*/15 * * * *\u00e9'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '*/15 * * * *;echo unsafe'",
+      "pass": true
+    },
+    {
+      "name": "invalid cadence '*/15 * * * * /tmp/script'",
+      "pass": true
+    },
+    {
+      "name": "nonstring supplied cadence None",
+      "pass": true
+    },
+    {
+      "name": "nonstring supplied cadence False",
+      "pass": true
+    },
+    {
+      "name": "nonstring supplied cadence 15",
+      "pass": true
+    },
+    {
+      "name": "nonstring supplied cadence ['*']",
+      "pass": true
+    },
+    {
+      "name": "legacy missing cadence remains allowed",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "pass": true
+    },
+    {
+      "name": "generated parity inactive docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "pass": true
+    },
+    {
+      "name": "research identity independent of capture release persisted id",
+      "pass": true
+    },
+    {
+      "name": "research canonical URL agrees existing contract",
+      "pass": true
+    },
+    {
+      "name": "research content revision distinct",
+      "pass": true
+    },
+    {
+      "name": "research subjects remain distinct",
+      "pass": true
+    },
+    {
+      "name": "research identity fields required",
+      "pass": true
+    },
+    {
+      "name": "legacy research input not rewritten",
+      "pass": true
+    },
+    {
+      "name": "launcher shell syntax linux_launchers/run_lookthrough.sh",
+      "pass": true
+    },
+    {
+      "name": "launcher shell syntax linux_launchers/run_pg_backup.sh",
+      "pass": true
+    },
+    {
+      "name": "launcher shell syntax linux_launchers/run_portfolio.sh",
+      "pass": true
+    },
+    {
+      "name": "launcher shell syntax linux_launchers/run_portfolio_monthly.sh",
+      "pass": true
+    },
+    {
+      "name": "launcher shell syntax linux_launchers/run_portfolio_weekly.sh",
+      "pass": true
+    },
+    {
+      "name": "launcher shell syntax linux_launchers/run_price_cache.sh",
+      "pass": true
+    },
+    {
+      "name": "CADI integrated exact independently tested blob scripts/ops/run_cross_asset_historical_replay.py",
+      "pass": true
+    },
+    {
+      "name": "CADI integrated exact independently tested blob tests/test_cross_asset_decision_intelligence.py",
+      "pass": true
+    },
+    {
+      "name": "SSE exact independently tested blob",
+      "pass": true
+    },
+    {
+      "name": "N2 48-case proof bound exact candidate",
+      "pass": true
+    },
+    {
+      "name": "only scheduler source intent config changed",
+      "pass": true
+    },
+    {
+      "name": "policy not auto ratified relative current main",
+      "pass": true
+    },
+    {
+      "name": "no broker sender risk secret registry source changed",
+      "pass": true
+    },
+    {
+      "name": "N1 restoration source intent explicit crontab-snapshot-for-health-agent",
+      "pass": true
+    },
+    {
+      "name": "N1 restoration source intent explicit n8n-pilot-dispatch",
+      "pass": true
+    },
+    {
+      "name": "N1 restoration source intent explicit n8n-incident-fanin",
+      "pass": true
+    },
+    {
+      "name": "N1 restoration source intent explicit n8n-research-intake-consumer",
+      "pass": true
+    },
+    {
+      "name": "raw production diff whitespace check",
+      "pass": true
+    }
+  ],
+  "commands": [
+    "git diff --unified=5 3b5c248569908adfad9a60ca895e0fa9b2aa2c49 76e83b03c02971710dbaaac7bda7772c0fcba825 -- config linux_launchers scripts",
+    "git diff --check 3b5c248569908adfad9a60ca895e0fa9b2aa2c49 76e83b03c02971710dbaaac7bda7772c0fcba825 -- config linux_launchers scripts",
+    "PYTHONDONTWRITEBYTECODE=1 shared-venv/bin/python /tmp/tradeai-n2-independent-final-76e83b03-20261009.py",
+    "PYTHONDONTWRITEBYTECODE=1 shared-venv/bin/python /tmp/tradeai-final-production-review-76e83b03-20261009.py",
+    "bash -n linux_launchers/{six changed launchers, each individually}"
+  ],
+  "evidence": {
+    "cadi53": "/tmp/tradeai-cadi-replay-alias-overflow-final-20261009.log",
+    "cadi7": "/tmp/cadi-replay-independent-fixed-probes-20261009.json",
+    "n2_current48": "/tmp/tradeai-n2-independent-final-76e83b03-20261009.json",
+    "research_negative_and_final": "docs/_evidence/runtime-convergence/20261009T131239Z/tradeai-governed-research-dedupe-remediation.json",
+    "review_harness": "/tmp/tradeai-final-production-review-76e83b03-20261009.py",
+    "sse15": "/tmp/tradeai-sse-semantic-review-fixed-20261009.json"
+  },
+  "evidence_class": "SOURCE_ONLY",
+  "fixture_evidence_class": "TEST_ONLY",
+  "generated_files": {
+    "docs/implementation/n8n-parallel/workflows/generated/INDEX.json": {
+      "sha256": "592db7f27ef148739d09f1a9624e7d8f492382f8ce321f17db427ff07e335da6"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json": {
+      "sha256": "ff7c849a4e521fdbb84b02c71fab83a525ad534122c30b68cfdecc9077ec453f"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json": {
+      "sha256": "b4d77d6dd176cff4ef53b21009bf894c266fd1d5061e9953965ce9c570be5125"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json": {
+      "sha256": "04eb04b608bf72264f570a859edb607047be4113e631515c6c9106fa783eb1c5"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json": {
+      "sha256": "971908501cfff5a2e2f488fb7b2c0391f8d6d3ad01b2bb87b92f598ee7991d68"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json": {
+      "sha256": "f82febbc20984dde58611a7c679c85386505e0d9248be52f4588b668cb70cb2e"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json": {
+      "sha256": "85b0190ab1942af660dd62871be1cb58c191dc5ad964cff0aeb9b2ce4a25f3c6"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json": {
+      "sha256": "2a52320580f5a65a8554b38ae213019e09210e1aef940037b685df2177c5bb62"
+    },
+    "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json": {
+      "sha256": "2f8b7ac89881f1ab5f05346d1cb24259b148f19b45f04429f6d57faf008f60fc"
+    }
+  },
+  "head_sha": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "limits": [
+    "This is bounded source/fixture review, not exhaustive code safety proof or host runtime acceptance.",
+    "No providers, models, network endpoints, broker interfaces, secret values or production input archives were accessed.",
+    "Installed shared interpreter/site-packages, explicit runtime root overrides and external OpenClaw scripts are not measured here.",
+    "N2 scheduler cutover/activation remains prohibited until separately governed acceptance; source inactive artifacts prove no live cutover.",
+    "N1 four-row cron intent can drift from installed n8n runtime until separately authorized restoration completes.",
+    "CADI remains NOT_READY; actual immutable 30/60/90 replay and contract economics remain NOT_MEASURED.",
+    "Offline alias preservation assumes local input filesystem does not change concurrently between validation and artifact write; no production concurrent exporter/DB writer is introduced.",
+    "Existing feed append concurrency/lock semantics are unchanged; this patch removes capture identity churn rather than claiming full queue concurrency remediation.",
+    "Parent owns the canonical acceptance suite currently running; this child did not rerun it."
+  ],
+  "observed_at": "2026-10-09T15:23:05.507106+00:00",
+  "pass_count": 60,
+  "production_files": {
+    "config/lane_registry.json": {
+      "base_git_blob": "1c0f6b657a14b54b70f8cba64b2fe4b73d61ddb3",
+      "candidate_git_blob": "9c1c5214eeead73623e5107230156c97095c0540",
+      "candidate_sha256": "7ce79da8b1e3fac9ff68418326c008432a5e3eb6f18523423776098356078d71"
+    },
+    "linux_launchers/run_lookthrough.sh": {
+      "base_git_blob": "dd46fc0c8b3a634d912add0c7f715c9f22a698a6",
+      "candidate_git_blob": "0cc3d2247c883e0fe4a2597ada96d3d4946b143f",
+      "candidate_sha256": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c"
+    },
+    "linux_launchers/run_pg_backup.sh": {
+      "base_git_blob": "30cda264d645912cd9d1e753118505b21cf424c1",
+      "candidate_git_blob": "86fa9c4110e598886fdb6b8a0945138f033e4038",
+      "candidate_sha256": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513"
+    },
+    "linux_launchers/run_portfolio.sh": {
+      "base_git_blob": "92c42795bed45f1cc40cde0c533663138f307589",
+      "candidate_git_blob": "3a617dc2a4e81ed4266a97918d75d3634a2863f5",
+      "candidate_sha256": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f"
+    },
+    "linux_launchers/run_portfolio_monthly.sh": {
+      "base_git_blob": "be8d9fdfc2c4f8cc7dd8ecc2e9ee6eaea0f76add",
+      "candidate_git_blob": "7166c72234d8c2073f5dee774724a37fd7ad7a6b",
+      "candidate_sha256": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23"
+    },
+    "linux_launchers/run_portfolio_weekly.sh": {
+      "base_git_blob": "33dfc995d32f77f0e774a44ffd5e5043680ea78a",
+      "candidate_git_blob": "8f73622b271dad6a30cf1fa7e63b39a344ee472b",
+      "candidate_sha256": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764"
+    },
+    "linux_launchers/run_price_cache.sh": {
+      "base_git_blob": "0b75dc5ecfc183c4e8c7d30b0bfce040734d6188",
+      "candidate_git_blob": "0b22a9b8060cb823a7ac2c3a48b7cefa383ac19b",
+      "candidate_sha256": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2"
+    },
+    "scripts/lib/cio_governed_model_bridge.py": {
+      "base_git_blob": "f4afb161b83c43711634bf5b9c2c4480a31d2bf5",
+      "candidate_git_blob": "1c806bc7a54b96af6cdf5b1c3b138ec74e945478",
+      "candidate_sha256": "a05138c886521eebcd79667842a76686806afebfd1ad2afb2067452e5baf9757"
+    },
+    "scripts/lib/governed_research_producer.py": {
+      "base_git_blob": "733fa53a774e8e3f9e6de0047645179b4f712741",
+      "candidate_git_blob": "6ecc8404c2c4232c14a2ba655ec77159297b4da9",
+      "candidate_sha256": "ef2d61ec5a29bd0d79ea3612e9fb47c5312f1201398acf4a960ddbe5b864459d"
+    },
+    "scripts/lib/lane_registry.py": {
+      "base_git_blob": "5ba86b32654820207052e972a4977712b657c943",
+      "candidate_git_blob": "8548e00e75e6fa3281d377517d6eb2ae96fc826c",
+      "candidate_sha256": "033b9bbd61aacad266c2b7d41a7ba1b0d2e08fb14341f03c47ec4e7851201ae2"
+    },
+    "scripts/n8n_run_relay.py": {
+      "base_git_blob": "e6211c0027be65630908e6c59f7eaeb862a574f1",
+      "candidate_git_blob": "db2bd27da27c28782e7b28b571139c89c388f65e",
+      "candidate_sha256": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc"
+    },
+    "scripts/n8n_workflow_templates.py": {
+      "base_git_blob": "18ea5d7dbfbfc7668dd9fe948a744fd37235b829",
+      "candidate_git_blob": "100719cc7736aed734858b3124e5c0d07ed46470",
+      "candidate_sha256": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345"
+    },
+    "scripts/ops/run_cross_asset_historical_replay.py": {
+      "base_git_blob": "c5504de2800e73fdc2a01c3893a22050906d7f01",
+      "candidate_git_blob": "f537954283d5058e959902829c694466e1152bb0",
+      "candidate_sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57"
+    },
+    "scripts/pipelines/cutover/_cutover.py": {
+      "base_git_blob": "3edf58341e1308d1b8e49bfd0e2ef96d1f2d07cc",
+      "candidate_git_blob": "c507e4c540a20cfcd2182fad0661a16a3329115b",
+      "candidate_sha256": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39"
+    }
+  },
+  "review_scope": [
+    "cadence fail-closed shape and preserved cron cadence",
+    "N2 live exit-0 same-ET-business-date overnight bounded receipt gating",
+    "installed-launcher root selection and deliberate shared interpreter",
+    "research article dedupe with content/subject preservation",
+    "offline archive alias and derived score refusal boundaries",
+    "settled SSE integration"
+  ],
+  "runtime_or_scheduler_mutations": false,
+  "schema": "IndependentFinalProductionSourceReview@v1",
+  "source_conclusions": [
+    "Cutover validates supplied and actual legacy cron cadence before scheduler/config/backup writes, preserving legacy expression equality; refused receipt remains a deliberate artifact.",
+    "N2 requires exact relay schema/status/lane, live RUN_DONE integer exit0, aware ordered nonfuture request/completion timestamps and proper ET request day; same-day completion alone cannot refresh an older request.",
+    "N2 Code-node runIndex bounds five total checks/four waits; successful fifth check remains allowed; missing/invalid counters fail closed.",
+    "All eight changed N2 pending/shadow generated workflows exactly match the current generator and remain inactive.",
+    "Six launcher defaults derive from their installed location. Shared venv fallback selects interpreter resources while explicit script/cwd paths remain within the installed release. Existing explicit root overrides and external OpenClaw maintenance scripts remain deliberate unchanged behavior.",
+    "Research wake-feed identity now covers canonical URL, subject and actual title/body content hash; release/capture changes do not reemit unchanged articles, legacy feed rows are not rewritten, and content revisions remain separate.",
+    "Offline replay refuses resolved-path and device/inode aliases of every known input before output writes. Finite inputs producing a nonfinite derived comparison become INVALID_DATA/exit2. Source bytes exactly match independently checked 1d92 tranche.",
+    "All source authority configuration files apart from lane_registry scheduler intent remain byte-identical to base. No broker/sender/risk/credential source files changed; policy proposal is not auto-ratified."
+  ],
+  "source_edits": false,
+  "source_leases": null,
+  "supersedes_metadata_only": {
+    "path": "/tmp/tradeai-final-production-review-76e83b03-20261009.json",
+    "reason": "Clarify that source deployment does not activate N2 scheduler ownership; cutover/activation remains prohibited."
+  },
+  "verdict": "PASS_WITH_LIMITS",
+  "worktree": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008"
+}

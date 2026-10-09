@@ -1,0 +1,53 @@
+{
+  "as_of": "2026-10-09T15:02:49.067429+00:00",
+  "evidence_class": "OBSERVED_HOST",
+  "mutations": false,
+  "unit": {
+    "Id": "tradeai-n8n-run-executor.service",
+    "LoadState": "loaded",
+    "ActiveState": "active",
+    "SubState": "running",
+    "FragmentPath": "/home/johnclaw/.config/systemd/user/tradeai-n8n-run-executor.service",
+    "DropInPaths": "",
+    "NeedDaemonReload": "no",
+    "MainPID": "391816",
+    "ExecMainStartTimestamp": "Fri 2026-10-09 10:34:31 EDT",
+    "EnvironmentFiles": [
+      "/run/user/1000/tradeai/env (ignore_errors=yes)",
+      "/home/johnclaw/.config/tradeai/n8n-gateway.env (ignore_errors=yes)"
+    ],
+    "PassEnvironment": "",
+    "WorkingDirectory": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+    "environment_names": [
+      "BLIND_REVIEW_LANES",
+      "LLM_DEFER_OFFPEAK",
+      "PROJ",
+      "PY",
+      "TRADEAI_ENV",
+      "TRADEAI_STATE_ROOT",
+      "TRADEAI_VENV_PYTHON"
+    ]
+  },
+  "process": {
+    "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+    "required_environment_present": {
+      "TRADEAI_STATE_ROOT": true,
+      "TRADEAI_VENV_PYTHON": true,
+      "PROJ": true,
+      "PY": true,
+      "LLM_DEFER_OFFPEAK": true,
+      "TRADEAI_ENV": true,
+      "BLIND_REVIEW_LANES": true
+    },
+    "known_nonsecret_parity_matches": {
+      "LLM_DEFER_OFFPEAK": true,
+      "BLIND_REVIEW_LANES": true,
+      "PROJ": true,
+      "PY": true,
+      "TRADEAI_ENV": true
+    }
+  },
+  "CURRENT": "/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833",
+  "CURRENT_SHA": "3b5c248569908adfad9a60ca895e0fa9b2aa2c49",
+  "current_source_unit_sha256": "f5b93014f031db140954af0129c3c41d8d1113a46ca606452d284060a9b6718f"
+}

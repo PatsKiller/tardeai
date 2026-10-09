@@ -1,0 +1,60 @@
+{
+  "schema": "UnchangedGateIsolationCheck@v1",
+  "evidence_class": "TEST_ONLY",
+  "head_sha": "fc908efea1cec5cdf41624a4e9cabdaaf5c47d57",
+  "failed_full_run": "28-final-combined-local-acceptance.log",
+  "original_full_run_verdict": "FAILED",
+  "gate": "N8N_RUN_ROUTE",
+  "fixture_timeout_s": 1,
+  "mean_client_latency_limit_s": 0.25,
+  "thresholds_changed": false,
+  "platform_provider_calls": 0,
+  "command": [
+    "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--tb=line",
+    "-p",
+    "no:cacheprovider",
+    "-rP",
+    "tests/test_n8n_run_route_20261008.py",
+    "tests/test_n8n_run_store_20261008.py",
+    "tests/test_n8n_run_executor_20261008.py",
+    "tests/test_n8n_run_allowlist_20261008.py",
+    "tests/test_n8n_gateway_concurrency_20261008.py"
+  ],
+  "source_hashes": {
+    "tests/test_n8n_run_route_20261008.py": "dca272eb22cf55255faa4213b2c47088d2e96204e856e797ab67191817827122",
+    "tests/test_n8n_run_store_20261008.py": "d0ea603b8029975570923c26a848349de0f78c2fade537a40c236315fec37725",
+    "tests/test_n8n_run_executor_20261008.py": "ab1ea80c98a7105cc32b1778465f3ae63a0516b512ebb0e9630283e0b6fc9c8c",
+    "tests/test_n8n_run_allowlist_20261008.py": "74674714e53886484e6caaf506a7a6215686862c3f5843a772dd3c482f0244df",
+    "tests/test_n8n_gateway_concurrency_20261008.py": "373d3370055ec4086fd6a24437c85d83279527f3c9c5aa46ef34b66a9b976ed5",
+    "scripts/n8n_run_executor.py": "5910febac842a0c952c2f559f68e3e2b63e16fe21ccad401bb706b936f691bdb",
+    "scripts/n8n_coordination_gateway.py": "ae655fe92220f6f5426ce9977e598fa7e9b32cf9ba333101b9c7b410cb0e9fd2",
+    "scripts/lib/n8n_coordination_ledger.py": "7b5483530860818bc894fed56ed055cd89e8b237686040034d037037140350f7"
+  },
+  "resources_before": {
+    "at": "2026-10-09T15:56:46.464383+00:00",
+    "cpu_pressure": "some avg10=61.36 avg60=63.79 avg300=62.73 total=22871977936\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+    "load_average": [
+      57.35107421875,
+      58.025390625,
+      61.451171875
+    ],
+    "logical_cpus": 20
+  },
+  "exit_code": 1,
+  "ok": false,
+  "resources_after": {
+    "at": "2026-10-09T15:56:58.706688+00:00",
+    "cpu_pressure": "some avg10=60.78 avg60=63.12 avg300=62.62 total=22879327127\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+    "load_average": [
+      54.103515625,
+      57.2724609375,
+      61.14990234375
+    ],
+    "logical_cpus": 20
+  },
+  "log_sha256": "c63eb882133eebaf8c003dbc7d68ed92066c6a34bfe5af690fd9ebd1a09be243"
+}

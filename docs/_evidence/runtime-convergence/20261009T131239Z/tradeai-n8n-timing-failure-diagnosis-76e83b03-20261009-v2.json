@@ -1,0 +1,166 @@
+{
+  "acceptance": "Full-fast canonical acceptance remains failed until the actual failure is resolved or an explicitly justified isolated reference is accepted under repository policy; this review cannot relabel it PASS.",
+  "as_of": "2026-10-09T15:39:05.108921+00:00",
+  "classification": "Resource contention is supported as an inference, not established root cause; no new functional source defect identified.",
+  "evidence": {
+    "current_resource_snapshot": {
+      "evidence_class": "OBSERVED_HOST",
+      "note": "Read after test failure while canonical suite still running; no resource snapshot at exact failure time, cannot establish causality.",
+      "values": {
+        "cgroup/cpu.stat": "usage_usec 7541945940000\nuser_usec 6568317353000\nsystem_usec 973628587000\nnice_usec 1204627774000\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+        "loadavg": "76.41 82.85 77.94 69/2927 3",
+        "pressure/cpu": "some avg10=70.82 avg60=71.35 avg300=71.54 total=22164044413\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+        "pressure/io": "some avg10=0.00 avg60=0.26 avg300=0.39 total=12115990825\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=11138206892",
+        "pressure/memory": "some avg10=0.03 avg60=0.54 avg300=0.42 total=3660177776\nfull avg10=0.00 avg60=0.05 avg300=0.05 total=3342591793"
+      }
+    },
+    "failed_full_run": "docs/_evidence/runtime-convergence/20261009T131239Z/28-final-combined-local-acceptance.log:104",
+    "fixture_receipts_direct_read": "NOT_MEASURED: captured log fixture paths absent in this sandbox",
+    "inspection": "/tmp/tradeai-n8n-timing-failure-inspection-76e83b03-20261009.json",
+    "inspection_sha256": "effd702e54ac625b57a59440388b51b481ee768ffe911a448745588133c15b69"
+  },
+  "evidence_class": "TEST_ONLY",
+  "findings": [
+    {
+      "classification": "REAL_SUBPROCESS_TIME_BUDGET_BREACH",
+      "id": "executor_ordering_fixture_timeout",
+      "meaning": "Queue drain order assertion did not reach its started_at ordering check because second real child breached the fixture deadline. This does not demonstrate queue claim/order corruption. Wrapper receipt duration is not isolated child runtime.",
+      "observed": {
+        "first_receipt_state": "RUN_DONE",
+        "first_wrapper_duration_s": 1.035,
+        "second_exit": 124,
+        "second_receipt_state": "RUN_TIMEOUT",
+        "second_wrapper_duration_s": 3.372
+      },
+      "severity": "P2",
+      "source_contract": {
+        "executor_outer_timeout_s": 61,
+        "fixture_lane_timeout_s": 1,
+        "receipt_result": "RUN_TIMEOUT reflects actual timeout exit, not a false success",
+        "runner_sleep_default_s": 0,
+        "timeout_mechanism": "safe_flock -> GNU timeout -k30 1 -> fake Python child"
+      },
+      "source_locations": [
+        "tests/test_n8n_run_executor_20261008.py:66",
+        "tests/test_n8n_run_executor_20261008.py:248",
+        "scripts/n8n_run_executor.py:166",
+        "scripts/n8n_run_executor.py:239",
+        "scripts/n8n_run_executor.py:260"
+      ]
+    },
+    {
+      "classification": "CLIENT_MEAN_LATENCY_CONTRACT_BREACH",
+      "id": "gateway_64_client_mean_latency",
+      "meaning": "This is client mean end-to-end latency, not max ledger transaction latency. Persistence/concurrency functional assertions passed; performance acceptance did not.",
+      "observed": {
+        "burst_size": 64,
+        "client_mean_latency_s": 0.44882616286486154,
+        "handler_max_latency": "NOT_MEASURED",
+        "ledger_transaction_latency": "NOT_MEASURED",
+        "request_p95": "NOT_MEASURED",
+        "required_less_than_s": 0.25
+      },
+      "preceding_assertions_passed": [
+        "zero dropped requests",
+        "zero handler tracebacks",
+        "all64 HTTP200 unique REQUESTED responses",
+        "exact64 durable REQUESTED ledger rows",
+        "exact64 handler timing observations"
+      ],
+      "severity": "P2",
+      "source_locations": [
+        "tests/test_n8n_gateway_concurrency_20261008.py:170",
+        "tests/test_n8n_gateway_concurrency_20261008.py:201",
+        "scripts/n8n_coordination_gateway.py:66",
+        "scripts/lib/n8n_coordination_ledger.py:100"
+      ]
+    },
+    {
+      "classification": "SOURCE_ONLY_RESOURCE_CONTENTION_HYPOTHESIS",
+      "id": "planner_resource_isolation",
+      "meaning": "These tests are hermetic with respect to shared files but not independent of CPU scheduling or disk latency. Parallel safety does not establish a latency benchmark environment.",
+      "severity": "P2",
+      "source_contract": {
+        "parallel_units": 340,
+        "profile": "fast",
+        "scheduling": "ThreadPoolExecutor gate/file groups",
+        "serial_files_explicitly_declared": 0,
+        "serial_heuristic": "shared repository/git/Postgres state, not wall-clock sensitivity or thread burst resources",
+        "workers": 8
+      },
+      "source_locations": [
+        "scripts/run_cio_hardening_ci.py:3688",
+        "scripts/run_cio_hardening_ci.py:3716",
+        "scripts/run_cio_hardening_ci.py:3724",
+        "scripts/run_cio_hardening_ci.py:3831"
+      ]
+    }
+  ],
+  "limits": [
+    "No failure-time CPU/resource telemetry exists in the captured log. Current CPU PSI and load are after the failure; cannot prove causality.",
+    "Relevant eight source/test/planner files are unchanged from current main3b; this rules out a direct diff regression in these files, not every interaction or existing latent defect.",
+    "No full or focused test was rerun during this diagnosis; parent remains owner of acceptance and any scheduler/runtime decisions.",
+    "No provider/model/network calls, secret values, broker interfaces, source edits, planner edits, threshold changes or host mutations."
+  ],
+  "possible_narrow_remediation_after_confirmation": "Coordinate with the active CI-planner owner to isolate only the two timing-sensitive files in the existing serial tail or an explicit resource-isolated benchmark phase, while retaining every assertion/test/threshold and the executor timeout test. No planner edit is proposed as already approved or applied. The queue-ordering unit contract could separately use the existing injected runner, but real lock/child/timeout coverage must remain and this is not needed for the initial unchanged-gate check.",
+  "recommended_next_check": {
+    "argv": [
+      "env",
+      "TRADE_AI_CI=1",
+      "CIO_TELEGRAM_INTERDICT=1",
+      "PYTHONDONTWRITEBYTECODE=1",
+      ".venv/bin/python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=line",
+      "-p",
+      "no:cacheprovider",
+      "-rP",
+      "tests/test_n8n_run_route_20261008.py",
+      "tests/test_n8n_run_store_20261008.py",
+      "tests/test_n8n_run_executor_20261008.py",
+      "tests/test_n8n_run_allowlist_20261008.py",
+      "tests/test_n8n_gateway_concurrency_20261008.py"
+    ],
+    "capture": "New evidence log and source digest; -rP reveals passed synthetic BURST_METRICS without changing assertions.",
+    "if_fails": "Inspect fresh synthetic receipts, subprocess startup/time accounting and client/handler latency under observed resources before proposing any source correction.",
+    "if_passes": "Record isolated same-threshold reference PASS separately; preserve full-fast timing FAIL. Supports workload sensitivity inference, does not retroactively make the full-fast run green or prove production performance.",
+    "preserved_contracts": [
+      "same five registered N8N_RUN_ROUTE files",
+      "same one-second child fixture timeout",
+      "same0.25-second client mean ceiling",
+      "same burst sizes1,5,16,32,64",
+      "same drop/error/exact-durability assertions"
+    ],
+    "when": "After current full run finishes; first record candidate identity and resource snapshot. Do not overlap another full suite or benchmark.",
+    "working_directory": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008"
+  },
+  "schema": "IndependentN8nTimingGateDiagnosis@v1",
+  "source_hashes": {
+    "scripts/lib/n8n_coordination_gateway.py": "c0797ca0255fc1a6b65e2b140910dbca8830c49763cff1b1b8be37ad527001d2",
+    "scripts/lib/n8n_coordination_ledger.py": "7b5483530860818bc894fed56ed055cd89e8b237686040034d037037140350f7",
+    "scripts/n8n_coordination_gateway.py": "ae655fe92220f6f5426ce9977e598fa7e9b32cf9ba333101b9c7b410cb0e9fd2",
+    "scripts/n8n_run_executor.py": "5910febac842a0c952c2f559f68e3e2b63e16fe21ccad401bb706b936f691bdb",
+    "scripts/run_cio_hardening_ci.py": "6614b78eca0c34bffe31c7acda95df5d34c2d44600a456c2cf5fe8ae6fe11919",
+    "scripts/safe_flock.sh": "6c9f5ab93c6822c32db5068d023423da7cafab7615d6cc53c42ce504cc7dbef7",
+    "tests/test_n8n_gateway_concurrency_20261008.py": "373d3370055ec4086fd6a24437c85d83279527f3c9c5aa46ef34b66a9b976ed5",
+    "tests/test_n8n_run_executor_20261008.py": "ab1ea80c98a7105cc32b1778465f3ae63a0516b512ebb0e9630283e0b6fc9c8c"
+  },
+  "source_head": "76e83b03c02971710dbaaac7bda7772c0fcba825",
+  "source_unchanged_vs_current_main": {
+    "scripts/lib/n8n_coordination_gateway.py": true,
+    "scripts/lib/n8n_coordination_ledger.py": true,
+    "scripts/n8n_coordination_gateway.py": true,
+    "scripts/n8n_run_executor.py": true,
+    "scripts/run_cio_hardening_ci.py": true,
+    "scripts/safe_flock.sh": true,
+    "tests/test_n8n_gateway_concurrency_20261008.py": true,
+    "tests/test_n8n_run_executor_20261008.py": true
+  },
+  "supersedes_metadata_only": {
+    "path": "/tmp/tradeai-n8n-timing-failure-diagnosis-76e83b03-20261009.json",
+    "reason": "Bind fixture timeout and timeout-result references to measured exact lines66/260."
+  },
+  "verdict": "TIMING_GATE_FAILED_CAUSE_NOT_PROVEN"
+}
