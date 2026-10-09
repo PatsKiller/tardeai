@@ -3549,6 +3549,10 @@ GATES = [
             "tests/test_monitor_finding_exit_codes_20261009.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
+            # 2026-10-09 operator: every single-position threshold follows the IPS
+            # limit (advisory overweight, CIO review gates, look-through guideline,
+            # specialist-shadow severity) via lib.ips_policy.
+            "tests/test_ips_position_limit_20261009.py",
             "tests/test_retention_registry_20261007.py",
             "tests/test_pgvector_migration_plan_20261008.py",
             "tests/test_maturity_score_independent_20261007.py",
