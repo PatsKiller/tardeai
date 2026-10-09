@@ -185,24 +185,28 @@ def test_broker_order_secret_lines_are_kept_on_cron(inputs, committed):
     assert R.GATE_TOKENS <= set(FORBIDDEN_COMMAND_TOKENS)
     route = FORBIDDEN_ROUTE_TOKENS - R.ROUTE_TOKEN_CHANNEL_EXEMPT
     secret = SECRET_KEYS - R.SECRET_NAME_EXEMPT
+    broker = R.load_stay_tokens()
     checked = 0
     for line in _lines(inputs):
         _sched, cmd = R.split_schedule(line)
         _tok, stem = R.primary_script(cmd)
         words = set(w for w in re.split(r"[^a-z0-9]+", stem.lower()) if w)
-        hit = [t for t in FORBIDDEN_COMMAND_TOKENS if t in cmd] or sorted(words & route) or sorted(words & secret)
+        hit = ([t for t in FORBIDDEN_COMMAND_TOKENS if t in cmd] or sorted(words & route) or sorted(words & secret)
+               or [w for w in sorted(broker) if re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(w),
+                                                          R.strip_shell_comment(cmd).lower())])
         if not hit:
             continue
         checked += 1
         row = _row_for_line(committed, line)
         assert row.get("stay_on_cron"), (row["lane_id"], hit)
-        assert row.get("recommendation") in (R.REC_KEEP, R.REC_R0), (row["lane_id"], row.get("recommendation"))
+        # PR #1597 review: KEEP_ON_CRON beats R0 too — eliminating a broker line is an operator decision.
+        assert row.get("recommendation") == R.REC_KEEP, (row["lane_id"], row.get("recommendation"))
     assert checked >= 40
 
 
 def test_r0_rows_stay_active_with_the_recommendation(committed):
     r0 = [r for r in committed["lanes"] if r.get("recommendation") == R.REC_R0]
-    assert len(r0) >= 25
+    assert len(r0) >= 20
     for r in r0:
         if r.get("generated_by") == R.GENERATOR_VERSION:
             assert r["state"] == "ACTIVE", r["lane_id"]
@@ -246,9 +250,10 @@ def test_evidence_overlay_is_source_verified_and_host_neutral():
     doc = json.loads(R.EVIDENCE_PATH.read_text(encoding="utf-8"))
     assert doc["schema"] == "LaneOutputEvidence@v1"
     for lane_id, e in doc["entries"].items():
-        if "declared_state" in e:
-            assert e["declared_state"]["state"] in ("PAUSED", "RETIRED", "NEVER_SCHEDULED"), lane_id
-            assert e["declared_state"]["reason_evidence"], lane_id
+        assert "declared_state" not in e, lane_id      # a proposal, never a ruling (PR #1597 review)
+        if "proposed_state" in e:
+            assert e["proposed_state"]["state"] in ("PAUSED", "RETIRED", "NEVER_SCHEDULED"), lane_id
+            assert e["proposed_state"]["reason_evidence"], lane_id
         if "output_signal" not in e:
             continue
         src = ROOT / e["source_file"]
@@ -323,12 +328,92 @@ def test_tilde_output_paths_resolve_under_home(tmp_path, monkeypatch):
     assert obs["last_output_at"] is not None
 
 
-def test_disabled_timer_is_declared_paused_with_review_by():
-    units = {"timers": [{"unit": "z.timer", "enabled_state": "disabled", "service": "z.service", "on_calendar": [],
-                         "monotonic_hours": None, "expected_cadence_hours": None, "exec_start": "", "stdout": "",
-                         "working_directory": ""}], "services": []}
-    res = R.reconcile({"lanes": []}, cron_text="", units=units, f_rows=[], evidence={},
+def _disabled_unit(name="z.timer"):
+    return {"timers": [{"unit": name, "enabled_state": "disabled", "service": "z.service", "on_calendar": [],
+                        "monotonic_hours": None, "expected_cadence_hours": None, "exec_start": "", "stdout": "",
+                        "working_directory": ""}], "services": []}
+
+
+def test_disabled_timer_is_recorded_not_ruled():
+    """PR #1597 review: a disabled unit is never declared RETIRED/PAUSED/NEVER_SCHEDULED by the generator."""
+    res = R.reconcile({"lanes": []}, cron_text="", units=_disabled_unit(), f_rows=[], evidence={},
                       tokens=((), frozenset(), frozenset()))
     row = res["registry"]["lanes"][0]
-    assert row["state"] == "PAUSED" and row["review_by"] and row["reason_confidence"] == "UNKNOWN"
+    assert row["state"] == "ACTIVE" and row["status"] == R.STATUS_DISABLED_UNRULED
+    assert row["operator_decision_pending"] is True and "disabled" in row["disabled_evidence"]
+    assert "proposed_state" not in row and "review_by" not in row and "state_reason" not in row
     assert not LR.validate_registry(res["registry"])
+
+
+def test_evidence_proposal_is_carried_as_unruled_proposed_state():
+    ev = {"z": {"proposed_state": {"state": "RETIRED", "state_since": "2026-09-16", "reason_confidence": "CORRELATED",
+                                   "state_reason": "orphan", "reason_evidence": "doc.md"}}}
+    res = R.reconcile({"lanes": []}, cron_text="", units=_disabled_unit(), f_rows=[], evidence=ev,
+                      tokens=((), frozenset(), frozenset()))
+    row = res["registry"]["lanes"][0]
+    assert row["state"] == "ACTIVE" and row["status"] == R.STATUS_DISABLED_UNRULED
+    assert row["proposed_state"]["state"] == "RETIRED" and row["proposed_state"]["ruled"] is False
+    assert row["state"] not in LR.SILENCE_EXPECTED
+
+
+def test_committed_disabled_units_are_all_unruled(inputs, committed):
+    by_unit = {r["scheduler"]["expression"]: r for r in committed["lanes"]
+               if r.get("generated_by") == R.GENERATOR_VERSION and r["scheduler"]["kind"] == "systemd"}
+    disabled = [u["unit"] for u in inputs["units"]["timers"] + inputs["units"]["services"]
+                if str(u.get("enabled_state") or "") not in R.ENABLED_STATES and u["unit"] in by_unit]
+    assert len(disabled) >= 7
+    for u in disabled:
+        r = by_unit[u]
+        assert r["state"] == "ACTIVE" and r["status"] == R.STATUS_DISABLED_UNRULED, u
+        assert r["operator_decision_pending"] is True, u
+
+
+# ── stay_on_cron over the whole command (PR #1597 review) ──────────────────────────────────────
+
+def test_stay_tokens_come_from_config_and_route_selection_is_a_gateway_subset():
+    doc = json.loads(R.STAY_TOKENS_PATH.read_text(encoding="utf-8"))
+    assert set(doc["gateway_route_tokens_in_command"]) <= FORBIDDEN_ROUTE_TOKENS
+    words = R.load_stay_tokens()
+    for w in ("schwab", "alpaca", "opend", "ibkr", "defense_execution", "trade_executor", "stop", "broker"):
+        assert w in words, w
+    # moomoo is already a pipeline_manifest token; the config does not repeat it
+    assert "moomoo" in FORBIDDEN_COMMAND_TOKENS and "moomoo" not in doc["broker_command_tokens"]
+
+
+def test_stay_on_cron_scans_python_c_bodies_and_skips_comments():
+    toks = (tuple(FORBIDDEN_COMMAND_TOKENS), frozenset(FORBIDDEN_ROUTE_TOKENS), frozenset(SECRET_KEYS),
+            R.load_stay_tokens())
+    cmd = ('cd $PROJ && bash -c "$PY -c \\"import sys; import defense_execution as d; d.poll_fills()\\"" '
+           '>> logs/x.log 2>&1')
+    assert R.stay_on_cron(cmd, "inline", tokens=toks)["token"] == "defense_execution"
+    assert R.stay_on_cron("flock -n /tmp/s.lock $PY scripts/schwab_stream_daemon.py", "schwab_stream_daemon",
+                          tokens=toks)["token"] == "schwab"
+    assert R.stay_on_cron("$PY scripts/x.py --apply >> logs/x.log 2>&1  # holdings vs broker", "x", tokens=toks) is None
+    assert R.stay_on_cron("$PY scripts/stopwatch.py", "stopwatch", tokens=toks) is None   # whole words only
+    assert R.strip_shell_comment('echo "a # b" # c') == 'echo "a # b"'
+
+
+def test_reviewed_broker_lines_are_keep_on_cron(committed):
+    by = {r["lane_id"]: r for r in committed["lanes"]}
+    for lid, tok in (("schwab-stream-daemon", "schwab"), ("defense-execution", "defense_execution")):
+        assert by[lid]["recommendation"] == R.REC_KEEP and by[lid]["stay_on_cron"]["token"] == tok, lid
+
+
+def test_stay_class_beats_r0_and_the_row_stays_active(committed):
+    by = {r["lane_id"]: r for r in committed["lanes"]}
+    for lid in ("start-trade-ai-lab-moomoo-opend", "run-protection-pipeline-at-30-20",
+                "run-protection-pipeline-at-x-30-9-16", "eod-open-trade-alert"):
+        r = by[lid]
+        assert r["state"] == "ACTIVE" and r["recommendation"] == R.REC_KEEP and r.get("stay_on_cron"), lid
+        assert r["rationalization"]["recommendation"] == R.REC_R0, lid      # the R0 stays visible
+    assert R._final_recommendation(R.REC_R0, {"class": "broker_order", "token": "x"}) == R.REC_KEEP
+    assert R._final_recommendation(R.REC_R0, None) == R.REC_R0
+
+
+def test_scalp_shadow_logger_row_matches_the_regranted_line(inputs, committed):
+    line = next(ln for ln in _lines(inputs) if "run_scalp_shadow_logger.sh" in ln)
+    assert line.startswith("*/5 6-15 * * 1-5 ")
+    row = _row_for_line(committed, line)
+    assert row["scheduler"]["expression"] == "*/5 6-15 * * 1-5"
+    assert row["rationalization"]["f_id"] == "L804"
+    assert row["rationalization"]["schedule_changed_since_rationalization"]["f_sched"] == "*/5 6-11 * * 1-5"

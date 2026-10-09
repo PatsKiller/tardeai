@@ -1381,7 +1381,7 @@
   },
   {
    "n": 804,
-   "line": "*/5 6-11 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_scalp_shadow_logger.sh >> logs/scalp_shadow_logger.log 2>&1"
+   "line": "*/5 6-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_scalp_shadow_logger.sh >> logs/scalp_shadow_logger.log 2>&1"
   },
   {
    "n": 806,

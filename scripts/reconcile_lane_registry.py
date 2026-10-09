@@ -27,12 +27,17 @@ config/lane_registry.json in place (2-space JSON, non-ASCII kept, LF), and runni
 inputs is a no-op. Never edits crontab or units, never deletes a row, never runs a job.
 
 Recommendations (normalised from the rationalization's free text):
-  R0_ELIMINATE            the rationalization's 37 eliminations; the row stays ACTIVE until a
+  R0_ELIMINATE            the rationalization's eliminations; the row stays ACTIVE until a
                           cron-write grant retires the line (a later step).
-  KEEP_ON_CRON            broker / order / secret / daemon class. Also forced, whatever the
-                          rationalization says, when the command carries a
-                          pipeline_manifest.FORBIDDEN_COMMAND_TOKENS entry or the script name is a
-                          gateway FORBIDDEN_ROUTE_TOKENS / SECRET_KEYS token (see ``stay_on_cron``).
+  KEEP_ON_CRON            broker / order / secret / daemon class. Forced, whatever the
+                          rationalization says (R0 included — that elimination is an operator
+                          decision), when the command carries a pipeline_manifest.FORBIDDEN_COMMAND_TOKENS
+                          entry or a config/lane_stay_on_cron_tokens.json broker word anywhere in its
+                          text (python -c / bash -c bodies and ExecStart included), or the script name
+                          is a gateway FORBIDDEN_ROUTE_TOKENS / SECRET_KEYS token (see ``stay_on_cron``).
+
+Disabled units are recorded, not ruled on: state ACTIVE, ``status: DISABLED_UNRULED``,
+``operator_decision_pending: true``; the evidence file's reading is ``proposed_state`` (ruled: false).
   MERGE_INTO:<target>     a duplicate folded into another lane or pipeline.
   PIPELINE:<Pxx>          a member of one of the 16 orchestrated pipelines.
   EVENT_DRIVEN_CANDIDATE  a poller that should run on a producer event.
@@ -64,6 +69,8 @@ GENERATOR_VERSION = "reconcile_lane_registry@v1"
 DATA_DIR = ROOT / "docs" / "implementation" / "n8n-maturity" / "data"
 RATIONALIZATION_PATH = DATA_DIR / "F_rationalization.json"
 EVIDENCE_PATH = DATA_DIR / "lane_output_evidence.json"
+#: Broker / execution words scanned across the WHOLE command (config, not code — PR #1597 review).
+STAY_TOKENS_PATH = ROOT / "config" / "lane_stay_on_cron_tokens.json"
 RECONCILED_ON = "2026-10-09"
 
 #: Any absolute home path. A match string must never contain one (repo rule: no host-specific home
@@ -106,20 +113,39 @@ SECRET_NAME_EXEMPT = frozenset({"seed"})
 GATE_TOKENS = frozenset({"market_day_gate.sh"})
 
 ENABLED_STATES = frozenset({"enabled", "enabled-runtime", "linked", "linked-runtime", "static"})
-REVIEW_BY = "2026-10-16"
 REC_R0 = "R0_ELIMINATE"
 REC_KEEP = "KEEP_ON_CRON"
 REC_EVENT = "EVENT_DRIVEN_CANDIDATE"
 REC_N8N = "MIGRATE_N8N"
 UNVERIFIED_OUTPUT = "UNVERIFIED_OUTPUT"
+#: A unit found disabled on the host with no operator ruling (row state stays ACTIVE).
+STATUS_DISABLED_UNRULED = "DISABLED_UNRULED"
 
 
 # ── inputs ────────────────────────────────────────────────────────────────────────────────────
 
-def _forbidden_tokens() -> tuple[tuple[str, ...], frozenset, frozenset]:
+def load_stay_tokens(path: Path = STAY_TOKENS_PATH) -> frozenset:
+    """Whole-command broker words: the config's broker names plus the gateway route tokens it selects.
+
+    A selected route token that is not (or no longer) in FORBIDDEN_ROUTE_TOKENS is refused, so the
+    config cannot invent a gateway rule."""
+    from scripts.lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    route = {str(t).lower() for t in doc.get("gateway_route_tokens_in_command") or []}
+    stray = route - set(FORBIDDEN_ROUTE_TOKENS)
+    if stray:
+        raise ValueError(f"{path.name}: gateway_route_tokens_in_command not in FORBIDDEN_ROUTE_TOKENS: {sorted(stray)}")
+    words = {str(t).lower() for t in doc.get("broker_command_tokens") or []} | route
+    if not words:
+        raise ValueError(f"{path.name}: no broker_command_tokens")
+    return frozenset(words)
+
+
+def _forbidden_tokens() -> tuple[tuple[str, ...], frozenset, frozenset, frozenset]:
     from scripts.lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS, SECRET_KEYS
     from scripts.pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS
-    return tuple(FORBIDDEN_COMMAND_TOKENS), frozenset(FORBIDDEN_ROUTE_TOKENS), frozenset(SECRET_KEYS)
+    return (tuple(FORBIDDEN_COMMAND_TOKENS), frozenset(FORBIDDEN_ROUTE_TOKENS), frozenset(SECRET_KEYS),
+            load_stay_tokens())
 
 
 def read_live_crontab() -> str:
@@ -545,6 +571,15 @@ def rationalization_for_cron(rows: list[dict[str, Any]], raw_lines: list[str]) -
             out.setdefault(ln, r)
         else:
             pending.append(r)
+    for r in list(pending):
+        # Same line number, same named job, different schedule: the host line was re-timed after the
+        # rationalization (build_cron_rows records the drift). Only a named job, never ``inline``.
+        n = int(str(r.get("id", "")).lstrip("L"))
+        ln, name = by_line.get(n, ""), str(r.get("name") or "")
+        if name and name != "inline" and ln in active and name in ln and ln not in out \
+                and len(name) > 6 and sum(1 for o in rows if o.get("kind") == "cron" and o.get("name") == name) == 1:
+            out[ln] = r
+            pending.remove(r)
     for r in pending:
         name, sched = str(r.get("name") or ""), str(r.get("sched") or "")
         hits = [ln for ln in active if ln.startswith(sched + " ") and name in ln and ln not in out]
@@ -583,9 +618,45 @@ def normalise_recommendation(f: Optional[dict[str, Any]]) -> Optional[str]:
     return REC_N8N
 
 
+def strip_shell_comment(command: str) -> str:
+    """The command without its trailing ``# comment`` (a ``#`` after whitespace, outside quotes).
+    Crontab lines carry prose like ``# basis drift alarm (holdings vs broker)``; prose is not a call."""
+    quote = ""
+    prev = " "
+    for i, ch in enumerate(command or ""):
+        if quote:
+            if ch == quote and prev != "\\":
+                quote = ""
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "#" and prev.isspace():
+            return command[:i].rstrip()
+        prev = ch
+    return command or ""
+
+
+def _command_word_hit(command: str, words: Iterable[str]) -> Optional[str]:
+    """First token found as a whole word in the command (no letter/digit on either side; ``_``, ``.``,
+    ``/``, quotes and spaces are boundaries, so ``schwab_stream_daemon.py`` and ``import defense_execution``
+    both hit). Sorted, so the reported token is deterministic."""
+    low = (command or "").lower()
+    for w in sorted(words):
+        if re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", low):
+            return w
+    return None
+
+
 def stay_on_cron(command: str, script_stem: str, *, tokens=None) -> Optional[dict[str, str]]:
-    """Broker / order / secret class: never moved off cron. Returns {class, token} or None."""
-    cmd_tokens, route_tokens, secret_keys = tokens or _forbidden_tokens()
+    """Broker / order / secret class: never moved off cron. Returns {class, token, source} or None.
+
+    ``command`` is the WHOLE scheduled command — the cron command after the schedule, including any
+    ``bash -c`` / ``python -c`` body, or a unit's ExecStart. PR #1597 review: testing only the script
+    stem let ``schwab_stream_daemon.py`` and a ``python -c 'import defense_execution'`` line through as
+    MIGRATE_N8N. ``tokens`` is (command substrings, gateway route tokens, secret keys[, broker words]);
+    the 3-tuple form (no broker words) is kept for fixtures."""
+    tokens = tokens or _forbidden_tokens()
+    cmd_tokens, route_tokens, secret_keys = tokens[0], tokens[1], tokens[2]
+    broker_words = tokens[3] if len(tokens) > 3 else frozenset()
     gate_hit = None
     for tok in cmd_tokens:
         if tok in command:
@@ -593,6 +664,9 @@ def stay_on_cron(command: str, script_stem: str, *, tokens=None) -> Optional[dic
                 gate_hit = gate_hit or tok
                 continue
             return {"class": "broker_order", "token": tok, "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"}
+    hit = _command_word_hit(strip_shell_comment(command), broker_words)
+    if hit:
+        return {"class": "broker_order", "token": hit, "source": "config/lane_stay_on_cron_tokens.json"}
     words = [w for w in re.split(r"[^a-z0-9]+", script_stem.lower()) if w]
     for w in words:
         if w in route_tokens and w not in ROUTE_TOKEN_CHANNEL_EXEMPT:
@@ -663,8 +737,9 @@ def _rationalization_block(f: Optional[dict[str, Any]], rec: Optional[str]) -> d
 
 
 def _final_recommendation(f_rec: Optional[str], stay: Optional[dict[str, str]]) -> str:
-    if f_rec == REC_R0:
-        return REC_R0           # R0 wins; a stay-class R0 is listed as a disagreement in the report
+    """stay_on_cron beats everything, R0 included (PR #1597 review): eliminating a broker / order /
+    secret line is an operator decision, not a rationalization output. The rationalization's R0 stays
+    visible in ``rationalization.recommendation`` and in the report's ``r0_on_stay_class_lane`` list."""
     if stay:
         return REC_KEEP
     return f_rec or REC_N8N
@@ -825,6 +900,11 @@ def build_cron_rows(lines: list[str], undeclared: list[str], raw_lines: list[str
             row["stay_on_cron"] = stay
         if flags:
             row["flags"] = flags
+        if f and f.get("sched") and not it["line"].startswith(str(f["sched"]) + " "):
+            # Joined by line number + job name; the schedule was changed on the host after the
+            # rationalization was taken (e.g. L804 scalp shadow logger, 06-11 -> 06-15 under a cron grant).
+            row["rationalization"]["schedule_changed_since_rationalization"] = {
+                "f_sched": str(f["sched"]), "live_sched": it["sched"]}
         if ev and ev.get("note"):
             row["evidence_note"] = str(ev["note"])
         rows.append(row)
@@ -881,25 +961,20 @@ def build_unit_rows(units: dict[str, Any], undeclared_units: set[str], f_rows: l
             "unit_enabled_state": u.get("enabled_state"),
         }
         if str(u.get("enabled_state") or "") not in ENABLED_STATES:
-            # A timer that exists but is not enabled fires nothing. It is declared off, not ACTIVE. The
-            # reason comes from the evidence file when a document records it; otherwise PAUSED/UNKNOWN
-            # with review_by, so the operator is asked.
-            declared = (ev or {}).get("declared_state") or {}
-            state = str(declared.get("state") or "PAUSED")
-            if state not in ("PAUSED", "RETIRED", "NEVER_SCHEDULED"):
-                state = "PAUSED"
-            row["state"] = state
-            row["state_since"] = str(declared.get("state_since") or RECONCILED_ON)
-            row["state_reason"] = str(declared.get("state_reason") or (
-                f"unit file state '{u.get('enabled_state')}' observed on the host {RECONCILED_ON}; "
-                "nobody recorded why it was turned off"))
-            row["reason_confidence"] = str(declared.get("reason_confidence") or "UNKNOWN")
-            row["reason_evidence"] = str(declared.get("reason_evidence") or
-                                         "systemctl --user list-unit-files (read-only) during B1 reconciliation")
-            if state == "PAUSED":
-                row["review_by"] = str(declared.get("review_by") or REVIEW_BY)
-            if declared.get("superseded_by"):
-                row["superseded_by"] = str(declared["superseded_by"])
+            # A unit that exists but is not enabled fires nothing. PR #1597 review: the generator must
+            # RECORD that, never RULE on it. RETIRED / PAUSED / NEVER_SCHEDULED are operator decisions
+            # (check_expected_services turns RETIRED/PAUSED into "expected off"; the liveness monitor
+            # stops looking). So the row keeps the only non-retired state the checker supports, ACTIVE,
+            # and says DISABLED_UNRULED + operator_decision_pending. Its silence stays a finding until
+            # the operator rules. What the evidence file proposes is carried as ``proposed_state``.
+            row["status"] = STATUS_DISABLED_UNRULED
+            row["operator_decision_pending"] = True
+            proposed = (ev or {}).get("proposed_state") or {}
+            row["disabled_evidence"] = (
+                f"unit file state '{u.get('enabled_state')}' observed read-only on the host {RECONCILED_ON} "
+                "(systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.")
+            if proposed:
+                row["proposed_state"] = dict(proposed, ruled=False)
         if kind == "timer":
             row["service"] = u.get("service")
             row["cadence_basis"] = ("OnCalendar max gap (systemd-analyze, fixed base)" if u.get("on_calendar")
@@ -1087,10 +1162,11 @@ def disagreements(result: dict[str, Any], *, n8n_active: Optional[list[dict[str,
     out["active_n8n_shadows_of_cron_lanes"] = sorted(
         ({"workflow": n, "workflow_id": w} for n, w in active_names.items() if n.endswith("-shadow")),
         key=lambda x: x["workflow"])
-    # 4. rationalization says eliminate, but the line is broker/order/secret class
+    # 4. rationalization says eliminate, but the line is broker/order/secret class: KEEP_ON_CRON wins,
+    #    the row stays ACTIVE, and eliminating it is an operator decision
     out["r0_on_stay_class_lane"] = [
         {"lane_id": r["lane_id"], "stay_on_cron": r["stay_on_cron"]}
-        for r in lanes if r.get("recommendation") == REC_R0 and r.get("stay_on_cron")]
+        for r in lanes if (r.get("rationalization") or {}).get("recommendation") == REC_R0 and r.get("stay_on_cron")]
     # 5. rationalization proposes a pipeline/merge, the forbidden-token rule keeps it on cron
     out["rationalization_overridden_to_keep_on_cron"] = [
         {"lane_id": r["lane_id"], "f_recommendation": (r.get("rationalization") or {}).get("recommendation"),
@@ -1171,12 +1247,23 @@ def render_report(summary: dict[str, Any], dis: dict[str, list[dict[str, Any]]],
         sch = r.get("scheduler") or {}
         md.append(f"| `{r['lane_id']}` | {sch.get('kind')} | `{sanitize(str(sch.get('expression')))}` | "
                   f"{r.get('owner')} | {r.get('recommendation')} |")
+    pend = [r for r in lanes if r.get("status") == STATUS_DISABLED_UNRULED]
+    md += ["", f"## Disabled units pending an operator ruling ({len(pend)})", "",
+           "Found disabled on the host. Recorded, not ruled: state ACTIVE, `status: DISABLED_UNRULED`, "
+           "`operator_decision_pending: true`, so check_expected_services keeps reporting them DISABLED and "
+           "nothing treats them as retired. `proposed` is what the cited evidence supports (`ruled: false`).", "",
+           "| lane_id | unit | proposed | confidence |", "|---|---|---|---|"]
+    for r in sorted(pend, key=lambda x: x["lane_id"]):
+        prop = r.get("proposed_state") or {}
+        md.append(f"| `{r['lane_id']}` | `{(r.get('scheduler') or {}).get('expression')}` | "
+                  f"{prop.get('state') or '—'} | {prop.get('reason_confidence') or '—'} |")
     md += ["", "## Disagreements: crontab vs registry vs n8n program", ""]
     titles = {
         "registry_active_cron_without_line": "Registry says ACTIVE cron, crontab has no line",
         "cron_and_active_n8n_live_workflow": "Lane fires from cron AND an active n8n live workflow (double scheduler)",
         "active_n8n_shadows_of_cron_lanes": "Active n8n shadow workflows (lane still on cron; expected during the ladder)",
-        "r0_on_stay_class_lane": "Rationalization says ELIMINATE, line is broker/order/secret class",
+        "r0_on_stay_class_lane": "Rationalization says ELIMINATE, line is broker/order/secret class "
+                                 "(KEEP_ON_CRON wins; row stays ACTIVE; eliminating it is an operator decision)",
         "rationalization_overridden_to_keep_on_cron": "Rationalization proposes pipeline/merge, forbidden-token rule keeps it on cron",
         "not_in_rationalization": "Scheduled on the host, absent from the rationalization",
         "multi_schedule_rows": "One lane, several crontab lines (identical job on several schedules)",
@@ -1215,7 +1302,13 @@ def render_report(summary: dict[str, Any], dis: dict[str, list[dict[str, Any]]],
            "(weekday-only jobs therefore carry the weekend gap), or the OnCalendar max gap from `systemd-analyze calendar`.",
            "- A systemd row declares a unit, never a crontab line (`find_undeclared`).",
            "- R0 rows stay ACTIVE with `recommendation: R0_ELIMINATE`; retiring the line is a later step under a "
-           "cron-write grant. Disabled timers are declared PAUSED with `review_by`.",
+           "cron-write grant. A broker / order / secret line (`stay_on_cron`, whole command text incl. `python -c` "
+           "bodies and ExecStart, tokens in `config/lane_stay_on_cron_tokens.json`) is KEEP_ON_CRON even when the "
+           "rationalization says ELIMINATE — that elimination is pending an operator decision.",
+           "- A unit found disabled is NOT ruled on: the row stays ACTIVE with `status: DISABLED_UNRULED`, "
+           "`operator_decision_pending: true` and the evidence; any RETIRED / PAUSED / NEVER_SCHEDULED reading the "
+           "evidence file supports is carried as `proposed_state` (`ruled: false`). Its silence stays a finding "
+           "(check_expected_services keeps it DISABLED) until the operator rules.",
            "- Nothing on the host was changed: no crontab or unit edit, no job run, no row deleted.", ""]
     return "\n".join(md)
 

@@ -2,7 +2,7 @@
  "schema": "LaneOutputEvidence@v1",
  "generated_on": "2026-10-09",
  "method": "B1 research subagents read each scheduled job's script (and the scripts it calls) for fixed-path receipts, confirmed each file on the host (exists, mtime consistent with the schedule) and recorded a verified_token that reconcile_lane_registry.py re-checks against source_file. Only lanes with a host-confirmed, single-job receipt are listed; everything else keeps its scheduler log or is flagged UNVERIFIED_OUTPUT.",
- "declared_state_note": "declared_state applies only to a unit the host shows NOT enabled; it records why, from the cited document. It can never declare an enabled unit off.",
+ "proposed_state_note": "proposed_state applies only to a unit the host shows NOT enabled; it records what the cited document supports. It is a PROPOSAL for the operator, never a ruling (PR #1597 review): the generator keeps the row ACTIVE with status DISABLED_UNRULED and operator_decision_pending, and copies this block as proposed_state with ruled=false. It can never declare an enabled unit off.",
  "rejected": {
   "agent-intelligence-cron-daily": "receipt file shared with agent-router-cron (another script)",
   "agent-intelligence-cron-deep": "receipt file shared with agent-router-cron (another script)",
@@ -154,7 +154,7 @@
    "evidence": "scripts/compute_intraday_vwap.py:23 CACHE write_text :86 (skipped only when no active proposal symbols); host mtime 2026-10-09T16:00:05"
   },
   "db-retention-timer": {
-   "declared_state": {
+   "proposed_state": {
     "state": "RETIRED",
     "state_since": "2026-10-07",
     "reason_confidence": "ESTABLISHED",
@@ -614,7 +614,7 @@
    "evidence": "scripts/lib/schwab_instrument_evidence.py:34 EVIDENCE_RELATIVE; scripts/sweep_schwab_instruments.py:191-192 save_evidence(doc) unconditionally when --apply; host mtime 2026-10-03T03:30:31 (cron 30 3 * * 6)"
   },
   "systemd-tmpfiles-clean": {
-   "declared_state": {
+   "proposed_state": {
     "state": "NEVER_SCHEDULED",
     "state_since": "2026-10-09",
     "reason_confidence": "ESTABLISHED",
@@ -679,7 +679,7 @@
    "evidence": "scripts/lib/advisory/shadow_session.py:28 SESSIONS_PATH appended by run_shadow_session (:217) per --once run (scoreboard.json :286 also rewritten); dev-tree data/runtime symlinks to state root; host mtime 2026-10-09T09:28:40 (timer Mon..Fri 09:15)"
   },
   "tradeai-agent-runtime-atlas": {
-   "declared_state": {
+   "proposed_state": {
     "state": "RETIRED",
     "state_since": "2026-09-16",
     "reason_confidence": "CORRELATED",
@@ -688,7 +688,7 @@
    }
   },
   "tradeai-agent-runtime-concierge": {
-   "declared_state": {
+   "proposed_state": {
     "state": "RETIRED",
     "state_since": "2026-09-16",
     "reason_confidence": "CORRELATED",
@@ -697,7 +697,7 @@
    }
   },
   "tradeai-agent-runtime-hermes": {
-   "declared_state": {
+   "proposed_state": {
     "state": "RETIRED",
     "state_since": "2026-09-16",
     "reason_confidence": "CORRELATED",
@@ -706,7 +706,7 @@
    }
   },
   "tradeai-agent-runtime-pulse": {
-   "declared_state": {
+   "proposed_state": {
     "state": "RETIRED",
     "state_since": "2026-09-16",
     "reason_confidence": "CORRELATED",
@@ -715,7 +715,7 @@
    }
   },
   "tradeai-iris-taxonomy": {
-   "declared_state": {
+   "proposed_state": {
     "state": "PAUSED",
     "state_since": "2026-09-27",
     "reason_confidence": "ESTABLISHED",
