@@ -187,3 +187,23 @@ September 29 zero/null replay artifact remains **STALE_HISTORICAL**.
 No provider/model selection or call, production data-source writer, scheduler,
 send path or financial authority is introduced by this supplement. Production
 and end-to-end expression-EV acceptance remain **NOT_READY**.
+
+
+### October 9 independent-review correction checkpoint
+
+At source checkpoint `1d92fd2c01b00cbc943d52cda904473e605fe288`, the final
+three-family CADI regression is **53 TEST_ONLY tests passed** (2.29 seconds).
+This adds archive-alias preservation and derived-nonfinite-score refusal to the
+`e9c0b5d5c` / 46-test checkpoint above; that earlier receipt is preserved.
+The new negative first proved seven failures, including actual input-byte
+corruption through hardlink/symlink output aliases and a finite-input calculation
+that produced Infinity. The fix refuses aliased outputs before writing and
+returns typed `INVALID_DATA` rather than an unbounded score or uncaught dump
+error. It changes no evaluator thresholds or model selection.
+
+Evidence: `/tmp/tradeai-cadi-replay-alias-overflow-prior-20261009.log` and
+`/tmp/tradeai-cadi-replay-alias-overflow-final-20261009.log`. The independent
+prior reproduction is
+`/tmp/cadi-replay-independent-prior-probes-20261009.json`. These are source and
+fixture checks; actual-archive 30/60/90 validation and production readiness
+remain **NOT_READY / NOT_MEASURED**.
