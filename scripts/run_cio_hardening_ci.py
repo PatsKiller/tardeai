@@ -3540,6 +3540,13 @@ GATES = [
             # pins due-phase arithmetic, lock skip, timeout = failure, receipt
             # shape and that dry-run writes nothing. Timer stays NEVER_SCHEDULED.
             "tests/test_health_tick_20261007.py",
+            # 2026-10-09 n8n maturity B3.1: tick exit = tick health (findings in the
+            # receipt), step timeouts clamped to a tick deadline, leftover children
+            # reaped; portfolio_live_monitor --once; cron_self_heal acts + live $PY.
+            "tests/test_health_tick_outcomes_20261009.py",
+            "tests/test_cron_self_heal_acts_20261009.py",
+            # B3.1 review: monitors report a finding with EXIT_FINDING=3, never 1.
+            "tests/test_monitor_finding_exit_codes_20261009.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
             "tests/test_retention_registry_20261007.py",
