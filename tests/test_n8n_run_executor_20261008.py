@@ -8,10 +8,10 @@ and in n8n_run_executor_last.json. Never touches the live ledger, crontab or tok
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -198,14 +198,17 @@ def test_a_live_pid_file_on_the_lane_lock_is_run_skipped_lock(bench):
 
 def test_flock_kind_reuses_a_cron_style_lock_and_reports_conflict_as_skipped(bench):
     lock = bench["locks"] / "fl.lock"
-    holder = subprocess.Popen(["flock", str(lock), "sleep", "30"], start_new_session=True)
-    try:
-        time.sleep(0.3)
-        _request(bench["ledger"], "run-flock-0000000001", "flock-lane", "live", T0)
-        _once(bench)
-    finally:
-        os.killpg(holder.pid, signal.SIGKILL)  # the sleep child inherited the lock fd; kill the group
-        holder.wait()
+    # Hold the real kernel flock directly: acquisition/release are complete
+    # before either executor call, including on a CPU-contended test host.
+    # Waiting for a killed flock parent did not wait for its sleep child to
+    # close the inherited descriptor, causing a false second lock skip.
+    with lock.open("a") as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        try:
+            _request(bench["ledger"], "run-flock-0000000001", "flock-lane", "live", T0)
+            _once(bench)
+        finally:
+            fcntl.flock(holder, fcntl.LOCK_UN)
     row = _row(bench, "run-flock-0000000001")
     assert row["state"] == "RUN_SKIPPED_LOCK" and row["exit_code"] == X.FLOCK_CONFLICT_EXIT
     assert row["receipt"]["argv"][:5] == ["flock", "-n", "-E", "75", str(lock)]
