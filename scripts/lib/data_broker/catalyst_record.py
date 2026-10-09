@@ -45,12 +45,13 @@ def get_catalyst_record(db_query, symbol: str, *, days: int = 45) -> dict[str, A
     if not sym:
         return None
     row = db_query(
-        """
+        f"""
         SELECT symbol, catalyst_type, headline, severity, impact_score, confidence,
                source_url, COALESCE(published_at, created_at) AS at
         FROM catalyst_events
         WHERE upper(symbol) = upper(%s) AND catalyst_type <> 'other'
           AND COALESCE(published_at, created_at) > now() - make_interval(days => %s)
+          AND {not_news_sql("headline")}
         ORDER BY COALESCE(published_at, created_at) DESC
         LIMIT 1
         """,
@@ -141,11 +142,11 @@ def get_latest_news(db_query, symbols: list[str], *, hours: int = 72) -> dict[st
     if not syms:
         return {}
     rows = db_query(
-        """
+        f"""
         SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS symbol, title, source, source_url, published_at, sentiment
         FROM news_articles
         WHERE upper(symbol) = ANY(%s) AND published_at > now() - make_interval(hours => %s)
-          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL
+          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL AND {not_news_sql()}
         ORDER BY upper(symbol), published_at DESC
         """,
         (syms, int(hours)),
@@ -157,6 +158,22 @@ def get_latest_news(db_query, symbols: list[str], *, hours: int = 72) -> dict[st
                                  "published_at": at.isoformat() if hasattr(at, "isoformat") else at,
                                  "sentiment": r.get("sentiment")}
     return out
+
+
+# Quote pages and option-contract listings that the RSS feeds return as "news" (operator 2026-10-09: the BRCC view
+# listed "BRCC Oct 2026 8.000 call (BRCC261016C00008000) stock price, news, quote and history"). 594 of 4,908 articles
+# in the 7 days to 2026-10-09 matched. They are not news and are left out wherever news is read.
+NOT_NEWS_PATTERNS = (
+    r"\d+\.\d{3} (call|put) \(",                         # option-contract listing pages
+    r"stock price, news, quote|stock historical prices",   # quote pages
+    r"\(.+\) stock forecasts?( & analyst predictions)? -",  # forecast listing pages
+    r"latest stock price, analysis, news",
+)
+
+
+def not_news_sql(col: str = "title") -> str:
+    """SQL predicate that keeps real headlines: `col !~* p` for every NOT_NEWS_PATTERNS entry (no parameters)."""
+    return " AND ".join(f"COALESCE({col}, '') !~* '{p}'" for p in NOT_NEWS_PATTERNS)
 
 
 def title_key(title: Any) -> str:
@@ -175,11 +192,11 @@ def get_symbol_news(db_query, symbol: str, *, days: int = 45, limit: int = 6) ->
     if not sym:
         return []
     rows = db_query(
-        """
+        f"""
         SELECT title, source, source_url, published_at, sentiment
         FROM news_articles
         WHERE upper(symbol) = %s AND published_at > now() - make_interval(days => %s)
-          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL
+          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL AND {not_news_sql()}
         ORDER BY published_at DESC
         LIMIT %s
         """,
@@ -208,12 +225,13 @@ def get_symbol_catalysts(db_query, symbol: str, *, days: int = 90, limit: int = 
     if not sym:
         return []
     rows = db_query(
-        """
+        f"""
         SELECT symbol, catalyst_type, headline, severity, impact_score, confidence, source_url,
                COALESCE(published_at, created_at) AS at
         FROM catalyst_events
         WHERE upper(symbol) = %s AND catalyst_type <> 'other'
           AND COALESCE(published_at, created_at) > now() - make_interval(days => %s)
+          AND {not_news_sql("headline")}
         ORDER BY COALESCE(published_at, created_at) DESC
         LIMIT %s
         """,
