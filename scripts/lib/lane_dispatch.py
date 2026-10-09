@@ -23,10 +23,15 @@ plain string), exec_start/service, command/script, and the lane's real argv in c
 A row marked `stay_on_cron` or recommendation KEEP_ON_CRON (B1 reconcile, PR #1597), or with
 watch.stay_behind=true, is never eligible either. dispatchable(row) = mode != off AND eligible.
 
-Scalp exception, documented and NOT carved out here: trade-ai-scalp-live is governed by AGENTS.md 4.0.0 §23.3
-through config/n8n_run_allowlist.json. Its cron expression wraps `scripts/market_day_gate.sh`, which is a
-pipeline_manifest FORBIDDEN_COMMAND_TOKENS entry, so this rule marks it INELIGIBLE. Any exception must be an
-explicit, reviewed change to this module (or to the allowlist contract), never a silent carve-out.
+POLICY EXCEPTIONS (config/lane_dispatch_policy_exceptions.json). trade-ai-scalp-live is governed by AGENTS.md
+4.0.0 §23.3 through config/n8n_run_allowlist.json; its cron expression wraps `scripts/market_day_gate.sh`, a
+pipeline_manifest FORBIDDEN_COMMAND_TOKENS entry. The exception file (operator approval 2026-10-09 ~18:05 ET)
+exempts that lane from ONLY that token, and from the B1 stay_on_cron marker of class pipeline_excluded_gate
+naming that token (plus the KEEP_ON_CRON recommendation the reconciler forces from it). Bounds, enforced here:
+only EXEMPTIBLE_TOKENS can ever be exempted, and only for EXEMPTIBLE_LANES (an entry naming anything else is
+dropped whole); only the top-level KEEP_ON_CRON is lifted, never the rationalization block's; every other
+forbidden token, stay-behind, sender and broker rule still applies; a missing or malformed file = no exceptions.
+An exception changes eligibility only — dispatch mode stays whatever the row's dispatch block says (off).
 """
 from __future__ import annotations
 
@@ -83,6 +88,15 @@ FORBIDDEN_LANE_SUBSTRINGS = tuple(_COMMAND_TOKENS) + tuple(sorted(_SECRET_WORDS)
 #: Registry markers (B1 reconcile, PR #1597) that pin a lane to cron/systemd whatever its dispatch block says.
 KEEP_ON_CRON = "KEEP_ON_CRON"
 DEFAULT_RUN_ALLOWLIST = Path(__file__).resolve().parents[2] / "config" / "n8n_run_allowlist.json"
+DEFAULT_POLICY_EXCEPTIONS = Path(__file__).resolve().parents[2] / "config" / "lane_dispatch_policy_exceptions.json"
+#: Safety ceiling on config/lane_dispatch_policy_exceptions.json: the only forbidden tokens a lane may ever be
+#: exempted from. market_day_gate.sh is a market-calendar gate, not a broker/order/stop/secret authority.
+EXEMPTIBLE_TOKENS = frozenset({"market_day_gate.sh"})
+#: Safety ceiling on which lanes config may ever except (AGENTS 4.0.0 §23.3; operator 2026-10-09 ~18:05 ET).
+#: An entry for any other lane is dropped; widening this needs a code change + review, not a config edit.
+EXEMPTIBLE_LANES = frozenset({"trade-ai-scalp-live"})
+#: The B1 reconciler's stay_on_cron class for a gate token (scripts/reconcile_lane_registry.py, PR #1597).
+GATE_STAY_CLASS = "pipeline_excluded_gate"
 
 _CRON_SHAPE = re.compile(r"^\S+ \S+ \S+ \S+ \S+$")
 _RETRY_POLICY_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
@@ -397,23 +411,87 @@ def forbidden_hits(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[s
     return hits
 
 
-def _keep_on_cron(row: Mapping[str, Any]) -> bool:
+_EXCEPTIONS_CACHE: dict[str, dict[str, frozenset[str]]] = {}
+
+
+def load_policy_exceptions(path: Optional[Path] = None) -> dict[str, frozenset[str]]:
+    """lane_id -> the forbidden tokens that lane is exempted from (config/lane_dispatch_policy_exceptions.json).
+
+    Fail closed: a missing/unreadable/malformed file yields {}; an entry without a string lane_id, without a
+    non-empty exempt_tokens list, naming any token outside EXEMPTIBLE_TOKENS, or for a lane outside
+    EXEMPTIBLE_LANES is dropped whole; a lane listed twice is dropped (ambiguous). Shared by the dispatcher and, after PR #1597, the registry reconciler."""
+    p = Path(path) if path is not None else DEFAULT_POLICY_EXCEPTIONS
+    key = str(p)
+    if key in _EXCEPTIONS_CACHE:
+        return _EXCEPTIONS_CACHE[key]
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = {}
+    entries = doc.get("exceptions") if isinstance(doc, dict) else None
+    out: dict[str, frozenset[str]] = {}
+    seen: set[str] = set()
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("lane_id"), str) or not entry["lane_id"]:
+            continue
+        lane = entry["lane_id"]
+        toks = entry.get("exempt_tokens")
+        if lane in seen:
+            out.pop(lane, None)
+            continue
+        seen.add(lane)
+        if not isinstance(toks, list) or not toks or not all(isinstance(t, str) for t in toks):
+            continue
+        if not set(toks) <= EXEMPTIBLE_TOKENS:
+            continue
+        if lane not in EXEMPTIBLE_LANES:
+            continue
+        out[lane] = frozenset(toks)
+    _EXCEPTIONS_CACHE[key] = out
+    return out
+
+
+def _exempt_tokens(row: Mapping[str, Any], exceptions: Optional[Mapping[str, frozenset[str]]]) -> frozenset[str]:
+    lane = row.get("lane_id")
+    table = load_policy_exceptions() if exceptions is None else exceptions
+    if not isinstance(lane, str) or lane not in EXEMPTIBLE_LANES:
+        return frozenset()
+    return frozenset(table.get(lane) or ()) & EXEMPTIBLE_TOKENS
+
+
+def _gate_marker_exempt(row: Mapping[str, Any], exempt: frozenset[str]) -> bool:
+    """True only when the row's stay_on_cron marker is the B1 gate class naming an exempted token."""
+    mark = row.get("stay_on_cron")
+    return (bool(exempt) and isinstance(mark, dict) and mark.get("class") == GATE_STAY_CLASS
+            and mark.get("token") in exempt)
+
+
+def _keep_on_cron(row: Mapping[str, Any], *, lift_top_level: bool = False) -> bool:
+    """KEEP_ON_CRON at the row's top level (B1-forced) or in its rationalization block. The policy exception may
+    lift only the top-level one (the reconciler forces it from the gate marker); a KEEP_ON_CRON inside the
+    rationalization block is an independent F-review verdict and always blocks."""
     rat = row.get("rationalization")
-    return row.get("recommendation") == KEEP_ON_CRON or (
-        isinstance(rat, dict) and rat.get("recommendation") == KEEP_ON_CRON)
+    top = row.get("recommendation") == KEEP_ON_CRON and not lift_top_level
+    return top or (isinstance(rat, dict) and rat.get("recommendation") == KEEP_ON_CRON)
 
 
-def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None
-                      ) -> tuple[bool, str]:
+def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None,
+                      exceptions: Optional[Mapping[str, frozenset[str]]] = None) -> tuple[bool, str]:
     """(eligible, reason). Never eligible: a stay_on_cron or KEEP_ON_CRON row (B1 reconcile markers), a
     stay-behind row, or any forbidden token in the lane id, scheduler, exec_start/service, command/script or
     the lane's run-allowlist argv.
 
     Independent of the dispatch block: a block saying `live` cannot make a forbidden lane eligible. Callers
-    that RUN anything use dispatchable(row), which also requires mode != off."""
-    if row.get("stay_on_cron") not in (None, False, {}, ""):
+    that RUN anything use dispatchable(row), which also requires mode != off.
+
+    `exceptions` (default: config/lane_dispatch_policy_exceptions.json) lifts ONLY the listed EXEMPTIBLE_TOKENS
+    hits for a lane in EXEMPTIBLE_LANES, and the B1 gate-class stay_on_cron marker (with the top-level KEEP_ON_CRON
+    it forces; never the rationalization block's) naming one of them. Any other hit or marker still blocks; the reason then names it."""
+    exempt = _exempt_tokens(row, exceptions)
+    gate_exempt = _gate_marker_exempt(row, exempt)
+    if row.get("stay_on_cron") not in (None, False, {}, "") and not gate_exempt:
         return False, "stay_on_cron"
-    if _keep_on_cron(row):
+    if _keep_on_cron(row, lift_top_level=gate_exempt):
         return False, "keep_on_cron"
     try:
         watch = parse_watch_block(row)
@@ -421,17 +499,23 @@ def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mappin
         return False, f"bad_watch_block:{e.detail}"
     if watch.stay_behind:
         return False, "stay_behind"
-    hits = forbidden_hits(row, allowlist_argv=allowlist_argv)
+    all_hits = forbidden_hits(row, allowlist_argv=allowlist_argv)
+    hits = [h for h in all_hits if h[0] not in exempt]
     if hits:
         tok, field = hits[0]
         return False, f"forbidden_token:{tok}@{field}"
+    used = sorted({h[0] for h in all_hits} | ({row["stay_on_cron"]["token"]} if gate_exempt else set()))
+    if used:
+        return True, "eligible:policy_exception:" + ",".join(used)
     return True, "eligible"
 
 
-def dispatchable(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None) -> bool:
+def dispatchable(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None,
+                 exceptions: Optional[Mapping[str, frozenset[str]]] = None) -> bool:
     """The one check a dispatcher/executor needs: dispatch mode is not off (block present and well-formed)
     AND the row is dispatch-eligible."""
-    return dispatch_mode(row) != "off" and dispatch_eligible(row, allowlist_argv=allowlist_argv)[0]
+    return dispatch_mode(row) != "off" and dispatch_eligible(
+        row, allowlist_argv=allowlist_argv, exceptions=exceptions)[0]
 
 
 # ── validation ───────────────────────────────────────────────────────────────────────────────────
