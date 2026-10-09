@@ -194,7 +194,7 @@ def test_released_dead_letter_rearms_as_retry_due_dlq_release(store):
          attempt=3)
     store.record_dead_letter(slot_key=key, lane_id="x-lane", mode="dry_run", slot_local="20261009T0930", attempts=3,
                              last_run_id=key + ":a3", last_state="RUN_FAILED", last_reason=None, verdict="retryable",
-                             now=NOW.timestamp() - 120)
+                             now=NOW.timestamp() - 120, klass="monitor", max_attempts=3, policy="transient-2")
     assert _due(rows, _allow("x-lane"), store)["items"] == []
     store.release_dead_letter(key, "operator", "fixed disk", NOW.timestamp() - 30)
     resp = _due(rows, _allow("x-lane"), store)
@@ -204,6 +204,20 @@ def test_released_dead_letter_rearms_as_retry_due_dlq_release(store):
                              policies=POLICIES, run_store=store, now=NOW)
     assert check.ok and check.parent_run_id == key + ":a3" and check.slot_key == key
     _validate(resp)
+
+
+def test_released_but_not_rearmable_dead_letter_stays_dead(store):
+    """B5.4 contract: a dead letter with unknown class/max_attempts (legacy) never re-arms, even if released."""
+    rows = [_row("x-lane", ["30 9 * * *"])]
+    key = "d:x-lane:dry_run:20261009T0930"
+    store.record_dead_letter(slot_key=key, lane_id="x-lane", mode="dry_run", slot_local="20261009T0930", attempts=1,
+                             last_run_id=key, last_state="RUN_FAILED", last_reason=None, verdict="terminal",
+                             now=NOW.timestamp() - 120)
+    store._l._conn.execute("UPDATE dead_letters SET released_at = ? WHERE slot_key = ?",
+                           ((NOW - timedelta(seconds=30)).isoformat(), key))
+    store._l._conn.commit()
+    resp = _due(rows, _allow("x-lane"), store)
+    assert resp["items"] == [] and resp["counts"]["DEAD_LETTER"] == 1
 
 
 def test_breaker_open_holds_every_emittable_slot(store):

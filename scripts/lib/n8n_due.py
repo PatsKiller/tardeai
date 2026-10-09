@@ -20,8 +20,10 @@ State per slot (design §3.2 table; the slot's runs are the rows whose run_id is
   DUE            no row, no dead letter                                          → item, attempt 1
   IN_FLIGHT      latest attempt REQUESTED / RUNNING                              → nothing
   DONE           latest attempt RUN_DONE / RUN_SKIPPED_LOCK (or verdict ok/skipped)
-  RETRY_DUE      latest attempt retryable, attempt < max_attempts, backoff over  → item, attempt n+1, reason retry
-                 OR a RELEASED dead letter whose re-armed attempt has no row yet → item, attempts+1, reason dlq_release
+  RETRY_DUE      latest attempt retryable (n8n_retry_policy.class_verdict), attempt < effective_max_attempts,
+                 backoff over                                                    → item, attempt n+1, reason retry
+                 OR a RELEASED dead letter that ledger.dead_letter_rearmable accepts and whose re-armed attempt has
+                 no row yet                                                      → item, attempts+1, reason dlq_release
   RETRY_WAIT     retryable, backoff not over                                     → held, retry_at
   DEAD_LETTER    an unreleased dead_letters row, or a terminal / exhausted latest attempt the executor has not
                  finalized yet                                                   → held
@@ -65,10 +67,12 @@ try:
     from scripts.lib import cron_schedule as _cron
     from scripts.lib import lane_dispatch as _ld
     from scripts.lib import n8n_retry_policy as _rp
+    from scripts.lib.n8n_coordination_ledger import dead_letter_rearmable as _ld_rearmable
 except ImportError:                                        # imported as lib.n8n_due
     from lib import cron_schedule as _cron  # type: ignore
     from lib import lane_dispatch as _ld  # type: ignore
     from lib import n8n_retry_policy as _rp  # type: ignore
+    from lib.n8n_coordination_ledger import dead_letter_rearmable as _ld_rearmable  # type: ignore
 
 NO_CONSUMER_REASON = (
     "Imported by scripts/lib/n8n_coordination_gateway.py (operation `due`, and the slot-key check in `run`); "
@@ -319,9 +323,8 @@ def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: 
         if entry.get(_MODE_ARG[block.mode]) is None:
             errors.append(_err(lane, "not_allowlisted", f"allowlist {_MODE_ARG[block.mode]} is null: mode {block.mode} unavailable"))
             continue
-        try:
-            policy = policies.get(block.retry_policy)
-        except (KeyError, AttributeError):
+        policy = (getattr(policies, "policies", None) or {}).get(block.retry_policy)
+        if policy is None:                                 # RetryPolicies.get would return UNRESOLVED_POLICY
             errors.append(_err(lane, "unknown_retry_policy", f"retry_policy {block.retry_policy!r}"))
             continue
         if block.klass not in _ld.PERMITTED_CLASSES_PRE_R1 or not _rp.policy_permits_class(policy, block.klass):
@@ -425,6 +428,9 @@ def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: 
             ev.state = "DEAD_LETTER"
             return ev
         dead_attempts = int(dl.get("attempts") or latest_attempt or 1)
+        if not _ld_rearmable(dl)[0]:
+            ev.state = "DEAD_LETTER"                        # B5.4 contract: send/learn/single-attempt/unknown never re-arm
+            return ev
         if latest_attempt <= dead_attempts:
             n = dead_attempts + 1
             if n > MAX_ATTEMPT:
@@ -453,14 +459,15 @@ def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: 
         return ev
     receipt = latest.get("receipt") if isinstance(latest.get("receipt"), Mapping) else {}
     exit_code = latest.get("exit_code")
-    verdict = latest.get("verdict") or _rp.verdict(state, exit_code if isinstance(exit_code, int) else None,
-                                                   receipt.get("reason"), lane.policy)
+    verdict = latest.get("verdict") or _rp.class_verdict(state, exit_code if isinstance(exit_code, int) else None,
+                                                         receipt.get("reason"), lane.policy, lane.block.klass)
     if verdict in (_rp.VERDICT_OK, _rp.VERDICT_SKIPPED):
         ev.state = "DONE"
         return ev
-    if verdict == _rp.VERDICT_RETRYABLE and latest_attempt < min(lane.policy.max_attempts, MAX_ATTEMPT):
+    max_attempts = min(_rp.effective_max_attempts(lane.policy, lane.block.klass), MAX_ATTEMPT)
+    if verdict == _rp.VERDICT_RETRYABLE and latest_attempt < max_attempts:
         finished = _parse_ts(latest.get("finished_at")) or _parse_ts(latest.get("requested_at")) or now
-        retry_at = _rp.next_attempt_at(lane.policy, latest_attempt, finished)
+        retry_at = _rp.next_attempt_at(lane.policy, latest_attempt, finished, lane.block.klass)
         if retry_at is not None:
             if now >= retry_at:
                 ev.state, ev.attempt, ev.reason = "RETRY_DUE", latest_attempt + 1, "retry"
