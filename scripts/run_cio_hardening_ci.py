@@ -3708,6 +3708,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: AGENTS_GUARD_HOOK — 2026-10-09 Claude Code PreToolUse hook enforcing the AGENTS.md hard rails
+        # (broker, delete, remote routing, secrets, live ops behind guard grants, governed served paths); log-only
+        # first week, fail-open on its own errors, redacted AgentsGuardDecision@v1 log. Hermetic: tmp HOME/state/ledger.
+        "AGENTS_GUARD_HOOK",
+        [
+            "tests/test_agents_guard_hook_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: ROLLUP_RECURSION_AND_FUSED_EMBEDDINGS — storage audit 2026-10-09 (#1, #5) + operator decision:
         # system_rollup_daily payload bounded (trends = compact headlines only, no stored trends panel, byte cap
         # -> typed ROLLUP_PAYLOAD_TOO_LARGE, receipt, non-zero exit); rag_indexer fused_signal text carries real

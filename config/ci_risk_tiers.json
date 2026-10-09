@@ -28,6 +28,8 @@
         "docs/governance/**",
         "bin/guard",
         "bin/agent-push",
+        "scripts/hooks/**",
+        "config/agents_guard_hook_rules.json",
         "scripts/lib/guard_*.py",
         "scripts/guard_*.py",
         "scripts/check_no_secrets.py",
