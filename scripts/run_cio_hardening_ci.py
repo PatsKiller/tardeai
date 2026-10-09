@@ -3747,6 +3747,20 @@ GATES = [
             "tests/test_system_telegram_interdict_scope_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: N8N_PLATFORM_MATURITY — 2026-10-09 n8n maturity program C1: scripts/n8n_platform_maturity.py
+        # scores 12 dimensions 0-10 from evidence only (N8nPlatformMaturity@v1); the probe refuses any
+        # non-read-only command; missing evidence scores 0 (UNVERIFIED). Hermetic: tmp state/proj roots,
+        # fake command runner, fixed clock. Listing them here schedules nothing.
+        "N8N_PLATFORM_MATURITY",
+        [
+            "tests/test_n8n_platform_maturity_core_20261009.py",
+            "tests/test_n8n_platform_maturity_scheduling_20261009.py",
+            "tests/test_n8n_platform_maturity_signal_20261009.py",
+            "tests/test_n8n_platform_maturity_healing_20261009.py",
+            "tests/test_n8n_platform_maturity_governance_20261009.py",
+        ],
+    ),
 ]
 
 

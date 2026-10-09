@@ -1,0 +1,974 @@
+{
+ "schema": "SelfHealingMechanisms@v1",
+ "authority": "docs/implementation/n8n-maturity (program 2026-10-09); source audit ~/n8n-maturity-program/data/B_self_healing.md",
+ "note": "Inventory the n8n maturity scorer (dimension 6) evaluates. Each mechanism names the code that implements it, the evidence source a successful runtime action leaves (kind jsonl|json|jsonstream|sqlite|journal|systemd|log|psql|absent; path relative to its base), and the success predicate: an actual heal/remediation/retry success, not merely 'ran'. PROVEN = >= min_count successes within window_hours (default dimensions.self_healing.proof_window_hours, 336 h); RAN_NOT_HEALED = records exist but too few successes; NO_EVIDENCE = no source or no records. Logs without dates trust only their last undated_tail_lines lines/records and only when the file mtime is inside the window.",
+ "bases": {
+  "state": "persistent state root (probe.root)",
+  "repo": "repo checkout (probe.proj)",
+  "devtree": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+  "home": "~"
+ },
+ "mechanisms": [
+  {
+   "id": "llm_call_retry_wrapper",
+   "name": "LLM call retry wrapper (llm_net)",
+   "category": "retry",
+   "code": "scripts/llm_net.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "data/runtime/llm_retry_events.jsonl",
+    "ts_key": "ts"
+   },
+   "success_predicate": {
+    "description": "an LLM call that failed then succeeded on retry (outcome=recovered)",
+    "field": "outcome",
+    "equals": "recovered",
+    "min_count": 1
+   },
+   "expected": "PROVEN (low yield: 184 recovered / 4817 gave_up lifetime)",
+   "audit_ref": "B-F1"
+  },
+  {
+   "id": "n8n_run_retry_wrapper",
+   "name": "n8n run executor retry wrapper",
+   "category": "retry",
+   "code": "scripts/n8n_run_executor.py",
+   "evidence_source": {
+    "kind": "absent",
+    "reason": "not built yet: RUN_FAILED / RUN_TIMEOUT are terminal; no workflow has retryOnFail"
+   },
+   "success_predicate": {
+    "description": "a RUN_FAILED lane run retried by the dispatcher and finishing RUN_DONE",
+    "field": "state",
+    "equals": "RUN_DONE_AFTER_RETRY",
+    "min_count": 1
+   },
+   "expected": "not built yet -> NO_EVIDENCE (program T6-18 B3 / C2)",
+   "audit_ref": "B-F5"
+  },
+  {
+   "id": "system_health_agent_retry",
+   "name": "system_health_agent retry of STALE/MISSING cron jobs",
+   "category": "retry",
+   "code": "scripts/system_health_agent.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/system_health_agent.log",
+    "ts_regex": "^(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d)",
+    "tz": "America/New_York",
+    "line_regex": "\\[retry\\] "
+   },
+   "success_predicate": {
+    "description": "a retry that ran and succeeded; the outcome is only written to the DB, the log shows attempts or RETRY_DISARMED",
+    "regex": "\\[retry\\] .*(RETRY_OK|retry succeeded)",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (RETRY_DISARMED since 10-08; summary still claims retries)",
+   "audit_ref": "B-B4"
+  },
+  {
+   "id": "pipeline_watchdog_retry",
+   "name": "pipeline_watchdog retry of failed critical pipelines",
+   "category": "retry",
+   "code": "scripts/pipeline_watchdog.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/pipeline_watchdog.log",
+    "ts_regex": "^(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d)",
+    "tz": "America/New_York",
+    "line_regex": "\\[watchdog\\]"
+   },
+   "success_predicate": {
+    "description": "a retry that completed rc=0; the success is only recorded in the DB (log_action), so no log line proves it",
+    "regex": "\\[watchdog\\] Retry (succeeded|ok) ",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (retry outcome not logged; CBU)",
+   "audit_ref": "B-B5"
+  },
+  {
+   "id": "llm_deferred_drain",
+   "name": "Off-peak deferred LLM work drain",
+   "category": "retry",
+   "code": "scripts/lib/llm_deferral.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/llm_deferred_drain.log",
+    "line_regex": "\\[deferred-drain\\]",
+    "undated_tail_lines": 400
+   },
+   "success_predicate": {
+    "description": "a drain pass that completed at least one deferred job (N ok, N >= 1)",
+    "regex": "claimed, [1-9]\\d* ok",
+    "min_count": 1
+   },
+   "expected": "PROVEN-or-RAN (undated log: tail heuristic; 269 ok / 499 failed)",
+   "audit_ref": "B-F2"
+  },
+  {
+   "id": "n8n_run_dead_letter_queue",
+   "name": "n8n run dead-letter queue",
+   "category": "dead_letter",
+   "code": "scripts/n8n_run_executor.py",
+   "evidence_source": {
+    "kind": "absent",
+    "reason": "not built yet: the executor has no dead-letter state"
+   },
+   "success_predicate": {
+    "description": "a failed run parked in the DLQ and later replayed to RUN_DONE",
+    "field": "state",
+    "equals": "DLQ_REPLAYED",
+    "min_count": 1
+   },
+   "expected": "not built yet -> NO_EVIDENCE",
+   "audit_ref": "B-F5"
+  },
+  {
+   "id": "n8n_gateway_event_dead_letter",
+   "name": "n8n coordination gateway event ledger dead-letter",
+   "category": "dead_letter",
+   "code": "scripts/lib/n8n_coordination_ledger.py",
+   "evidence_source": {
+    "kind": "sqlite",
+    "base": "state",
+    "path": "data/governance/n8n_coordination_ledger.sqlite",
+    "table": "events",
+    "ts_key": "updated_at"
+   },
+   "success_predicate": {
+    "description": "a poison event captured to the dead letter (dead_letter=1) instead of looping",
+    "field": "dead_letter",
+    "equals": 1,
+    "min_count": 1
+   },
+   "expected": "NO_EVIDENCE (events table empty)",
+   "audit_ref": "B-F5"
+  },
+  {
+   "id": "cio_lifecycle_dlq",
+   "name": "CIO lifecycle DLQ apply receipts",
+   "category": "dead_letter",
+   "code": "scripts/cio_lifecycle_dlq.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "data/cio/lifecycle_dlq.jsonl",
+    "ts_key": "ts"
+   },
+   "success_predicate": {
+    "description": "a dead-lettered CIO lifecycle event replayed (kind=apply_receipt)",
+    "field": "kind",
+    "equals": "apply_receipt",
+    "min_count": 1
+   },
+   "expected": "NO_EVIDENCE (ledger never written; TRADEAI_DLQ_APPLY unarmed)",
+   "audit_ref": "B-F"
+  },
+  {
+   "id": "cio_bridge_watchdog",
+   "name": "CIO governed-bridge watchdog (restart on WEDGED)",
+   "category": "watchdog",
+   "code": "scripts/cio_bridge_watchdog.py",
+   "evidence_source": {
+    "kind": "jsonstream",
+    "base": "state",
+    "path": "logs/cio_bridge_watchdog.log",
+    "ts_key": "checked_at"
+   },
+   "success_predicate": {
+    "description": "the watchdog restarted cio-governed-bridge (restarted is a non-null result)",
+    "field": "restarted",
+    "truthy": true,
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (restart never needed / never executed)",
+   "audit_ref": "B-B1"
+  },
+  {
+   "id": "portfolio_server_watchdog",
+   "name": "portfolio-server :7777 watchdog (kill on UNRESPONSIVE, systemd respawns)",
+   "category": "watchdog",
+   "code": "scripts/portfolio_server_watchdog.sh",
+   "evidence_source": {
+    "kind": "log",
+    "base": "home",
+    "path": "logs/portfolio_server_watchdog.log",
+    "ts_regex": "^\\[(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d) UTC\\]",
+    "tz": "UTC"
+   },
+   "success_predicate": {
+    "description": "an UNRESPONSIVE API process killed so systemd respawned it",
+    "regex": "UNRESPONSIVE .* killing pid",
+    "min_count": 1
+   },
+   "expected": "PROVEN (392 kills; re-probe escalation lines are false alarms)",
+   "audit_ref": "B-D1"
+  },
+  {
+   "id": "postgres_main_watchdog",
+   "name": "postgresql@17-main remediation timer",
+   "category": "watchdog",
+   "code": "scripts/remediate_postgres_main.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "devtree",
+    "path": "logs/postgres_main_remediate.jsonl",
+    "ts_key": "ts"
+   },
+   "success_predicate": {
+    "description": "the watchdog started a stopped postgresql@17-main (action=started)",
+    "field": "action",
+    "equals": "started",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (never a successful start; 15 start_failed 09-18)",
+   "audit_ref": "B-D2"
+  },
+  {
+   "id": "autonomy_watchdog",
+   "name": "Autonomy watchdog (observe/classify/record/alert)",
+   "category": "watchdog",
+   "code": "scripts/autonomy_watchdog.py",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "tradeai-autonomy-watchdog.service",
+    "window_hours": 168
+   },
+   "success_predicate": {
+    "description": "a degraded verdict whose alert was actually delivered (telegram sent, not interdicted)",
+    "regex": "telegram_sent|\\\"sent\\\": true",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (alert-only; every alert telegram_interdicted)",
+   "audit_ref": "B-K"
+  },
+  {
+   "id": "n8n_lab_watchdog",
+   "name": "n8n lab liveness watchdog",
+   "category": "watchdog",
+   "code": "scripts/n8n_lab_watchdog.py",
+   "evidence_source": {
+    "kind": "json",
+    "base": "state",
+    "path": "data/runtime/n8n_lab_watchdog_last.json",
+    "ts_key": "checked_at"
+   },
+   "success_predicate": {
+    "description": "a restart/recovery action taken by the watchdog (it is probe-only: sends=false, no restart)",
+    "field": "restarted",
+    "truthy": true,
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (probe only, never acts; shares a lock with its n8n shadow run)",
+   "audit_ref": "B-J"
+  },
+  {
+   "id": "n8n_gateway_restart",
+   "name": "n8n coordination gateway systemd auto-restart",
+   "category": "watchdog",
+   "code": "config/systemd/user/tradeai-n8n-coordination-gateway.service",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "tradeai-n8n-coordination-gateway.service",
+    "window_hours": 168
+   },
+   "success_predicate": {
+    "description": "systemd auto-restarted the gateway after a crash",
+    "regex": "Scheduled restart job",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (never needed since last start)",
+   "audit_ref": "B-I"
+  },
+  {
+   "id": "process_reaper",
+   "name": "Hung/piled-up batch job reaper",
+   "category": "watchdog",
+   "code": "scripts/process_reaper.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/process_reaper.log",
+    "line_regex": "\\[process_reaper\\]",
+    "undated_tail_lines": 2000
+   },
+   "success_predicate": {
+    "description": "at least one hung process reaped",
+    "regex": "[1-9]\\d* proc\\(s\\) reaped",
+    "min_count": 1
+   },
+   "expected": "undated log: only the tail is trusted (98 historic reaps unprovable in window)",
+   "audit_ref": "B-D8"
+  },
+  {
+   "id": "stale_lock_cleanup",
+   "name": "Stale /tmp lock cleanup",
+   "category": "watchdog",
+   "code": "scripts/cleanup_stale_locks.sh",
+   "evidence_source": {
+    "kind": "log",
+    "base": "devtree",
+    "path": "logs/stale_lock_cleanup.log",
+    "ts_regex": "^(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d)",
+    "tz": "America/New_York"
+   },
+   "success_predicate": {
+    "description": "a stale lock file removed (note: B-audit D9 says removals fix nothing for flock)",
+    "regex": "cleared stale: ",
+    "min_count": 1
+   },
+   "expected": "PROVEN by log but defective premise (RBD)",
+   "audit_ref": "B-D9"
+  },
+  {
+   "id": "ops_agent",
+   "name": "Ops agent adaptive remediation daemon",
+   "category": "watchdog",
+   "code": "~/.openclaw/skills/tradeai-health-inspect/scripts/ops_agent_daemon.py",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "tradeai-ops-agent.service",
+    "window_hours": 48,
+    "line_regex": "cycle_done"
+   },
+   "success_predicate": {
+    "description": "a cycle in apply mode (not shadow) that executed an action",
+    "regex": "\\\"mode\\\": \\\"(?!shadow)",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (--no-apply shadow; score 0.0 every cycle)",
+   "audit_ref": "B-D11",
+   "code_external": "daemon ships with the OpenClaw health-inspect skill, not this repo"
+  },
+  {
+   "id": "health_agent_remediation_engine",
+   "name": "Health agent remediation engine (all finding types)",
+   "category": "health_agent",
+   "code": "scripts/health_agent.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "logs/health_agent_remediation.jsonl",
+    "ts_key": "at"
+   },
+   "success_predicate": {
+    "description": "a remediation the verifier confirmed cleared its finding (outcome=CLEARED)",
+    "field": "outcome",
+    "equals": "CLEARED",
+    "min_count": 1
+   },
+   "expected": "PROVEN overall (A1-A11 clear; A12-A25 defective)",
+   "audit_ref": "B-A"
+  },
+  {
+   "id": "health_agent_queue_recovery",
+   "name": "Health agent stuck agent/synthesis job reset",
+   "category": "queue_recovery",
+   "code": "scripts/reset_stuck_agent_jobs.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "logs/health_agent_remediation.jsonl",
+    "ts_key": "at",
+    "filter": {
+     "field": "type",
+     "in": [
+      "agent_jobs_processing_stuck",
+      "synthesis_processing_stuck"
+     ]
+    }
+   },
+   "success_predicate": {
+    "description": "zombie 'processing' jobs reset and the finding cleared",
+    "field": "outcome",
+    "equals": "CLEARED",
+    "min_count": 1
+   },
+   "expected": "PROVEN (A1/A2)",
+   "audit_ref": "B-A1,A2"
+  },
+  {
+   "id": "health_agent_market_quotes",
+   "name": "Health agent market_quotes_stale -> quotes ingest",
+   "category": "health_agent",
+   "code": "scripts/health_agent.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "logs/health_agent_remediation.jsonl",
+    "ts_key": "at",
+    "filter": {
+     "field": "type",
+     "equals": "market_quotes_stale"
+    }
+   },
+   "success_predicate": {
+    "description": "quotes re-ingested and the staleness cleared",
+    "field": "outcome",
+    "equals": "CLEARED",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (55 attempts, 0 cleared)",
+   "audit_ref": "B-A18"
+  },
+  {
+   "id": "health_agent_stops_stale",
+   "name": "Health agent stops_stale -> unified stop supervisor",
+   "category": "health_agent",
+   "code": "scripts/health_agent.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "logs/health_agent_remediation.jsonl",
+    "ts_key": "at",
+    "filter": {
+     "field": "type",
+     "equals": "stops_stale"
+    }
+   },
+   "success_predicate": {
+    "description": "stop supervisor run and the stale-stops finding cleared",
+    "field": "outcome",
+    "equals": "CLEARED",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (694 attempts, never cleared)",
+   "audit_ref": "B-A25"
+  },
+  {
+   "id": "health_agent_daemon_cycle",
+   "name": "Health agent daemon cycle remediation",
+   "category": "health_agent",
+   "code": "scripts/health_agent.py",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "tradeai-health-agent.service",
+    "window_hours": 168,
+    "line_regex": "cycle_done"
+   },
+   "success_predicate": {
+    "description": "a daemon cycle that reports at least one successful remediation",
+    "regex": "\\\"remediated_ok\\\": [1-9]",
+    "min_count": 1
+   },
+   "expected": "mostly remediated_ok 0 (1283 of 1328 cycles since 10-02)",
+   "audit_ref": "B-A"
+  },
+  {
+   "id": "cron_self_heal",
+   "name": "cron_self_heal (re-run / re-add watchlist lanes)",
+   "category": "health_tick_step",
+   "code": "scripts/cron_self_heal.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/cron_self_heal.log",
+    "alt": [
+     {
+      "base": "devtree",
+      "path": "logs/cron_self_heal.log"
+     }
+    ],
+    "ts_regex": "^\\[(\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d)",
+    "tz": "America/New_York"
+   },
+   "success_predicate": {
+    "description": "a stale/unscheduled lane re-run or re-added and the action succeeded (-> ok)",
+    "regex": "-> ok \\(fails=",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED in window (last act 09-21)",
+   "audit_ref": "B-B2"
+  },
+  {
+   "id": "system_freshness_autofix",
+   "name": "system_freshness_monitor --auto-fix",
+   "category": "health_tick_step",
+   "code": "scripts/system_freshness_monitor.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/system_freshness_monitor.log",
+    "line_regex": "\\[freshness\\]",
+    "undated_tail_lines": 400
+   },
+   "success_predicate": {
+    "description": "an allowlisted auto-fix executed for a stale table",
+    "regex": "[1-9]\\d* auto-fix",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (0 auto-fix ever)",
+   "audit_ref": "B-B3"
+  },
+  {
+   "id": "claude_escalation_handler",
+   "name": "Claude escalation handler tier-1 retry",
+   "category": "escalation",
+   "code": "scripts/claude_escalation_handler.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/claude_escalation.log",
+    "ts_regex": "^(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d)",
+    "tz": "America/New_York",
+    "line_regex": "retry_cmd|verified clear"
+   },
+   "success_predicate": {
+    "description": "a tier-1 retry whose clearance was VERIFIED by a recheck (not '(no_verify)', which assumes success)",
+    "regex": "verified clear \\((?!no_verify)",
+    "min_count": 1
+   },
+   "expected": "PROVEN (but 1298 of 1567 successes are no_verify)",
+   "audit_ref": "B-C1"
+  },
+  {
+   "id": "escalation_queue_reaper",
+   "name": "Escalation queue reaper",
+   "category": "escalation",
+   "code": "scripts/escalation_queue_reaper.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "devtree",
+    "path": "logs/escalation_queue_reaper_receipts.jsonl",
+    "ts_key": "ts"
+   },
+   "success_predicate": {
+    "description": "an applied reap of dead escalation-queue items",
+    "field": "apply",
+    "equals": true,
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED in window (not scheduled; last 09-22)",
+   "audit_ref": "B-C2"
+  },
+  {
+   "id": "approval_reminder_reconcile",
+   "name": "Approval package reminder reconcile",
+   "category": "approval",
+   "code": "scripts/approval_reminder_reconcile.py",
+   "evidence_source": {
+    "kind": "jsonstream",
+    "base": "state",
+    "path": "logs/approval_reminder_reconcile.log",
+    "ts_key": "reconciled_at"
+   },
+   "success_predicate": {
+    "description": "a reconcile that found and delivered/recorded a reminder (delivery_status other than NO_ACTION)",
+    "field": "delivery_status",
+    "not_in": [
+     "NO_ACTION",
+     null
+    ],
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (64 runs, all NO_ACTION)",
+   "audit_ref": "B-C3"
+  },
+  {
+   "id": "cleanup_stale_proposals",
+   "name": "Stale proposal cleanup / requeue",
+   "category": "queue_recovery",
+   "code": "scripts/cleanup_stale_proposals.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/cleanup_stale_proposals.log",
+    "line_regex": "\\[cleanup\\]",
+    "undated_tail_lines": 400
+   },
+   "success_predicate": {
+    "description": "a stale proposal expired or requeued",
+    "regex": "\\u2192 (EXPIRED|REQUEUED)|requeued_revalidation': [1-9]",
+    "min_count": 1
+   },
+   "expected": "PROVEN (undated log: tail heuristic)",
+   "audit_ref": "B-G1"
+  },
+  {
+   "id": "drain_discovery_backlog",
+   "name": "Discovery backlog drain",
+   "category": "queue_recovery",
+   "code": "scripts/drain_discovery_backlog.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/drain_discovery_backlog.log",
+    "line_regex": "\\[discovery-drain\\]",
+    "undated_tail_lines": 200
+   },
+   "success_predicate": {
+    "description": "backlog items promoted or archived",
+    "regex": "applied: ([1-9]\\d* promoted|\\d+ promoted, [1-9]\\d* archived)",
+    "min_count": 1
+   },
+   "expected": "PROVEN (undated log: tail heuristic)",
+   "audit_ref": "B-G3"
+  },
+  {
+   "id": "hermes_backlog_drain",
+   "name": "Hermes backlog drain",
+   "category": "queue_recovery",
+   "code": "scripts/hermes_backlog_drain.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/hermes_backlog_drain_nightly.log",
+    "line_regex": "Done in|No drainable",
+    "undated_tail_lines": 200
+   },
+   "success_predicate": {
+    "description": "backlog items drained",
+    "regex": "Done in .*: [1-9]\\d* drained",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (0 drained every run)",
+   "audit_ref": "B-G4"
+  },
+  {
+   "id": "cio_defer_revisit",
+   "name": "CIO defer/revisit worker",
+   "category": "queue_recovery",
+   "code": "scripts/cio_defer_revisit.py",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "tradeai-cio-defer-revisit.service",
+    "window_hours": 168,
+    "line_regex": "\\\"due\\\"|\\\"processed\\\""
+   },
+   "success_predicate": {
+    "description": "a deferred decision reopened and processed (processed list non-empty)",
+    "regex": "\\\"processed\\\": \\[(?!\\])",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (due 0 every run)",
+   "audit_ref": "B-G5"
+  },
+  {
+   "id": "schwab_oauth_refresh",
+   "name": "Schwab OAuth token rotation",
+   "category": "token_refresh",
+   "code": "scripts/schwab_token_manager.py",
+   "evidence_source": {
+    "kind": "psql",
+    "database": "trade_ai",
+    "table": "broker_oauth_token_audit",
+    "ts_key": "created_at",
+    "note": "host Postgres only; the probe allowlist has no host psql (core change request)"
+   },
+   "success_predicate": {
+    "description": "a refresh rotation that succeeded (event=refresh_rotation, status=ok)",
+    "all": [
+     {
+      "field": "event",
+      "equals": "refresh_rotation"
+     },
+     {
+      "field": "status",
+      "equals": "ok"
+     }
+    ],
+    "min_count": 1,
+    "window_hours": 24
+   },
+   "expected": "NO_EVIDENCE until the probe can read host Postgres (audit: 931 ok rotations in 14 days)",
+   "audit_ref": "B-E1"
+  },
+  {
+   "id": "mcporter_token_refresh",
+   "name": "mcporter Google token refresh timer",
+   "category": "token_refresh",
+   "code": "~/.config/systemd/user/mcporter-token-refresh.service",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "mcporter-token-refresh.service",
+    "window_hours": 168
+   },
+   "success_predicate": {
+    "description": "a refresh run that finished successfully",
+    "regex": "Finished mcporter-token-refresh",
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (276 failures, no success in retention)",
+   "audit_ref": "B-E2",
+   "code_external": "user unit + script live outside the repo (not tradeai-prefixed)"
+  },
+  {
+   "id": "oauth_lane_keepalive",
+   "name": "Free-OAuth LLM lane keepalive (token roll)",
+   "category": "token_refresh",
+   "code": "scripts/oauth_lane_keepalive.py",
+   "evidence_source": {
+    "kind": "jsonstream",
+    "base": "state",
+    "path": "logs/oauth_lane_keepalive.log",
+    "ts_key": "lanes.chatgpt.last_check"
+   },
+   "success_predicate": {
+    "description": "a lane token rolled and the ping succeeded",
+    "field": "lanes",
+    "regex": "rolled token \\(ping ok\\)",
+    "min_count": 1
+   },
+   "expected": "PROVEN",
+   "audit_ref": "B-E3"
+  },
+  {
+   "id": "sm_env_render",
+   "name": "Bitwarden SM env re-render",
+   "category": "token_refresh",
+   "code": "config/systemd/user/tradeai-sm-render.service.d/20-retry-until-rendered.conf",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "tradeai-sm-render.service",
+    "window_hours": 48
+   },
+   "success_predicate": {
+    "description": "a render run that reported ok=true",
+    "regex": "\\\"ok\\\": true",
+    "min_count": 1
+   },
+   "expected": "PROVEN",
+   "audit_ref": "B-E4"
+  },
+  {
+   "id": "n8n_incident_fanin",
+   "name": "n8n incident fan-in",
+   "category": "incident_routing",
+   "code": "scripts/n8n_incident_fanin.py",
+   "evidence_source": {
+    "kind": "json",
+    "base": "state",
+    "path": "data/runtime/n8n_incident_fanin_last.json",
+    "ts_key": "as_of"
+   },
+   "success_predicate": {
+    "description": "an incident observed recovering (recovered list non-empty) after routing",
+    "field": "recovered",
+    "nonempty": true,
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (116 open, 0 recovered; no human delivery)",
+   "audit_ref": "B-K"
+  },
+  {
+   "id": "fanin_telegram_consumer",
+   "name": "Fan-in -> Telegram P1/P2 consumer",
+   "category": "incident_routing",
+   "code": "scripts/telegram_alert.py",
+   "evidence_source": {
+    "kind": "absent",
+    "reason": "not built yet (program B2: fan-in consumer via telegram_alert.send_telegram)"
+   },
+   "success_predicate": {
+    "description": "a P1/P2 fan-in incident delivered to a human (ok=true)",
+    "field": "ok",
+    "equals": true,
+    "min_count": 1
+   },
+   "expected": "not built yet -> NO_EVIDENCE",
+   "audit_ref": "plan B2"
+  },
+  {
+   "id": "supervisor_recovery_ladder",
+   "name": "Supervisor breach recovery ladder",
+   "category": "incident_routing",
+   "code": "scripts/supervisor_breach_detector.py",
+   "evidence_source": {
+    "kind": "jsonl",
+    "base": "state",
+    "path": "data/runtime/supervisor_recoveries.jsonl",
+    "ts_key": "ts"
+   },
+   "success_predicate": {
+    "description": "a recovery action actually executed (executed=true)",
+    "field": "executed",
+    "equals": true,
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (shadow; 1542 would_execute, 0 executed)",
+   "audit_ref": "B-K"
+  },
+  {
+   "id": "n8n_activation_grant_check",
+   "name": "P16 n8n activation grant check",
+   "category": "governance",
+   "code": "scripts/check_n8n_activation_grants.py",
+   "evidence_source": {
+    "kind": "json",
+    "base": "state",
+    "path": "data/runtime/n8n_activation_grants_last.json",
+    "ts_key": "as_of"
+   },
+   "success_predicate": {
+    "description": "the check ran and either verified CLEAN or routed its findings to fan-in",
+    "any": [
+     {
+      "field": "verdict",
+      "equals": "CLEAN"
+     },
+     {
+      "field": "fanin_wired",
+      "equals": true
+     }
+    ],
+    "min_count": 1
+   },
+   "expected": "NO_EVIDENCE (not scheduled; receipt never written)",
+   "audit_ref": "plan P16"
+  },
+  {
+   "id": "portfolio_server_restart",
+   "name": "portfolio-server systemd auto-restart",
+   "category": "systemd_restart",
+   "code": "scripts/portfolio_server_watchdog.sh",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "portfolio-server.service",
+    "window_hours": 168,
+    "line_regex": "portfolio-server\\.service:"
+   },
+   "success_predicate": {
+    "description": "systemd auto-restarted the API after a kill/crash",
+    "regex": "Scheduled restart job",
+    "min_count": 1
+   },
+   "expected": "PROVEN (Restart=on-failure; SIGKILL from the watchdog counts)",
+   "audit_ref": "B-I"
+  },
+  {
+   "id": "n8n_run_executor_restart",
+   "name": "n8n run executor Restart=always",
+   "category": "systemd_restart",
+   "code": "scripts/n8n_run_executor.py",
+   "evidence_source": {
+    "kind": "systemd",
+    "unit": "tradeai-n8n-run-executor.service"
+   },
+   "success_predicate": {
+    "description": "systemd restarted the unit at least once and it is active again",
+    "all": [
+     {
+      "field": "NRestarts",
+      "gte": 1
+     },
+     {
+      "field": "ActiveState",
+      "equals": "active"
+     }
+    ],
+    "min_count": 1
+   },
+   "expected": "RAN_NOT_HEALED (NRestarts 0; never exercised)",
+   "audit_ref": "B-I"
+  },
+  {
+   "id": "lab_postgres_restart",
+   "name": "Lab Postgres Restart=on-failure",
+   "category": "systemd_restart",
+   "code": "scripts/n8n_lab_restore_drill.sh",
+   "evidence_source": {
+    "kind": "systemd",
+    "unit": "tradeai-lab-postgres.service"
+   },
+   "success_predicate": {
+    "description": "systemd restarted the unit at least once and it is active again",
+    "all": [
+     {
+      "field": "NRestarts",
+      "gte": 1
+     },
+     {
+      "field": "ActiveState",
+      "equals": "active"
+     }
+    ],
+    "min_count": 1
+   },
+   "expected": "PROVEN (NRestarts 1)",
+   "audit_ref": "B-I"
+  },
+  {
+   "id": "disk_pressure_guard",
+   "name": "Disk pressure guard (reclaim at >=85%)",
+   "category": "disk_recovery",
+   "code": "scripts/disk_pressure_guard.py",
+   "evidence_source": {
+    "kind": "journal",
+    "unit": "tradeai-disk-pressure-guard.service",
+    "window_hours": 168,
+    "line_regex": "\\\"action\\\""
+   },
+   "success_predicate": {
+    "description": "disk space reclaimed (action deleted/recovered)",
+    "regex": "\\\"action\\\": \\\"(deleted|recovered)\\\"",
+    "min_count": 1
+   },
+   "expected": "PROVEN",
+   "audit_ref": "B-D3"
+  },
+  {
+   "id": "disk_hygiene_enforcer",
+   "name": "Disk hygiene enforcer",
+   "category": "disk_recovery",
+   "code": "scripts/disk_hygiene_enforcer.py",
+   "evidence_source": {
+    "kind": "jsonstream",
+    "base": "devtree",
+    "path": "logs/disk_hygiene_enforcer.log",
+    "ts_key": "ts"
+   },
+   "success_predicate": {
+    "description": "a run that deleted at least one artifact",
+    "field": "*",
+    "regex": "\\\"action\\\": \\\"deleted\\\"",
+    "min_count": 1
+   },
+   "expected": "PROVEN",
+   "audit_ref": "B-D4"
+  },
+  {
+   "id": "backup_enforcer",
+   "name": "Backup retention enforcer",
+   "category": "disk_recovery",
+   "code": "scripts/backup_enforcer.py",
+   "evidence_source": {
+    "kind": "jsonstream",
+    "base": "devtree",
+    "path": "logs/backup_enforcer.log",
+    "undated_tail_lines": 48
+   },
+   "success_predicate": {
+    "description": "a run that deleted an over-retention dump",
+    "field": "local.deleted",
+    "nonempty": true,
+    "min_count": 1
+   },
+   "expected": "undated log: tail heuristic (12 deletions lifetime)",
+   "audit_ref": "B-D5"
+  },
+  {
+   "id": "alpaca_paper_reconciler",
+   "name": "Alpaca paper reconciler --fix",
+   "category": "state_reconciliation",
+   "code": "scripts/alpaca_paper_reconciler.py",
+   "evidence_source": {
+    "kind": "log",
+    "base": "state",
+    "path": "logs/alpaca_reconciler.log",
+    "line_regex": "\\[recon\\]",
+    "undated_tail_lines": 400
+   },
+   "success_predicate": {
+    "description": "a stop or position repaired from broker truth (FIXED)",
+    "regex": "FIXED: ",
+    "min_count": 1
+   },
+   "expected": "PROVEN-partial (CLOSED_BUT_HELD never repaired)",
+   "audit_ref": "B-G6"
+  }
+ ]
+}
