@@ -16,7 +16,15 @@ Activation evidence (read-only SELECTs, scripts/lib/n8n_live_inventory.py):
 
 One event per (workflow id, version id). A ``grant-issued`` ledger entry covers it when its reason names
 the workflow id (a tranche grant listing several ids covers each), its tier is one of ``--tiers``
-(default cron, config-write, service) and the event time falls inside [ts - skew, ts + seconds + skew].
+(default ``cron`` only) and the event time falls inside [ts - skew, ts + seconds + skew].
+
+One activation tier (AGENTS.md 3.1.0 §17, §23.2; due-diligence audit E D5): before 3.1.0, §17 said a
+``cron`` grant, §23.2 said ``cron``/``config-write``, and this checker also accepted ``service`` — three
+answers to one question. From 3.1.0 activating, editing or deactivating an n8n workflow (and a cutover)
+is a ``cron`` grant; ``config-write`` stays for host unit files and registry-bearing config on disk and
+``service`` is not an activation tier, so a grant naming the id under either reports NAMED_IN_OTHER_TIER.
+A historical audit of activations made under the older wording can pass the old set explicitly:
+``--tiers cron,config-write,service``.
 
 Verdicts: GRANTED; NAMED_IN_OTHER_TIER (the id is named, but under a tier that does not authorise an
 activation, e.g. release-write); NAME_ONLY_GRANT (the grant names the workflow/lane name, not the id —
@@ -64,7 +72,8 @@ NAME_ONLY_GRANT = "NAME_ONLY_GRANT"
 UNGRANTED_ACTIVATION = "UNGRANTED_ACTIVATION"
 FINDINGS = (UNGRANTED_ACTIVATION, NAMED_IN_OTHER_TIER, NAME_ONLY_GRANT)
 
-DEFAULT_TIERS = ("cron", "config-write", "service")
+# AGENTS.md 3.1.0: one n8n activation tier. --tiers widens it for a historical audit only.
+DEFAULT_TIERS = ("cron",)
 DEFAULT_SKEW_S = 120
 
 
@@ -301,7 +310,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--container", default=inv.DB_CONTAINER)
     ap.add_argument("--guard-log", default=None, help="guard audit jsonl (default: what `bin/guard log` reads)")
     ap.add_argument(
-        "--tiers", default=",".join(DEFAULT_TIERS), help="grant tiers that authorise an activation (comma separated)"
+        "--tiers",
+        default=",".join(DEFAULT_TIERS),
+        help="grant tiers that authorise an activation, comma separated (default: cron, AGENTS.md 3.1.0; "
+        "pass cron,config-write,service only to audit activations made under the pre-3.1.0 wording)",
     )
     ap.add_argument("--skew-s", type=int, default=DEFAULT_SKEW_S)
     ap.add_argument("--receipt", default=None)

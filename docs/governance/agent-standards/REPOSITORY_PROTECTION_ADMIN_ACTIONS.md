@@ -46,6 +46,74 @@ nothing until an administrator turns the matching settings on.
    merging, can merge a green PR. Items 2 and 4 are what would make merge authority real (item 3 is now on).
 8. Turn on GitHub **secret scanning push protection**, as a server-side layer behind
    `scripts/check_no_secrets.py`.
+9. Enable the GitHub **merge queue on `main`**. Expected by AGENTS.md 4.1.0 §23.13 (PROPOSED): the
+   standing 48 h merge approval for `n8nmat/*` PRs applies only to merges that go through the merge
+   queue, with `agent-governance`, `cio-hardening` and `release-readiness` green on the exact head.
+   **Not performed by any agent** (operator-only, §17). Details in the section below.
+
+## Action 9 — enable the merge queue on `main` (operator)
+
+Preconditions found 2026-10-09 (read-only `gh api repos/PatsKiller/tardeai` and `.../rulesets`):
+
+- The repository is owned by a **User** account (`owner.type: "User"`), public, with no rulesets.
+  GitHub documents the merge queue for repositories owned by an **organization** (public, or private
+  on Enterprise Cloud). If the "Require merge queue" option is not offered, the queue cannot be
+  enabled here without transferring the repository to an organization — itself an operator decision.
+  In that case the §23.13 standing approval does not apply and merges stay operator-approved.
+- No workflow under `.github/workflows/` triggers on `merge_group`. A queued merge waits for its
+  required checks on the `merge_group` event; without that trigger it never completes. Adding
+  `merge_group:` to the `on:` block of the workflows that produce `agent-governance`,
+  `cio-hardening` and `release-readiness` is a separate PR (workflow files are governed).
+- Required checks measured 2026-10-09 (`gh api repos/:owner/:repo/branches/main/protection/required_status_checks`):
+  `cio-hardening`, `agent-governance`, `release-readiness` — the three §23.13 condition (b) names.
+  The 2026-09-25 measurement above predates `release-readiness` becoming required.
+
+Steps (UI): Settings → Rules → Rulesets → New branch ruleset → name `main-merge-queue`, enforcement
+**Active**, target `main` (Include default branch) → enable **Require merge queue** (merge method
+squash or merge, as today; build concurrency 1; "Only merge non-failing pull requests" on) and
+**Require status checks to pass** with `agent-governance`, `cio-hardening`, `release-readiness`
+→ Create. (Where the classic branch-protection page offers "Require merge queue" instead, tick it
+there; the three checks are already required.)
+
+Steps (gh, equivalent):
+
+```
+gh api -X POST repos/PatsKiller/tardeai/rulesets --input - <<'JSON'
+{
+  "name": "main-merge-queue",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+  "rules": [
+    {"type": "merge_queue", "parameters": {
+      "merge_method": "SQUASH", "grouping_strategy": "ALLGREEN",
+      "max_entries_to_build": 1, "min_entries_to_merge": 1, "max_entries_to_merge": 1,
+      "min_entries_to_merge_wait_minutes": 0, "check_response_timeout_minutes": 60}},
+    {"type": "required_status_checks", "parameters": {
+      "strict_required_status_checks_policy": true,
+      "required_status_checks": [
+        {"context": "agent-governance"}, {"context": "cio-hardening"}, {"context": "release-readiness"}]}}
+  ]
+}
+JSON
+```
+
+Verify (read back; the setting is not enforced until the API says so):
+
+```
+gh api repos/PatsKiller/tardeai/rulesets --jq '.[] | {id, name, enforcement}'
+gh api repos/PatsKiller/tardeai/rules/branches/main --jq '[.[].type]'   # must include "merge_queue"
+```
+
+Then open a trivial PR, add it to the queue (`gh pr merge <n> --auto` routes through the queue once
+it is required) and confirm the three checks run on a `merge_group` ref before it lands. Record the
+values in the "Measured" table above.
+
+Rollback: `gh api -X DELETE repos/PatsKiller/tardeai/rulesets/<id>` (or set `"enforcement":
+"disabled"` with `gh api -X PUT repos/PatsKiller/tardeai/rulesets/<id> ...`), or untick the option in
+the UI. Classic branch protection is untouched by the ruleset, so the existing required checks and
+enforce-admins stay in force after a rollback. With the queue off, the §23.13 standing approval no
+longer applies.
 
 After each change, re-run the measurement above and record the new values here. The setting is
 not enforced until the API says so.

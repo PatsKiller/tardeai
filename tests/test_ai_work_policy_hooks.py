@@ -246,3 +246,142 @@ def test_deployment_remains_separately_authorized() -> None:
     acc = (ROOT / "scripts/ai_local_acceptance.sh").read_text(encoding="utf-8")
     assert "cio_phase2_exact_main_deploy" not in acc
     assert "systemctl" not in acc
+
+
+# --- Program push budget (operator decision 3, 2026-10-09; AGENTS.md 4.1.0 §23.13) ---
+
+def _budget_lib():
+    import importlib
+    import sys
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    return importlib.import_module("scripts.lib.tradeai_push_budget")
+
+
+def _in_window():
+    from datetime import datetime
+
+    return datetime.fromisoformat("2026-10-10T12:00:00-04:00")
+
+
+def _after_window():
+    from datetime import datetime
+
+    return datetime.fromisoformat("2026-10-13T00:00:00-04:00")
+
+
+def test_program_window_table_is_data() -> None:
+    lib = _budget_lib()
+    assert lib.MAX_WITHOUT_OVERRIDE == 2
+    assert lib.PROGRAM_WINDOWS == (
+        {
+            "prefix": "n8nmat/",
+            "budget": 4,
+            "ends_at": "2026-10-12T23:59:59-04:00",
+            "policy": "AGENTS.md 4.1.0 §23.13",
+        },
+    )
+
+
+def test_budget_for_n8nmat_in_window_then_default_after() -> None:
+    from datetime import datetime
+
+    lib = _budget_lib()
+    assert lib.budget_for("n8nmat/foo", _in_window()) == 4
+    assert lib.budget_for("n8nmat/foo", datetime.fromisoformat("2026-10-12T23:59:59-04:00")) == 4
+    assert lib.budget_for("n8nmat/foo", datetime.fromisoformat("2026-10-13T00:00:00-04:00")) == 2
+    assert lib.budget_for("n8nmat/foo", _after_window()) == 2
+
+
+def test_budget_for_other_branches_is_two() -> None:
+    lib = _budget_lib()
+    for branch in ("n8nmat", "n8nmat/", "xn8nmat/foo", "N8NMAT/foo", "docs/foo", "main", "HEAD", "", None):
+        assert lib.budget_for(branch, _in_window()) == 2, branch
+
+
+def test_budget_defaults_unchanged_without_branch() -> None:
+    lib = _budget_lib()
+    assert lib.remaining(0) == 2
+    assert lib.remaining(1) == 1
+    assert lib.remaining(5) == 0
+    assert lib.decide(authorized=True, override=False, count=1)["allow"] is True
+    blocked = lib.decide(authorized=True, override=False, count=2)
+    assert blocked["allow"] is False and blocked["reason"] == "BUDGET_EXCEEDED" and blocked["budget"] == 2
+
+
+def test_decide_blocks_fifth_push_on_n8nmat_in_window() -> None:
+    lib = _budget_lib()
+    now = _in_window()
+    for count in range(4):
+        d = lib.decide(authorized=True, override=False, count=count, branch="n8nmat/x", now=now)
+        assert d["allow"] is True and d["budget"] == 4, count
+        assert d["remaining"] == 4 - count
+    fifth = lib.decide(authorized=True, override=False, count=4, branch="n8nmat/x", now=now)
+    assert fifth["allow"] is False and fifth["reason"] == "BUDGET_EXCEEDED" and fifth["budget"] == 4
+    over = lib.decide(authorized=True, override=True, count=4, branch="n8nmat/x", now=now)
+    assert over["allow"] is True and over["reason"] == "OVERRIDE"
+    unauth = lib.decide(authorized=False, override=False, count=0, branch="n8nmat/x", now=now)
+    assert unauth["allow"] is False and unauth["reason"] == "UNAUTHORIZED"
+    # After the window the same branch falls back to the default budget.
+    late = lib.decide(authorized=True, override=False, count=2, branch="n8nmat/x", now=_after_window())
+    assert late["allow"] is False and late["budget"] == 2
+
+
+def test_decide_blocks_third_push_on_other_branches_in_window() -> None:
+    lib = _budget_lib()
+    now = _in_window()
+    for branch in ("docs/foo", "xn8nmat/foo", "N8NMAT/foo", "n8nmat"):
+        assert lib.decide(authorized=True, override=False, count=1, branch=branch, now=now)["allow"] is True
+        third = lib.decide(authorized=True, override=False, count=2, branch=branch, now=now)
+        assert third["allow"] is False and third["reason"] == "BUDGET_EXCEEDED", branch
+        assert third["budget"] == 2
+
+
+def _commit_and_push(src: Path, env: dict, n: int):
+    (src / "README").write_text(f"push {n}\n")
+    _run(["git", "add", "README"], cwd=src, check=True)
+    _run(["git", "commit", "-m", f"push {n}"], cwd=src, check=True)
+    return _run(["git", "push", "-u", "origin", "HEAD"], cwd=src, env=env)
+
+
+def test_hook_program_branch_gets_four_pushes_then_blocks(tmp_path: Path) -> None:
+    src = _mini_repo(tmp_path)
+    # The real window ends 2026-10-12; pin the mini repo's copy of the table to a
+    # far-future end so this hook-level test does not depend on the wall clock.
+    lib_copy = src / "scripts/lib/tradeai_push_budget.py"
+    text = lib_copy.read_text(encoding="utf-8")
+    assert '"ends_at": "2026-10-12T23:59:59-04:00"' in text
+    lib_copy.write_text(text.replace("2026-10-12T23:59:59-04:00", "2999-12-31T23:59:59-04:00"), encoding="utf-8")
+    _run(["git", "checkout", "-b", "n8nmat/x"], cwd=src, check=True)
+    env = {
+        "TRADEAI_SKIP_SECRETS_SCAN": "1",
+        "TRADEAI_PUSH_BUDGET_PATH": str(src / ".git/tradeai-push-budget.json"),
+        "TRADEAI_REMOTE_PUSH_AUTHORIZED": "1",
+    }
+    for n in range(1, 5):
+        proc = _commit_and_push(src, env, n)
+        assert proc.returncode == 0, (n, proc.stderr)
+    fifth = _commit_and_push(src, env, 5)
+    assert fifth.returncode != 0
+    assert "REMOTE PUSH BLOCKED (push budget)" in fifth.stderr
+    assert "Effective budget for this branch is 4." in fifth.stderr
+    assert "Default budget is 2 (4 for n8nmat/* until 2026-10-12T23:59:59-04:00, AGENTS.md §23.13)" in fifth.stderr
+
+
+def test_hook_non_program_branch_keeps_two_push_budget(tmp_path: Path) -> None:
+    src = _mini_repo(tmp_path)
+    lib_copy = src / "scripts/lib/tradeai_push_budget.py"
+    text = lib_copy.read_text(encoding="utf-8")
+    lib_copy.write_text(text.replace("2026-10-12T23:59:59-04:00", "2999-12-31T23:59:59-04:00"), encoding="utf-8")
+    _run(["git", "checkout", "-b", "xn8nmat/foo"], cwd=src, check=True)
+    env = {
+        "TRADEAI_SKIP_SECRETS_SCAN": "1",
+        "TRADEAI_PUSH_BUDGET_PATH": str(src / ".git/tradeai-push-budget.json"),
+        "TRADEAI_REMOTE_PUSH_AUTHORIZED": "1",
+    }
+    for n in range(1, 3):
+        assert _commit_and_push(src, env, n).returncode == 0
+    third = _commit_and_push(src, env, 3)
+    assert third.returncode != 0
+    assert "Effective budget for this branch is 2." in third.stderr
