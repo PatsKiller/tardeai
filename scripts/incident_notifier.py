@@ -5,14 +5,21 @@
 116 open, 2 P1, 25 P2) and writes them to the coordination ledger, but nothing told the operator. This
 host-side consumer reads the fan-in receipt and the ledger and sends:
 
-  * P1  — at once: every P1 not already notified in the dedupe window, in one message per run.
-  * P2  — in one batched message at most every TRADEAI_INCIDENT_NOTIFIER_P2_BATCH_MIN minutes (30).
-  * recovery — one message when incidents that were notified are no longer open.
+  * P1  — at once: every P1 not already notified in the dedupe window, in one message per run. Never held
+          by quiet hours and never capped.
+  * P2  — in one batched message at most every TRADEAI_INCIDENT_NOTIFIER_P2_BATCH_MIN minutes (30), and held
+          during quiet hours (22:00-07:00 America/New_York, zoneinfo, DST-safe); held P2s leave as one batch
+          at the end of the window.
+  * recovery — one message when incidents that were notified are no longer open (a P2-only recovery waits
+          out quiet hours).
 
 Dedupe is per incident key (source|item, day-independent) for TRADEAI_INCIDENT_NOTIFIER_DEDUPE_HOURS (24):
 an incident still open after the window is reminded once more; a worse severity re-notifies at once.
-At most TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP messages per UTC day (24); a capped message is recorded as
-CAPPED on the receipt and its incidents stay un-notified, so the next day sends them. P3 never sends.
+Records survive recovery: a re-open within TRADEAI_INCIDENT_NOTIFIER_FLAP_COOLDOWN_MIN (60) of the recovery
+is a flap (counted, noted on the next message, not re-sent), and a flapping incident clears silently.
+At most TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP messages per America/New_York day (24); P1 is never capped; a
+capped message is CAPPED on the receipt and its incidents stay un-notified. Only delivered messages count
+and mark incidents: a comms-editor hold is HELD and retried. P3 never sends.
 
 Delivery: the SYSTEM ops family only, through `scripts/lib/autonomy_watchdog/telegram_system.send_system`
 (ops bot, ops chat, SYSTEM_TELEGRAM_ENABLED, SYSTEM_TELEGRAM_INTERDICT; the transport confirms the claim
@@ -39,6 +46,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 ROOT = Path(__file__).resolve().parent.parent
 for _p in (str(ROOT), str(ROOT / "scripts")):
@@ -55,8 +63,8 @@ STATE_SCHEMA = "IncidentNotifierState@v1"
 AUTHORITY = "OPERATOR_NOTIFY_SYSTEM_OPS"
 NO_CONSUMER_REASON = (
     "operator-facing sender (SYSTEM ops family); the receipt is evidence for the run ledger. Not scheduled: "
-    "AGENTS.md 3.0.0 §23.3 keeps senders out of config/n8n_run_allowlist.json, so the incident-notifier lane "
-    "waits on an operator decision (see the PR body)."
+    "AGENTS.md 3.0.0 §23.3 keeps senders out of config/n8n_run_allowlist.json; the incident-notifier lane "
+    "goes on host cron (*/5) after merge (lane_registry row proposed in the PR body)."
 )
 RECEIPT_REL = "data/runtime/incident_notifier_last.json"
 DRY_RUN_RECEIPT_REL = "data/runtime/incident_notifier_dry_run_last.json"
@@ -64,19 +72,30 @@ HISTORY_REL = "data/runtime/incident_notifications.jsonl"
 STATE_REL = "data/runtime/incident_notifier_state.json"
 LOCK_REL = "data/runtime/incident_notifier.lock"
 
-# Defaults; each is overridable by the env var of the same name (see config_from_env).
-DEFAULT_DAILY_CAP = 24
+# Defaults; each is overridable by the env var named beside it (see config_from_env).
+DEFAULT_DAILY_CAP = 24           # messages per operator (America/New_York) day; P1 is never capped
 DEFAULT_P2_BATCH_MIN = 30
 DEFAULT_DEDUPE_HOURS = 24
 DEFAULT_MAX_FANIN_AGE_MIN = 30   # fan-in runs */5; six missed runs and the input is stale
 DEFAULT_MAX_LINES = 15           # incident lines per message; the rest is "+N more"
+DEFAULT_FLAP_COOLDOWN_MIN = 60   # a re-open this soon after a recovery is a flap: counted, noted, not re-sent
+DEFAULT_QUIET_START = "22:00"    # operator decision 2026-10-09: P2 held 22:00-07:00 ET; P1 always goes out
+DEFAULT_QUIET_END = "07:00"
+DEFAULT_TZ = "America/New_York"
+RECORD_TTL_DAYS = 7              # recovered records older than this are dropped from the state file
 ENV = {
     "daily_cap": ("TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP", DEFAULT_DAILY_CAP),
     "p2_batch_min": ("TRADEAI_INCIDENT_NOTIFIER_P2_BATCH_MIN", DEFAULT_P2_BATCH_MIN),
     "dedupe_hours": ("TRADEAI_INCIDENT_NOTIFIER_DEDUPE_HOURS", DEFAULT_DEDUPE_HOURS),
     "max_fanin_age_min": ("TRADEAI_INCIDENT_NOTIFIER_MAX_FANIN_AGE_MIN", DEFAULT_MAX_FANIN_AGE_MIN),
     "max_lines": ("TRADEAI_INCIDENT_NOTIFIER_MAX_LINES", DEFAULT_MAX_LINES),
+    "flap_cooldown_min": ("TRADEAI_INCIDENT_NOTIFIER_FLAP_COOLDOWN_MIN", DEFAULT_FLAP_COOLDOWN_MIN),
 }
+ENV_CLOCK = {
+    "quiet_start": ("TRADEAI_INCIDENT_NOTIFIER_QUIET_START", DEFAULT_QUIET_START),
+    "quiet_end": ("TRADEAI_INCIDENT_NOTIFIER_QUIET_END", DEFAULT_QUIET_END),
+}
+ENV_TZ = ("TRADEAI_INCIDENT_NOTIFIER_TZ", DEFAULT_TZ)
 NOTIFY_SEVERITIES = ("P1", "P2")
 SEV_RANK = {"P1": 1, "P2": 2, "P3": 3}
 RECOVERY_CONSUMER = "recovery-observer"   # the fan-in's own consumer_ack for a finding that disappeared
@@ -86,15 +105,33 @@ Sender = Callable[..., dict]      # send_system(text, *, identity, kind) -> reco
 Previewer = Callable[..., dict]   # preview_send(text, *, identity, kind) -> plan
 
 
-def config_from_env(env: Optional[dict] = None) -> dict[str, int]:
+def _hhmm(text: str) -> Optional[int]:
+    try:
+        h, m = (int(x) for x in str(text).strip().split(":"))
+    except ValueError:
+        return None
+    return h * 60 + m if 0 <= h < 24 and 0 <= m < 60 else None
+
+
+def config_from_env(env: Optional[dict] = None) -> dict[str, Any]:
     env = os.environ if env is None else env
-    out: dict[str, int] = {}
+    out: dict[str, Any] = {}
     for name, (var, default) in ENV.items():
         try:
             val = int(str(env.get(var, "")).strip() or default)
         except ValueError:
             val = default
         out[name] = val if val >= 0 else default
+    for name, (var, default) in ENV_CLOCK.items():
+        out[name] = _hhmm(env.get(var) or default)
+        if out[name] is None:
+            out[name] = _hhmm(default)
+    tz = str(env.get(ENV_TZ[0]) or ENV_TZ[1]).strip()
+    try:
+        ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ENV_TZ[1]
+    out["tz"] = tz
     return out
 
 
@@ -119,7 +156,7 @@ def incident_key(source: str, item: str) -> str:
     return "inc-" + hashlib.sha256(f"{source}|{item}".encode("utf-8")).hexdigest()[:20]
 
 
-def read_fanin(root: Path, now: datetime, cfg: dict[str, int]) -> dict[str, Any]:
+def read_fanin(root: Path, now: datetime, cfg: dict[str, Any]) -> dict[str, Any]:
     """The fan-in receipt as {status, as_of, age_min, open, by_severity, incidents}; status OK only when usable."""
     path = root / FANIN_RECEIPT_REL
     doc = _load(path)
@@ -183,10 +220,75 @@ def load_state(path: Path) -> dict[str, Any]:
             "last_p2_batch_at": doc.get("last_p2_batch_at"), "sends_by_day": dict(doc.get("sends_by_day") or {})}
 
 
+def _local(now: datetime, cfg: dict[str, Any]) -> datetime:
+    return now.astimezone(ZoneInfo(cfg["tz"]))
+
+
+def local_day(now: datetime, cfg: dict[str, Any]) -> str:
+    """The cap's day: the operator's calendar day (America/New_York by default), not UTC."""
+    return _local(now, cfg).strftime("%Y-%m-%d")
+
+
+def in_quiet_hours(now: datetime, cfg: dict[str, Any]) -> bool:
+    """Wall-clock window in cfg['tz'] (zoneinfo, so DST is handled); start > end wraps midnight."""
+    t = _local(now, cfg)
+    m = t.hour * 60 + t.minute
+    start, end = cfg["quiet_start"], cfg["quiet_end"]
+    if start == end:
+        return False
+    return (start <= m < end) if start < end else (m >= start or m < end)
+
+
+def quiet_ends_at(now: datetime, cfg: dict[str, Any]) -> datetime:
+    t = _local(now, cfg)
+    end = t.replace(hour=cfg["quiet_end"] // 60, minute=cfg["quiet_end"] % 60, second=0, microsecond=0)
+    if end <= t:
+        end = (t + timedelta(days=1)).replace(hour=cfg["quiet_end"] // 60, minute=cfg["quiet_end"] % 60,
+                                              second=0, microsecond=0)
+    return end.astimezone(timezone.utc)
+
+
+def reconcile(open_now: dict[str, dict], acked: set[str], state: dict, now: datetime, cfg: dict[str, Any]) -> dict[str, list[str]]:
+    """Fold this run's observations into the dedupe records BEFORE planning. Records are never deleted on
+    recovery (a deleted record made open → clear → re-open send P1, RECOVERED, P1 every 5 min).
+
+    * a re-open within flap_cooldown_min of the recovery is a FLAP: nothing is sent, the record counts it
+      and carries a note for the next message that does go out;
+    * a flapping incident that clears again clears SILENTLY (its recovery_at moves, so the cooldown keeps
+      covering an incident that keeps flapping);
+    * records recovered more than RECORD_TTL_DAYS ago are dropped."""
+    iso = now.isoformat()
+    flapped: list[str] = []
+    silent: list[str] = []
+    cooldown = timedelta(minutes=cfg["flap_cooldown_min"])
+    for key, rec in list(state["notified"].items()):
+        last_flap = _parse_ts(rec.get("last_flap_at"))
+        if rec.get("flapping") and (last_flap is None or now - last_flap >= cooldown):
+            rec["flapping"] = False                  # settled: the next clear is a real recovery again
+        is_open = key in open_now
+        if is_open and not rec.get("open", True):
+            rec_at = _parse_ts(rec.get("recovered_at"))
+            if rec_at is not None and now - rec_at < cooldown:
+                rec.update({"open": True, "flapping": True, "flap_count": int(rec.get("flap_count") or 0) + 1,
+                            "last_flap_at": iso, "flap_note_pending": True})
+                flapped.append(key)
+            # else: a genuine re-open after the cooldown; _due() treats the closed record as new
+        elif not is_open and key not in acked and rec.get("open", True) and rec.get("flapping"):
+            rec.update({"open": False, "recovered_at": iso})
+            silent.append(key)
+        if not rec.get("open", True):
+            rec_at = _parse_ts(rec.get("recovered_at"))
+            if rec_at is not None and now - rec_at > timedelta(days=RECORD_TTL_DAYS):
+                state["notified"].pop(key, None)
+    return {"flapped": flapped, "silent_clears": silent}
+
+
 def _due(key: str, inc: dict, state: dict, now: datetime, dedupe_h: int) -> bool:
     prior = state["notified"].get(key)
     if not prior:
         return True
+    if not prior.get("open", True):
+        return True   # closed record re-opened after the flap cooldown: a new incident
     if SEV_RANK.get(inc["severity"], 9) < SEV_RANK.get(str(prior.get("severity")), 9):
         return True   # escalated (P2 -> P1): tell the operator now
     last = _parse_ts(prior.get("last_notified_at"))
@@ -213,44 +315,82 @@ def _body(header: str, incs: list[dict], footer: str, max_lines: int) -> str:
     return "\n".join([header, *lines, footer])
 
 
-def _identity(kind: str, keys: list[str], now: datetime) -> str:
-    digest = hashlib.sha256("|".join(sorted(keys)).encode("utf-8")).hexdigest()[:12]
-    return f"{IDENTITY_PREFIX}{kind}:{now.strftime('%Y%m%dT%H%M')}:{digest}"
+def _identity(kind: str, generations: list[str]) -> str:
+    """Content identity, no clock: the incident keys plus each record's generation (how many times it was
+    notified or recovered). A retry of an undelivered message keeps its identity; the next legitimate send
+    for the same incidents gets a new one, so send_system's identity dedupe never swallows it."""
+    digest = hashlib.sha256("|".join(sorted(generations)).encode("utf-8")).hexdigest()[:16]
+    return f"{IDENTITY_PREFIX}{kind}:{digest}"
 
 
-def plan_messages(open_now: dict[str, dict], state: dict, now: datetime, cfg: dict[str, int],
+def _flap_note(state: dict, cfg: dict[str, Any]) -> tuple[list[str], str]:
+    keys = sorted(k for k, r in state["notified"].items() if r.get("flap_note_pending"))
+    if not keys:
+        return [], ""
+    parts = [f"{state['notified'][k].get('source')} {state['notified'][k].get('item')} ×{state['notified'][k].get('flap_count')}"
+             for k in keys[:cfg["max_lines"]]]
+    more = f" (+{len(keys) - cfg['max_lines']} more)" if len(keys) > cfg["max_lines"] else ""
+    return keys, (f"Flapping (re-opened within {cfg['flap_cooldown_min']} min of recovery, not re-sent): "
+                  + "; ".join(parts) + more)
+
+
+def plan_messages(open_now: dict[str, dict], state: dict, now: datetime, cfg: dict[str, Any],
                   fanin: dict[str, Any], acked: Optional[set[str]] = None) -> tuple[list[dict], dict[str, Any]]:
-    """Pure: which messages this run sends, in priority order (P1, recovery, P2 batch). No I/O."""
+    """Pure: which messages this run sends, in priority order (P1, recovery, P2 batch). No I/O.
+
+    Quiet hours (22:00-07:00 America/New_York by default) hold the P2 batch and P2-only recoveries; P1 and
+    any recovery that includes a P1 always go out. Held P2s leave as one batch at the end of the window."""
     by_sev = fanin.get("by_severity") or {}
     footer = (f"Fan-in as of {str(fanin.get('as_of') or '')[:16]}Z · open P1 {by_sev.get('P1', 0)} · "
               f"P2 {by_sev.get('P2', 0)} · P3 {by_sev.get('P3', 0)} (P3 never sends)")
+    quiet = in_quiet_hours(now, cfg)
     msgs: list[dict] = []
     p1 = sorted((i for k, i in open_now.items() if i["severity"] == "P1" and _due(k, i, state, now, cfg["dedupe_hours"])),
                 key=lambda i: (i["source"], i["item"]))
     if p1:
         msgs.append({"kind": "p1", "severity": "P1", "incident_keys": [i["key"] for i in p1], "incidents": p1,
-                     "text": _body(f"TRADE AI SYSTEM INCIDENT — P1 ({len(p1)})", p1, footer, cfg["max_lines"])})
+                     "header": f"TRADE AI SYSTEM INCIDENT — P1 ({len(p1)})"})
     acked = acked or set()
-    cleared = sorted(k for k in state["notified"] if k not in open_now and k not in acked)   # acked != recovered
+    cleared = sorted(k for k, r in state["notified"].items()
+                     if r.get("open", True) and not r.get("flapping") and k not in open_now and k not in acked)
+    recovery: dict[str, Any] = {"pending": len(cleared), "held": None}
     if cleared:
         rec = [{"key": k, "source": state["notified"][k].get("source"), "item": state["notified"][k].get("item"),
                 "severity": state["notified"][k].get("severity"), "detail": ""} for k in cleared]
-        msgs.append({"kind": "recovery", "severity": "RECOVERY", "incident_keys": cleared, "incidents": rec,
-                     "text": _body(f"TRADE AI SYSTEM RECOVERED — {len(rec)} incident(s) no longer open at P1/P2", rec, footer,
-                                   cfg["max_lines"])})
+        if quiet and not any(r["severity"] == "P1" for r in rec):
+            recovery["held"] = "quiet_hours"
+        else:
+            msgs.append({"kind": "recovery", "severity": "RECOVERY", "incident_keys": cleared, "incidents": rec,
+                         "header": f"TRADE AI SYSTEM RECOVERED — {len(rec)} incident(s) no longer open at P1/P2"})
     p2 = sorted((i for k, i in open_now.items() if i["severity"] == "P2" and _due(k, i, state, now, cfg["dedupe_hours"])),
                 key=lambda i: (i["source"], i["item"]))
-    batch: dict[str, Any] = {"pending": len(p2), "window_min": cfg["p2_batch_min"], "next_batch_at": None}
+    batch: dict[str, Any] = {"pending": len(p2), "window_min": cfg["p2_batch_min"], "next_batch_at": None,
+                             "quiet_hours": quiet, "recovery": recovery}
     if p2:
         last = _parse_ts(state.get("last_p2_batch_at"))
-        if last is not None and (now - last) < timedelta(minutes=cfg["p2_batch_min"]):
+        if quiet:
+            batch["held"] = "quiet_hours"
+            batch["next_batch_at"] = quiet_ends_at(now, cfg).isoformat()
+        elif last is not None and (now - last) < timedelta(minutes=cfg["p2_batch_min"]):
             batch["next_batch_at"] = (last + timedelta(minutes=cfg["p2_batch_min"])).isoformat()
             batch["deferred"] = True
         else:
             msgs.append({"kind": "p2_batch", "severity": "P2", "incident_keys": [i["key"] for i in p2], "incidents": p2,
-                         "text": _body(f"TRADE AI SYSTEM INCIDENTS — P2 batch ({len(p2)})", p2, footer, cfg["max_lines"])})
+                         "header": f"TRADE AI SYSTEM INCIDENTS — P2 batch ({len(p2)})"})
+    flap_keys, flap_line = _flap_note(state, cfg)
     for m in msgs:
-        m["identity"] = _identity(m["kind"], m["incident_keys"], now)
+        tail = footer
+        m["flap_keys"] = []
+        if flap_line and not any(x.get("flap_keys") for x in msgs if x is not m):
+            tail = flap_line + "\n" + footer          # the flap note rides on the first message only
+            m["flap_keys"] = flap_keys
+        m["text"] = _body(m["header"], m["incidents"], tail, cfg["max_lines"])
+        gens = []
+        for k in m["incident_keys"]:
+            r = state["notified"].get(k) or {}
+            n = int(r.get("recovery_count") or 0) if m["kind"] == "recovery" else int(r.get("notify_count") or 0)
+            gens.append(f"{k}:{n}")
+        m["identity"] = _identity(m["kind"], gens)
     return msgs, batch
 
 
@@ -265,17 +405,24 @@ def _default_previewer() -> Previewer:
 
 
 def apply_result(state: dict, msg: dict, now: datetime) -> None:
-    """Record a delivered message in the dedupe state (live mode only)."""
+    """Record a DELIVERED message in the dedupe state (live mode only). Records survive recovery."""
     iso = now.isoformat()
+    for k in msg.get("flap_keys") or []:
+        if k in state["notified"]:
+            state["notified"][k]["flap_note_pending"] = False
     if msg["kind"] == "recovery":
         for k in msg["incident_keys"]:
-            state["notified"].pop(k, None)
+            r = state["notified"].get(k)
+            if r is not None:
+                r.update({"open": False, "recovered_at": iso, "recovery_count": int(r.get("recovery_count") or 0) + 1})
         return
     for inc in msg["incidents"]:
         prior = state["notified"].get(inc["key"]) or {}
-        state["notified"][inc["key"]] = {"source": inc["source"], "item": inc["item"], "severity": inc["severity"],
-                                         "first_notified_at": prior.get("first_notified_at") or iso,
-                                         "last_notified_at": iso, "identity": msg["identity"]}
+        state["notified"][inc["key"]] = {
+            **prior, "source": inc["source"], "item": inc["item"], "severity": inc["severity"], "open": True,
+            "flapping": bool(prior.get("flapping")) if prior.get("open", True) else False,
+            "first_notified_at": prior.get("first_notified_at") or iso, "last_notified_at": iso,
+            "notify_count": int(prior.get("notify_count") or 0) + 1, "identity": msg["identity"]}
     if msg["kind"] == "p2_batch":
         state["last_p2_batch_at"] = iso
 
@@ -289,15 +436,16 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
     fanin = read_fanin(root, now, cfg)
     ledger = read_ledger_acks(ledger_path, now=now) if fanin["status"] == "OK" else {"status": "not_read", "acked_event_ids": []}
     state = load_state(root / STATE_REL)
-    day = now.strftime("%Y-%m-%d")
-    state["sends_by_day"] = {d: n for d, n in state["sends_by_day"].items() if d >= (now - timedelta(days=7)).strftime("%Y-%m-%d")}
+    day = local_day(now, cfg)
+    keep_from = local_day(now - timedelta(days=7), cfg)
+    state["sends_by_day"] = {d: n for d, n in state["sends_by_day"].items() if d >= keep_from}
     used = int(state["sends_by_day"].get(day, 0))
     receipt: dict[str, Any] = {
         "schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "mode": "live" if live else "dry-run",
         "served_sha": served_sha(env), "family": "TRADE_AI_SYSTEM", "config": cfg,
         "fanin": {k: v for k, v in fanin.items() if k != "incidents"}, "ledger_source": {"status": ledger["status"],
                                                                                         "acked": len(ledger["acked_event_ids"])},
-        "messages": [], "p2_batch": None, "acked_keys": [], "open_notifiable": 0, "ok": True,
+        "messages": [], "p2_batch": None, "acked_keys": [], "open_notifiable": 0, "flaps": None, "ok": True,
     }
     if fanin["status"] != "OK":
         receipt["status"] = f"NO_INPUT:{fanin['status']}"   # never declare recovery or alert from a stale/missing input
@@ -306,6 +454,7 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
     open_now, acked = open_incidents(fanin, set(ledger["acked_event_ids"]))
     receipt["acked_keys"] = acked
     receipt["open_notifiable"] = len(open_now)
+    receipt["flaps"] = reconcile(open_now, set(acked), state, now, cfg)
     msgs, batch = plan_messages(open_now, state, now, cfg, fanin, set(acked))
     receipt["p2_batch"] = batch
     send = sender if sender is not None else (_default_sender() if live else None)
@@ -315,8 +464,8 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
         row = {k: m[k] for k in ("kind", "severity", "identity", "incident_keys")}
         row["lines"] = m["text"].count("\n") + 1
         row["text"] = m["text"]
-        if used >= cfg["daily_cap"]:
-            row["status"] = "CAPPED"          # incidents stay un-notified; tomorrow's budget sends them
+        if used >= cfg["daily_cap"] and m["kind"] != "p1":
+            row["status"] = "CAPPED"          # incidents stay un-notified; tomorrow's budget sends them. P1 never caps.
         elif not live:
             try:
                 plan = preview(m["text"], identity=m["identity"], kind=f"incident_{m['kind']}")  # type: ignore[misc]
@@ -332,16 +481,22 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
                 res = {"ok": False, "reason": f"exception:{type(exc).__name__}"}
             row["send"] = {k: res.get(k) for k in ("ok", "message_id", "reason", "suppressed", "deduped", "status_code")
                            if k in res}
-            if res.get("ok"):
-                row["status"] = "SUPPRESSED" if res.get("suppressed") else "SENT"
+            if res.get("ok") and res.get("suppressed"):
+                row["status"] = "HELD"        # the comms editor held or dropped it: not delivered, not counted, retried
+            elif res.get("ok") and res.get("deduped"):
+                row["status"] = "ALREADY_DELIVERED"   # this exact identity was delivered before; record, do not count
+                apply_result(state, m, now)
+            elif res.get("ok"):
+                row["status"] = "SENT"
                 used += 1
                 apply_result(state, m, now)
             else:
                 row["status"] = "FAILED"
                 failed = True
         receipt["messages"].append(row)
-    state["sends_by_day"][day] = used if live else state["sends_by_day"].get(day, 0)
-    receipt["cap"] = {"day": day, "used": used, "limit": cfg["daily_cap"],
+    if live:
+        state["sends_by_day"][day] = used
+    receipt["cap"] = {"day": day, "tz": cfg["tz"], "used": used, "limit": cfg["daily_cap"],
                       "capped": sum(1 for r in receipt["messages"] if r["status"] == "CAPPED")}
     receipt["status"] = "FAILED" if failed else "OK"
     receipt["ok"] = not failed
