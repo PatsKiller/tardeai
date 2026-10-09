@@ -232,6 +232,8 @@ def run_window(days: int, *, archive_dir: Path | None, as_of: str | None = None)
             obj = build_decision_object(event=event, identity=identity, position=signal.get("position"))
             obj = apply_expression_evaluation(obj, selected["facts_by_structure"] if selected else {})
             comparison = obj["expression_comparison"]
+            if any(row["score"] is not None and not _number(row["score"]) for row in comparison["candidates"]):
+                raise ValueError("expression_facts.jsonl:derived_nonfinite_comparison")
             scored = {row["structure"] for row in comparison["candidates"] if row["state"] == "SCORED"}
             if scored & _STOCK and scored - _STOCK:
                 result["scoring_comparisons"] += 1
@@ -267,6 +269,28 @@ def run_window(days: int, *, archive_dir: Path | None, as_of: str | None = None)
     return result
 
 
+def _output_aliases_inputs(archive: Path, output: Path) -> bool:
+    """Resolve path aliases and inode aliases before permitting an artifact write."""
+    target = output.resolve()
+    if target.is_relative_to(archive.resolve()):
+        return True
+    try:
+        output_stat = output.stat()
+    except FileNotFoundError:
+        output_stat = None
+    for name in ("signals.jsonl", "prices.jsonl", "expression_facts.jsonl"):
+        source = archive / name
+        if source.resolve() == target:
+            return True
+        try:
+            source_stat = source.stat()
+        except FileNotFoundError:
+            continue
+        if output_stat and (source_stat.st_dev, source_stat.st_ino) == (output_stat.st_dev, output_stat.st_ino):
+            return True
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--days", type=int, nargs="+", default=[30, 60, 90])
@@ -275,9 +299,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="")
     args = ap.parse_args(argv)
     archive = Path(args.archive_dir) if args.archive_dir else None
-    if archive and args.out and Path(args.out).resolve().is_relative_to(archive.resolve()):
-        print(json.dumps({"ok": False, "reason": "output_must_be_outside_read_only_archive"}))
-        return 2
+    if archive and args.out:
+        try:
+            alias = _output_aliases_inputs(archive, Path(args.out))
+        except (OSError, RuntimeError):
+            print(json.dumps({"ok": False, "reason": "output_archive_alias_check_failed"}))
+            return 2
+        if alias:
+            print(json.dumps({"ok": False, "reason": "output_must_not_alias_read_only_archive"}))
+            return 2
     captured = args.as_of or datetime.now(timezone.utc).isoformat()
     metrics = {
         "schema": "CrossAssetHistoricalReplayMetrics@v1", "as_of": captured,
