@@ -164,8 +164,8 @@ def registry_truth(probe: core.Probe) -> dict:
                         inherited_tranche_lines=base - len(reg.get("undeclared_baseline") or []),
                         mtime=_iso(probe.mtime(reg_path))),
           core.evidence("crontab -l", live_lines=n_live, commented_lines=len(_lr.discover_commented_cron(text=text)))]
-    return core.dim_result(dim, score=score, gate_rule=rule, gate_pass=gate, metrics=metrics,
-                           evidence_list=ev, notes=notes)
+    return core.dim_result(dim, score=core.cap_on_fail(probe, score, gate), gate_rule=rule, gate_pass=gate,
+                           metrics=metrics, evidence_list=ev, notes=notes)
 
 
 # ── 2. rationalization ──────────────────────────────────────────────────────────────────────────
@@ -379,8 +379,8 @@ def rationalization(probe: core.Probe) -> dict:
                                              ("pipelines_live", pipe_score)])
     gate = (eliminated is not None and eliminated >= r0_target and merged is not None and merged >= merged_target
             and pipelines_live >= p_target)
-    return core.dim_result(dim, score=score, gate_rule=rule, gate_pass=gate, metrics=metrics,
-                           evidence_list=ev, status=status, notes=notes + mnotes)
+    return core.dim_result(dim, score=core.cap_on_fail(probe, score, gate), gate_rule=rule, gate_pass=gate,
+                           metrics=metrics, evidence_list=ev, status=status, notes=notes + mnotes)
 
 
 # ── 3. scheduler coverage ───────────────────────────────────────────────────────────────────────
@@ -530,8 +530,8 @@ def scheduler_coverage(probe: core.Probe) -> dict:
                         lanes_with_live_runs=None if last_run is None else len(last_run),
                         newest_live_run=max(last_run.values(), default=None) if last_run else None)]
     notes = ([ledger_note] if ledger_note else []) + mnotes
-    return core.dim_result(dim, score=score, gate_rule=rule, gate_pass=gate, metrics=metrics,
-                           evidence_list=ev, status=status, notes=notes)
+    return core.dim_result(dim, score=core.cap_on_fail(probe, score, gate), gate_rule=rule, gate_pass=gate,
+                           metrics=metrics, evidence_list=ev, status=status, notes=notes)
 
 
 def _iso(d: Any) -> Optional[str]:

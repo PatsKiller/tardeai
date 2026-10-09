@@ -424,10 +424,10 @@ def test_self_healing_empty_inventory_is_not_full_marks(tmp_path):
     r = h.collect_self_healing(p)
     assert r["metrics"]["proven_ratio"] is None and r["metrics"]["s_proven"] is None
     assert r["status"] == core.PARTIAL and r["score"] == 5.0 and not r["gate"]["pass"]
-    # an inventory whose rows are all non-objects is empty too
+    # an inventory whose rows are all non-objects is malformed: UNVERIFIED, not scored
     _write(p.proj / h.INVENTORY_REL, json.dumps({"schema": h.INVENTORY_SCHEMA, "mechanisms": [1, "x"]}))
     r = h.collect_self_healing(p)
-    assert r["metrics"]["proven_ratio"] is None and not r["gate"]["pass"]
+    assert r["status"] == core.UNVERIFIED and r["score"] == 0.0 and not r["gate"]["pass"]
 
 
 def test_health_tick_zero_receipts_in_window_is_unverified(tmp_path):
@@ -449,7 +449,7 @@ def test_health_tick_single_stale_receipt_not_green(tmp_path):
     assert t["last_fresh"] is False and t["ok_rate"] is None, "a stale receipt is not a sample"
     r = h.collect_self_healing(p)
     assert r["metrics"]["s_health_tick"] is None and not r["gate"]["pass"] and r["score"] <= 7.9
-    # the same receipt, fresh and alone, is one sample (ok_rate 1/1) and the gate can pass
+    # the same receipt, fresh and alone, is one sample (ok_rate 1/1) — below health_tick_min_samples (see r2 test)
     _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"}))
     t = h.health_tick_status(p)
     assert t["ok_rate"] == 1.0 and t["runs"] == 1 and t["ok_rate_basis"] == "latest_receipt"
@@ -560,3 +560,59 @@ def test_recovery_lab_drill_partial_credit(tmp_path):
 
 def test_collectors_registered():
     assert set(h.COLLECTORS) == {"self_healing", "recovery"}
+
+
+# --------------------------------------------------------------------------- round 2 (#1593 review)
+
+def test_r2_single_fresh_receipt_below_min_samples_is_partial(tmp_path):
+    p = _probe(tmp_path)
+    _heal_inventory(p, 5, 5)
+    _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"}))
+    r = h.collect_self_healing(p)
+    assert r["metrics"]["health_tick_runs"] == 1 and r["metrics"]["s_health_tick"] is None
+    assert r["status"] == core.PARTIAL and not r["gate"]["pass"] and r["score"] <= 7.9
+    assert any("health_tick_min_samples" in n for n in r["notes"])
+
+
+def test_r2_min_samples_comes_from_config(tmp_path):
+    p = _probe(tmp_path, config=_config(self_healing={"health_tick_min_samples": 1}))
+    _heal_inventory(p, 5, 5)
+    _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"}))
+    r = h.collect_self_healing(p)
+    assert r["gate"]["pass"] and r["score"] == 10.0
+    cfg = _config()
+    del cfg["dimensions"]["self_healing"]["health_tick_min_samples"]
+    r = h.collect_self_healing(_probe(tmp_path, config=cfg))
+    assert r["status"] == core.UNVERIFIED and "health_tick_min_samples" in r["notes"][0]
+
+
+def test_r2_self_rule_built_from_config_ratio(tmp_path):
+    cfg = _config(self_healing={"proven_ratio_gate": 0.7})
+    del cfg["dimensions"]["self_healing"]["gate_rule"]
+    assert h.self_rule(_probe(tmp_path, config=cfg)).startswith(">= 70% of mechanisms")
+    assert h.self_rule(_probe(tmp_path)) == REAL_CONFIG["dimensions"]["self_healing"]["gate_rule"]
+
+
+def test_r2_malformed_inventory_is_unverified_not_scored(tmp_path):
+    p = _probe(tmp_path)
+    _heal_inventory(p, 5, 5)
+    _tick(p, ok_runs=100, total=100)
+    doc = json.loads((p.proj / h.INVENTORY_REL).read_text())
+    doc["mechanisms"].append({"id": "m0", "name": "dup"})  # duplicate id + missing fields
+    _write(p.proj / h.INVENTORY_REL, json.dumps(doc))
+    r = h.collect_self_healing(p)
+    assert r["status"] == core.UNVERIFIED and r["score"] == 0.0 and not r["gate"]["pass"]
+    assert "inventory self-check failed" in r["notes"][0] and r["metrics"]["inventory_problems"] >= 2
+
+
+def test_r2_self_healing_and_recovery_caps_are_config_driven(tmp_path):
+    p = _probe(tmp_path, config=_config())
+    p.config["gate_cap"] = 3.0
+    _heal_inventory(p, 4, 5)        # 80% proven
+    _tick(p, ok_runs=95, total=100)  # 95% < 99% gate
+    r = h.collect_self_healing(p)
+    assert not r["gate"]["pass"] and r["score"] == 3.0
+    _bv(p, "WARN")
+    _rd(p)
+    r = h.collect_recovery(p)
+    assert not r["gate"]["pass"] and r["score"] == 3.0

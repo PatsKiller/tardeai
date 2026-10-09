@@ -37,12 +37,15 @@ def _iso(hours_ago: float) -> str:
     return (NOW - dt.timedelta(hours=hours_ago)).isoformat()
 
 
+QUIET_JOURNAL = "2026-10-09T10:00:00-04:00 h portfolio-server[1]: GET /health 200\n"
+
+
 class FakeHost:
     """Fake read-only runner. Unknown commands fail (rc 1)."""
 
     def __init__(self, *, timer_active=True, exec_start="argv[]=python scripts/research_lane_health.py --alert",
                  crontab=None, docker_ps="m8m-n8n n8nio/n8n:2.43.0\nm8m-n8n-db postgres:16.15-alpine\n",
-                 n8n_errors="0", journal="", journal_rc=0, failed_units="", failed_rc=0):
+                 n8n_errors="0", journal=QUIET_JOURNAL, journal_rc=0, failed_units="", failed_rc=0):
         self.timer_active, self.exec_start, self.crontab = timer_active, exec_start, crontab
         self.docker_ps, self.n8n_errors, self.journal, self.journal_rc = docker_ps, n8n_errors, journal, journal_rc
         self.failed_units, self.failed_rc = failed_units, failed_rc
@@ -131,7 +134,8 @@ def test_observability_gate_boundary_one_lane_short_fails(tmp_path):
     lanes = _registry(tmp_path, 99, 1)
     _monitor(tmp_path, lanes)
     r = dims_signal.observability(_probe(tmp_path))
-    assert r["score"] == pytest.approx(7.92) and not r["gate"]["pass"]
+    # 7.92 uncapped; a failed gate caps at gate_cap 7.9
+    assert r["score"] == pytest.approx(7.9) and not r["gate"]["pass"]
 
 
 def test_observability_stale_or_unscheduled_monitor_covers_nothing(tmp_path):
@@ -197,7 +201,8 @@ def test_alert_delivery_gate_boundary_99_percent(tmp_path):
     assert r["metrics"]["ok_rate_pct"] == 99.0 and r["gate"]["pass"] and r["score"] >= 8.0
     _sends(tmp_path, 98, 2)
     r = dims_signal.alert_delivery(_probe(tmp_path))
-    assert not r["gate"]["pass"] and r["score"] == pytest.approx((8.0 * 0.98 / 0.99 + 10) / 2, abs=0.01)
+    # (8.0 * 0.98 / 0.99 + 10) / 2 = 8.96 uncapped; a failed gate caps at gate_cap
+    assert not r["gate"]["pass"] and r["score"] == pytest.approx(7.9)
 
 
 def test_alert_delivery_interdicted_and_undelivered_p1_scores_zero(tmp_path):
@@ -454,3 +459,84 @@ def test_deterministic(tmp_path):
     a = [fn(_probe(tmp_path)) for fn in dims_signal.COLLECTORS.values()]
     b = [fn(_probe(tmp_path)) for fn in dims_signal.COLLECTORS.values()]
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
+# ── round 2 (#1593 review): gate cap in every dimension, quiet-period heartbeat, empty journal ──────
+
+def _heartbeat(tmp_path, *, hours_ago=2.0, ok=True, deduped=False, kind="daily_heartbeat"):
+    row = {"at": _iso(hours_ago), "ok": ok, "identity": "system-heartbeat:2026-10-09", "kind": kind}
+    if deduped:
+        row.update(deduped=True, reason="deduped")
+    return row
+
+
+def test_r2_quiet_period_passes_only_with_fresh_heartbeat_delivery(tmp_path):
+    _sends(tmp_path, 100, 0, extra=[_heartbeat(tmp_path)])
+    _fanin(tmp_path, [{"severity": "P3", "idempotency_key": "x"}])
+    r = dims_signal.alert_delivery(_probe(tmp_path))
+    assert r["gate"]["pass"] and r["score"] == 10.0 and r["status"] == core.VERIFIED
+    assert r["metrics"]["quiet_period_heartbeat_proven"] is True
+    assert any("fresh system heartbeat" in n for n in r["notes"])
+
+
+@pytest.mark.parametrize("hb", [
+    {"hours_ago": 30.0},                       # older than quiet_period_heartbeat.max_age_hours (26)
+    {"ok": False},                             # interdicted / failed send
+    {"deduped": True},                         # a dedup echo is not a delivery
+    {"kind": "canary"},                        # not the system heartbeat
+])
+def test_r2_quiet_period_without_fresh_heartbeat_is_delivery_unproven(tmp_path, hb):
+    _sends(tmp_path, 100, 0, extra=[_heartbeat(tmp_path, **hb)])
+    _fanin(tmp_path, [])
+    r = dims_signal.alert_delivery(_probe(tmp_path))
+    # the p1p2 sub-criterion is unproven (scores 0): at most half marks, PARTIAL, gate fails
+    assert not r["gate"]["pass"] and r["status"] == core.PARTIAL and r["score"] <= 5.0
+    assert r["metrics"]["quiet_period_heartbeat_proven"] is False
+    assert any("delivery unproven" in n for n in r["notes"])
+
+
+def test_r2_quiet_period_heartbeat_config_required(tmp_path):
+    cfg = _config()
+    del cfg["dimensions"]["alert_delivery"]["quiet_period_heartbeat"]
+    _sends(tmp_path, 100, 0, extra=[_heartbeat(tmp_path)])
+    _fanin(tmp_path, [])
+    with pytest.raises(core.ConfigError):
+        dims_signal.alert_delivery(_probe(tmp_path, config=cfg))
+
+
+def test_r2_open_p1p2_still_needs_its_own_delivery_even_with_heartbeat(tmp_path):
+    _sends(tmp_path, 100, 0, extra=[_heartbeat(tmp_path)])
+    _fanin(tmp_path, [{"severity": "P1", "idempotency_key": "inc-undelivered"}])
+    r = dims_signal.alert_delivery(_probe(tmp_path))
+    assert not r["gate"]["pass"] and r["metrics"]["quiet_period_heartbeat_proven"] is False
+
+
+@pytest.mark.parametrize("journal", ["", "-- No entries --\n", "\n\n"])
+def test_r2_empty_journal_is_unproven_not_clean(tmp_path, journal):
+    _ledger(tmp_path, [("RUN_DONE", 0, 1)] * 100)
+    r = dims_signal.reliability(_probe(tmp_path, FakeHost(journal=journal)))
+    assert r["metrics"]["api_sigkills"] is None and r["metrics"]["sub_scores"]["api_sigkills"] is None
+    assert r["status"] == core.PARTIAL and not r["gate"]["pass"]
+    assert any("no entries" in n for n in r["notes"])
+
+
+def test_r2_observability_gate_fail_capped(tmp_path):
+    lanes = _registry(tmp_path, 99, 1)
+    _monitor(tmp_path, lanes)
+    r = dims_signal.observability(_probe(tmp_path, config=_config(gate_cap=5.0)))
+    assert r["score"] == 5.0 and not r["gate"]["pass"]
+
+
+def test_r2_alert_delivery_gate_fail_capped(tmp_path):
+    _sends(tmp_path, 98, 2)
+    _fanin(tmp_path, [P1_DELIVERED])
+    r = dims_signal.alert_delivery(_probe(tmp_path, config=_config(gate_cap=5.0)))
+    assert r["score"] == 5.0 and not r["gate"]["pass"]
+
+
+def test_r2_reliability_gate_fail_capped(tmp_path):
+    _ledger(tmp_path, [("RUN_DONE", 0, 1)] * 100)
+    host = FakeHost(failed_units="mcporter-token-refresh.service loaded failed failed y\n")
+    r = dims_signal.reliability(_probe(tmp_path, host))
+    # (10 + 10 + 6.4) / 3 = 8.8 uncapped: one failed unit fails the gate, so the score is capped at gate_cap
+    assert not r["gate"]["pass"] and r["score"] == 7.9

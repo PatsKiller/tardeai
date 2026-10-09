@@ -26,12 +26,15 @@ Formulas (every threshold is REQUIRED config via ``probe.need`` / ``core.need_to
 Dimension 6 ``self_healing``::
 
     proven_ratio  = PROVEN / mechanisms                       (all inventory rows count; an empty or
-                                                              missing inventory -> None, never 1.0)
+                                                              missing inventory -> None, never 1.0; an
+                                                              inventory failing its self-check -> the
+                                                              dimension is UNVERIFIED, not scored)
     s_proven      = ratio_score(proven_ratio, proven_ratio_gate, top=1.0)
     ok_rate       = health_tick receipts with ok=true / receipts in health_tick_window_hours
                     (health_tick --apply exits 0 iff its receipt has ok=true). With no history rows in
                     the window the latest receipt is the only sample, and only when it is fresh
-                    (<= health_tick_max_age_minutes); 0 receipts -> None (UNVERIFIED), never "ok"
+                    (<= health_tick_max_age_minutes); 0 receipts -> None (UNVERIFIED), never "ok";
+                    fewer than health_tick_min_samples receipts -> s_tick None (PARTIAL, gate fails)
     s_tick        = ratio_score(ok_rate, health_tick_ok_rate_gate, top=1.0)
     score         = mean_score([s_proven, s_tick])            (a missing part counts 0 -> PARTIAL)
     gate          = proven_ratio >= proven_ratio_gate AND ok_rate >= health_tick_ok_rate_gate AND
@@ -78,7 +81,7 @@ _SYSTEMD_PROPS = ("NRestarts", "ActiveState", "SubState", "Result", "LoadState",
 _MAX_BYTES = 64 * 1024 * 1024
 _MAX_ROWS = 500_000
 
-SELF_RULE = ">= 80% of mechanisms with a successful runtime action; health_tick exits 0"
+SELF_RULE_TEMPLATE = ">= {pct:g}% of mechanisms with a successful runtime action; health_tick exits 0"
 RECOVERY_RULE = "daily backup-verify receipt green and a passed restore drill receipt"
 
 
@@ -555,20 +558,31 @@ def _gates(probe: core.Probe) -> "tuple[float, float]":
     return float(core.need_top(probe.config, "gate_score")), float(core.need_top(probe.config, "gate_cap"))
 
 
-def _cap(score: float, gate_pass: bool, gate_cap: float) -> float:
-    return score if gate_pass else min(score, gate_cap)
+def _cap(probe: core.Probe, score: float, gate_pass: bool) -> float:
+    return core.cap_on_fail(probe, score, gate_pass)
+
+
+def self_rule(probe: core.Probe) -> str:
+    """The configured gate_rule, else the rule text built from the configured ``proven_ratio_gate`` (never a
+    hard-coded percentage that could drift from the threshold actually applied)."""
+    try:
+        return str(probe.need("self_healing", "gate_rule"))
+    except core.ConfigError:
+        pass
+    try:
+        return SELF_RULE_TEMPLATE.format(pct=100 * float(probe.need("self_healing", "proven_ratio_gate")))
+    except (core.ConfigError, TypeError, ValueError):
+        return "proven_ratio_gate unset in config (rule undefined); health_tick exits 0"
 
 
 def collect_self_healing(probe: core.Probe) -> dict:
     dim = "self_healing"
-    try:
-        rule = probe.need(dim, "gate_rule")
-    except core.ConfigError:
-        rule = SELF_RULE
+    rule = self_rule(probe)
     try:
         gate_score, gate_cap = _gates(probe)
         ratio_gate = float(probe.need(dim, "proven_ratio_gate"))
         tick_gate = float(probe.need(dim, "health_tick_ok_rate_gate"))
+        tick_min_samples = int(probe.need(dim, "health_tick_min_samples"))
         window_h = float(probe.need(dim, "proof_window_hours"))
         default_tail = int(probe.need(dim, "undated_tail_lines"))
         inv_rel = probe.need(dim, "inventory")
@@ -586,8 +600,10 @@ def collect_self_healing(probe: core.Probe) -> dict:
         notes.append(f"inventory: {err}")
     else:
         problems = inventory_problems(doc, probe.proj)
-        if problems:
-            notes.append(f"inventory self-check: {len(problems)} problem(s): {'; '.join(problems[:5])}")
+        if problems:  # a malformed inventory is not scored: its ratio would be over an undefined population
+            return core.unverified(dim, rule, f"inventory self-check failed: {len(problems)} problem(s): "
+                                   f"{'; '.join(problems[:5])}", metrics={"inventory_problems": len(problems)},
+                                   evidence_list=[core.evidence(inv_rel, problems=problems[:20])])
         results = evaluate_inventory(probe, doc, window_h, default_tail)
         n = len(results)
         proven = sum(1 for r in results if r["state"] == PROVEN)
@@ -596,7 +612,11 @@ def collect_self_healing(probe: core.Probe) -> dict:
         evid.append(core.evidence(inv_rel, mechanisms=n, proven=proven, schema=doc.get("schema")))
 
     s_tick: Optional[float] = None
-    if tick["ok_rate"] is not None:
+    tick_sampled = tick["ok_rate"] is not None and tick["runs"] >= tick_min_samples
+    if tick["ok_rate"] is not None and not tick_sampled:
+        notes.append(f"health_tick: {tick['runs']} receipt(s) ({tick['ok_rate_basis']}) < health_tick_min_samples "
+                     f"{tick_min_samples}: exit-0 rate unproven (PARTIAL)")
+    elif tick_sampled:
         s_tick = core.ratio_score(tick["ok_rate"], tick_gate, gate_score=gate_score, top=1.0)
     else:
         notes.append(f"health_tick: 0 receipts in the last {tick['window_hours']} h and no fresh latest receipt")
@@ -608,9 +628,9 @@ def collect_self_healing(probe: core.Probe) -> dict:
                               failed=tick.get("last_failed") or None, timed_out=tick.get("last_timed_out") or None))
 
     score, status, mnotes = core.mean_score([("proven_ratio", s_proven), ("health_tick_exit0", s_tick)])
-    gate_pass = (ratio is not None and ratio >= ratio_gate and tick["ok_rate"] is not None
+    gate_pass = (ratio is not None and ratio >= ratio_gate and tick_sampled and tick["ok_rate"] is not None
                  and tick["ok_rate"] >= tick_gate and tick.get("last_ok") is True and bool(tick.get("last_fresh")))
-    score = _cap(score, gate_pass, gate_cap)
+    score = _cap(probe, score, gate_pass)
 
     by_state = {s: sum(1 for r in results if r["state"] == s) for s in (PROVEN, RAN_NOT_HEALED, NO_EVIDENCE)}
     by_cat: dict[str, dict] = {}
@@ -627,7 +647,8 @@ def collect_self_healing(probe: core.Probe) -> dict:
         "proven": by_state[PROVEN], "ran_not_healed": by_state[RAN_NOT_HEALED], "no_evidence": by_state[NO_EVIDENCE],
         "health_tick_ok_rate": tick["ok_rate"], "health_tick_ok_rate_basis": tick["ok_rate_basis"],
         "mechanisms_total": len(results), "health_tick_last_ok": tick.get("last_ok"),
-        "health_tick_runs": tick["runs"], "proof_window_hours": window_h,
+        "health_tick_runs": tick["runs"], "health_tick_min_samples": tick_min_samples,
+        "proof_window_hours": window_h,
         "s_proven": None if s_proven is None else round(s_proven, 2),
         "s_health_tick": None if s_tick is None else round(s_tick, 2),
         "by_category": by_cat,
@@ -705,7 +726,7 @@ def collect_recovery(probe: core.Probe) -> dict:
 
     score, status, mnotes = core.mean_score([("backup_verify", s_backup), ("restore_drill", s_drill)])
     gate_pass = bv_ok and rd_ok
-    score = _cap(score, gate_pass, gate_cap)
+    score = _cap(probe, score, gate_pass)
     r1 = lambda v: None if v is None else round(v, 1)  # noqa: E731
     metrics = {
         "backup_verify_verdict": (bv or {}).get("verdict") if isinstance(bv, dict) else None,

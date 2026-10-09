@@ -505,3 +505,41 @@ def test_deterministic(tmp_path):
     a = [fn(_probe(tmp_path, _runner(CRON3, "", ""))) for fn in ds.COLLECTORS.values()]
     b = [fn(_probe(tmp_path, _runner(CRON3, "", ""))) for fn in ds.COLLECTORS.values()]
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
+# ── round 2 (#1593 review): every failed gate caps the score at the configured gate_cap ──────────
+
+def test_r2_registry_truth_gate_fail_capped(tmp_path):
+    _registry(tmp_path, [_lane("a", match="scripts/a.py"), _lane("b", match="scripts/b.py")])
+    r = ds.registry_truth(_probe(tmp_path, _runner(CRON3), _config(gate_cap=3.0)))
+    # (8 * 2/3 + 8) / 2 = 6.67 uncapped
+    assert r["gate"]["pass"] is False and r["score"] == 3.0
+
+
+def test_r2_rationalization_gate_fail_capped(tmp_path):
+    _plan(tmp_path)
+    _pipeline_receipt(tmp_path, "after_close", "a")
+    crontab = "0 1 * * * cd x && python scripts/elim1.py\n0 2 * * * cd x && python scripts/merge0.py\n"
+    cfg = copy.deepcopy(RA_CFG)
+    cfg["gate_cap"] = 2.0
+    r = ds.rationalization(_probe(tmp_path, _runner(crontab, timers="t1.timer enabled enabled\n", services=""), cfg))
+    assert r["gate"]["pass"] is False and r["score"] == 2.0
+
+
+def test_r2_scheduler_coverage_gate_fail_capped(tmp_path):
+    lanes = _sc_lanes(n_n8n=3, n_cron=0)
+    lanes[-3]["output_signal"] = {"kind": "none"}
+    _registry(tmp_path, lanes)
+    fresh = "2026-10-09T19:50:00+00:00"
+    _ledger(tmp_path, [(f"n{i}", "live", "RUN_DONE", fresh) for i in range(3)])
+    r = ds.scheduler_coverage(_probe(tmp_path, _runner(), _config(gate_cap=4.0)))
+    # 7.61 uncapped (rest 2/3 watched)
+    assert r["gate"]["pass"] is False and r["score"] == 4.0
+
+
+def test_r2_gate_pass_is_never_capped(tmp_path):
+    _registry(tmp_path, _sc_lanes(n_n8n=3, n_cron=0))
+    fresh = "2026-10-09T19:50:00+00:00"
+    _ledger(tmp_path, [(f"n{i}", "live", "RUN_DONE", fresh) for i in range(3)])
+    r = ds.scheduler_coverage(_probe(tmp_path, _runner(), _config(gate_cap=4.0)))
+    assert r["gate"]["pass"] is True and r["score"] >= 8.0

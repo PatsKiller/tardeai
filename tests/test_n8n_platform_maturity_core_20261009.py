@@ -272,3 +272,129 @@ def test_window_hours_honours_config(tmp_path):
     assert p.window_hours("reliability") == float(p.config["window_hours"])
     p.config["dimensions"]["reliability"]["window_hours"] = 6
     assert p.window_hours("reliability") == 6.0
+
+
+# ── round 2 (#1593 review): quoted / Unicode-escaped SQL, catalog tables, systemctl/gh pins, redaction, env ──
+
+_FAKE_AWS_ID = "AK" + "IA" + "ABCDEFGHIJKLMNOP"  # assembled at runtime: a synthetic id, not a credential
+
+R2_REFUSED_SQL = [
+    'select "pg_read_file"(\'/etc/passwd\')',
+    'select pg_catalog."pg_ls_dir"(\'.\')',
+    'select "pg_terminate_backend"(1)',
+    'select "pg_sleep"(9999)',
+    'select "pg_advisory_lock"(1)',
+    'select * from U&"!0063redentials_entity" UESCAPE \'!\'',
+    'select U&"!0070g_read_file" UESCAPE \'!\' (\'/etc/passwd\')',
+    'select U&"!006co_export" UESCAPE \'!\' (1,\'/tmp/x\')',
+    'select U&"!0064blink_exec" UESCAPE \'!\' (\'host=x\',\'drop table t\')',
+    'select U&"!0073et_config" UESCAPE \'!\' (\'transaction_read_only\',\'off\',true)',
+    'select u&"\\0064elete"',
+    "select x uescape '!'",
+    'select * from "credentials_entity"',
+    "select usename, passwd from pg_shadow",
+    "select rolpassword from pg_authid",
+    'select rolpassword from "pg_authid"',
+    "select * from user_entity",
+    "select apikey from user_api_keys",
+    "select value from settings",
+    'select value from public."settings"',
+    "select json_agg(c) from credentials_entity c",
+    "select nextval('s')",
+    "select setval('s',1)",
+    "select txid_current()",
+    "select * from t for share",
+    "select * from t for key share",
+    "select * from t for no key update",
+    "WITH m AS (MERGE INTO t USING s ON true WHEN MATCHED THEN DO NOTHING RETURNING *) SELECT 1",
+]
+
+
+@pytest.mark.parametrize("sql", R2_REFUSED_SQL)
+def test_r2_quoted_unicode_and_catalog_sql_refused(sql):
+    assert core.is_safe_sql(sql) is False
+    assert core.is_read_only(core.psql_argv(sql, user="u", db="d", container="c")) is False
+
+
+def test_r2_legit_quoted_columns_still_pass():
+    sys.path.insert(0, str(PROJ / "scripts"))
+    from n8n_maturity import dims_governance, dims_signal
+    sql = dims_signal.n8n_error_argv("c", "u", "d", ["error"], "2026-10-09T00:00:00+00:00")[-1]
+    assert '"startedAt"' in sql and core.is_safe_sql(sql)
+    assert core.is_safe_sql(dims_governance.PG_ROLES_SQL)
+    assert core.is_safe_sql('SELECT count(*) FROM execution_entity WHERE "workflowId" = \'x\'')
+
+
+@pytest.mark.parametrize("argv,ok", [
+    (["systemctl", "--user", "show", "n8n"], False),                               # bare show dumps Environment=
+    (["systemctl", "--user", "show", "n8n", "-p", "Environment"], False),
+    (["systemctl", "--user", "show", "n8n", "-p", "ActiveState,Environment"], False),
+    (["systemctl", "--user", "show", "n8n", "-p", "ActiveState"], True),
+    (["systemctl", "--user", "show", "n8n", "-p", "ActiveState,ExecStart"], True),
+    (["systemctl", "--user", "show", "-p", "FragmentPath", "-p", "DropInPaths", "x.service"], True),
+    (["systemctl", "--user", "list-units", "-p", "ActiveState"], False),
+    (["systemctl", "--user", "list-units", "--failed", "--no-legend", "--plain"], True),
+    (["gh", "run", "list", "-R", "--hostname"], False),
+    (["gh", "run", "list", "-R", "-x"], False),
+    (["gh", "run", "list", "--workflow", ".github/x.yml"], False),
+    (["gh", "run", "list", "-R", "o/r", "--workflow", "nightly.yml", "--branch", "main"], True),
+])
+def test_r2_systemctl_show_properties_and_gh_values_pinned(argv, ok):
+    assert core.is_read_only(argv) is ok
+
+
+@pytest.mark.parametrize("raw,secret", [
+    ("DB_POSTGRESDB_PASSWORD: hunter2", "hunter2"),
+    ('{"password": "hunter2"}', "hunter2"),
+    ('{"password":"two words"}', "two words"),
+    ('"N8N_ENCRYPTION_KEY":"abcdef123456"', "abcdef123456"),
+    ("'db_password': 'x y z'", "x y z"),
+    ("N8N_ENCRYPTION_KEY deadbeef", "deadbeef"),
+    ("password abc123", "abc123"),
+    ("password abc", "abc"),
+    ("PGPASSWORD='a b c'", "a b c"),
+    ('SECRET = "with spaces"', "with spaces"),
+    ("api_key: zzzzzz", "zzzzzz"),
+    ("n8n_api_abcdef0123456789abcdef", "n8n_api_abcdef0123456789abcdef"),
+    ("key " + _FAKE_AWS_ID + " here", _FAKE_AWS_ID),
+    ("Authorization: Bearer abcdefghijklmn", "abcdefghijklmn"),
+    ("Environment=N8N_API_KEY=xyz DB_PASS=abc", "xyz"),
+])
+def test_r2_redaction_colon_json_space_and_token_forms(raw, secret):
+    out = core.redact(raw)
+    assert secret not in out and "<redacted>" in out
+
+
+def test_r2_redaction_leaves_crontab_and_journal_prose_parseable():
+    for line in ("0 3 * * * cd /x && python3 scripts/refresh_schwab_token.py --apply >> logs/x.log 2>&1",
+                 "token refreshed ok",
+                 "Oct 09 h systemd[1]: portfolio-server.service: Main process exited, code=killed, status=9/KILL"):
+        assert core.redact(line) == line
+
+
+def test_r2_default_runner_drops_pg_service_env(monkeypatch):
+    seen = {}
+
+    class _P:
+        returncode, stdout, stderr = 0, "1\n", ""
+
+    def fake_run(argv, **kw):
+        seen.update(kw["env"])
+        return _P()
+
+    monkeypatch.setenv("PGSERVICE", "evil")
+    monkeypatch.setenv("PGSERVICEFILE", "/tmp/evil.conf")
+    monkeypatch.setattr(core, "resolve_program", lambda prog: "/usr/bin/psql")
+    monkeypatch.setattr(core.subprocess, "run", fake_run)
+    rc, out, _ = core._default_runner(["psql", "-X", "-At", "-U", "u", "-d", "d", "-c", "select 1"], 5)
+    assert rc == 0 and out == "1\n"
+    assert "PGSERVICE" not in seen and "PGSERVICEFILE" not in seen
+    assert seen["PGOPTIONS"] == core.PG_READ_ONLY_OPTIONS
+
+
+def test_r2_cap_on_fail_is_config_driven():
+    cfg = {"gate_cap": 7.9}
+    assert core.cap_on_fail(cfg, 9.5, False) == 7.9 and core.cap_on_fail(cfg, 9.5, True) == 9.5
+    assert core.cap_on_fail(cfg, 3.0, False) == 3.0
+    with pytest.raises(core.ConfigError):
+        core.cap_on_fail({}, 9.0, False)

@@ -158,7 +158,8 @@ def observability(probe: core.Probe) -> dict:
                "covered": len(covered), "coverage_pct": round(100 * coverage, 1),
                "monitor_alive": monitor_alive, "monitor_age_hours": mon_age,
                "lanes_without_signal_sample": missing_signal[:10]}
-    return core.dim_result(dim, score=score, gate_rule=rule, gate_pass=coverage >= gate and monitor_alive,
+    gate_pass = coverage >= gate and monitor_alive
+    return core.dim_result(dim, score=core.cap_on_fail(probe, score, gate_pass), gate_rule=rule, gate_pass=gate_pass,
                            metrics=metrics, evidence_list=ev, status=status, notes=notes)
 
 
@@ -179,6 +180,31 @@ def _incident_delivered(inc: dict, ok_keys: set[str]) -> bool:
     return any(k in s for k in keys for s in ok_keys)
 
 
+def _quiet_heartbeat(probe: core.Probe, dim: str) -> tuple[bool, dict]:
+    """(fresh, detail): the newest SYSTEM Telegram heartbeat row (``kind``) with ok:true that is a real
+    delivery (not a dedup echo) and is no older than ``max_age_hours`` (not future-dated)."""
+    hb = _cfg(probe, dim, "quiet_period_heartbeat")
+    if not isinstance(hb, dict) or not all(k in hb for k in ("ledger", "kind", "max_age_hours")):
+        raise core.ConfigError(f"config dimensions.{dim}.quiet_period_heartbeat needs ledger/kind/max_age_hours")
+    path = probe.root / str(hb["ledger"])
+    max_age = float(hb["max_age_hours"])
+    rows = probe.rows(path)
+    if rows is None:
+        return False, {"source": str(path), "readable": False}
+    newest: Optional[_dt.datetime] = None
+    for r in rows:
+        if r.get("kind") != hb["kind"] or r.get("ok") is not True or r.get("deduped") is True \
+                or str(r.get("reason") or "") == "deduped":
+            continue
+        ts = core.parse_ts(r.get("at") or r.get("ts") or r.get("sent_at"))
+        if ts is not None and ts <= probe.now + _dt.timedelta(minutes=5) and (newest is None or ts > newest):
+            newest = ts
+    age = round((probe.now - newest).total_seconds() / 3600.0, 2) if newest else None
+    fresh = age is not None and age <= max_age
+    return fresh, {"source": str(path), "kind": hb["kind"], "last_ok_at": newest.isoformat() if newest else None,
+                   "age_hours": age, "max_age_hours": max_age, "fresh": fresh}
+
+
 def alert_delivery(probe: core.Probe) -> dict:
     """System Telegram ok rate over ``window_hours`` and P1/P2 fan-in incidents delivered to a human.
 
@@ -187,10 +213,13 @@ def alert_delivery(probe: core.Probe) -> dict:
       No rows in the window → missing (None).
     * p1p2 = open P1/P2 incidents in the latest fan-in receipt (fresh within ``fanin_max_age_hours``) that carry
       delivery proof — a delivered/notified field or op on the incident, or an ok:true send-ledger row naming its
-      idempotency_key/event_id. sub = rate_score(delivered/total, gate_p1p2_delivered). No open P1/P2 in the
-      receipt → None (nothing was delivered, so delivery is unproven — never a vacuous 100%). Missing, stale
-      (older than ``fanin_max_age_hours``) or future-dated receipt → None.
-    score = mean of the two; gate = ok_rate ≥ gate_ok_rate and ≥ 1 open P1/P2 with all of them delivered.
+      idempotency_key/event_id. sub = rate_score(delivered/total, gate_p1p2_delivered). Quiet period (fresh
+      receipt, no open P1/P2) — operator decision 2026-10-09: passes (sub = 10) ONLY when a fresh SYSTEM
+      Telegram heartbeat delivery receipt exists (``quiet_period_heartbeat``: ok:true, not a dedup echo, within
+      ``max_age_hours``); otherwise None ("delivery unproven" — never a vacuous 100%). Missing, stale (older than
+      ``fanin_max_age_hours``) or future-dated receipt → None.
+    score = mean of the two; gate = ok_rate ≥ gate_ok_rate and either all open P1/P2 delivered or a quiet
+    period proven by the heartbeat. A failed gate caps the score at ``gate_cap``.
     """
     dim = "alert_delivery"
     rule = _rule(probe, dim)
@@ -245,6 +274,7 @@ def alert_delivery(probe: core.Probe) -> dict:
     fan_path = probe.root / _cfg(probe, dim, "fanin_receipt")
     fan = probe.json(fan_path)
     p1p2_sub: Optional[float] = None
+    quiet_proven = False
     p1p2_total = p1p2_delivered = 0
     fan_age: Optional[float] = None
     by_sev: dict = {}
@@ -260,7 +290,15 @@ def alert_delivery(probe: core.Probe) -> dict:
         if fan_age is None or not 0.0 <= fan_age <= max_age:
             notes.append(f"incident fan-in receipt stale (age {fan_age} h, max {max_age} h): P1/P2 delivery unproven")
         elif p1p2_total == 0:
-            notes.append("no open P1/P2 incidents in the fan-in receipt: delivery to a human unproven")
+            hb_fresh, hb_detail = _quiet_heartbeat(probe, dim)
+            ev.append(core.evidence(hb_detail.pop("source"), **hb_detail))
+            if hb_fresh:
+                quiet_proven = True
+                p1p2_sub = 10.0
+                notes.append("quiet period (no open P1/P2): delivery proven by a fresh system heartbeat receipt")
+            else:
+                notes.append("quiet period (no open P1/P2) and no fresh system heartbeat delivery receipt: "
+                             "delivery unproven")
         else:
             p1p2_sub = rate_score(p1p2_delivered / p1p2_total, gate_p, gs)
     else:
@@ -272,13 +310,15 @@ def alert_delivery(probe: core.Probe) -> dict:
     score, status, mnotes = core.mean_score([("system_telegram_ok_rate", ok_sub), ("p1p2_delivered", p1p2_sub)])
     p_rate = (p1p2_delivered / p1p2_total) if p1p2_total else None
     gate_pass = (ok_rate is not None and ok_rate >= gate_ok and p1p2_sub is not None
-                 and p_rate is not None and p_rate >= gate_p)
+                 and (quiet_proven or (p_rate is not None and p_rate >= gate_p)))
     metrics = {"window_hours": window_h, "send_rows": len(rows_all),
                "ok_rate_pct": None if ok_rate is None else round(100 * ok_rate, 2),
                "ok_rate_basis": basis,
-               "p1p2_open": p1p2_total, "p1p2_delivered": p1p2_delivered, "fanin_age_hours": fan_age}
-    return core.dim_result(dim, score=score, gate_rule=rule, gate_pass=gate_pass, metrics=metrics,
-                           evidence_list=ev, status=status, notes=notes + mnotes)
+               "p1p2_open": p1p2_total, "p1p2_delivered": p1p2_delivered, "fanin_age_hours": fan_age,
+               "quiet_period_heartbeat_proven": quiet_proven}
+    return core.dim_result(dim, score=core.cap_on_fail(probe, score, gate_pass), gate_rule=rule,
+                           gate_pass=gate_pass, metrics=metrics, evidence_list=ev, status=status,
+                           notes=notes + mnotes)
 
 
 # ── 10 reliability ───────────────────────────────────────────────────────────
@@ -357,8 +397,10 @@ def reliability(probe: core.Probe) -> dict:
       are added as failures; conservative — a ledger RUN_FAILED may also be an n8n error). RUN_SKIPPED_LOCK and
       in-flight rows are excluded. sub = rate_score(rate, gate_success_rate). No ledger → missing.
     * api_kills = journal lines for ``api_unit`` matching ``api_kill_pattern`` in the window; sub = count_score.
+      An empty journal window ("-- No entries --") is missing evidence (None), never a clean 0.
     * failed_units = ``systemctl --user list-units --failed`` minus ``failed_unit_ignore``; sub = count_score.
-    score = mean of the three; gate = rate ≥ gate_success_rate and 0 kills and 0 failed units.
+    score = mean of the three; gate = rate ≥ gate_success_rate and 0 kills and 0 failed units; a failed gate
+    caps the score at ``gate_cap``.
     """
     dim = "reliability"
     rule = _rule(probe, dim)
@@ -396,9 +438,13 @@ def reliability(probe: core.Probe) -> dict:
                             since.strftime("%Y-%m-%d %H:%M:%S UTC"), "--no-pager", "-o", "short-iso"])
     kills: Optional[int] = None
     kill_sub: Optional[float] = None
-    if rc == 0:
+    entries = [ln for ln in out.splitlines() if ln.strip() and not ln.startswith("-- No entries --")]
+    if rc == 0 and not entries:  # an empty window proves nothing (wrong unit, journal rotated, no access)
+        notes.append(f"journal for {unit} returned no entries in the window: SIGKILL count unproven")
+        ev.append(core.evidence(f"journalctl --user -u {unit}", window_hours=window_h, entries=0))
+    elif rc == 0:
         pat = re.compile(_cfg(probe, dim, "api_kill_pattern"))
-        hits = [ln for ln in out.splitlines() if pat.search(ln)]
+        hits = [ln for ln in entries if pat.search(ln)]
         kills = len(hits)
         kill_sub = count_score(kills, zero_at, gs)
         ev.append(core.evidence(f"journalctl --user -u {unit}", window_hours=window_h, sigkills=kills,
@@ -430,8 +476,9 @@ def reliability(probe: core.Probe) -> dict:
                "runs_failure": None if runs is None else runs["failure"], "n8n_errors": n8n_err,
                "api_sigkills": kills, "failed_units": failed,
                "sub_scores": {n: (None if v is None else round(v, 2)) for n, v in parts}}
-    return core.dim_result(dim, score=score, gate_rule=rule, gate_pass=gate_pass, metrics=metrics,
-                           evidence_list=ev, status=status, notes=notes + mnotes)
+    return core.dim_result(dim, score=core.cap_on_fail(probe, score, gate_pass), gate_rule=rule,
+                           gate_pass=gate_pass, metrics=metrics, evidence_list=ev, status=status,
+                           notes=notes + mnotes)
 
 
 COLLECTORS = {"observability": observability, "alert_delivery": alert_delivery, "reliability": reliability}

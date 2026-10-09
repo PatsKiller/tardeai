@@ -76,11 +76,10 @@ def _met_score(fraction: Optional[float], gate_score: float) -> Optional[float]:
 
 def _combine(probe: core.Probe, dim_id: str, rule: str, parts: list[tuple[str, Optional[float]]], metrics: dict,
              ev: list[dict], notes: list[str]) -> dict:
-    _gs, cap = _gate(probe)
+    _gs, _cap = _gate(probe)
     score, status, extra = core.mean_score(parts)
     gate_pass = all(v is not None and v >= 10.0 for _, v in parts)
-    if not gate_pass:
-        score = min(score, cap)
+    score = core.cap_on_fail(probe, score, gate_pass)
     metrics = {**metrics, "sub_scores": {n: (None if v is None else round(v, 2)) for n, v in parts}}
     if status == core.UNVERIFIED:
         return core.unverified(dim_id, rule, "; ".join(extra + notes) or "no evidence", metrics=metrics,
@@ -152,6 +151,31 @@ def _systemctl_props(probe: core.Probe, unit: str, props: list[str]) -> Optional
     if rc != 0:
         return None
     return [tuple(line.split("=", 1)) for line in out.splitlines() if "=" in line]  # type: ignore[misc]
+
+
+def _unit_env_value(probe: core.Probe, unit: str, name: str) -> Optional[str]:
+    """The value of ONE named ``Environment=`` assignment in a user unit's files. systemd's ``Environment``
+    property (every value) is never requested: the unit file + drop-in PATHS are, and only ``name=`` is
+    extracted from their ``Environment=`` lines (later files override earlier ones, as systemd does)."""
+    props = _systemctl_props(probe, unit, ["FragmentPath", "DropInPaths"])
+    if props is None:
+        return None
+    paths: list[str] = []
+    for k, v in props:
+        if k in ("FragmentPath", "DropInPaths"):
+            paths.extend(p for p in v.split() if p.startswith("/"))
+    pat = re.compile(r"""(?:^|\s|["'])""" + re.escape(name) + r"""=([^\s"']*)""")
+    value: Optional[str] = None
+    for path in paths:
+        text = probe.text(Path(path))
+        for line in (text or "").splitlines():
+            line = line.strip()
+            if not line.startswith("Environment="):
+                continue
+            m = pat.search(line[len("Environment="):])
+            if m:
+                value = m.group(1)
+    return value
 
 
 def _served_root(probe: core.Probe, dim_id: str) -> tuple[Path, str]:
@@ -404,15 +428,9 @@ def _p7(probe: core.Probe, scfg: dict, served: Path, ev: list[dict], metrics: di
     if isinstance(lanes, list):
         lanes = {str(x.get("lane_id")): x for x in lanes if isinstance(x, dict)}
     lanes = lanes if isinstance(lanes, dict) else {}
-    props = _systemctl_props(probe, scfg["executor_unit"], ["Environment"])
-    mode = None
-    if props is not None:
-        for _k, v in props:
-            for tok in v.split():
-                if tok.startswith(mode_env + "="):
-                    mode = tok.split("=", 1)[1].strip("'\"")
+    mode = _unit_env_value(probe, scfg["executor_unit"], mode_env)
     if mode is None:
-        notes.append(f"{mode_env} not in the executor unit Environment= (EnvironmentFiles not read) → "
+        notes.append(f"{mode_env} not in the executor unit file Environment= lines (EnvironmentFiles not read) → "
                      "not counted as enforce")
     enforced = sum(1 for e in lanes.values() if isinstance(e, dict) and mode == "enforce"
                    and isinstance(e.get("env_names"), list) and str(e.get("env_allowlist_mode") or "") != "report")
@@ -634,7 +652,7 @@ def collect_ci_signal(probe: core.Probe) -> dict:
     """
     dim = "ci_signal"
     rule = str(probe.need(dim, "gate_rule"))
-    gs, cap = _gate(probe)
+    gs, _cap = _gate(probe)
     branch = str(probe.need(dim, "branch"))
     event = str(probe.need(dim, "nightly_event"))
     gate_job = str(probe.need(dim, "ci_gate_job"))
@@ -710,8 +728,7 @@ def collect_ci_signal(probe: core.Probe) -> dict:
     parts = [("nightly_green", nightly_score), ("ci_gate_green_on_main", gate_score)]
     score, status, extra = core.mean_score(parts)
     gate_pass = nightly_met and gate_score == 10.0
-    if not gate_pass:
-        score = min(score, cap)
+    score = core.cap_on_fail(probe, score, gate_pass)
     metrics["sub_scores"] = {n: (None if v is None else round(v, 2)) for n, v in parts}
     if status == core.UNVERIFIED:
         return core.unverified(dim, rule, "; ".join(extra + notes), metrics=metrics, evidence_list=ev)

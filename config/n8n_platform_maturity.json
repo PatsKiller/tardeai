@@ -146,7 +146,13 @@
         "P1",
         "P2"
       ],
-      "gate_p1p2_delivered": 1.0
+      "gate_p1p2_delivered": 1.0,
+      "quiet_period_heartbeat": {
+        "note": "Operator decision 2026-10-09: with no open P1/P2 the delivery gate passes ONLY on a fresh SYSTEM Telegram heartbeat delivery receipt (ok:true, not deduped); otherwise delivery is unproven.",
+        "ledger": "data/cio/system_telegram_sends.jsonl",
+        "kind": "daily_heartbeat",
+        "max_age_hours": 26
+      }
     },
     "self_healing": {
       "n": 6,
@@ -158,6 +164,7 @@
       "proof_window_hours": 336,
       "health_tick_ok_rate_gate": 0.99,
       "health_tick_window_hours": 24,
+      "health_tick_min_samples": 12,
       "health_tick_max_age_minutes": 15,
       "health_tick_last": "data/runtime/health_tick_last.json",
       "health_tick_history": "data/runtime/health_tick_history.jsonl",

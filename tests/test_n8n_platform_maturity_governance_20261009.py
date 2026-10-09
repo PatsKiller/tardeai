@@ -9,6 +9,7 @@ import copy
 import datetime as dt
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -259,6 +260,7 @@ def _served(tmp_path: Path, *, p7_code=True, relay_code=True, lane_modes=("enfor
 def _sec_handlers(*, relay_files="/run/user/1/tradeai/n8n-relay-secrets.env (ignore_errors=yes)",
                   exec_mode="enforce", roles=None, db_user="n8n_app", app_env=("DB_POSTGRESDB_PASSWORD_FILE", "N8N_X"),
                   db_env=("POSTGRES_PASSWORD_FILE",), compose_path="/nonexistent/compose.yml"):
+    unit_file = Path(tempfile.mkdtemp(prefix="n8nmat-unit-")) / "executor.service"
     roles = roles if roles is not None else [{"rolname": "n8n", "super": True, "createrole": True},
                                              {"rolname": "n8n_app", "super": False, "createrole": False}]
 
@@ -278,8 +280,10 @@ def _sec_handlers(*, relay_files="/run/user/1/tradeai/n8n-relay-secrets.env (ign
         if unit == SEC["relay_unit"]:
             return "\n".join(f"EnvironmentFiles={f}" for f in relay_files.split("|") if f) + "\nLoadState=loaded\n"
         if unit == SEC["executor_unit"]:
+            assert "Environment" not in a, "the scorer must never request a unit's Environment= values"
             mode = f" TRADEAI_EXECUTOR_ENV_ALLOWLIST={exec_mode}" if exec_mode else ""
-            return f"Environment=PROJ=/p SOME_TOKEN={SECRET_VALUE}{mode}\n"
+            unit_file.write_text(f"[Service]\nEnvironment=PROJ=/p SOME_TOKEN={SECRET_VALUE}{mode}\n")
+            return f"FragmentPath={unit_file}\nDropInPaths=\n"
         return 1, "", "?"
 
     return {
@@ -682,3 +686,34 @@ def test_window_hours_comes_from_config(tmp_path):
     r = g.collect_governance(probe)
     assert r["metrics"]["guard_hook"]["window_hours"] == 2.0
     assert r["metrics"]["guard_hook"]["decisions_in_window"] == 1
+
+
+# ================================================================================================
+# round 2 (#1593 review)
+# ================================================================================================
+
+def test_r2_executor_mode_read_from_unit_files_never_environment_property(tmp_path):
+    unit = tmp_path / "exec.service"
+    unit.write_text("[Service]\nEnvironment=PROJ=/p TRADEAI_EXECUTOR_ENV_ALLOWLIST=report\n")
+    dropin = tmp_path / "override.conf"
+    dropin.write_text(f"[Service]\nEnvironment=\"TRADEAI_EXECUTOR_ENV_ALLOWLIST=enforce\" SOME_TOKEN={SECRET_VALUE}\n")
+    calls: list[list[str]] = []
+
+    def show(a):
+        calls.append(a)
+        return f"FragmentPath={unit}\nDropInPaths={dropin}\n"
+
+    probe = _probe(tmp_path, FakeRunner({lambda a: a[:3] == ["systemctl", "--user", "show"]: show}))
+    assert g._unit_env_value(probe, "x.service", "TRADEAI_EXECUTOR_ENV_ALLOWLIST") == "enforce"  # drop-in wins
+    assert calls and all("Environment" not in a for a in calls)
+    assert all(core.is_read_only(a) for a in calls)
+
+
+def test_r2_governance_cap_uses_shared_config_helper(tmp_path):
+    served = _served(tmp_path, lane_modes=("enforce", "report"))
+    h = _sec_handlers(relay_files="/run/user/1/tradeai/env (ignore_errors=yes)", db_user="n8n",
+                      compose_path=_clean_compose(tmp_path))
+    cfg = _config({"security": {"served_code_root": str(served)}})
+    cfg["gate_cap"] = 1.5
+    r = g.collect_security(_probe(tmp_path, FakeRunner(h), config=cfg))
+    assert not r["gate"]["pass"] and r["score"] == 1.5

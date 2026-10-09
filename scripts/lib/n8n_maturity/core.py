@@ -48,9 +48,14 @@ _IDENT = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}$")
 _SELECT_RE = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
 _FORBIDDEN_SQL = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|INTO|LOCK|"
-    r"SET|RESET|LISTEN|NOTIFY|PREPARE|EXECUTE|DECLARE|IMPORT|REFRESH|CLUSTER|REINDEX|COMMENT|SECURITY|"
-    r"credentials_entity|dblink\w*|lo_\w+|set_config|current_setting|query_to_xml\w*)\b"
-    r"|\bpg_\w+\s*\(", re.IGNORECASE)
+    r"SET|RESET|LISTEN|NOTIFY|PREPARE|EXECUTE|DECLARE|IMPORT|REFRESH|CLUSTER|REINDEX|COMMENT|SECURITY|MERGE|"
+    r"credentials_entity|dblink\w*|lo_\w+|set_config|current_setting|query_to_xml\w*|nextval|setval|"
+    r"txid_current\w*|"
+    # catalog / app tables holding password hashes, API keys or instance secrets — never read by the scorer
+    r"pg_authid|pg_shadow|pg_user_mapping\w*|user_api_keys|user_entity|settings)\b"
+    r"|\bpg_\w+\s*\(|\bFOR\s+(NO\s+KEY\s+|KEY\s+)?SHARE\b", re.IGNORECASE)
+# Unicode-escaped identifiers (U&"..." / UESCAPE) can spell any forbidden name without matching it.
+_UNICODE_IDENT = re.compile(r"U&|\bUESCAPE\b", re.IGNORECASE)
 
 # The exact docker templates the collectors use. Nothing that can print an env VALUE (no {{.}}, no
 # {{.Config}}, no printf/json); the single-key template is pinned to a non-secret key.
@@ -61,7 +66,14 @@ DOCKER_INSPECT_TEMPLATES = frozenset({
     '{{index .Config.Labels "com.docker.compose.project.config_files"}}',
 })
 _SYSTEMCTL_VERBS = ("show", "list-units", "list-timers", "list-unit-files", "is-active", "is-enabled")
-_SYSTEMCTL_FLAGS = frozenset({"--all", "--no-pager", "--no-legend", "--plain", "--failed", "-p"})
+_SYSTEMCTL_FLAGS = frozenset({"--all", "--no-pager", "--no-legend", "--plain", "--failed"})
+# ``systemctl --user show`` must name its properties (-p), and only these: none of them can print an
+# Environment= value (a unit's env file paths and argv are read; values are never requested).
+SYSTEMCTL_SHOW_PROPERTIES = frozenset({
+    "ActiveState", "SubState", "LoadState", "UnitFileState", "Result", "NRestarts", "Restart", "ExecStart",
+    "EnvironmentFiles", "FragmentPath", "DropInPaths", "ActiveEnterTimestamp", "InactiveEnterTimestamp",
+    "ExecMainStatus", "ExecMainCode", "NextElapseUSecRealtime", "LastTriggerUSec", "Triggers", "Unit",
+})
 _JOURNAL_VALUE_FLAGS = frozenset({"-u", "--since", "--until", "-o", "-n"})
 _JOURNAL_BARE_FLAGS = frozenset({"--user", "--no-pager", "-q", "--quiet", "--utc"})
 _JOURNAL_OUTPUTS = frozenset({"short-iso", "short-iso-precise", "cat", "short", "json"})
@@ -69,11 +81,17 @@ _GH_RUN_VALUE_FLAGS = frozenset({"-R", "--workflow", "--branch", "--json", "-L",
 
 
 def is_safe_sql(sql: str) -> bool:
-    """A single SELECT/WITH read: no DML/DDL words, no INTO, no pg_* function calls, no credentials table,
-    no psql meta-commands, at most one trailing semicolon."""
+    """A single SELECT/WITH read: no DML/DDL words, no INTO, no pg_* function calls, no credential / password /
+    API-key tables, no sequence writes, no row locks, no psql meta-commands, at most one trailing semicolon.
+
+    Quoted identifiers are scanned with their double quotes removed (``"pg_read_file"(`` is ``pg_read_file(``)
+    and Unicode-escaped identifiers (``U&"..."`` / ``UESCAPE``) are refused outright, so a forbidden name
+    cannot be smuggled past the word scan. Legitimate quoted columns (``"startedAt"``) still pass."""
     s = str(sql)
     body = s.strip().rstrip(";")
-    return bool(_SELECT_RE.match(s)) and ";" not in body and "\\" not in s and not _FORBIDDEN_SQL.search(body)
+    if not _SELECT_RE.match(s) or ";" in body or "\\" in s or _UNICODE_IDENT.search(s):
+        return False
+    return not _FORBIDDEN_SQL.search(body.replace('"', ""))
 
 
 def _psql_tail_ok(tail: list[str]) -> bool:
@@ -116,11 +134,16 @@ def _systemctl_ok(argv: list[str]) -> bool:
     if len(argv) < 3 or argv[1] != "--user" or argv[2] not in _SYSTEMCTL_VERBS:
         return False
     rest = argv[3:]
+    if argv[2] == "show" and "-p" not in rest:
+        return False  # a bare `show` dumps every property, Environment= values included
     i = 0
     while i < len(rest):
         a = rest[i]
         if a == "-p":
-            if i + 1 >= len(rest) or not re.fullmatch(r"[A-Za-z]+", rest[i + 1]):
+            if i + 1 >= len(rest):
+                return False
+            props = rest[i + 1].split(",")
+            if argv[2] != "show" or not all(p in SYSTEMCTL_SHOW_PROPERTIES for p in props):
                 return False
             i += 2
         elif a in _SYSTEMCTL_FLAGS or re.fullmatch(r"--type=(service|timer)", a) or _IDENT.match(a):
@@ -147,7 +170,8 @@ def _gh_ok(argv: list[str]) -> bool:
         return False
 
     def check(flag: str, val: str) -> bool:
-        return re.fullmatch(r"[A-Za-z0-9_.,/\-]{1,200}", val) is not None
+        # a value must start alnum so it can never be read as another flag (``-R --hostname``)
+        return re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.,/\-]{0,199}", val) is not None
     return _flags_ok(argv[3:], _GH_RUN_VALUE_FLAGS, frozenset(), check)
 
 
@@ -186,13 +210,28 @@ def is_read_only(argv: list[str]) -> bool:
     return False
 
 
+_PG_REDIRECT_ENV = ("PGSERVICE", "PGSERVICEFILE", "PGSYSCONFDIR")
+
+_SECRET_NAME = r"[A-Z0-9_.\-]*(?:PASS|PASSWD|PASSWORD|PWD|SECRET|TOKEN|KEY|CREDENTIAL|AUTH)[A-Z0-9_.\-]*"
 _REDACTIONS = (
-    (re.compile(r"(?i)\b([A-Z0-9_]*(?:PASS|SECRET|TOKEN|KEY|CREDENTIAL|AUTH)[A-Z0-9_]*)\s*=\s*\S+"),
-     r"\1=<redacted>"),
     (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=\-]{8,}"), r"\1 <redacted>"),
+    # "NAME": "value" / 'NAME': 'value' (JSON / YAML / dict reprs), value may contain spaces
+    (re.compile(r"""(?i)(["'])(""" + _SECRET_NAME + r""")\1(\s*[:=]\s*)(["'])(?:(?!\4).)*\4"""),
+     r"\1\2\1\3\4<redacted>\4"),
+    # NAME = "quoted value with spaces" / NAME: 'x y'
+    (re.compile(r"""(?i)\b(""" + _SECRET_NAME + r""")(\s*[:=]\s*)(["'])(?:(?!\3).)*\3"""), r"\1\2\3<redacted>\3"),
+    # NAME: value (colon form)
+    (re.compile(r"(?i)\b(" + _SECRET_NAME + r")\s*:\s*(?!<redacted>)[^\s,;}\]]+"), r"\1: <redacted>"),
+    # NAME value (space-separated: `password abc`, `N8N_ENCRYPTION_KEY deadbeef`). Only the bare words
+    # password/passwd/secret or an UPPER_CASE env-style name, and never a flag/redirect value, so crontab and
+    # journal prose ("refresh_token.py --apply", "token refreshed") is left alone.
+    (re.compile(r"\b((?i:password|passwd|secret)|[A-Z0-9_]*(?:PASS|PASSWORD|SECRET|TOKEN|KEY|CREDENTIAL)[A-Z0-9_]*)"
+                r"[ \t]+(?![:=<\-])(?!<redacted>)[^\s,;}\]'\"]{3,}"), r"\1 <redacted>"),
+    (re.compile(r"(?i)\b(" + _SECRET_NAME + r")\s*=\s*(?!<redacted>)\S+"), r"\1=<redacted>"),
     (re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://[^:/\s@]+):[^@\s]+@"), r"\1:<redacted>@"),
     (re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-[A-Za-z0-9\-]{10,}|sk-[A-Za-z0-9\-_]{20,}|"
-                r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,})\b"), "<redacted>"),
+                r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}|n8n_api_[A-Za-z0-9_\-]{8,}|"
+                r"(?:AKIA|ASIA)[A-Z0-9]{16})\b"), "<redacted>"),
 )
 
 
@@ -220,6 +259,8 @@ def _default_runner(argv: list[str], timeout: float) -> "tuple[int, str, str]":
         return 127, "", f"program not found in a trusted bin dir: {os.path.basename(argv[0])}"
     env = dict(os.environ)
     env["PGOPTIONS"] = PG_READ_ONLY_OPTIONS
+    for k in _PG_REDIRECT_ENV:  # a service file could point psql at another host/db/options
+        env.pop(k, None)
     try:
         p = subprocess.run([path] + list(argv[1:]), capture_output=True, text=True, timeout=timeout,  # noqa: S603
                            check=False, env=env)
@@ -404,6 +445,13 @@ def dim_result(dim_id: str, *, score: float, gate_rule: str, gate_pass: bool, me
     return {"id": dim_id, "score": s, "status": status,
             "gate": {"rule": gate_rule, "pass": bool(gate_pass)},
             "metrics": metrics, "evidence": evidence_list, "notes": list(notes or [])}
+
+
+def cap_on_fail(probe_or_config: Any, score: float, gate_pass: bool) -> float:
+    """The one gate cap every dimension applies: a failed gate scores at most the top-level ``gate_cap``
+    (required config), so "gate met" ⇔ score ≥ gate_score holds for every dimension."""
+    cfg = probe_or_config.config if isinstance(probe_or_config, Probe) else probe_or_config
+    return float(score) if gate_pass else min(float(score), float(need_top(cfg, "gate_cap")))
 
 
 def unverified(dim_id: str, gate_rule: str, reason: str, *, metrics: Optional[dict] = None,
