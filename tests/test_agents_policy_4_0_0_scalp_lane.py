@@ -63,7 +63,7 @@ def test_version_row_records_token_and_operator_words():
 
 def test_section_23_status_line_is_current():
     s = _flat(_section_23())
-    assert re.search(r"^# 23 · .*— ACTIVE 4\.0\.0$", _section_23(), re.M)
+    assert re.search(r"^# 23 · .*— ACTIVE 4\.(?:0\.0|1\.0)$", _section_23(), re.M)  # 4.1.0 ratified 2026-10-09
     assert "awaiting `APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`" not in s
     assert "Until then the 2.0.1 text of those subsections governs" not in s
     assert "APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9" in s

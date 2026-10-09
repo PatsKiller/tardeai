@@ -3,7 +3,14 @@
 
     python scripts/pipeline_liveness_report.py                  # human summary
     python scripts/pipeline_liveness_report.py --json           # machine readable
-    python scripts/pipeline_liveness_report.py --fail-on-finding  # exit 1 to gate cron/CI
+    python scripts/pipeline_liveness_report.py --fail-on-finding  # exit 3 to gate cron/CI
+
+--fail-on-finding exits 3 (EXIT_FINDING) on ANY finding: STARVED,
+NO_ELIGIBLE_INPUT, and also UNKNOWN (a lane whose source could not be read).
+UNKNOWN is a finding on purpose -- an unreadable source is not evidence of a
+live lane -- so this exits nonzero when the report cannot see a lane at all.
+It exited 1 before 2026-10-09; 1 is now left to Python's uncaught-exception exit
+so health_tick.py can tell a crash from a finding (n8n maturity B3.1).
 
 The CIO evidence gate blocked 54 of 55 runs for 17 continuous days and nothing
 raised an alarm. Every block was recorded; no monitor watched the record. This
@@ -27,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.lib.monitor_exit_codes import EXIT_FINDING  # noqa: E402
 from scripts.lib.pipeline_liveness import (  # noqa: E402
     LIVE,
     NO_ELIGIBLE_INPUT,
@@ -45,7 +53,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Pipeline liveness — detect lanes that stopped producing")
     ap.add_argument("--json", action="store_true", help="emit JSON")
     ap.add_argument("--fail-on-finding", action="store_true",
-                    help="exit 1 on any finding (STARVED, NO_ELIGIBLE_INPUT or UNKNOWN), for cron/CI gating")
+                    help=f"exit {EXIT_FINDING} on any finding (STARVED, NO_ELIGIBLE_INPUT or UNKNOWN), "
+                         "for cron/CI gating")
     ap.add_argument("--window-hours", type=float, default=None,
                     help="override every lane's window (default: per-lane)")
     args = ap.parse_args()
@@ -83,7 +92,7 @@ def main() -> int:
                     print(f"FINDING  {finding['lane']}: {finding.get('detail', 'source unreadable')}")
 
     if args.fail_on_finding and result["findings"]:
-        return 1
+        return EXIT_FINDING
     return 0
 
 
