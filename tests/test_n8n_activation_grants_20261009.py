@@ -197,7 +197,7 @@ def test_an_id_must_be_named_as_a_whole_token(tmp_path):
     assert rows["e18d7849b4142927"]["status"] == A.UNGRANTED_ACTIVATION
 
 
-def test_the_import_time_can_be_the_covered_moment(tmp_path):
+def test_import_grant_does_not_authorize_later_activation(tmp_path):
     early = [
         {
             "event": "grant-issued",
@@ -209,7 +209,61 @@ def test_the_import_time_can_be_the_covered_moment(tmp_path):
     ]
     grants = A.load_grants(_guard_log(tmp_path, early))
     rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
-    assert rows["c0d4c7845e5c4fcc"]["status"] == A.GRANTED
+    row = rows["c0d4c7845e5c4fcc"]
+    assert row["status"] == A.UNGRANTED_ACTIVATION
+    assert row["grants"] == []
+    assert row["import_status"] == A.GRANTED
+    assert row["import_grants"][0]["tier"] == "config-write"
+
+
+def test_import_and_activation_grants_are_attributed_independently(tmp_path):
+    grants = A.load_grants(
+        _guard_log(
+            tmp_path,
+            [
+                {
+                    "event": "grant-issued",
+                    "tier": "config-write",
+                    "seconds": 1800,
+                    "ts": "2026-10-09T11:55:00Z",
+                    "reason": "import c0d4c7845e5c4fcc",
+                },
+                {
+                    "event": "grant-issued",
+                    "tier": "service",
+                    "seconds": 1800,
+                    "ts": "2026-10-09T13:25:00Z",
+                    "reason": "activate c0d4c7845e5c4fcc",
+                },
+            ],
+        )
+    )
+    rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
+    row = rows["c0d4c7845e5c4fcc"]
+    assert row["status"] == A.GRANTED and row["import_status"] == A.GRANTED
+    assert [g["tier"] for g in row["grants"]] == ["service"]
+    assert [g["tier"] for g in row["import_grants"]] == ["config-write"]
+    assert rows["e18d7849b4142927"]["import_status"] == "NOT_MEASURED"
+
+
+def test_explicit_activation_window_can_cover_import_and_later_activation(tmp_path):
+    grants = A.load_grants(
+        _guard_log(
+            tmp_path,
+            [
+                {
+                    "event": "grant-issued",
+                    "tier": "service",
+                    "seconds": 7200,
+                    "ts": "2026-10-09T11:55:00Z",
+                    "reason": "import and activate c0d4c7845e5c4fcc",
+                },
+            ],
+        )
+    )
+    rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
+    row = rows["c0d4c7845e5c4fcc"]
+    assert row["status"] == A.GRANTED and row["import_status"] == A.GRANTED
 
 
 def test_main_dry_run_write_and_exit_codes(tmp_path, monkeypatch, capsys):
