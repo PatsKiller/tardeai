@@ -1188,6 +1188,12 @@ GATES = [
         "trade_ai_scalp_5min_20261009",
         ["tests/test_trade_ai_scalp_5min_20261009.py"],
     ),
+    # Postgres connection-slot hygiene (n8nmat/b6 2026-10-09): PGAPPNAME attribution for raw connects, tests never use
+    # the stale ~/.pgpass, batched price counts, reconcile KeyError + real rc in run_protection_pipeline.sh.
+    (
+        "pg_conn_exhaustion_b6_20261009",
+        ["tests/test_pg_conn_exhaustion_b6_20261009.py"],
+    ),
     # Scalp lane bulk catalyst read (operator 2026-10-09: "build the finviz API fix"): data-broker news plus the
     # Finviz Elite news export in batches instead of ~2 throttled Finviz page requests per ticker.
     (

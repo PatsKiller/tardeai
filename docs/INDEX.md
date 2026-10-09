@@ -2235,7 +2235,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/rockville/ROCKVILLE_WATCH_UI_SCREENSHOTS/README.md` | ROCKVILLE_WATCH_UI_SCREENSHOTS | review_required | OK | `fe1169950360` |
 | `docs/runbooks/AIF_FINANCIAL_SENSES_SHADOW.md` | Runbook — AIF ↔ Financial Senses shadow | review_required | OK | `8509647d1d08` |
 | `docs/runbooks/BARE_METAL_RECOVERY.md` | Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit) | review_required | OK | `80d205a4c45f` |
-| `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `078bf2e6e7d1` |
+| `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `4105584e570c` |
 | `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `b3f47d44596c` |
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `0de9b8a462fb` |
