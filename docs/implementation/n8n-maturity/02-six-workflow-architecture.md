@@ -116,6 +116,8 @@ The relay serves `GET /due?source=<schedule|event|digest>` with bearer auth. The
 
 - `now` is advisory. The gateway uses its own clock and refuses `now` values more than 90 s from it (`due_clock_skew`), so a replayed or forged clock cannot make an old slot due.
 - `limit` defaults to 40 and is capped at 100. Overflow stays due on the next tick, inside `catchup_min`.
+- These bounds (tz, default and maximum `limit`, at most 8 lanes in `lane_filter`, at most 200 `held` entries) plus the retry-view lookback and the soft-edge default deadline live in `config/n8n_due.json` (`N8nDueConfig@v1`). The gateway and the relay import them from `scripts/lib/n8n_due.py`, so the relay's `limit` and lane caps cannot drift from the gateway's. The config may lower a bound but never raise it past the response schema. The 90 s skew is fixed by this section (`DUE_MAX_SKEW_S`, failure row F12).
+- A refusal (`due_clock_skew`, `bad_source`, `bad_lane_filter`, `*_unreadable`) is the gateway's ordinary typed refusal `{state: REFUSED, reason}`. It does not carry the `DueResponse@v1` label, because that schema is closed and describes only a computed answer (`ok: true`).
 - `due` is **read-only**. It writes nothing to the ledger. It may append one line to the relay log, which the relay writes, not the gateway. That line is the dispatcher's liveness signal (§4).
 - Adding the route takes three changes: `ALLOWED_ROUTES += "coordination/due"`, an `operation == "due"` branch after the read-scope check, and a pure function `compute_due(registry, allowlist, policies, run_store, now, source)` in a new `scripts/lib/n8n_due.py` that the gateway imports. Neither `due` nor `coordination/due` contains a `FORBIDDEN_ROUTE_TOKENS` token. That was checked against :64.
 
@@ -139,13 +141,25 @@ For each registry row with `dispatch.mode ≠ off` whose lane is in the allowlis
 | `DUE` | no row for the key | yes, attempt 1 |
 | `IN_FLIGHT` | latest attempt is REQUESTED or RUNNING | no |
 | `DONE` | latest attempt is RUN_DONE, or RUN_SKIPPED_LOCK (the lock proves another run of this lane covered the slot; counted in `lock_skips`) | no |
-| `RETRY_DUE` | latest attempt failed with a retryable verdict (§3.4), `attempt < max_attempts`, and `now ≥ finished_at + backoff[attempt-1]` | yes, attempt n+1 |
+| `RETRY_DUE` | latest attempt failed with a retryable verdict (§3.4), `attempt < max_attempts`, and `now ≥ finished_at + backoff[attempt-1]` (the chain stays in view after the slot leaves the window, see below) | yes, attempt n+1 |
 | `RETRY_WAIT` | as above, backoff not yet elapsed | no (reported with `retry_at`) |
 | `DEAD_LETTER` | a `dead_letters` row exists for the slot key | no |
-| `WAITING_AFTER` | an `after` predecessor has no **live** RUN_DONE on the same ET day | no (reported with `wait_deadline`; past the deadline → incident `after_deadline_missed`) |
+| `WAITING_AFTER` | an `after` predecessor has no qualifying RUN_DONE on the same ET day (`same_day`, default) or in the 24 h before the slot. A **live** lane needs a live predecessor run; a **dry_run** lane accepts a dry_run or a live predecessor run. A soft edge stops waiting at its deadline (`deadline_min`, else `soft_after_default_deadline_min` from config, so a soft edge never waits forever). A hard edge keeps waiting. Deadlines count from the slot, or from the lane's first fire of the local day for a sub-hourly lane. Takes precedence over `BREAKER_OPEN`. | no (reported with `wait_deadline`; past the deadline → incident `after_deadline_missed`) |
 | `BREAKER_OPEN` | `breaker_threshold` consecutive slots for the lane ended DEAD_LETTER, and no release since | no (P2 incident) |
-| `MISSED` | the slot is older than `catchup_min` with no row | no (reported; the heartbeat watcher decides on staleness) |
+| `MISSED` | only the **latest** fire at or before the window start, when it has no row, no dead letter and is not otherwise in view (one lookup per cron expression; older gaps are not re-reported). Also an out-of-window retry chain that was never requested before `retry_at + catchup_min` (reported with its `retry_at`). Sub-hourly lanes never report `MISSED`. | no (reported; the heartbeat watcher decides on staleness) |
 
+   **Slots outside the window stay in view while they have unfinished business** (daily-or-slower lanes; the lookback is `max(catchup_min, retry_view_lookback_min, deadline_min + catchup_min per after edge)`):
+   - an `IN_FLIGHT` attempt;
+   - a retry chain until `retry_at + catchup_min`, after which it is held `MISSED` with its `retry_at` and is never silently dropped;
+   - an after-gated attempt-1 slot that is still waiting, until its latest deadline plus `catchup_min`. A hard edge is therefore visible past its deadline, and the watcher raises `after_deadline_missed`.
+   - an after-gated attempt-1 slot released by its gate (predecessor done, or soft deadline reached), until the release time plus `catchup_min` (reason `catchup`). This is the design §2 example: catchup 60 with deadline 90 releases at slot+90 and stays due until slot+150.
+   - `DONE` and `DEAD_LETTER` slots drop out.
+
+   **`after` defects that keep the lane evaluated** are reported in `errors[]`:
+   - `after_not_dispatched`: the predecessor is off, on cron or ineligible, so it writes no ledger row and the edge can only time out.
+   - `after_mode_unsatisfiable`: a live lane comes after a predecessor dispatched in dry_run.
+
+   **Cutover note.** On the first `due` call for a newly dispatched lane, its latest pre-window fire has no ledger row because cron ran it. The lane reports one `MISSED` per lane until the next fire. That is expected noise; the heartbeat watcher should not page on `MISSED` from the first day of a wave.
 4. **Mode filter.** Predecessor and last-run checks filter on `mode`. This fixes the defect where a dry_run row could satisfy a gate (relay `last_run` today).
 5. **Ordering.** Ascending `(priority, slot)`, truncated to `limit`.
 
@@ -163,7 +177,11 @@ The response is [`schemas/due-response.schema.json`](schemas/due-response.schema
   - `event_cursors(lane_id, source, cursor, updated_at, PK(lane_id, source))`
   - `breakers(lane_id PK, opened_at, consecutive, released_at, released_by)`
 - **Writers.** The **executor** writes `dead_letters` and `breakers`, because it holds the verdict. The gateway's `_run` writes `runs`, as today. `due` writes nothing.
-- **Release.** `scripts/n8n_dlq.py release --slot-key … | --lane … --note …` is a host CLI for the operator or an agent. It writes `released_at` and is recorded in DeadLetterRelease@v1. A release re-arms the slot as `RETRY_DUE` with `attempt = attempts + 1`, inside the catch-up window only. Outside the window it only clears the breaker.
+- **Release.** `scripts/n8n_dlq.py release --slot-key … | --lane … --note …` is a host CLI for the operator or an agent. It writes `released_at` and is recorded in DeadLetterRelease@v1.
+  - A release re-arms the slot as `RETRY_DUE` (reason `dlq_release`) with `attempt = attempts + 1` (at most 9). That happens only when `dead_letter_rearmable` accepts the row: classes `send`/`learn`, single-attempt policies and legacy rows with an unknown class or max_attempts never re-arm. It also happens inside the catch-up window only.
+  - Outside the window, or for a row that is not re-armable, a release only clears the breaker.
+  - A re-dead slot clears its release. The re-armed attempt is then minted once: after its row exists, the ordinary retry rules apply.
+- **`_run` key checks.** The prefix test is case-insensitive, so `D:`/`E:`/`G:` cannot pass as a legacy key. Only the exact lower-case, well-formed form is accepted, and its lane and mode must equal the request's. A replay of an accepted key returns the existing row only when that row's lane and mode match; otherwise it is `run_slot_not_due` / `KEY_MISMATCH`.
 
 ### 3.4 Retry policy
 

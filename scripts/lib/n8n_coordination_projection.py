@@ -118,7 +118,7 @@ def project(path: Optional[Path] = None, *, lane_id: Optional[str] = None, state
 
 
 def project_runs(path: Optional[Path] = None, *, lane_id: Optional[str] = None, state: Optional[str] = None,
-                 limit: int = 100, now: Optional[_dt.datetime] = None) -> dict[str, Any]:
+                 limit: int = 100, now: Optional[_dt.datetime] = None, mode: Optional[str] = None) -> dict[str, Any]:
     """Scheduler-of-record program (2026-10-08, stream G): the `runs` table the gateway's `run`
     operation writes and the executor settles. Read-only, short timeout; an absent ledger or an
     absent table is an honest empty page (the table is built by stream B and may land later)."""
@@ -147,6 +147,8 @@ def project_runs(path: Optional[Path] = None, *, lane_id: Optional[str] = None, 
             sql += " AND lane_id = ?"; args.append(lane_id)
         if state:
             sql += " AND state = ?"; args.append(state.upper())
+        if mode:                                            # 2026-10-09 (B5.3): relay /runs/<lane>/last?mode=
+            sql += " AND mode = ?"; args.append(mode)
         sql += " ORDER BY COALESCE(finished_at, started_at, requested_at) DESC LIMIT ?"
         args.append(max(1, min(int(limit), 500)))
         rows = [dict(r) for r in conn.execute(sql, args).fetchall()]

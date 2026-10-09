@@ -3638,6 +3638,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_REGISTRY_DISPATCH
+        # N8N Maturity B5.2 (design 02 §2): lane-registry dispatch/watch block loader + validation
+        # (scripts/lib/lane_dispatch.py) and the forbidden-token eligibility rule. Hermetic synthetic rows;
+        # the live registry is only read (all rows mode off; broker/order/secret rows ineligible).
+        "n8n_maturity_registry_dispatch_20261009",
+        [
+            "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_OPS_LANES — 2026-10-09 operator "add the lanes": storage-watch, backup-verify (dump dir
         # config-driven), monthly trade-ai-restore-drill (throwaway DB only; drop guard pinned), N7 shadow
         # workflows. Hermetic: tmp_path dumps/stamps, fake runners, fake DB connections that record SQL.
@@ -3685,6 +3695,17 @@ GATES = [
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_DUE
+        # N8N Maturity B5.3 (design 02 §3.1-§3.3, §4): pure compute_due (scripts/lib/n8n_due.py), the read route
+        # coordination/due, server-minted d: slot keys validated in the gateway's run operation, relay GET /due
+        # (liveness log line) and mode-aware /runs/<lane>/last. Hermetic: tmp ledgers, fixed clock, injected loaders.
+        "n8n_maturity_due_20261009",
+        [
+            "tests/test_n8n_maturity_due_20261009.py",
+            "tests/test_n8n_maturity_gateway_due_20261009.py",
+        ],
     ),
     (
         # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only

@@ -816,6 +816,26 @@ class LedgerRunStore:
         sql += " ORDER BY requested_at DESC, run_id DESC LIMIT ?"; args.append(int(limit))
         return [self._row_dict(r) for r in self._l._conn.execute(sql, args).fetchall()]
 
+    # ── B5.3: read helpers for coordination/due (scripts/lib/n8n_due.py); reads only, no schema change ──
+
+    @_locked
+    def runs_by_key_range(self, lo: str, hi: str, limit: int = 1000) -> list[dict[str, Any]]:
+        """Rows with lo <= run_id <= hi (the run_id PRIMARY KEY index), ascending. Server-minted slot keys sort
+        chronologically within one lane+mode, so one range covers a lane's whole catch-up window."""
+        rows = self._l._conn.execute("SELECT * FROM runs WHERE run_id >= ? AND run_id <= ? ORDER BY run_id LIMIT ?",
+                                     (lo, hi, int(limit))).fetchall()
+        return [self._row_dict(r) for r in rows]
+
+    @_locked
+    def recent_done(self, lane_id: str, *, modes: Any = ("live",), limit: int = 50) -> list[dict[str, Any]]:
+        """The lane's newest RUN_DONE rows in the given modes (index runs_lane_state), newest finish first."""
+        modes = [str(m) for m in modes] or ["live"]
+        marks = ",".join("?" for _ in modes)
+        rows = self._l._conn.execute(
+            f"SELECT * FROM runs WHERE lane_id = ? AND state = 'RUN_DONE' AND mode IN ({marks})"
+            " ORDER BY finished_at DESC LIMIT ?", (lane_id, *modes, int(limit))).fetchall()
+        return [self._row_dict(r) for r in rows]
+
     # ── B5.4: verdicts, dead letters, breakers, event cursors (design 02 §3.3/§3.4) ──
 
     def _write(self, sql: str, args: tuple) -> int:
