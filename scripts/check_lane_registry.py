@@ -83,7 +83,7 @@ def main() -> int:
     try:
         from scripts.lib.lane_registry import (
             STATE_ACTIVE, discover_all, discover_n8n_live, discover_n8n_snapshot,
-            find_undeclared, load_registry, n8n_known_workflow_ids, validate_registry,
+            find_inactive_n8n_rows, find_undeclared, load_registry, n8n_known_workflow_ids, validate_registry,
         )
     except Exception as e:                                  # cannot run != pass
         print(f"lane-registry gate CANNOT RUN: {type(e).__name__}: {e}",
@@ -145,6 +145,12 @@ def main() -> int:
         print(f"lane-registry gate CANNOT RUN: generated INDEX unreadable: {e}", file=sys.stderr)
         return EXIT_CANNOT_RUN
     undeclared = find_undeclared(reg, found, n8n_known_ids=n8n_known)
+    # An ACTIVE kind-n8n row needs its workflow active. Judged against the live n8n list, a discovery file
+    # that carries n8n, or the committed snapshot when it describes the committed registry (a fixture
+    # registry or a discovery file without n8n is not compared with the real host's snapshot).
+    compare_inactive = n8n_source in ("live", "discovery-json") or (
+        n8n_source == "snapshot" and not args.registry and not args.discovery_json)
+    inactive_n8n = find_inactive_n8n_rows(reg, found) if compare_inactive else []
 
     active = sum(1 for r in rows if r.get("state") == STATE_ACTIVE)
     # Count the FIELD, not the prose. This grepped state_reason for the literal
@@ -176,6 +182,7 @@ def main() -> int:
                           "unknown_reason_lanes": unknown,
                           "n8n_source": n8n_source,
                           "n8n_active": len(found.get("n8n") or []),
+                          "inactive_n8n_rows": inactive_n8n,
                           "correlated_reason_lanes": correlated}, indent=2))
     else:
         print(f"declared lanes          : {len(rows)}  ({active} ACTIVE)")
@@ -201,13 +208,21 @@ def main() -> int:
             print(f"state drift conflicts   : {len(drift_conflicts)}  ({nm} NOT_MEASURED)")
             for r in drift_conflicts:
                 print(f"    ✗ {r['lane_id']}: declared {r['declared_state']} but {r['code']} {r['evidence']}")
-        if not errors and not undeclared and not drift_conflicts:
+        print(f"inactive n8n rows       : {len(inactive_n8n)}")
+        for r in inactive_n8n:
+            print(f"    ✗ {r['lane_id']}: declared ACTIVE kind n8n but workflow {r['expression']} is not active")
+        if not errors and not undeclared and not drift_conflicts and not inactive_n8n:
             print("lane registry: clean")
 
     if args.fail_on_new and drift_conflicts:
         print("\nA lane's declared state must match the host: a RETIRED or NEVER_SCHEDULED row\n"
               "whose timer is enabled or whose cron line is present is a false registry. Flip the\n"
               "row (with state_since and evidence) or retire the job — never leave both.", file=sys.stderr)
+        return EXIT_VIOLATION
+    if args.fail_on_new and inactive_n8n:
+        print("\nAn ACTIVE kind-n8n lane whose workflow is inactive is a false registry: nothing schedules it.\n"
+              "Reactivate the workflow, or flip the row to RETIRED/PAUSED with state_since and evidence.",
+              file=sys.stderr)
         return EXIT_VIOLATION
     if args.fail_on_new and (errors or undeclared):
         print("\nA scheduled job must be declared in config/lane_registry.json.\n"

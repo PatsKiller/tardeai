@@ -3588,6 +3588,14 @@ GATES = [
         ["tests/test_n8n_ops_lanes_20261009.py"],
     ),
     (
+        # ANCHOR: N8N_SCHED_FIXES — 2026-10-09 audit (operator "fix the broken cron jobs"): watchdog unit lock
+        # miss = clean skip; ACTIVE kind-n8n rows need an active workflow (INACTIVE_N8N_WORKFLOW); board
+        # same-second receipt tie-break; executor opt-in bounded retry; cleanup_stale_locks report-only.
+        # Hermetic: tmp_path receipts/registries, fake runner and sleeper.
+        "n8n_sched_fixes_20261009",
+        ["tests/test_n8n_sched_fixes_20261009.py"],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
