@@ -105,6 +105,8 @@ def main() -> int:
         return EXIT_CANNOT_RUN
 
     errors = validate_registry(reg)
+    from scripts.lib.lane_dispatch import registry_dispatch_errors  # B5.2: dispatch/watch blocks (design 02 §2)
+    errors = errors + registry_dispatch_errors(reg)
     if args.discovery_json:
         try:
             found = json.loads(Path(args.discovery_json).read_text(encoding="utf-8"))

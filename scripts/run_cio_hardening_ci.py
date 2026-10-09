@@ -3573,6 +3573,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
+        # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
+        # Pure and hermetic: explicit instants only, no clock, no I/O.
+        "n8n_maturity_cron_tz_20261009",
+        [
+            "tests/test_n8n_maturity_cron_tz_20261009.py",
+        ],
+    ),
+    (
         # N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n
         # scheduler-of-record workflow generator and the per-lane cutover checklist. The tests
         # pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set
@@ -3596,6 +3605,16 @@ GATES = [
             "tests/test_n8n_workflow_drift_20261009.py",
             "tests/test_n8n_activation_grants_20261009.py",
             "tests/test_n8n_agent_identity_parity_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_REGISTRY_DISPATCH
+        # N8N Maturity B5.2 (design 02 §2): lane-registry dispatch/watch block loader + validation
+        # (scripts/lib/lane_dispatch.py) and the forbidden-token eligibility rule. Hermetic synthetic rows;
+        # the live registry is only read (all rows mode off; broker/order/secret rows ineligible).
+        "n8n_maturity_registry_dispatch_20261009",
+        [
+            "tests/test_n8n_maturity_registry_dispatch_20261009.py",
         ],
     ),
     (
