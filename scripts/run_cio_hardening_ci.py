@@ -3581,6 +3581,13 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_OPS_LANES — 2026-10-09 operator "add the lanes": storage-watch, backup-verify (dump dir
+        # config-driven), monthly trade-ai-restore-drill (throwaway DB only; drop guard pinned), N7 shadow
+        # workflows. Hermetic: tmp_path dumps/stamps, fake runners, fake DB connections that record SQL.
+        "n8n_ops_lanes_20261009",
+        ["tests/test_n8n_ops_lanes_20261009.py"],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
