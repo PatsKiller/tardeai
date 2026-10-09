@@ -3646,6 +3646,13 @@ GATES = [
         ["tests/test_n8n_scalp_lane_20261009.py", "tests/test_agents_policy_4_0_0_scalp_lane.py"],
     ),
     (
+        # ANCHOR: SCALP_CYCLE_RECEIPT_B4 — n8n maturity B4 2026-10-09: ScalpCycleReceipt@v1 per 5-min cycle
+        # (started/ok/error/killed on SIGTERM), market-hours-aware monitor (P2 2 missed RTH slots, P1 30 min),
+        # fan-in source 3h, state saved before the send, slot guard. Hermetic: tmp state root, fakes, no send.
+        "scalp_cycle_receipt_b4_20261009",
+        ["tests/test_scalp_cycle_receipt_b4_20261009.py"],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
