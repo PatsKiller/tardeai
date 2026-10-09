@@ -25,6 +25,7 @@ if not _os.getenv("DB_PASSWORD"):
             if _l.startswith("DB_PASSWORD="): _os.environ["DB_PASSWORD"] = _l.split("=",1)[1].strip()
     except Exception: pass
 import os
+import pathlib
 import sys
 from datetime import datetime
 
@@ -219,7 +220,146 @@ def archive_rows(cur, table: str, col: str, days: int, guard: str) -> tuple[int,
             n += 1
     if n == 0:
         path.unlink(missing_ok=True)
+    else:
+        # 2026-10-09: every archive carries a row count + sha256 manifest (RetentionArchiveManifest@v1).
+        _ra = _retention_archive()
+        _ra.write_manifest(path, table=table, rows=n, sha256=_ra._sha256_file(path), bytes=path.stat().st_size,
+                           predicate=f"{col} < now() - interval '{days} days'")
     return n, str(path)
+
+
+def _retention_archive():
+    from pathlib import Path as _P
+    _scripts = str(_P(__file__).resolve().parent)
+    if _scripts not in sys.path:
+        sys.path.insert(0, _scripts)
+    from lib import retention_archive
+    return retention_archive
+
+
+# ── Per-source windows (2026-10-09, operator decision) ────────────
+# A registry row may declare `source_windows` {value: days} over `source_column`: rows of that
+# source older than its window are ARCHIVE_THEN_DELETE'd in verified batches (archive re-read for
+# row count + sha256 before each batch's DELETE), capped per run so a backlog converges over
+# several nights inside the step's timeout. Storage audit 2026-10-09: content_embeddings declared
+# {fused_signal: 30, social_post: 30} on 2026-10-07 and no code read it.
+DEFAULT_SOURCE_BATCH_ROWS = 20000
+DEFAULT_SOURCE_MAX_ROWS_PER_RUN = 100000
+
+
+def enforced_source_windows(doc: dict) -> list[dict]:
+    out = []
+    for r in doc["policies"]:
+        sw = r.get("source_windows")
+        if not sw or r.get("class") in ("KEEP_FOREVER", "EXTERNAL_POLICY"):
+            continue
+        if r.get("source_windows_class") != "ARCHIVE_THEN_DELETE" or not r.get("source_column"):
+            raise SystemExit(f"ERROR: registry row {r.get('table')} source_windows needs source_column and "
+                             "source_windows_class ARCHIVE_THEN_DELETE")
+        for value, days in sorted(sw.items()):
+            out.append({"table": r["table"], "ts_column": r["ts_column"], "source_column": r["source_column"],
+                        "source": value, "days": int(days),
+                        "batch_rows": int(r.get("source_windows_batch_rows") or DEFAULT_SOURCE_BATCH_ROWS),
+                        "max_rows": int(r.get("source_windows_max_rows_per_run") or DEFAULT_SOURCE_MAX_ROWS_PER_RUN)})
+    return out
+
+
+def source_window_predicate(w: dict, guard: str = "") -> tuple[str, tuple]:
+    return (f't."{w["source_column"]}" = %s AND t."{w["ts_column"]}" < now() - make_interval(days => %s){guard}',
+            (w["source"], int(w["days"])))
+
+
+def run_source_windows(cur, conn, windows: list[dict], dry_run: bool) -> tuple[int, list[str]]:
+    """Returns (rows deleted or would-delete, failed labels)."""
+    ra = _retention_archive()
+    total, failed = 0, []
+    for w in windows:
+        label = f"{w['table']}.{w['source']}"
+        try:
+            guard = fk_guard(cur, w["table"])
+            where, params = source_window_predicate(w, guard)
+            if dry_run:
+                cur.execute(f"SELECT count(*) FROM {w['table']} t WHERE {where}", params)
+                n = cur.fetchone()[0]
+                print(f"  {label:<43} {w['ts_column']:<18} {w['days']:>5}  {n:>8}  (source window, archive-first;"
+                      f" per-run cap {w['max_rows']:,})")
+                total += min(n, w["max_rows"])
+                continue
+            res = ra.archive_then_delete_batches(
+                conn, table=w["table"], where_sql=where, params=params,
+                label=f"source_window_{w['source']}", archive_dir=archive_root() / w["table"],
+                batch_rows=w["batch_rows"], max_rows=w["max_rows"])
+            total += res["rows_deleted"]
+            print(f"  {label:<43} {w['ts_column']:<18} {w['days']:>5}  {res['rows_deleted']:>8}  (archived "
+                  f"{res['rows_archived']:,} in {len(res['batches'])} verified batch(es)"
+                  f"{'; per-run cap reached' if res.get('cap_reached') else ''})")
+        except Exception as e:
+            conn.rollback()
+            failed.append(label)
+            print(f"  ERROR: {label}: {e}")
+    return total, failed
+
+
+# ── One-time: degenerate fused_signal embeddings (2026-10-09, operator decision) ──
+# rag_indexer embedded fused_signals as "SYM signal  severity:low" because signal_fusion.py never
+# writes `direction`; the stored title is the blank template "SYM signal: ". 958,071 rows, ~14
+# distinct vectors. Separately invoked, dry run by default; --apply archives each batch, re-reads
+# it (row count + sha256 + key set) and only then deletes it. Run only AFTER the rag_indexer text
+# fix is served, or the old indexer re-embeds the same junk.
+JUNK_FUSED_TITLE_RE = r"^\S+ signal: *$"
+JUNK_FUSED_WHERE = "t.source_type = 'fused_signal' AND t.title ~ %s"
+
+
+def purge_junk_fused_embeddings(apply: bool = False, batch_rows: int = DEFAULT_SOURCE_BATCH_ROWS,
+                                max_rows: int = 200000, sample_rows: int = 500) -> int:
+    import json as _json
+    from datetime import timezone as _tz
+    ra = _retention_archive()
+    stamp = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
+    receipt = {"schema": "JunkFusedEmbeddingPurgeReceipt@v1", "stamp": stamp, "apply": bool(apply),
+               "table": "content_embeddings", "predicate": JUNK_FUSED_WHERE, "title_regex": JUNK_FUSED_TITLE_RE,
+               "batch_rows": int(batch_rows), "max_rows_per_run": int(max_rows)}
+    if apply:
+        blocked = _disk_too_low_for_retention()
+        if blocked:
+            receipt.update(status="refused", reason=f"disk below critical floor: {blocked}")
+            print(_json.dumps(receipt, indent=1, default=str))
+            return 2
+    conn = _connect()
+    code = 0
+    try:
+        receipt["before"] = ra.estimate(conn, table="content_embeddings", where_sql=JUNK_FUSED_WHERE,
+                                        params=(JUNK_FUSED_TITLE_RE,), sample_rows=sample_rows)
+        conn.rollback()
+        if not apply:
+            receipt["status"] = "dry_run"
+            b = receipt["before"]
+            print(f"DRY RUN — junk fused_signal embeddings: {b['rows']:,} rows, {b['stored_bytes']:,} B stored, "
+                  f"est. archive {b['est_archive_bytes'] or 0:,} B; this run would archive+delete up to "
+                  f"{min(b['rows'], int(max_rows)):,} in batches of {int(batch_rows):,}")
+        else:
+            try:
+                res = ra.archive_then_delete_batches(
+                    conn, table="content_embeddings", where_sql=JUNK_FUSED_WHERE, params=(JUNK_FUSED_TITLE_RE,),
+                    label="junk_fused_signal", archive_dir=archive_root() / "content_embeddings",
+                    batch_rows=int(batch_rows), max_rows=int(max_rows), stamp=stamp)
+                receipt.update(status="ok", result=res)
+            except Exception as e:
+                conn.rollback()
+                receipt.update(status="failed", error=f"{type(e).__name__}: {e}")
+                code = 1
+            receipt["remaining"] = ra.estimate(conn, table="content_embeddings", where_sql=JUNK_FUSED_WHERE,
+                                               params=(JUNK_FUSED_TITLE_RE,), sample_rows=0)["rows"]
+            conn.rollback()
+            rdir = archive_root() / "content_embeddings" / "receipts"
+            rdir.mkdir(parents=True, exist_ok=True)
+            rpath = rdir / f"{stamp}-junk_fused_signal.json"
+            rpath.write_text(_json.dumps(receipt, indent=1, default=str, sort_keys=True) + "\n", encoding="utf-8")
+            receipt["receipt_path"] = str(rpath)
+    finally:
+        conn.close()
+    print(_json.dumps(receipt, indent=1, default=str, sort_keys=True))
+    return code
 
 
 def fk_guard(cur, table: str) -> str:
@@ -332,8 +472,13 @@ def run(dry_run: bool = False):
             failures.append(table)
             print(f"  ERROR: {table}: {e}")
 
+    sw_total, sw_failed = run_source_windows(cur, conn, enforced_source_windows(registry), dry_run)
+    total_deleted += sw_total
+    failures.extend(sw_failed)
+
     print("-" * 82)
-    print(f"  Total {'would delete' if dry_run else 'deleted'}: {total_deleted:,} rows; archived first: {archived_total:,}")
+    print(f"  Total {'would delete' if dry_run else 'deleted'}: {total_deleted:,} rows; archived first: {archived_total:,}"
+          f" (+{sw_total:,} source-window rows, archive-first)")
     cur.close()
     conn.close()
 
@@ -381,5 +526,16 @@ def run(dry_run: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Enforce DB retention policies")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without deleting")
+    parser.add_argument("--junk-fused-signal-embeddings", action="store_true",
+                        help="ONE-TIME mode: archive-then-delete content_embeddings fused_signal rows whose title is "
+                             "the blank template 'SYM signal: '. Dry run unless --apply. Nothing else runs.")
+    parser.add_argument("--apply", action="store_true", help="with --junk-fused-signal-embeddings: archive, verify, delete")
+    parser.add_argument("--batch-rows", type=int, default=DEFAULT_SOURCE_BATCH_ROWS)
+    parser.add_argument("--max-rows", type=int, default=200000, help="per-run cap for the one-time mode")
     args = parser.parse_args()
+    if args.junk_fused_signal_embeddings:
+        raise SystemExit(purge_junk_fused_embeddings(apply=args.apply and not args.dry_run,
+                                                     batch_rows=args.batch_rows, max_rows=args.max_rows))
+    if args.apply:
+        raise SystemExit("ERROR: --apply is only for --junk-fused-signal-embeddings (the nightly run applies by default)")
     raise SystemExit(run(dry_run=args.dry_run))
