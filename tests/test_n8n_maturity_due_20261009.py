@@ -464,7 +464,7 @@ def _et(hh, mm, day=9):
     return datetime(2026, 10, day, hh + 4, mm, tzinfo=timezone.utc)
 
 
-def _check(rows, allow, store, key, lane, mode, now):
+def _check_slot(rows, allow, store, key, lane, mode, now):
     return D.check_slot_key(key, lane, mode, registry_rows=rows, allowlist=allow, policies=POLICIES,
                             run_store=store, now=now)
 
@@ -482,14 +482,14 @@ def test_retry_chain_stays_in_view_after_the_slot_leaves_the_catchup_window(stor
         assert _keys(resp) == [base + ":a2"], now
         assert resp["items"][0]["reason"] == "retry" and resp["items"][0]["attempt"] == 2
         _validate(resp)
-    c = _check(rows, allow, store, base + ":a2", "r-lane", "dry_run", _et(10, 1))
+    c = _check_slot(rows, allow, store, base + ":a2", "r-lane", "dry_run", _et(10, 1))
     assert c.ok and c.state == "RETRY_DUE" and c.attempt == 2 and c.parent_run_id == base and c.slot_key == base
     # never handled: once retry_at (09:58:30) + catchup (60) passes it is reported, not silently dropped
     late = _due(rows, allow, store, now=_et(10, 59))
     assert late["items"] == [] and late["counts"]["MISSED"] == 1
     m = _held(late, "MISSED")[0]
     assert m["slot_local"] == "20261009T0900" and m["retry_at"] == "2026-10-09T13:58:30Z"
-    assert not _check(rows, allow, store, base + ":a2", "r-lane", "dry_run", _et(10, 59)).ok
+    assert not _check_slot(rows, allow, store, base + ":a2", "r-lane", "dry_run", _et(10, 59)).ok
     _validate(late)
     # handled: a2 requested at 10:05 is IN_FLIGHT out of the window; its failure at 10:20 mints a3 at 10:22
     _put(store, base + ":a2", "r-lane", "dry_run", "RUNNING", finished=None, attempt=2)
@@ -540,11 +540,11 @@ def test_design_example_soft_deadline_beyond_catchup_releases_then_catches_up(st
     assert w["errors"] == []
     r = _due(rows, allow, store, now=_et(11, 5), lane_filter=["planning"])         # soft deadline 11:00 passed
     assert _keys(r) == [key] and r["items"][0]["reason"] == "catchup"
-    assert _check(rows, allow, store, key, "planning", "live", _et(11, 5)).ok
+    assert _check_slot(rows, allow, store, key, "planning", "live", _et(11, 5)).ok
     _validate(r)
     gone = _due(rows, allow, store, now=_et(12, 1), lane_filter=["planning"])      # release + catchup passed
     assert gone["items"] == [] and _held(gone, "MISSED")[0]["slot_local"] == "20261009T0930"
-    assert not _check(rows, allow, store, key, "planning", "live", _et(12, 1)).ok
+    assert not _check_slot(rows, allow, store, key, "planning", "live", _et(12, 1)).ok
 
 
 def test_design_example_hard_edge_stays_visible_past_its_deadline_then_runs_when_released(store):
@@ -554,7 +554,7 @@ def test_design_example_hard_edge_stays_visible_past_its_deadline_then_runs_when
     held = _held(w, "WAITING_AFTER")
     assert w["items"] == [] and held[0]["wait_deadline"] == "2026-10-09T15:00:00Z"   # < now: after_deadline_missed
     assert held[0]["waiting_on"] == ["close-capture"]
-    assert _check(rows, allow, store, key, "planning", "live", _et(11, 5)).state == "WAITING_AFTER"
+    assert _check_slot(rows, allow, store, key, "planning", "live", _et(11, 5)).state == "WAITING_AFTER"
     # past deadline + catchup with no predecessor: out of view, reported MISSED
     assert _held(_due(rows, allow, store, now=_et(12, 1), lane_filter=["planning"]), "MISSED")
     # the predecessor finally runs at 11:10: the slot is released and catches up for 60 minutes from then
