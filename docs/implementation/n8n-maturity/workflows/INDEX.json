@@ -65,7 +65,7 @@
         "POST /run",
         "GET /runs/heartbeat-watch/last?mode=live"
       ],
-      "sha256": "7f1f97231265077ec637f32dada052251e3cb4f19fb7ed6b7090c819663d7806",
+      "sha256": "2900ef5077f0c2f2d13324a7586204cc1e81deb744b9eede78e5a7751cf16206",
       "triggers": [
         "schedule */5 * * * *"
       ]
