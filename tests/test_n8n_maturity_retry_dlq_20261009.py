@@ -331,3 +331,93 @@ def test_release_dead_letter_and_breaker_reset_streak(store, policies):
     out = rp.finalize_outcome(store, row, pol, breaker_threshold=3, now=T0 + 1103)
     assert out.dead_letter["released_at"] is None and out.dead_letter["attempts"] == 2
     assert out.consecutive_dead == 1 and not out.breaker_opened
+
+
+# ── host CLI ──
+
+
+def _seed_dead_lane(path: Path, policies) -> None:
+    ledger = CoordinationLedger(path)
+    st = LedgerRunStore(ledger)
+    for i, minute in enumerate(("1000", "1100", "1200")):
+        row = _run_slot(st, minute, state="RUN_FAILED", exit_code=1, reason="exit_1", at=T0 + 100 * i)
+        rp.finalize_outcome(st, row, policies.get("none"), breaker_threshold=3, now=T0 + 100 * i + 3)
+    ledger.close()
+
+
+def _cli(argv, capsys):
+    from scripts import n8n_dlq
+
+    code = n8n_dlq.main(argv)
+    cap = capsys.readouterr()
+    return code, cap.out, cap.err
+
+
+def test_cli_list_and_missing_ledger(tmp_path, policies, capsys, monkeypatch):
+    db = tmp_path / "l.sqlite"
+    code, _, err = _cli(["--ledger", str(db), "list"], capsys)
+    assert code == 3 and "ledger_not_found" in err and not db.exists()
+    _seed_dead_lane(db, policies)
+    code, out, _ = _cli(["--ledger", str(db), "list", "--json"], capsys)
+    body = json.loads(out)
+    assert code == 0 and len(body["dead_letters"]) == 3 and body["open_breakers"][0]["lane_id"] == LANE
+    code, out, _ = _cli(["--ledger", str(db), "list", "--lane", LANE], capsys)
+    assert code == 0 and "BREAKER OPEN" in out and out.count(f"lane={LANE}") == 4
+    # default ledger resolution is the gateway's (env), not a home literal
+    monkeypatch.setenv("TRADEAI_N8N_COORDINATION_LEDGER", str(db))
+    code, out, _ = _cli(["list", "--json"], capsys)
+    assert code == 0 and len(json.loads(out)["dead_letters"]) == 3
+
+
+def test_cli_usage_errors_exit_2(tmp_path, capsys):
+    db = tmp_path / "l.sqlite"
+    assert _cli(["--ledger", str(db), "release", "--note", "x"], capsys)[0] == 2
+    assert _cli(["--ledger", str(db), "release", "--slot-key", "k", "--lane", "l", "--note", "x"], capsys)[0] == 2
+    assert _cli(["--ledger", str(db), "release", "--slot-key", "k"], capsys)[0] == 2
+    assert _cli(["bogus"], capsys)[0] == 2
+
+
+def test_cli_release_slot_dry_run_then_real(tmp_path, policies, capsys, monkeypatch):
+    db, rec = tmp_path / "l.sqlite", tmp_path / "rel.jsonl"
+    _seed_dead_lane(db, policies)
+    monkeypatch.setenv("USER", "opuser")
+    slot = f"d:{LANE}:live:20261009T1100"
+    code, out, _ = _cli(["--ledger", str(db), "release", "--slot-key", slot, "--note", "n", "--dry-run",
+                         "--receipts", str(rec)], capsys)
+    assert code == 0 and json.loads(out)["dry_run"] is True and not rec.exists()
+    ledger = CoordinationLedger(db)
+    assert LedgerRunStore(ledger).get_dead_letter(slot)["released_at"] is None
+    ledger.close()
+    code, out, _ = _cli(["--ledger", str(db), "release", "--slot-key", slot, "--note", "fixed", "--receipts", str(rec)],
+                        capsys)
+    assert code == 0
+    lines = rec.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    r = json.loads(lines[0])
+    assert r["schema"] == "DeadLetterRelease@v1" and r["by"] == "opuser" and r["note"] == "fixed"
+    assert [x["slot_key"] for x in r["released"]] == [slot] and r["breaker_released"] is False
+    ledger = CoordinationLedger(db)
+    st = LedgerRunStore(ledger)
+    assert st.get_dead_letter(slot)["released_by"] == "opuser" and st.breaker(LANE)["open"]
+    ledger.close()
+    # already released / unknown -> not found
+    code, _, err = _cli(["--ledger", str(db), "release", "--slot-key", slot, "--note", "x", "--receipts", str(rec)],
+                        capsys)
+    assert code == 3 and "not_found" in err and len(rec.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_cli_release_lane_releases_all_and_breaker(tmp_path, policies, capsys):
+    db, rec = tmp_path / "l.sqlite", tmp_path / "rel.jsonl"
+    _seed_dead_lane(db, policies)
+    code, out, _ = _cli(["--ledger", str(db), "release", "--lane", LANE, "--note", "creds rotated", "--by", "agent-x",
+                         "--receipts", str(rec)], capsys)
+    assert code == 0
+    r = json.loads(rec.read_text(encoding="utf-8").splitlines()[0])
+    assert len(r["released"]) == 3 and r["breaker_released"] is True and r["by"] == "agent-x"
+    ledger = CoordinationLedger(db)
+    st = LedgerRunStore(ledger)
+    assert st.list_dead_letters(LANE) == [] and not st.breaker(LANE)["open"]
+    assert st.consecutive_dead(LANE) == 0
+    ledger.close()
+    code, _, _ = _cli(["--ledger", str(db), "release", "--lane", LANE, "--note", "x", "--receipts", str(rec)], capsys)
+    assert code == 3
