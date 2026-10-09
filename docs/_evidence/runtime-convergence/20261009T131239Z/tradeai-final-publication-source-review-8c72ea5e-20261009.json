@@ -1,0 +1,497 @@
+{
+  "schema": "FrozenPublicationSourceReview@v1",
+  "evidence_class": "SOURCE_ONLY",
+  "reviewed_at": "2026-10-09T18:34:54.287644+00:00",
+  "reviewed_head_sha": "8c72ea5e8cff77984670f18f373a5a9817519701",
+  "frozen_main_sha": "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf",
+  "parent_head_observed_at_report": "8c72ea5e8cff77984670f18f373a5a9817519701",
+  "review_scope": "Read-only changed production source relative frozen main; closed fixture receipts and byte identity. No test rerun or runtime observation.",
+  "verdict": "PASS_WITH_LIMITS",
+  "blocking_findings": [],
+  "checks": {
+    "all_19_working_source_bytes_match_reviewed_head_and_handoff": true,
+    "all_authority_configuration_and_policy_paths_unchanged_vs_frozen_main": true,
+    "both_n8n_processes_keep_fallback_false_tools_false_advisory_true": true,
+    "eight_gated_generated_pending_artifacts_inactive_and_identical_to_prior_reviewed_candidate": true,
+    "all_handoff_log_bytes_unchanged": true
+  },
+  "production_sources": {
+    "apps/command-center-v3/src/components/tradeai/ActiveTraderFiresStrip.tsx": {
+      "sha256": "a512df8cb581f5f2619f1ca2b1de3ae0c298ccbb2cc3d7e6e9f12f8aadac4723",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "config/lane_registry.json": {
+      "sha256": "3709b570cfca6a2651988b7fc35c2b9c3788bc13e3b755b02d4ffdd41fef912b",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "linux_launchers/run_lookthrough.sh": {
+      "sha256": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "linux_launchers/run_pg_backup.sh": {
+      "sha256": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "linux_launchers/run_portfolio.sh": {
+      "sha256": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "linux_launchers/run_portfolio_monthly.sh": {
+      "sha256": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "linux_launchers/run_portfolio_weekly.sh": {
+      "sha256": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "linux_launchers/run_price_cache.sh": {
+      "sha256": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/check_n8n_activation_grants.py": {
+      "sha256": "6c5c0b3bbd2e2ccfba56e60bf775c96879042b916df20cd363fe0195c04c154d",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/lib/bridge_agent_preconditions.py": {
+      "sha256": "f7b22b70a0ea0b44829451c433428e3ad8cc0234bd1433bd0f4b736af8a1f5a8",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/lib/cio_governed_model_bridge.py": {
+      "sha256": "48a9cb2c3d425f07df09863244f88e11ca1b8a137cab37f90d2d25d012c83596",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/lib/governed_research_producer.py": {
+      "sha256": "ef2d61ec5a29bd0d79ea3612e9fb47c5312f1201398acf4a960ddbe5b864459d",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/lib/lane_registry.py": {
+      "sha256": "64ba9dea5584def46132699709c9ad5e7561eda697bbc1dccefe3a50750f5ea4",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/n8n_run_relay.py": {
+      "sha256": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/n8n_workflow_templates.py": {
+      "sha256": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/ops/run_cross_asset_historical_replay.py": {
+      "sha256": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/pipelines/cutover/_cutover.py": {
+      "sha256": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/run_trade_ai_scalp_live.py": {
+      "sha256": "c1dbead1b060a2ba75b40d38f8952da2fcd3ee99b7c0ccb8e3c092698e8b3af3",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    },
+    "scripts/scalp_shadow_logger.py": {
+      "sha256": "ddb871f407b55f3c235c309902dc21fcf782f9c79a677b45475887cd40613e33",
+      "matches_reviewed_commit": true,
+      "matches_closed_handoff": true,
+      "changed_vs_frozen_main": true
+    }
+  },
+  "unchanged_authority_paths": {
+    "AGENTS.md": {
+      "sha256": "5da1e80cd43c847c62ee14ac5264cb3f939b6e5c97b36d59d078dc20bcd8a223",
+      "unchanged_vs_frozen_main": true
+    },
+    "AI_WORK_POLICY.md": {
+      "sha256": "d024b817f42fa736d788ff2dd8fcde511c55e1a30a306b259b664bacc1289fdf",
+      "unchanged_vs_frozen_main": true
+    },
+    "config/llm_process_registry.json": {
+      "sha256": "c35912073770ebb87bc767600a1de856146c646f77f4f2b86889e94ef7bd719c",
+      "unchanged_vs_frozen_main": true
+    },
+    "config/llm_routing_policy.json": {
+      "sha256": "c9575261f2b93562ead344619da4153b0b252a3414cc8803f235600fcdc89a63",
+      "unchanged_vs_frozen_main": true
+    },
+    "config/llm_model_registry.json": {
+      "sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072",
+      "unchanged_vs_frozen_main": true
+    },
+    "config/n8n_run_allowlist.json": {
+      "sha256": "1e43336a73775a3564ef03bf7ab2ea959e092918fe2d94ec6fa833d5d82ed038",
+      "unchanged_vs_frozen_main": true
+    },
+    "config/expected_services.json": {
+      "sha256": "28423c725728c9c507dc2671707404607112ce2afab05efb9d0a965f35f0bdbe",
+      "unchanged_vs_frozen_main": true
+    },
+    "config/data_source_authority.json": {
+      "sha256": "d36e96b16428fe04031f65923c65f00ae6b0098310e47a73e990d5b37308f6fb",
+      "unchanged_vs_frozen_main": true
+    },
+    "config/agent_registry.json": {
+      "sha256": "7a8b0f982d9a38f150a1425e8dd51720f83adca3238fedc9f6c751312ecf4fb2",
+      "unchanged_vs_frozen_main": true
+    }
+  },
+  "n8n_process_authority_metadata": {
+    "n8n_material_digest_draft": {
+      "fallback_allowed": false,
+      "tools_allowed": false,
+      "advisory_only": true,
+      "lane_policy": "deepseek_only",
+      "output_schema_id": "material_change_digest_draft/v1"
+    },
+    "n8n_ops_summary_draft": {
+      "fallback_allowed": false,
+      "tools_allowed": false,
+      "advisory_only": true,
+      "lane_policy": "deepseek_only",
+      "output_schema_id": "ops_summary_draft/v1"
+    }
+  },
+  "four_n1_planned_source_intent": {
+    "evidence_class": "SOURCE_ONLY",
+    "runtime_restoration_acceptance": "NOT_MEASURED_BY_THIS_REVIEW",
+    "rows": [
+      {
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "state": "ACTIVE",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "*/20 * * * *",
+          "match": "crontab_snapshot.txt.tmp"
+        },
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
+        "consumer": "scripts/lib/crontab_snapshot.py fallback reader used by the hardened health agent"
+      },
+      {
+        "lane_id": "n8n-pilot-dispatch",
+        "state": "ACTIVE",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "*/15 * * * *",
+          "match": "scripts/n8n_pilot_dispatch.py"
+        },
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
+        "consumer": "host coordination ledger and Command Center coordination projection; downstream acknowledgement is measured separately"
+      },
+      {
+        "lane_id": "n8n-incident-fanin",
+        "state": "ACTIVE",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "*/5 * * * *",
+          "match": "scripts/n8n_incident_fanin.py"
+        },
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
+        "consumer": "host coordination incident ledger and Command Center incident projection"
+      },
+      {
+        "lane_id": "n8n-research-intake-consumer",
+        "state": "ACTIVE",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "*/15 * * * *",
+          "match": "scripts/n8n_research_intake_consumer.py"
+        },
+        "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
+        "consumer": "ri_research_queue and the governed RI desk consumer"
+      }
+    ]
+  },
+  "generated_n2_artifacts": [
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "sha256": "ff7c849a4e521fdbb84b02c71fab83a525ad534122c30b68cfdecc9077ec453f",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "b04f1b4b6914498aef2a7e4e5ffed8cb385454c4bc22fe49b10a5997ec27a6ad"
+      ]
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "sha256": "b4d77d6dd176cff4ef53b21009bf894c266fd1d5061e9953965ce9c570be5125",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "e4ea44cf1057e0a42fce7e57ac04e063f4d8f967d2cb853f7173d77ef22dfda6"
+      ]
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "sha256": "04eb04b608bf72264f570a859edb607047be4113e631515c6c9106fa783eb1c5",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "9b996d3e5656c0d40f019a55131d676e62d9f26988e22023aa56bef4183cebab"
+      ]
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "sha256": "971908501cfff5a2e2f488fb7b2c0391f8d6d3ad01b2bb87b92f598ee7991d68",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "6c80f0b423635bda20ede7db7f85d0b6a05f4790fd9811c3642aadd2d5d4a01e"
+      ]
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "sha256": "f82febbc20984dde58611a7c679c85386505e0d9248be52f4588b668cb70cb2e",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "db9ec0d632d911c8a6d68bca9e984f75740e5fdcb69f05993936a4d3feada0c9"
+      ]
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "sha256": "85b0190ab1942af660dd62871be1cb58c191dc5ad964cff0aeb9b2ce4a25f3c6",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "2bb36e5af7741d2d730c5518f9997c4046407dd8e5be50d39a7b451338e7562b"
+      ]
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "sha256": "2a52320580f5a65a8554b38ae213019e09210e1aef940037b685df2177c5bb62",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "2f907d08389808f29022c91fe644686fcd0dce285a88b8c08eaa2a59576540c7"
+      ]
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "sha256": "2f8b7ac89881f1ab5f05346d1cb24259b148f19b45f04429f6d57faf008f60fc",
+      "active": false,
+      "unchanged_since_prior_reviewed_76_candidate": true,
+      "gate_source_sha256": [
+        "225321826830fe8077d1c8814ff5e7a733fb746743bc560996c88b69ae9011ea"
+      ]
+    }
+  ],
+  "source_contract_review": [
+    {
+      "contract": "Cron cutover and provided n8n cadence",
+      "finding": "Fail closed on malformed recurring five-field cadence; cron --cadence must match actual legacy expression before writes. Bare/imported lane-registry modes retained.",
+      "locations": [
+        "scripts/pipelines/cutover/_cutover.py:287",
+        "scripts/pipelines/cutover/_cutover.py:418",
+        "scripts/lib/lane_registry.py:40",
+        "scripts/lib/lane_registry.py:183"
+      ]
+    },
+    {
+      "contract": "Installed launcher code roots",
+      "finding": "Six defaults derive installed BASH_SOURCE root; deliberate shared .venv interpreter remains. Relative scripts execute after cd to installed code root; existing weekly/monthly root and lookthrough argument overrides retained. No new broker/sender/model authority in diffs.",
+      "locations": [
+        "linux_launchers/run_pg_backup.sh:4",
+        "linux_launchers/run_portfolio.sh:3",
+        "linux_launchers/run_portfolio_weekly.sh:6",
+        "linux_launchers/run_portfolio_monthly.sh:6",
+        "linux_launchers/run_price_cache.sh:3",
+        "linux_launchers/run_lookthrough.sh:8"
+      ]
+    },
+    {
+      "contract": "Governed fallback and health",
+      "finding": "Both health-driven and transport alternate selection require explicit raw-process fallback_allowed is True; alternate must have current attributable healthy proof. UNKNOWN, stale/global-only/substring-unattributable evidence cannot qualify. Primary UNKNOWN handling from upstream retained.",
+      "locations": [
+        "scripts/lib/cio_governed_model_bridge.py:517",
+        "scripts/lib/cio_governed_model_bridge.py:531",
+        "scripts/lib/cio_governed_model_bridge.py:731",
+        "scripts/lib/cio_governed_model_bridge.py:1397",
+        "scripts/lib/cio_governed_model_bridge.py:1413"
+      ]
+    },
+    {
+      "contract": "Settled SSE and output schema",
+      "finding": "SSE emits settled result without another resolver/provider/reservation; preserves choices/indexes/content/reasoning/tool fields/finish/usage/provenance. n8n output requires nonempty structurally usable choices before success validation. Positive fallback fixtures explicitly inject authorization and health rather than change production flags.",
+      "locations": [
+        "scripts/lib/cio_governed_model_bridge.py:1955",
+        "scripts/lib/cio_governed_model_bridge.py:2336",
+        "scripts/lib/bridge_agent_preconditions.py:200",
+        "tests/test_bridge_agent_preconditions_20261009.py:93",
+        "tests/test_ops_summary_model_job_live_wiring_20261008.py:30"
+      ]
+    },
+    {
+      "contract": "N2 receipt dependency proof",
+      "finding": "Scoped predecessor requires relay schema/status/lane match, live mode, RUN_DONE, numeric exit 0, aware finite nonfuture request/completion ordering and correct ET request business day with overnight completion permitted. $runIndex bounds five total checks/four waits; missing or invalid counter fails. Relay retains all mandatory proof fields. No generated N2 active=true.",
+      "locations": [
+        "scripts/n8n_workflow_templates.py:789",
+        "scripts/n8n_workflow_templates.py:830",
+        "scripts/n8n_workflow_templates.py:837",
+        "scripts/n8n_workflow_templates.py:840",
+        "scripts/n8n_run_relay.py:50"
+      ]
+    },
+    {
+      "contract": "Offline replay honesty and input preservation",
+      "finding": "Explicit timestamped identity/spot/facts adapter uses existing evaluator only. Lookahead/malformed data and derived nonfinite scores refuse. Output archive directory/path/inode aliases refused before output writes; missing option comparison stays insufficient and superiority null. No production history or readiness inferred.",
+      "locations": [
+        "scripts/ops/run_cross_asset_historical_replay.py:165",
+        "scripts/ops/run_cross_asset_historical_replay.py:236",
+        "scripts/ops/run_cross_asset_historical_replay.py:272",
+        "scripts/ops/run_cross_asset_historical_replay.py:307"
+      ]
+    },
+    {
+      "contract": "Research feed and health visibility",
+      "finding": "Research content-version feed id dedupes capture-time repeats while preserving persisted legacy identities. Failed/malformed scalp cycle returns nonzero before OK projection; malformed/future/stale projection is excluded; UI unavailable API count is unknown, valid empty is zero and retained error response labelled stale.",
+      "locations": [
+        "scripts/lib/governed_research_producer.py:152",
+        "scripts/run_trade_ai_scalp_live.py:100",
+        "scripts/scalp_shadow_logger.py:317",
+        "apps/command-center-v3/src/components/tradeai/ActiveTraderFiresStrip.tsx:16"
+      ]
+    },
+    {
+      "contract": "Grant attribution",
+      "finding": "Activation must be covered at activated_at; import grant attributed separately and cannot certify a later ungranted activation. Audit remains read-only.",
+      "locations": [
+        "scripts/check_n8n_activation_grants.py:191"
+      ]
+    }
+  ],
+  "prior_test_receipts": {
+    "transport_prior": {
+      "path": "/tmp/tradeai-n8n-transport-prior-negative-20261009.log",
+      "sha256": "4a84c36331be36f1ce32ee45e62372f648b243c7ba65b83e263dd054c45c52fb",
+      "matches_closed_handoff": true,
+      "result": "9FAIL/1PASS; beforetransportguard",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "transport_fixed": {
+      "path": "/tmp/tradeai-n8n-transport-fixed-negative-20261009.log",
+      "sha256": "dcc6f186b79ffdcb8187d1fdf805703ee7721f97aa3324ab2c824b4c59ca5d3f",
+      "matches_closed_handoff": true,
+      "result": "10PASS",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "initial_loopback_tooling_and_ops_gap": {
+      "path": "/tmp/tradeai-n8n-integration-routing-regression-initial-20261009.log",
+      "sha256": "4ff4239409213a5fb0c4d29bde0ea1aa3cc14b39decc2f107156099eb306f4df",
+      "matches_closed_handoff": true,
+      "result": "73PASS/18FAIL;16socketEPERM+2opsfixtureauthoritygaps; DBattemptsandboxblocked",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "d7_bridge_routing_ops": {
+      "path": "/tmp/tradeai-n8n-integration-routing-regression-approved-20261009.log",
+      "sha256": "61de9090b2fa42416674f3d3edd237ab069f59d9dd976131c43fd3a61469185a",
+      "matches_closed_handoff": true,
+      "result": "91PASS15.37s",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "strict_n8n_route": {
+      "path": "/tmp/tradeai-n8n-integration-strict-route-gate-20261009.log",
+      "sha256": "016b91ea209f4138cefce11ceda81d8c8a8160951db3dbad7700f3020f4ea80a",
+      "matches_closed_handoff": true,
+      "result": "47PASS8.34s; identicalperformanceceilings",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "governance_and_lane_imports": {
+      "path": "/tmp/tradeai-n8n-integration-governance-fixtures-20261009.log",
+      "sha256": "6c4d20f48855fb0a6c9822e420527852f002b8530cde5494c148c4b72186ab2a",
+      "matches_closed_handoff": true,
+      "result": "81PASS2.26s",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "cb_new_families": {
+      "path": "/tmp/tradeai-n8n-integration-cb-new-families-20261009.log",
+      "sha256": "e908233cc727a13fe1fe1ba18d4d4a0e13e9a897a4e127b96a80ebcf19989bfd",
+      "matches_closed_handoff": true,
+      "result": "96PASS3.53s",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "integration_fixture_prior": {
+      "path": "/tmp/tradeai-n8n-integration-final-routing-fixture-mismatch-prior-20261009.log",
+      "sha256": "e90ce73a950036d3499e96cd77028bd034ef051f7d314558582588a3201c73d7",
+      "matches_closed_handoff": true,
+      "result": "157PASS/3FAIL16.44s; malformedpositivefixturesnotproductionregression",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "integration_fixed": {
+      "path": "/tmp/tradeai-n8n-integration-final-routing-guardrails-fixed-20261009.log",
+      "sha256": "025a9e1388ec6009504f9ead79bb2970fb6140eb04a20503d61a42435036ed17",
+      "matches_closed_handoff": true,
+      "result": "160PASS16.36s",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "peer_output_activation_prior": {
+      "path": "/tmp/tradeai-incoming-guardrail-negative-prior-20261009.log",
+      "sha256": "1150cd4d0d6303059e2109660634dda61514bc73dacda10966398e82861f470c",
+      "matches_closed_handoff": true,
+      "result": "9FAIL/6PASS/50deselected",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    },
+    "peer_output_activation_fixed": {
+      "path": "/tmp/tradeai-incoming-guardrail-final-tests-20261009.log",
+      "sha256": "63372f0f2be251f85f30e5a244e362e68416146eb59c9310b0871b46db3fa6e3",
+      "matches_closed_handoff": true,
+      "result": "65PASS0.94s",
+      "classification": "PREVIOUS_TEST_ONLY_RECEIPT_NOT_RERUN"
+    }
+  },
+  "handoff": {
+    "path": "/tmp/tradeai-n8n-frozen-main-integration-handoff-20261009.json",
+    "sha256": "4d508aeed6a8c3f0c4a003cf698b9a9840e63304411ae783c6942aa8af0a140f"
+  },
+  "remaining_limits": [
+    "Final canonical acceptance at regenerated publication candidate remains PENDING; this review does not supersede retained failed earlier run36.",
+    "Parent owns INDEX regeneration/evidence checkpoint/publication grants/PR/deployment. This child performed no Git/source/index mutations.",
+    "Four N1 cron NO_GO rows are planned source intent; host restoration requires explicit scoped grants, workflow drain/deactivation and independent runtime acceptance.",
+    "N2 generated workflows remain inactive; no N2 scheduler cutover authorized or proven.",
+    "No model/provider/LLM requests, credentials, broker/order/stop/risk/live-send mutations or host observations in this review. Authority conclusion limited to actual changed diff and unchanged configuration bytes.",
+    "Shared interpreter .venv fallback remains deliberate; no exhaustive runtime child-process proof asserted.",
+    "CADI production remains NOT_READY absent canonical immutable decision/full-option-chain point-time proof and real 30/60/90 archive replay.",
+    "Inherited AGENTS.md:3875 ACTIVE3.0.0 heading coexists with stale awaiting/Untilthen2.0.1 prose at3879; ratification receipt at4210 exists. Owner documentation correction remains separate from authority interpretation."
+  ],
+  "commands": [
+    "git rev-parse HEAD",
+    "git diff --name-only cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf 8c72ea5e8cff77984670f18f373a5a9817519701 -- config scripts linux_launchers apps/command-center-v3/src",
+    "git diff --unified=3 cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf 8c72ea5e8cff77984670f18f373a5a9817519701 -- <each of19productionpaths>",
+    "git show 8c72ea5e8cff77984670f18f373a5a9817519701:<reviewedpath> and git show cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf:<authoritypath>; SHA256 currentworkingbytes and committedblobs",
+    "git ls-tree -r --name-only 8c72ea5e8cff77984670f18f373a5a9817519701 docs/implementation/n8n-parallel/workflows/generated/pending; JSON staticgate/inactive inspection; exactblob comparison to 76e83b03c02971710dbaaac7bda7772c0fcba825",
+    "rg source line references and read injected fixture context; no fixtures executed"
+  ]
+}

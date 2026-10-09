@@ -153,6 +153,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261009T131239Z/26-current-source-integration-status.md` | Current corrective source integration | review_required | OK | `09c2e72041e4` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/44-integrated-source-prepublication-report.md` | Runtime convergence source closeout — final publication draft | review_required | OK | `2f85d7ac24f2` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/45-exact-publication-prerequisites-draft.md` | Exact publication prerequisites — proposed, no request issued | review_required | MISSING HEADER | `bf501302b0bc` |
+| `docs/_evidence/runtime-convergence/20261009T131239Z/50-final-source-report.md` | Runtime convergence — final validated-source closeout | review_required | MISSING HEADER | `c30f584b3a84` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/tradeai-n8n-community-capability-security-review-20261009.md` | n8n Community capability and security documentation review | review_required | OK | `385f692538b6` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/tradeai-runtime-executor-unit-supplement-20261009.md` | Executor unit and policy supplement — proposed only | review_required | MISSING HEADER | `71ad5a42edf1` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/tradeai-runtime-operator-scheduler-supplement-20261009.md` | Corrected operator-owned scheduler recovery packet | review_required | MISSING HEADER | `77a21032e259` |

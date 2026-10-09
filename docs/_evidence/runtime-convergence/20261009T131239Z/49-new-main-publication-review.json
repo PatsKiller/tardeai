@@ -1,0 +1,572 @@
+{
+  "schema": "IncomingFrozenMainPublicationReview@v1",
+  "evidence_class": "OBSERVED_GITHUB/SOURCE_ONLY",
+  "measured_at": "2026-10-09T19:19:05.081596+00:00",
+  "reviewed_frozen_candidate_sha": "07632038fa49baa4e8115c1973a214da59cb88c3",
+  "reviewed_production_source_sha": "8c72ea5e8cff77984670f18f373a5a9817519701",
+  "comparison_base_sha": "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf",
+  "comparison_head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+  "api_url": "https://api.github.com/repos/PatsKiller/tardeai/compare/cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf...113c6f3a4b49da8c276de275dfda0da6276e86b6",
+  "api_status": "ahead",
+  "ahead_by": 3,
+  "behind_by": 0,
+  "merge_base_sha": "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf",
+  "commits": [
+    {
+      "sha": "3bac3f1c9a7c39f3f94ae4b4d84e63c182a44543",
+      "title": "train: phone status (#1563) + backup coverage gate (#1557) + AGENTS.md guard hook (#1565) (#1569)",
+      "committed_at": "2026-10-09T18:21:41Z",
+      "parents": [
+        "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf"
+      ]
+    },
+    {
+      "sha": "8c2eec70dea0b87915ed6b353e60359c620f8c77",
+      "title": "feat(n8n): ops lanes \u2014 storage-watch, backup-verify (fix path), monthly restore drill, rollup + P16/P18 shadow workflows (#1567)",
+      "committed_at": "2026-10-09T18:29:28Z",
+      "parents": [
+        "3bac3f1c9a7c39f3f94ae4b4d84e63c182a44543"
+      ]
+    },
+    {
+      "sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+      "title": "fix(retention): switch off the 30-day content_embeddings source windows (declared, not enforced) (#1570)",
+      "committed_at": "2026-10-09T18:45:43Z",
+      "parents": [
+        "8c2eec70dea0b87915ed6b353e60359c620f8c77"
+      ]
+    }
+  ],
+  "changed_file_count": 44,
+  "files": [
+    {
+      "filename": "config/agents_guard_hook_rules.json",
+      "status": "added",
+      "additions": 593,
+      "deletions": 0,
+      "changes": 593,
+      "patch_available": true,
+      "patch_sha256": "56f2190dffc05b47ac400334d6d19a79fa7214dfd5d467d3d174417173aab7a0"
+    },
+    {
+      "filename": "config/backup_coverage_baseline.json",
+      "status": "added",
+      "additions": 66,
+      "deletions": 0,
+      "changes": 66,
+      "patch_available": true,
+      "patch_sha256": "e92422e41107810d70b40b79ae57cdc211e8536ca7850e71933dceae920dc698"
+    },
+    {
+      "filename": "config/backup_coverage_manifest.json",
+      "status": "added",
+      "additions": 864,
+      "deletions": 0,
+      "changes": 864,
+      "patch_available": true,
+      "patch_sha256": "b01f6d5602b61ff69c7d917920f45e4da1f011c60261c5d143e77c1060c03064"
+    },
+    {
+      "filename": "config/ci_risk_tiers.json",
+      "status": "modified",
+      "additions": 2,
+      "deletions": 0,
+      "changes": 2,
+      "patch_available": true,
+      "patch_sha256": "51db09b54bfcba280e5e6bb19b3df92b1fa74087432eb287bfa04b51f9c4680b"
+    },
+    {
+      "filename": "config/data_retention_policy.json",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 2,
+      "changes": 5,
+      "patch_available": true,
+      "patch_sha256": "7af6adfcfeb51638a8287f81ecf94bf726f1328f1f55edd4c467bb5a97392fb3"
+    },
+    {
+      "filename": "config/expected_services.json",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 0,
+      "changes": 4,
+      "patch_available": true,
+      "patch_sha256": "ff9961f7ee6a6873cea8017706a94ec6b5cf4cd75b4b7215834b923d531f7bb4"
+    },
+    {
+      "filename": "config/lane_registry.json",
+      "status": "modified",
+      "additions": 73,
+      "deletions": 1,
+      "changes": 74,
+      "patch_available": true,
+      "patch_sha256": "0ee1127c251be684d13b99eb6f381e8e75047588994ddf60d119453132d451fb"
+    },
+    {
+      "filename": "config/n8n_run_allowlist.json",
+      "status": "modified",
+      "additions": 60,
+      "deletions": 1,
+      "changes": 61,
+      "patch_available": true,
+      "patch_sha256": "8d14f2441232a1846a61d3fefa71c0485efa354acbd586d7c269f47adda547c6"
+    },
+    {
+      "filename": "config/ops_lanes.json",
+      "status": "added",
+      "additions": 82,
+      "deletions": 0,
+      "changes": 82,
+      "patch_available": true,
+      "patch_sha256": "13fd0ea618738bbc66a80bd1770a8743125e64005d1dbe983fcb4c4206ecf932"
+    },
+    {
+      "filename": "config/secret_registry.yaml",
+      "status": "modified",
+      "additions": 8,
+      "deletions": 0,
+      "changes": 8,
+      "patch_available": true,
+      "patch_sha256": "b50a6374690bda803f3c62480615579a89131cb490f4bb0edd0d7fd0e2be25f3"
+    },
+    {
+      "filename": "config/systemd/user/tradeai-phone-status.service",
+      "status": "added",
+      "additions": 34,
+      "deletions": 0,
+      "changes": 34,
+      "patch_available": true,
+      "patch_sha256": "623f76429c57a4c01fb081f5dfc35d9e182caad2c3fb24dd7ef958ae653a70cd"
+    },
+    {
+      "filename": "docs/INDEX.md",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 0,
+      "changes": 4,
+      "patch_available": true,
+      "patch_sha256": "dba06fb36741d9f5c9e1709dc064e22263af25573cb4a1827e72e5c97a5d5b16"
+    },
+    {
+      "filename": "docs/implementation/backup/restore-drill-proposal-20261009.md",
+      "status": "added",
+      "additions": 223,
+      "deletions": 0,
+      "changes": 223,
+      "patch_available": true,
+      "patch_sha256": "cd022b839c32ef57ea302fa78d2ab3fe18c52846481b3ec4840df4e262260a05"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "22bad6be864ade26bc701b017a0f50e5c86c88baab96fa75f0abd54c00c3ca80"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/INDEX.json",
+      "status": "modified",
+      "additions": 65,
+      "deletions": 4,
+      "changes": 69,
+      "patch_available": true,
+      "patch_sha256": "bce8d14894fbdb259ebd2dc7090337ec85e202fd5b72ae867c653d3017de14c8"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/backup-verify-shadow.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "20e12190f950c3f5a2ad77c65ef824848be5dbc595c6d35e5c22ff5d06ea4254"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/backup-verify.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "6837cd42a8690c45cc3679aa17880d72b385af75381014051db5b33047cf5a33"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/n8n-workflow-drift-check-shadow.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "e5852e889d78b554d4e2acef1ef767ee1d1c079a9a5473883ea79d4c7aa50161"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/n8n-workflow-drift-check.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "a8271878155a92aead1e0719299e3303ff2812d7124c00809a5bfb05f47d6672"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/storage-watch-shadow.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "d8e588c0aa20644b12d021119d59583b77b1662b2337e1dffd76e6d8858db69a"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/storage-watch.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "908a6e4d5bc09c61b755ffd8e66e2c3c021f366ca378a93ca58bc951044599e7"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-restore-drill-shadow.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "00768feb3cd2fb4322b2f6de2618a95cccf77a685c30624db1c438b2e3ddfec3"
+    },
+    {
+      "filename": "docs/implementation/n8n-parallel/workflows/generated/trade-ai-restore-drill.json",
+      "status": "added",
+      "additions": 150,
+      "deletions": 0,
+      "changes": 150,
+      "patch_available": true,
+      "patch_sha256": "8dcbc0bd1d40b8fcdfcdaf14c069f8d4478c5be07e6882897b0c241cb46aca33"
+    },
+    {
+      "filename": "docs/ops/AGENTS_GUARD_HOOK.md",
+      "status": "added",
+      "additions": 251,
+      "deletions": 0,
+      "changes": 251,
+      "patch_available": true,
+      "patch_sha256": "3d2dd326a5fb58d48e77aec0fe62274e178b22b77ed68871d06fc3480c042e21"
+    },
+    {
+      "filename": "docs/ops/PHONE_OPS_20261009.md",
+      "status": "added",
+      "additions": 310,
+      "deletions": 0,
+      "changes": 310,
+      "patch_available": true,
+      "patch_sha256": "fc7b069a6e5da110015c1b2aa848711a037ff9c99438c4459921b8f331ef766b"
+    },
+    {
+      "filename": "scripts/backup_verify.py",
+      "status": "modified",
+      "additions": 365,
+      "deletions": 59,
+      "changes": 424,
+      "patch_available": true,
+      "patch_sha256": "64b2a48a36751eab8248de4501065c22cb871323ebd9a3605ff01dfb4ec22fa8"
+    },
+    {
+      "filename": "scripts/check_backup_coverage.py",
+      "status": "added",
+      "additions": 438,
+      "deletions": 0,
+      "changes": 438,
+      "patch_available": true,
+      "patch_sha256": "b1b3858f7abd4515df7842f77baed35d9f253f325cd8d178606197550c35bd33"
+    },
+    {
+      "filename": "scripts/cio_phase2_exact_main_deploy.sh",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "patch_available": true,
+      "patch_sha256": "0283f09a7e247daa2e9bec7da80a19773251884ee258252dd5485dbd8288699a"
+    },
+    {
+      "filename": "scripts/db_retention.py",
+      "status": "modified",
+      "additions": 5,
+      "deletions": 0,
+      "changes": 5,
+      "patch_available": true,
+      "patch_sha256": "ca356b4065fe7872be5a72f4a9e7713f058cb11806a3d521d8caf7164f1372b1"
+    },
+    {
+      "filename": "scripts/hooks/agents_guard_pretooluse.py",
+      "status": "added",
+      "additions": 1478,
+      "deletions": 0,
+      "changes": 1478,
+      "patch_available": true,
+      "patch_sha256": "5014d1109470bdb04e5f46a44517a0e2d78db9e745c339ee72cb3ab1deb476c1"
+    },
+    {
+      "filename": "scripts/lib/ops_lanes.py",
+      "status": "added",
+      "additions": 198,
+      "deletions": 0,
+      "changes": 198,
+      "patch_available": true,
+      "patch_sha256": "df64d587a05d4b0497b10b8d92fc76a79bde0be4e277c10289302639d7c9de4b"
+    },
+    {
+      "filename": "scripts/n8n_workflow_templates.py",
+      "status": "modified",
+      "additions": 39,
+      "deletions": 3,
+      "changes": 42,
+      "patch_available": true,
+      "patch_sha256": "5b0affb4319ebcb4ff12c1c4c571ae919d407c2266fee87a8e835b1165023019"
+    },
+    {
+      "filename": "scripts/phone_status_endpoint.py",
+      "status": "added",
+      "additions": 500,
+      "deletions": 0,
+      "changes": 500,
+      "patch_available": true,
+      "patch_sha256": "d775095c4cac596447e750ab66dfa1416a2179ee1a3e28a234d79bca5c891dfe"
+    },
+    {
+      "filename": "scripts/report_agents_guard_hook.py",
+      "status": "added",
+      "additions": 190,
+      "deletions": 0,
+      "changes": 190,
+      "patch_available": true,
+      "patch_sha256": "739882a977d4f016bed581532667a7aa03be9ace8003231d04c03691aefb7457"
+    },
+    {
+      "filename": "scripts/run_cio_hardening_ci.py",
+      "status": "modified",
+      "additions": 32,
+      "deletions": 0,
+      "changes": 32,
+      "patch_available": true,
+      "patch_sha256": "b1fb6dcece86b42d59a9c68021f071c581df4fe367a82464c6177d348d2e95c5"
+    },
+    {
+      "filename": "scripts/storage_watch.py",
+      "status": "added",
+      "additions": 289,
+      "deletions": 0,
+      "changes": 289,
+      "patch_available": true,
+      "patch_sha256": "d6017225645b998c2f7070d658358b9baeb45711577be92f0260205c264c3679"
+    },
+    {
+      "filename": "scripts/trade_ai_restore_drill.py",
+      "status": "added",
+      "additions": 365,
+      "deletions": 0,
+      "changes": 365,
+      "patch_available": true,
+      "patch_sha256": "4ef38958b82317c5b944b378a5054edb0bd3873852b92754521dbc471537c1d9"
+    },
+    {
+      "filename": "tests/test_agents_guard_hook_20261009.py",
+      "status": "added",
+      "additions": 709,
+      "deletions": 0,
+      "changes": 709,
+      "patch_available": true,
+      "patch_sha256": "91bc9d8e2b8c8e03caaab90cdd461f05c0c29ad2a2f1d079af79b86e8c3a6a2f"
+    },
+    {
+      "filename": "tests/test_backup_coverage_gate_20261009.py",
+      "status": "added",
+      "additions": 285,
+      "deletions": 0,
+      "changes": 285,
+      "patch_available": true,
+      "patch_sha256": "23541445afb197f0c7e86729b603d3dda8ca2d2b2c5c55fb6d6fe6fa6121959e"
+    },
+    {
+      "filename": "tests/test_n8n_ops_lanes_20261009.py",
+      "status": "added",
+      "additions": 540,
+      "deletions": 0,
+      "changes": 540,
+      "patch_available": true,
+      "patch_sha256": "3b674a2c5679f0d9d08355e9dd0e7ef0e8b4e2c374a3ff1a0b60d77a3a288046"
+    },
+    {
+      "filename": "tests/test_n8n_workflow_drift_20261009.py",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 3,
+      "changes": 7,
+      "patch_available": true,
+      "patch_sha256": "dd9374d8cd8a5cc8fd34dee7fa72df982230cbadc1a338499aaeaa6dc40b3c2d"
+    },
+    {
+      "filename": "tests/test_n8n_workflow_templates_20261008.py",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "patch_available": true,
+      "patch_sha256": "32dd8d647d6c0cb3c6a248940142ce8fa40654446dd37253f0cafe7f8632d189"
+    },
+    {
+      "filename": "tests/test_phone_status_endpoint_20261009.py",
+      "status": "added",
+      "additions": 350,
+      "deletions": 0,
+      "changes": 350,
+      "patch_available": true,
+      "patch_sha256": "683ee70c5c46ca09bfed76c5454c174f84b3ce16c0c9e9a5bcce61d9a99e4e71"
+    },
+    {
+      "filename": "tests/test_retention_source_windows_junk_20261009.py",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 0,
+      "changes": 3,
+      "patch_available": true,
+      "patch_sha256": "cb7dabd290d42e91e60c4fb61cbb909da7a72e73f81307c232154638432e55c3"
+    }
+  ],
+  "overlap_with_19_reviewed_production_paths": [
+    "config/lane_registry.json",
+    "scripts/n8n_workflow_templates.py"
+  ],
+  "other_candidate_overlaps": [
+    "docs/INDEX.md",
+    "docs/implementation/n8n-parallel/workflows/generated/INDEX.json",
+    "tests/test_n8n_workflow_templates_20261008.py"
+  ],
+  "authority_and_control_metadata_paths_changed_upstream": [
+    "config/agents_guard_hook_rules.json",
+    "config/backup_coverage_baseline.json",
+    "config/backup_coverage_manifest.json",
+    "config/ci_risk_tiers.json",
+    "config/data_retention_policy.json",
+    "config/expected_services.json",
+    "config/lane_registry.json",
+    "config/n8n_run_allowlist.json",
+    "config/ops_lanes.json",
+    "config/secret_registry.yaml",
+    "config/systemd/user/tradeai-phone-status.service"
+  ],
+  "modified_existing_test_paths": [
+    "tests/test_n8n_workflow_drift_20261009.py",
+    "tests/test_n8n_workflow_templates_20261008.py",
+    "tests/test_retention_source_windows_junk_20261009.py"
+  ],
+  "new_required_gate_families": [
+    "n8n_ops_lanes_20261009",
+    "PHONE_STATUS",
+    "backup_coverage_gate_20261009",
+    "AGENTS_GUARD_HOOK"
+  ],
+  "old_candidate_production_hashes_still_match_closed_review": true,
+  "newmain_assessment": [
+    {
+      "commit": "3bac3f1c9a7c39f3f94ae4b4d84e63c182a44543",
+      "assessment": "Adds backup coverage manifest/baseline/checker, phone-status endpoint with proposed uninstalled unit/secret-name metadata, and optional report-first PreToolUse hook. Adds new gates rather than removing existing gates. No installation/activation from API source evidence. Hook default log/fail-open is visibility, not proof that hard rails are enforced."
+    },
+    {
+      "commit": "8c2eec70dea0b87915ed6b353e60359c620f8c77",
+      "assessment": "Adds proposed N7 storage/backup/restore-drill/drift workflows and four NEVER_SCHEDULED registry rows. Three new executor allowlist capabilities; restore drill --write creates/drops a guarded temporary DB and needs separately governed CREATEDB/runtime authority. No grant/activation proven by source. Preserve shared backup verification lock and inactive workflow state at integration."
+    },
+    {
+      "commit": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+      "assessment": "Safety correction switches content_embeddings source-window enforcement OFF pending correct source time and operator social-post deletion decision. Must remain OFF in eventual exact-main candidate/deployment; older frozen branch full acceptance does not validate this new code/config."
+    }
+  ],
+  "merge_risks": [
+    {
+      "path": "scripts/n8n_workflow_templates.py",
+      "risk": "Same file and adjacent constant/comment edit: upstream N7 TRANCHES/COMMITTED_TRANCHES additions sit next to our bounded-retry comment. Preserve our five-total-check/four-wait semantics and strict N2 gate; preserve incoming N7 declarations. No upstream edit to _gate_js observed in API patch. Exact textual conflict NOT_MEASURED without an actual merge."
+    },
+    {
+      "path": "config/lane_registry.json",
+      "risk": "Upstream appends four NEVER_SCHEDULED rows and updates P18 proposed description; our four N1 planned cron NO_GO rows are different identities/locations. Likely additive semantic merge; exact textual conflict NOT_MEASURED. Never turn source intent into observed live ownership or flip new rows ACTIVE."
+    },
+    {
+      "path": "docs/implementation/n8n-parallel/workflows/generated/INDEX.json and docs/INDEX.md",
+      "risk": "Generated metadata/index overlap requires native regeneration on an eventual updated candidate. Existing inactive N2 parity and proposed N7 inactive state must both survive."
+    },
+    {
+      "path": "tests/test_n8n_workflow_templates_20261008.py",
+      "risk": "Existing generator fixture must support incoming COMMITTED_TRANCHES N7 while retaining all our N2 strict-proof/retry negatives. No performance/authority assertion removal observed."
+    },
+    {
+      "path": "scripts/run_cio_hardening_ci.py",
+      "risk": "Four incoming registered families were absent from frozen336-gate canonical46; all must run at future updated merge candidate. Earlier full336 PASS cannot certify main113 gates."
+    }
+  ],
+  "assertion_and_gate_review": {
+    "existing_gateway_executor_latency_lock_and_time_limits_changed_by_newmain": false,
+    "bridge_fallback_health_sse_tests_changed_by_newmain": false,
+    "existing_test_changes": [
+      {
+        "path": "tests/test_n8n_workflow_templates_20261008.py",
+        "assessment": "N1-only committed-file predicate generalized to actual COMMITTED_TRANCHES for N7; retains other assertions."
+      },
+      {
+        "path": "tests/test_n8n_workflow_drift_20261009.py",
+        "assessment": "Old no-generated-workflow assertion replaced with N7 tranche plus shadow workflow id; new-source contract change, not runtime activation evidence."
+      },
+      {
+        "path": "tests/test_retention_source_windows_junk_20261009.py",
+        "assessment": "Adds committed-config enforcement-OFF assertion, then explicitly removes flag only in test copy to preserve existing declared-window validation."
+      }
+    ],
+    "postgres_driver_skip_limit": "New restore-drill integration fixture cases may skip when CI lacks PostgreSQL driver; no test execution performed here. Future validation must report skips and run guarded drill negatives with required driver in injected fixture environment."
+  },
+  "required_main_protection": {
+    "evidence_class": "OBSERVED_GITHUB",
+    "observed_at": "2026-10-09T19:08:40Z",
+    "strict": true,
+    "enforce_admins": true,
+    "contexts": [
+      "cio-hardening",
+      "agent-governance",
+      "release-readiness"
+    ],
+    "required_approving_review_count": 0,
+    "dismiss_stale_reviews": true,
+    "command": "gh api repos/PatsKiller/tardeai/branches/main/protection --jq <required check and review metadata>"
+  },
+  "publication_verdict": "SAFE_TO_PUBLISH_REVIEWABLE_FROZEN_PR_WITH_EXPLICIT_OUTDATED_BASE_LIMIT",
+  "publication_blockers_found": [],
+  "merge_verdict": "NOT_CURRENT_MAIN_MERGE_READY",
+  "merge_blockers": [
+    "Frozen candidate lacks the three observed new main commits. Required status strict=true means update and exact candidate checks are needed before merge.",
+    "New incoming gate families, template/registry/generated-index compatibility and safety retention-OFF change are not certified by canonical46 on frozen076."
+  ],
+  "deployment_verdict": "NOT_ASSESSED_OR_AUTHORIZED_BY_THIS_REVIEW",
+  "minimum_future_integration_validation": [
+    "Merge exact approved main snapshot through coordinated source work; preserve our strict fallback/SSE/N2/performance fixtures and incoming retention-OFF guard.",
+    "Regenerate source-bound workflow INDEX and docs INDEX using native workflow; verify all N2/N7 generated workflows remain inactive.",
+    "Run incoming four gate families plus affected lane registry, workflow template/drift, allowlist, backup coverage/launcher roots, retention and deploy-root tests. Run exact-head required GitHub checks and all local canonical gates required by policy.",
+    "Do not activate proposed N7 workflows, install phone-status or change DB roles as a consequence of source merge; separate scoped grants/runtime proof apply."
+  ],
+  "limits": [
+    "Read-only GitHub API comparison to exact113c; no fetch/ref/source/INDEX changes, no merge/conflict simulation, tests, runtime/provider/model/secret/grant/push calls.",
+    "New1478-line hook and all new operational implementations received bounded scope/patch review only, not exhaustive security or production acceptance.",
+    "Parent reported canonical46 all336 gates PASS at frozen076; this is a separate closed TEST_ONLY receipt, not a new-main pass.",
+    "Current GitHub head may advance later; this review deliberately does not chase it."
+  ],
+  "raw_api_artifact": {
+    "path": "/tmp/tradeai-newmain-api-compare-20261009T190840Z.json",
+    "sha256": "e5e65e7ee488f81330743010d10e5b31c8bcfa8ea82dd24d2439bfebd23b9664"
+  },
+  "commands": [
+    "gh api repos/PatsKiller/tardeai/compare/cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf...113c6f3a4b49da8c276de275dfda0da6276e86b6",
+    "gh api repos/PatsKiller/tardeai/branches/main/protection --jq <metadata>",
+    "git diff --name-only cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf 07632038fa49baa4e8115c1973a214da59cb88c3 (local read-only)",
+    "Static JSON patch inspection + hashes of already reviewed19 production working files"
+  ]
+}

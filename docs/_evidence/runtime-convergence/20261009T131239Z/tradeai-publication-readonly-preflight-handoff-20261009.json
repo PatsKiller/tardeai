@@ -1,0 +1,375 @@
+{
+  "schema": "ReadOnlyPublicationPreflightHandoff@v1",
+  "prepared_at": "2026-10-09 19:04:11 UTC",
+  "evidence_classes": [
+    "OBSERVED_CURRENT",
+    "OBSERVED_GITHUB",
+    "SOURCE_ONLY",
+    "NOT_MEASURED"
+  ],
+  "local_preflight": {
+    "schema": "ReadOnlyPublicationLocalPreflight@v1",
+    "as_of": "2026-10-09T19:00:46.686686+00:00",
+    "completed_at": "2026-10-09T19:00:47.063149+00:00",
+    "evidence_class": "OBSERVED_CURRENT",
+    "worktree": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008",
+    "head": "07632038fa49baa4e8115c1973a214da59cb88c3",
+    "tree": "e6af84c24cd4989b05e89247f2d14d6fbecc2e01",
+    "branch": "codex/runtime-n8n-host-recovery-20261008",
+    "cached_origin_main": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+    "working_tree_clean": true,
+    "working_tree_status_line_count": 0,
+    "origin": {
+      "host": "github.com",
+      "repository": "PatsKiller/tardeai",
+      "protocol": "https",
+      "matches_user_repository": true,
+      "userinfo_present_without_value": false,
+      "raw_url_omitted": true
+    },
+    "proposed_push_ref": "refs/heads/codex/runtime-n8n-host-recovery-20261008",
+    "upstream": {
+      "exit": 0,
+      "ref": "origin/main"
+    },
+    "push_budget": {
+      "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.git/worktrees/tradeai-wt-runtime-n8n-host-recovery-20261008/tradeai-push-budget.json",
+      "override_variable_name": "TRADEAI_PUSH_BUDGET_PATH",
+      "override_present": false,
+      "present": false,
+      "mutated": false,
+      "parse_valid": null,
+      "fields": {},
+      "canonical_load_state_scope_matches_branch": true,
+      "canonical_effective_count": 0,
+      "maximum_without_override": 2,
+      "canonical_remaining": 2,
+      "default_zero_is_not_remote_history_proof": true
+    },
+    "mutations": false,
+    "fetch": false,
+    "provider_calls": false,
+    "native_guard_invoked": false,
+    "canonical46": "RUNNING_PARENT_SESSION84060; no final acceptance claim"
+  },
+  "github_queries": [
+    {
+      "query": "github_main",
+      "command": "gh api repos/PatsKiller/tardeai/commits/main --jq '{sha: .sha, committed_at: .commit.committer.date}'",
+      "evidence_class": "OBSERVED_GITHUB",
+      "started_at": "2026-10-09 19:01:15 UTC",
+      "completed_at": "2026-10-09 19:01:16 UTC",
+      "exit_code": 0,
+      "data": {
+        "committed_at": "2026-10-09T18:45:43Z",
+        "sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6"
+      },
+      "error": null
+    },
+    {
+      "query": "remote_branch",
+      "command": "gh api repos/PatsKiller/tardeai/git/ref/heads/codex/runtime-n8n-host-recovery-20261008 --jq '{ref: .ref, sha: .object.sha, type: .object.type}'",
+      "evidence_class": "OBSERVED_GITHUB",
+      "started_at": "2026-10-09 19:01:15 UTC",
+      "completed_at": "2026-10-09 19:01:16 UTC",
+      "exit_code": 1,
+      "data": null,
+      "error": {
+        "observed_status": 404,
+        "summary": "Exact branch ref API returned Not Found; repository main and PR queries succeeded."
+      }
+    },
+    {
+      "query": "existing_prs",
+      "command": "gh pr list --repo PatsKiller/tardeai --head codex/runtime-n8n-host-recovery-20261008 --state all --limit 20 --json number,state,isDraft,url,headRefOid,baseRefName,updatedAt",
+      "evidence_class": "OBSERVED_GITHUB",
+      "started_at": "2026-10-09 19:01:15 UTC",
+      "completed_at": "2026-10-09 19:01:16 UTC",
+      "exit_code": 0,
+      "data": [],
+      "error": null
+    },
+    {
+      "query": "required_status_checks",
+      "command": "gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks",
+      "evidence_class": "OBSERVED_GITHUB",
+      "started_at": "2026-10-09 19:01:15 UTC",
+      "completed_at": "2026-10-09 19:01:16 UTC",
+      "exit_code": 0,
+      "data": {
+        "url": "https://api.github.com/repos/PatsKiller/tardeai/branches/main/protection/required_status_checks",
+        "strict": true,
+        "contexts": [
+          "cio-hardening",
+          "agent-governance",
+          "release-readiness"
+        ],
+        "contexts_url": "https://api.github.com/repos/PatsKiller/tardeai/branches/main/protection/required_status_checks/contexts",
+        "checks": [
+          {
+            "context": "cio-hardening",
+            "app_id": 15368
+          },
+          {
+            "context": "agent-governance",
+            "app_id": 15368
+          },
+          {
+            "context": "release-readiness",
+            "app_id": 15368
+          }
+        ]
+      },
+      "error": null
+    },
+    {
+      "query": "effective_branch_rules",
+      "command": "gh api repos/PatsKiller/tardeai/rules/branches/main",
+      "evidence_class": "OBSERVED_GITHUB",
+      "started_at": "2026-10-09 19:01:15 UTC",
+      "completed_at": "2026-10-09 19:01:16 UTC",
+      "exit_code": 0,
+      "data": [],
+      "error": null
+    },
+    {
+      "query": "main_check_runs",
+      "command": "gh api repos/PatsKiller/tardeai/commits/113c6f3a4b49da8c276de275dfda0da6276e86b6/check-runs --jq '{total_count: .total_count, check_runs: [.check_runs[] | {name, status, conclusion, head_sha, started_at, completed_at, app_id: .app.id}]}'",
+      "evidence_class": "OBSERVED_GITHUB",
+      "started_at": "2026-10-09 19:02:29 UTC",
+      "completed_at": "2026-10-09 19:02:30 UTC",
+      "exit_code": 0,
+      "data": {
+        "check_runs": [
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T19:00:33Z",
+            "conclusion": "skipped",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "main-red-alert",
+            "started_at": "2026-10-09T19:00:34Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:45:47Z",
+            "conclusion": "skipped",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "cio-hardening-full",
+            "started_at": "2026-10-09T18:45:47Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T19:00:33Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "cio-hardening",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:46:35Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "research-governance",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:47:31Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "release-readiness",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:48:12Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "aif-financial-senses-integration",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:46:03Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "financial-senses",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:46:44Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "agent-governance",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:46:06Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "broader-regression",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          },
+          {
+            "app_id": 15368,
+            "completed_at": "2026-10-09T18:46:36Z",
+            "conclusion": "success",
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "name": "provider-cost",
+            "started_at": "2026-10-09T18:45:50Z",
+            "status": "completed"
+          }
+        ],
+        "total_count": 10
+      },
+      "error": null
+    },
+    {
+      "query": "main_combined_status",
+      "command": "gh api repos/PatsKiller/tardeai/commits/113c6f3a4b49da8c276de275dfda0da6276e86b6/status --jq '{sha, state, total_count, statuses: [.statuses[] | {context, state, updated_at}]}'",
+      "evidence_class": "OBSERVED_GITHUB",
+      "started_at": "2026-10-09 19:02:29 UTC",
+      "completed_at": "2026-10-09 19:02:30 UTC",
+      "exit_code": 0,
+      "data": {
+        "sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+        "state": "pending",
+        "statuses": [],
+        "total_count": 0
+      },
+      "error": null
+    }
+  ],
+  "summary": {
+    "frozen_canonical_head": "07632038fa49baa4e8115c1973a214da59cb88c3",
+    "canonical46": "RUNNING_PARENT_SESSION84060; actual exit/flags PENDING",
+    "remote_repository_confirmed": true,
+    "explicit_target_ref": "refs/heads/codex/runtime-n8n-host-recovery-20261008",
+    "upstream_is_main": true,
+    "implicit_upstream_push_prohibited_by_prepared_scope": true,
+    "push_budget_ledger_present": false,
+    "canonical_effective_push_count": 0,
+    "canonical_remaining_without_override": 2,
+    "actual_historical_push_count": "NOT_MEASURED; absent ledger default is not historical proof",
+    "exact_remote_branch_observed": "API404_NOT_FOUND",
+    "matching_prs_observed": [],
+    "latest_main_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+    "frozen_reviewed_base": "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf",
+    "new_main_vs_frozen_base": "DIFFERENT; classify after running gate freeze; no source modification performed",
+    "main_required_contexts": [
+      "cio-hardening",
+      "agent-governance",
+      "release-readiness"
+    ],
+    "require_branch_up_to_date_before_merge": true,
+    "required_context_observations": [
+      {
+        "context": "cio-hardening",
+        "app_id": 15368,
+        "observed_runs": [
+          {
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "context": "agent-governance",
+        "app_id": 15368,
+        "observed_runs": [
+          {
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "context": "release-readiness",
+        "app_id": 15368,
+        "observed_runs": [
+          {
+            "head_sha": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "legacy_combined_status": "pending with zero status entries; check-runs separately show all3 required main checks successful",
+    "candidate_github_ci": "NOT_MEASURED/PREPUBLICATION; main checks do not certify frozen candidate",
+    "branch_rulesets_observed": [],
+    "native_grant_or_request_state": "NOT_MEASURED; no guard invocation",
+    "source_acceptance": "BLOCKED"
+  },
+  "minimum_native_request": {
+    "verification_kind": "SOURCE_ONLY CLI read; not invoked",
+    "absolute_guard": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/bin/guard",
+    "action": "request git-push",
+    "for": "30m",
+    "uses": 1,
+    "reason_bindings": [
+      "FINAL_FULL_SHA",
+      "FINAL_TREE_SHA",
+      "PatsKiller/tardeai",
+      "origin",
+      "refs/heads/codex/runtime-n8n-host-recovery-20261008",
+      "FINAL_MANIFEST_SHA256"
+    ],
+    "operator_approval_required": true,
+    "forbidden_agent_action": "guard grant or simulated approval",
+    "request_command": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/bin/guard request git-push --for 30m --uses 1 --reason \"Publish exact validated HEAD <FINAL_FULL_SHA> tree <FINAL_TREE_SHA> to PatsKiller/tardeai origin HEAD:refs/heads/codex/runtime-n8n-host-recovery-20261008; manifest <FINAL_MANIFEST_SHA256>; one corrective-source PR; no merge/deploy/scheduler authority\"",
+    "sources": [
+      "bin/guard:7",
+      "bin/guard:213",
+      "scripts/guard_request_approval.py:136",
+      "AI_WORK_POLICY.md:457"
+    ],
+    "side_effect_warning": "guard request mints/sends an actual operator request; preparation only. Even guard show may initialize missing grant ledger, so not invoked in this read-only preflight."
+  },
+  "corrections_needed": [
+    "Replace earlier TMP guard grant snippet with guard request; actual operator approval still required.",
+    "Bind FINAL_HEAD/TREE after completed canonical and permitted docs-only final closure; source076 is run checkpoint, not automatically final published head.",
+    "Replace stale d7/3e/cb current-identity fields with timestamped frozen076/newmain113 observations, retaining frozen base and historical proof lineage.",
+    "Push only explicit HEAD:refs/heads/codex/runtime-n8n-host-recovery-20261008; configured upstream origin/main is outside proposed scope.",
+    "Distinguish absent budget ledger/default0 from proven historical push count; fresh counter/remote/grant verification remains required.",
+    "Record main strict3check rules and exact candidate CI after publication; main113 green checks do not certify candidate or resolve merge-up-to-date requirement.",
+    "No production deployment/natural acceptance or CADI readiness claim; canonical actual exit/flags pending."
+  ],
+  "mutations": {
+    "repo": false,
+    "fetch": false,
+    "grant_or_request": false,
+    "push_or_pr": false,
+    "host": false,
+    "provider": false,
+    "source": false
+  },
+  "output_path": "/tmp/tradeai-publication-readonly-preflight-handoff-20261009.json",
+  "local_main_ancestry": {
+    "evidence_class": "OBSERVED_CURRENT",
+    "measured_at": "2026-10-09T19:04:46.979902+00:00",
+    "head": "07632038fa49baa4e8115c1973a214da59cb88c3",
+    "compared_main": "113c6f3a4b49da8c276de275dfda0da6276e86b6",
+    "merge_base": "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf",
+    "ahead_behind": [
+      "32",
+      "3"
+    ],
+    "main_is_ancestor_of_head": false,
+    "git_fetch_performed": false
+  }
+}
