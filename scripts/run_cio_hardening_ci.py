@@ -1156,6 +1156,18 @@ GATES = [
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
     ),
+    # Symbol-thesis job repair (operator 2026-10-09 "fix the thesis job"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop
+    # backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies.
+    (
+        "thesis_job_fix_20261009",
+        ["tests/test_thesis_job_fix_20261009.py"],
+    ),
+    # Opportunity actions (operator 2026-10-09): Request CIO review (symbol-thesis priority queue; operator flags and the
+    # CIO's top-ranked names served first), Add to watchlist, CIO-memory fallback, quote-page news filter.
+    (
+        "opportunity_actions_20261009",
+        ["tests/test_opportunity_actions_20261009.py"],
+    ),
     # Opportunity modal news (operator 2026-10-08: "nothing here on what company does or latest news, catalyst"):
     # profile description, typed catalysts, latest news without catalyst repeats, and the news-ingestion opportunity
     # lane that gives the CIO's top-ranked names news beyond the 60-symbol cap.
