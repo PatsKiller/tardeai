@@ -11,6 +11,19 @@ from typing import Any
 MAX_WITHOUT_OVERRIDE = 2
 STATE_NAME = "tradeai-push-budget.json"
 
+# Time-boxed program exceptions to the default budget (AI_WORK_POLICY.md §3/§17).
+# A branch gets `budget` authorized pushes only when its name starts with `prefix`
+# (exact, case-sensitive, no glob), has at least one character after the prefix,
+# and `now` is not later than `ends_at`. Everything else gets MAX_WITHOUT_OVERRIDE.
+PROGRAM_WINDOWS: tuple[dict[str, Any], ...] = (
+    {
+        "prefix": "n8nmat/",
+        "budget": 4,
+        "ends_at": "2026-10-12T23:59:59-04:00",
+        "policy": "AGENTS.md 4.1.0 §23.13",
+    },
+)
+
 
 def git_dir() -> Path:
     out = subprocess.check_output(["git", "rev-parse", "--absolute-git-dir"], text=True).strip()
@@ -68,31 +81,66 @@ def save_state(data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def remaining(count: int) -> int:
-    left = MAX_WITHOUT_OVERRIDE - int(count or 0)
+def _now(now: datetime | None) -> datetime:
+    if now is None:
+        return datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        # Naive datetimes are treated as UTC so the comparison never raises.
+        return now.replace(tzinfo=timezone.utc)
+    return now
+
+
+def budget_for(branch: str | None, now: datetime | None = None) -> int:
+    """Authorized pushes allowed for `branch` at `now` before an override is needed."""
+    if not branch:
+        return MAX_WITHOUT_OVERRIDE
+    at = _now(now)
+    for window in PROGRAM_WINDOWS:
+        prefix = str(window["prefix"])
+        if not branch.startswith(prefix) or len(branch) <= len(prefix):
+            continue
+        if at > datetime.fromisoformat(str(window["ends_at"])):
+            continue
+        return int(window["budget"])
+    return MAX_WITHOUT_OVERRIDE
+
+
+def remaining(count: int, *, branch: str | None = None, now: datetime | None = None) -> int:
+    left = budget_for(branch, now) - int(count or 0)
     return left if left > 0 else 0
 
 
-def decide(*, authorized: bool, override: bool, count: int) -> dict[str, Any]:
+def decide(
+    *,
+    authorized: bool,
+    override: bool,
+    count: int,
+    branch: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    budget = budget_for(branch, now)
     if not authorized:
         return {
             "allow": False,
             "reason": "UNAUTHORIZED",
             "count": count,
-            "remaining": remaining(count),
+            "remaining": remaining(count, branch=branch, now=now),
+            "budget": budget,
         }
-    if count >= MAX_WITHOUT_OVERRIDE and not override:
+    if count >= budget and not override:
         return {
             "allow": False,
             "reason": "BUDGET_EXCEEDED",
             "count": count,
             "remaining": 0,
+            "budget": budget,
         }
     return {
         "allow": True,
-        "reason": "OVERRIDE" if (count >= MAX_WITHOUT_OVERRIDE and override) else "AUTHORIZED",
+        "reason": "OVERRIDE" if (count >= budget and override) else "AUTHORIZED",
         "count": count,
-        "remaining": remaining(count) if count < MAX_WITHOUT_OVERRIDE else 0,
+        "remaining": remaining(count, branch=branch, now=now) if count < budget else 0,
+        "budget": budget,
     }
 
 
