@@ -2,7 +2,7 @@
  *  market data, technicals + chart, Street view, risk/reward ladder, portfolio context + stance, conviction
  *  breakdown, CIO thesis / AI brief, what the company does, catalysts and latest news (operator 2026-10-08). Curated assessment from CIO memory; live values read at request time.
  *  Data: GET /api/v3/opportunities/{symbol}. Read-only; stance is a label, never an instruction. */
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, numStyle } from '../../lib/designTokens'
 import Modal from '../primitives/Modal'
@@ -87,8 +87,57 @@ const CATALYST_COLOR: Record<string, string> = {
   analyst_downgrade: TOKENS.danger, earnings_miss: TOKENS.danger, guidance_cut: TOKENS.danger,
 }
 
+/** Add to watchlist (operator path: POST /api/v2/watch/directives, kind=ticker) and Request CIO review
+ *  (POST /api/v3/opportunities/{SYM}/review-request → the CIO's symbol-thesis priority queue). Operator 2026-10-09:
+ *  "still no way to flag or add to watch list". Advisory only — neither action orders, sizes or touches a broker. */
+function ActionBar({ symbol, a, watch, review, onDone }: { symbol: string; a: any; watch: any; review: any; onDone: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const addWatch = async () => {
+    setBusy('watch'); setMsg(null)
+    try {
+      const r = await fetch('/api/v2/watch/directives', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        kind: 'ticker', label: `watch ${symbol}`, spec: { symbol },
+        rationale: `Added from the opportunity view${a?.conviction != null ? ` · CIO conviction ${Math.round(a.conviction)}` : ''}${a?.rank ? ` · rank #${a.rank}` : ''}`,
+        priority: 'normal', created_by: 'operator_opportunity_view' }) })
+      const j = await r.json()
+      const sv = j.serviced?.status
+      setMsg(j.ok ? `✓ ${j.reused ? 'Already a directive' : 'Added'}${sv === 'PROMOTED' ? ' — on the watchlist now' : sv === 'STAGED_FOR_REVIEW' ? ' — staged for review' : sv ? ` — ${String(sv).toLowerCase().replace(/_/g, ' ')}` : ''}` : `Could not add: ${j.error || r.status}`)
+      onDone()
+    } catch (e: any) { setMsg(`Could not add: ${e.message}`) }
+    setBusy(null)
+  }
+  const flag = async () => {
+    setBusy('review'); setMsg(null)
+    try {
+      const r = await fetch(`/api/v3/opportunities/${encodeURIComponent(symbol)}/review-request`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const j = await r.json()
+      setMsg(j.ok ? (j.already_open ? '✓ A CIO review is already queued' : `✓ CIO review requested · #${j.review?.queue_position ?? '?'} in queue · ${j.review?.next_run || ''}`) : `Could not flag: ${j.error || r.status}`)
+      onDone()
+    } catch (e: any) { setMsg(`Could not flag: ${e.message}`) }
+    setBusy(null)
+  }
+  const btn = (on: boolean): CSSProperties => ({ fontSize: 11, fontWeight: 800, padding: '5px 12px', borderRadius: RADIUS.pill, cursor: on ? 'default' : 'pointer',
+    border: `1px solid ${on ? TOKENS.success : 'var(--border)'}`, background: on ? 'transparent' : 'var(--bg2)', color: on ? TOKENS.success : TEXT })
+  const onWatch = !!watch?.on_watchlist
+  const queued = !!review?.open
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }} data-testid="opportunity-actions">
+      <button data-testid="opp-add-watch" disabled={onWatch || busy !== null} onClick={addWatch} style={btn(onWatch)}
+        title={onWatch ? `On the watchlist (${watch?.status || 'active'}${watch?.directive ? ', directive' : ''})` : 'Add a watch directive for this ticker'}>
+        {onWatch ? `✓ On watchlist${watch?.status && watch.status !== 'active' ? ` · ${watch.status}` : ''}` : busy === 'watch' ? 'Adding…' : '+ Add to watchlist'}
+      </button>
+      <button data-testid="opp-request-review" disabled={queued || busy !== null} onClick={flag} style={btn(queued)}
+        title={queued ? `Queued ${review?.requested_at ? new Date(review.requested_at).toLocaleString() : ''} by ${review?.requested_by || ''} — ${review?.next_run || ''}` : 'Ask the CIO for a symbol-thesis review'}>
+        {queued ? `⚑ CIO review queued${review?.queue_position ? ` · #${review.queue_position}` : ''}` : busy === 'review' ? 'Requesting…' : '⚑ Request CIO review'}
+      </button>
+      {msg && <span style={{ fontSize: 11, color: msg.startsWith('✓') ? TOKENS.success : TOKENS.danger }}>{msg}</span>}
+    </div>
+  )
+}
+
 export default function OpportunityModal({ symbol, onClose }: { symbol: string; onClose: () => void; onOpenSymbol?: (s: string) => void }) {
-  const { data, loading, error } = useApi<any>(`/api/v3/opportunities/${encodeURIComponent(symbol)}`, 120_000)
+  const { data, loading, error, refetch } = useApi<any>(`/api/v3/opportunities/${encodeURIComponent(symbol)}`, 120_000)
   const d = data?.data && data.data.symbol ? data.data : data
   const a = d?.assessment || {}
   const rr = a.risk_reward || {}
@@ -131,6 +180,7 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
         {a.cap_band && <Pill text={`${a.cap_band} cap · ${big(a.market_cap_usd)}`} color={TOKENS.neutral} />}
         {(prof.sector || a.sector) && <span style={{ fontSize: 11, color: MUTED }}>{prof.sector || a.sector}{prof.industry ? ` · ${prof.industry}` : ''}</span>}
       </div>
+      {d && <ActionBar symbol={symbol} a={a} watch={d.watchlist} review={d.cio_review} onDone={refetch} />}
     </div>
   )
 
@@ -280,7 +330,24 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
                   {(th.invalidation_conditions || []).length > 0 && <div style={{ color: TEXT2, marginTop: 4 }}><b>Invalidation:</b> {(th.invalidation_conditions || []).slice(0, 3).join(' · ')}</div>}
                   <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>AI investment brief arrives with the next release; showing the CIO research thesis.</div>
                 </div>
-              ) : <div style={{ fontSize: 11, color: MUTED }}>No CIO thesis on file for {symbol} yet.</div>}
+              ) : (
+                <div style={{ fontSize: 12, color: TEXT, lineHeight: 1.45 }} data-testid="opportunity-cio-memory">
+                  <div style={{ marginBottom: 6 }}>
+                    <b style={{ color: TEXT2 }}>CIO memory:</b> {a.stance ? `${String(a.stance).replace('_', '-')} — ` : ''}{a.stance_rationale || 'assessed, no stance rationale recorded'}
+                  </div>
+                  {a.conviction != null && (
+                    <div style={{ color: TEXT2, marginBottom: 6 }}>
+                      Conviction {Math.round(a.conviction)}/100{a.rank ? ` · rank #${a.rank}` : ''}{rr.rr != null ? ` · R:R ${Number(rr.rr).toFixed(1)}x` : ''}
+                      {Object.entries(a.factors || {}).length ? ` · strongest: ${Object.entries(a.factors || {}).sort((x: any, y: any) => y[1].score - x[1].score).slice(0, 2).map(([k, f]: any) => `${f.label || k} ${Math.round(f.score)}`).join(', ')}` : ''}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: d.cio_review?.open ? TOKENS.warning : MUTED }}>
+                    {d.cio_review?.open
+                      ? `No CIO research thesis yet — review queued${d.cio_review.queue_position ? ` (#${d.cio_review.queue_position} of ${d.cio_review.queue_length})` : ''}${d.cio_review.requested_by === 'cio_opportunity_curator' ? ' automatically for a top-ranked name' : ''} · ${d.cio_review.next_run}.`
+                      : `No CIO research thesis yet. Use ⚑ Request CIO review above to queue one.`}
+                  </div>
+                </div>
+              )}
             </Section>
           </div>
 
