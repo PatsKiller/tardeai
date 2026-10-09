@@ -323,7 +323,7 @@ def test_the_gate_fails_on_a_double_scheduler_and_passes_once_the_line_is_retire
 
 
 def test_native_monitor_rows_do_not_flip_a_host_scheduler():
-    """Native monitors, declared N1 ownership and unscheduled reminders remain distinct."""
+    """Native monitors, restored legacy N1 intent and unscheduled reminders remain distinct."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
     native = {r["lane_id"]: r for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
@@ -340,11 +340,14 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "n8n-incident-fanin",
         "n8n-research-intake-consumer",
     }
-    assert set(native) == monitors | reminders | migrated
-    assert all(native[lane]["state"] == "ACTIVE" for lane in monitors | migrated)
+    assert set(native) == monitors | reminders
+    assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
+    source_rows = {row["lane_id"]: row for row in reg["lanes"]}
     for lane in migrated:
-        assert isinstance(native[lane]["scheduler"].get("cadence"), str)
-        assert lr.validate_row(native[lane]) == []
+        assert source_rows[lane]["state"] == "ACTIVE"
+        assert source_rows[lane]["scheduler"]["kind"] == "cron"
+        assert len(source_rows[lane]["scheduler"]["expression"].split()) == 5
+        assert lr.validate_row(source_rows[lane]) == []
     assert all(native[lane]["state"] == "NEVER_SCHEDULED" for lane in reminders)
 
 
@@ -436,3 +439,20 @@ assert any("scheduler.cadence" in error for error in registry.validate_row(row))
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_source_no_go_n1_lanes_preserve_legacy_scheduler_intent() -> None:
+    """A NO_GO source row cannot authorize a scheduler cutover."""
+    import json
+    from pathlib import Path
+
+    document = json.loads((Path(__file__).resolve().parents[1] / "config/lane_registry.json").read_text())
+    n1_lanes = {
+        "crontab-snapshot-for-health-agent",
+        "n8n-pilot-dispatch",
+        "n8n-incident-fanin",
+        "n8n-research-intake-consumer",
+    }
+    for row in document["lanes"]:
+        if row["lane_id"] in n1_lanes and "NO_GO" in row.get("state_reason", ""):
+            assert row["scheduler"]["kind"] == "cron", row["lane_id"]

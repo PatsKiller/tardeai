@@ -3114,15 +3114,14 @@
       "lane_id": "crontab-snapshot-for-health-agent",
       "owner": "ops",
       "scheduler": {
-        "kind": "n8n",
-        "expression": "c0d4c7845e5c4fcc",
-        "match": "crontab_snapshot.txt.tmp",
-        "cadence": "*/20 * * * *"
+        "kind": "cron",
+        "expression": "*/20 * * * *",
+        "match": "crontab_snapshot.txt.tmp"
       },
       "expected_cadence_hours": 0.34,
       "state": "ACTIVE",
       "state_since": "2026-09-26",
-      "state_reason": "Declared 2026-09-26 by the P2 audit remediation R-03: the health agent runs under NoNewPrivileges, which strips crontab's setgid bit, so `crontab -l` fails inside the unit and every cron_missing check was silently skipped. This line writes a readable snapshot every 20 minutes that scripts/lib/crontab_snapshot.read_crontab falls back to. Installed under operator cron grant 1d4795f8471a664a (Telegram /approve). Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
+      "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
@@ -3654,15 +3653,14 @@
       "lane_id": "n8n-pilot-dispatch",
       "owner": "platform",
       "scheduler": {
-        "kind": "n8n",
-        "expression": "078e8fcbea0c5020",
-        "match": "scripts/n8n_pilot_dispatch.py",
-        "cadence": "*/15 * * * *"
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "scripts/n8n_pilot_dispatch.py"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts. Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
+      "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_pilot_dispatch_last.json"
@@ -3676,15 +3674,14 @@
       "lane_id": "n8n-incident-fanin",
       "owner": "platform",
       "scheduler": {
-        "kind": "n8n",
-        "expression": "722fac0e043ea5c4",
-        "match": "scripts/n8n_incident_fanin.py",
-        "cadence": "*/5 * * * *"
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "scripts/n8n_incident_fanin.py"
       },
       "expected_cadence_hours": 0.1,
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Installed 2026-10-07 15:52Z under cron grant 99d773a23dbd784c (units under config-write grant 113fa7d3b2344284); gateway live on 127.0.0.1:18091 with durable ledger; first apply run wrote receipts. Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
+      "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_incident_fanin_last.json"
@@ -4265,15 +4262,14 @@
       "lane_id": "n8n-research-intake-consumer",
       "owner": "platform",
       "scheduler": {
-        "kind": "n8n",
-        "expression": "21fd15d5f8a4c4da",
-        "match": "scripts/n8n_research_intake_consumer.py",
-        "cadence": "*/15 * * * *"
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "scripts/n8n_research_intake_consumer.py"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "state_since": "2026-10-08",
-      "state_reason": "Installed 2026-10-08 02:11Z under cron grant 6fa4f93c2a15ff9b right after release b18d8087b was promoted (backup ~/.local/state/tradeai/backups/crontab-20261008T021139Z-pre-research-intake.txt; crontab 449 -> 450 job lines). The gateway unit was re-installed in the same window (config-write grant 60bd0c8a7c5a269b) with TRADEAI_N8N_GATEWAY_EXTRA_LANES='incident-fanin research-intake'; /healthz durable:true. Consumer runs every 15 min, enqueues accepted research_request events into ri_research_queue under the RI desk's own cap and the intake daily cap (10). Runtime re-measured 2026-10-09: the peer retired the legacy cron entry at approximately 02:01Z and the named n8n workflow is active. This row reconciles observed ownership only; N1 acceptance remains NO_GO because the post-final-fix shadow/canary proof is incomplete. The immutable cutover receipts are retained, including malformed cadence metadata; this source correction does not ratify the cutover.",
+      "state_reason": "NO_GO: legacy cron ownership is the source intent for operator-approved restoration of the premature N1 cutover. Runtime restoration requires exact scoped grants, live workflow deactivation and request drain. Two final-fix natural shadows, valid shared-lock canary, consumer proof and rollback acceptance are still required before any renewed n8n cutover.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_research_intake_last.json"

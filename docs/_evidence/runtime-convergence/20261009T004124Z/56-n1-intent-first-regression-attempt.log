@@ -1,0 +1,36 @@
+............F........................                                    [100%]
+=================================== FAILURES ===================================
+____________ test_native_monitor_rows_do_not_flip_a_host_scheduler _____________
+
+    def test_native_monitor_rows_do_not_flip_a_host_scheduler():
+        """Native monitors, declared N1 ownership and unscheduled reminders remain distinct."""
+        reg = lr.load_registry()
+        assert lr.validate_registry(reg) == []
+        native = {r["lane_id"]: r for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
+        monitors = {"n8n-monitor-trade-ai", "n8n-monitor-dof"}
+        reminders = {
+            "openclaw-reminder-claude-plan-1",
+            "openclaw-reminder-claude-plan-2",
+            "openclaw-reminder-supergrok-expiry",
+            "openclaw-reminder-sentinelone-earnings",
+        }
+        migrated = {
+            "crontab-snapshot-for-health-agent",
+            "n8n-pilot-dispatch",
+            "n8n-incident-fanin",
+            "n8n-research-intake-consumer",
+        }
+>       assert set(native) == monitors | reminders | migrated
+E       AssertionError: assert {'n8n-monitor...rgrok-expiry'} == {'crontab-sna...onsumer', ...}
+E
+E         Extra items in the right set:
+E         'crontab-snapshot-for-health-agent'
+E         'n8n-pilot-dispatch'
+E         'n8n-research-intake-consumer'
+E         'n8n-incident-fanin'
+E         Use -v to get more diff
+
+tests/test_lane_registry_n8n_kind_20261008.py:343: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_lane_registry_n8n_kind_20261008.py::test_native_monitor_rows_do_not_flip_a_host_scheduler
+1 failed, 36 passed in 0.57s

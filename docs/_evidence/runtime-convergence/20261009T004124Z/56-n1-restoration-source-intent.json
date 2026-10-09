@@ -1,0 +1,94 @@
+{
+  "schema": "N1LegacyRestorationIntent@v1",
+  "evidence_class": "SOURCE_ONLY",
+  "runtime_applied": false,
+  "registry_sha_before": "d72a1e3c343b90d4c7a45e5575d27c2c477abfa1a700515840f62faed83a50f2",
+  "registry_sha_after": "15f467ecd6f19b149a1b2d2d202244b6fdc4c4876054fdcaaa843c3214ab36fd",
+  "reviewed_operational_registry": "/tmp/tradeai-n1-reviewed-operational-registry-20261009/config/lane_registry.json",
+  "rows": [
+    {
+      "lane_id": "n8n-incident-fanin",
+      "receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/n8n-incident-fanin-20261009T020135Z-cutover.json",
+      "receipt_sha256": "de637f1fc6fd2f615bd38176a1e15d38ecef93eaaeeca48993389c7423738cb3",
+      "prior_scheduler": {
+        "kind": "n8n",
+        "expression": "722fac0e043ea5c4",
+        "match": "scripts/n8n_incident_fanin.py",
+        "cadence": "*/5 * * * *"
+      },
+      "planned_source_scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "scripts/n8n_incident_fanin.py"
+      },
+      "original_receipt_scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * * n8n_incident_fanin.py --apply",
+        "match": "scripts/n8n_incident_fanin.py"
+      }
+    },
+    {
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-snapshot-for-health-agent-20261009T020135Z-cutover.json",
+      "receipt_sha256": "8c411632c9e30dd5bb2e4d9d60e31b6de6cce9c498fde5f6fd0986152bda9f3d",
+      "prior_scheduler": {
+        "kind": "n8n",
+        "expression": "c0d4c7845e5c4fcc",
+        "match": "crontab_snapshot.txt.tmp",
+        "cadence": "*/20 * * * *"
+      },
+      "planned_source_scheduler": {
+        "kind": "cron",
+        "expression": "*/20 * * * *",
+        "match": "crontab_snapshot.txt.tmp"
+      },
+      "original_receipt_scheduler": {
+        "kind": "cron",
+        "expression": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
+        "match": "crontab_snapshot.txt.tmp"
+      }
+    },
+    {
+      "lane_id": "n8n-pilot-dispatch",
+      "receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/n8n-pilot-dispatch-20261009T020145Z-cutover.json",
+      "receipt_sha256": "475fa1597dcc97d98c8edf3c8914057f5c62c4125c9f13a37ab06ae7b1f1a64f",
+      "prior_scheduler": {
+        "kind": "n8n",
+        "expression": "078e8fcbea0c5020",
+        "match": "scripts/n8n_pilot_dispatch.py",
+        "cadence": "*/15 * * * *"
+      },
+      "planned_source_scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "scripts/n8n_pilot_dispatch.py"
+      },
+      "original_receipt_scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_pilot_dispatch.py --apply",
+        "match": "scripts/n8n_pilot_dispatch.py"
+      }
+    },
+    {
+      "lane_id": "n8n-research-intake-consumer",
+      "receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/n8n-research-intake-consumer-20261009T020135Z-cutover.json",
+      "receipt_sha256": "5123fa967bbafe371d3128e8822dac5bf316e18baca5be0d71dd8797aaccaeda",
+      "prior_scheduler": {
+        "kind": "n8n",
+        "expression": "21fd15d5f8a4c4da",
+        "match": "scripts/n8n_research_intake_consumer.py",
+        "cadence": "*/15 * * * *"
+      },
+      "planned_source_scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "scripts/n8n_research_intake_consumer.py"
+      },
+      "original_receipt_scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_research_intake_consumer.py --apply",
+        "match": "scripts/n8n_research_intake_consumer.py"
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________ test_source_no_go_n1_lanes_preserve_legacy_scheduler_intent __________
+tests/test_lane_registry_n8n_kind_20261008.py:454: in test_source_no_go_n1_lanes_preserve_legacy_scheduler_intent
+    assert row["scheduler"]["kind"] == "cron", row["lane_id"]
+E   AssertionError: crontab-snapshot-for-health-agent
+E   assert 'n8n' == 'cron'
+E
+E     - cron
+E     + n8n
+=========================== short test summary info ============================
+FAILED tests/test_lane_registry_n8n_kind_20261008.py::test_source_no_go_n1_lanes_preserve_legacy_scheduler_intent
+1 failed, 36 deselected in 0.30s

@@ -1,0 +1,99 @@
+{
+  "schema": "IndependentN1RollbackRehearsal@v1",
+  "evidence_class": "TEST_ONLY",
+  "isolated_root": "/tmp/tradeai-n1-rollback-rehearsal-20261009-5h4xwqm1",
+  "captured_crontab_sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+  "operational_registry_sha256": "d72a1e3c343b90d4c7a45e5575d27c2c477abfa1a700515840f62faed83a50f2",
+  "source_head": "8554b00a0eb07f23e1299d5e42be51f0fead9ee0",
+  "rows": [
+    {
+      "lane_id": "n8n-incident-fanin",
+      "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/n8n-incident-fanin-20261009T020135Z-cutover.json",
+      "receipt_sha256": "de637f1fc6fd2f615bd38176a1e15d38ecef93eaaeeca48993389c7423738cb3",
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/5 * * * * n8n_incident_fanin.py --apply",
+        "match": "scripts/n8n_incident_fanin.py"
+      },
+      "restored_line_sha256": "159d2458df9a16bb17ef2c38d98c81a36f6bd9d3ba50273bd7df2ce5a03bba14",
+      "original_locks": [
+        "/tmp/tradeai_n8n_incident_fanin.lock"
+      ],
+      "original_lock_kind": "safe_flock",
+      "dry_run_exit": 0,
+      "apply_exit": 0,
+      "changed_lines": 1,
+      "unrelated_cron_bytes_unchanged": true,
+      "unrelated_registry_rows_unchanged": true,
+      "registry_scheduler_equals_immutable_receipt": true,
+      "pass_": true
+    },
+    {
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-snapshot-for-health-agent-20261009T020135Z-cutover.json",
+      "receipt_sha256": "8c411632c9e30dd5bb2e4d9d60e31b6de6cce9c498fde5f6fd0986152bda9f3d",
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
+        "match": "crontab_snapshot.txt.tmp"
+      },
+      "restored_line_sha256": "62fc913b6ff7103b500696f36ce2f79d7d681aef602d29e8eb4fcb8590e57d05",
+      "original_locks": [],
+      "original_lock_kind": "UNLOCKED",
+      "dry_run_exit": 0,
+      "apply_exit": 0,
+      "changed_lines": 1,
+      "unrelated_cron_bytes_unchanged": true,
+      "unrelated_registry_rows_unchanged": true,
+      "registry_scheduler_equals_immutable_receipt": true,
+      "pass_": true
+    },
+    {
+      "lane_id": "n8n-pilot-dispatch",
+      "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/n8n-pilot-dispatch-20261009T020145Z-cutover.json",
+      "receipt_sha256": "475fa1597dcc97d98c8edf3c8914057f5c62c4125c9f13a37ab06ae7b1f1a64f",
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_pilot_dispatch.py --apply",
+        "match": "scripts/n8n_pilot_dispatch.py"
+      },
+      "restored_line_sha256": "0ba6273f2fc10515791298c2f4be978702a8c45dd757b365913a16bf7eec3800",
+      "original_locks": [
+        "/tmp/tradeai_n8n_pilot_dispatch.lock"
+      ],
+      "original_lock_kind": "safe_flock",
+      "dry_run_exit": 0,
+      "apply_exit": 0,
+      "changed_lines": 1,
+      "unrelated_cron_bytes_unchanged": true,
+      "unrelated_registry_rows_unchanged": true,
+      "registry_scheduler_equals_immutable_receipt": true,
+      "pass_": true
+    },
+    {
+      "lane_id": "n8n-research-intake-consumer",
+      "receipt_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/n8n-research-intake-consumer-20261009T020135Z-cutover.json",
+      "receipt_sha256": "5123fa967bbafe371d3128e8822dac5bf316e18baca5be0d71dd8797aaccaeda",
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_research_intake_consumer.py --apply",
+        "match": "scripts/n8n_research_intake_consumer.py"
+      },
+      "restored_line_sha256": "3525ce2157412e2c30fe131b7cf23285ca44c394e151de2ef723367e3791905c",
+      "original_locks": [
+        "/tmp/tradeai_n8n_research_intake_consumer.lock"
+      ],
+      "original_lock_kind": "safe_flock",
+      "dry_run_exit": 0,
+      "apply_exit": 0,
+      "changed_lines": 1,
+      "unrelated_cron_bytes_unchanged": true,
+      "unrelated_registry_rows_unchanged": true,
+      "registry_scheduler_equals_immutable_receipt": true,
+      "pass_": true
+    }
+  ],
+  "pass_": true,
+  "host_mutations": false,
+  "grants_consumed": false
+}
