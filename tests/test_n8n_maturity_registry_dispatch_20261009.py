@@ -435,8 +435,14 @@ def test_scalp_lane_eligible_only_through_the_policy_exception():
         pytest.skip("scalp row not present")
     row = rows["trade-ai-scalp-live"]
     assert LD.dispatch_eligible(row) == (True, "eligible:policy_exception:market_day_gate.sh")
-    assert LD.dispatch_eligible(row, exceptions={}) == (
+    # Post-#1597 the reconciler stamps stay_on_cron (gate token) + KEEP_ON_CRON, which short-circuit first.
+    assert row.get("stay_on_cron", {}).get("token") == "market_day_gate.sh"
+    assert LD.dispatch_eligible(row, exceptions={}) == (False, "stay_on_cron")
+    # With the markers stripped, the forbidden-token rule still trips on its own without the exception.
+    bare = {k: v for k, v in row.items() if k not in ("stay_on_cron", "recommendation", "rationalization")}
+    assert LD.dispatch_eligible(bare, exceptions={}) == (
         False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+    assert LD.dispatch_eligible(bare) == (True, "eligible:policy_exception:market_day_gate.sh")
     assert LD.dispatch_mode(row) == "off" and LD.dispatchable(row) is False
 
 
@@ -468,6 +474,7 @@ def test_policy_exception_config_lists_only_scalp_live_market_day_gate():
     assert "4.0.0" in doc["exceptions"][0]["authority"] and "2026-10-09" in doc["exceptions"][0]["approval"]
     assert LD.load_policy_exceptions() == SCALP_EXC
     assert LD.EXEMPTIBLE_TOKENS == frozenset({"market_day_gate.sh"})
+    assert LD.EXEMPTIBLE_LANES == frozenset({"trade-ai-scalp-live"})
     assert "market_day_gate.sh" in FORBIDDEN_COMMAND_TOKENS
 
 
@@ -572,3 +579,32 @@ def test_sender_lane_listed_in_exceptions_stays_ineligible():
                match="scripts/digest.py")
     ok, why = LD.dispatch_eligible(row, exceptions=exc)
     assert ok is False and why.startswith("forbidden_token:") and "market_day_gate" not in why
+
+
+def test_exception_entry_for_other_lane_is_ignored(tmp_path):
+    p = tmp_path / "exc.json"
+    p.write_text(json.dumps({"exceptions": [
+        {"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]},
+        {"lane_id": "other-report", "exempt_tokens": ["market_day_gate.sh"]}]}), encoding="utf-8")
+    table = LD.load_policy_exceptions(p)
+    assert table == SCALP_EXC
+    row = _row(lane_id="other-report", expression="0 10 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/report.py",
+               match="scripts/report.py")
+    assert LD.dispatch_eligible(row, exceptions=table) == (
+        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+    # even a hand-built table naming the lane is intersected with the code ceiling
+    forced = {"other-report": frozenset({"market_day_gate.sh"})}
+    assert LD.dispatch_eligible(row, exceptions=forced) == (
+        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+    assert LD.dispatch_eligible(dict(row, stay_on_cron=dict(GATE_MARK)), exceptions=forced) == (False, "stay_on_cron")
+
+
+def test_exception_lifts_only_top_level_keep_on_cron_not_rationalization():
+    lifted = _scalp(stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON",
+                    rationalization={"recommendation": "PIPELINE:P02"})
+    assert LD.dispatch_eligible(lifted, exceptions=SCALP_EXC) == (True, "eligible:policy_exception:market_day_gate.sh")
+    rat_keep = _scalp(stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON",
+                      rationalization={"recommendation": "KEEP_ON_CRON"})
+    assert LD.dispatch_eligible(rat_keep, exceptions=SCALP_EXC) == (False, "keep_on_cron")
+    rat_only = _scalp(stay_on_cron=dict(GATE_MARK), rationalization={"recommendation": "KEEP_ON_CRON"})
+    assert LD.dispatch_eligible(rat_only, exceptions=SCALP_EXC) == (False, "keep_on_cron")

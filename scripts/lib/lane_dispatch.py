@@ -28,7 +28,8 @@ POLICY EXCEPTIONS (config/lane_dispatch_policy_exceptions.json). trade-ai-scalp-
 pipeline_manifest FORBIDDEN_COMMAND_TOKENS entry. The exception file (operator approval 2026-10-09 ~18:05 ET)
 exempts that lane from ONLY that token, and from the B1 stay_on_cron marker of class pipeline_excluded_gate
 naming that token (plus the KEEP_ON_CRON recommendation the reconciler forces from it). Bounds, enforced here:
-only EXEMPTIBLE_TOKENS can ever be exempted (an entry naming anything else is dropped whole); every other
+only EXEMPTIBLE_TOKENS can ever be exempted, and only for EXEMPTIBLE_LANES (an entry naming anything else is
+dropped whole); only the top-level KEEP_ON_CRON is lifted, never the rationalization block's; every other
 forbidden token, stay-behind, sender and broker rule still applies; a missing or malformed file = no exceptions.
 An exception changes eligibility only — dispatch mode stays whatever the row's dispatch block says (off).
 """
@@ -91,6 +92,9 @@ DEFAULT_POLICY_EXCEPTIONS = Path(__file__).resolve().parents[2] / "config" / "la
 #: Safety ceiling on config/lane_dispatch_policy_exceptions.json: the only forbidden tokens a lane may ever be
 #: exempted from. market_day_gate.sh is a market-calendar gate, not a broker/order/stop/secret authority.
 EXEMPTIBLE_TOKENS = frozenset({"market_day_gate.sh"})
+#: Safety ceiling on which lanes config may ever except (AGENTS 4.0.0 §23.3; operator 2026-10-09 ~18:05 ET).
+#: An entry for any other lane is dropped; widening this needs a code change + review, not a config edit.
+EXEMPTIBLE_LANES = frozenset({"trade-ai-scalp-live"})
 #: The B1 reconciler's stay_on_cron class for a gate token (scripts/reconcile_lane_registry.py, PR #1597).
 GATE_STAY_CLASS = "pipeline_excluded_gate"
 
@@ -414,8 +418,8 @@ def load_policy_exceptions(path: Optional[Path] = None) -> dict[str, frozenset[s
     """lane_id -> the forbidden tokens that lane is exempted from (config/lane_dispatch_policy_exceptions.json).
 
     Fail closed: a missing/unreadable/malformed file yields {}; an entry without a string lane_id, without a
-    non-empty exempt_tokens list, or naming any token outside EXEMPTIBLE_TOKENS is dropped whole; a lane listed
-    twice is dropped (ambiguous). Shared by the dispatcher and, after PR #1597, the registry reconciler."""
+    non-empty exempt_tokens list, naming any token outside EXEMPTIBLE_TOKENS, or for a lane outside
+    EXEMPTIBLE_LANES is dropped whole; a lane listed twice is dropped (ambiguous). Shared by the dispatcher and, after PR #1597, the registry reconciler."""
     p = Path(path) if path is not None else DEFAULT_POLICY_EXCEPTIONS
     key = str(p)
     if key in _EXCEPTIONS_CACHE:
@@ -440,6 +444,8 @@ def load_policy_exceptions(path: Optional[Path] = None) -> dict[str, frozenset[s
             continue
         if not set(toks) <= EXEMPTIBLE_TOKENS:
             continue
+        if lane not in EXEMPTIBLE_LANES:
+            continue
         out[lane] = frozenset(toks)
     _EXCEPTIONS_CACHE[key] = out
     return out
@@ -448,8 +454,9 @@ def load_policy_exceptions(path: Optional[Path] = None) -> dict[str, frozenset[s
 def _exempt_tokens(row: Mapping[str, Any], exceptions: Optional[Mapping[str, frozenset[str]]]) -> frozenset[str]:
     lane = row.get("lane_id")
     table = load_policy_exceptions() if exceptions is None else exceptions
-    toks = table.get(lane) if isinstance(lane, str) else None
-    return frozenset(toks or ()) & EXEMPTIBLE_TOKENS
+    if not isinstance(lane, str) or lane not in EXEMPTIBLE_LANES:
+        return frozenset()
+    return frozenset(table.get(lane) or ()) & EXEMPTIBLE_TOKENS
 
 
 def _gate_marker_exempt(row: Mapping[str, Any], exempt: frozenset[str]) -> bool:
@@ -459,10 +466,13 @@ def _gate_marker_exempt(row: Mapping[str, Any], exempt: frozenset[str]) -> bool:
             and mark.get("token") in exempt)
 
 
-def _keep_on_cron(row: Mapping[str, Any]) -> bool:
+def _keep_on_cron(row: Mapping[str, Any], *, lift_top_level: bool = False) -> bool:
+    """KEEP_ON_CRON at the row's top level (B1-forced) or in its rationalization block. The policy exception may
+    lift only the top-level one (the reconciler forces it from the gate marker); a KEEP_ON_CRON inside the
+    rationalization block is an independent F-review verdict and always blocks."""
     rat = row.get("rationalization")
-    return row.get("recommendation") == KEEP_ON_CRON or (
-        isinstance(rat, dict) and rat.get("recommendation") == KEEP_ON_CRON)
+    top = row.get("recommendation") == KEEP_ON_CRON and not lift_top_level
+    return top or (isinstance(rat, dict) and rat.get("recommendation") == KEEP_ON_CRON)
 
 
 def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None,
@@ -475,13 +485,13 @@ def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mappin
     that RUN anything use dispatchable(row), which also requires mode != off.
 
     `exceptions` (default: config/lane_dispatch_policy_exceptions.json) lifts ONLY the listed EXEMPTIBLE_TOKENS
-    hits for that lane, and the B1 gate-class stay_on_cron marker (with the KEEP_ON_CRON it forces) naming one of
-    them. Any other hit or marker still blocks; the reason then names it."""
+    hits for a lane in EXEMPTIBLE_LANES, and the B1 gate-class stay_on_cron marker (with the top-level KEEP_ON_CRON
+    it forces; never the rationalization block's) naming one of them. Any other hit or marker still blocks; the reason then names it."""
     exempt = _exempt_tokens(row, exceptions)
     gate_exempt = _gate_marker_exempt(row, exempt)
     if row.get("stay_on_cron") not in (None, False, {}, "") and not gate_exempt:
         return False, "stay_on_cron"
-    if _keep_on_cron(row) and not gate_exempt:
+    if _keep_on_cron(row, lift_top_level=gate_exempt):
         return False, "keep_on_cron"
     try:
         watch = parse_watch_block(row)

@@ -289,6 +289,13 @@ def lane_registry_findings_text(row: dict, limit: int = LANE_REGISTRY_ALERT_FIND
     return "".join(lines)
 
 
+# Sentinel for "the check ran but the Telegram send failed". It must not collide
+# with the success return, which is the COUNT of lanes alerted: the old sentinel
+# 2 meant every run that alerted exactly two lanes exited 2 and systemd marked
+# the unit failed (2026-10-07 12:00/18:00, 2026-10-09 17:08) with no send error.
+SEND_FAILED = -1
+
+
 def _alert(report: dict) -> int:
     firing = [r for r in report.get("lanes") or [] if not r.get("ok")]
     state = reconcile_recovered(_load_lane_map(), report)
@@ -407,7 +414,7 @@ def _alert(report: dict) -> int:
             t.rollback()
         print("telegram send failed:", exc, file=sys.stderr)
         print(msg)
-        return 2
+        return SEND_FAILED
     for t, lane, sig in pending:
         t.commit(body=msg, alert_type=TYPE_SYSTEM_HEALTH,
                  source_script="research_lane_health.py",
@@ -469,8 +476,8 @@ def main() -> int:
         print(json.dumps(report, indent=2, default=str))
     if args.alert:
         rc = _alert(report)
-        # 2 = telegram send failed (check ran, notify did not). 0 = check ran.
-        return 2 if rc == 2 else 0
+        # exit 2 = telegram send failed (check ran, notify did not). 0 = check ran.
+        return 2 if rc == SEND_FAILED else 0
     # Alarm state lives in JSON (`ok`, `firing`). Exit 1 is a crashed CHECK,
     # not "alarms found" — otherwise systemd cannot tell them apart.
     return 0

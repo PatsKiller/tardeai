@@ -1,0 +1,20 @@
+{
+  "schema": "LaneStayOnCronTokens@v1",
+  "owner": "platform",
+  "consumer": "scripts/reconcile_lane_registry.py (stay_on_cron)",
+  "note": "Broker / execution names that keep a scheduled job on cron whatever the rationalization says. Matched as whole words (letters and digits on neither side) against the WHOLE command text: cron command, python -c body, bash -c body, systemd ExecStart. Tokens already enforced in code are not repeated here: pipeline_manifest.FORBIDDEN_COMMAND_TOKENS (substring, e.g. moomoo, place_order, unified_stop_supervisor) and n8n_coordination_gateway.FORBIDDEN_ROUTE_TOKENS on the script name. gateway_route_tokens_in_command selects the gateway tokens that are ALSO scanned across the whole command (each must stay a member of FORBIDDEN_ROUTE_TOKENS; a test pins it). Added 2026-10-09 after PR #1597 review: schwab_stream_daemon.py and the defense_execution.poll_fills python -c line were classified MIGRATE_N8N because only the script stem was tested.",
+  "broker_command_tokens": [
+    "schwab",
+    "alpaca",
+    "opend",
+    "ibkr",
+    "defense_execution",
+    "trade_executor",
+    "stop"
+  ],
+  "gateway_route_tokens_in_command": [
+    "broker",
+    "order",
+    "orders"
+  ]
+}

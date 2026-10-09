@@ -1,5 +1,8 @@
 """AGENTS.md 3.0.0 §23.10 P16 — n8n activations reconciled against the guard ledger (audit C G5).
 
+AGENTS.md 3.1.0 (audit E D5): one activation tier, `cron`. A grant naming the id under `config-write` or
+`service` is NAMED_IN_OTHER_TIER by default; `--tiers` still widens the set for a historical audit.
+
 Fixture n8n evidence and a fixture guard audit jsonl under tmp_path; no docker, no real ledger.
 """
 
@@ -9,6 +12,8 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -48,7 +53,7 @@ EVIDENCE = {
         },
     ],
     "published_versions": [
-        # granted: service grant names the id, 2 minutes earlier, 2h window
+        # granted: cron grant names the id, 2 minutes earlier, 2h window
         {
             "workflow_id": "e18d7849b4142927",
             "version_id": "v-mat",
@@ -97,7 +102,7 @@ EVIDENCE = {
 GRANTS = [
     {
         "event": "grant-issued",
-        "tier": "service",
+        "tier": "cron",
         "seconds": 7200,
         "ts": "2026-10-09T09:01:00-04:00",
         "reason": "maturity-remeasure canary: operator imports live workflow e18d7849b4142927, unpublishes shadow",
@@ -155,7 +160,7 @@ def test_parse_ts_handles_psql_and_iso_offsets():
 
 def test_only_grant_issued_entries_are_read_and_torn_lines_are_skipped(tmp_path):
     grants = A.load_grants(_guard_log(tmp_path))
-    assert [g["tier"] for g in grants] == ["service", "release-write", "release-write", "cron"]
+    assert [g["tier"] for g in grants] == ["cron", "release-write", "release-write", "cron"]
 
 
 def test_events_are_one_per_version_since_t_and_restart_updates_are_not_activations():
@@ -172,7 +177,7 @@ def test_events_are_one_per_version_since_t_and_restart_updates_are_not_activati
 def test_verdicts(tmp_path):
     rows = _rows(tmp_path)
     assert rows["e18d7849b4142927"]["status"] == A.GRANTED
-    assert rows["e18d7849b4142927"]["grants"][0]["tier"] == "service"
+    assert rows["e18d7849b4142927"]["grants"][0]["tier"] == "cron"
     assert rows["f4553ff360e21a9f"]["status"] == A.UNGRANTED_ACTIVATION
     assert rows["c0d4c7845e5c4fcc"]["status"] == A.NAMED_IN_OTHER_TIER
     assert rows["078e8fcbea0c5020"]["status"] == A.NAME_ONLY_GRANT
@@ -181,6 +186,39 @@ def test_verdicts(tmp_path):
 def test_tier_list_is_configurable(tmp_path):
     rows = _rows(tmp_path, tiers=("cron", "config-write", "service", "release-write"))
     assert rows["c0d4c7845e5c4fcc"]["status"] == A.GRANTED
+
+
+def test_cron_is_the_only_default_activation_tier():
+    """AGENTS.md 3.1.0 §17/§23.2: one tier. Audit E D5 found three answers (cron; cron/config-write; +service)."""
+    assert A.DEFAULT_TIERS == ("cron",)
+    assert A.reconcile.__kwdefaults__["tiers"] == ("cron",)
+
+
+@pytest.mark.parametrize("tier", ["config-write", "service"])
+def test_a_grant_naming_the_id_under_config_write_or_service_is_named_in_other_tier(tmp_path, tier):
+    other = [dict(GRANTS[0], tier=tier)]
+    grants = A.load_grants(_guard_log(tmp_path, other))
+    events = A.activation_events(EVIDENCE, since=SINCE)
+    rows = {r["workflow_id"]: r for r in A.reconcile(events, grants)}
+    assert rows["e18d7849b4142927"]["status"] == A.NAMED_IN_OTHER_TIER
+    assert rows["e18d7849b4142927"]["grants"][0]["tier"] == tier
+    # a historical audit of pre-3.1.0 activations may still pass the old set explicitly
+    old = {r["workflow_id"]: r for r in A.reconcile(events, grants, tiers=("cron", "config-write", "service"))}
+    assert old["e18d7849b4142927"]["status"] == A.GRANTED
+
+
+def test_cli_tiers_flag_defaults_to_cron_and_can_be_widened(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    ev = tmp_path / "evidence.json"
+    ev.write_text(json.dumps(EVIDENCE), encoding="utf-8")
+    log = _guard_log(tmp_path, [dict(GRANTS[0], tier="service")])
+    base = ["--evidence-json", str(ev), "--guard-log", str(log), "--since", "2026-10-09T00:00:00Z", "--write"]
+    assert A.main(base) == 0
+    rec = json.loads((tmp_path / "state" / A.RECEIPT_REL).read_text(encoding="utf-8"))
+    assert rec["tiers"] == ["cron"] and rec["counts"][A.GRANTED] == 0 and rec["counts"][A.NAMED_IN_OTHER_TIER] == 1
+    assert A.main([*base, "--tiers", "cron,config-write,service"]) == 0
+    rec = json.loads((tmp_path / "state" / A.RECEIPT_REL).read_text(encoding="utf-8"))
+    assert rec["tiers"] == ["config-write", "cron", "service"] and rec["counts"][A.GRANTED] == 1
 
 
 def test_a_grant_issued_after_its_window_does_not_cover_an_earlier_activation(tmp_path):
@@ -201,7 +239,7 @@ def test_import_grant_does_not_authorize_later_activation(tmp_path):
     early = [
         {
             "event": "grant-issued",
-            "tier": "config-write",
+            "tier": "cron",
             "seconds": 1800,
             "ts": "2026-10-09T07:55:00-04:00",
             "reason": "import c0d4c7845e5c4fcc",
@@ -213,7 +251,7 @@ def test_import_grant_does_not_authorize_later_activation(tmp_path):
     assert row["status"] == A.UNGRANTED_ACTIVATION
     assert row["grants"] == []
     assert row["import_status"] == A.GRANTED
-    assert row["import_grants"][0]["tier"] == "config-write"
+    assert row["import_grants"][0]["tier"] == "cron"
 
 
 def test_import_and_activation_grants_are_attributed_independently(tmp_path):
@@ -223,14 +261,14 @@ def test_import_and_activation_grants_are_attributed_independently(tmp_path):
             [
                 {
                     "event": "grant-issued",
-                    "tier": "config-write",
+                    "tier": "cron",
                     "seconds": 1800,
                     "ts": "2026-10-09T11:55:00Z",
                     "reason": "import c0d4c7845e5c4fcc",
                 },
                 {
                     "event": "grant-issued",
-                    "tier": "service",
+                    "tier": "cron",
                     "seconds": 1800,
                     "ts": "2026-10-09T13:25:00Z",
                     "reason": "activate c0d4c7845e5c4fcc",
@@ -241,8 +279,8 @@ def test_import_and_activation_grants_are_attributed_independently(tmp_path):
     rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
     row = rows["c0d4c7845e5c4fcc"]
     assert row["status"] == A.GRANTED and row["import_status"] == A.GRANTED
-    assert [g["tier"] for g in row["grants"]] == ["service"]
-    assert [g["tier"] for g in row["import_grants"]] == ["config-write"]
+    assert [g["reason"] for g in row["grants"]] == ["activate c0d4c7845e5c4fcc"]
+    assert [g["reason"] for g in row["import_grants"]] == ["import c0d4c7845e5c4fcc"]
     assert rows["e18d7849b4142927"]["import_status"] == "NOT_MEASURED"
 
 
@@ -253,7 +291,7 @@ def test_explicit_activation_window_can_cover_import_and_later_activation(tmp_pa
             [
                 {
                     "event": "grant-issued",
-                    "tier": "service",
+                    "tier": "cron",
                     "seconds": 7200,
                     "ts": "2026-10-09T11:55:00Z",
                     "reason": "import and activate c0d4c7845e5c4fcc",
@@ -280,9 +318,9 @@ def test_main_dry_run_write_and_exit_codes(tmp_path, monkeypatch, capsys):
     assert A.main([*base, "--write"]) == 0
     rec = json.loads((state / A.RECEIPT_REL).read_text(encoding="utf-8"))
     assert rec["schema"] == "N8nActivationAttribution@v1" and rec["verdict"] == A.UNGRANTED_ACTIVATION
-    assert rec["events"] == 4 and rec["fanin_wired"] is False and rec["guard_log"] == "audit.jsonl"
-    ung = [f for f in rec["fanin_findings"] if f["item"].endswith(A.UNGRANTED_ACTIVATION)]
-    assert ung and ung[0]["source"] == "n8n_activation_grants" and ung[0]["severity"] == "P2"
+    assert rec["events"] == 4 and rec["fanin_wired"] is True and rec["guard_log"] == "audit.jsonl"
+    ung = [f for f in rec["fanin_findings"] if ":UNGRANTED_ACTIVATION:" in f["item"]]
+    assert ung and ung[0]["source"] == "n8n_activation_grants" and ung[0]["severity"] == "P1"  # active
     assert A.main([*base, "--fail-on-ungranted"]) == 1
     assert A.main(["--evidence-json", str(ev), "--guard-log", str(tmp_path / "absent.jsonl")]) == 2
     assert A.main([*base[:4], "--since", "not-a-time"]) == 2
@@ -293,3 +331,55 @@ def test_default_guard_log_follows_the_guard_lib_env(monkeypatch, tmp_path):
     assert A.default_guard_log() == tmp_path / "x.jsonl"
     monkeypatch.delenv("GUARD_AUDIT_LOG")
     assert A.default_guard_log() == Path.home() / "logs" / "cursor-agent-audit.jsonl"
+
+
+def test_a_later_reactivation_under_a_grant_naming_the_id_regularises_the_version(tmp_path):
+    """Agent A review of #1608: a version activated without a grant, live for hours, then re-activated under a
+    cron grant naming its id is NOT laundered to GRANTED. The latest activation is granted, so it is not a P1,
+    but the ungranted window stays reported (UNGRANTED_ACTIVATION_REGULARISED, P3) with its start and end."""
+    ev = json.loads(json.dumps(EVIDENCE))
+    ev["publish_history"].append(
+        {"workflow_id": "f4553ff360e21a9f", "version_id": "v-pre", "event": "activated", "at": "2026-10-09 16:00:00+00"}
+    )
+    regularise = [
+        {
+            "event": "grant-issued",
+            "tier": "cron",
+            "seconds": 1800,
+            "ts": "2026-10-09T11:55:00-04:00",
+            "reason": "regularise n8n activations: re-activate f4553ff360e21a9f under this grant",
+        }
+    ]
+    grants = A.load_grants(_guard_log(tmp_path, regularise))
+    rows = A.reconcile(A.activation_events(ev, since=SINCE), grants)
+    (row,) = [r for r in rows if r["workflow_id"] == "f4553ff360e21a9f"]
+    assert row["status"] == A.UNGRANTED_ACTIVATION_REGULARISED
+    assert row["activated_at"].startswith("2026-10-09T12:39:45") and row["last_activated_at"].startswith("2026-10-09T16:00")
+    assert [v["status"] for v in row["activation_verdicts"]] == [A.UNGRANTED_ACTIVATION, A.GRANTED]
+    assert row["ungranted_window"]["start"].startswith("2026-10-09T12:39:45")
+    assert row["ungranted_window"]["end"].startswith("2026-10-09T16:00")
+    assert A.fanin_severity(row) == "P3"
+    rec = A.build_receipt(rows, since=SINCE, source="fixture", guard_log=Path("g"), tiers=A.DEFAULT_TIERS)
+    assert rec["counts"][A.UNGRANTED_ACTIVATION_REGULARISED] == 1
+    assert "f4553ff360e21a9f:UNGRANTED_ACTIVATION_REGULARISED:P3" in {f["item"] for f in rec["fanin_findings"]}
+
+
+def test_a_granted_version_reactivated_later_without_a_grant_is_a_live_p1(tmp_path):
+    """P1 is decided by the LATEST activation: granted first, ungranted re-activation later -> UNGRANTED."""
+    ev = json.loads(json.dumps(EVIDENCE))
+    ev["publish_history"].append(
+        {"workflow_id": "e18d7849b4142927", "version_id": "v-mat", "event": "activated", "at": "2026-10-09 20:00:00+00"}
+    )
+    grants = A.load_grants(_guard_log(tmp_path, [dict(GRANTS[0], tier="cron")]))
+    (row,) = [r for r in A.reconcile(A.activation_events(ev, since=SINCE), grants) if r["workflow_id"] == "e18d7849b4142927"]
+    assert [v["status"] for v in row["activation_verdicts"]] == [A.GRANTED, A.UNGRANTED_ACTIVATION]
+    assert row["status"] == A.UNGRANTED_ACTIVATION and row["ungranted_window"] is None
+    assert A.fanin_severity(row) == "P1"
+
+
+def test_fanin_severity_is_p1_only_for_a_live_ungranted_activation():
+    assert A.fanin_severity({"status": A.UNGRANTED_ACTIVATION, "currently_active": True}) == "P1"
+    assert A.fanin_severity({"status": A.UNGRANTED_ACTIVATION, "currently_active": False}) == "P3"
+    assert A.fanin_severity({"status": A.NAME_ONLY_GRANT, "currently_active": True}) == "P3"
+    assert A.fanin_severity({"status": A.NAMED_IN_OTHER_TIER, "currently_active": True}) == "P3"
+    assert A.fanin_severity({"status": A.UNGRANTED_ACTIVATION_REGULARISED, "currently_active": True}) == "P3"

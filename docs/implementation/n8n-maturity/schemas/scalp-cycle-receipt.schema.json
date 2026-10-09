@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:n8n-maturity/scalp-cycle-receipt.schema.json",
+  "title": "ScalpCycleReceipt@v1 (design 03 §4.1)",
+  "description": "One record per 5-minute scalp cycle event, appended to $STATE_ROOT/data/runtime/scalp_cycle_receipts/<ET day>.jsonl by scripts/run_trade_ai_scalp_live.py (writer: scripts/lib/scalp_cycle_receipt.py). `started` before any work, then exactly one of ok/error/killed; a started with no final record is a cycle lost to SIGKILL. Retention: files older than 30 days are pruned when a new day's file is started.",
+  "type": "object",
+  "required": ["schema", "lane_id", "cycle_id", "date", "slot", "status", "started_at", "budget", "errors", "scheduler"],
+  "properties": {
+    "schema": {"const": "ScalpCycleReceipt@v1"},
+    "lane_id": {"type": "string"},
+    "cycle_id": {"type": "string", "pattern": "^[a-z0-9-]+:\\d{4}-\\d{2}-\\d{2}:\\d{4}$"},
+    "date": {"type": "string", "format": "date"},
+    "slot": {"type": "string", "pattern": "^\\d{2}:\\d{2}$"},
+    "status": {"enum": ["started", "ok", "error", "killed"]},
+    "phase": {"type": ["string", "null"], "enum": [null, "start", "ingest", "inject", "market", "catalysts", "score", "persist", "alert", "done"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": ["string", "null"], "format": "date-time"},
+    "seconds": {"type": ["number", "null"], "minimum": 0},
+    "symbols_scanned": {"type": ["integer", "null"], "minimum": 0},
+    "signals": {"type": ["integer", "null"], "minimum": 0},
+    "triggers": {"type": ["integer", "null"], "minimum": 0},
+    "alerts_sent": {"type": ["integer", "null"], "minimum": 0},
+    "alerts_deduped": {"type": ["integer", "null"], "minimum": 0},
+    "budget": {
+      "type": "object",
+      "required": ["deadline_s", "used_s", "used_pct"],
+      "properties": {
+        "deadline_s": {"type": ["number", "null"]},
+        "enrich_budget_s": {"type": ["number", "null"]},
+        "used_s": {"type": ["number", "null"]},
+        "used_pct": {"type": ["number", "null"]},
+        "phase_s": {"type": "object", "additionalProperties": {"type": "number"}},
+        "skipped": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "errors": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 200}},
+    "scheduler": {"enum": ["cron", "n8n"]},
+    "run_id": {"type": ["string", "null"]},
+    "release": {"type": ["string", "null"]},
+    "pid": {"type": "integer"}
+  },
+  "x-legacy-status-map": {"ok": "ok", "error": "cycle_failed", "killed": "cycle_killed"},
+  "x-retention-days": 30
+}
