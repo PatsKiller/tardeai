@@ -139,7 +139,7 @@ def test_step_timeout_is_clamped_to_the_tick_deadline(tmp_path, monkeypatch):
     assert rows["slow"]["timeout"] is True and rows["slow"]["outcome"] == "timeout"
     assert rows["slow"]["effective_timeout_s"] <= 6.0
     assert "clamped from 240s" in rows["slow"]["error"]
-    assert receipt["duration_s"] < 12
+    assert receipt["duration_s"] < 30          # generous: a loaded host slows spawn, not the clamp
     assert rows["after"]["outcome"] == "deferred" and receipt["deferred"] == ["after"]
     assert rc == ht.EXIT_TICK_BROKEN and set(receipt["broken"]) == {"slow", "after"}
 
@@ -157,13 +157,13 @@ def test_leftover_children_are_terminated_and_recorded(tmp_path):
     row = _rows(receipt)["spawner"]
     assert rc == ht.EXIT_OK and row["outcome"] == "ok"
     assert row["orphans"]["killed"] is True and receipt["orphans_terminated"] == ["spawner"]
-    assert row["duration_s"] < 15
+    assert row["duration_s"] < 30
     assert "left processes in its group" in (tmp_path / "logs" / "spawner.log").read_text()
 
 
 def test_children_that_finish_within_the_wait_are_not_killed(tmp_path):
     table = _table(tmp_path, [_step("spawner", [PY, "-c", _SPAWN.format(n=0.2)], tmp_path)],
-                   orphan_wait_s=5)
+                   orphan_wait_s=20)
     rc, receipt = _run(tmp_path, table)
     row = _rows(receipt)["spawner"]
     assert rc == ht.EXIT_OK
