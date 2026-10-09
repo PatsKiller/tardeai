@@ -2843,7 +2843,11 @@
         "match": "scripts/score_alert_quality.py --apply"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-03",
+      "state_reason": "The cron line above was declared but never installed (it needs the operator's cron grant): `crontab -l` has no score_alert_quality line and logs/score_alert_quality.log does not exist (cron audit 2026-10-09). The expression is the proposed install; flip to ACTIVE in the same change that installs it.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "2026-10-09 read-only audit: no crontab line matches scripts/score_alert_quality.py; logs/score_alert_quality.log and data/runtime/alert_quality_last.json absent; the row's own note says install requires the operator's cron grant.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/alert_quality_last.json"
