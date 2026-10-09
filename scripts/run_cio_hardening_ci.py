@@ -3655,6 +3655,13 @@ GATES = [
         ["tests/test_scalp_cycle_receipt_b4_20261009.py"],
     ),
     (
+        # SCALP_FOLLOWUPS_B4 — 2026-10-09: a GO is marked alerted only after its line built and the send was
+        # accepted (pre-alert save keeps it un-alerted; one bad trigger is isolated; rejected send rolls back);
+        # a release-dir TRADEAI_ROOT never becomes the state root. Hermetic: stubbed send, tmp home.
+        "scalp_followups_b4_20261009",
+        ["tests/test_scalp_followups_b4_20261009.py"],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
