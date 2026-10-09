@@ -404,7 +404,11 @@ def list_events(
 HUB_SORTS = {"created_at": "created_at", "priority_score": "priority_score", "confidence": "confidence",
              "risk_score": "risk_score", "reward_score": "reward_score", "time_sensitivity": "time_sensitivity",
              "expires_at": "expires_at", "actionable_since": "actionable_since",
-             "priority": "CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END"}
+             "priority": "CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END",
+             # CIO conviction lives in the opportunity projection, not a column: ordered in Python (conviction_order)
+             "conviction": "priority_score"}
+# Rows read for an in-Python conviction sort before paging (a filtered hub list is far smaller than this).
+CONVICTION_SORT_SCAN = 2000
 HUB_STATUSES = ("active", "acknowledged", "superseded", "expired")
 REENTRY_STATUSES = ("opportunity", "potential", "confirmed", "expired", "invalidated")
 _LIVE = ("status IN ('active', 'acknowledged') AND NOT (NOT legal_hold AND expires_at IS NOT NULL AND "
@@ -539,6 +543,34 @@ def _opportunity_items() -> dict[str, Any]:
     return _PROJ_CACHE["items"]
 
 
+def conviction_floor() -> float | None:
+    """advice.conviction_floor in config/opportunity_conviction.yaml; None when unset/unreadable."""
+    try:
+        try:
+            from scripts.lib.data_broker.opportunity import load_config
+        except ImportError:  # pragma: no cover
+            from lib.data_broker.opportunity import load_config  # type: ignore
+        v = (load_config().get("advice") or {}).get("conviction_floor")
+        return float(v) if v is not None else None
+    except Exception:
+        return None
+
+
+def conviction_order(events: list[dict[str, Any]], floor: float | None = None) -> list[dict[str, Any]]:
+    """Operator 2026-10-08: rank advice by the CIO conviction for its ticker (the number Home and the opportunity
+    view show). Order: at/above the floor by conviction desc, then names the CIO has not scored, then below-floor
+    names by conviction desc. Stable within ties (the incoming order, e.g. newest or priority first)."""
+    opp = _opportunity_items()
+
+    def key(e: dict[str, Any]):
+        c = (opp.get((e.get("symbols") or [None])[0] or "") or {}).get("conviction")
+        if c is None:
+            return (1, 0.0)
+        c = float(c)
+        return (2, -c) if floor is not None and c < floor else (0, -c)
+    return sorted(events, key=key)
+
+
 def attach_market(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Operator 2026-10-08 ("why no prices"): every item that names a ticker carries the data-broker quote read
     NOW (AGENTS §7A — price is the broker quote at read time) and, where the CIO has them, the entry zone and
@@ -555,6 +587,7 @@ def attach_market(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     except Exception:
         quotes = {}
     opp = _opportunity_items()
+    floor = conviction_floor()
     for e in events:
         sym = (e.get("symbols") or [None])[0]
         if not sym:
@@ -570,6 +603,10 @@ def attach_market(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
                            "invalidation_level": rr.get("invalidation_level"),
                            "target": rr.get("primary_target") or ((rr.get("targets") or [{}])[0]).get("px"),
                            "rr": rr.get("rr"), "conviction": a.get("conviction"), "rank": a.get("rank")}
+        if a.get("conviction") is not None and floor is not None and float(a["conviction"]) < floor:
+            e.setdefault("levels", {"conviction": a.get("conviction"), "rank": a.get("rank")})
+            e["levels"]["low_conviction"] = True
+            e["levels"]["conviction_floor"] = floor
     return events
 
 
@@ -580,16 +617,28 @@ def hub_events(filters: dict[str, Any]) -> dict[str, Any] | None:
         return None
     lim = max(1, min(int(filters.get("limit") or 100), 500))
     off = max(0, int(filters.get("offset") or 0))
+    by_conviction = str(filters.get("sort") or "") == "conviction"
     sort = HUB_SORTS.get(str(filters.get("sort") or "created_at"), "created_at")
     order = "ASC" if str(filters.get("order") or "desc").lower() == "asc" else "DESC"
     where, params = hub_where(filters)
     try:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT {_HUB_COLS} FROM communication_events WHERE {where} "
-                        f"ORDER BY {sort} {order} NULLS LAST, created_at DESC LIMIT %s OFFSET %s",
-                        params + [lim, off])
+            if by_conviction:
+                # read the filtered set (priority first), order by CIO conviction in Python, then page
+                cur.execute(f"SELECT {_HUB_COLS} FROM communication_events WHERE {where} "
+                            "ORDER BY priority_score DESC NULLS LAST, created_at DESC LIMIT %s",
+                            params + [CONVICTION_SORT_SCAN])
+            else:
+                cur.execute(f"SELECT {_HUB_COLS} FROM communication_events WHERE {where} "
+                            f"ORDER BY {sort} {order} NULLS LAST, created_at DESC LIMIT %s OFFSET %s",
+                            params + [lim, off])
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            if by_conviction:
+                ranked = conviction_order([_project_hub(r) for r in rows], conviction_floor())
+                if order == "ASC":
+                    ranked.reverse()
+                page = ranked[off: off + lim]
             cur.execute(f"SELECT count(*) FROM communication_events WHERE {where}", params)
             total = cur.fetchone()[0]
             facets: dict[str, dict[str, int]] = {}
@@ -616,7 +665,8 @@ def hub_events(filters: dict[str, Any]) -> dict[str, Any] | None:
         cats = _cats()
     except Exception:
         cats = []
-    return {"ok": True, "events": attach_market([_project_hub(r) for r in rows]), "total": total, "limit": lim, "offset": off,
+    events = page if by_conviction else [_project_hub(r) for r in rows]
+    return {"ok": True, "events": attach_market(events), "total": total, "limit": lim, "offset": off,
             "source": "db", "hub": True, "facets": facets, "categories": cats,
             "priorities": ["critical", "high", "medium", "low"], "statuses": list(HUB_STATUSES),
             "reentry_statuses": list(REENTRY_STATUSES), "sorts": list(HUB_SORTS),
@@ -627,6 +677,7 @@ def hub_events(filters: dict[str, Any]) -> dict[str, Any] | None:
 BOARD_PANELS = {
     "attention": ("Needs attention now", "actionable AND priority IN ('critical','high')",
                   "CASE priority WHEN 'critical' THEN 0 ELSE 1 END, priority_score DESC"),
+    # ordered by CIO conviction in board() (conviction_order); the SQL order only picks the candidates read
     "reward": ("Highest-reward opportunities",
                "actionable AND category IN ('reward','high_conviction_opportunity','re_entry')",
                "reward_score DESC, confidence DESC"),
@@ -640,6 +691,10 @@ BOARD_PANELS = {
 }
 
 
+# Panels whose items are ranked by CIO conviction rather than their SQL order (operator 2026-10-08).
+CONVICTION_PANELS = ("reward",)
+
+
 def board(limit: int = 6) -> dict[str, Any] | None:
     """Top items per decision panel, live items only; None when the DB / hub columns are unavailable."""
     conn = _events_db_conn()
@@ -650,10 +705,18 @@ def board(limit: int = 6) -> dict[str, Any] | None:
     try:
         with conn.cursor() as cur:
             for key, (label, cond, order) in BOARD_PANELS.items():
+                ranked_by_conviction = key in CONVICTION_PANELS
                 cur.execute(f"SELECT {_HUB_COLS} FROM communication_events WHERE {_LIVE} AND {cond} "
-                            f"ORDER BY {order} NULLS LAST, created_at DESC LIMIT %s", (lim,))
+                            f"ORDER BY {order} NULLS LAST, created_at DESC LIMIT %s",
+                            (CONVICTION_SORT_SCAN if ranked_by_conviction else lim,))
                 cols = [d[0] for d in cur.description]
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+                if ranked_by_conviction:
+                    rows = conviction_order([_project_hub(r) for r in rows], conviction_floor())[:lim]
+                    panels[key] = {"label": label, "count": None, "items": attach_market(rows)}
+                    cur.execute(f"SELECT count(*) FROM communication_events WHERE {_LIVE} AND {cond}")
+                    panels[key]["count"] = cur.fetchone()[0]
+                    continue
                 cur.execute(f"SELECT count(*) FROM communication_events WHERE {_LIVE} AND {cond}")
                 panels[key] = {"label": label, "count": cur.fetchone()[0], "items": attach_market([_project_hub(r) for r in rows])}
             cur.execute(f"SELECT count(*), count(*) FILTER (WHERE actionable) FROM communication_events WHERE {_LIVE}")

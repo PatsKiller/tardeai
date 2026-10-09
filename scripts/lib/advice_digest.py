@@ -122,7 +122,8 @@ def collect_comms(db: Callable, since: datetime, until: datetime) -> dict[str, l
                 continue
             seen[syms[0]] = {"symbol": syms[0], "event_id": str(r["event_id"]), "at": r.get("created_at"),
                              "headline": headline(r.get("sanitized_body") or ""), "source": "communications"}
-        out[sec["id"]] = list(seen.values())[: int(cfg.get("max_items_per_section") or 12)]
+        # render() ranks by CIO conviction and applies max_items_per_section; collect a wider candidate set
+        out[sec["id"]] = list(seen.values())[: int(cfg.get("collect_per_section") or 60)]
     return out
 
 
@@ -429,10 +430,37 @@ def item_block(it: dict[str, Any], facts: dict[str, Any], now: datetime) -> str:
     return "\n".join(lines)
 
 
+# Sections whose items are ranked by CIO conviction, with below-floor names collapsed (operator 2026-10-08).
+CONVICTION_SECTIONS = ("entries", "reentry")
+
+
+def _conviction_floor() -> float | None:
+    try:
+        from lib.data_broker.opportunity import load_config as _opp_cfg
+
+        v = (_opp_cfg().get("advice") or {}).get("conviction_floor")
+        return float(v) if v is not None else None
+    except Exception:
+        return None
+
+
+def rank_by_conviction(items: list[dict], facts: dict[str, Any], floor: float | None) -> tuple[list[dict], list[dict]]:
+    """(shown, below_floor): scored at/above the floor by conviction desc, then unscored names (incoming order);
+    below-floor names returned separately, best first, for the one-line tail."""
+    def conv(it):
+        c = ((facts.get(it.get("symbol")) or {}).get("cio") or {}).get("conviction")
+        return float(c) if c is not None else None
+    scored = sorted([i for i in items if conv(i) is not None and (floor is None or conv(i) >= floor)], key=lambda i: -conv(i))
+    unscored = [i for i in items if conv(i) is None]
+    below = sorted([i for i in items if conv(i) is not None and floor is not None and conv(i) < floor], key=lambda i: -conv(i))
+    return scored + unscored, below
+
+
 def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: dict[str, Any],
            movers: Optional[dict[str, list[dict]]], other: dict[str, Any], now: datetime) -> list[str]:
     """HTML messages (split at block boundaries, never mid-tag)."""
     cfg = load_config()
+    floor = _conviction_floor()
     label = ((cfg.get("slots") or {}).get(str(slot)) or {}).get("label") or f"{slot}:00 digest"
     blocks: list[str] = []
     n_items = sum(len(v) for v in sections.values()) + sum(1 for h in held if h.get("symbol") and not h.get("duplicate"))
@@ -444,13 +472,29 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
     for sec in cfg.get("sections") or []:
         items = sections.get(sec["id"]) or []
         if sec["id"] == "cio":
+            items = items[: int(cfg.get("max_items_per_section") or 8)]   # newest comms items, as before
             have = {i.get("symbol") for i in items}
             items = items + [h for h in held if h.get("symbol") and not h.get("duplicate") and h["symbol"] not in have]
-        if not items:
+        below: list[dict] = []
+        if sec["id"] in CONVICTION_SECTIONS:
+            items, below = rank_by_conviction(items, facts, floor)
+        # only the conviction-ranked sections are capped here; the CIO section shows every held note, because each
+        # one is marked DELIVERED after a confirmed send (capping it would mark unseen notes delivered)
+        cap = int(cfg.get("max_items_per_section") or 8) if sec["id"] in CONVICTION_SECTIONS else len(items)
+        if not items and not below:
             continue
-        blocks.append(f"━━━━━━━━━━━━━━━━━━\n{sec.get('icon', '')} <b>{esc(sec['title'].upper())}</b> · {len(items)}")
-        for it in items:
+        blocks.append(f"━━━━━━━━━━━━━━━━━━\n{sec.get('icon', '')} <b>{esc(sec['title'].upper())}</b> · {len(items)}"
+                      + (" · by CIO conviction" if sec["id"] in CONVICTION_SECTIONS else ""))
+        for it in items[:cap]:
             blocks.append(item_block({**it, "kind": it.get("kind") or SECTION_KIND.get(sec["id"])}, facts, now))
+        if len(items) > cap:
+            blocks.append(f"<i>+{len(items) - cap} more, ranked by conviction, in the "
+                          f"{link('Communication Center', cc_base() + '/v3/communications?preset=reward')}</i>")
+        if below:
+            blocks.append(f"▫️ <i>Below CIO conviction {floor:.0f} ({len(below)}):</i> " + " · ".join(
+                f"{link('$' + b['symbol'], ticker_url(b['symbol']))} "
+                f"{float(((facts.get(b['symbol']) or {}).get('cio') or {}).get('conviction')):.0f}" for b in below[:12])
+                + (f" · +{len(below) - 12}" if len(below) > 12 else ""))
     if movers:
         mv = []
         if movers.get("price"):

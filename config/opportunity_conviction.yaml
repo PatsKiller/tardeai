@@ -128,3 +128,12 @@ profile_lane:
   top_n: 150
   stub_retry_days: 7
   stub_retry_max: 150
+
+# Advice ordering (operator 2026-10-08: "fix implement" — the reward list was ordered by each message's own reward
+# score, and CIO entry alerts fired on names the CIO ranks near the bottom, e.g. VCIG conviction 34, rank #1314).
+# Communications: the Highest-reward board and the reward preset sort by CIO conviction; a name below
+# conviction_floor sorts last and is tagged "low conviction". Advice digest: entry and re-entry setups are ordered by
+# conviction and below-floor names collapse into one line at the end of the section. Nothing is deleted or muted —
+# the messages stay in the Communications ledger. 55 ≈ the bottom third of ranked names (440 of 1,412 on 2026-10-08).
+advice:
+  conviction_floor: 55

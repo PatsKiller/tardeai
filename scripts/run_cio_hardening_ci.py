@@ -1157,6 +1157,12 @@ GATES = [
         "opportunity_modal_news_20261008",
         ["tests/test_opportunity_modal_news_20261008.py"],
     ),
+    # Advice ranked by CIO conviction (operator 2026-10-08): Communications conviction sort + reward board, below-floor
+    # names last and tagged; advice digest entry/re-entry ordered by conviction, below-floor collapsed, CIO notes uncapped.
+    (
+        "conviction_ordering_20261008",
+        ["tests/test_conviction_ordering_20261008.py"],
+    ),
     # Decision-speed redesign (operator 2026-10-08): Telegram decision cards route exactly like the old layout;
     # Home/Communications/Watch answer action-risk-opportunity first with strict colour families.
     (
