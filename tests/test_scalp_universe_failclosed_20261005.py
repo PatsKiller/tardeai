@@ -99,7 +99,10 @@ def test_unknown_float_fails_closed_and_each_exclusion_is_named():
 
 def test_sql_takes_latest_non_null_float_from_any_scan_and_no_null_admission():
     conn = _Conn(ROWS)
-    ssl.resolve_universe_detail(conn, CFG, float_lookup=lambda syms, u: {})
+    # the universe SQL itself; the 2026-10-09 shared feeds run after it on the same fake cursor
+    # (tests/test_trade_ai_scalp_5min_20261009.py covers them)
+    cfg = {**CFG, "universe": {**CFG["universe"], "shared_feeds": {"enabled": False}}}
+    ssl.resolve_universe_detail(conn, cfg, float_lookup=lambda syms, u: {})
     sql = conn.cur.sql
     assert "IS NULL OR" not in sql                              # the leak is gone
     assert "float_mm IS NOT NULL" in sql and "ORDER BY x.scanned_at DESC LIMIT 1" in sql
