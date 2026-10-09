@@ -471,6 +471,10 @@ overlay_main() {
   # state, secrets, installed dependencies, and the separately rebuilt dist
   # are deliberately protected from --delete.
   rsync -a --delete \
+    `# 2026-10-09: the bare 'data/' exclude below also matched tracked docs data` \
+    `# (docs/implementation/n8n-maturity/data/, PR #1597), so every release failed` \
+    `# the CURRENT pin check (tree_diff:4). Tracked docs data ships; runtime data/ does not.` \
+    --include='docs/**/data/***' \
     --exclude='.git/' \
     --exclude='.venv/' --exclude='venv/' \
     --exclude='node_modules/' \
