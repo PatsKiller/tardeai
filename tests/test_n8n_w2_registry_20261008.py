@@ -6,10 +6,17 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts import n8n_coordination_gateway as SERVER  # noqa: E402
+from scripts import n8n_run_executor as EXECUTOR  # noqa: E402
+from scripts import n8n_run_relay as RELAY  # noqa: E402
 from scripts.lib import lane_registry as L  # noqa: E402
+from scripts.lib import n8n_coordination_gateway as GATEWAY  # noqa: E402
+from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerRunStore  # noqa: E402
 from scripts.n8n_run_executor import load_allowlist  # noqa: E402
 from scripts.pipelines.cutover._cutover import load_registry_exact  # noqa: E402
 
@@ -20,6 +27,8 @@ REMINDERS = {
     "openclaw-reminder-sentinelone-earnings": "openclaw-sentinelone-earnings-reminder",
 }
 DOF = {"dof-run-pipeline": "0 20 * * 6", "dof-rescan-tickets": "0 18 * * *"}
+N6 = sorted(set(REMINDERS) | set(DOF))
+ALLOWLIST_PATH = ROOT / "config/n8n_run_allowlist.json"
 
 
 def _rows():
@@ -102,3 +111,102 @@ def test_pending_foreign_commands_are_not_loaded_as_executable_allowlist_entries
         assert proposal["observed_command"][0] == ".venv/bin/python3"
         assert proposal["observed_lock"] is None and proposal["dry_run_arg"] is None
         assert "23.3" in doc["blocked_reasons"][lane]
+
+
+@pytest.mark.parametrize("lane_id", N6)
+@pytest.mark.parametrize("mode", ["dry_run", "live"])
+def test_gateway_refuses_each_n6_lane_without_recording_a_run(tmp_path, lane_id, mode):
+    """A signed request cannot promote documentation-only proposals into executable lanes."""
+    key = b"fixture-only-w2-key-" + b"x" * 32
+    now = 1_791_000_000.0
+    claim = {
+        "v": 1,
+        "caller_id": "n8n-relay",
+        "project": "trade-ai",
+        "iat": now,
+        "exp": now + 120,
+        "nonce": "w2-fixture-nonce-0001",
+        "scope": GATEWAY.SCOPE_RUN,
+    }
+    ledger = CoordinationLedger(tmp_path / "ledger.sqlite")
+    try:
+        run_id = "w2-fixture-request-0001"
+        result = GATEWAY.handle_request(
+            {
+                "claim": claim,
+                "signature": GATEWAY.sign_claim(claim, key),
+                "route": "coordination/run",
+                "operation": "run",
+                "lane_id": lane_id,
+                "mode": mode,
+                "idempotency_key": run_id,
+                "requested_by": "n8n:workflow:w2-test",
+            },
+            key=key,
+            now=now,
+            nonce_store={},
+            idempotency_store={},
+            expected_origin_sha="f" * 40,
+            caller_keys=GATEWAY.build_caller_keys(key, n8n_key=key),
+            run_store=LedgerRunStore(ledger),
+            run_allowlist=SERVER.load_run_allowlist(ALLOWLIST_PATH),
+        )
+        assert result["state"] == "REFUSED"
+        assert result["reason"] == "run_lane_not_allowlisted"
+        assert LedgerRunStore(ledger).get(run_id) is None
+    finally:
+        ledger.close()
+
+
+@pytest.mark.parametrize("lane_id", N6)
+@pytest.mark.parametrize("mode", ["dry_run", "live"])
+def test_relay_and_executor_refuse_n6_without_transport_or_spawn(tmp_path, lane_id, mode):
+    """Neither live-canary flags nor an existing queued row widen the executable set."""
+
+    def forbidden_call(*args, **kwargs):
+        pytest.fail("a blocked N6 lane reached network transport or subprocess execution")
+
+    bearer = "w2-fixture-bearer-" + "x" * 32
+    relay = RELAY.Relay(
+        environ={
+            RELAY.BEARER_ENV: bearer,
+            RELAY.N8N_KEY_ENV: "w2-fixture-signing-key-" + "x" * 32,
+            RELAY.LIVE_LANES_ENV: " ".join(N6),
+            "TRADEAI_STATE_ROOT": str(tmp_path / "state"),
+        },
+        allowlist=SERVER.load_run_allowlist(ALLOWLIST_PATH),
+        transport=forbidden_call,
+    )
+    status, body = relay.run(
+        "Bearer " + bearer,
+        json.dumps({"lane_id": lane_id, "mode": mode, "idempotency_key": "w2-fixture-request-0001"}).encode(),
+    )
+    assert status == 403 and body["reason"] == "relay_lane_not_allowlisted"
+    assert bearer not in relay.log_path.read_text()
+    receipt = EXECUTOR.execute(
+        {"run_id": "w2-fixture-request-0001", "lane_id": lane_id, "mode": mode},
+        load_allowlist(ALLOWLIST_PATH).get(lane_id),
+        env={},
+        state_root=tmp_path / "state",
+        code_root=ROOT,
+        runner=forbidden_call,
+    )
+    assert receipt["state"] == "RUN_REFUSED"
+    assert receipt["reason"] == "lane_not_allowlisted"
+    assert receipt["argv"] is None
+
+
+def test_existing_n3_n4_contracts_keep_explicit_cron_side_lock_provenance():
+    entries = {row["lane_id"]: row for row in json.loads(ALLOWLIST_PATH.read_text())["lanes"]}
+    shared_locks = {
+        "generate-analyst-daily-digest": "/tmp/analyst_daily_digest.lock",
+        "catalyst-calibration-monitor": "/tmp/catalyst_calibration_monitor.lock",
+        "source-attribution-monitor": "/tmp/source_attribution_monitor.lock",
+        "watch-directives-monitor": "/tmp/watch_directives_monitor.lock",
+    }
+    for lane, lock in shared_locks.items():
+        assert entries[lane]["lock"] == lock
+        assert "flock -n " + lock in entries[lane]["source"]
+    for lane in ("desk-suggestions-digest", "job-coverage-monitor", "finviz-view-contracts"):
+        assert "no lock" in entries[lane]["source"] or "no cron lock" in entries[lane]["source"]
+        assert "canary" in entries[lane]["source"]
