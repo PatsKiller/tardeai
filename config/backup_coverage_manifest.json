@@ -392,6 +392,7 @@
    "coverage": "FULL",
    "restore": "reinstall from the repo (config-write grant); installed *.service/*.timer copies also in ops_backup systemd_user/",
    "covers": [
+    "unit:tradeai-phone-status.service",
     "unit:cio-governed-bridge.service",
     "unit:hermes-autonomous-loop.service",
     "unit:hermes-autonomous-loop.timer",
@@ -535,6 +536,7 @@
    "coverage": "FULL",
    "restore": "re-render from Bitwarden SM (sm-render); SCHWAB_TOKEN_ENC_KEY also in env_offsite via config/broker_credentials.env",
    "covers": [
+    "secret:TRADEAI_PHONE_STATUS_HMAC_KEY",
     "secret:ADMIN_WRITE_TOKEN",
     "secret:ALPACA_API_KEY",
     "secret:ALPACA_IRA_API_KEY",
