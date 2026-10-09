@@ -574,9 +574,12 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                 try:
                     fresh[sym] = enrich_ticker(sym, row.get("company",""))
                     state.record_haiku(sym, fps)
+                    # 2026-10-09: write through per symbol. The 5-min scalp lane runs under a timeout; a cold
+                    # cycle (new release / new day) used to be killed before the single set_bulk at the end, so
+                    # nothing was cached and every following run started cold and was killed again.
+                    set_bulk({sym: fresh[sym]}, str(root), date_str)
                 except Exception:
                     pass
-        if fresh: set_bulk(fresh, str(root), date_str)
         enrichments.update(fresh)
         print(f"  [live] catalysts: {len(cached)} cached  {len(fresh)} fresh")
     except Exception as e:
