@@ -81,6 +81,12 @@ except Exception:
     _HAS_XCAL = False
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def _market_open(date_str: str) -> bool:
     if _HAS_XCAL:
         try:
@@ -955,7 +961,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         try:
             import subprocess as _sp
             _sp.run(
-                [str(root / ".venv/bin/python"), str(root / "scripts/strategy_signal_sync.py"),
+                [venv_python(root), str(root / "scripts/strategy_signal_sync.py"),
                  "--run-label", run_label],
                 timeout=180, cwd=str(root),
             )

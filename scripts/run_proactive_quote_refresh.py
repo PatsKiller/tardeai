@@ -19,6 +19,12 @@ log = logging.getLogger("proactive_quote_refresh")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def main():
     p = argparse.ArgumentParser(description="Proactive quote refresh (default: dry-run)")
     p.add_argument("--mode", choices=["pending", "incubator", "broker", "all"], default="all")
@@ -37,7 +43,7 @@ def main():
     from select_quote_refresh_targets import _db_query
     import subprocess
     target_result = subprocess.run(
-        [str(PROJ / ".venv/bin/python"), str(PROJ / "scripts/select_quote_refresh_targets.py"),
+        [venv_python(PROJ), str(PROJ / "scripts/select_quote_refresh_targets.py"),
          "--mode", args.mode, "--limit", str(args.limit), "--output-json", "/dev/stdout"],
         capture_output=True, text=True, timeout=30
     )

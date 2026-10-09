@@ -23,6 +23,12 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from lib.governed_cloud_generation import generate_cloud
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def llm_generate(prompt, timeout=30, **_kwargs):
     text, _lane = generate_cloud(
         prompt, process_id="iris_taxonomy_agent",
@@ -487,7 +493,7 @@ def classify_channel_llm(channel_name, recent_titles=None):
     cats = ", ".join(TARGET_CATEGORIES.keys())
     titles_ctx = ""
     if recent_titles:
-        titles_ctx = f"\nRecent video titles:\n" + "\n".join(f"- {t}" for t in recent_titles[:10])
+        titles_ctx = "\nRecent video titles:\n" + "\n".join(f"- {t}" for t in recent_titles[:10])
 
     prompt = f"""/no_think
 Classify this YouTube channel into ONE category.
@@ -663,7 +669,7 @@ def run_weekly_scan():
                     {"category": None},
                     {"category": cat, "priority": "medium", "agent_tags": tags},
                     classification.get("reasoning", "LLM classification"),
-                    conf, coverage_gap=f"uncategorized"
+                    conf, coverage_gap="uncategorized"
                 )
                 proposals_created += 1
             except Exception as e:
@@ -1109,7 +1115,7 @@ def run_weekly_hygiene(dry_run=False):
         conn.commit()
 
     # Step 4: News articles
-    print(f"\n  Step 3: Analyzing news articles...")
+    print("\n  Step 3: Analyzing news articles...")
     try:
         cur.execute("""SELECT id, title, summary, created_at, hygiene_status,
                               strategy_tags, agent_tags
@@ -1158,7 +1164,7 @@ def run_weekly_hygiene(dry_run=False):
     print(f"  Archived {news_demoted} old news articles")
 
     # Step 5: Regulatory supersession
-    print(f"\n  Step 4: Checking superseded regulatory data...")
+    print("\n  Step 4: Checking superseded regulatory data...")
     supersessions = detect_superseded_regulatory_data()
     for s in supersessions:
         if not dry_run:
@@ -1175,7 +1181,7 @@ def run_weekly_hygiene(dry_run=False):
         print(f"  Superseded: {s['rule_type']} {s['old_year']} -> {s['new_year']}")
 
     # Step 6: Year-specific YouTube transcripts
-    print(f"\n  Step 5: Checking year-specific YouTube transcripts...")
+    print("\n  Step 5: Checking year-specific YouTube transcripts...")
     try:
         cur.execute("""SELECT id, title, ingested_at, hygiene_status, quality_score
                        FROM youtube_transcripts
@@ -1251,7 +1257,7 @@ def handle_iris_hygiene_command(subcommand, args_str):
             lines.append(f"#{p['id']} [{(p['proposed_action'] or '').upper()}] "
                          f"{(p['content_title'] or '')[:40]}\n"
                          f"  {(p['reason'] or '')[:60]} | Conf: {(p['confidence'] or 0)*100:.0f}% | {exp_days}d left")
-        lines.append(f"\niris hygiene approve/reject/defer <id>")
+        lines.append("\niris hygiene approve/reject/defer <id>")
         return "\n".join(lines)
 
     # iris hygiene approve <id>
@@ -1355,7 +1361,7 @@ def run_library_audit(dry_run=False):
         print(f"  Coverage: {coverage if coverage is not None else 'n/a (orphaned embeddings)'}% | Low sources: {low_sources or 'none'}")
         if low_sources and not dry_run:
             import subprocess
-            subprocess.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+            subprocess.Popen([venv_python(PROJECT_ROOT),
                               str(PROJECT_ROOT / "scripts/rag_indexer.py"),
                               "--source", ",".join(low_sources), "--hours", "48"],
                              cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -1479,7 +1485,7 @@ def run_library_audit(dry_run=False):
                 print(f"  GAP: {cat} — only {cnt} articles in last {max_age} days (need {min_arts})")
         report["content_gaps"] = gap_categories
         if not gap_categories:
-            print(f"  No critical gaps")
+            print("  No critical gaps")
     except Exception as e:
         print(f"  Gap check error: {e}")
 
@@ -1926,7 +1932,7 @@ def run_discovery_mode(send_telegram=False):
                 total = c["mention_count"] + c.get("news_mentions", 0)
                 themes = c.get("themes") or []
                 msg += f"\u2022 {c['symbol']} \u2014 {total} mentions ({', '.join(str(t) for t in themes[:2])})\n"
-            msg += f"\nApprove via: `iris approve <id>`"
+            msg += "\nApprove via: `iris approve <id>`"
             _tg(msg)
         except Exception as e:
             print(f"[iris-discovery] Telegram failed: {e}")
@@ -1991,11 +1997,11 @@ def run_freshness_validation():
                         result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120,
                                                 cwd=str(PROJECT_ROOT))
                         if result.returncode == 0:
-                            print(f"    ✅ Success")
+                            print("    ✅ Success")
                         else:
                             print(f"    ❌ Failed (exit {result.returncode}): {result.stderr[:100]}")
                     except subprocess.TimeoutExpired:
-                        print(f"    ⏰ Timeout after 120s")
+                        print("    ⏰ Timeout after 120s")
                     except Exception as e:
                         print(f"    ❌ Error: {e}")
 
@@ -2005,9 +2011,9 @@ def run_freshness_validation():
             try:
                 import subprocess
                 subprocess.run(
-                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/process_watchlist_agent_jobs.py"), "--limit", "5"],
+                    [venv_python(PROJECT_ROOT), str(PROJECT_ROOT / "scripts/process_watchlist_agent_jobs.py"), "--limit", "5"],
                     capture_output=True, text=True, timeout=180, cwd=str(PROJECT_ROOT))
-                print(f"    ✅ Drained 5 jobs")
+                print("    ✅ Drained 5 jobs")
             except Exception as e:
                 print(f"    ❌ Drain error: {e}")
 

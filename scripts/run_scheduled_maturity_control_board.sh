@@ -5,7 +5,7 @@ set -euo pipefail
 # Code follows the installed launcher/release; state symlinks and existing guards remain authoritative.
 PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 set -a; source "$PROJ/.env"; set +a
-PY="$PROJ/.venv/bin/python"
+. "$PROJ/scripts/lib/venv_python.sh"; PY="$(tradeai_venv_python "$PROJ")"  # release dirs ship no .venv
 LOG="$PROJ/logs/maturity_control_board.log"
 LOCK="/tmp/tradeai_maturity_control_board.lock"
 TS=$(date '+%Y-%m-%d %H:%M:%S')
