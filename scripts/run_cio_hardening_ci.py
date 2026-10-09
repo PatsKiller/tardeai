@@ -1162,6 +1162,12 @@ GATES = [
         "cron_venv_resolver_20261009",
         ["tests/test_cron_venv_resolver_20261009.py"],
     ),
+    # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
+    # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
+    (
+        "paper_venv_resolver_20261009",
+        ["tests/test_paper_venv_resolver_20261009.py"],
+    ),
     # Symbol-thesis job repair (operator 2026-10-09 "fix the thesis job"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop
     # backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies.
     (
