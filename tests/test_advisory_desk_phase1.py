@@ -216,5 +216,48 @@ class TestHoldingsEnqueueScript(unittest.TestCase):
             self.assertFalse(s.isdigit(), f"CUSIP-like slipped through: {s}")
 
 
+class TestIpsMaxFromConfig(unittest.TestCase):
+    """2026-10-09: the validator used a hardcoded 8% while the ratified IPS says
+    12%, so a 10.45% SCHD failed validation_ok and the shadow session exited 1
+    every day from 2026-09-30."""
+
+    def _cfg(self, tmp: str, body: dict) -> Path:
+        d = Path(tmp)
+        (d / "investment_policy_statement.json").write_text(json.dumps(body), encoding="utf-8")
+        return d
+
+    def test_reads_constraint_from_config(self):
+        from lib.data_broker.advisory_desk import ips_max_position_pct
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._cfg(tmp, {"constraints": {"max_single_position_pct": 12.0}})
+            self.assertEqual(ips_max_position_pct(d), 12.0)
+
+    def test_falls_back_when_missing_or_invalid(self):
+        from lib.data_broker.advisory_desk import IPS_MAX_POSITION_PCT, ips_max_position_pct
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ips_max_position_pct(Path(tmp)), IPS_MAX_POSITION_PCT)
+            d = self._cfg(tmp, {"constraints": {"max_single_position_pct": "x"}})
+            self.assertEqual(ips_max_position_pct(d), IPS_MAX_POSITION_PCT)
+            d = self._cfg(tmp, {"constraints": {"max_single_position_pct": 0}})
+            self.assertEqual(ips_max_position_pct(d), IPS_MAX_POSITION_PCT)
+
+    def _row(self, wp: float) -> dict:
+        return {"symbol": "SCHD", "verdict": "HOLD", "confidence": 0.5,
+                "market_value": 1000.0, "weight_pct": wp, "source": "holdings",
+                "risk_signals": []}
+
+    def _ips_errors(self, ips: float, wp: float) -> list[str]:
+        from lib.data_broker import advisory_desk as ad
+        out = {"ok": True, "data": {"metadata": {}, "rows": [self._row(wp)]}}
+        with patch.object(ad, "ips_max_position_pct", return_value=ips):
+            return [e for e in ad.validate_advisory_output(out) if "exceeds IPS max" in e]
+
+    def test_validator_uses_configured_max(self):
+        self.assertEqual(self._ips_errors(12.0, 10.45), [])
+        errs = self._ips_errors(12.0, 12.5)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("IPS max 12.0%", errs[0])
+
+
 if __name__ == "__main__":
     unittest.main()
