@@ -1,7 +1,7 @@
 {
  "schema": "SelfHealingMechanisms@v1",
  "authority": "docs/implementation/n8n-maturity (program 2026-10-09); source audit ~/n8n-maturity-program/data/B_self_healing.md",
- "note": "Inventory the n8n maturity scorer (dimension 6) evaluates. Each mechanism names the code that implements it, the evidence source a successful runtime action leaves (kind jsonl|json|jsonstream|sqlite|journal|systemd|log|psql|absent; path relative to its base), and the success predicate: an actual heal/remediation/retry success, not merely 'ran'. PROVEN = >= min_count successes within window_hours (default dimensions.self_healing.proof_window_hours, 336 h); RAN_NOT_HEALED = records exist but too few successes; NO_EVIDENCE = no source or no records. Logs without dates trust only their last undated_tail_lines lines/records and only when the file mtime is inside the window.",
+ "note": "Inventory the n8n maturity scorer (dimension 6) evaluates. Each mechanism names the code that implements it, the evidence source a successful runtime action leaves (kind jsonl|json|jsonstream|sqlite|journal|systemd|log|psql|absent; path relative to its base), and the success predicate: an actual heal/remediation/retry success, not merely 'ran'. PROVEN = >= min_count successes within window_hours (default dimensions.self_healing.proof_window_hours, 336 h); RAN_NOT_HEALED = records exist but too few successes; NO_EVIDENCE = no source or no records. Logs without dates trust only their last undated_tail_lines lines/records (row value, else dimensions.self_healing.undated_tail_lines) and only when the file mtime is inside the window.",
  "bases": {
   "state": "persistent state root (probe.root)",
   "repo": "repo checkout (probe.proj)",
@@ -655,9 +655,16 @@
    "evidence_source": {
     "kind": "psql",
     "database": "trade_ai",
+    "user": "trade_ai",
+    "host": "localhost",
     "table": "broker_oauth_token_audit",
     "ts_key": "created_at",
-    "note": "host Postgres only; the probe allowlist has no host psql (core change request)"
+    "columns": [
+     "event",
+     "status",
+     "created_at"
+    ],
+    "note": "host Postgres via core.psql_argv (read-only session); credentials from ~/.pgpass, never argv. Only event/status/created_at are selected (no token fingerprints). An auth/connect failure reports NO_EVIDENCE."
    },
    "success_predicate": {
     "description": "a refresh rotation that succeeded (event=refresh_rotation, status=ok)",
@@ -674,7 +681,7 @@
     "min_count": 1,
     "window_hours": 24
    },
-   "expected": "NO_EVIDENCE until the probe can read host Postgres (audit: 931 ok rotations in 14 days)",
+   "expected": "PROVEN when host psql auth works (audit: 931 ok rotations in 14 days); NO_EVIDENCE while the ~/.pgpass password is stale",
    "audit_ref": "B-E1"
   },
   {

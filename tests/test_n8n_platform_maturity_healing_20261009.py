@@ -4,6 +4,7 @@ Every test uses tmp_path for the state root, repo and home, a fake command runne
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import os
@@ -42,13 +43,24 @@ class FakeRunner:
         return (1, "", "no fake")
 
 
+REAL_CONFIG = json.loads((PROJ / "config" / "n8n_platform_maturity.json").read_text())
+
+
+def _config(**dim_overrides) -> dict:
+    """The real config file, with per-dimension overrides ({dim: {key: value}}) — never a hand-built stub."""
+    cfg = copy.deepcopy(REAL_CONFIG)
+    for dim, upd in dim_overrides.items():
+        cfg["dimensions"][dim].update(upd)
+    return cfg
+
+
 def _probe(tmp_path, *, runner=None, config=None, env=None):
     for d in ("state", "proj/config", "home", "dev"):
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
     e = {"HOME": str(tmp_path / "home"), "TRADEAI_DEV_TREE": str(tmp_path / "dev")}
     e.update(env or {})
     return core.Probe(root=tmp_path / "state", proj=tmp_path / "proj", now=NOW, env=e,
-                      config=config if config is not None else {"gate_score": 8.0, "dimensions": {}},
+                      config=config if config is not None else _config(),
                       runner=runner or FakeRunner())
 
 
@@ -74,8 +86,8 @@ def _inventory(probe, mechs):
     return doc
 
 
-def _eval(probe, mech, window=336.0):
-    return h.evaluate_mechanism(probe, {"bases": {}}, mech, default_window_h=window)
+def _eval(probe, mech, window=336.0, tail=0):
+    return h.evaluate_mechanism(probe, {"bases": {}}, mech, default_window_h=window, default_tail=tail)
 
 
 # --------------------------------------------------------------------------- the real inventory
@@ -272,14 +284,75 @@ def test_systemd_show(tmp_path):
     assert _eval(p, _mech("c", {"kind": "systemd", "unit": "c.service"}, pred))["state"] == h.NO_EVIDENCE
 
 
-def test_psql_refused_and_absent(tmp_path):
+PSQL_EV = {"kind": "psql", "database": "trade_ai", "user": "trade_ai", "host": "localhost",
+           "table": "broker_oauth_token_audit", "ts_key": "created_at", "columns": ["event", "status", "created_at"]}
+PSQL_PRED = {"all": [{"field": "event", "equals": "refresh_rotation"}, {"field": "status", "equals": "ok"}],
+             "window_hours": 24}
+
+
+def test_psql_proven_via_fake_runner(tmp_path):
+    rows = [{"event": "refresh_rotation", "status": "ok", "created_at": _iso(2)},
+            {"event": "refresh_rotation", "status": "error", "created_at": _iso(3)}]
+    runner = FakeRunner({"broker_oauth_token_audit": (0, "\n".join(json.dumps(r) for r in rows) + "\n", "")})
+    p = _probe(tmp_path, runner=runner)
+    r = _eval(p, _mech("s", PSQL_EV, PSQL_PRED))
+    assert r["state"] == h.PROVEN and r["successes_window"] == 1 and r["records"] == 2
+    argv = runner.calls[0]
+    assert core.is_read_only(argv)
+    assert argv[:9] == ["psql", "-X", "-At", "-h", "localhost", "-U", "trade_ai", "-d", "trade_ai"]
+    sql = argv[-1]
+    assert core.is_safe_sql(sql)
+    assert "SELECT event, status, created_at FROM broker_oauth_token_audit" in sql
+    assert "*" not in sql and "fingerprint" not in sql and "PASSWORD" not in " ".join(argv).upper()
+    assert argv == h.psql_source_argv(PSQL_EV, p.since(24))
+    # only failed rotations in the window -> RAN_NOT_HEALED
+    runner.table = {"broker_oauth_token_audit": (0, json.dumps(rows[1]) + "\n", "")}
+    assert _eval(p, _mech("s", PSQL_EV, PSQL_PRED))["state"] == h.RAN_NOT_HEALED
+
+
+def test_psql_auth_failure_is_no_evidence(tmp_path):
+    runner = FakeRunner({"broker_oauth_token_audit": (2, "", "password authentication failed")})
+    p = _probe(tmp_path, runner=runner)
+    r = _eval(p, _mech("s", PSQL_EV, PSQL_PRED))
+    assert r["state"] == h.NO_EVIDENCE and r["note"] == "psql auth/connect failed rc=2"
+
+
+@pytest.mark.parametrize("bad", [{"columns": []}, {"columns": ["*"]}, {"table": "t; DROP"}, {"user": ""},
+                                 {"columns": ["event", "pg_sleep(1)"]}])
+def test_psql_invalid_spec_never_runs(tmp_path, bad):
     runner = FakeRunner()
     p = _probe(tmp_path, runner=runner)
-    ev = {"kind": "psql", "database": "trade_ai", "table": "broker_oauth_token_audit", "ts_key": "created_at"}
-    r = _eval(p, _mech("s", ev, {"field": "status", "equals": "ok"}))
-    assert r["state"] == h.NO_EVIDENCE and runner.calls == [], "psql is refused by the probe before running"
+    r = _eval(p, _mech("s", dict(PSQL_EV, **bad), PSQL_PRED))
+    assert r["state"] == h.NO_EVIDENCE and runner.calls == []
+
+
+def test_absent_kind(tmp_path):
+    p = _probe(tmp_path)
     r = _eval(p, _mech("x", {"kind": "absent", "reason": "not built yet"}, {"field": "x", "equals": 1}))
     assert r["state"] == h.NO_EVIDENCE and r["note"] == "not built yet"
+
+
+def test_undated_tail_default_from_config(tmp_path):
+    p = _probe(tmp_path)
+    _write(p.root / "logs/reaper.log", "x · 1 proc(s) reaped\n", mtime_hours_ago=0.5)
+    m = _mech("r", {"kind": "log", "path": "logs/reaper.log"}, {"regex": r"[1-9]\d* proc\(s\) reaped"})
+    assert _eval(p, m, tail=0)["state"] == h.NO_EVIDENCE, "no tail configured -> undated lines are not trusted"
+    assert _eval(p, m, tail=5)["state"] == h.PROVEN
+
+
+def test_every_real_inventory_command_is_read_only(tmp_path):
+    """Run the real inventory against a recording runner: every argv issued passes core.is_read_only and
+    none is refused by the probe."""
+    runner = FakeRunner()
+    p = _probe(tmp_path, runner=runner)
+    doc = json.loads((PROJ / h.INVENTORY_REL).read_text())
+    results = h.evaluate_inventory(p, doc, 336.0, 0)
+    kinds = [m["evidence_source"]["kind"] for m in doc["mechanisms"]]
+    assert len(runner.calls) == sum(k in ("journal", "systemd", "psql") for k in kinds)
+    assert "psql" in kinds
+    for argv in runner.calls:
+        assert core.is_read_only(argv), argv[:4]
+    assert not any("refuses" in (r["note"] or "") for r in results)
 
 
 # --------------------------------------------------------------------------- dimension 6
@@ -336,12 +409,102 @@ def test_self_healing_partial_without_tick(tmp_path):
 
 
 def test_self_healing_thresholds_from_config(tmp_path):
-    cfg = {"gate_score": 8.0, "dimensions": {"self_healing": {"proven_ratio_gate": 0.6, "health_tick_ok_rate_gate": 0.9}}}
+    cfg = _config(self_healing={"proven_ratio_gate": 0.6, "health_tick_ok_rate_gate": 0.9})
     p = _probe(tmp_path, config=cfg)
     _heal_inventory(p, 3, 5)
     _tick(p, ok_runs=95, total=100)
     r = h.collect_self_healing(p)
     assert r["gate"]["pass"] and r["score"] >= 8.0
+
+
+def test_self_healing_empty_inventory_is_not_full_marks(tmp_path):
+    p = _probe(tmp_path)
+    _write(p.proj / h.INVENTORY_REL, json.dumps({"schema": h.INVENTORY_SCHEMA, "mechanisms": []}))
+    _tick(p, ok_runs=100, total=100)
+    r = h.collect_self_healing(p)
+    assert r["metrics"]["proven_ratio"] is None and r["metrics"]["s_proven"] is None
+    assert r["status"] == core.PARTIAL and r["score"] == 5.0 and not r["gate"]["pass"]
+    # an inventory whose rows are all non-objects is empty too
+    _write(p.proj / h.INVENTORY_REL, json.dumps({"schema": h.INVENTORY_SCHEMA, "mechanisms": [1, "x"]}))
+    r = h.collect_self_healing(p)
+    assert r["metrics"]["proven_ratio"] is None and not r["gate"]["pass"]
+
+
+def test_health_tick_zero_receipts_in_window_is_unverified(tmp_path):
+    p = _probe(tmp_path)
+    _heal_inventory(p, 5, 5)
+    rows = [{"as_of": _iso(30 + i), "mode": "apply", "ok": True} for i in range(10)]  # all outside 24 h
+    _write(p.root / "data/runtime/health_tick_history.jsonl", "\n".join(json.dumps(r) for r in rows))
+    t = h.health_tick_status(p)
+    assert t["runs"] == 0 and t["ok_rate"] is None
+    r = h.collect_self_healing(p)
+    assert r["metrics"]["s_health_tick"] is None and r["status"] == core.PARTIAL and not r["gate"]["pass"]
+
+
+def test_health_tick_single_stale_receipt_not_green(tmp_path):
+    p = _probe(tmp_path)
+    _heal_inventory(p, 5, 5)
+    _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(2), "ok": True, "mode": "apply"}))
+    t = h.health_tick_status(p)
+    assert t["last_fresh"] is False and t["ok_rate"] is None, "a stale receipt is not a sample"
+    r = h.collect_self_healing(p)
+    assert r["metrics"]["s_health_tick"] is None and not r["gate"]["pass"] and r["score"] <= 7.9
+    # the same receipt, fresh and alone, is one sample (ok_rate 1/1) and the gate can pass
+    _write(p.root / "data/runtime/health_tick_last.json", json.dumps({"as_of": _iso(0.05), "ok": True, "mode": "apply"}))
+    t = h.health_tick_status(p)
+    assert t["ok_rate"] == 1.0 and t["runs"] == 1 and t["ok_rate_basis"] == "latest_receipt"
+
+
+def test_history_rows_without_timestamp_do_not_count(tmp_path):
+    p = _probe(tmp_path)
+    _write(p.root / "data/runtime/health_tick_history.jsonl", json.dumps({"mode": "apply", "ok": True}))
+    assert h.health_tick_status(p)["runs"] == 0
+
+
+@pytest.mark.parametrize("dim,key", [("self_healing", "proven_ratio_gate"), ("self_healing", "undated_tail_lines"),
+                                     ("self_healing", "health_tick_window_hours"), ("self_healing", "proof_window_hours"),
+                                     ("recovery", "backup_ok_score"), ("recovery", "n8n_lab_restore_drill_credit")])
+def test_missing_config_key_is_unverified(tmp_path, dim, key):
+    cfg = _config()
+    del cfg["dimensions"][dim][key]
+    p = _probe(tmp_path, config=cfg)
+    with pytest.raises(core.ConfigError):
+        p.need(dim, key)
+    _heal_inventory(p, 5, 5)
+    _tick(p, ok_runs=100, total=100)
+    _bv(p)
+    _rd(p)
+    r = h.COLLECTORS[dim](p)
+    assert r["status"] == core.UNVERIFIED and r["score"] == 0.0 and key in r["notes"][0]
+
+
+@pytest.mark.parametrize("key", ["gate_score", "gate_cap"])
+def test_missing_top_level_gate_key_is_unverified(tmp_path, key):
+    cfg = _config()
+    del cfg[key]
+    p = _probe(tmp_path, config=cfg)
+    with pytest.raises(core.ConfigError):
+        core.need_top(cfg, key)
+    assert h.collect_self_healing(p)["status"] == core.UNVERIFIED
+    assert h.collect_recovery(p)["status"] == core.UNVERIFIED
+
+
+def test_gate_cap_from_config(tmp_path):
+    cfg = _config()
+    cfg["gate_cap"] = 6.5
+    p = _probe(tmp_path, config=cfg)
+    cfg["dimensions"]["recovery"]["restore_drill_fail_score"] = 9.0  # mean 9.5 would pass 8.0; the cap holds it
+    _bv(p)
+    _rd(p, outcome="FAIL")
+    r = h.collect_recovery(p)
+    assert not r["gate"]["pass"] and r["score"] == 6.5
+
+
+def test_recovery_scores_from_config(tmp_path):
+    p = _probe(tmp_path, config=_config(recovery={"backup_warn_score": 7.0, "backup_ok_score": 9.0}))
+    _bv(p, "WARN")
+    _rd(p)
+    assert h.collect_recovery(p)["metrics"]["s_backup"] == 7.0
 
 
 # --------------------------------------------------------------------------- dimension 9

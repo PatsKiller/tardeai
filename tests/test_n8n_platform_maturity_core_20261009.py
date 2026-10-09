@@ -30,35 +30,99 @@ def _probe(tmp_path, runner=None, config=None):
                       runner=runner or (lambda argv, t: (1, "", "absent")))
 
 
+_RO = "PGOPTIONS=-c default_transaction_read_only=on"
+_NAMES = '{{range .Config.Env}}{{index (split . "=") 0}}{{"\\n"}}{{end}}'
+
+
 @pytest.mark.parametrize("argv", [
     ["crontab", "-l"],
-    ["systemctl", "--user", "list-units", "--failed"],
-    ["journalctl", "--user", "-u", "x.service", "--since", "-24h"],
-    ["docker", "ps", "--format", "{{.Names}}"],
-    ["docker", "exec", "db", "psql", "-U", "u", "-d", "n8n", "-At", "-c", "SELECT count(*) FROM workflow_entity"],
-    ["gh", "run", "list", "--branch", "main"],
-    ["gh", "api", "repos/o/r/commits/main/check-runs"],
-    ["git", "-C", "/x", "log", "-1"],
-    ["guard", "log", "20"],
+    ["/usr/bin/crontab", "-l"],
+    ["systemctl", "--user", "list-units", "--failed", "--no-legend", "--plain"],
+    ["systemctl", "--user", "show", "x.service", "-p", "ActiveState", "-p", "ExecStart"],
+    ["systemctl", "--user", "list-unit-files", "--type=timer", "--no-legend"],
+    ["journalctl", "--user", "-u", "x.service", "--since", "2026-10-09 10:00:00 UTC", "--no-pager", "-o", "short-iso"],
+    ["docker", "ps", "--format", "{{.Names}}\t{{.Image}}"],
+    ["docker", "inspect", "m8m-n8n", "--format", _NAMES],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c",
+     "SELECT count(*) FROM workflow_entity WHERE active"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c",
+     "SELECT rolname, rolsuper FROM pg_roles"],
+    ["psql", "-X", "-At", "-h", "localhost", "-U", "trade_ai", "-d", "trade_ai", "-c", "SELECT 1"],
+    ["gh", "run", "list", "-R", "o/r", "--workflow", "ci.yml", "--branch", "main", "--json", "conclusion", "-L", "20"],
 ])
 def test_read_only_allowlist_accepts(argv):
     assert core.is_read_only(argv)
 
 
 @pytest.mark.parametrize("argv", [
-    ["crontab", "-e"], ["crontab", "-"], ["crontab", "-r"],
-    ["systemctl", "--user", "restart", "x"], ["systemctl", "restart", "x"],
-    ["journalctl", "--user", "--vacuum-time=1d"],
-    ["docker", "exec", "db", "psql", "-c", "DELETE FROM workflow_entity"],
-    ["docker", "exec", "db", "psql", "-c", "SELECT 1; DROP TABLE x"],
-    ["docker", "exec", "db", "psql", "-c", "WITH x AS (DELETE FROM t RETURNING *) SELECT 1"],
-    ["docker", "restart", "n8n"],
-    ["gh", "api", "-X", "POST", "repos/o/r/issues"], ["gh", "api", "--method=PATCH", "x"], ["gh", "pr", "merge", "1"],
-    ["git", "push"], ["git", "-C", "/x", "commit"],
-    ["guard", "request", "cron"], ["rm", "-rf", "/"], [],
+    ["crontab", "-e"], ["crontab", "-"], ["crontab", "-r"], ["/tmp/crontab", "-l"], ["./crontab", "-l"],
+    ["systemctl", "--user", "restart", "x"], ["systemctl", "restart", "x"], ["systemctl", "--user", "show", "x", "--now"],
+    ["journalctl", "--user", "--vacuum-time=1d"], ["journalctl", "--user", "--rotate"], ["journalctl", "-u", "x"],
+    ["journalctl", "--user", "-o", "export", "-u", "x"],
+    # psql: pinned shape only
+    ["docker", "exec", "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c", "SELECT 1"],  # no PGOPTIONS
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c", "DELETE FROM workflow_entity"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c", "SELECT 1; DROP TABLE x"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c",
+     "WITH x AS (DELETE FROM t RETURNING *) SELECT 1"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c", "SELECT * INTO t2 FROM t"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c",
+     "SELECT pg_terminate_backend(123)"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c",
+     "SELECT data FROM credentials_entity"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c", "SELECT 1 \\! id"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-f", "x.sql"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-o", "/tmp/x", "-c", "SELECT 1"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-L", "/tmp/l", "-U", "n8n", "-d", "n8n", "-c", "SELECT 1"],
+    ["docker", "exec", "-e", _RO, "db", "psql", "-X", "-At", "-U", "n8n", "-d", "n8n", "-c", "SELECT 1", "-c", "SELECT 2"],
+    ["docker", "exec", "-e", _RO, "db", "sh", "-c", "psql -c 'SELECT 1'"],
+    ["docker", "exec", "db", "sh", "-c", "env"],
+    ["docker", "ps", "-a"], ["docker", "restart", "n8n"], ["docker", "inspect", "n8n"],
+    ["psql", "-c", "SELECT 1"], ["psql", "-X", "-At", "-U", "u", "-d", "d", "-c", "UPDATE t SET a=1"],
+    ["gh", "api", "repos/o/r/commits/main/check-runs"], ["gh", "api", "-X", "POST", "repos/o/r/issues"],
+    ["gh", "pr", "merge", "1"], ["gh", "run", "rerun", "1"], ["gh", "run", "list", "--web"],
+    ["git", "log", "-1"], ["git", "push"], ["guard", "log", "20"],
+    ["rm", "-rf", "/"], [],
 ])
 def test_read_only_allowlist_refuses(argv):
     assert not core.is_read_only(argv)
+
+
+def test_psql_argv_builder_is_the_only_accepted_shape():
+    d = core.psql_argv("SELECT 1", user="n8n", db="n8n", container="db")
+    h = core.psql_argv("SELECT 1", user="trade_ai", db="trade_ai", host="localhost")
+    assert core.is_read_only(d) and core.is_read_only(h)
+    assert d[2:4] == ["-e", "PGOPTIONS=-c default_transaction_read_only=on"]
+
+
+def test_default_runner_sets_read_only_pgoptions_and_trusted_path(monkeypatch):
+    seen = {}
+
+    class P:
+        returncode, stdout, stderr = 0, "", ""
+
+    def fake_run(argv, **kw):
+        seen["argv"], seen["env"] = argv, kw.get("env") or {}
+        return P()
+    monkeypatch.setattr(core.subprocess, "run", fake_run)
+    monkeypatch.setattr(core.shutil, "which", lambda p: "/usr/bin/" + p)
+    core._default_runner(["psql", "-X"], 1.0)
+    assert seen["env"]["PGOPTIONS"] == "-c default_transaction_read_only=on"
+    assert seen["argv"][0] == "/usr/bin/psql"
+    monkeypatch.setattr(core.shutil, "which", lambda p: "/tmp/evil/" + p)
+    seen.clear()
+    rc, _, err = core._default_runner(["crontab", "-l"], 1.0)
+    assert rc == 127 and not seen
+
+
+def test_probe_redacts_secret_shaped_output(tmp_path):
+    out = ("DB_POSTGRESDB_PASSWORD=hunter2hunter2\nN8N_ENCRYPTION_KEY=abcdef0123456789\nDB_POSTGRESDB_USER=n8n\n"
+           "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\npostgresql://u:s3cretpw@h/db\nghp_" + "a" * 36)
+    p = _probe(tmp_path, runner=lambda argv, t: (0, out, ""))
+    _, got, _ = p.run(["crontab", "-l"])
+    for secret in ("hunter2hunter2", "abcdef0123456789", "abcdefghijklmnopqrstuvwxyz", "s3cretpw", "a" * 36):
+        assert secret not in got
+    assert "DB_POSTGRESDB_USER=n8n" in got
 
 
 def test_probe_run_refuses_and_records(tmp_path):
@@ -132,8 +196,9 @@ def test_write_receipt_only_touches_its_files(tmp_path):
     m = _load_main()
     rec = m.score_all(_probe(tmp_path), {})
     root = tmp_path / "state"
-    latest, hist = m.write_receipt(rec, root, {})
-    m.write_receipt(rec, root, {})
+    cfg = m.load_config()
+    latest, hist = m.write_receipt(rec, root, cfg)
+    m.write_receipt(rec, root, cfg)
     assert json.loads(latest.read_text())["schema"] == "N8nPlatformMaturity@v1"
     assert len(hist.read_text().splitlines()) == 2
     files = sorted(str(f.relative_to(root)) for f in root.rglob("*") if f.is_file())
@@ -164,9 +229,12 @@ _ONE_KEY = '{{range .Config.Env}}{{if eq (index (split . "=") 0) "%s"}}{{.}}{{en
     (_ONE_KEY % "DB_POSTGRESDB_USER", True),
     (_ONE_KEY % "DB_POSTGRESDB_PASSWORD", False),
     (_ONE_KEY % "N8N_ENCRYPTION_KEY", False),
+    (_ONE_KEY % "SOME_OTHER_NAME", False),
     ("{{.Config.Env}}", False),
+    ("{{.Config}}", False),
     ("{{json .}}", False),
     ("{{.}}", False),
+    ('{{printf "%v" .Config.Env}}', False),
     ('{{index .Config.Labels "com.docker.compose.project.config_files"}}', True),
 ])
 def test_docker_inspect_never_emits_secret_values(fmt, ok):
@@ -174,6 +242,33 @@ def test_docker_inspect_never_emits_secret_values(fmt, ok):
     assert core.is_read_only(["docker", "inspect", "n8n"]) is False
 
 
-def test_psql_combined_short_flags():
-    assert core.is_read_only(["docker", "exec", "db", "psql", "-tAc", "SELECT 1"])
-    assert not core.is_read_only(["docker", "exec", "db", "psql", "-tAc", "UPDATE x SET y=1"])
+def test_load_config_fails_loudly(tmp_path):
+    m = _load_main()
+    with pytest.raises(SystemExit, match="unreadable"):
+        m.load_config(tmp_path / "absent.json")
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    with pytest.raises(SystemExit, match="not valid JSON"):
+        m.load_config(bad)
+    part = tmp_path / "part.json"
+    part.write_text(json.dumps({"target_overall": 8.0, "dimensions": {}}))
+    with pytest.raises(SystemExit, match="incomplete"):
+        m.load_config(part)
+    assert m.load_config()["gate_score"] == 8.0
+
+
+def test_config_error_scores_unverified(tmp_path):
+    m = _load_main()
+
+    def needs(p):
+        p.need("registry_truth", "no_such_key")
+    rec = m.score_all(_probe(tmp_path), {"registry_truth": needs})
+    r = rec["dimensions"][0]
+    assert r["status"] == core.UNVERIFIED and r["score"] == 0.0 and "config" in r["notes"][0]
+
+
+def test_window_hours_honours_config(tmp_path):
+    p = _probe(tmp_path)
+    assert p.window_hours("reliability") == float(p.config["window_hours"])
+    p.config["dimensions"]["reliability"]["window_hours"] = 6
+    assert p.window_hours("reliability") == 6.0

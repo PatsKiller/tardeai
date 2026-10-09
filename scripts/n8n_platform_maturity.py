@@ -62,11 +62,27 @@ def state_root(env: dict) -> Path:
         return Path.home() / "trade-ai-releases" / "persistent-state"
 
 
+class ConfigUnavailable(SystemExit):
+    pass
+
+
+REQUIRED_TOP = ("target_overall", "gate_score", "gate_cap", "window_hours", "dimensions", "receipt")
+
+
 def load_config(path: Path = CONFIG) -> dict:
+    """Load thresholds; a missing, unparsable or incomplete config is fatal (never scored on defaults)."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise ConfigUnavailable(f"n8n maturity config unreadable: {path.name}: {type(exc).__name__}") from exc
+    except json.JSONDecodeError as exc:
+        raise ConfigUnavailable(f"n8n maturity config is not valid JSON: {path.name}: {exc}") from exc
+    if not isinstance(cfg, dict):
+        raise ConfigUnavailable(f"n8n maturity config is not an object: {path.name}")
+    missing = [k for k in REQUIRED_TOP if k not in cfg] + [d for d in ORDER if d not in (cfg.get("dimensions") or {})]
+    if missing:
+        raise ConfigUnavailable(f"n8n maturity config incomplete: missing {', '.join(missing)}")
+    return cfg
 
 
 def score_all(probe: core.Probe, table: Optional[dict[str, Callable[[core.Probe], dict]]] = None) -> dict:
@@ -83,6 +99,8 @@ def score_all(probe: core.Probe, table: Optional[dict[str, Callable[[core.Probe]
         else:
             try:
                 r = fn(probe)
+            except core.ConfigError as exc:
+                r = core.unverified(dim_id, rule, f"config: {str(exc)[:200]}")
             except Exception as exc:  # noqa: BLE001
                 r = core.unverified(dim_id, rule, f"collector raised {type(exc).__name__}: {str(exc)[:200]}")
         r["n"] = meta.get("n", ORDER.index(dim_id) + 1)
@@ -90,7 +108,7 @@ def score_all(probe: core.Probe, table: Optional[dict[str, Callable[[core.Probe]
         r["baseline_estimate"] = meta.get("baseline")
         rows.append(r)
     overall = round(sum(r["score"] for r in rows) / len(rows), 2)
-    target = float(probe.config.get("target_overall", 8.0))
+    target = float(core.need_top(probe.config, "target_overall"))
     return {
         "schema": SCHEMA, "as_of": probe.now.isoformat(), "scorer": LANE, "authority": "READ_ONLY_ADVISORY",
         "overall": overall, "target": target, "stretch": probe.config.get("stretch_overall"),
@@ -131,9 +149,9 @@ def _short(v: Any) -> str:
 
 
 def write_receipt(rec: dict, root: Path, cfg: dict) -> tuple[Path, Path]:
-    r = cfg.get("receipt") or {}
-    latest = root / r.get("latest", "data/governance/n8n_platform_maturity_latest.json")
-    hist = root / r.get("history", "data/governance/n8n_platform_maturity_history.jsonl")
+    r = core.need_top(cfg, "receipt")
+    latest = root / r["latest"]
+    hist = root / r["history"]
     latest.parent.mkdir(parents=True, exist_ok=True)
     with hist.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, sort_keys=True, default=str) + "\n")

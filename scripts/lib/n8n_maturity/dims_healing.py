@@ -13,33 +13,42 @@ source read-only through the probe and classifies each mechanism:
 Evidence kinds: ``jsonl`` (one JSON object per line), ``json`` (one document), ``jsonstream``
 (concatenated / pretty-printed JSON objects in a log), ``sqlite`` (opened ``mode=ro``), ``journal``
 (``journalctl --user -u UNIT --since``), ``systemd`` (``systemctl --user show``), ``log`` (text lines,
-timestamp from ``ts_regex``), ``psql`` (host Postgres SELECT; refused by the current probe allowlist,
-so it reports NO_EVIDENCE) and ``absent`` (not built yet). Undated sources (a log without
-``ts_regex``, a stream without ``ts_key``) trust only their last ``undated_tail_lines`` records and date
-them with the file mtime, so an old success in a file still being written is not counted as recent.
+timestamp from ``ts_regex``), ``psql`` (one read-only SELECT of the named ``columns`` built by
+``core.psql_argv``; credentials come from ``~/.pgpass``, never argv; an auth/connect failure reports
+NO_EVIDENCE) and ``absent`` (not built yet). Undated sources (a log without ``ts_regex``, a stream
+without ``ts_key``) trust only their last ``undated_tail_lines`` records (the row's own value, else
+``dimensions.self_healing.undated_tail_lines``) and date them with the file mtime, so an old success in
+a file still being written is not counted as recent.
 
-Formulas (thresholds via ``probe.cfg(dim).get(key, fallback)``):
+Formulas (every threshold is REQUIRED config via ``probe.need`` / ``core.need_top``; a missing key raises
+``core.ConfigError`` — there are no in-code fallbacks):
 
 Dimension 6 ``self_healing``::
 
-    proven_ratio  = PROVEN / mechanisms                       (all inventory rows count)
-    s_proven      = ratio_score(proven_ratio, proven_ratio_gate=0.80, top=1.0)
-    ok_rate       = health_tick receipts with ok=true / receipts in health_tick_window_hours (24 h)
-                    (health_tick --apply exits 0 iff its receipt has ok=true)
-    s_tick        = ratio_score(ok_rate, health_tick_ok_rate_gate=0.99, top=1.0)
+    proven_ratio  = PROVEN / mechanisms                       (all inventory rows count; an empty or
+                                                              missing inventory -> None, never 1.0)
+    s_proven      = ratio_score(proven_ratio, proven_ratio_gate, top=1.0)
+    ok_rate       = health_tick receipts with ok=true / receipts in health_tick_window_hours
+                    (health_tick --apply exits 0 iff its receipt has ok=true). With no history rows in
+                    the window the latest receipt is the only sample, and only when it is fresh
+                    (<= health_tick_max_age_minutes); 0 receipts -> None (UNVERIFIED), never "ok"
+    s_tick        = ratio_score(ok_rate, health_tick_ok_rate_gate, top=1.0)
     score         = mean_score([s_proven, s_tick])            (a missing part counts 0 -> PARTIAL)
-    gate          = proven_ratio >= 0.80 AND ok_rate >= 0.99 AND the latest receipt is ok and
-                    no older than health_tick_max_age_minutes (15)
-    a failed gate caps the score at gate_score - 0.1 (7.9)
+    gate          = proven_ratio >= proven_ratio_gate AND ok_rate >= health_tick_ok_rate_gate AND
+                    the latest receipt is ok and fresh
+    a failed gate caps the score at the top-level gate_cap
 
 Dimension 9 ``recovery``::
 
-    s_backup = 10 if backup_verify_last.json verdict OK and age <= backup_verify_max_age_hours (26)
-               5  if verdict WARN and fresh; 0 if FAIL or stale; None (UNVERIFIED) if absent
-    s_drill  = 10 if trade_ai_restore_drill_last.json outcome PASS and age <= restore_drill_max_age_days (35)
-               else n8n_lab_restore_drill_credit (4) if the n8n lab drill receipt is ok and fresh
-               (it proves restore of the lab DB only); 0 if receipts exist but none passes; None if absent
-    score    = mean_score([s_backup, s_drill]); gate = both 10; a failed gate caps at 7.9
+    s_backup = backup_ok_score if backup_verify_last.json verdict OK and age <= backup_verify_max_age_hours
+               backup_warn_score if verdict WARN and fresh; backup_fail_score if FAIL or stale;
+               None (UNVERIFIED) if absent
+    s_drill  = restore_drill_pass_score if trade_ai_restore_drill_last.json outcome PASS and
+               age <= restore_drill_max_age_days, else n8n_lab_restore_drill_credit if the n8n lab drill
+               receipt is ok and fresh (it proves restore of the lab DB only); restore_drill_fail_score if
+               receipts exist but none passes; None if absent
+    score    = mean_score([s_backup, s_drill]); gate = backup OK+fresh and drill PASS+fresh;
+               a failed gate caps at gate_cap
 """
 from __future__ import annotations
 
@@ -92,6 +101,9 @@ def inventory_problems(doc: dict, proj: Path) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for i, m in enumerate(doc.get("mechanisms") or []):
+        if not isinstance(m, dict):
+            out.append(f"#{i}: mechanism is not an object")
+            continue
         mid = m.get("id") or f"#{i}"
         if mid in seen:
             out.append(f"{mid}: duplicate id")
@@ -109,6 +121,10 @@ def inventory_problems(doc: dict, proj: Path) -> list[str]:
             out.append(f"{mid}: success_predicate has no machine condition")
         if ev.get("kind") in ("journal", "systemd") and not ev.get("unit"):
             out.append(f"{mid}: {ev.get('kind')} evidence needs unit")
+        if ev.get("kind") == "psql":
+            for k in ("database", "table", "ts_key", "user", "columns"):
+                if not ev.get(k):
+                    out.append(f"{mid}: psql evidence needs {k}")
         if ev.get("kind") in ("jsonl", "json", "jsonstream", "sqlite", "log") and not ev.get("path"):
             out.append(f"{mid}: {ev.get('kind')} evidence needs path")
         for p in [ev.get("path")] + [a.get("path") for a in ev.get("alt") or []]:
@@ -241,11 +257,11 @@ def _undate_tail(probe: core.Probe, path: Path, recs: list, tail: int) -> list:
     return [(mt, r) for r in recs[-tail:]] if tail > 0 else []
 
 
-def _read_file_source(probe: core.Probe, inv: dict, ev: dict, src: _Src, cache: dict) -> None:
+def _read_file_source(probe: core.Probe, inv: dict, ev: dict, src: _Src, cache: dict, default_tail: int) -> None:
     kind = ev["kind"]
     locs = [(ev.get("base"), ev["path"])] + [(a.get("base"), a["path"]) for a in ev.get("alt") or []]
     src.source = ", ".join(f"{b or 'state'}:{p}" for b, p in locs)
-    tail = int(ev.get("undated_tail_lines") or 0)
+    tail = int(ev["undated_tail_lines"]) if "undated_tail_lines" in ev else int(default_tail)
     flt = ev.get("filter")
     for base, rel in locs:
         path = resolve_path(probe, inv, base, rel)
@@ -280,7 +296,7 @@ def _read_file_source(probe: core.Probe, inv: dict, ev: dict, src: _Src, cache: 
                 recs = [(_ts_of(r, ts_key), r) for r in rows]
             else:  # undated: only the tail (a json document is its own tail) is dated with the file mtime
                 src.undated = True
-                recs = _undate_tail(probe, path, rows, tail or (len(rows) if kind == "json" else 0))
+                recs = _undate_tail(probe, path, rows, len(rows) if kind == "json" else tail)
         src.records.extend(recs)
     if not src.available:
         src.note = "evidence file absent"
@@ -385,35 +401,58 @@ def _read_systemd(probe: core.Probe, ev: dict, src: _Src) -> None:
     src.records.append((probe.now, props))
 
 
+def psql_sql(ev: dict, since: _dt.datetime) -> Optional[str]:
+    """The one SELECT a psql source issues: only the named ``columns`` (never ``*``, so token material such
+    as fingerprints is not pulled), rows since the window start. None when an identifier is invalid."""
+    table, ts_key = ev.get("table", ""), ev.get("ts_key", "")
+    cols = list(ev.get("columns") or [])
+    if not cols or not all(_IDENT_RE.match(str(c)) for c in cols + [table, ts_key]):
+        return None
+    if ts_key not in cols:
+        cols.append(ts_key)
+    return (f"SELECT row_to_json(t) FROM (SELECT {', '.join(cols)} FROM {table} "  # noqa: S608 - validated
+            f"WHERE {ts_key} >= '{since.astimezone(_dt.timezone.utc).isoformat()}'::timestamptz "
+            f"ORDER BY {ts_key} LIMIT {_MAX_ROWS}) t")
+
+
+def psql_source_argv(ev: dict, since: _dt.datetime) -> Optional[list[str]]:
+    """argv via ``core.psql_argv`` (host form; credentials from ~/.pgpass, never argv). None if invalid."""
+    db, user, host = ev.get("database", ""), ev.get("user", ""), ev.get("host")
+    sql = psql_sql(ev, since)
+    if sql is None or not core.is_safe_sql(sql) or not (_IDENT_RE.match(db) and _IDENT_RE.match(user)):
+        return None
+    return core.psql_argv(sql, user=user, db=db, host=host or None)
+
+
 def _read_psql(probe: core.Probe, ev: dict, since: _dt.datetime, src: _Src) -> None:
-    table, ts_key, db = ev.get("table", ""), ev.get("ts_key", ""), ev.get("database", "")
-    src.source = f"psql {db}.{table}"
-    if not (_IDENT_RE.match(table) and _IDENT_RE.match(ts_key) and _IDENT_RE.match(db)):
-        src.note = "psql evidence identifiers invalid"
+    src.source = f"psql {ev.get('database', '')}.{ev.get('table', '')}"
+    argv = psql_source_argv(ev, since)
+    if argv is None:
+        src.note = "psql evidence identifiers/columns/user invalid or SQL not read-only"
         return
-    sql = (f"SELECT row_to_json(t) FROM (SELECT * FROM {table} WHERE {ts_key} >= "  # noqa: S608 - validated
-           f"'{since.isoformat()}'::timestamptz) t")
     try:
-        rc, out, _err = probe.run(["psql", "-X", "-At", "-d", db, "-c", sql])
-    except PermissionError:
-        src.note = ev.get("note") or "probe allowlist refuses host psql"
+        rc, out, _err = probe.run(argv)
+    except PermissionError as exc:
+        src.note = str(exc)
         return
     if rc != 0:
-        src.note = f"psql rc={rc}"
+        src.note = f"psql auth/connect failed rc={rc}"
         return
     src.available = True
+    ts_key = ev["ts_key"]
     for line in out.splitlines():
         try:
             r = json.loads(line)
         except json.JSONDecodeError:
             continue
-        src.records.append((_ts_of(r, ts_key), r))
+        if isinstance(r, dict):
+            src.records.append((_ts_of(r, ts_key), r))
 
 
 # --------------------------------------------------------------------------- evaluation
 
 def evaluate_mechanism(probe: core.Probe, inv: dict, mech: dict, *, default_window_h: float,
-                       cache: Optional[dict] = None) -> dict:
+                       default_tail: int, cache: Optional[dict] = None) -> dict:
     """Classify one mechanism -> PROVEN / RAN_NOT_HEALED / NO_EVIDENCE with counts and last timestamps."""
     cache = {} if cache is None else cache
     ev = mech.get("evidence_source") or {}
@@ -426,7 +465,7 @@ def evaluate_mechanism(probe: core.Probe, inv: dict, mech: dict, *, default_wind
         if kind == "absent":
             src.source, src.note = "absent", ev.get("reason") or "no evidence source (not built)"
         elif kind in ("jsonl", "json", "jsonstream", "sqlite", "log"):
-            _read_file_source(probe, inv, ev, src, cache)
+            _read_file_source(probe, inv, ev, src, cache, default_tail)
         elif kind == "journal":
             _read_journal(probe, ev, since, src)
         elif kind == "systemd":
@@ -470,56 +509,72 @@ def evaluate_mechanism(probe: core.Probe, inv: dict, mech: dict, *, default_wind
     }
 
 
-def evaluate_inventory(probe: core.Probe, doc: dict, default_window_h: float) -> list[dict]:
+def evaluate_inventory(probe: core.Probe, doc: dict, default_window_h: float, default_tail: int) -> list[dict]:
     cache: dict = {}
-    return [evaluate_mechanism(probe, doc, m, default_window_h=default_window_h, cache=cache)
-            for m in doc.get("mechanisms") or []]
+    return [evaluate_mechanism(probe, doc, m, default_window_h=default_window_h, default_tail=default_tail, cache=cache)
+            for m in doc.get("mechanisms") or [] if isinstance(m, dict)]
 
 
 # --------------------------------------------------------------------------- health_tick
 
-def health_tick_status(probe: core.Probe, cfg: dict) -> dict:
-    last_rel = cfg.get("health_tick_last", "data/runtime/health_tick_last.json")
-    hist_rel = cfg.get("health_tick_history", "data/runtime/health_tick_history.jsonl")
-    window_h = float(cfg.get("health_tick_window_hours", probe.config.get("window_hours", 24)))
-    max_age_min = float(cfg.get("health_tick_max_age_minutes", 15))
+def health_tick_status(probe: core.Probe, dim: str = "self_healing") -> dict:
+    last_rel = probe.need(dim, "health_tick_last")
+    hist_rel = probe.need(dim, "health_tick_history")
+    window_h = float(probe.need(dim, "health_tick_window_hours"))
+    max_age_min = float(probe.need(dim, "health_tick_max_age_minutes"))
     last = probe.json(probe.root / last_rel)
     rows = probe.rows(probe.root / hist_rel, since=probe.since(window_h), ts_keys=("as_of",))
-    rows = [r for r in rows or [] if r.get("mode", "apply") == "apply"]
+    # a row counts only with a parseable as_of inside the window (probe.rows keeps undated rows)
+    cut = probe.since(window_h)
+    rows = [r for r in rows or [] if r.get("mode", "apply") == "apply"
+            and (core.parse_ts(r.get("as_of")) or cut - _dt.timedelta(seconds=1)) >= cut]
     out: dict = {"last_rel": last_rel, "hist_rel": hist_rel, "window_hours": window_h,
-                 "runs": len(rows), "ok_runs": sum(1 for r in rows if r.get("ok") is True)}
-    out["ok_rate"] = round(out["ok_runs"] / len(rows), 4) if rows else None
+                 "runs": len(rows), "ok_runs": sum(1 for r in rows if r.get("ok") is True),
+                 "ok_rate": None, "ok_rate_basis": None}
+    if rows:
+        out["ok_rate"], out["ok_rate_basis"] = round(out["ok_runs"] / len(rows), 4), "history"
     if isinstance(last, dict):
         as_of = core.parse_ts(last.get("as_of"))
         age = (probe.now - as_of).total_seconds() / 60 if as_of else None
+        fresh = age is not None and 0 <= age <= max_age_min
         out.update(last_as_of=last.get("as_of"), last_ok=last.get("ok") is True,
                    last_failed=list(last.get("failed") or [])[:10],
                    last_timed_out=list(last.get("timed_out") or [])[:10],
-                   last_age_min=round(age, 1) if age is not None else None,
-                   last_fresh=age is not None and age <= max_age_min)
-        if out["ok_rate"] is None:  # no history: the latest receipt is the only sample
-            out["ok_rate"] = 1.0 if out["last_ok"] else 0.0
+                   last_age_min=round(age, 1) if age is not None else None, last_fresh=fresh)
+        if out["ok_rate"] is None and fresh:  # no history in the window: one FRESH receipt is the only sample
+            out["runs"], out["ok_runs"] = 1, int(out["last_ok"])
+            out["ok_rate"], out["ok_rate_basis"] = float(out["ok_runs"]), "latest_receipt"
     else:
-        out.update(last_as_of=None, last_ok=None, last_fresh=False)
-    out["present"] = isinstance(last, dict) or bool(rows)
+        out.update(last_as_of=None, last_ok=None, last_fresh=False, last_age_min=None)
     return out
 
 
 # --------------------------------------------------------------------------- collectors
 
-def _cap(score: float, gate_pass: bool, gate_score: float) -> float:
-    return score if gate_pass else min(score, gate_score - 0.1)
+def _gates(probe: core.Probe) -> "tuple[float, float]":
+    return float(core.need_top(probe.config, "gate_score")), float(core.need_top(probe.config, "gate_cap"))
+
+
+def _cap(score: float, gate_pass: bool, gate_cap: float) -> float:
+    return score if gate_pass else min(score, gate_cap)
 
 
 def collect_self_healing(probe: core.Probe) -> dict:
     dim = "self_healing"
-    cfg = probe.cfg(dim)
-    rule = cfg.get("gate_rule", SELF_RULE)
-    gate_score = float(probe.config.get("gate_score", 8.0))
-    ratio_gate = float(cfg.get("proven_ratio_gate", 0.8))
-    tick_gate = float(cfg.get("health_tick_ok_rate_gate", 0.99))
-    window_h = float(cfg.get("proof_window_hours", 336))
-    inv_rel = cfg.get("inventory", INVENTORY_REL)
+    try:
+        rule = probe.need(dim, "gate_rule")
+    except core.ConfigError:
+        rule = SELF_RULE
+    try:
+        gate_score, gate_cap = _gates(probe)
+        ratio_gate = float(probe.need(dim, "proven_ratio_gate"))
+        tick_gate = float(probe.need(dim, "health_tick_ok_rate_gate"))
+        window_h = float(probe.need(dim, "proof_window_hours"))
+        default_tail = int(probe.need(dim, "undated_tail_lines"))
+        inv_rel = probe.need(dim, "inventory")
+        tick = health_tick_status(probe, dim)
+    except core.ConfigError as exc:
+        return core.unverified(dim, rule, str(exc))
 
     evid: list[dict] = []
     notes: list[str] = []
@@ -533,28 +588,29 @@ def collect_self_healing(probe: core.Probe) -> dict:
         problems = inventory_problems(doc, probe.proj)
         if problems:
             notes.append(f"inventory self-check: {len(problems)} problem(s): {'; '.join(problems[:5])}")
-        results = evaluate_inventory(probe, doc, window_h)
+        results = evaluate_inventory(probe, doc, window_h, default_tail)
         n = len(results)
         proven = sum(1 for r in results if r["state"] == PROVEN)
-        ratio = proven / n if n else None
-        s_proven = core.ratio_score(ratio, ratio_gate, gate_score=gate_score, top=1.0) if n else None
+        ratio = proven / n if n > 0 else None  # an empty inventory proves nothing
+        s_proven = core.ratio_score(ratio, ratio_gate, gate_score=gate_score, top=1.0) if ratio is not None else None
         evid.append(core.evidence(inv_rel, mechanisms=n, proven=proven, schema=doc.get("schema")))
 
-    tick = health_tick_status(probe, cfg)
     s_tick: Optional[float] = None
-    if tick["present"]:
+    if tick["ok_rate"] is not None:
         s_tick = core.ratio_score(tick["ok_rate"], tick_gate, gate_score=gate_score, top=1.0)
-        if not tick.get("last_fresh"):
-            notes.append(f"health_tick latest receipt stale or missing (age_min={tick.get('last_age_min')})")
+    else:
+        notes.append(f"health_tick: 0 receipts in the last {tick['window_hours']} h and no fresh latest receipt")
+    if not tick.get("last_fresh"):
+        notes.append(f"health_tick latest receipt stale or missing (age_min={tick.get('last_age_min')})")
     evid.append(core.evidence(tick["hist_rel"], runs=tick["runs"], ok_runs=tick["ok_runs"], ok_rate=tick["ok_rate"],
-                              window_hours=tick["window_hours"]))
+                              basis=tick["ok_rate_basis"], window_hours=tick["window_hours"]))
     evid.append(core.evidence(tick["last_rel"], as_of=tick.get("last_as_of"), ok=tick.get("last_ok"),
                               failed=tick.get("last_failed") or None, timed_out=tick.get("last_timed_out") or None))
 
     score, status, mnotes = core.mean_score([("proven_ratio", s_proven), ("health_tick_exit0", s_tick)])
-    gate_pass = (ratio is not None and ratio >= ratio_gate and tick.get("ok_rate") is not None
-                 and tick["ok_rate"] >= tick_gate and bool(tick.get("last_ok")) and bool(tick.get("last_fresh")))
-    score = _cap(score, gate_pass, gate_score)
+    gate_pass = (ratio is not None and ratio >= ratio_gate and tick["ok_rate"] is not None
+                 and tick["ok_rate"] >= tick_gate and tick.get("last_ok") is True and bool(tick.get("last_fresh")))
+    score = _cap(score, gate_pass, gate_cap)
 
     by_state = {s: sum(1 for r in results if r["state"] == s) for s in (PROVEN, RAN_NOT_HEALED, NO_EVIDENCE)}
     by_cat: dict[str, dict] = {}
@@ -569,7 +625,7 @@ def collect_self_healing(probe: core.Probe) -> dict:
     metrics = {
         "proven_ratio": round(ratio, 4) if ratio is not None else None,
         "proven": by_state[PROVEN], "ran_not_healed": by_state[RAN_NOT_HEALED], "no_evidence": by_state[NO_EVIDENCE],
-        "health_tick_ok_rate": tick.get("ok_rate"),
+        "health_tick_ok_rate": tick["ok_rate"], "health_tick_ok_rate_basis": tick["ok_rate_basis"],
         "mechanisms_total": len(results), "health_tick_last_ok": tick.get("last_ok"),
         "health_tick_runs": tick["runs"], "proof_window_hours": window_h,
         "s_proven": None if s_proven is None else round(s_proven, 2),
@@ -589,15 +645,22 @@ def _age_h(probe: core.Probe, ts: Any) -> Optional[float]:
 
 def collect_recovery(probe: core.Probe) -> dict:
     dim = "recovery"
-    cfg = probe.cfg(dim)
-    rule = cfg.get("gate_rule", RECOVERY_RULE)
-    gate_score = float(probe.config.get("gate_score", 8.0))
-    bv_rel = cfg.get("backup_verify_receipt", "data/runtime/backup_verify_last.json")
-    bv_max_h = float(cfg.get("backup_verify_max_age_hours", 26))
-    rd_rel = cfg.get("restore_drill_receipt", "data/runtime/trade_ai_restore_drill_last.json")
-    rd_max_h = float(cfg.get("restore_drill_max_age_days", 35)) * 24
-    lab_rel = cfg.get("n8n_lab_restore_drill_receipt", "backups/n8n/n8n_lab_restore_drill_last.json")
-    lab_credit = float(cfg.get("n8n_lab_restore_drill_credit", 4.0))
+    try:
+        rule = probe.need(dim, "gate_rule")
+    except core.ConfigError:
+        rule = RECOVERY_RULE
+    try:
+        _gate_score, gate_cap = _gates(probe)
+        bv_rel = probe.need(dim, "backup_verify_receipt")
+        bv_max_h = float(probe.need(dim, "backup_verify_max_age_hours"))
+        ok_s, warn_s, fail_s = (float(probe.need(dim, k)) for k in ("backup_ok_score", "backup_warn_score", "backup_fail_score"))
+        rd_rel = probe.need(dim, "restore_drill_receipt")
+        rd_max_h = float(probe.need(dim, "restore_drill_max_age_days")) * 24
+        pass_s, dfail_s = float(probe.need(dim, "restore_drill_pass_score")), float(probe.need(dim, "restore_drill_fail_score"))
+        lab_rel = probe.need(dim, "n8n_lab_restore_drill_receipt")
+        lab_credit = float(probe.need(dim, "n8n_lab_restore_drill_credit"))
+    except core.ConfigError as exc:
+        return core.unverified(dim, rule, str(exc))
     notes: list[str] = []
 
     bv = probe.json(probe.root / bv_rel)
@@ -606,10 +669,10 @@ def collect_recovery(probe: core.Probe) -> dict:
     bv_age = None
     if isinstance(bv, dict):
         bv_age = _age_h(probe, bv.get("as_of"))
-        fresh = bv_age is not None and bv_age <= bv_max_h
+        fresh = bv_age is not None and 0 <= bv_age <= bv_max_h
         verdict = bv.get("verdict")
         bv_ok = fresh and verdict == "OK"
-        s_backup = 10.0 if bv_ok else (5.0 if fresh and verdict == "WARN" else 0.0)
+        s_backup = ok_s if bv_ok else (warn_s if fresh and verdict == "WARN" else fail_s)
         if not fresh:
             notes.append(f"backup-verify receipt stale (age_h={None if bv_age is None else round(bv_age, 1)})")
     else:
@@ -624,17 +687,17 @@ def collect_recovery(probe: core.Probe) -> dict:
     if isinstance(rd, dict):
         parts_present = True
         rd_age = _age_h(probe, rd.get("as_of"))
-        rd_ok = rd.get("outcome") == "PASS" and rd_age is not None and rd_age <= rd_max_h
-        s_drill = 10.0 if rd_ok else 0.0
+        rd_ok = rd.get("outcome") == "PASS" and rd_age is not None and 0 <= rd_age <= rd_max_h
+        s_drill = pass_s if rd_ok else dfail_s
     else:
         notes.append(f"trade_ai restore-drill receipt absent ({rd_rel}): drill never run with --write")
     lab_ok = False
     if isinstance(lab, dict):
         parts_present = True
         lab_age = _age_h(probe, lab.get("finished") or lab.get("as_of") or lab.get("started"))
-        lab_ok = lab.get("ok") is True and lab_age is not None and lab_age <= rd_max_h
+        lab_ok = lab.get("ok") is True and lab_age is not None and 0 <= lab_age <= rd_max_h
         if not rd_ok:
-            s_drill = max(s_drill or 0.0, lab_credit if lab_ok else 0.0)
+            s_drill = max(v for v in (s_drill, lab_credit if lab_ok else dfail_s) if v is not None)
             if lab_ok:
                 notes.append("restore drill credit from the n8n lab drill only (lab DB, not trade_ai)")
     if not parts_present:
@@ -642,7 +705,7 @@ def collect_recovery(probe: core.Probe) -> dict:
 
     score, status, mnotes = core.mean_score([("backup_verify", s_backup), ("restore_drill", s_drill)])
     gate_pass = bv_ok and rd_ok
-    score = _cap(score, gate_pass, gate_score)
+    score = _cap(score, gate_pass, gate_cap)
     r1 = lambda v: None if v is None else round(v, 1)  # noqa: E731
     metrics = {
         "backup_verify_verdict": (bv or {}).get("verdict") if isinstance(bv, dict) else None,

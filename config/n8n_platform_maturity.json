@@ -5,6 +5,7 @@
   "target_overall": 8.0,
   "stretch_overall": 9.5,
   "gate_score": 8.0,
+  "gate_cap": 7.9,
   "window_hours": 24,
   "receipt": {
     "latest": "data/governance/n8n_platform_maturity_latest.json",
@@ -65,7 +66,6 @@
       "run_modes": [
         "live"
       ],
-      "run_window_floor_hours": 24,
       "stay_tokens": [
         "broker",
         "order",
@@ -106,7 +106,8 @@
         "keep on cron",
         "keep on systemd",
         "stays on systemd"
-      ]
+      ],
+      "run_window_cadence_multiple": 2
     },
     "observability": {
       "n": 4,
@@ -159,7 +160,8 @@
       "health_tick_window_hours": 24,
       "health_tick_max_age_minutes": 15,
       "health_tick_last": "data/runtime/health_tick_last.json",
-      "health_tick_history": "data/runtime/health_tick_history.jsonl"
+      "health_tick_history": "data/runtime/health_tick_history.jsonl",
+      "undated_tail_lines": 0
     },
     "governance": {
       "n": 7,
@@ -173,7 +175,29 @@
       ],
       "grant_skew_s": 120,
       "count_name_only_as_granted": false,
-      "receipt_max_age_hours": 26
+      "receipt_max_age_hours": 26,
+      "n8n_container": "m8m-n8n",
+      "n8n_db_container": "m8m-n8n-db",
+      "n8n_db_user": "n8n",
+      "n8n_db_name": "n8n",
+      "p16": {
+        "script": "check_n8n_activation_grants",
+        "lane": "n8n-activation-grants",
+        "receipt": "data/runtime/n8n_activation_grants_last.json"
+      },
+      "p18": {
+        "script": "check_n8n_workflow_drift",
+        "lane": "n8n-workflow-drift-check",
+        "receipt": "data/runtime/n8n_workflow_drift_last.json"
+      },
+      "check_weights": {
+        "scheduled": 0.4,
+        "receipt_fresh": 0.3,
+        "alerting": 0.3
+      },
+      "receipt_future_skew_s": 120,
+      "guard_hook_token": "agents_guard_pretooluse",
+      "guard_hook_log": "data/runtime/agents_guard_hook.jsonl"
     },
     "security": {
       "n": 8,
@@ -183,7 +207,23 @@
       "full_env_files": [
         "tradeai/env"
       ],
-      "app_role": "n8n_app"
+      "app_role": "n8n_app",
+      "n8n_container": "m8m-n8n",
+      "n8n_db_container": "m8m-n8n-db",
+      "n8n_db_user": "n8n",
+      "n8n_db_name": "n8n",
+      "relay_unit": "tradeai-n8n-run-relay.service",
+      "executor_unit": "tradeai-n8n-run-executor.service",
+      "relay_allowlist_module": "scripts/lib/n8n_relay_env.py",
+      "executor_module": "scripts/n8n_run_executor.py",
+      "executor_mode_env": "TRADEAI_EXECUTOR_ENV_ALLOWLIST",
+      "run_allowlist": "config/n8n_run_allowlist.json",
+      "code_stage_weight": 0.25,
+      "app_role_weights": {
+        "exists": 0.3,
+        "least_privilege": 0.3,
+        "container_uses_role": 0.4
+      }
     },
     "recovery": {
       "n": 9,
@@ -195,7 +235,12 @@
       "restore_drill_receipt": "data/runtime/trade_ai_restore_drill_last.json",
       "restore_drill_max_age_days": 35,
       "n8n_lab_restore_drill_receipt": "backups/n8n/n8n_lab_restore_drill_last.json",
-      "n8n_lab_restore_drill_credit": 4.0
+      "n8n_lab_restore_drill_credit": 4.0,
+      "backup_ok_score": 10.0,
+      "backup_warn_score": 5.0,
+      "backup_fail_score": 0.0,
+      "restore_drill_pass_score": 10.0,
+      "restore_drill_fail_score": 0.0
     },
     "reliability": {
       "n": 10,
@@ -235,14 +280,35 @@
       "gate_rule": "nightly green and ci-gate green on main",
       "nightly_max_age_hours": 36,
       "ci_gate_max_age_hours": 48,
-      "nightly_streak_top": 7
+      "nightly_streak_top": 7,
+      "branch": "main",
+      "nightly_event": "schedule",
+      "ci_gate_job": "ci-gate",
+      "runs_limit": 20
     },
     "docs_synced": {
       "n": 12,
       "title": "Docs synced",
       "baseline": 5,
       "gate_rule": "0 drift findings across runbooks, AGENTS.md and the ADR",
-      "findings_zero_at": 20
+      "findings_zero_at": 20,
+      "agents_path": "AGENTS.md",
+      "adr_paths": [
+        "docs/architecture/n8n/ADR_COORDINATION_SECRETS.md"
+      ],
+      "runbook_paths": [
+        "docs/ops/AGENTS_GUARD_HOOK.md",
+        "docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md",
+        "docs/ops/ROLLBACK_COMMANDS.md",
+        "docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md",
+        "docs/implementation/n8n-parallel/lanes/*.md",
+        "docs/implementation/n8n-maturity/*.md"
+      ],
+      "unit_runbooks": [
+        "docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md",
+        "docs/ops/ROLLBACK_COMMANDS.md"
+      ],
+      "deploy_script": "scripts/cio_phase2_exact_main_deploy.sh"
     }
   }
 }

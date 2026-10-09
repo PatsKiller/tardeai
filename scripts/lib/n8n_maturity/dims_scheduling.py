@@ -7,8 +7,10 @@ coordination ledger ``runs`` table (``probe.sqlite_ro``), the pipeline run summa
 (``docs/implementation/n8n-maturity/data/F_rationalization.json`` + ``cron_rows.json``).
 ``lane_registry`` helpers are called with the text the probe read; they never shell out from here.
 
-Thresholds are read from ``config/n8n_platform_maturity.json`` (``probe.cfg(dim_id)``); when a key
-is absent the fallback in ``*_DEFAULTS`` below applies (documented, never hidden). Evidence pointers
+Every threshold is read from ``config/n8n_platform_maturity.json`` with ``probe.need(dim, key)`` — there
+is no in-code fallback; a missing key raises ``core.ConfigError`` (the orchestrator marks the dimension
+UNVERIFIED). The gate score is the top-level ``gate_score``. Empty inputs never score as a pass: an
+empty crontab is UNVERIFIED, an empty population is a None (unverified) sub-criterion. Evidence pointers
 carry paths, counts and timestamps only — never crontab text, never secrets.
 """
 from __future__ import annotations
@@ -27,56 +29,23 @@ except ImportError:  # pragma: no cover — … or as a package from the repo ro
 REGISTRY_REL = Path("config") / "lane_registry.json"
 LEDGER_NAME = "n8n_coordination_ledger.sqlite"
 
-# ── fallback thresholds (config keys of the same name override) ─────────────────────────────────
-REGISTRY_TRUTH_DEFAULTS: dict[str, Any] = {
-    # exemption size the program started from: 476 undeclared_baseline + 113 inherited-tranche lines
-    # (config/lane_registry.json as of 2026-10-09). Progress = share of it retired.
-    "baseline_initial": 589,
-}
-
-RATIONALIZATION_DEFAULTS: dict[str, Any] = {
-    "plan_rows_path": "docs/implementation/n8n-maturity/data/F_rationalization.json",
-    "plan_cron_rows_path": "docs/implementation/n8n-maturity/data/cron_rows.json",
-    "r0_target": 37,              # plan R0: 17 cron, 9 timers, 9 n8n, 1 service, 1 tick step
-    "merged_target": 60,          # ≥ 60 lines merged/consolidated away
-    "merged_stretch": 120,        # 10/10 for the merged sub-score
-    "pipelines_live_target": 8,   # the 8 dry-run pipeline stages switched to live
-    "pipelines_live_stretch": 16,  # end state: 16 pipelines
-    "pipeline_receipt_max_age_hours": 192,  # a live stage receipt older than this does not count
-    "eliminate_prefixes": ["ELIMINATE"],
-    "merge_prefixes": ["MERGE", "CONSOLIDATE"],
-    "n8n_active_snapshot": "docs/implementation/n8n-parallel/workflows/active_workflows_snapshot.json",
-    "health_tick_steps": "config/health_tick_steps.json",
-}
-
-SCHEDULER_COVERAGE_DEFAULTS: dict[str, Any] = {
-    "dispatched_min_fraction": 0.60,   # gate: ≥ 60% of movable lanes run by the dispatcher
-    "watched_min_fraction": 1.0,       # gate: the rest watched (all of them)
-    "dispatcher_kinds": ["n8n", "dispatcher"],
-    "schedulable_kinds": ["cron", "systemd", "n8n", "dispatcher"],
-    "run_states": ["RUN_DONE", "RUN_SKIPPED_LOCK"],
-    "run_modes": ["live"],
-    "run_window_floor_hours": 24,      # run evidence window = max(2 × cadence, floor)
-    # stay-behind classifier (broker / order / secret / daemon): whole tokens of lane_id + scheduler
-    # expression/match, substrings of the same text, explicit lane ids, and note markers.
-    "stay_tokens": ["broker", "order", "orders", "stop", "stops", "alpaca", "moomoo", "opend", "schwab",
-                    "secret", "secrets", "token", "tokens", "credential", "credentials", "bws", "oauth",
-                    "daemon", "service", "fill", "fills", "positions"],
-    "stay_substrings": ["options_tick", "options-tick", "scalp_live", "scalp-live", "portfolio_reconcile",
-                        ".service"],
-    "stay_lane_ids": [],
-    "stay_note_markers": ["retained on cron", "stays on cron", "stay on cron", "keep on cron",
-                          "keep on systemd", "stays on systemd"],
-}
+def _c(probe: core.Probe, dim_id: str, key: str) -> Any:
+    return probe.need(dim_id, key)
 
 
-def _c(probe: core.Probe, dim_id: str, defaults: dict, key: str) -> Any:
-    v = probe.cfg(dim_id).get(key)
-    return defaults[key] if v is None else v
+def _gate_score(probe: core.Probe) -> float:
+    return float(core.need_top(probe.config, "gate_score"))
 
 
-def _gate_rule(probe: core.Probe, dim_id: str, fallback: str) -> str:
-    return probe.cfg(dim_id).get("gate_rule") or fallback
+def _home_norm(probe: core.Probe):
+    """Normalise the home directory to ``~`` (and ``$HOME``/``${HOME}`` likewise) so committed plan data —
+    which carries ``~`` instead of a home path — compares equal to the live crontab text."""
+    home = str(probe.env.get("HOME") or Path.home()).rstrip("/")
+
+    def norm(x: str) -> str:
+        t = str(x or "").replace("${HOME}", "~").replace("$HOME", "~")
+        return t.replace(home, "~") if home and home != "~" else t
+    return norm
 
 
 def _load_registry(probe: core.Probe) -> Optional[dict]:
@@ -122,11 +91,14 @@ def registry_truth(probe: core.Probe) -> dict:
     * ``reverse`` = ACTIVE kind-cron rows whose ``match``/``expression`` is in a live line / ACTIVE cron rows.
 
     Score below the gate = mean(ratio_score(coverage, 1.0), ratio_score(baseline_progress, 1.0)) (each
-    reaches 8.0 only at 100%). Gate (exemption size 0 AND every live line has a row) passes → score =
-    8 + 2 × reverse (10 when no ACTIVE cron row is orphaned either). Missing crontab or registry → UNVERIFIED.
+    reaches ``gate_score`` only at 100%). Gate (exemption size 0 AND every live line has a row) passes →
+    score = gate_score + (10 − gate_score) × reverse (reverse unmeasured when there are no ACTIVE cron rows:
+    no bonus). Missing registry, failed ``crontab -l`` or an EMPTY crontab → UNVERIFIED.
     """
     dim = "registry_truth"
-    rule = _gate_rule(probe, dim, "undeclared_baseline = 0 and every live crontab line has a registry row")
+    rule = str(probe.need(dim, "gate_rule"))
+    gs = _gate_score(probe)
+    initial = float(_c(probe, dim, "baseline_initial"))
     reg_path = probe.proj / REGISTRY_REL
     reg = _load_registry(probe)
     if reg is None:
@@ -138,6 +110,13 @@ def registry_truth(probe: core.Probe) -> dict:
                                metrics={"registry_rows": len(reg["lanes"]), "baseline_size": _baseline_size(reg)},
                                evidence_list=[core.evidence(str(reg_path), rows=len(reg["lanes"]))])
     live = _lr.discover_cron(text=text)
+    if not live:
+        # rc 0 with no live lines: nothing to measure coverage against — never a vacuous 100%
+        return core.unverified(dim, rule, "crontab -l returned no live lines (empty crontab is not evidence)",
+                               metrics={"registry_rows": len(reg["lanes"]), "baseline_size": _baseline_size(reg)},
+                               evidence_list=[core.evidence("crontab -l", live_lines=0)])
+    if initial <= 0:
+        raise core.ConfigError(f"config dimensions.{dim}.baseline_initial must be > 0")
     found = {"cron": live}
     no_exempt = dict(reg, undeclared_baseline=[], inherited_tranches=[])
     without_row = _lr.find_undeclared(no_exempt, found)
@@ -158,15 +137,15 @@ def registry_truth(probe: core.Probe) -> dict:
         marker = str(s.get("match") or s.get("expression") or "")
         if marker and any(marker in e for e in live_exprs):
             present += 1
-    initial = float(_c(probe, dim, REGISTRY_TRUTH_DEFAULTS, "baseline_initial"))
-    coverage = (with_row / n_live) if n_live else 1.0
-    progress = max(0.0, 1.0 - base / initial) if initial > 0 else (1.0 if base == 0 else 0.0)
-    reverse = (present / len(active_cron)) if active_cron else 1.0
+    coverage = with_row / n_live
+    progress = max(0.0, 1.0 - base / initial)
+    # no ACTIVE cron rows → reverse is unmeasured (None): the gate scores gate_score, no bonus
+    reverse: Optional[float] = (present / len(active_cron)) if active_cron else None
     gate = base == 0 and with_row == n_live
     if gate:
-        score = 8.0 + 2.0 * reverse
+        score = gs + (10.0 - gs) * (reverse or 0.0)
     else:
-        score = (core.ratio_score(coverage, 1.0) + core.ratio_score(progress, 1.0)) / 2
+        score = (core.ratio_score(coverage, 1.0, gate_score=gs) + core.ratio_score(progress, 1.0, gate_score=gs)) / 2
     metrics = {
         "baseline_size": base, "baseline_initial": int(initial),
         "live_cron_lines": n_live, "lines_with_row": with_row, "lines_without_row": len(without_row),
@@ -174,6 +153,7 @@ def registry_truth(probe: core.Probe) -> dict:
         "registry_rows": len(reg["lanes"]), "active_cron_rows": len(active_cron),
         "active_cron_rows_present": present, "coverage": round(coverage, 4),
         "baseline_progress": round(progress, 4),
+        "reverse_coverage": None if reverse is None else round(reverse, 4),
     }
     notes = [] if gate else [f"{len(without_row)} of {n_live} live crontab lines have no registry row; "
                              f"exemption list holds {base} entries"]
@@ -203,7 +183,8 @@ class _HostState:
     """Lazily read scheduler state used to decide whether a plan item is gone. None = could not read."""
 
     def __init__(self, probe: core.Probe, cfgget, live_lines: list[str]):
-        self.probe, self._cfg, self.live = probe, cfgget, [_norm(x) for x in live_lines]
+        self.home = _home_norm(probe)
+        self.probe, self._cfg, self.live = probe, cfgget, [_norm(self.home(x)) for x in live_lines]
         self._units: dict[str, Optional[dict[str, str]]] = {}
         self._n8n: Any = False
         self._steps: Any = False
@@ -252,7 +233,7 @@ def _item_gone(item: dict, host: _HostState, cron_rows: dict[str, dict]) -> Opti
     if kind == "cron":
         row = cron_rows.get(iid.lstrip("L"))
         if row and row.get("cmd"):
-            cmd = _cron_cmd(row["cmd"])
+            cmd = _cron_cmd(host.home(row["cmd"]))
             return not any(cmd in ln for ln in host.live) if cmd else None
         if not name or name in ("inline", "curl") or len(name) < 4:
             return None
@@ -312,12 +293,18 @@ def rationalization(probe: core.Probe) -> dict:
     Supporting metrics: retire-tagged commented cron lines, n8n-cutover tags, registry RETIRED rows.
     """
     dim = "rationalization"
-    rule = _gate_rule(probe, dim, "R0 done (37 eliminated), >= 60 merged, 8 pipelines live")
+    rule = str(probe.need(dim, "gate_rule"))
+    gs = _gate_score(probe)
 
     def cfg(key: str) -> Any:
-        return _c(probe, dim, RATIONALIZATION_DEFAULTS, key)
+        return _c(probe, dim, key)
 
+    for k in ("plan_rows_path", "plan_cron_rows_path", "r0_target", "merged_target", "merged_stretch",
+              "pipelines_live_target", "pipelines_live_stretch", "pipeline_receipt_max_age_hours",
+              "eliminate_prefixes", "merge_prefixes", "n8n_active_snapshot", "health_tick_steps"):
+        cfg(k)  # every key up front: a missing one is a ConfigError, never a half-scored dimension
     text = probe.crontab()
+    empty_crontab = text is not None and not _lr.discover_cron(text=text)
     reg = _load_registry(probe)
     ev: list[dict] = []
     metrics: dict[str, Any] = {}
@@ -347,6 +334,9 @@ def rationalization(probe: core.Probe) -> dict:
         notes.append(f"rationalization plan data absent at {cfg('plan_rows_path')}: eliminated/merged vs plan UNVERIFIED")
     elif text is None:
         notes.append("crontab -l failed: cannot tell which plan cron lines are gone")
+    elif empty_crontab:
+        # an empty crontab would read every plan cron line as "gone" — unverified, never a pass
+        notes.append("crontab -l returned no live lines: eliminated/merged vs plan UNVERIFIED")
     else:
         cr_path = probe.proj / cfg("plan_cron_rows_path")
         cr = probe.json(cr_path)
@@ -366,8 +356,8 @@ def rationalization(probe: core.Probe) -> dict:
             "plan_merge_consolidate": len(m_plan), "merged": merged,
             "merge_unverifiable": sum(1 for v in m_res if v is None),
         })
-        elim_score = core.ratio_score(eliminated, r0_target)
-        merged_score = core.ratio_score(merged, merged_target, top=float(cfg("merged_stretch")))
+        elim_score = core.ratio_score(eliminated, r0_target, gate_score=gs)
+        merged_score = core.ratio_score(merged, merged_target, gate_score=gs, top=float(cfg("merged_stretch")))
         ev.append(core.evidence(str(plan_path), items=len(plan), mtime=_iso(probe.mtime(plan_path))))
         ev.append(core.evidence(str(cr_path), rows=len(cron_rows) if cron_rows else None,
                                 readable=bool(cron_rows)))
@@ -379,7 +369,7 @@ def rationalization(probe: core.Probe) -> dict:
     live_receipts, total_receipts = _pipeline_receipts(probe, float(cfg("pipeline_receipt_max_age_hours")))
     p_target = int(cfg("pipelines_live_target"))
     pipelines_live = len(live_receipts)
-    pipe_score = core.ratio_score(pipelines_live, p_target, top=float(cfg("pipelines_live_stretch")))
+    pipe_score = core.ratio_score(pipelines_live, p_target, gate_score=gs, top=float(cfg("pipelines_live_stretch")))
     metrics.update({"pipeline_stage_receipts": total_receipts, "pipelines_live": pipelines_live})
     ev.append(core.evidence(str(probe.runtime() / "pipeline_*_last.json"), receipts=total_receipts,
                             live=pipelines_live,
@@ -430,28 +420,41 @@ def scheduler_coverage(probe: core.Probe) -> dict:
     * ``declared`` = movable rows with scheduler.kind in dispatcher_kinds (n8n) / movable.
       Sub-score ratio_score(declared, 0.60, top=1.0).
     * ``run_proven`` = movable dispatcher rows with a ``runs`` row (mode live, state RUN_DONE|RUN_SKIPPED_LOCK)
-      finished within max(2 × expected_cadence_hours, 24 h) / movable. ratio_score(run_proven, 0.60, top=1.0).
+      finished within max(run_window_cadence_multiple × expected_cadence_hours, window_hours) / movable. ratio_score(run_proven, 0.60, top=1.0).
       Ledger or ``runs`` table absent → None (UNVERIFIED part).
     * ``watched`` = rows NOT dispatcher-run (stay-behinds + undispatched movable) with an
       output_signal.kind other than "none" / those rows. ratio_score(watched, 1.0).
 
     Score = core.mean_score of the three. Gate: run_proven ≥ 0.60 AND watched ≥ 1.0.
+    Empty populations never score: no schedulable lanes → UNVERIFIED; 0 movable lanes → declared/run_proven
+    are None; no "rest" lanes → watched is None (gate needs every part measured).
     """
     dim = "scheduler_coverage"
-    rule = _gate_rule(probe, dim, ">= 60% of movable lanes run by the dispatcher; the rest watched")
+    rule = str(probe.need(dim, "gate_rule"))
+    gs = _gate_score(probe)
+    window_h = probe.window_hours(dim)
 
     def cfg(key: str) -> Any:
-        return _c(probe, dim, SCHEDULER_COVERAGE_DEFAULTS, key)
+        return _c(probe, dim, key)
+
+    sched_kinds = set(cfg("schedulable_kinds"))
+    disp_kinds = set(cfg("dispatcher_kinds"))
+    states, modes = list(cfg("run_states")), list(cfg("run_modes"))
+    d_min = float(cfg("dispatched_min_fraction"))
+    w_min = float(cfg("watched_min_fraction"))
+    for k in ("stay_tokens", "stay_substrings", "stay_lane_ids", "stay_note_markers"):
+        cfg(k)
 
     reg_path = probe.proj / REGISTRY_REL
     reg = _load_registry(probe)
     if reg is None:
         return core.unverified(dim, rule, f"registry unreadable: {reg_path}",
                                evidence_list=[core.evidence(str(reg_path), readable=False)])
-    sched_kinds = set(cfg("schedulable_kinds"))
-    disp_kinds = set(cfg("dispatcher_kinds"))
     pop = [r for r in reg["lanes"] if r.get("state") == _lr.STATE_ACTIVE
            and (r.get("scheduler") or {}).get("kind") in sched_kinds]
+    if not pop:
+        return core.unverified(dim, rule, "no ACTIVE schedulable lanes in the registry (empty population)",
+                               evidence_list=[core.evidence(str(reg_path), rows=len(reg["lanes"]))])
     stay: dict[str, str] = {}
     movable: list[dict] = []
     for r in pop:
@@ -473,7 +476,6 @@ def scheduler_coverage(probe: core.Probe) -> dict:
         ledger_note = f"coordination ledger absent: {ledger}"
     else:
         try:
-            states, modes = list(cfg("run_states")), list(cfg("run_modes"))
             q = ("SELECT lane_id, MAX(finished_at) FROM runs WHERE finished_at IS NOT NULL "
                  f"AND state IN ({','.join('?' * len(states))}) AND mode IN ({','.join('?' * len(modes))}) "
                  "GROUP BY lane_id")
@@ -482,37 +484,42 @@ def scheduler_coverage(probe: core.Probe) -> dict:
             ledger_note = f"ledger runs table unreadable: {type(exc).__name__}"
         finally:
             con.close()
-    floor = float(cfg("run_window_floor_hours"))
+    floor = window_h
+    mult = float(cfg("run_window_cadence_multiple"))
     proven: list[str] = []
     if last_run is not None:
         for r in dispatched:
             lid = str(r.get("lane_id"))
             ts = core.parse_ts(last_run.get(lid))
-            win = max(2.0 * float(r.get("expected_cadence_hours") or 0), floor)
+            win = max(mult * float(r.get("expected_cadence_hours") or 0), floor)
             if ts is not None and ts >= probe.since(win):
                 proven.append(lid)
 
     n_mov = len(movable)
-    declared_frac = len(dispatched) / n_mov if n_mov else 0.0
-    proven_frac = (len(proven) / n_mov if n_mov else 0.0) if last_run is not None else None
+    declared_frac: Optional[float] = len(dispatched) / n_mov if n_mov else None
+    proven_frac: Optional[float] = (len(proven) / n_mov) if (n_mov and last_run is not None) else None
     rest = [r for r in pop if str(r.get("lane_id")) not in set(proven)]
     watched = [r for r in rest if ((r.get("output_signal") or {}).get("kind") or "none") != "none"]
-    watched_frac = len(watched) / len(rest) if rest else 1.0
-    d_min = float(cfg("dispatched_min_fraction"))
-    w_min = float(cfg("watched_min_fraction"))
-    parts = [("declared_on_dispatcher", core.ratio_score(declared_frac, d_min, top=1.0) if n_mov else 0.0),
-             ("run_proven_on_dispatcher",
-              None if proven_frac is None else core.ratio_score(proven_frac, d_min, top=1.0)),
-             ("rest_watched", core.ratio_score(watched_frac, w_min))]
+    watched_frac: Optional[float] = len(watched) / len(rest) if rest else None
+
+    def sub(v: Optional[float], g: float, top: Optional[float] = None) -> Optional[float]:
+        return None if v is None else core.ratio_score(v, g, gate_score=gs, top=top)
+    parts = [("declared_on_dispatcher", sub(declared_frac, d_min, 1.0)),
+             ("run_proven_on_dispatcher", sub(proven_frac, d_min, 1.0)),
+             ("rest_watched", sub(watched_frac, w_min))]
     score, status, mnotes = core.mean_score(parts)
-    gate = proven_frac is not None and proven_frac >= d_min and watched_frac >= w_min
+    gate = (proven_frac is not None and proven_frac >= d_min and watched_frac is not None
+            and watched_frac >= w_min)
+    if not n_mov:
+        mnotes.append("0 movable lanes: dispatcher coverage unmeasurable (not a vacuous 100%)")
     metrics = {
         "schedulable_active_lanes": len(pop), "stay_behind_lanes": len(stay), "movable_lanes": n_mov,
         "dispatcher_declared": len(dispatched), "dispatcher_run_proven": len(proven) if last_run is not None else None,
-        "declared_fraction": round(declared_frac, 4),
+        "declared_fraction": None if declared_frac is None else round(declared_frac, 4),
         "run_proven_fraction": None if proven_frac is None else round(proven_frac, 4),
-        "rest_lanes": len(rest), "rest_watched": len(watched), "watched_fraction": round(watched_frac, 4),
+        "rest_lanes": len(rest), "rest_watched": len(watched), "watched_fraction": None if watched_frac is None else round(watched_frac, 4),
         "ledger_lanes_with_live_runs": None if last_run is None else len(last_run),
+        "run_window_floor_hours": window_h,
     }
     reasons: dict[str, int] = {}
     for why in stay.values():

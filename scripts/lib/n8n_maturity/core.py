@@ -3,10 +3,14 @@
 Every collector reads evidence through a ``Probe``. The probe is READ-ONLY by construction:
 
 * files are opened for reading only (``text``/``json``/``rows``/``sqlite_ro``);
-* external commands go through ``Probe.run``, which refuses any argv that is not on the
-  read-only allowlist below (crontab -l, systemctl --user show/list-*, docker exec ... psql
-  with a single SELECT, gh api GET / gh run|pr list|view, journalctl --user, guard log/show,
-  git log/rev-parse);
+* external commands go through ``Probe.run``, which refuses any argv that is not one of the
+  PINNED read-only shapes below: ``crontab -l``; ``systemctl --user`` show/list-*;
+  ``journalctl --user`` with read flags only; ``gh run list``; ``docker ps``/``docker inspect``
+  with the exact templates the collectors use (none can print an env value); and psql built by
+  ``psql_argv`` only (``-X -At -U u -d db -c <one SELECT>``, docker exec with
+  PGOPTIONS default_transaction_read_only=on; the runner sets the same for host psql);
+* the runner resolves the program's real path to a trusted system bin dir and the probe
+  redacts secret-shaped output before any collector sees it;
 * SQLite is opened with ``mode=ro`` URIs.
 
 Tests inject a fake ``runner`` and a tmp ``root``/``proj`` so nothing touches the host.
@@ -20,6 +24,7 @@ import datetime as _dt
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 from dataclasses import dataclass, field
@@ -32,87 +37,215 @@ VERIFIED = "VERIFIED"
 PARTIAL = "PARTIAL"
 UNVERIFIED = "UNVERIFIED"
 
-# Read-only command allowlist: (argv prefix, extra predicate on the full argv).
+# ---- read-only command allowlist ---------------------------------------------------------------
+# Every argv the scorer may execute has an EXACT, pinned shape. Anything else is refused before it runs.
+# The runner additionally resolves the program to its real path and requires a system bin directory,
+# runs psql with PGOPTIONS default_transaction_read_only=on, and redacts secret-shaped output.
+
+PG_READ_ONLY_OPTIONS = "-c default_transaction_read_only=on"
+TRUSTED_BIN_DIRS = ("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/usr/share/postgresql-common")
+_IDENT = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}$")
 _SELECT_RE = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
-_WRITE_SQL_RE = re.compile(
-    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO)\b", re.IGNORECASE)
+_FORBIDDEN_SQL = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|INTO|LOCK|"
+    r"SET|RESET|LISTEN|NOTIFY|PREPARE|EXECUTE|DECLARE|IMPORT|REFRESH|CLUSTER|REINDEX|COMMENT|SECURITY|"
+    r"credentials_entity|dblink\w*|lo_\w+|set_config|current_setting|query_to_xml\w*)\b"
+    r"|\bpg_\w+\s*\(", re.IGNORECASE)
+
+# The exact docker templates the collectors use. Nothing that can print an env VALUE (no {{.}}, no
+# {{.Config}}, no printf/json); the single-key template is pinned to a non-secret key.
+DOCKER_PS_FORMATS = frozenset({"{{.Names}}\t{{.Image}}", "{{.Names}} {{.Image}}"})
+DOCKER_INSPECT_TEMPLATES = frozenset({
+    '{{range .Config.Env}}{{index (split . "=") 0}}{{"\\n"}}{{end}}',
+    '{{range .Config.Env}}{{if eq (index (split . "=") 0) "DB_POSTGRESDB_USER"}}{{.}}{{end}}{{end}}',
+    '{{index .Config.Labels "com.docker.compose.project.config_files"}}',
+})
+_SYSTEMCTL_VERBS = ("show", "list-units", "list-timers", "list-unit-files", "is-active", "is-enabled")
+_SYSTEMCTL_FLAGS = frozenset({"--all", "--no-pager", "--no-legend", "--plain", "--failed", "-p"})
+_JOURNAL_VALUE_FLAGS = frozenset({"-u", "--since", "--until", "-o", "-n"})
+_JOURNAL_BARE_FLAGS = frozenset({"--user", "--no-pager", "-q", "--quiet", "--utc"})
+_JOURNAL_OUTPUTS = frozenset({"short-iso", "short-iso-precise", "cat", "short", "json"})
+_GH_RUN_VALUE_FLAGS = frozenset({"-R", "--workflow", "--branch", "--json", "-L", "--event", "--status"})
 
 
-def _psql_select_only(argv: list[str]) -> bool:
-    """Exactly one SQL argument after ``-c`` (or a combined short flag ending in c, e.g. ``-tAc``), SELECT/WITH only."""
-    idx = next((i for i, a in enumerate(argv) if a == "-c" or re.fullmatch(r"-[A-Za-z]*c", a)), None)
-    if idx is None or idx + 1 >= len(argv):
+def is_safe_sql(sql: str) -> bool:
+    """A single SELECT/WITH read: no DML/DDL words, no INTO, no pg_* function calls, no credentials table,
+    no psql meta-commands, at most one trailing semicolon."""
+    s = str(sql)
+    body = s.strip().rstrip(";")
+    return bool(_SELECT_RE.match(s)) and ";" not in body and "\\" not in s and not _FORBIDDEN_SQL.search(body)
+
+
+def _psql_tail_ok(tail: list[str]) -> bool:
+    """psql -X -At [-h HOST] -U USER -d DB -c SQL — exactly this shape."""
+    if tail[:3] != ["psql", "-X", "-At"]:
         return False
-    sql = argv[idx + 1]
-    return bool(_SELECT_RE.match(sql)) and not _WRITE_SQL_RE.search(sql) and ";" not in sql.strip().rstrip(";")
+    rest = tail[3:]
+    if rest[:1] == ["-h"]:
+        if len(rest) < 2 or not _IDENT.match(rest[1]):
+            return False
+        rest = rest[2:]
+    return (len(rest) == 6 and rest[0] == "-U" and _IDENT.match(rest[1]) is not None and rest[2] == "-d"
+            and _IDENT.match(rest[3]) is not None and rest[4] == "-c" and is_safe_sql(rest[5]))
 
 
-# docker inspect may read container env only through templates that cannot emit a secret VALUE:
-# the names-only template, or a single-key template for a key that does not look secret.
-_ENV_NAMES_ONLY = '{{range .Config.Env}}{{index (split . "=") 0}}{{"\\n"}}{{end}}'
-_ENV_ONE_KEY_RE = re.compile(r'^\{\{range \.Config\.Env\}\}\{\{if eq \(index \(split \. "="\) 0\) "([A-Z0-9_]+)"\}\}'
-                             r'\{\{\.\}\}\{\{end\}\}\{\{end\}\}$')
-_SECRETISH = re.compile(r"PASS|SECRET|TOKEN|KEY|CRED|AUTH", re.IGNORECASE)
+def psql_argv(sql: str, *, user: str, db: str, container: Optional[str] = None, host: Optional[str] = None) -> list[str]:
+    """Build the only psql argv shape the allowlist accepts (docker exec with PGOPTIONS read-only, or host)."""
+    tail = ["psql", "-X", "-At"] + (["-h", host] if host else []) + ["-U", user, "-d", db, "-c", sql]
+    if container:
+        return ["docker", "exec", "-e", f"PGOPTIONS={PG_READ_ONLY_OPTIONS}", container] + tail
+    return tail
 
 
-def _docker_inspect_safe(argv: list[str]) -> bool:
-    if "--format" not in argv or argv.index("--format") + 1 >= len(argv):
-        return False  # a bare inspect dumps the whole env, values included
-    fmt = argv[argv.index("--format") + 1]
-    if "Env" not in fmt and "Secret" not in fmt and "{{json ." not in fmt and fmt.strip() != "{{.}}":
-        return True
-    if fmt == _ENV_NAMES_ONLY:
-        return True
-    m = _ENV_ONE_KEY_RE.match(fmt)
-    return bool(m) and not _SECRETISH.search(m.group(1))
+def _flags_ok(args: list[str], value_flags: frozenset, bare_flags: frozenset, check=None) -> bool:
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in value_flags:
+            if i + 1 >= len(args) or (check and not check(a, args[i + 1])):
+                return False
+            i += 2
+        elif a in bare_flags:
+            i += 1
+        else:
+            return False
+    return True
 
 
-def _gh_read_only(argv: list[str]) -> bool:
-    if argv[1:2] == ["api"]:
-        bad = {"-X", "--method", "-f", "-F", "--field", "--raw-field", "--input"}
-        return not any(a in bad or a.startswith("--method=") or a.startswith("-X") for a in argv[2:])
-    return argv[1:3] in (["run", "list"], ["run", "view"], ["pr", "list"], ["pr", "view"], ["workflow", "list"])
-
-
-def is_read_only(argv: list[str]) -> bool:
-    """True only for argv the scorer is allowed to execute (read-only by inspection)."""
-    if not argv:
+def _systemctl_ok(argv: list[str]) -> bool:
+    if len(argv) < 3 or argv[1] != "--user" or argv[2] not in _SYSTEMCTL_VERBS:
         return False
-    exe = os.path.basename(argv[0])
-    if exe == "crontab":
-        return argv[1:] == ["-l"]
-    if exe == "systemctl":
-        return len(argv) >= 3 and argv[1] == "--user" and argv[2] in (
-            "show", "list-units", "list-timers", "list-unit-files", "is-active", "is-enabled", "status")
-    if exe == "journalctl":
-        return "--user" in argv and not any(a in ("--rotate", "--vacuum-size", "--vacuum-time", "--flush") or
-                                             a.startswith("--vacuum") for a in argv)
-    if exe == "docker":
-        if argv[1:2] == ["ps"]:
-            return True
-        if argv[1:2] == ["inspect"]:
-            return _docker_inspect_safe(argv)
-        return argv[1:2] == ["exec"] and "psql" in argv and _psql_select_only(argv)
-    if exe == "gh":
-        return _gh_read_only(argv)
-    if exe == "git":
-        rest = argv[3:] if argv[1:2] == ["-C"] else argv[1:]
-        return rest[:1] in (["log"], ["rev-parse"], ["show"], ["ls-files"])
-    if exe == "guard":
-        return argv[1:2] in (["log"], ["show"], ["list"], ["status"])
+    rest = argv[3:]
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        if a == "-p":
+            if i + 1 >= len(rest) or not re.fullmatch(r"[A-Za-z]+", rest[i + 1]):
+                return False
+            i += 2
+        elif a in _SYSTEMCTL_FLAGS or re.fullmatch(r"--type=(service|timer)", a) or _IDENT.match(a):
+            i += 1
+        else:
+            return False
+    return True
+
+
+def _journal_ok(argv: list[str]) -> bool:
+    def check(flag: str, val: str) -> bool:
+        if flag == "-u":
+            return _IDENT.match(val) is not None
+        if flag == "-o":
+            return val in _JOURNAL_OUTPUTS
+        if flag == "-n":
+            return val.isdigit()
+        return re.fullmatch(r"[0-9: \-+TZUCa-z]{1,40}", val) is not None
+    return "--user" in argv and _flags_ok(argv[1:], _JOURNAL_VALUE_FLAGS, _JOURNAL_BARE_FLAGS, check)
+
+
+def _gh_ok(argv: list[str]) -> bool:
+    if argv[1:3] != ["run", "list"]:
+        return False
+
+    def check(flag: str, val: str) -> bool:
+        return re.fullmatch(r"[A-Za-z0-9_.,/\-]{1,200}", val) is not None
+    return _flags_ok(argv[3:], _GH_RUN_VALUE_FLAGS, frozenset(), check)
+
+
+def _docker_ok(argv: list[str]) -> bool:
+    if argv[1:2] == ["ps"]:
+        return len(argv) == 4 and argv[2] == "--format" and argv[3] in DOCKER_PS_FORMATS
+    if argv[1:2] == ["inspect"]:
+        return (len(argv) == 5 and _IDENT.match(argv[2]) is not None and argv[3] == "--format"
+                and argv[4] in DOCKER_INSPECT_TEMPLATES)
+    if argv[1:2] == ["exec"]:
+        return (len(argv) >= 6 and argv[2:4] == ["-e", f"PGOPTIONS={PG_READ_ONLY_OPTIONS}"]
+                and _IDENT.match(argv[4]) is not None and _psql_tail_ok(argv[5:]))
     return False
 
 
+def is_read_only(argv: list[str]) -> bool:
+    """True only for argv in one of the pinned read-only shapes."""
+    if not argv or not isinstance(argv[0], str):
+        return False
+    prog = argv[0]
+    if "/" in prog and os.path.dirname(os.path.realpath(prog)) not in TRUSTED_BIN_DIRS:
+        return False
+    exe = os.path.basename(prog)
+    if exe == "crontab":
+        return argv[1:] == ["-l"]
+    if exe == "systemctl":
+        return _systemctl_ok(argv)
+    if exe == "journalctl":
+        return _journal_ok(argv)
+    if exe == "docker":
+        return _docker_ok(argv)
+    if exe == "gh":
+        return _gh_ok(argv)
+    if exe == "psql":
+        return _psql_tail_ok(["psql"] + argv[1:])
+    return False
+
+
+_REDACTIONS = (
+    (re.compile(r"(?i)\b([A-Z0-9_]*(?:PASS|SECRET|TOKEN|KEY|CREDENTIAL|AUTH)[A-Z0-9_]*)\s*=\s*\S+"),
+     r"\1=<redacted>"),
+    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=\-]{8,}"), r"\1 <redacted>"),
+    (re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://[^:/\s@]+):[^@\s]+@"), r"\1:<redacted>@"),
+    (re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-[A-Za-z0-9\-]{10,}|sk-[A-Za-z0-9\-_]{20,}|"
+                r"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,})\b"), "<redacted>"),
+)
+
+
+def redact(text: str) -> str:
+    """Mask secret-shaped substrings (KEY=value for secret-named keys, bearer tokens, URL passwords, known
+    token formats). Collectors never need a secret; this is a second line behind the template allowlist."""
+    out = text or ""
+    for pat, rep in _REDACTIONS:
+        out = pat.sub(rep, out)
+    return out
+
+
+def resolve_program(prog: str) -> Optional[str]:
+    """Real path of ``prog`` if it lives in a trusted system bin directory, else None."""
+    found = prog if "/" in prog else shutil.which(prog)
+    if not found:
+        return None
+    real = os.path.realpath(found)
+    return found if os.path.dirname(real) in TRUSTED_BIN_DIRS else None
+
+
 def _default_runner(argv: list[str], timeout: float) -> "tuple[int, str, str]":
+    path = resolve_program(argv[0])
+    if path is None:
+        return 127, "", f"program not found in a trusted bin dir: {os.path.basename(argv[0])}"
+    env = dict(os.environ)
+    env["PGOPTIONS"] = PG_READ_ONLY_OPTIONS
     try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603
+        p = subprocess.run([path] + list(argv[1:]), capture_output=True, text=True, timeout=timeout,  # noqa: S603
+                           check=False, env=env)
         return p.returncode, p.stdout, p.stderr
-    except FileNotFoundError as exc:
-        return 127, "", f"not found: {exc}"
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout after {timeout}s"
     except OSError as exc:
-        return 126, "", f"{type(exc).__name__}: {exc}"
+        return 126, "", f"{type(exc).__name__}"
+
+
+class ConfigError(KeyError):
+    """A threshold the scorer needs is missing from config/n8n_platform_maturity.json."""
+
+
+def need(config: dict, dim_id: str, key: str) -> Any:
+    """A required per-dimension threshold — no in-code fallback; missing → ConfigError (dimension UNVERIFIED)."""
+    d = (config.get("dimensions") or {}).get(dim_id) or {}
+    if key not in d:
+        raise ConfigError(f"config dimensions.{dim_id}.{key} missing")
+    return d[key]
+
+
+def need_top(config: dict, key: str) -> Any:
+    if key not in config:
+        raise ConfigError(f"config {key} missing")
+    return config[key]
 
 
 @dataclass
@@ -136,6 +269,7 @@ class Probe:
         if not is_read_only(argv):
             raise PermissionError(f"n8n maturity scorer refuses non-read-only command: {argv[:3]}")
         rc, out, err = (self.runner or _default_runner)(list(argv), timeout or self.timeout)
+        out, err = redact(out), redact(err)
         self.commands.append({"argv": " ".join(argv[:4]) + (" …" if len(argv) > 4 else ""), "rc": rc})
         return rc, out, err
 
@@ -205,6 +339,14 @@ class Probe:
 
     def runtime(self) -> Path:
         return self.root / "data" / "runtime"
+
+    def need(self, dim_id: str, key: str) -> Any:
+        return need(self.config, dim_id, key)
+
+    def window_hours(self, dim_id: str) -> float:
+        """Per-dimension ``window_hours`` if set, else the top-level ``window_hours`` (required)."""
+        d = (self.config.get("dimensions") or {}).get(dim_id) or {}
+        return float(d["window_hours"]) if "window_hours" in d else float(need_top(self.config, "window_hours"))
 
     def cfg(self, dim_id: str) -> dict:
         return dict((self.config.get("dimensions") or {}).get(dim_id) or {})

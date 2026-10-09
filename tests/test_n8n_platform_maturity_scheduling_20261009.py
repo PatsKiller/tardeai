@@ -4,6 +4,7 @@ tmp_path root/proj, a fake runner for ``crontab -l`` / ``systemctl --user list-u
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import sqlite3
@@ -19,8 +20,21 @@ from n8n_maturity import core  # noqa: E402
 from n8n_maturity import dims_scheduling as ds  # noqa: E402
 
 NOW = dt.datetime(2026, 10, 9, 20, 0, tzinfo=dt.timezone.utc)
-CFG = {"dimensions": {"registry_truth": {"gate_rule": "rt"}, "rationalization": {"gate_rule": "ra"},
-                      "scheduler_coverage": {"gate_rule": "sc"}}}
+REAL_CONFIG = json.loads((PROJ / "config" / "n8n_platform_maturity.json").read_text(encoding="utf-8"))
+HOME = "/h/tester"  # probe env HOME — never the real home directory
+
+
+def _config(dims=None, **top):
+    """The real config file, with per-dimension keys and top-level keys overridden for the test."""
+    cfg = copy.deepcopy(REAL_CONFIG)
+    for d, kv in (dims or {}).items():
+        cfg["dimensions"].setdefault(d, {}).update(kv)
+    cfg.update(top)
+    return cfg
+
+
+CFG = _config()
+SC = REAL_CONFIG["dimensions"]["scheduler_coverage"]
 
 
 def _lane(lane_id, kind="cron", match=None, state="ACTIVE", signal="file_mtime", cadence=24.0, **kw):
@@ -53,7 +67,7 @@ def _runner(crontab: str | None = None, timers: str | None = None, services: str
 
 
 def _probe(tmp_path, runner, config=None):
-    return core.Probe(root=tmp_path / "state", proj=tmp_path / "proj", now=NOW, env={},
+    return core.Probe(root=tmp_path / "state", proj=tmp_path / "proj", now=NOW, env={"HOME": HOME},
                       config=config if config is not None else CFG, runner=runner)
 
 
@@ -94,8 +108,7 @@ def test_registry_truth_perfect_is_10(tmp_path):
 
 def test_registry_truth_baseline_nonzero_fails_gate_and_scores_partial_progress(tmp_path):
     _registry(tmp_path, [_lane("a", match="scripts/a.py")], baseline=[LINE_B], tranches=[[LINE_C]])
-    cfg = json.loads(json.dumps(CFG))
-    cfg["dimensions"]["registry_truth"]["baseline_initial"] = 4
+    cfg = _config({"registry_truth": {"baseline_initial": 4}})
     r = ds.registry_truth(_probe(tmp_path, _runner(CRON3), cfg))
     m = r["metrics"]
     assert r["gate"]["pass"] is False
@@ -176,9 +189,8 @@ def _pipeline_receipt(tmp_path, pipeline, stage, *, dry_run=False, status="ok", 
             "dry_run": dry_run, "executed_any": not dry_run, "overall_status": "dry_run" if dry_run else status})
 
 
-RA_CFG = {"dimensions": {"rationalization": {"gate_rule": "ra", "r0_target": 6, "merged_target": 3,
-                                             "merged_stretch": 6, "pipelines_live_target": 2,
-                                             "pipelines_live_stretch": 4}}}
+RA_CFG = _config({"rationalization": {"r0_target": 6, "merged_target": 3, "merged_stretch": 6,
+                                      "pipelines_live_target": 2, "pipelines_live_stretch": 4}})
 
 
 def test_rationalization_gate_pass(tmp_path):
@@ -273,12 +285,12 @@ def _sc_lanes(n_n8n=3, n_cron=2):
 
 
 def test_stay_behind_classifier_is_token_based_and_config_driven():
-    get = lambda k: ds.SCHEDULER_COVERAGE_DEFAULTS[k]  # noqa: E731
+    get = lambda k: SC[k]  # noqa: E731
     assert ds.is_stay_behind(_lane("alpaca-stop-manager-rth"), get).startswith("token:")
     assert ds.is_stay_behind(_lane("recorder", match="microstructure_recorder.py"), get) is None
     assert ds.is_stay_behind(_lane("x", match="scripts/options_tick.py"), get) == "substring:options_tick"
     assert ds.is_stay_behind(_lane("x", note="Stays on cron (broker rail)"), get) == "note:stays on cron"
-    custom = {**ds.SCHEDULER_COVERAGE_DEFAULTS, "stay_lane_ids": ["x"]}
+    custom = {**SC, "stay_lane_ids": ["x"]}
     assert ds.is_stay_behind(_lane("x"), lambda k: custom[k]) == "stay_lane_ids"
 
 
@@ -354,3 +366,142 @@ def test_collectors_table_and_read_only_commands(tmp_path):
     for fn in ds.COLLECTORS.values():
         fn(p)
     assert calls and all(core.is_read_only(c) for c in calls)
+
+
+# ── review blockers: config-only thresholds, empty inputs never pass, read-only argv ──────────
+
+def test_registry_truth_empty_crontab_is_unverified_not_full_coverage(tmp_path):
+    _registry(tmp_path, [_lane("a", match="scripts/a.py")])
+    for tab in ("", "# 0 1 * * * python scripts/a.py RETIRED\nPATH=/usr/bin\n"):
+        r = ds.registry_truth(_probe(tmp_path, _runner(tab)))
+        assert r["status"] == core.UNVERIFIED and r["score"] == 0.0 and r["gate"]["pass"] is False
+        assert any("no live lines" in n for n in r["notes"])
+
+
+def test_registry_truth_no_active_cron_rows_scores_gate_score_without_bonus(tmp_path):
+    # rows of another kind declare every line, so the gate passes; but there is no ACTIVE kind-cron row, so
+    # reverse is 0/0 → None (no bonus), never 1.0 → 10
+    lanes = [_lane(x, kind="systemd", match=f"scripts/{x}.py") for x in ("a", "b", "c")]
+    _registry(tmp_path, lanes)
+    r = ds.registry_truth(_probe(tmp_path, _runner(CRON3)))
+    assert r["gate"]["pass"] is True and r["metrics"]["active_cron_rows"] == 0
+    assert r["metrics"]["reverse_coverage"] is None and r["score"] == pytest.approx(8.0)
+
+
+def test_registry_truth_gate_score_from_config(tmp_path):
+    _registry(tmp_path, [_lane("a", match="scripts/a.py"), _lane("b", match="scripts/b.py"),
+                         _lane("c", match="scripts/c.py"), _lane("orphan", match="scripts/gone.py")])
+    r = ds.registry_truth(_probe(tmp_path, _runner(CRON3), _config(gate_score=7.0)))
+    assert r["score"] == pytest.approx(7.0 + 3.0 * 3 / 4, abs=0.01)
+
+
+def test_rationalization_empty_crontab_does_not_read_plan_lines_as_gone(tmp_path):
+    _plan(tmp_path)
+    for st in ("a", "b"):
+        _pipeline_receipt(tmp_path, "after_close", st)
+    r = ds.rationalization(_probe(tmp_path, _runner("", timers="", services=""), RA_CFG))
+    assert "eliminated" not in r["metrics"] and "merged" not in r["metrics"]
+    assert r["status"] == core.PARTIAL and r["gate"]["pass"] is False
+    assert r["score"] == pytest.approx(round(8.0 / 3, 2))
+    assert any("no live lines" in n for n in r["notes"])
+
+
+def test_rationalization_matches_home_path_against_tilde_plan_rows(tmp_path):
+    _plan(tmp_path)
+    data = tmp_path / "proj" / "docs" / "implementation" / "n8n-maturity" / "data"
+    _write(data / "cron_rows.json", [{"line": 100, "cmd": "~/repo/run.sh elim0 >> ~/logs/e.log 2>&1"},
+                                     {"line": 101, "cmd": "$HOME/repo/run.sh elim1"}])
+    crontab = (f"0 1 * * * {HOME}/repo/run.sh elim0 >> {HOME}/logs/e.log 2>&1\n"
+               f"0 2 * * * {HOME}/repo/run.sh elim1\n")
+    r = ds.rationalization(_probe(tmp_path, _runner(crontab, timers="", services=""), RA_CFG))
+    # elim0 and elim1 still live (home path ≡ ~ ≡ $HOME) → only the 4 non-cron ELIMINATE items are gone
+    assert r["metrics"]["eliminated"] == 4
+    assert HOME not in json.dumps(r)
+
+
+def test_rationalization_stale_pipeline_receipt_does_not_count(tmp_path):
+    _pipeline_receipt(tmp_path, "after_close", "a", ts="2026-10-01T19:59:00Z")  # 192 h + 1 min old
+    r = ds.rationalization(_probe(tmp_path, _runner("0 1 * * * x\n"), RA_CFG))
+    assert r["metrics"]["pipelines_live"] == 0
+
+
+def test_scheduler_coverage_zero_movable_lanes_is_not_full_coverage(tmp_path):
+    _registry(tmp_path, [_lane("alpaca-stop-manager-rth", match="scripts/alpaca_stop_manager.py"),
+                         _lane("schwab-token", match="scripts/schwab_token.py")])
+    _ledger(tmp_path, [])
+    r = ds.scheduler_coverage(_probe(tmp_path, _runner()))
+    m = r["metrics"]
+    assert m["movable_lanes"] == 0 and m["declared_fraction"] is None and m["run_proven_fraction"] is None
+    assert r["gate"]["pass"] is False and r["status"] == core.PARTIAL and r["score"] < 8.0
+
+
+def test_scheduler_coverage_empty_population_is_unverified(tmp_path):
+    _registry(tmp_path, [_lane("ev", kind="event"), _lane("old", state="RETIRED")])
+    r = ds.scheduler_coverage(_probe(tmp_path, _runner()))
+    assert r["status"] == core.UNVERIFIED and r["score"] == 0.0 and r["gate"]["pass"] is False
+
+
+def test_scheduler_coverage_no_rest_lanes_leaves_watched_unmeasured(tmp_path):
+    _registry(tmp_path, [_lane(f"n{i}", kind="n8n", match=f"scripts/n{i}.py", cadence=0.25) for i in range(2)])
+    fresh = "2026-10-09T19:50:00+00:00"
+    _ledger(tmp_path, [("n0", "live", "RUN_DONE", fresh), ("n1", "live", "RUN_DONE", fresh)])
+    r = ds.scheduler_coverage(_probe(tmp_path, _runner()))
+    assert r["metrics"]["rest_lanes"] == 0 and r["metrics"]["watched_fraction"] is None
+    assert r["gate"]["pass"] is False and r["status"] == core.PARTIAL
+
+
+def test_scheduler_coverage_window_from_config(tmp_path):
+    _registry(tmp_path, _sc_lanes(n_n8n=3, n_cron=0))
+    old = "2026-10-08T08:00:00+00:00"  # 36 h ago: outside 24 h, inside 48 h
+    _ledger(tmp_path, [(f"n{i}", "live", "RUN_DONE", old) for i in range(3)])
+    r = ds.scheduler_coverage(_probe(tmp_path, _runner()))
+    assert r["metrics"]["dispatcher_run_proven"] == 0
+    r = ds.scheduler_coverage(_probe(tmp_path, _runner(), _config({"scheduler_coverage": {"window_hours": 48}})))
+    assert r["metrics"]["dispatcher_run_proven"] == 3
+
+
+@pytest.mark.parametrize("dim,key", [("registry_truth", "baseline_initial"), ("registry_truth", "gate_rule"),
+                                     ("rationalization", "r0_target"), ("rationalization", "plan_rows_path"),
+                                     ("rationalization", "pipeline_receipt_max_age_hours"),
+                                     ("scheduler_coverage", "dispatched_min_fraction"),
+                                     ("scheduler_coverage", "stay_tokens"),
+                                     ("scheduler_coverage", "run_window_cadence_multiple")])
+def test_missing_threshold_raises_config_error(tmp_path, dim, key):
+    _plan(tmp_path)
+    _registry(tmp_path, _sc_lanes())
+    _ledger(tmp_path, [])
+    cfg = _config()
+    del cfg["dimensions"][dim][key]
+    with pytest.raises(core.ConfigError):
+        ds.COLLECTORS[dim](_probe(tmp_path, _runner(CRON3, "", ""), cfg))
+
+
+def test_missing_gate_score_raises_config_error(tmp_path):
+    _registry(tmp_path, _sc_lanes())
+    cfg = _config()
+    del cfg["gate_score"]
+    for fn in ds.COLLECTORS.values():
+        with pytest.raises(core.ConfigError):
+            fn(_probe(tmp_path, _runner(CRON3, "", ""), cfg))
+
+
+def test_real_config_carries_every_key_the_collectors_read(tmp_path):
+    _plan(tmp_path)
+    _registry(tmp_path, _sc_lanes())
+    _ledger(tmp_path, [])
+    for dim, fn in ds.COLLECTORS.items():
+        assert fn(_probe(tmp_path, _runner(CRON3, "", ""), copy.deepcopy(REAL_CONFIG)))["id"] == dim
+
+
+def test_no_in_code_threshold_tables():
+    for name in ("REGISTRY_TRUTH_DEFAULTS", "RATIONALIZATION_DEFAULTS", "SCHEDULER_COVERAGE_DEFAULTS"):
+        assert not hasattr(ds, name)
+
+
+def test_deterministic(tmp_path):
+    _plan(tmp_path)
+    _registry(tmp_path, _sc_lanes())
+    _ledger(tmp_path, [("n0", "live", "RUN_DONE", "2026-10-09T19:50:00+00:00")])
+    a = [fn(_probe(tmp_path, _runner(CRON3, "", ""))) for fn in ds.COLLECTORS.values()]
+    b = [fn(_probe(tmp_path, _runner(CRON3, "", ""))) for fn in ds.COLLECTORS.values()]
+    assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)

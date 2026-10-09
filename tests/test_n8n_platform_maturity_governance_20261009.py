@@ -5,6 +5,7 @@ Nothing here touches docker, systemd, gh, crontab or the live guard ledger.
 """
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import sys
@@ -46,14 +47,28 @@ class FakeRunner:
         return 1, "", f"unhandled {argv[:3]}"
 
 
-def _probe(tmp_path: Path, runner, dims: dict | None = None, env: dict | None = None) -> core.Probe:
+REAL_CONFIG = json.loads((REPO / "config" / "n8n_platform_maturity.json").read_text(encoding="utf-8"))
+GATE_CAP = float(REAL_CONFIG["gate_cap"])
+GOV = REAL_CONFIG["dimensions"]["governance"]
+SEC = REAL_CONFIG["dimensions"]["security"]
+APP, DBC = GOV["n8n_container"], GOV["n8n_db_container"]
+
+
+def _config(dims: dict | None = None) -> dict:
+    """The REAL config/n8n_platform_maturity.json with per-dimension overrides merged in."""
+    cfg = copy.deepcopy(REAL_CONFIG)
+    for k, v in (dims or {}).items():
+        cfg["dimensions"][k].update(v)
+    return cfg
+
+
+def _probe(tmp_path: Path, runner, dims: dict | None = None, env: dict | None = None,
+           config: dict | None = None) -> core.Probe:
     root = tmp_path / "state"
     proj = tmp_path / "repo"
     root.mkdir(exist_ok=True)
     proj.mkdir(exist_ok=True)
-    cfg = {"dimensions": {k: {"gate_rule": f"{k} gate", **v} for k, v in (dims or {}).items()}}
-    for k in ("governance", "security", "ci_signal", "docs_synced"):
-        cfg["dimensions"].setdefault(k, {"gate_rule": f"{k} gate"})
+    cfg = config if config is not None else _config(dims)
     base_env = {"HOME": str(tmp_path / "home")}
     base_env.update(env or {})
     return core.Probe(root=root, proj=proj, now=NOW, env=base_env, config=cfg, runner=runner)
@@ -117,7 +132,6 @@ def _gov_world(tmp_path: Path, *, grant_both=True, hook=True, schedule=True, rec
             "5 6 * * * $PY scripts/check_n8n_activation_grants.py --write\n") if schedule else "0 1 * * * true\n"
     timers = "NEXT LEFT UNIT\nx y tradeai-n8n-workflow-drift-check.timer\n" if schedule else "NEXT LEFT UNIT\n"
     handlers = {
-        lambda a: a[:2] == ["docker", "ps"]: lambda a: "m8m-n8n\tn8nio/n8n:2.43.0\nm8m-n8n-db\tpostgres:16\n",
         _is_psql: _n8n_sql(workflows, published),
         lambda a: a[0] == "crontab": lambda a: cron,
         lambda a: a[:3] == ["systemctl", "--user", "list-timers"]: lambda a: timers,
@@ -125,11 +139,11 @@ def _gov_world(tmp_path: Path, *, grant_both=True, hook=True, schedule=True, rec
     return handlers, receipts
 
 
-def _write_gov_receipts(probe: core.Probe, age_h: float = 2.0):
-    for rel in (g.P16["receipt"], g.P18["receipt"]):
+def _write_gov_receipts(probe: core.Probe, age_h: float = 2.0, fanin: bool = True):
+    for rel in (GOV["p16"]["receipt"], GOV["p18"]["receipt"]):
         p = probe.root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps({"as_of": _iso(age_h), "fanin_wired": False}))
+        p.write_text(json.dumps({"as_of": _iso(age_h), "fanin_wired": fanin}))
 
 
 def test_governance_all_gates_met_scores_10(tmp_path):
@@ -163,14 +177,48 @@ def test_governance_partial_grants_and_no_hook_are_capped(tmp_path):
 def test_governance_stale_receipt_and_unscheduled_halves(tmp_path):
     handlers, _ = _gov_world(tmp_path, schedule=False)
     probe = _probe(tmp_path, FakeRunner(handlers))
-    _write_gov_receipts(probe, age_h=40)                    # > 26 h → not fresh
+    _write_gov_receipts(probe, age_h=40)                    # > 26 h → neither fresh nor alerting
     r = g.collect_governance(probe)
     assert r["metrics"]["sub_scores"]["p16_scheduled_alerting"] == 0.0
+    assert r["metrics"]["p16"]["alerting"] is False
     probe2 = _probe(tmp_path, FakeRunner(handlers))
     _write_gov_receipts(probe2, age_h=1)
     r2 = g.collect_governance(probe2)
-    assert r2["metrics"]["sub_scores"]["p16_scheduled_alerting"] == pytest.approx(4.0)  # fresh, unscheduled = 0.5
+    w = GOV["check_weights"]
+    frac = (w["receipt_fresh"] + w["alerting"]) / sum(w.values())  # fresh + alerting, unscheduled
+    assert r2["metrics"]["sub_scores"]["p16_scheduled_alerting"] == pytest.approx(core.ratio_score(frac, 1.0))
     assert r2["score"] < 8.0 and r2["gate"]["pass"] is False
+
+
+def test_governance_unwired_receipt_is_not_alerting(tmp_path):
+    handlers, _ = _gov_world(tmp_path)
+    probe = _probe(tmp_path, FakeRunner(handlers))
+    _write_gov_receipts(probe, age_h=1, fanin=False)        # scheduled + fresh, but nothing alerts
+    r = g.collect_governance(probe)
+    w = GOV["check_weights"]
+    frac = (w["scheduled"] + w["receipt_fresh"]) / sum(w.values())
+    assert r["metrics"]["p16"]["alerting"] is False
+    assert r["metrics"]["sub_scores"]["p16_scheduled_alerting"] == pytest.approx(core.ratio_score(frac, 1.0))
+    assert r["gate"]["pass"] is False
+
+
+def test_governance_future_dated_receipt_is_not_fresh(tmp_path):
+    handlers, _ = _gov_world(tmp_path)
+    probe = _probe(tmp_path, FakeRunner(handlers))
+    _write_gov_receipts(probe, age_h=-5)                    # written "in the future" → not proof of a run
+    r = g.collect_governance(probe)
+    assert r["metrics"]["p16"]["receipt_fresh"] is False and r["metrics"]["p16"]["alerting"] is False
+    assert r["gate"]["pass"] is False
+
+
+def test_governance_zero_active_workflows_is_not_full_coverage(tmp_path):
+    handlers, _ = _gov_world(tmp_path)
+    handlers[_is_psql] = _n8n_sql([{"id": "x", "name": "n", "active": False, "versionId": "v"}], [])
+    probe = _probe(tmp_path, FakeRunner(handlers))
+    _write_gov_receipts(probe)
+    r = g.collect_governance(probe)
+    assert r["metrics"]["sub_scores"]["grants"] is None
+    assert r["status"] == core.PARTIAL and r["gate"]["pass"] is False and r["score"] <= GATE_CAP
 
 
 def test_governance_db_down_marks_grants_unverified_partial(tmp_path):
@@ -180,7 +228,7 @@ def test_governance_db_down_marks_grants_unverified_partial(tmp_path):
     r = g.collect_governance(probe)
     assert r["status"] == core.PARTIAL
     assert r["metrics"]["sub_scores"]["grants"] is None
-    assert r["gate"]["pass"] is False and r["score"] <= g.GATE_CAP
+    assert r["gate"]["pass"] is False and r["score"] <= GATE_CAP
 
 
 def test_governance_no_evidence_is_unverified_zero(tmp_path):
@@ -210,7 +258,7 @@ def _served(tmp_path: Path, *, p7_code=True, relay_code=True, lane_modes=("enfor
 
 def _sec_handlers(*, relay_files="/run/user/1/tradeai/n8n-relay-secrets.env (ignore_errors=yes)",
                   exec_mode="enforce", roles=None, db_user="n8n_app", app_env=("DB_POSTGRESDB_PASSWORD_FILE", "N8N_X"),
-                  db_env=("POSTGRES_PASSWORD_FILE",), compose_path=""):
+                  db_env=("POSTGRES_PASSWORD_FILE",), compose_path="/nonexistent/compose.yml"):
     roles = roles if roles is not None else [{"rolname": "n8n", "super": True, "createrole": True},
                                              {"rolname": "n8n_app", "super": False, "createrole": False}]
 
@@ -222,29 +270,35 @@ def _sec_handlers(*, relay_files="/run/user/1/tradeai/n8n-relay-secrets.env (ign
         if g.DB_USER_ENV in fmt:
             return f"{g.DB_USER_ENV}={db_user}"
         if 'split . "="' in fmt:
-            return "\n".join(app_env if name == "m8m-n8n" else db_env) + "\n"
+            return "\n".join(app_env if name == APP else db_env) + "\n"
         return 1, "", "?"
 
     def show(a):
         unit = a[3]
-        if unit == g.RELAY_UNIT:
+        if unit == SEC["relay_unit"]:
             return "\n".join(f"EnvironmentFiles={f}" for f in relay_files.split("|") if f) + "\nLoadState=loaded\n"
-        if unit == g.EXECUTOR_UNIT:
+        if unit == SEC["executor_unit"]:
             mode = f" TRADEAI_EXECUTOR_ENV_ALLOWLIST={exec_mode}" if exec_mode else ""
             return f"Environment=PROJ=/p SOME_TOKEN={SECRET_VALUE}{mode}\n"
         return 1, "", "?"
 
     return {
-        lambda a: a[:2] == ["docker", "ps"]: lambda a: "m8m-n8n\tn8nio/n8n:2.43.0\nm8m-n8n-db\tpostgres:16\n",
         _is_psql: lambda a: json.dumps(roles),
         lambda a: a[:2] == ["docker", "inspect"]: inspect,
         lambda a: a[:3] == ["systemctl", "--user", "show"]: show,
     }
 
 
+def _clean_compose(tmp_path: Path) -> str:
+    c = tmp_path / "compose.clean.yml"
+    c.write_text("environment:\n  - DB_POSTGRESDB_PASSWORD_FILE=/run/secrets/pg\n  - N8N_X=1\n")
+    return str(c)
+
+
 def test_security_all_four_done_scores_10(tmp_path):
     served = _served(tmp_path)
-    probe = _probe(tmp_path, FakeRunner(_sec_handlers()), dims={"security": {"served_code_root": str(served)}})
+    probe = _probe(tmp_path, FakeRunner(_sec_handlers(compose_path=_clean_compose(tmp_path))),
+                   dims={"security": {"served_code_root": str(served)}})
     r = g.collect_security(probe)
     assert r["status"] == core.VERIFIED, r["notes"]
     assert r["gate"]["pass"] is True and r["score"] == 10.0
@@ -266,20 +320,23 @@ def test_security_baseline_shape_scores_low_and_fails(tmp_path):
                     "password_out_of_env": 0.0}
     assert r["metrics"]["password_out"]["compose_literal_password_keys"] == ["POSTGRES_PASSWORD"]
     assert r["score"] == 0.0 and r["gate"]["pass"] is False
-    assert any("code default 'report'" in n for n in r["notes"])
+    assert r["metrics"]["p7"] == {"code_served": False}
 
 
 def test_security_staged_credit_below_gate(tmp_path):
     served = _served(tmp_path, lane_modes=("enforce", "report"))
-    h = _sec_handlers(relay_files="/run/user/1/tradeai/env (ignore_errors=yes)", db_user="n8n")
+    h = _sec_handlers(relay_files="/run/user/1/tradeai/env (ignore_errors=yes)", db_user="n8n",
+                      compose_path=_clean_compose(tmp_path))
     probe = _probe(tmp_path, FakeRunner(h), dims={"security": {"served_code_root": str(served)}})
     r = g.collect_security(probe)
     subs = r["metrics"]["sub_scores"]
     assert subs["relay_env_allowlist"] == pytest.approx(core.ratio_score(0.25, 1.0))   # code served, unit not cut
     assert subs["p7_executor_env_allowlist"] == pytest.approx(core.ratio_score(0.25 + 0.75 * 0.5, 1.0))
-    assert subs["n8n_app_role"] == pytest.approx(core.ratio_score(0.6, 1.0))           # role exists, unused
+    rw = SEC["app_role_weights"]
+    assert subs["n8n_app_role"] == pytest.approx(
+        core.ratio_score((rw["exists"] + rw["least_privilege"]) / sum(rw.values()), 1.0))  # role exists, unused
     assert subs["password_out_of_env"] == 10.0
-    assert r["gate"]["pass"] is False and r["score"] <= g.GATE_CAP
+    assert r["gate"]["pass"] is False and r["score"] <= GATE_CAP
 
 
 def test_security_never_emits_env_values(tmp_path):
@@ -294,6 +351,35 @@ def test_security_never_emits_env_values(tmp_path):
         if a[:2] == ["docker", "inspect"]:
             fmt = a[-1]
             assert ('split . "="' in fmt and "{{.}}" not in fmt) or g.DB_USER_ENV in fmt or "config_files" in fmt
+
+
+def test_security_empty_inputs_never_pass(tmp_path):
+    served = _served(tmp_path, lane_modes=())               # P7 code served but 0 allowlisted lanes
+    h = _sec_handlers(roles=[], app_env=(), db_env=())     # empty pg_roles, empty env-name lists, no compose
+    probe = _probe(tmp_path, FakeRunner(h), dims={"security": {"served_code_root": str(served)}})
+    r = g.collect_security(probe)
+    subs = r["metrics"]["sub_scores"]
+    assert subs["p7_executor_env_allowlist"] is None
+    assert subs["n8n_app_role"] is None
+    assert subs["password_out_of_env"] is None
+    assert r["gate"]["pass"] is False and r["score"] <= GATE_CAP
+
+
+def test_security_unread_executor_mode_is_not_enforce(tmp_path):
+    served = _served(tmp_path)
+    h = _sec_handlers(exec_mode=None, compose_path=_clean_compose(tmp_path))
+    probe = _probe(tmp_path, FakeRunner(h), dims={"security": {"served_code_root": str(served)}})
+    r = g.collect_security(probe)
+    assert r["metrics"]["p7"]["lanes_enforced"] == 0 and r["metrics"]["p7"]["global_mode"] is None
+    assert any("not counted as enforce" in n for n in r["notes"])
+    assert r["gate"]["pass"] is False
+
+
+def test_security_unread_container_db_user_is_not_scored(tmp_path):
+    served = _served(tmp_path)
+    h = _sec_handlers(db_user="", compose_path=_clean_compose(tmp_path))
+    probe = _probe(tmp_path, FakeRunner(h), dims={"security": {"served_code_root": str(served)}})
+    assert g.collect_security(probe)["metrics"]["sub_scores"]["n8n_app_role"] is None
 
 
 def test_security_everything_unreadable_is_unverified(tmp_path):
@@ -363,14 +449,31 @@ def test_ci_red_nightly_and_no_main_gate_run_fail(tmp_path):
     r = g.collect_ci_signal(_probe(tmp_path, FakeRunner(_runs_handler(nightly, gate))))
     assert r["score"] == 0.0 and r["gate"]["pass"] is False
     assert r["metrics"]["ci_gate"]["main_runs"] == 0
-    assert any("no run on main" in n for n in r["notes"])
+    assert r["metrics"]["sub_scores"]["ci_gate_green_on_main"] is None      # no main run → UNVERIFIED, not 0
+    assert r["status"] == core.PARTIAL
+    assert any("no completed run on main" in n for n in r["notes"])
+
+
+def test_ci_no_runs_on_main_at_all_is_unverified_not_zero_verified(tmp_path):
+    _ci_repo(tmp_path)
+    r = g.collect_ci_signal(_probe(tmp_path, FakeRunner(_runs_handler([], [_run(2, event="pull_request")]))))
+    assert r["metrics"]["sub_scores"] == {"nightly_green": None, "ci_gate_green_on_main": None}
+    assert r["status"] == core.UNVERIFIED and r["score"] == 0.0
+
+
+def test_ci_in_progress_only_runs_are_unverified(tmp_path):
+    _ci_repo(tmp_path)
+    pending = [_run(1, status="in_progress", conclusion="")]
+    r = g.collect_ci_signal(_probe(tmp_path, FakeRunner(_runs_handler(pending, [_run(1, event="push", status="queued",
+                                                                                         conclusion="")]))))
+    assert r["status"] == core.UNVERIFIED
 
 
 def test_ci_stale_green_nightly_is_not_met(tmp_path):
     _ci_repo(tmp_path)
     r = g.collect_ci_signal(_probe(tmp_path, FakeRunner(_runs_handler([_run(40)], [_run(3, event="push")]))))
     assert r["metrics"]["sub_scores"]["nightly_green"] == 0.0
-    assert r["gate"]["pass"] is False and r["score"] <= g.GATE_CAP
+    assert r["gate"]["pass"] is False and r["score"] <= GATE_CAP
 
 
 def test_ci_gh_failure_is_unverified(tmp_path):
@@ -437,7 +540,7 @@ def test_docs_counts_each_finding_kind(tmp_path):
     r = g.collect_docs_synced(_probe(tmp_path, FakeRunner({}), dims=DOCS_CFG))
     by = r["metrics"]["by_check"]
     assert by == {"agents_policy_state": 0, "stale_proposed": 1, "dangling_refs": 2, "runbook_units": 1}
-    # 4 findings → 8 × (1 − 4/20) = 6.4
+    # 4 findings → gate_score × (1 − 4/findings_zero_at) = 8 × (1 − 4/20) = 6.4
     assert r["score"] == pytest.approx(6.4) and r["gate"]["pass"] is False
 
 
@@ -459,7 +562,34 @@ def test_docs_missing_agents_is_partial_and_fails_gate(tmp_path):
     _docs_repo(tmp_path, agents=None)
     r = g.collect_docs_synced(_probe(tmp_path, FakeRunner({}), dims=DOCS_CFG))
     assert r["status"] == core.PARTIAL
-    assert r["gate"]["pass"] is False and r["score"] <= g.GATE_CAP
+    assert r["gate"]["pass"] is False and r["score"] <= GATE_CAP
+
+
+def test_docs_no_adr_or_runbook_in_scope_is_not_a_clean_pass(tmp_path):
+    _docs_repo(tmp_path)
+    cfg = {"docs_synced": {**DOCS_CFG["docs_synced"], "adr_paths": ["docs/nope/*.md"],
+                           "runbook_paths": ["docs/nope2/*.md"]}}
+    r = g.collect_docs_synced(_probe(tmp_path, FakeRunner({}), dims=cfg))
+    assert r["metrics"]["checks_ran"]["stale_proposed"] is False
+    assert r["status"] == core.PARTIAL and r["gate"]["pass"] is False and r["score"] <= GATE_CAP
+
+
+def test_docs_missing_in_scope_doc_fails_gate(tmp_path):
+    _docs_repo(tmp_path)
+    cfg = {"docs_synced": {**DOCS_CFG["docs_synced"],
+                           "runbook_paths": ["docs/ops/*.md", "docs/ops/NOT_THERE.md"]}}
+    r = g.collect_docs_synced(_probe(tmp_path, FakeRunner({}), dims=cfg))
+    assert r["metrics"]["drift_findings"] == 0
+    assert "docs/ops/NOT_THERE.md" in r["metrics"]["docs_missing"]
+    assert r["status"] == core.PARTIAL and r["gate"]["pass"] is False
+
+
+def test_docs_no_bound_units_means_unit_check_did_not_run(tmp_path):
+    _docs_repo(tmp_path)
+    (tmp_path / "repo" / "scripts" / "deploy.sh").write_text('local units="${TRADEAI_CURRENT_BOUND_UNITS:-}"\n')
+    r = g.collect_docs_synced(_probe(tmp_path, FakeRunner({}), dims=DOCS_CFG))
+    assert r["metrics"]["checks_ran"]["runbook_units"] is False
+    assert r["gate"]["pass"] is False
 
 
 def test_docs_nothing_readable_is_unverified(tmp_path):
@@ -474,9 +604,10 @@ def test_docs_nothing_readable_is_unverified(tmp_path):
 
 @pytest.mark.parametrize("frac,expected", [(1.0, 10.0), (0.999, core.ratio_score(0.999, 1.0)), (0.0, 0.0), (None, None)])
 def test_met_score_boundary(frac, expected):
-    assert g._met_score(frac) == expected
+    gs = float(REAL_CONFIG["gate_score"])
+    assert g._met_score(frac, gs) == expected
     if frac is not None and frac < 1.0:
-        assert g._met_score(frac) < 8.0
+        assert g._met_score(frac, gs) < gs
 
 
 def test_collectors_registered_and_deterministic(tmp_path):
@@ -490,9 +621,64 @@ def test_collectors_registered_and_deterministic(tmp_path):
 def test_every_command_is_on_the_read_only_allowlist(tmp_path):
     handlers, _ = _gov_world(tmp_path)
     served = _served(tmp_path)
-    handlers.update(_sec_handlers())
+    handlers.update(_sec_handlers(compose_path=_clean_compose(tmp_path)))
+    _ci_repo(tmp_path)
+    handlers.update(_runs_handler([_run(5)], [_run(5, event="push")]))
     runner = FakeRunner(handlers)
     probe = _probe(tmp_path, runner, dims={"security": {"served_code_root": str(served)}})
-    g.collect_governance(probe)
-    g.collect_security(probe)
-    assert runner.calls and all(core.is_read_only(a) for a in runner.calls)
+    _write_gov_receipts(probe)
+    for collect in g.COLLECTORS.values():
+        collect(probe)
+    assert runner.calls
+    bad = [a for a in runner.calls if not core.is_read_only(a)]
+    assert not bad, bad
+    psql = [a for a in runner.calls if "psql" in a]
+    assert psql, "governance/security must read the n8n DB"
+    for a in psql:
+        assert a[:5] == ["docker", "exec", "-e", f"PGOPTIONS={core.PG_READ_ONLY_OPTIONS}", DBC]
+        assert core.is_safe_sql(a[a.index("-c") + 1])
+    exes = {a[0] for a in runner.calls}
+    assert exes <= {"docker", "crontab", "systemctl", "gh"}
+    assert not any(a[:2] == ["gh", "api"] or a[0] == "git" for a in runner.calls)
+
+
+def test_n8n_sql_is_safe():
+    assert core.is_safe_sql(g.PG_ROLES_SQL)
+    p16 = g._load_module("p16", "scripts/check_n8n_activation_grants.py")
+    for name in ("WORKFLOW_LIST_SQL", "PUBLISH_HISTORY_SQL", "PUBLISHED_VERSION_SQL", "VERSION_HISTORY_SQL"):
+        assert core.is_safe_sql(getattr(p16.inv, name)), name
+
+
+@pytest.mark.parametrize("dim,key", [
+    ("governance", "receipt_max_age_hours"), ("governance", "check_weights"), ("governance", "n8n_db_user"),
+    ("security", "code_stage_weight"), ("security", "app_role_weights"), ("security", "relay_unit"),
+    ("ci_signal", "nightly_max_age_hours"), ("ci_signal", "nightly_streak_top"), ("ci_signal", "branch"),
+    ("docs_synced", "findings_zero_at"), ("docs_synced", "runbook_paths"),
+])
+def test_missing_config_key_raises_config_error(tmp_path, dim, key):
+    cfg = _config()
+    del cfg["dimensions"][dim][key]
+    probe = _probe(tmp_path, FakeRunner({}), config=cfg)
+    with pytest.raises(core.ConfigError):
+        g.COLLECTORS[dim](probe)
+
+
+@pytest.mark.parametrize("top_key", ["gate_score", "gate_cap"])
+def test_missing_top_level_gate_raises_config_error(tmp_path, top_key):
+    cfg = _config()
+    del cfg[top_key]
+    probe = _probe(tmp_path, FakeRunner({}), config=cfg)
+    for collect in g.COLLECTORS.values():
+        with pytest.raises(core.ConfigError):
+            collect(probe)
+
+
+def test_window_hours_comes_from_config(tmp_path):
+    handlers, _ = _gov_world(tmp_path)
+    probe = _probe(tmp_path, FakeRunner(handlers), dims={"governance": {"window_hours": 2}})
+    log = probe.root / GOV["guard_hook_log"]
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("\n".join(json.dumps({"ts": _iso(h)}) for h in (1, 3, 5)) + "\n")
+    r = g.collect_governance(probe)
+    assert r["metrics"]["guard_hook"]["window_hours"] == 2.0
+    assert r["metrics"]["guard_hook"]["decisions_in_window"] == 1
