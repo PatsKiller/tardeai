@@ -4,7 +4,8 @@
   attributable (the 2026-10-05 top holder was application_name '' with 19 of 73 slots).
 * reconcile_protection_advisory_outcomes survives an APPLIED audit row without broker_order_*
   blocks and names its connection.
-* run_protection_pipeline.sh logs the real exit status and resolves its tree from its own path.
+* run_protection_pipeline.sh logs the real exit status and runs on the configured root (default: the
+  dev tree under $HOME), never the release dir it is invoked from.
 """
 from __future__ import annotations
 
@@ -133,12 +134,18 @@ def _pipeline_tree(tmp_path: Path, failing: str) -> Path:
     return tree
 
 
-def test_pipeline_logs_the_real_exit_status_and_runs_from_its_own_tree(tmp_path):
-    tree = _pipeline_tree(tmp_path, "reconcile_protection_advisory_outcomes.py")
-    env = {k: v for k, v in os.environ.items() if k != "PY"}
+def _run_pipeline(script: Path, cwd: Path, **extra) -> subprocess.CompletedProcess:
+    env = {k: v for k, v in os.environ.items() if k not in ("PY", "TRADEAI_PROTECTION_PIPELINE_ROOT")}
     env["PY"] = sys.executable
-    r = subprocess.run(["bash", str(tree / "scripts" / "run_protection_pipeline.sh")],
-                       cwd=str(tmp_path), env=env, capture_output=True, text=True, timeout=120)
+    env.update(extra)
+    return subprocess.run(["bash", str(script)], cwd=str(cwd), env=env,
+                          capture_output=True, text=True, timeout=120)
+
+
+def test_pipeline_logs_the_real_exit_status(tmp_path):
+    tree = _pipeline_tree(tmp_path, "reconcile_protection_advisory_outcomes.py")
+    r = _run_pipeline(tree / "scripts" / "run_protection_pipeline.sh", tmp_path,
+                      TRADEAI_PROTECTION_PIPELINE_ROOT=str(tree))
     assert r.returncode == 0, r.stderr
     log = (tree / "logs" / "protection_pipeline.log").read_text()
     assert "WARN reconcile_protection_advisory_outcomes.py rc=3" in log
@@ -146,10 +153,42 @@ def test_pipeline_logs_the_real_exit_status_and_runs_from_its_own_tree(tmp_path)
     assert "failed_steps=1" in log
 
 
+def test_pipeline_runs_on_the_configured_root_not_the_release_it_is_invoked_from(tmp_path):
+    """Review of #1612: a release dir's data/atm is per-release (15 APPLIED trades vs the dev
+    tree's 109), so the script must NOT self-locate; it runs the configured tree's code + data."""
+    root = _pipeline_tree(tmp_path / "dev", "none")
+    release = _pipeline_tree(tmp_path / "release", "reconcile_protection_advisory_outcomes.py")
+    r = _run_pipeline(release / "scripts" / "run_protection_pipeline.sh", release,
+                      TRADEAI_PROTECTION_PIPELINE_ROOT=str(root))
+    assert r.returncode == 0, r.stderr
+    assert "failed_steps=0" in (root / "logs" / "protection_pipeline.log").read_text()
+    assert not (release / "logs" / "protection_pipeline.log").exists()
+
+
+def test_pipeline_default_root_is_the_canonical_dev_tree_under_home(tmp_path):
+    home = tmp_path / "home"
+    root = home / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
+    root.parent.mkdir(parents=True)
+    built = _pipeline_tree(tmp_path / "x", "none")
+    built.rename(root)
+    release = _pipeline_tree(tmp_path / "release", "none")
+    r = _run_pipeline(release / "scripts" / "run_protection_pipeline.sh", release, HOME=str(home))
+    assert r.returncode == 0, r.stderr
+    assert (root / "logs" / "protection_pipeline.log").exists()
+    assert not (release / "logs" / "protection_pipeline.log").exists()
+
+
+def test_proposal_writer_creates_its_output_dir():
+    src = (ROOT / "scripts" / "generate_paper_protection_adjustment_proposals.py").read_text(encoding="utf-8")
+    i = src.index('out_dir = os.path.join(ROOT, "data/atm/protection_adjustment_proposals")')
+    assert "os.makedirs(out_dir, exist_ok=True)" in src[i:i + 300]
+
+
 def test_pipeline_has_no_hardcoded_home_path():
     src = (ROOT / "scripts" / "run_protection_pipeline.sh").read_text(encoding="utf-8")
     assert "/home/johnclaw" not in src
-    assert 'BASH_SOURCE[0]' in src
+    assert '${TRADEAI_PROTECTION_PIPELINE_ROOT:-$HOME/' in src
+    assert 'BASH_SOURCE' not in src
 
 
 # ── per-call / per-symbol connection churn reached from api_v2 request threads ─────────

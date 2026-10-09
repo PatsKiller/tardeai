@@ -5,12 +5,17 @@
 # write that can modify a paper order (apply_paper_protection_adjustment.py) is NOT here —
 # it runs only on explicit operator approval.
 set -uo pipefail
-# Resolve the tree from this script's own location (dev tree OR a promoted release dir — the cron
-# runs it from $PROJ=…/portfolio-server/CURRENT, where the old hard-coded dev-tree path silently ran
-# the DEV copy of every step). Release dirs have no .venv, so the interpreter is resolved like
-# scripts/market_day_gate.sh: the caller's $PY (crontab exports it), a local .venv, then the
+# The pipeline operates on ONE configured tree for code AND data — by default the dev tree, as it
+# always has. Do NOT self-locate: the cron runs this from $PROJ=…/portfolio-server/CURRENT, and in a
+# release dir data/atm is a real per-release directory (not persistent-state). Self-locating made
+# generate_paper_protection_adjustment_proposals.py fail on the missing proposals dir, and made
+# reconcile read a release audit dir holding 15 trades instead of the dev tree's 109 — flipping
+# adjustment_applied True->False on historical outcome rows (Agent A review of #1612). Migrating
+# data/atm into persistent-state is a separate operator-approved task.
+# Override with TRADEAI_PROTECTION_PIPELINE_ROOT. The interpreter is resolved like
+# scripts/market_day_gate.sh: the caller's $PY (crontab exports it), the tree's .venv, then the
 # canonical venv under $HOME, then python3.
-PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJ="${TRADEAI_PROTECTION_PIPELINE_ROOT:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
 cd "$PROJ" || exit 1
 PY_RESOLVED=""
 for cand in "${PY:-}" "$PROJ/.venv/bin/python" "$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"; do
