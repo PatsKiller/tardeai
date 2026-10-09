@@ -42,3 +42,24 @@ def get_live_project_root() -> Path:
 
     # 3. __file__ fallback (dev directory)
     return DEV_ROOT
+
+
+def venv_python(code_root=None) -> str:
+    """The interpreter a scheduled job should launch child Python steps with.
+
+    Release directories (portfolio-server/<sha>-…) ship no .venv, and every cron line `cd`s into the
+    served CURRENT release, so `<code_root>/.venv/bin/python` exists in no release: on 2026-10-09
+    hermes_coordinator's research_curator / options_research_bridge / embedding_worker steps failed with
+    "No such file" on every tick. Order: TRADEAI_VENV_PYTHON (the executor/crontab contract), the code
+    root's own .venv (dev tree, worktrees), the canonical dev venv, then the running interpreter.
+    """
+    import sys
+
+    cands = [os.environ.get("TRADEAI_VENV_PYTHON") or ""]
+    if code_root is not None:
+        cands.append(str(Path(code_root) / ".venv" / "bin" / "python"))
+    cands.append(str(DEV_VENV_PYTHON))
+    for c in cands:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return sys.executable or "python3"

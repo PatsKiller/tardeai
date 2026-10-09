@@ -81,6 +81,12 @@ except Exception:
     _HAS_XCAL = False
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def _market_open(date_str: str) -> bool:
     if _HAS_XCAL:
         try:
@@ -310,8 +316,11 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _err("economic_calendar", f"{exc}  — continuing")
 
     # 2.5 Finviz enrichment — float, RVOL, RSI, SMA for all tickers
+    # Operator 2026-10-09: enrichment is Finviz data, not an LLM call. It used to run only `if use_llm`, so every
+    # --no-llm slot (09/10/12/14/16) scored top-gainer injects without RVOL/gap/float and parked them as
+    # UNENRICHED_INJECT MANUAL_REVIEW (36 of 48 rows at 0900 today). TRADEAI_ENRICH_WITHOUT_LLM=0 restores the old gate.
     fv_enriched = {}
-    if use_llm:
+    if use_llm or os.getenv("TRADEAI_ENRICH_WITHOUT_LLM", "1").strip() != "0":
         try:
             from finviz_enrichment import enrich_tickers
             syms = [t.get("symbol","") for t in tickers if t.get("symbol")]
@@ -952,7 +961,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         try:
             import subprocess as _sp
             _sp.run(
-                [str(root / ".venv/bin/python"), str(root / "scripts/strategy_signal_sync.py"),
+                [venv_python(root), str(root / "scripts/strategy_signal_sync.py"),
                  "--run-label", run_label],
                 timeout=180, cwd=str(root),
             )
@@ -1167,7 +1176,8 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     print(f"\n{'='*66}")
     print(f"  \u2705 v12 complete  |  {date_str} {run_label}")
     if go_syms:
-        print(f"  \U0001f3af GO: {' \u00b7 '.join(go_syms)}")
+        _sep = " \u00b7 "  # a backslash escape inside an f-string expression is a SyntaxError before 3.12
+        print(f"  \U0001f3af GO: {_sep.join(go_syms)}")
     if html_path:
         print(f"  \U0001f310 Dashboard: {Path(html_path).name}")
     dashboard_live = root / "reports" / "dashboard_live.html"

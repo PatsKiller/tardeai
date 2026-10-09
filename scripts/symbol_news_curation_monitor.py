@@ -43,7 +43,7 @@ def _load_env() -> None:
 
 
 def priority_symbols(limit: int) -> list[str]:
-    from lib.symbol_thesis_priority import open_requests
+    from lib.symbol_thesis_priority import open_requests_ranked as open_requests  # operator flags + CIO top-ranked first (2026-10-09)
     out: list[str] = list(open_requests(ROOT))
     try:
         props = json.loads((ROOT / "data/portfolios/state/options_proposals.json").read_text()).get("proposals") or []
@@ -132,7 +132,7 @@ def main(argv=None) -> int:
             result["curated"] = [c for c in curated if c["selected"]]
         acquired = []
         if a.apply:
-            from lib.symbol_thesis_priority import open_requests
+            from lib.symbol_thesis_priority import open_requests_ranked as open_requests  # operator flags + CIO top-ranked first (2026-10-09)
             todo = open_requests(ROOT)[: int(s["acquire_per_run"])]
             if todo:
                 from run_symbol_thesis_acquisition import run as acquire

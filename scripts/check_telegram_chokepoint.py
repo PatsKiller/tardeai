@@ -95,6 +95,9 @@ APPROVED_TOOLING = {
     # harness sends nothing. It is the strongest possible non-caller: the import
     # exists to forbid the call. Named individually, per this file's convention.
     "tests/test_alarm_capture_selftest.py",
+    # 2026-10-09: proves the family-scoped interdict (CIO stays blocked, SYSTEM_OPS
+    # only via the watchdog sender, spoofing refused); every HTTP layer is stubbed.
+    "tests/test_system_telegram_interdict_scope_20261009.py",
 }
 APPROVED = APPROVED_OUTBOUND | APPROVED_DELIVERY | APPROVED_INBOUND | APPROVED_TOOLING
 

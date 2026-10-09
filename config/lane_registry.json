@@ -154,13 +154,16 @@
         "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.08333333333333333,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id s57KBllvqf6Jb5xF, Schedule Every 5 minutes -> GET build-meta. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10e7c19321c906a is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
-      "state_since": "2026-10-08"
+      "state_since": "2026-10-09",
+      "state_reason": "Legacy n8n HTTP monitor workflow s57KBllvqf6Jb5xF deactivated (not deleted) 2026-10-09 13:04Z per the N1 cutover packet (19-n1-cutover-packet §3.8/3.9): it lost its target when S1/S2 bound the API/DOF to loopback; n8n-lab-watchdog replaces it. The generated relay replacement is not allowlisted and stays unimported.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "m8m-n8n-db workflow_entity active=f, updatedAt 2026-10-09 13:04Z; last trigger executions 10-07 (audit 2026-10-09 scratch A_cron_migration.md / D_n8n_docs.md); absent from workflows/active_workflows_snapshot.json captured 2026-10-09T16:00:39Z."
     },
     {
       "lane_id": "n8n-monitor-dof",
@@ -172,13 +175,16 @@
         "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.08333333333333333,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id GXwhbRkwsGcYZxgn, Schedule Every 5 minutes -> GET run-scope. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10087387b964e87 is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
-      "state_since": "2026-10-08"
+      "state_since": "2026-10-09",
+      "state_reason": "Legacy n8n HTTP monitor workflow GXwhbRkwsGcYZxgn deactivated (not deleted) 2026-10-09 13:04Z per the N1 cutover packet (19-n1-cutover-packet §3.8/3.9): it lost its target when S1/S2 bound the API/DOF to loopback; n8n-lab-watchdog replaces it. The generated relay replacement is not allowlisted and stays unimported.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "m8m-n8n-db workflow_entity active=f, updatedAt 2026-10-09 13:04Z; last trigger executions 10-07 (audit 2026-10-09 scratch A_cron_migration.md / D_n8n_docs.md); absent from workflows/active_workflows_snapshot.json captured 2026-10-09T16:00:39Z."
     },
     {
       "lane_id": "alert-daily-digest",
@@ -2843,7 +2849,11 @@
         "match": "scripts/score_alert_quality.py --apply"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-03",
+      "state_reason": "The cron line above was declared but never installed (it needs the operator's cron grant): `crontab -l` has no score_alert_quality line and logs/score_alert_quality.log does not exist (cron audit 2026-10-09). The expression is the proposed install; flip to ACTIVE in the same change that installs it.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "2026-10-09 read-only audit: no crontab line matches scripts/score_alert_quality.py; logs/score_alert_quality.log and data/runtime/alert_quality_last.json absent; the row's own note says install requires the operator's cron grant.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/alert_quality_last.json"
@@ -4138,7 +4148,7 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 9,10,12,14,16 * * 1-5 + 30 17 * * 1-5 run_orchestrator_slot.sh",
+        "expression": "0 12,14,16 * * 1-5 + 30 17 * * 1-5 run_orchestrator_slot.sh",
         "match": "scripts/run_orchestrator_slot.sh"
       },
       "expected_cadence_hours": 24.0,
@@ -4151,7 +4161,7 @@
       ],
       "state": "ACTIVE",
       "state_since": "2026-10-07",
-      "state_reason": "Installed 2026-10-07 19:58Z under cron grant 20d1d2c9dec32d5a (backup ~/.local/state/tradeai/backups/crontab-20261007T195826Z-pre-tranche-c.txt) alongside the six trade_ai_orchestrator --run-label 0900/1000/1200/1400/1600/1730 lines, which stay until two receipts are observed; overlap is lock-safe (each step keeps its original /tmp lock, flock -n -E 75 -> LOCK_HELD). The old lines are deleted and their lanes flipped RETIRED, naming this lane as their successor, in the follow-up PR (docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md step 3). Step 3 done 2026-10-07 22:40Z: the old lines were deleted (backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-c-step3.txt); this lane is the only scheduler of its steps.",
+      "state_reason": "2026-10-09: the 09:00 and 10:00 slots are dropped. The continuous runner's FULL runs fire at the same anchors (09:03/09:53), process_reaper allows one trade_ai_orchestrator at a time, so the cron slot was killed (10:00 'Terminated') and both writers stamped run_label 0900 (the PARTIAL 55/40 header). RTH scalp coverage is the new trade-ai-scalp-live lane (every 5 min). | Installed 2026-10-07 19:58Z under cron grant 20d1d2c9dec32d5a (backup ~/.local/state/tradeai/backups/crontab-20261007T195826Z-pre-tranche-c.txt) alongside the six trade_ai_orchestrator --run-label 0900/1000/1200/1400/1600/1730 lines, which stay until two receipts are observed; overlap is lock-safe (each step keeps its original /tmp lock, flock -n -E 75 -> LOCK_HELD). The old lines are deleted and their lanes flipped RETIRED, naming this lane as their successor, in the follow-up PR (docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md step 3). Step 3 done 2026-10-07 22:40Z: the old lines were deleted (backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-c-step3.txt); this lane is the only scheduler of its steps.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l 2026-10-07 lines 142/144/145/147/148/205 (verbatim in the proposal); scripts/run_orchestrator_slot.sh; docs/implementation/n8n-parallel/proposals/cron-tranche-c-lowrisk.md Installed 2026-10-07: plan-only dry runs from the served tree (options_tick.py --tick-minute 7|52, hermes_subject_enhance_dispatch.py --stats/--now, run_orchestrator_slot.sh --now 0900|1730 --dry-run, run_drive_syncs.sh --dry-run) all rc=0; crontab job lines 454 -> 459.",
       "output_signal": {
@@ -4357,6 +4367,123 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/ADVICE_DIGESTS_2026-10-08.md; tests/test_advice_digests_20261008.py"
+    },
+    {
+      "lane_id": "n8n-workflow-drift-check",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P18, audit C G9): scripts/check_n8n_workflow_drift.py compares every ACTIVE n8n workflow with its generated git copy (relay URL placeholder substituted) and writes data/runtime/n8n_workflow_drift_last.json with --write. Registry row first (§9.3): the allowlist entry exists (--dry-run / --write); since 2026-10-09 the generated workflows n8n-workflow-drift-check-shadow / n8n-workflow-drift-check exist (tranche N7, proposed 20 6 * * *) but nothing is imported and nothing schedules it. Activation = generated workflow + operator import under a grant naming the workflow id, then shadow -> canary -> live, then this row flips to kind n8n ACTIVE.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_workflow_drift_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_workflow_drift_20261009.py (fixture workflows: OK after relay substitution, DRIFT on a node edit, MISSING_IN_GIT on an unknown id; --dry-run writes nothing, --write writes the receipt under tmp_path); live dry run 2026-10-09 from the worktree read the n8n DB with one SELECT and wrote nothing.",
+      "note": "Read-only governance lane for the n8n Agent preconditions (P18). Daily cadence proposed; no send (fan-in findings are shaped in the receipt but not wired)."
+    },
+    {
+      "lane_id": "trade-ai-scalp-live",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1  # TRADEAI_LANE trade-ai-scalp-live",
+        "match": "scripts/run_trade_ai_scalp_live.py"
+      },
+      "expected_cadence_hours": 0.084,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-09",
+      "state_reason": "Trade-AI scalp scan every 5 min in RTH (operator 2026-10-09: \"these are scalps should be every 5 minutes at least … same should be feeding both tradeai and also active trader\"). Deterministic live cycle over the scalp screeners (assets/screeners.yaml window `scalp`), own run_label `scalp`, no paid LLM; writes trade_ai_scans and the shared scalp universe projection that Active Trader reads. Cycle ~204 s warm (470 s cold) — flock -n skips a start while one is running.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/trade_ai_scalp_live_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md; tests/test_trade_ai_scalp_5min_20261009.py; dry run 2026-10-09 (writes/sends stubbed): 104 scored, 13 rows, 0 alerts, 470 s cold / 204 s warm",
+      "note": "2026-10-09: output_signal was the literal '~/trade-ai-releases/…/scalp_universe_latest.json'; observe_signal never expands '~', so the monitor read the lane as never producing. Now the per-run receipt, relative to the state root like the other rows. n8n: LIVE CANDIDATE (AGENTS.md 4.0.0 §23.3 exception, APPROVE_AGENTS_POLICY_4_0_0 2026-10-09; allowlist --dry-run and live_arg []; generated workflows trade-ai-scalp-live-shadow / trade-ai-scalp-live, not yet imported or active; relay live-lane listing pending a config-write grant); cron stays scheduler of record and fallback until 3 clean n8n market days (operator 2026-10-09 \"n8n drives a governed lane\"; docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md)."
+    },
+    {
+      "lane_id": "storage-watch",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (operator 2026-10-09 \"add the lanes\"; AGENTS.md 3.0.0 §9.3/§23.2): scripts/storage_watch.py, proposed cadence daily 06:10 ET (10 6 * * *). Registry row first: allowlist entry (--dry-run / --write) and generated workflows storage-watch-shadow / storage-watch exist; nothing is imported, activated or installed. Shadow -> canary -> live under a grant naming the workflow id, then this row flips to kind n8n ACTIVE.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/storage_watch_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Read-only: df + inodes, niced du of a fixed heavy-root list (config/ops_lanes.json), trade_ai size + top relations (catalog SELECTs, read-only session), leftover M2 test DB count (docker exec catalog SELECT), Postgres log dir size, worktree count. WARN 80% / CRIT 90% (P1) from config. Findings in the receipt (fan-in shape, unwired); no send."
+    },
+    {
+      "lane_id": "backup-verify",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (operator 2026-10-09): scripts/backup_verify.py --write, proposed cadence daily 06:40 ET (40 6 * * *). The same script's no-flag form stays the platform-maintenance-monthly step (legacy report + alert); the lane modes never send. Allowlist entry reuses the monthly step's lock /tmp/backup_verify.lock so the two cannot overlap. Not imported/activated.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/backup_verify_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Verifies the latest trade_ai dump (age < 26 h, size within +/-30% of the 7-day median, readable end to end with table count >= floor), the latest n8n lab dump and the weekly Drive family stamps. Missing/failed dump = P1 finding. Dump dir is config-driven (~/db_backups), fixing the old <code root>/backups/db lookup."
+    },
+    {
+      "lane_id": "trade-ai-restore-drill",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 840.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (operator 2026-10-09): scripts/trade_ai_restore_drill.py, proposed cadence first Sunday 03:30 ET (n8n cron 30 3 * * 0 with --first-week-only, a no-op on later Sundays; 30 3 1-7 * 0 would OR day-of-month with day-of-week). Not imported/activated. Drill needs a CREATEDB role (operator decision; the trade_ai role has none, so --write refuses today).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/trade_ai_restore_drill_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Restores the latest dump into a THROWAWAY database restore_drill_<YYYYMMDD> (regex-guarded) behind a disk-floor guard (free > 2 x estimate x 1.15), compares top-20 table row counts with live estimates, then drops ONLY that database (name regex + created-by-this-run + run-id COMMENT marker). Never touches live data. Operator review point in the PR."
+    },
+    {
+      "lane_id": "n8n-activation-grants",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P16, merged #1554): scripts/check_n8n_activation_grants.py --write writes the receipt. NOT in config/n8n_run_allowlist.json: its command, receipt and natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant', which the allowlist test refuses by design (blocked_reasons entry). Needs an operator decision (rename the entrypoint or an explicit exemption) before an allowlist entry or workflow; until then it runs by hand only.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_activation_grants_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Read-only: SELECTs on the n8n DB + guard audit log; GRANTED / NAMED_IN_OTHER_TIER / NAME_ONLY_GRANT / UNGRANTED_ACTIVATION verdicts; fan-in-shaped findings, unwired; no send."
     }
   ],
   "undeclared_baseline": [

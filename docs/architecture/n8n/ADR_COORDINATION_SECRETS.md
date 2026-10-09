@@ -5,7 +5,7 @@ Status:      ACCEPTED 2026-10-08 (operator decision: "one scoped key may live in
 as_of:       2026-10-08T12:00:00-04:00
 Measured at: origin/main e6eee00a2 (served CURRENT == main) / lab compose docker-compose.n8n.yml as read 2026-10-08
 Supersedes:  the PROPOSED text of 2026-10-07, kept verbatim below under "Superseded"
-Policy:      AGENTS.md §23.5 (PROPOSED 2.0.0; this ADR binds only once that version is ratified or the operator applies it directly)
+Policy:      AGENTS.md §23.5 (ACTIVE 2.0.0, ratified 2026-10-08; amended by 3.0.0 ACTIVE 2026-10-09, see "Addendum — AGENTS.md 3.0.0"; 4.0.0 ACTIVE 2026-10-09 adds no credential)
 ```
 
 ## Decision
@@ -108,6 +108,20 @@ enum-covered refusals; fake runner, lock skip, timeout, receipt). None of them h
 is not installed and the bearer does not exist until the preconditions above are measured true. No DOF
 role exists (proposal: `docs/implementation/n8n-parallel/proposals/dof-reader-role-20261008.sql.md`).
 
+## Addendum — AGENTS.md 3.0.0 (ACTIVE 2026-10-09, `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9`)
+
+- **A second credential, the bridge token, is allowed only after AGENTS.md §23.10's preconditions are
+  each measured true with a receipt** (P2–P9, P11–P13, P15–P22). It authenticates AI requests at the
+  governed bridge's Agent endpoint and nothing else; it is rendered from Bitwarden SM, rotated weekly with a
+  `_PREVIOUS` overlap, and caller identity is bound to it server-side. The relay bearer stays the only
+  credential for run requests. Any third credential remains a defect and a §17 decision.
+- **Owner MFA is waived (operator decision 2026-10-09).** The n8n editor listens on 127.0.0.1 only and is
+  reached through an SSH tunnel over Tailscale. The waiver replaces the "owner MFA on" precondition above for
+  both credentials. **It does not extend to the database role:** `DB_POSTGRESDB_USER=n8n_app` with
+  `rolsuper=f` remains a precondition for the bridge token (§23.10 P13).
+- Evidence: `docs/implementation/n8n-parallel/audits/guardrail-audit-c-policy-n8n-20261009.md` (G1, G7,
+  G11, G12) and the proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`.
+
 ---
 
 ## Superseded — the PROPOSED text of 2026-10-07 (kept verbatim; no longer the decision)
@@ -135,3 +149,9 @@ Unknown method, encoded path, proxy header without a signature, oversized body, 
 ### What remains false
 
 `durable=false` on the gateway receipt. No claim of exactly-once delivery outside the sqlite file. No n8n credential. No DOF role.
+
+## Addendum — AGENTS.md 4.0.0 (ACTIVE 2026-10-09, `APPROVE_AGENTS_POLICY_4_0_0`)
+
+- No credential is added or changed. The one live-lane exception (`trade-ai-scalp-live`, §23.3) runs on
+  the host under the existing relay bearer; the Finviz key stays behind the data broker on the host and
+  never enters n8n.

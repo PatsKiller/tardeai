@@ -13,12 +13,14 @@ Bind: 127.0.0.1 (never 0.0.0.0). Port: configurable (default 8766).
 from __future__ import annotations
 
 import hashlib
+import hmac
 import http.server
 import json
 import logging
 import os
 import re
 import sys
+import contextvars
 import threading
 import time
 import uuid
@@ -36,6 +38,10 @@ log = logging.getLogger("tradeai.cio_bridge")
 
 # Single source of truth for the exact DeepSeek model id (registry + env override).
 from lib.llm_model_registry import deepseek_model_id  # noqa: E402
+# 2026-10-09 (AGENTS.md 3.0.0 §23.10 P4/P5/P6/P21): the single egress sanitiser and the n8n Agent
+# preconditions run inside execute_governed_call for every process (see those modules' docstrings).
+from lib import bridge_agent_preconditions as agent_gate  # noqa: E402
+from lib import cio_egress_sanitiser as egress_sanitiser  # noqa: E402
 
 # ── Bind / port config ─────────────────────────────────────────────────
 BIND_HOST = os.environ.get("CIO_BRIDGE_HOST", "127.0.0.1")
@@ -211,7 +217,7 @@ def read_body_with_deadline(resp: Any, started: float, deadline_s: float | None 
     Keep-alive bytes from a provider that is holding the request still turn this loop, so the deadline
     is checked even when no single read ever times out.
     """
-    limit = UPSTREAM_DEADLINE_S if deadline_s is None else float(deadline_s)
+    limit = effective_upstream_deadline_s() if deadline_s is None else float(deadline_s)
     buf = bytearray()
     try:
         for chunk in resp.iter_content(chunk_size=8192):
@@ -605,6 +611,23 @@ def _lane_policy_name(spec: dict[str, Any]) -> str:
     return name
 
 
+def _on_health_unknown(block: dict[str, Any], row: dict[str, Any]) -> str:
+    """route, refuse, or empty when the configured value is neither.
+
+    A missing field keeps today's route. A process row overrides the policy.
+    """
+    if "on_health_unknown" in row:
+        raw = row.get("on_health_unknown")
+    elif "on_health_unknown" in block:
+        raw = block.get("on_health_unknown")
+    else:
+        return "route"
+    text = str(raw or "").strip().lower()
+    if text in ("route", "refuse"):
+        return text
+    return ""
+
+
 def select_governed_lane(process_id: str, routing_policy: str | None = None) -> dict[str, Any]:
     """Pick a lane, or a typed refusal that must be returned before reservation and before any provider call."""
     policy_id = normalize_routing_policy_header(routing_policy)
@@ -632,9 +655,35 @@ def select_governed_lane(process_id: str, routing_policy: str | None = None) -> 
         chosen = "primary"
         reason = "health_gate_off"
     elif primary is not None and lanes.get(str(primary.get("provider") or "")) != "unhealthy":
-        chosen = "primary"
         primary_status = lanes.get(str(primary.get("provider") or ""))
-        reason = "primary_healthy" if primary_status == "healthy" else "health_unknown"
+        if primary_status == "healthy":
+            chosen = "primary"
+            reason = "primary_healthy"
+        else:
+            choice = _on_health_unknown(block, row)
+            if choice == "refuse":
+                decision = _routing_decision(policy_id, None, "health_unknown_refused", snapshot)
+                return {
+                    "refused": "health_unknown",
+                    "refused_status": 503,
+                    "refused_message": (
+                        f"Provider health for process {process_id} is not measured "
+                        "and policy on_health_unknown is refuse"
+                    ),
+                    "routing_decision": decision,
+                }
+            if choice != "route":
+                decision = _routing_decision(policy_id, None, "unknown_health_policy", snapshot)
+                return {
+                    "refused": "unknown_health_policy",
+                    "refused_status": 400,
+                    "refused_message": (
+                        f"Routing policy {policy_id!r} on_health_unknown must be route or refuse"
+                    ),
+                    "routing_decision": decision,
+                }
+            chosen = "primary"
+            reason = "health_unknown_routed"
     else:
         for lane_name in ("secondary", "fallback"):
             spec = row.get(lane_name)
@@ -1100,7 +1149,7 @@ class RealProvider:
                     "User-Agent": "tradeai-cio-bridge/1.0",
                     "X-TradeAI-Request-Id": client_rid,
                 },
-                timeout=(10.0, min(UPSTREAM_READ_TIMEOUT_S, UPSTREAM_DEADLINE_S)),
+                timeout=(10.0, min(UPSTREAM_READ_TIMEOUT_S, effective_upstream_deadline_s())),
                 stream=True,
             )
             raw = read_body_with_deadline(r, t0)
@@ -1250,6 +1299,85 @@ class RealProvider:
 #  GOVERNANCE PIPELINE
 # ══════════════════════════════════════════════════════════════════════════
 
+# ── Per-call latency budget + transport failover (AGENTS.md 3.0.0 §23.4, §23.10 P21) ─────────────
+# The routing policy's latency_budget_ms is the provider deadline for that call: the bridge's wall-clock
+# deadline is min(UPSTREAM_DEADLINE_S, budget). Every row measured 2026-10-09 carries 150000 ms, equal to
+# the 150 s default, so no current process's deadline moves. Set per call, in the calling thread's context.
+_CALL_LATENCY_BUDGET_S: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "tradeai_bridge_latency_budget_s", default=None
+)
+
+# Providers the live (canary) transport can reach. RealProvider speaks DeepSeek only today.
+BRIDGE_TRANSPORT_PROVIDERS = frozenset({"deepseek"})
+
+
+def set_call_latency_budget(policy: dict[str, Any] | None) -> float | None:
+    budget = agent_gate.latency_budget_s(policy)
+    _CALL_LATENCY_BUDGET_S.set(budget)
+    return budget
+
+
+def effective_upstream_deadline_s() -> float:
+    budget = _CALL_LATENCY_BUDGET_S.get()
+    if budget is not None and budget > 0:
+        return min(float(UPSTREAM_DEADLINE_S), float(budget))
+    return float(UPSTREAM_DEADLINE_S)
+
+
+def transport_failover_policy(
+    process_id: str,
+    routing_policy: str | None,
+    policy: dict[str, Any],
+    allowed_policies: list[str] | None = None,
+) -> dict[str, Any]:
+    """Walk the routing row past lanes the live transport cannot reach, for rows that opt in.
+
+    Only a row with `"transport_failover": true` (today the n8n_* rows, operator decision 2 of AGENTS.md
+    3.0.0: Grok -> ChatGPT -> DeepSeek) is walked; every other row keeps the provider_not_configured
+    refusal. The walk keeps the policy order, skips a lane whose provider has no bridge transport or is
+    health-indicted, and records each skip on routing_decision. No usable lane returns `policy` unchanged
+    (the caller then refuses provider_not_configured, as before).
+    """
+    if str(policy.get("provider") or "deepseek") in BRIDGE_TRANSPORT_PROVIDERS:
+        return policy
+    policy_id = normalize_routing_policy_header(routing_policy)
+    block = _policy_block(policy_id) or {}
+    processes = block.get("processes") if isinstance(block.get("processes"), dict) else {}
+    row = processes.get(process_id) if isinstance(processes, dict) else None
+    if not isinstance(row, dict) or row.get("transport_failover") is not True:
+        return policy
+    decision = policy.get("routing_decision") if isinstance(policy.get("routing_decision"), dict) else {}
+    snapshot = decision.get("health_snapshot") if isinstance(decision.get("health_snapshot"), dict) else read_health_snapshot(row)
+    lanes = snapshot.get("lanes") if isinstance(snapshot.get("lanes"), dict) else {}
+    start = decision.get("lane_chosen") or "primary"
+    order = ["primary", "secondary", "fallback"]
+    skipped: list[dict[str, Any]] = []
+    for lane_name in order[order.index(start) if start in order else 0:]:
+        spec = row.get(lane_name)
+        if not isinstance(spec, dict):
+            continue
+        provider = str(spec.get("provider") or "")
+        if provider not in BRIDGE_TRANSPORT_PROVIDERS:
+            skipped.append({"lane": lane_name, "provider": provider, "reason": "no_bridge_transport"})
+            continue
+        if lanes.get(provider) == "unhealthy":
+            skipped.append({"lane": lane_name, "provider": provider, "reason": "lane_unhealthy"})
+            continue
+        policy_name = _lane_policy_name(spec)
+        if allowed_policies and policy_name not in allowed_policies:
+            skipped.append({"lane": lane_name, "provider": provider, "reason": "policy_not_allowed"})
+            continue
+        resolved = dict(POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"]))
+        resolved.update({k: policy[k] for k in ("health_gate", "latency_budget_ms", "cost_ceiling_usd") if k in policy})
+        resolved["provider"] = provider
+        resolved["requested_policy"] = policy_name
+        new_decision = _routing_decision(policy_id, lane_name, f"transport_failover_{lane_name}", snapshot)
+        new_decision.update({"provider": provider, "requested_policy": policy_name, "skipped_lanes": skipped})
+        resolved["routing_decision"] = new_decision
+        return resolved
+    return policy
+
+
 def execute_governed_call(
     messages: list[dict],
     *,
@@ -1377,12 +1505,25 @@ def execute_governed_call(
             status=403,
         )
 
+    # §23.4 decision 2 (n8n rows: Grok -> ChatGPT -> DeepSeek): walk past lanes with no live transport.
+    # Mock mode walks too, so a mock receipt names the provider the live path would use.
+    policy = transport_failover_policy(process_id, selected_policy_id, policy, ds_pols)
+    model_id = policy["model_id"]
+    requested_policy = policy.get("requested_policy", "PRO")
+    if isinstance(policy.get("routing_decision"), dict):
+        routing_box["decision"] = policy["routing_decision"]
+
     if BIND_MODE == "canary" and str(policy.get("provider") or "deepseek") != "deepseek":
         return _error(
             "provider_not_configured",
             "Live bridge transport is DeepSeek only; this lane's provider is not configured",
             status=503,
         )
+
+    # ── Step 4b: Agent preconditions (§23.10 P5 tools, P6 schema present, P21 advisory_only) ──
+    _pre = agent_gate.pre_reservation_refusal(process_id, tools, tool_choice)
+    if _pre is not None:
+        return _error(_pre["code"], _pre["message"], status=_pre["status"], **_pre["extra"])
 
     # ── Step 5: Cost cap checks ────────────────────────────────────────
     import lib.consumption_run_manual as crm
@@ -1418,6 +1559,14 @@ def execute_governed_call(
             f"Cost cap would be exceeded: {cap_check}",
             status=429,
         )
+
+    # ── Step 5b: Routing policy cost ceiling (§23.10 P21) — refuse before reservation ──
+    _ceiling = agent_gate.cost_ceiling_refusal(policy, projected)
+    if _ceiling is not None:
+        from scripts.lib.cio_provider_retry_v1 import classify_failure as _classify
+
+        return _error(_ceiling["code"], _ceiling["message"], status=_ceiling["status"],
+                      retry=_classify("COST_CAP_EXCEEDED"), **_ceiling["extra"])
 
     # ── Step 6: Reservation ────────────────────────────────────────────
     reservation_id: int | None = None
@@ -1489,6 +1638,16 @@ def execute_governed_call(
 
     if isinstance(routing_box.get("decision"), dict) and reservation_id is not None:
         routing_box["decision"]["reservation_id"] = reservation_id
+
+    # ── Step 6b: Egress sanitiser (§2A, §23.10 P4) for EVERY process + latency budget (P21) ──
+    _egress = egress_sanitiser.apply_egress_sanitiser(messages, process_id, rid)
+    if "refused" in _egress:
+        lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=False)
+        if provider_journal is not None and provider_semantic_key is not None:
+            provider_journal.record(provider_semantic_key, state="NON_RETRYABLE", error_class="EGRESS_POLICY_UNAVAILABLE")
+        return _error(_egress["refused"]["code"], _egress["refused"]["message"], status=_egress["refused"]["status"])
+    messages = _egress["messages"]
+    set_call_latency_budget(policy)
 
     # ── Step 7: Provider (mock or real based on BIND_MODE) ──────────────
     if BIND_MODE == "canary":
@@ -1641,6 +1800,26 @@ def execute_governed_call(
 
     _reset_circuit()
 
+    # ── Step 9b: Output checks (§23.10 P5 tool_calls, P6 n8n schema + behaviour scan) ──
+    # The call is settled and billed; a refused answer never reaches the caller, and says why.
+    _out = agent_gate.output_refusal(process_id, response, agent_gate.registry_row(process_id))
+    if _out is not None:
+        from scripts.lib.cio_provider_retry_v1 import classify_failure as _classify
+
+        try:
+            lc.log_call(
+                lane=requested_policy.lower(), process_id=process_id, task_summary=sanitize_log_summary(messages),
+                trigger_mode="manual" if str(cfg.get("mode") or "") == "manual" else "automated",
+                success=False, model_name=model_id, error_message=_out["code"], estimated_cost_usd=actual_cost,
+                cost_basis="provider_usage_x_registry_snapshot", requested_policy=requested_policy,
+                requested_model_id=model_id, returned_model=returned_model, provider_request_id=rid,
+                metadata={"governance": "cio_bridge_v1", "reservation_id": reservation_id, "output_refused": _out["code"]},
+            )
+        except Exception:  # noqa: BLE001 -- logging must not change the refusal
+            pass
+        return _error(_out["code"], _out["message"], status=_out["status"], retry=_classify("VALIDATION_ERROR"),
+                      billed_cost_estimate=actual_cost, reservation_id=reservation_id, **_out["extra"])
+
     # ── Step 10: Assemble response with provenance ─────────────────────
     latency_ms = int((time.time() - t0) * 1000)
     is_mock = BIND_MODE != "canary"
@@ -1673,6 +1852,8 @@ def execute_governed_call(
             if provider_semantic_key else None
         ),
     }
+
+    agent_gate.annotate_response(response, process_id, _egress.get("verdict"))
 
     # ── Step 11: Log (sanitized) — must run before return ──────────────
     try:
@@ -1711,6 +1892,194 @@ def execute_governed_call(
 
 
 # ══════════════════════════════════════════════════════════════════════════
+#  STREAM RE-EMIT (2026-10-09 guardrail audit B, H1)
+# ══════════════════════════════════════════════════════════════════════════
+# The stream path used to call the provider a SECOND time after execute_governed_call had already
+# reserved, called and settled: no reservation, settlement, journal or cost event for that call.
+# The governed result is the only provider output a stream may carry; these chunks re-emit it.
+
+_SSE_PIECE = re.compile(r"\S+\s*|\s+")
+
+
+def governed_result_sse_chunks(result: dict[str, Any]) -> list[str]:
+    """SSE chunks for an already-governed chat.completion. Pure: no provider, no governance call.
+
+    Concatenating every ``delta.content`` gives back the governed message content exactly; tool calls
+    ride in one delta; the last data chunk carries finish_reason, usage and the governance provenance.
+    """
+    choices = result.get("choices") or [{}]
+    choice = choices[0] if isinstance(choices[0], dict) else {}
+    message = choice.get("message") or {}
+    content = message.get("content") or ""
+    base = {
+        "id": result.get("id"),
+        "object": "chat.completion.chunk",
+        "created": result.get("created") or int(time.time()),
+        "model": result.get("model"),
+    }
+
+    def _chunk(delta: dict[str, Any], finish: str | None = None, **extra: Any) -> str:
+        body = {**base, "choices": [{"index": 0, "delta": delta, "finish_reason": finish}], **extra}
+        return f"data: {json.dumps(body)}\n\n"
+
+    chunks = [_chunk({"role": message.get("role") or "assistant", "content": ""})]
+    chunks.extend(_chunk({"content": piece}) for piece in _SSE_PIECE.findall(content))
+    if message.get("tool_calls"):
+        tool_calls = [
+            {**call, "index": i} if isinstance(call, dict) else call
+            for i, call in enumerate(message["tool_calls"])
+        ]
+        chunks.append(_chunk({"tool_calls": tool_calls}))
+    finish = choice.get("finish_reason") or ("tool_calls" if message.get("tool_calls") else "stop")
+    final_extra: dict[str, Any] = {"usage": result.get("usage") or {}}
+    if isinstance(result.get("_tradeai"), dict):
+        final_extra["_tradeai"] = result["_tradeai"]
+    chunks.append(_chunk({}, finish, **final_extra))
+    chunks.append("data: [DONE]\n\n")
+    return chunks
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  CALLER AUTHENTICATION (2026-10-09 guardrail audit B, H2) — REPORT-ONLY first
+# ══════════════════════════════════════════════════════════════════════════
+# X-TradeAI-Agent is self-asserted. A caller may now also present `Authorization: Bearer <key>`,
+# checked in constant time against TRADEAI_BRIDGE_CALLER_KEY_<CALLER> (rotation overlap:
+# ..._PREVIOUS). Keys come from the environment only (rendered from Secrets Manager); a key value is
+# never logged, returned or written. TRADEAI_BRIDGE_CALLER_AUTH selects the mode:
+#   off     - not checked (today's behaviour, no record)
+#   report  - DEFAULT: every caller is served exactly as before; an unverified caller is counted and
+#             recorded once per caller per hour in data/runtime/bridge_caller_auth_report.jsonl
+#   enforce - an unverified caller gets a typed 401 before any reservation or provider call
+# Changing callers to send keys is a later PR; this one only measures who still needs one.
+
+CALLER_AUTH_ENV = "TRADEAI_BRIDGE_CALLER_AUTH"
+CALLER_AUTH_MODES = ("off", "report", "enforce")
+CALLER_AUTH_DEFAULT_MODE = "report"
+CALLER_KEY_ENV_PREFIX = "TRADEAI_BRIDGE_CALLER_KEY_"
+CALLER_KEY_MIN_LEN = 32
+CALLER_AUTH_REPORT_SCHEMA = "BridgeCallerAuthReport@v1"
+CALLER_AUTH_VERDICTS = ("verified", "unsigned", "bad_key", "no_key_configured")
+
+_CALLER_AUTH_LOCK = threading.Lock()
+_CALLER_AUTH_COUNTS: dict[str, dict[str, int]] = {}
+_CALLER_AUTH_REPORTED: set[tuple[str, str]] = set()
+
+
+def caller_auth_mode() -> str:
+    raw = (os.environ.get(CALLER_AUTH_ENV) or CALLER_AUTH_DEFAULT_MODE).strip().lower()
+    return raw if raw in CALLER_AUTH_MODES else CALLER_AUTH_DEFAULT_MODE
+
+
+def caller_key_env_name(caller: str) -> str:
+    return CALLER_KEY_ENV_PREFIX + re.sub(r"[^A-Za-z0-9]", "_", str(caller)).upper()
+
+
+def _caller_keys(caller: str) -> list[bytes]:
+    name = caller_key_env_name(caller)
+    keys = []
+    for env_name in (name, name + "_PREVIOUS"):
+        value = os.environ.get(env_name) or ""
+        if len(value) >= CALLER_KEY_MIN_LEN:
+            keys.append(value.encode("utf-8"))
+    return keys
+
+
+def caller_auth_verdict(caller: str, authorization: str | None) -> str:
+    """One of CALLER_AUTH_VERDICTS. Every configured key is compared, in constant time, even after a match."""
+    keys = _caller_keys(caller)
+    if not keys:
+        return "no_key_configured"
+    text = (authorization or "").strip()
+    if not text.lower().startswith("bearer "):
+        return "unsigned"
+    presented = text[7:].strip().encode("utf-8")
+    if not presented:
+        return "unsigned"
+    ok = False
+    for key in keys:
+        ok = hmac.compare_digest(hashlib.sha256(presented).digest(), hashlib.sha256(key).digest()) or ok
+    return "verified" if ok else "bad_key"
+
+
+def caller_auth_report_path() -> Path:
+    state_root = os.environ.get("TRADEAI_STATE_ROOT")
+    base = Path(state_root) if state_root else _PROJECT_ROOT
+    return _receipt_path(
+        "TRADEAI_BRIDGE_CALLER_AUTH_REPORT",
+        base / "data" / "runtime" / "bridge_caller_auth_report.jsonl",
+    )
+
+
+def caller_auth_snapshot() -> dict[str, Any]:
+    with _CALLER_AUTH_LOCK:
+        counts = {caller: dict(row) for caller, row in _CALLER_AUTH_COUNTS.items()}
+    return {"mode": caller_auth_mode(), "counts": counts}
+
+
+def _reset_caller_auth() -> None:
+    with _CALLER_AUTH_LOCK:
+        _CALLER_AUTH_COUNTS.clear()
+        _CALLER_AUTH_REPORTED.clear()
+
+
+def record_caller_auth(caller: str, process_id: str, verdict: str, mode: str) -> None:
+    """Count every verdict; append one report line per unverified caller per UTC hour. Never raises."""
+    hour = time.strftime("%Y-%m-%dT%H", time.gmtime())
+    with _CALLER_AUTH_LOCK:
+        row = _CALLER_AUTH_COUNTS.setdefault(caller, {})
+        row[verdict] = row.get(verdict, 0) + 1
+        counts = dict(row)
+        first_this_hour = verdict != "verified" and (caller, hour) not in _CALLER_AUTH_REPORTED
+        if first_this_hour:
+            _CALLER_AUTH_REPORTED.add((caller, hour))
+    if not first_this_hour:
+        return
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("TRADEAI_BRIDGE_CALLER_AUTH_REPORT"):
+        return  # a test that did not name a report file writes none (counter only)
+    line = {
+        "schema": CALLER_AUTH_REPORT_SCHEMA,
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "hour": hour,
+        "caller": caller,
+        "process_id": process_id,
+        "verdict": verdict,
+        "mode": mode,
+        "served": mode != "enforce",
+        "key_env": caller_key_env_name(caller),
+        "key_configured": bool(_caller_keys(caller)),
+        "counts": counts,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    try:
+        path = caller_auth_report_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(line, sort_keys=True) + "\n")
+    except OSError:
+        log.warning("caller auth report not written (caller=%s verdict=%s)", caller, verdict)
+
+
+def caller_auth_refusal(caller: str, verdict: str) -> dict[str, Any]:
+    code = "CALLER_AUTH_INVALID" if verdict == "bad_key" else "CALLER_AUTH_REQUIRED"
+    return {
+        "error": {
+            "code": code,
+            "message": f"Caller '{caller}' is not authenticated ({verdict}); "
+                       f"send Authorization: Bearer <{caller_key_env_name(caller)}>",
+            "status": 401,
+        },
+        "id": uuid.uuid4().hex[:12],
+        "object": "chat.completion.error",
+        "created": int(time.time()),
+        "model": "tradeai_governed",
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "cost_estimate": 0.0,
+        "governance_pass": False,
+        "caller_auth": {"mode": "enforce", "verdict": verdict, "key_env": caller_key_env_name(caller)},
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
 #  HTTP HANDLER
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -1737,6 +2106,8 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
             "circuit_errors": int(_CIRCUIT.get("errors") or 0),
             "last_error": _CIRCUIT.get("last_error"),
             "upstream_deadline_s": UPSTREAM_DEADLINE_S,
+            "caller_auth": caller_auth_snapshot(),
+            "egress_sanitiser": egress_sanitiser.snapshot(),
             **inflight_snapshot(),
         })
 
@@ -1757,6 +2128,8 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         if not process_id:
             self._send_error(401, "UNAUTHORIZED",
                              f"Unknown caller '{caller}' — not in server-side mapping")
+            return
+        if not self._caller_auth_admits(caller, process_id):
             return
 
         routing_policy_name = normalize_routing_policy_header(self.headers.get(ROUTING_POLICY_HEADER))
@@ -1892,43 +2265,33 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         }
         self._send_json(status, result)
 
+    def _caller_auth_admits(self, caller: str, process_id: str) -> bool:
+        """False only in enforce mode for an unverified caller, after a typed 401 is sent (H2)."""
+        mode = caller_auth_mode()
+        if mode == "off":
+            return True
+        verdict = caller_auth_verdict(caller, self.headers.get("Authorization"))
+        record_caller_auth(caller, process_id, verdict, mode)
+        if mode == "enforce" and verdict != "verified":
+            self._send_json(401, caller_auth_refusal(caller, verdict))
+            return False
+        return True
+
     def _send_stream(self, result: dict, messages: list, process_id: str,
                      tools: list | None, max_tokens: int, routing_policy: str | None = None) -> None:
-        # Resolve before any status line. A refusal that appears only on this
-        # second resolve is the same typed JSON the non-stream path returns.
-        policy = resolve_model_policy(process_id, routing_policy=routing_policy)
-        refusal = stream_policy_refusal(process_id, routing_policy, policy)
-        if refusal is not None:
-            self._send_json(int(refusal["error"]["status"]), refusal)
-            return
+        # 2026-10-09 (audit B, H1): `result` is already governed - reserved, capped, called once and
+        # settled. Re-emit it; never resolve or call a provider again here.
+        del messages, process_id, tools, max_tokens, routing_policy
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        # No Content-Length on a stream, so the end of the body is the close; "keep-alive" here left
+        # the server waiting on the socket after [DONE] and a reader without SSE parsing never returned.
+        self.send_header("Connection", "close")
+        self.close_connection = True
         self.send_header("X-TradeAI-Governed", f"cio_bridge_{'p1_2b' if BIND_MODE == 'canary' else 'p1_2a'}")
         self.end_headers()
-        model_id = policy["model_id"]
-        provider = RealProvider.instance() if BIND_MODE == "canary" else MockProvider.instance()
-        if BIND_MODE == "canary":
-            try:
-                _stream_slot = provider_semaphore(
-                    str(policy.get("provider") or "deepseek"),
-                    routing_policy,
-                )
-                _stream_slot.acquire()
-                try:
-                    response = provider.generate(messages, model_id, tools=tools, max_tokens=max_tokens, stream=False)
-                finally:
-                    _stream_slot.release()
-                content = response["choices"][0]["message"].get("content") or ""
-                chunks = [
-                    f"data: {json.dumps(response)}\n\n",
-                    "data: [DONE]\n\n",
-                ]
-            except NotImplementedError:
-                chunks = ["data: [DONE]\n\n"]
-        else:
-            chunks = provider.generate_stream(messages, model_id, tools=tools, max_tokens=max_tokens)
+        chunks = governed_result_sse_chunks(result)
         for chunk in chunks:
             self.wfile.write(chunk.encode("utf-8"))
             self.wfile.flush()

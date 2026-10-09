@@ -22,7 +22,7 @@ def _run(cmd, *, cwd, env=None):
     return subprocess.run(cmd, cwd=cwd, env=merged, capture_output=True, text=True)
 
 
-def _grant_git_push(adir: Path, *, uses: int = 5, reason: str = "test grant") -> None:
+def _grant_git_push(adir: Path, *, uses: int = 5, reason: str = "test grant for branch main") -> None:
     adir.mkdir(mode=0o700, parents=True, exist_ok=True)
     exp = int(time.time()) + 3600
     subprocess.run(
@@ -53,10 +53,10 @@ def test_git_push_grant_active_when_present(tmp_path: Path) -> None:
 
     rec = git_push_grant_active(adir=adir)
     assert rec is not None
-    assert rec.get("reason") == "test grant"
+    assert rec.get("reason") == "test grant for branch main"
     ok, reason = push_authorized_by_guard(adir=adir)
     assert ok is True
-    assert reason == "test grant"
+    assert reason == "test grant for branch main"
 
 
 def test_git_push_grant_absent_when_empty(tmp_path: Path) -> None:
