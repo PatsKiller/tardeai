@@ -20,6 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -369,3 +371,101 @@ def test_stage_mode_and_lane_mode_are_exclusive(tmp_path):
         [sys.executable, str(CUTOVER / "_cutover.py"), "cutover"], capture_output=True, text=True, env=env, timeout=60
     )
     assert r.returncode == 2 and "need <pipeline> <stage> or --lane" in r.stdout
+
+
+@pytest.mark.parametrize("lane_id", [LANE, "fixture-timer"])
+@pytest.mark.parametrize(
+    "cadence",
+    [
+        "scripts docs config * *",
+        "*/5 * * * *\n",
+        "*/5 * * * *\x1b[0m",
+        "",
+        "* * * *",
+        "0 */5 * * * *",
+        "61 * * * *",
+        "*/0 * * * *",
+        "10-2 * * * *",
+        "+5 * * * *",
+    ],
+)
+def test_malformed_cadence_apply_refuses_before_scheduler_registry_or_backup_mutation(tmp_path, lane_id, cadence):
+    root = _code_root(tmp_path)
+    registry_before = (root / "config/lane_registry.json").read_bytes()
+    fake, store = _fake_crontab(tmp_path)
+    crontab_before = OTHER + "\n" + LINE + "\n"
+    store.write_text(crontab_before)
+    r = _run(
+        "cutover_lane.sh",
+        lane_id,
+        "--workflow-id",
+        "wf-cadence",
+        "--cadence",
+        cadence,
+        "--apply",
+        env=_env(tmp_path, fake, root),
+    )
+    assert r.returncode == 2 and "invalid --cadence" in r.stdout, r.stdout + r.stderr
+    assert store.read_text() == crontab_before
+    assert (root / "config/lane_registry.json").read_bytes() == registry_before
+    assert not (tmp_path / "backups").exists()
+    assert _last(tmp_path)["applied"] is False and _last(tmp_path)["scheduler_after"] is None
+
+
+@pytest.mark.parametrize("cadence", ["*/9 * * * *", "0 * * * *", "*/8 * * * 1-5"])
+def test_cron_cadence_override_cannot_change_the_legacy_schedule_during_apply(tmp_path, cadence):
+    root = _code_root(tmp_path)
+    registry_before = (root / "config/lane_registry.json").read_bytes()
+    fake, store = _fake_crontab(tmp_path)
+    crontab_before = OTHER + "\n" + LINE + "\n"
+    store.write_text(crontab_before)
+    r = _run(
+        "cutover_lane.sh",
+        LANE,
+        "--workflow-id",
+        "wf-cadence",
+        "--cadence",
+        cadence,
+        "--apply",
+        env=_env(tmp_path, fake, root),
+    )
+    assert r.returncode == 2 and "must match the legacy cron schedule" in r.stdout, r.stdout + r.stderr
+    assert store.read_text() == crontab_before
+    assert (root / "config/lane_registry.json").read_bytes() == registry_before
+    assert not (tmp_path / "backups").exists()
+    assert _last(tmp_path)["applied"] is False
+
+
+@pytest.mark.parametrize("prefix", ["*/0 * * * *", "@reboot"])
+def test_invalid_or_non_recurring_legacy_schedule_is_not_migrated_to_n8n(tmp_path, prefix):
+    root = _code_root(tmp_path)
+    registry_before = (root / "config/lane_registry.json").read_bytes()
+    fake, store = _fake_crontab(tmp_path)
+    crontab_before = prefix + " " + LINE.split(" ", 5)[5] + "\n"
+    store.write_text(crontab_before)
+    r = _run("cutover_lane.sh", LANE, "--workflow-id", "wf-cadence", "--apply", env=_env(tmp_path, fake, root))
+    assert r.returncode == 2 and "invalid legacy cron schedule" in r.stdout, r.stdout + r.stderr
+    assert store.read_text() == crontab_before
+    assert (root / "config/lane_registry.json").read_bytes() == registry_before
+    assert not (tmp_path / "backups").exists()
+    assert _last(tmp_path)["applied"] is False
+
+
+def test_matching_cron_cadence_accepts_spacing_and_records_the_legacy_schedule(tmp_path):
+    root = _code_root(tmp_path)
+    fake, store = _fake_crontab(tmp_path)
+    store.write_text(LINE + "\n")
+    r = _run(
+        "cutover_lane.sh",
+        LANE,
+        "--workflow-id",
+        "wf-cadence",
+        "--cadence",
+        "  */8  * * * *  ",
+        "--apply",
+        env=_env(tmp_path, fake, root),
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert store.read_text() == RETIRED + "\n"
+    assert _last(tmp_path)["scheduler_after"]["cadence"] == "*/8 * * * *"
+    assert _registry(root)["lanes"][1]["scheduler"]["cadence"] == "*/8 * * * *"

@@ -1,0 +1,14 @@
+# Independent source review and cadence regression evidence
+
+Status: TEST_ONLY / SOURCE_ONLY. as_of: 2026-10-09T02:25:00Z.
+Reviewer: /root/source_review; parent retained documentation write ownership through its evidence lease.
+
+The reviewer separately checked the six maintenance child launchers against base/CURRENT 4673f135f001b59f01a2b8fd938738542200d5f8. Its verifier receipt was 6f82fdde-55eb-40ec-bdac-b6ba2397f5dd with identity.ok=true. The schema-only runtime attestation deferred command gates and was not a live runtime gate.
+
+Thirty launcher tests, six bash syntax checks, Ruff lint/format and five backup interpreter-precedence fixtures passed. Independent prior-code comparisons produced twelve root failures then twelve passes; six shared-runtime failures then twelve passes after the fix. Business command suffixes were unchanged apart from descriptive monthly text. Python 3.14.4 had no PYTHONPATH/editable-pth injection observed. Existing external OpenClaw session-hygiene and refresh-soul scripts remain an unmeasured deliberate external runtime; the patch does not prove their code root or natural execution.
+
+The reviewer then implemented fail-closed cadence handling in scripts/pipelines/cutover/_cutover.py and its already registered test family. Before changing source, `.venv/bin/python -m pytest tests/test_n8n_lane_cutover_20261008.py -k 'cadence or non_recurring' -q --tb=no` exited 1: **26 failed, 9 deselected in 2.84s**. Cases included glob-expanded paths, newline/ESC, empty/wrong field counts, out-of-range numbers, zero steps, reversed ranges, signed numbers, unapproved schedule changes, malformed inherited schedules and matching whitespace canonicalization. Tests use fake crontab, temporary registry/state/locks and cannot reach production mutation.
+
+After the fix, all **35 cutover tests passed in 4.54s**; adjacent template/stage/checklist/readiness/coverage tests **78 passed in 5.38s**. Compilation and Ruff lint passed. The edited test is Ruff formatted. The existing cutover source already failed whole-file Ruff formatting on the baseline; its unchanged formatting debt was retained under the engineering ratchet. The reviewer released its two-file lease through the standard coordinator audit API before the parent integrated the change. These timings are the reviewer's tool receipts, not invented local log transcripts. Parent final acceptance logs are saved separately.
+
+The cutover tool now validates supplied and inherited recurring cron expressions before any backup, registry or scheduler write. It rejects non-ASCII/control characters, invalid ranges/steps and changes that differ from the measured legacy cron schedule. It reuses the existing workflow validator and shared cron parser. Existing rollback and systemd behavior remain tested. No runtime, broker, model-key, send or authority change was made by the reviewer.

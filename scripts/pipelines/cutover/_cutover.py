@@ -55,6 +55,10 @@ from typing import Any, Optional
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_CODE_ROOT = HERE.parent.parent.parent
+sys.path.insert(0, str(DEFAULT_CODE_ROOT))
+
+from scripts.lib.cron_schedule import parse as parse_cron  # noqa: E402
+from scripts.n8n_workflow_templates import validate_cron  # noqa: E402
 
 CUTOVER_RECEIPT_SCHEMA = "CutoverReceipt@v1"
 NO_CONSUMER_REASON = (
@@ -280,6 +284,18 @@ def take_lock(path: Path):
     return fh
 
 
+def canonical_lane_cadence(expression: str) -> str:
+    """Validate the recurring n8n schedule before any scheduler or registry write."""
+    if any(ord(char) < 32 or ord(char) > 126 for char in expression):
+        raise ValueError("cron expression contains control or non-ASCII characters")
+    problems = validate_cron(expression)
+    if problems:
+        raise ValueError("; ".join(problems))
+    # The shared parser additionally refuses zero steps and descending ranges.
+    parse_cron(expression)
+    return " ".join(expression.split())
+
+
 def cron_schedule_of(line: str) -> str:
     """The schedule prefix of a crontab line: five fields, or an `@reboot`-style nickname."""
     s = line.strip()
@@ -398,7 +414,12 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
 
     text = None
     line_idx = None
-    cadence = args.cadence or ""
+    cadence = ""
+    if args.cadence is not None:
+        try:
+            cadence = canonical_lane_cadence(args.cadence)
+        except ValueError as exc:
+            problems.append(f"invalid --cadence: {exc}")
     if kind == "cron" and not problems:
         text = read_crontab()
         live, commented = find_lane_lines(text, match)
@@ -411,10 +432,17 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
         if not problems:
             line_idx = live[0]
             rc["line_before"] = text.splitlines()[line_idx]
-            cadence = cadence or cron_schedule_of(rc["line_before"])
+            try:
+                legacy_cadence = canonical_lane_cadence(cron_schedule_of(rc["line_before"]))
+            except ValueError as exc:
+                problems.append(f"invalid legacy cron schedule: {exc}")
+            else:
+                if args.cadence is not None and cadence != legacy_cadence:
+                    problems.append(
+                        "--cadence must match the legacy cron schedule; schedule changes require separate approval"
+                    )
+                cadence = legacy_cadence
             rc["line_after"] = f"# RETIRED {cutover_date()} n8n-cutover {lane_id} " + rc["line_before"]
-            if not cadence:
-                problems.append("could not derive the cron schedule from the line; pass --cadence")
     elif kind == "systemd" and not problems:
         if not match.endswith(".timer"):
             problems.append(f"systemd lane match {match!r} is not a .timer unit")
@@ -572,7 +600,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--backup", type=Path, default=None, help="stage mode: the crontab backup to restore")
     ap.add_argument("--lane", default=None, help="lane mode: the config/lane_registry.json lane_id to move to / back from n8n")
     ap.add_argument("--workflow-id", default=None, help="lane cutover: the n8n workflow id (becomes scheduler.expression)")
-    ap.add_argument("--cadence", default=None, help="lane cutover: cron expression the workflow uses (derived from the line for cron lanes)")
+    ap.add_argument(
+        "--cadence",
+        default=None,
+        help="lane cutover: recurring cron expression; must match the legacy cron schedule (derived when omitted)",
+    )
     ap.add_argument("--receipt", default=None, help="lane rollback: the cutover receipt to restore scheduler_before from")
     ap.add_argument("--state-root", default=None, help="where receipts live (default $TRADEAI_STATE_ROOT / production state root)")
     args = ap.parse_args(argv)
