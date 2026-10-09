@@ -58,8 +58,9 @@ def push_authorized_by_guard(*, adir: Path | None = None) -> tuple[bool, str]:
 # A grant is bounded permission for one operation, so its reason must name what
 # it covers: the branch being pushed or its head SHA (>= 7 hex chars).
 #
-# Default: WARN only, so existing sessions keep working while the operator
-# decides. TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1 makes an unscoped grant refuse.
+# Default: ENFORCED (operator 2026-10-09: "enable push scope enforce too", after an agent's push
+# consumed the last use of another session's branch-scoped grant). An unscoped grant neither
+# authorizes the push nor loses a use; TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0 restores warn-only.
 SCOPE_ENFORCE_ENV = "TRADEAI_GUARD_PUSH_SCOPE_ENFORCE"
 _SHA_TOKEN = re.compile(r"\b[0-9a-f]{7,40}\b")
 
@@ -81,7 +82,7 @@ def grant_scope_covers(reason: str, *, branch: str, head_sha: str) -> tuple[bool
 
 
 def scope_enforced() -> bool:
-    return os.environ.get(SCOPE_ENFORCE_ENV, "") == "1"
+    return os.environ.get(SCOPE_ENFORCE_ENV, "1").strip() != "0"
 
 
 def push_authorized_by_guard_scoped(*, branch: str, head_sha: str, adir: Path | None = None) -> dict[str, Any]:

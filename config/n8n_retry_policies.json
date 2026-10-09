@@ -1,0 +1,44 @@
+{
+  "schema": "N8nRetryPolicies@v1",
+  "as_of": "2026-10-09",
+  "default_policy": "transient-2",
+  "breaker_threshold": 3,
+  "class_caps": {"global": 3, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 1, "send": 1, "pipeline": 2, "learn": 1},
+  "policies": {
+    "none": {
+      "description": "Never retry. Senders and learning writers: a retry could double-send or double-write.",
+      "max_attempts": 1, "backoff_s": [],
+      "retryable_states": [], "retryable_exit_codes": [], "retryable_reason_patterns": [],
+      "terminal_exit_codes": [], "terminal_reason_patterns": ["(?i)cost_cap", "(?i)peak_skip"],
+      "catchup_min": 30, "dlq_severity": "P2",
+      "permitted_classes": ["send", "learn", "monitor", "report", "hygiene", "pipeline", "heavy", "llm", "ingest"]
+    },
+    "transient-2": {
+      "description": "Default. Two retries on transient failures (timeout, EX_TEMPFAIL 75, 69, 111, executor_lost, spawn EAGAIN/ENOMEM).",
+      "max_attempts": 3, "backoff_s": [30, 120],
+      "retryable_states": ["RUN_TIMEOUT", "RUN_FAILED"], "retryable_exit_codes": [69, 75, 111],
+      "retryable_reason_patterns": ["^executor_lost$", "^spawn:.*(EAGAIN|ENOMEM|BlockingIOError|MemoryError)"],
+      "terminal_exit_codes": [2], "terminal_reason_patterns": ["(?i)cost_cap"],
+      "catchup_min": 60, "dlq_severity": "P2",
+      "permitted_classes": ["monitor", "report", "hygiene", "pipeline"]
+    },
+    "transient-1-slow": {
+      "description": "Heavy lanes: one retry after 10 minutes on timeout / EX_TEMPFAIL / executor_lost.",
+      "max_attempts": 2, "backoff_s": [600],
+      "retryable_states": ["RUN_TIMEOUT", "RUN_FAILED"], "retryable_exit_codes": [75],
+      "retryable_reason_patterns": ["^executor_lost$"],
+      "terminal_exit_codes": [2], "terminal_reason_patterns": ["(?i)cost_cap"],
+      "catchup_min": 180, "dlq_severity": "P2",
+      "permitted_classes": ["heavy"]
+    },
+    "llm-transient": {
+      "description": "LLM lanes (only after R1): one retry on network/5xx; COST_CAP, PEAK_SKIP and 4xx are terminal.",
+      "max_attempts": 2, "backoff_s": [300],
+      "retryable_states": ["RUN_TIMEOUT", "RUN_FAILED"], "retryable_exit_codes": [75],
+      "retryable_reason_patterns": ["(?i)(dns|\\b5\\d\\d\\b|connection)"],
+      "terminal_exit_codes": [2], "terminal_reason_patterns": ["(?i)cost_cap", "(?i)peak_skip", "\\b4\\d\\d\\b"],
+      "catchup_min": 120, "dlq_severity": "P2",
+      "permitted_classes": ["llm"]
+    }
+  }
+}

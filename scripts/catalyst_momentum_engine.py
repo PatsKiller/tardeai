@@ -34,7 +34,11 @@ if _env_path.is_file():
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [catalyst-momentum] %(message)s")
 log = logging.getLogger("catalyst_momentum")
-PY = str(ROOT / ".venv" / "bin" / "python")
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+PY = venv_python(ROOT)
 # Kill switch: prefer served-state root, fall back to checkout (legacy).
 # E5: resolution layer, not cron cwd — CURRENT/data/runtime is a symlink into
 # persistent-state, so the served path is what operators and other pins see.

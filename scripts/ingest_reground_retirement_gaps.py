@@ -12,7 +12,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from db_adapter import _execute
 
-PY = str(ROOT / ".venv" / "bin" / "python")
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+PY = venv_python(ROOT)
 THEMES = [r"\broth\b|conversion|golden window|\brmd\b|backdoor|qualified charitable",
           r"medicare|irmaa|medigap|part [bd]\b",
           r"medicaid|\bmapt\b|asset protection|spend.?down|look.?back|estate recovery|special needs|supplemental needs",

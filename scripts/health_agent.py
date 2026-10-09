@@ -3417,30 +3417,37 @@ def collect_failed_systemd_units() -> list[dict]:
     prefixes = tuple(cfg.get("unit_prefixes") or
                      ["tradeai-", "portfolio-", "grok-oauth", "chatgpt-oauth"])
     out: list[dict] = []
-    try:
-        # systemctl needs DBUS_SESSION_BUS_ADDRESS when running under cron (no login session).
-        # Without it the subprocess fails and the bare `except` made this collector permanently
-        # dead — failed units were never detected under cron.
-        env = os.environ.copy()
-        uid = os.getuid()
-        env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
-        env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
-        proc = subprocess.run(["systemctl", "--failed", "--plain", "--no-legend", "--no-pager"],
-                              capture_output=True, text=True, timeout=10, env=env)
+    # systemctl needs DBUS_SESSION_BUS_ADDRESS when running under cron (no login session).
+    # Without it the subprocess fails and the bare `except` made this collector permanently
+    # dead — failed units were never detected under cron.
+    env = os.environ.copy()
+    uid = os.getuid()
+    env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+    # 2026-10-09: most of the trade stack runs as --user units (n8n gateway/relay/executor/watchdog,
+    # hermes workers, mcporter token refresh). The collector only asked the system manager, so a
+    # failed user unit was never reported (self-healing audit: systemd_unit_failed fired 0 times
+    # while three user units sat failed). Ask both managers.
+    for scope, flag, fix in (("system", [], "sudo systemctl"), ("user", ["--user"], "systemctl --user")):
+        try:
+            proc = subprocess.run(["systemctl", *flag, "--failed", "--plain", "--no-legend", "--no-pager"],
+                                  capture_output=True, text=True, timeout=10, env=env)
+        except Exception as e:
+            # Surface that we can't check — silence is worse than an info finding
+            out.append(_f("execution_health", "systemd_check_unavailable", "info",
+                          f"Cannot check {scope} systemd unit state: {e}. "
+                          f"systemctl --failed may need DBUS_SESSION_BUS_ADDRESS or the "
+                          f"collector may be running without a system bus.",
+                          error=str(e)[:200], scope=scope))
+            continue
         for line in (proc.stdout or "").splitlines():
-            unit = (line.split() or [""])[0]
+            unit = (line.replace("\u25cf", " ").split() or [""])[0]
             if unit.startswith(prefixes):
+                journal = "journalctl --user" if scope == "user" else "journalctl"
                 out.append(_f("execution_health", "systemd_unit_failed", "warning",
-                              f"systemd unit {unit} is in failed state — scheduled runs may be "
-                              f"missed; operator: sudo systemctl reset-failed {unit} "
-                              f"(then check why it died: journalctl -u {unit})", unit=unit))
-    except Exception as e:
-        # Surface that we can't check — silence is worse than an info finding
-        out.append(_f("execution_health", "systemd_check_unavailable", "info",
-                      f"Cannot check systemd unit state: {e}. "
-                      f"systemctl --failed may need DBUS_SESSION_BUS_ADDRESS or the "
-                      f"collector may be running without a system bus.",
-                      error=str(e)[:200]))
+                              f"{scope} systemd unit {unit} is in failed state — scheduled runs may be "
+                              f"missed; operator: {fix} reset-failed {unit} "
+                              f"(then check why it died: {journal} -u {unit})", unit=unit, scope=scope))
     return out
 
 
