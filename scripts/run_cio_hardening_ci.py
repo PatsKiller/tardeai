@@ -909,6 +909,8 @@ GATES = [
             "tests/test_research_delta_index_20261002.py",
             # /api/v3/maturity/learning: stream + cache the 270 MB lesson store (was ~910 MB/request).
             "tests/test_maturity_lessons_stream_cache_20261002.py",
+            # 10-09 operator-approved: archive rotation of the lesson log (never deletes; latest-by-id stays live).
+            "tests/test_advisory_kb_lessons_retention.py",
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",

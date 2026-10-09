@@ -39,14 +39,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(entry, default=str, ensure_ascii=False) + "\n"
+def _append_once(path: Path, line: str) -> None:
     with open(path, "a", encoding="utf-8") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         f.write(line)
         f.flush()
         fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(entry, default=str, ensure_ascii=False) + "\n"
+    if path == LESSONS_PATH:
+        # 2026-10-09: the lesson log is archive-rotated (kb_lessons_retention), which
+        # replaces the live inode; append under the same sidecar lock the rotator holds
+        # so an append never lands in the superseded file.
+        from lib.advisory.kb_lessons_retention import writer_lock
+        with writer_lock(path):
+            _append_once(path, line)
+        return
+    _append_once(path, line)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
