@@ -203,6 +203,29 @@ or replay. Test desktop/mobile. Do not invent twenty eligible opportunities to f
 
 ### Current execution entry and evidence discipline
 
+#### Local committed checkpoint — 2026-10-09
+
+Status: **LOCAL CODE COMMITTED; CADI-01 NOT COMPLETE / NOT PUSH-READY**.
+Implementation commit: `aace8c83437656e72131a01ce08712ff39a82b3c` on
+`wt/cadi01-canonical-decision-20261009`, base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`.
+Files changed: 20 files in the implementation commit; new canonical/store/test files, legacy
+adapters and exports, bounded operator audit reader, schema discovery, two registries, GATES,
+five CADI documents and generated AGENTS/source-of-truth/INDEX. `git show --stat` is the exact
+manifest; source hashes and JUnit receipts are in the Test Plan.
+
+| Component | Local status | Proof / boundary |
+|---|---|---|
+| Canonical v2 + both v1 adapters | COMPLETE locally | Action/identity/authority/JSON tests; original payload and audit history preserved |
+| Immutable history + latest projection | COMPLETE locally on fixtures | Idempotency, concurrency, rollback, corruption/rebuild/reopen; no production store activation |
+| Existing audit-read integration | COMPLETE locally | Three record edges, bounded read, corruption preserves legacy results; default production read disabled |
+| Documentation and registered validation | COMPLETE locally | Five docs, GATES, schemas, single-writer proposals; 121 combined + 80 core overlapping + 15 adversarial PASS |
+| Named source approvals | BLOCKED / John | Two pending approval records; authority exit 1; no substitute/fabricated provenance |
+| Full final acceptance / reviewed PR | NOT COMPLETE | Rerun after approval, request exact-SHA push grant; normal hooks, Agent A review/merge |
+
+Pushes used: **0/2**. PR: **NONE**. Merge/deployment/scheduler/broker/trade: **NOT DONE**.
+Every later CADI ticket remains unbranched until Agent A merges CADI-01. This is not a production
+recommendation and does not replace NOT READY with a code-completion claim.
+
 Status: **LOCAL IMPLEMENTATION; NOT COMPLETE / NOT PUSH-READY**
 Date: 2026-10-09
 Source base: `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`
