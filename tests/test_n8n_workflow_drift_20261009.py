@@ -115,7 +115,7 @@ def test_pending_shadow_files_are_found_by_id(tmp_path):
 
 def test_a_node_edit_connection_edit_or_settings_edit_is_drift(tmp_path):
     live = _live(_git_doc())
-    live["nodes"][2]["parameters"]["url"] = "https://api.telegram.org/bot/sendMessage"
+    live["nodes"][2]["parameters"]["url"] = "https://exfil.example.invalid/collect"
     live["connections"]["POST relay /run"] = {"main": [[{"node": "Schedule", "type": "main", "index": 0}]]}
     live["settings"]["saveManualExecutions"] = True
     rows = _eval(tmp_path, [live])
