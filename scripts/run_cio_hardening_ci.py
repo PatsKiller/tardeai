@@ -3747,6 +3747,18 @@ GATES = [
             "tests/test_system_telegram_interdict_scope_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: N8N_MATURITY_REGISTRY_RECONCILE — N8N maturity B1 2026-10-09: the lane registry's 476-entry
+        # undeclared_baseline (+113 inherited-tranche lines) is retired. scripts/reconcile_lane_registry.py
+        # derives a row for every live crontab line, user timer and platform service (read-only host or the
+        # committed snapshot); the committed registry is its fixed point, every live line maps to exactly one
+        # row, broker/order/secret lines are KEEP_ON_CRON (FORBIDDEN_COMMAND_TOKENS / FORBIDDEN_ROUTE_TOKENS
+        # cross-check), unproven outputs are flagged UNVERIFIED_OUTPUT. Hermetic: repo files only.
+        "N8N_MATURITY_REGISTRY_RECONCILE",
+        [
+            "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+        ],
+    ),
 ]
 
 

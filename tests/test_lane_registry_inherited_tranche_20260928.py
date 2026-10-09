@@ -27,16 +27,12 @@ def _reg():
     return json.loads((ROOT / "config" / "lane_registry.json").read_text())
 
 
-def test_tranche_recorded_with_provenance_and_honest_count():
+def test_tranche_debt_is_paid_and_gone():
+    """2026-10-09 (N8N maturity B1): every tranche line now has a lane row, so the tranche and the
+    original baseline are removed. The matcher still honours a tranche (next test) for old fixtures."""
     reg = _reg()
-    tranches = reg.get("inherited_tranches") or []
-    t = next(x for x in tranches if x["added"] == "2026-09-28")
-    assert t["count"] == len(t["lines"]) == len(t["lines"]) and t["count"] >= 100
-    assert len(t["reason"]) > 120 and "crons-to-CURRENT" in t["reason"]
-    assert "recorded_by" in t
-    assert len(set(t["lines"])) == len(t["lines"]), "duplicate lines in tranche"
-    # the original baseline was NOT grown to absorb them
-    assert not (set(t["lines"]) & set(reg["undeclared_baseline"]))
+    assert "inherited_tranches" not in reg
+    assert "undeclared_baseline" not in reg
 
 
 def test_tranche_lines_count_as_baseline_for_the_gate():
@@ -48,10 +44,3 @@ def test_tranche_lines_count_as_baseline_for_the_gate():
     assert fn is not None, "gate matcher not found"
     out = fn(reg, found)
     assert [o["expression"] for o in out] == ["1 1 * * * brand new"]
-
-
-def test_every_tranche_line_is_a_real_cron_expression():
-    t = next(x for x in _reg()["inherited_tranches"] if x["added"] == "2026-09-28")
-    for line in t["lines"]:
-        head = line.split()
-        assert len(head) >= 6 and not line.lstrip().startswith("#"), line[:80]

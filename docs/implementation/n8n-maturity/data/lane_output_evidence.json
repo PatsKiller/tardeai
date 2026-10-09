@@ -1,0 +1,746 @@
+{
+ "schema": "LaneOutputEvidence@v1",
+ "generated_on": "2026-10-09",
+ "method": "B1 research subagents read each scheduled job's script (and the scripts it calls) for fixed-path receipts, confirmed each file on the host (exists, mtime consistent with the schedule) and recorded a verified_token that reconcile_lane_registry.py re-checks against source_file. Only lanes with a host-confirmed, single-job receipt are listed; everything else keeps its scheduler log or is flagged UNVERIFIED_OUTPUT.",
+ "declared_state_note": "declared_state applies only to a unit the host shows NOT enabled; it records why, from the cited document. It can never declare an enabled unit off.",
+ "rejected": {
+  "agent-intelligence-cron-daily": "receipt file shared with agent-router-cron (another script)",
+  "agent-intelligence-cron-deep": "receipt file shared with agent-router-cron (another script)",
+  "agent-intelligence-cron-intraday": "receipt file shared with agent-router-cron (another script)",
+  "cio-governed-bridge-service": "written per bridge request, not on a clock: a quiet period would read as an outage",
+  "hermes-governance-api": "cache also written by the API request path",
+  "market-regime-classifier": "db_max on a table the collector also writes; not host-confirmed",
+  "prewarm-finviz-strip-map": "cache also written by the API request path",
+  "tradeai-maturity-feeds": "db_max not host-confirmed (no DB query by rule)",
+  "tradeai-n8n-run-executor-service": "written per run request, not on a clock: a quiet period would read as an outage",
+  "tradeai-n8n-run-relay-service": "written per run request, not on a clock: a quiet period would read as an outage"
+ },
+ "entries": {
+  "aegis-overnight": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/aegis-overnight.log"
+   },
+   "verified_token": "aegis-overnight.log",
+   "source_file": "scripts/aegis_overnight.py",
+   "evidence": "scripts/aegis_overnight.py:26 LOG_FILE=PROJECT_ROOT/logs/aegis-overnight.log appended by _log() (:47) every step; unit WorkingDirectory=dev tree (logs/ not symlinked); host mtime 2026-10-08T20:19:22 (timer 20:00 daily). Unit also appends stdout to logs/aegis-overnight-systemd.log"
+  },
+  "agent-router-cron-deep": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/agent_context_deep.log"
+   },
+   "verified_token": "logs/agent_context_${MODE}.log",
+   "source_file": "scripts/agent_router_cron.sh",
+   "evidence": "scripts/agent_router_cron.sh:6 appends refresh_agent_context.py --mode deep output to logs/agent_context_${MODE}.log (cwd = dev tree); host mtime 2026-10-04T07:30:13-04:00 (Sun 07:30, weekly)"
+  },
+  "agent-router-cron-full": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/agent_context_full.log"
+   },
+   "verified_token": "logs/agent_context_${MODE}.log",
+   "source_file": "scripts/agent_router_cron.sh",
+   "evidence": "scripts/agent_router_cron.sh:6 appends refresh_agent_context.py --mode full output to logs/agent_context_${MODE}.log (cwd = dev tree); host mtime 2026-10-09T06:15:15-04:00"
+  },
+  "agent-router-cron-light": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/agent_context_light.log"
+   },
+   "verified_token": "logs/agent_context_${MODE}.log",
+   "source_file": "scripts/agent_router_cron.sh",
+   "evidence": "scripts/agent_router_cron.sh:6 appends refresh_agent_context.py --mode light output to logs/agent_context_${MODE}.log (cwd = dev tree); host mtime 2026-10-09T15:00:22-04:00"
+  },
+  "ask-alerts": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/ask_alerts.json"
+   },
+   "verified_token": "ask_alerts.json",
+   "source_file": "scripts/ask_alerts.py",
+   "evidence": "scripts/ask_alerts.py:25 STORE; check_alerts() calls _save(d) unconditionally (:122); host mtime 2026-10-09T16:00:01"
+  },
+  "build-hermes-canonical-status": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/hermes_canonical_status_latest.json"
+   },
+   "verified_token": "hermes_canonical_status_latest.json",
+   "source_file": "scripts/build_hermes_canonical_status.py",
+   "evidence": "scripts/build_hermes_canonical_status.py:16 OUT, write_text :108 every run; host mtime 2026-10-09T16:15:23"
+  },
+  "catalyst-calibration": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/catalyst_calibration.json"
+   },
+   "verified_token": "catalyst_calibration.json",
+   "source_file": "scripts/catalyst_calibration.py",
+   "evidence": "scripts/catalyst_calibration.py:18,92 OUT.write_text (updated_at) on non-dry run; host mtime 2026-10-09T05:30:05"
+  },
+  "catalyst-momentum-engine-market": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/cio/catalyst_momentum_last_run.json"
+   },
+   "verified_token": "catalyst_momentum_last_run.json",
+   "source_file": "scripts/catalyst_momentum_engine.py",
+   "evidence": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
+  },
+  "catalyst-momentum-engine-overnight": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/cio/catalyst_momentum_last_run.json"
+   },
+   "verified_token": "catalyst_momentum_last_run.json",
+   "source_file": "scripts/catalyst_momentum_engine.py",
+   "evidence": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
+  },
+  "catalyst-momentum-engine-premarket": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/cio/catalyst_momentum_last_run.json"
+   },
+   "verified_token": "catalyst_momentum_last_run.json",
+   "source_file": "scripts/catalyst_momentum_engine.py",
+   "evidence": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
+  },
+  "classifier-health-check": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "~/trade-ai-releases/portfolio-server/CURRENT/data/monitoring/classifier_health.json",
+    "key": "checked_at"
+   },
+   "verified_token": "data/monitoring/classifier_health.json",
+   "source_file": "scripts/monitoring/classifier_health_check.py",
+   "evidence": "scripts/monitoring/classifier_health_check.py:41 writes data/monitoring/classifier_health.json (cwd CURRENT; NOT under the state root, release-local dir) every run; host mtime 2026-10-09T07:55:01-04:00, checked_at 2026-10-09T11:55:01Z"
+  },
+  "classify-candidates": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/portfolios/state/classification_review_queue.json",
+    "key": "generated_at"
+   },
+   "verified_token": "classification_review_queue.json",
+   "source_file": "scripts/classify_candidates.py",
+   "evidence": "scripts/classify_candidates.py:173-174 rewrites classified_candidates.json + classification_review_queue.json (generated_at) every run; sole writer; host mtime 2026-10-09T06:35:01-04:00, generated_at 2026-10-09T10:35:01Z"
+  },
+  "classify-instruments": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/instrument_types_latest.json"
+   },
+   "verified_token": "instrument_types_latest.json",
+   "source_file": "scripts/classify_instruments.py",
+   "evidence": "scripts/classify_instruments.py:23 OUT, unconditional write_text at :140; host mtime 2026-10-03T06:34:59 (Sat 06:30 weekly)"
+  },
+  "cleanup-stale-proposals": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/paper_requeue_counts.json"
+   },
+   "verified_token": "paper_requeue_counts.json",
+   "source_file": "scripts/cleanup_stale_proposals.py",
+   "evidence": "scripts/cleanup_stale_proposals.py:38/53/186 rewrites data/runtime/paper_requeue_counts.json on every --apply run (sweep_approved_paper_test_lifecycle always called from main); host mtime 2026-10-09T10:00:02-04:00"
+  },
+  "compute-intraday-vwap": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/state/intraday_vwap_cache.json"
+   },
+   "verified_token": "intraday_vwap_cache.json",
+   "source_file": "scripts/compute_intraday_vwap.py",
+   "evidence": "scripts/compute_intraday_vwap.py:23 CACHE write_text :86 (skipped only when no active proposal symbols); host mtime 2026-10-09T16:00:05"
+  },
+  "db-retention-timer": {
+   "declared_state": {
+    "state": "RETIRED",
+    "state_since": "2026-10-07",
+    "reason_confidence": "ESTABLISHED",
+    "state_reason": "Duplicate scheduler on the dev tree: db_retention.py also runs from cron on CURRENT. Disabled 2026-10-07 under the cron trim work; the cron line is the owner.",
+    "reason_evidence": "docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md (L982 row); docs/ops/live_proof_20260928/02-runtime-lane-registry.md (db_retention.py duplicate)"
+   }
+  },
+  "defense-inverse-stoplights": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/inverse_stoplights_latest.json"
+   },
+   "verified_token": "inverse_stoplights_latest.json",
+   "source_file": "scripts/defense_inverse_stoplights.py",
+   "evidence": "scripts/defense_inverse_stoplights.py:39 SNAP snapshot; host mtime 2026-10-08T17:55:03"
+  },
+  "defense-recommendations": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/defense_recommendations_latest.json"
+   },
+   "verified_token": "defense_recommendations_latest.json",
+   "source_file": "scripts/defense_recommendations.py",
+   "evidence": "scripts/defense_recommendations.py:32 SNAP snapshot; host mtime 2026-10-09T10:10:04"
+  },
+  "finviz-market-movers": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/market_movers_latest.json"
+   },
+   "verified_token": "market_movers_latest.json",
+   "source_file": "scripts/finviz_market_movers.py",
+   "evidence": "scripts/finviz_market_movers.py:45 SNAP latest snapshot; host mtime 2026-10-09T16:18:31"
+  },
+  "heartbeat-receiver-service": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "logs/.offhost_ping.txt"
+   },
+   "verified_token": ".offhost_ping.txt",
+   "source_file": "scripts/heartbeat_receiver.py",
+   "evidence": "scripts/heartbeat_receiver.py:21 PING_FILE=ROOT/logs/.offhost_ping.txt rewritten on every received ping (release logs/ symlinks to state root); host mtime 2026-10-09T16:20:14"
+  },
+  "hermes-analyst-coverage": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/pro_analyst_pills_latest.json"
+   },
+   "verified_token": "pro_analyst_pills_latest.json",
+   "source_file": "scripts/build_pro_analyst_read_model.py",
+   "evidence": "scripts/build_pro_analyst_read_model.py:17 OUT atomic write (second step of lane, runs after coverage succeeds); host mtime 2026-10-09T13:42:21"
+  },
+  "hermes-backlog-health-check": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/backlog_health/latest_backlog_health_summary.json"
+   },
+   "verified_token": "latest_backlog_health_summary.json",
+   "source_file": "scripts/hermes_backlog_health_check.py",
+   "evidence": "scripts/hermes_backlog_health_check.py:153 write_text latest_backlog_health_summary.json (OUT=PROJECT_ROOT/docs/hermes/backlog_health, :20); host mtime 2026-10-09T02:45:15 (timer 06:45 UTC)",
+   "owner": "hermes"
+  },
+  "hermes-discovery-scorecard": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/hermes_discovery_scorecard.json"
+   },
+   "verified_token": "hermes_discovery_scorecard.json",
+   "source_file": "scripts/hermes_discovery_scorecard.py",
+   "evidence": "scripts/hermes_discovery_scorecard.py:39 SCORECARD_PATH atomic write at :379; host mtime 2026-10-04T05:30:02 (STALE: offpeak wrapper logs PEAK_SKIP daily since, so receipt only moves on real runs)"
+  },
+  "hermes-discovery-yield-builder": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/hermes_discovery_yield.json"
+   },
+   "verified_token": "hermes_discovery_yield.json",
+   "source_file": "scripts/hermes_discovery_yield_builder.py",
+   "evidence": "scripts/hermes_discovery_yield_builder.py:28 OUTPUT_PATH written at :245; host mtime 2026-10-04T03:45:01 (STALE: offpeak wrapper logs PEAK_SKIP daily since)"
+  },
+  "hermes-embedding-promotion-review": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/embedding_promotion_reviews/latest_review.json"
+   },
+   "verified_token": "latest_review.json",
+   "source_file": "scripts/hermes_embedding_promotion_reviewer.py",
+   "evidence": "scripts/hermes_embedding_promotion_reviewer.py:74 write_text OUT/latest_review.json (OUT :14 docs/hermes/embedding_promotion_reviews); host mtime 2026-10-09T04:15:06 (timer 08:15 UTC)",
+   "owner": "hermes"
+  },
+  "hermes-librarian-backlog-loop": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json"
+   },
+   "verified_token": "latest_librarian_loop_dryrun.json",
+   "source_file": "scripts/hermes_autonomous_librarian_backlog_loop.py",
+   "evidence": "scripts/hermes_autonomous_librarian_backlog_loop.py:212 write_text latest_librarian_loop_dryrun.json in both dry-run and apply modes; host mtime 2026-10-09T03:46:25 (timer 07:45 UTC)",
+   "owner": "hermes"
+  },
+  "hermes-observation-check": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/observations/latest_observation_summary.json"
+   },
+   "verified_token": "latest_observation_summary.json",
+   "source_file": "scripts/hermes_observation_check.py",
+   "evidence": "scripts/hermes_observation_check.py:131 write_text OUT/latest_observation_summary.json (OUT :21 docs/hermes/observations); host mtime 2026-10-09T02:30:01 (timer 06:30 UTC)",
+   "owner": "hermes"
+  },
+  "hermes-outcome-feedback-agent": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/runtime/hermes_outcome_feedback_heartbeat.json",
+    "key": "ts"
+   },
+   "verified_token": "hermes_outcome_feedback_heartbeat.json",
+   "source_file": "scripts/hermes_outcome_feedback_agent.py",
+   "evidence": "scripts/hermes_outcome_feedback_agent.py:812 _write_heartbeat (with ts) at end of run; host mtime 2026-10-09T11:25:18"
+  },
+  "hermes-research-agenda-at-15-18": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/runtime/hermes_agenda_last_run.json",
+    "key": "last_apply_ts"
+   },
+   "verified_token": "hermes_agenda_last_run.json",
+   "source_file": "scripts/hermes_research_agenda.py",
+   "evidence": "scripts/hermes_research_agenda.py:35 STATE_FILE written at :532 on every --apply run (last_apply_ts); host mtime 2026-10-09T07:45:01"
+  },
+  "hermes-research-agenda-at-45-7": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/runtime/hermes_agenda_last_run.json",
+    "key": "last_apply_ts"
+   },
+   "verified_token": "hermes_agenda_last_run.json",
+   "source_file": "scripts/hermes_research_agenda.py",
+   "evidence": "scripts/hermes_research_agenda.py:35 STATE_FILE written at :532 on every --apply run (last_apply_ts); host mtime 2026-10-09T07:45:01"
+  },
+  "hermes-scope-governor": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/hermes_scope_governor_heartbeat.json"
+   },
+   "verified_token": "hermes_scope_governor_heartbeat.json",
+   "source_file": "scripts/lib/hermes_scope_governor/heartbeat.py",
+   "evidence": "scripts/lib/hermes_scope_governor/heartbeat.py:11 GOVERNOR_HEARTBEAT written by scripts/hermes_scope_governor.py:64 each run; host mtime 2026-10-09T16:07:17"
+  },
+  "hermes-score-event-feeder": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/hermes_event_feeder_heartbeat.json"
+   },
+   "verified_token": "hermes_event_feeder_heartbeat.json",
+   "source_file": "scripts/lib/hermes_scope_governor/heartbeat.py",
+   "evidence": "scripts/lib/hermes_scope_governor/heartbeat.py:12 FEEDER_HEARTBEAT written by scripts/hermes_score_event_feeder.py:169/244; host mtime 2026-10-09T16:15:03"
+  },
+  "hermes-shadow-scorer": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/learning/shadow_scores/_shadow_scores.json"
+   },
+   "verified_token": "Path(args.json_out).write_text",
+   "source_file": "scripts/strategy_learning_shadow_scorer.py",
+   "evidence": "scripts/strategy_learning_shadow_scorer.py:172 writes --json-out; unit ExecStart passes data/learning/shadow_scores/%i_shadow_scores.json (non-template unit so %i is empty -> _shadow_scores.json, dev-tree data/learning is NOT symlinked); host mtime 2026-10-09T14:01:49 (timer Mon..Fri 10,14,18 ET)",
+   "owner": "learning"
+  },
+  "hermes-think-tank": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/think_tank_latest.json"
+   },
+   "verified_token": "think_tank_latest.json",
+   "source_file": "scripts/hermes_think_tank.py",
+   "evidence": "scripts/hermes_think_tank.py:34 AUDIT written when --apply (:343; cron passes --apply); host mtime 2026-10-09T10:20:47"
+  },
+  "mint-identity-registry": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/identity_registry.json"
+   },
+   "verified_token": "identity_registry.json",
+   "source_file": "scripts/lib/identity_registry.py",
+   "evidence": "scripts/lib/identity_registry.py:57 REGISTRY_RELATIVE data/runtime/identity_registry.json, saved by register_all(apply=True) (:304-305) on every --apply run; host mtime 2026-10-09T05:50:01 (cron 50 5 * * 1-5)"
+  },
+  "news-ingestion-tail": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/news_ingest_rotation.json"
+   },
+   "verified_token": "news_ingest_rotation.json",
+   "source_file": "scripts/news_ingestion.py",
+   "evidence": "scripts/news_ingestion.py:42 ROTATION_FILE saved in tail_rotate mode (:553); host mtime 2026-10-04T18:05:21 (Sun 18:00 run)"
+  },
+  "oauth-lane-keepalive": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/oauth_lane_status.json"
+   },
+   "verified_token": "oauth_lane_status.json",
+   "source_file": "scripts/oauth_lane_keepalive.py",
+   "evidence": "scripts/oauth_lane_keepalive.py:20 STATUS_FILE, _save_status(state) at :95 each run; host mtime 2026-10-09T16:00:20"
+  },
+  "opening-intelligence": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/opening_intelligence/latest.json"
+   },
+   "verified_token": "SNAPSHOT_DIR / \"latest.json\"",
+   "source_file": "scripts/opening_intelligence.py",
+   "evidence": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+  },
+  "opening-intelligence-render": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/opening_intelligence/latest.json"
+   },
+   "verified_token": "SNAPSHOT_DIR / \"latest.json\"",
+   "source_file": "scripts/opening_intelligence.py",
+   "evidence": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+  },
+  "options-chain-snapshot": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/hedging_radar_latest.json"
+   },
+   "verified_token": "hedging_radar_latest.json",
+   "source_file": "scripts/options_chain_snapshot.py",
+   "evidence": "scripts/options_chain_snapshot.py:28 SNAP hedging radar snapshot; host mtime 2026-10-09T10:00:52"
+  },
+  "options-lifecycle-run": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/options_lifecycle_latest.json"
+   },
+   "verified_token": "options_lifecycle_latest.json",
+   "source_file": "scripts/options_lifecycle_run.py",
+   "evidence": "scripts/options_lifecycle_run.py:34 SNAP UI snapshot; host mtime 2026-10-09T16:00:06"
+  },
+  "paper-performance-governance": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/state/governance_states.json"
+   },
+   "verified_token": "governance_states.json",
+   "source_file": "scripts/paper_performance_governance.py",
+   "evidence": "scripts/paper_performance_governance.py:232/243 rewrites data/state/governance_states.json on every non-dry-run (cron --apply, line 306); sole writer; host mtime 2026-10-09T08:00:02-04:00"
+  },
+  "portfolio-lookthrough-themes": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/portfolios/state/lookthrough_themes.json"
+   },
+   "verified_token": "lookthrough_themes.json",
+   "source_file": "scripts/portfolio_lookthrough_themes.py",
+   "evidence": "scripts/portfolio_lookthrough_themes.py:287 writes API cache on every global (no --account) run; host mtime 2026-10-09T07:41:07"
+  },
+  "portfolio-server-watchdog": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/logs/.portfolio_watchdog_heartbeat"
+   },
+   "verified_token": ".portfolio_watchdog_heartbeat",
+   "source_file": "scripts/portfolio_server_watchdog.sh",
+   "evidence": "scripts/portfolio_server_watchdog.sh:22-24 touch heartbeat every run (healthy or not); action log ~/logs/portfolio_server_watchdog.log only on events; host mtime 2026-10-09T16:18:01 (*/2 schedule)"
+  },
+  "pro-analyst-fetch": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/pro_analyst_coverage_history.json"
+   },
+   "verified_token": "pro_analyst_coverage_history.json",
+   "source_file": "scripts/pro_analyst_monitor.py",
+   "evidence": "scripts/pro_analyst_monitor.py:17,141 HIST.write_text(updated_at, snapshots) - final step of fetch->read_model->monitor chain (pills_latest.json is also rewritten by other jobs, so not used); host mtime 2026-10-09T06:17:24"
+  },
+  "recommendation-intelligence-engine": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/rec_source_quality_latest.json"
+   },
+   "verified_token": "rec_source_quality_latest.json",
+   "source_file": "scripts/recommendation_intelligence_engine.py",
+   "evidence": "scripts/recommendation_intelligence_engine.py:527 compute_source_quality() writes latest multipliers every run (called :831); host mtime 2026-10-09T07:10:07"
+  },
+  "refresh-symbol-cards": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/symbol_cards_latest.json"
+   },
+   "verified_token": "symbol_cards_latest.json",
+   "source_file": "scripts/refresh_symbol_cards.py",
+   "evidence": "scripts/refresh_symbol_cards.py:20 CARDS_FILE atomic os.replace on SUCCESS only (refuses <30 cards / timeout); host mtime 2026-10-07T06:41:30 (10-08,10-09 runs logged 'materialize failed: timed out' -> signal correctly stale)"
+  },
+  "reporting-engine": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/analyst_eligible_cache.json"
+   },
+   "verified_token": "analyst_eligible_cache.json",
+   "source_file": "scripts/reporting_engine.py",
+   "evidence": "scripts/reporting_engine.py:351 _ELIGIBLE_CACHE written by eligible_report_payload(use_cache=False) (:400); host mtime 2026-10-09T16:15:04"
+  },
+  "research-intelligence-materialize": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/ri_snapshots/top.json"
+   },
+   "verified_token": "ri_snapshots",
+   "source_file": "scripts/research_intelligence_materialize.py",
+   "evidence": "scripts/research_intelligence_materialize.py:36 SNAP_DIR, per-lane {lane}.json written at :96-98 (top.json); host mtime 2026-10-09T06:35:02"
+  },
+  "run-broker-proposal-curator": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/broker_curator_last.json"
+   },
+   "verified_token": "broker_curator_last.json",
+   "source_file": "scripts/broker_proposal_curator.py",
+   "evidence": "scripts/broker_proposal_curator.py:32 CURATOR_STATE_PATH written on --apply (:421; wrapper always passes --apply; dev-tree data/runtime symlinks to state root); host mtime 2026-10-09T16:00:16"
+  },
+  "run-ensemble-worker": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/runtime/ensemble_worker_heartbeat.json",
+    "key": "at"
+   },
+   "verified_token": "ensemble_worker_heartbeat.json",
+   "source_file": "scripts/inference_ensemble_worker.py",
+   "evidence": "scripts/inference_ensemble_worker.py:168 _write_heartbeat() every run (:153/:157), launcher also appends logs/ensemble_worker.log; host mtime 2026-10-09T16:21:01"
+  },
+  "run-options-monitor": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/options_paper_monitor_last.json"
+   },
+   "verified_token": "options_paper_monitor_last.json",
+   "source_file": "scripts/lib/options_pipeline/paper_monitor_ops.py",
+   "evidence": "scripts/lib/options_pipeline/paper_monitor_ops.py:10 RUNTIME_PATH written via run_pipeline_hook from scripts/run_options_monitor.py:30 (launcher runs dev tree; data/runtime symlinked to state root); host mtime 2026-10-09T16:05:29"
+  },
+  "run-options-paper-position-monitor": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_paper_monitor.log"
+   },
+   "verified_token": "logs/options_paper_monitor.log",
+   "source_file": "linux_launchers/run_options_paper_position_monitor.sh",
+   "evidence": "linux_launchers/run_options_paper_position_monitor.sh launcher redirect >> logs/options_paper_monitor.log in dev tree (script writes no file, DB only); host mtime 2026-10-08T17:10:03"
+  },
+  "run-pullback-macd-screener": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/pullback_macd_screener.log"
+   },
+   "verified_token": "logs/pullback_macd_screener.log",
+   "source_file": "linux_launchers/run_pullback_macd_screener.sh",
+   "evidence": "linux_launchers/run_pullback_macd_screener.sh:7 launcher appends screener output (runs in dev tree); host mtime 2026-10-08T16:40:22"
+  },
+  "run-scheduled-strategy-audits": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "logs/strategy_audits.log"
+   },
+   "verified_token": "strategy_audits.log",
+   "source_file": "scripts/run_scheduled_strategy_audits.sh",
+   "evidence": "scripts/run_scheduled_strategy_audits.sh:9 LOG=$PROJ/logs/strategy_audits.log, every run appends '=== strategy audits <ts> ===' block; host mtime 2026-10-08T17:05:04"
+  },
+  "run-scheduled-two-way-curation-desk": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "logs/two_way_curation_cron.log"
+   },
+   "verified_token": "two_way_curation_cron.log",
+   "source_file": "scripts/run_scheduled_two_way_curation.sh",
+   "evidence": "scripts/run_scheduled_two_way_curation.sh:50 log() tee -a START/DONE desk-emit lines each run (shared by both modes); host mtime 2026-10-09T15:50:06"
+  },
+  "run-scheduled-two-way-curation-options": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "logs/two_way_curation_cron.log"
+   },
+   "verified_token": "two_way_curation_cron.log",
+   "source_file": "scripts/run_scheduled_two_way_curation.sh",
+   "evidence": "scripts/run_scheduled_two_way_curation.sh:50 log() tee -a START/DONE options-edge lines each run (shared by both modes); host mtime 2026-10-09T15:50:06"
+  },
+  "run-sec-form4-momentum-context": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/runtime/sec_form4_momentum_context_latest.json",
+    "key": "generated_at"
+   },
+   "verified_token": "sec_form4_momentum_context_latest.json",
+   "source_file": "scripts/run_sec_form4_momentum_context.py",
+   "evidence": "scripts/run_sec_form4_momentum_context.py:27 CONTEXT_ARTIFACT written with --apply (:127; skipped only if DB unavailable); host mtime 2026-10-09T09:49:03 (05:45 start, long run; log ends 09:49:03)"
+  },
+  "run-warrior-weekly-audit": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/audit/warrior_weekly_latest.json"
+   },
+   "verified_token": "warrior_weekly_latest.json",
+   "source_file": "scripts/warrior_weekly_audit_cron.py",
+   "evidence": "scripts/warrior_weekly_audit_cron.py:41-42 latest_json panel (data/audit symlinked to state root); host mtime 2026-10-05T13:30:02 (Mon)"
+  },
+  "shadow-batch-generator-at-15-10": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/shadow_batch_status.json"
+   },
+   "verified_token": "shadow_batch_status.json",
+   "source_file": "scripts/shadow_batch_generator.py",
+   "evidence": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
+  },
+  "shadow-batch-generator-at-15-9": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/shadow_batch_status.json"
+   },
+   "verified_token": "shadow_batch_status.json",
+   "source_file": "scripts/shadow_batch_generator.py",
+   "evidence": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
+  },
+  "source-outcome-attribution": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/source_vetting_actions_latest.json"
+   },
+   "verified_token": "source_vetting_actions_latest.json",
+   "source_file": "scripts/source_vetting_ladder.py",
+   "evidence": "scripts/source_vetting_ladder.py:18,63 ACTIONS.write_text(updated_at, actions) - last step of the attribution->maturity->vetting chain (source_maturity.py:21,126 also writes source_maturity_latest.json); host mtime 2026-10-09T05:45:02"
+  },
+  "strategy-tilt": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/strategy_tilt_latest.json"
+   },
+   "verified_token": "strategy_tilt_latest.json",
+   "source_file": "scripts/strategy_tilt.py",
+   "evidence": "scripts/strategy_tilt.py:26 _JSON written after DB commit (:72); host mtime 2026-10-08T16:25:01"
+  },
+  "strategy-weekly-review": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/portfolios/state/strategy_weekly_review_latest.json"
+   },
+   "verified_token": "strategy_weekly_review_latest.json",
+   "source_file": "scripts/strategy_weekly_review.py",
+   "evidence": "scripts/strategy_weekly_review.py:95,448 STATE_FILE.write_text(snapshot) (CURRENT/data/portfolios/state is symlink into state root); host mtime 2026-10-04T10:30:01 (Sun 10:30 schedule)"
+  },
+  "sweep-schwab-instruments": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/schwab_instrument_evidence.json"
+   },
+   "verified_token": "schwab_instrument_evidence.json",
+   "source_file": "scripts/lib/schwab_instrument_evidence.py",
+   "evidence": "scripts/lib/schwab_instrument_evidence.py:34 EVIDENCE_RELATIVE; scripts/sweep_schwab_instruments.py:191-192 save_evidence(doc) unconditionally when --apply; host mtime 2026-10-03T03:30:31 (cron 30 3 * * 6)"
+  },
+  "systemd-tmpfiles-clean": {
+   "declared_state": {
+    "state": "NEVER_SCHEDULED",
+    "state_since": "2026-10-09",
+    "reason_confidence": "ESTABLISHED",
+    "state_reason": "OS-shipped user unit (vendor preset enabled) that is not enabled in this user session: ActiveState inactive, LastTriggerUSec empty — it has never fired. Not a Trade AI producer.",
+    "reason_evidence": "systemctl --user show systemd-tmpfiles-clean.timer (read-only) 2026-10-09; docs/audits/overnight/W2_UNDECLARED_CENSUS_2026-09-01.md (OS user timers)"
+   }
+  },
+  "topic-curator-at-30-9-13": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/topic_curator_latest.json"
+   },
+   "verified_token": "topic_curator_latest.json",
+   "source_file": "scripts/topic_curator.py",
+   "evidence": "scripts/topic_curator.py:52,683 main() always calls _write_desk_projection -> data/runtime/topic_curator_latest.json (generated_at); shared by both curator lanes; host mtime 2026-10-09T13:34:56"
+  },
+  "topic-curator-ensemble": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/topic_curator_latest.json"
+   },
+   "verified_token": "topic_curator_latest.json",
+   "source_file": "scripts/topic_curator.py",
+   "evidence": "scripts/topic_curator.py:52,683 main() always calls _write_desk_projection -> data/runtime/topic_curator_latest.json (generated_at); shared by both curator lanes; host mtime 2026-10-09T13:34:56"
+  },
+  "topic-ingestion": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/topic_ingestion_latest.json"
+   },
+   "verified_token": "topic_ingestion_latest.json",
+   "source_file": "scripts/topic_ingestion.py",
+   "evidence": "scripts/topic_ingestion.py:72 _write_desk_projection; host mtime 2026-10-08T16:56:43 (02:45 run PEAK_SKIPped per log)"
+  },
+  "tradeai-active-trader-motion-service": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/active_trader/motion_runtime_heartbeat.json"
+   },
+   "verified_token": "motion_runtime_heartbeat.json",
+   "source_file": "scripts/active_trader/motion_runtime.py",
+   "evidence": "scripts/active_trader/motion_runtime.py:41 _DEFAULT_HEARTBEAT, _write_heartbeat (:412) each cycle; host path set by ACTIVE_TRADER_MOTION_HEARTBEAT in ~/.config/tradeai/active-trader-motion.env to the dev tree (release-relative default does not exist); host mtime 2026-10-09T16:23:12",
+   "owner": "scalp"
+  },
+  "tradeai-advisory-notif-broker": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/advisory_notif_broker/metrics.json"
+   },
+   "verified_token": "metrics.json",
+   "source_file": "scripts/lib/advisory/notification_broker.py",
+   "evidence": "scripts/lib/advisory/notification_broker.py:26 METRICS_PATH, rewritten by process_window() at :213 every 'process' run; host mtime 2026-10-09T16:00:04 (timer hourly)",
+   "owner": "comms"
+  },
+  "tradeai-advisory-shadow-session": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/advisory_shadow/sessions.jsonl"
+   },
+   "verified_token": "sessions.jsonl",
+   "source_file": "scripts/lib/advisory/shadow_session.py",
+   "evidence": "scripts/lib/advisory/shadow_session.py:28 SESSIONS_PATH appended by run_shadow_session (:217) per --once run (scoreboard.json :286 also rewritten); dev-tree data/runtime symlinks to state root; host mtime 2026-10-09T09:28:40 (timer Mon..Fri 09:15)"
+  },
+  "tradeai-agent-runtime-atlas": {
+   "declared_state": {
+    "state": "RETIRED",
+    "state_since": "2026-09-16",
+    "reason_confidence": "CORRELATED",
+    "state_reason": "Orphan persona timer: 'atlas' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal (who disabled it is not recorded).",
+    "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'atlas' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09"
+   }
+  },
+  "tradeai-agent-runtime-concierge": {
+   "declared_state": {
+    "state": "RETIRED",
+    "state_since": "2026-09-16",
+    "reason_confidence": "CORRELATED",
+    "state_reason": "Orphan persona timer: 'concierge' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal (who disabled it is not recorded).",
+    "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'concierge' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09"
+   }
+  },
+  "tradeai-agent-runtime-hermes": {
+   "declared_state": {
+    "state": "RETIRED",
+    "state_since": "2026-09-16",
+    "reason_confidence": "CORRELATED",
+    "state_reason": "Orphan persona timer: 'hermes' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal (who disabled it is not recorded).",
+    "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'hermes' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09"
+   }
+  },
+  "tradeai-agent-runtime-pulse": {
+   "declared_state": {
+    "state": "RETIRED",
+    "state_since": "2026-09-16",
+    "reason_confidence": "CORRELATED",
+    "state_reason": "Orphan persona timer: 'pulse' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal (who disabled it is not recorded).",
+    "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'pulse' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09"
+   }
+  },
+  "tradeai-iris-taxonomy": {
+   "declared_state": {
+    "state": "PAUSED",
+    "state_since": "2026-09-27",
+    "reason_confidence": "ESTABLISHED",
+    "review_by": "2026-10-16",
+    "state_reason": "Duplicates the iris_taxonomy_agent.py cron lines with different arguments; kept disabled since 2026-09-27. Retiring it is approval item O-4 (retiring a writer, AGENTS §17) — operator decision open.",
+    "reason_evidence": "docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md:495; docs/architecture/cognitive_transformation_20260927/11_APPROVAL_PACKAGE.md (O-4)"
+   }
+  },
+  "volatility-tier-refresh": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/state/volatility_tiers_latest.json"
+   },
+   "verified_token": "volatility_tiers_latest.json",
+   "source_file": "scripts/volatility_tier_refresh.py",
+   "evidence": "scripts/volatility_tier_refresh.py:27 STATE_OUT; host mtime 2026-10-09T06:45:02"
+  },
+  "watch-valuation-backfill": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/state/valuation_supplement_cache.json"
+   },
+   "verified_token": "valuation_supplement_cache.json",
+   "source_file": "scripts/watch_valuation_backfill.py",
+   "evidence": "scripts/watch_valuation_backfill.py:45 SUPPLEMENT written at :184; host mtime 2026-10-09T06:53:15"
+  }
+ }
+}

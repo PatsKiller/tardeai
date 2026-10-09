@@ -192,4 +192,4 @@ def test_options_reconcile_lane_is_declared_and_out_of_baseline():
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     ids = {l["lane_id"] for l in reg["lanes"]}
     assert "reconcile-alpaca-paper-options" in ids
-    assert not [b for b in reg["undeclared_baseline"] if "reconcile_alpaca_paper_options" in b]
+    assert not [b for b in (reg.get("undeclared_baseline") or []) if "reconcile_alpaca_paper_options" in b]

@@ -60,6 +60,10 @@ def main() -> int:
                          "crontab and no systemd, so live discovery returns empty "
                          "there and a gate that can only pass would look correct.")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--no-exemptions", action="store_true",
+                    help="exit 1 when the registry carries any undeclared_baseline or inherited_tranches "
+                         "entry. 2026-10-09 (N8N maturity B1): the 476-entry baseline reached 0; every live "
+                         "cron line, timer and platform service has a row, so an exemption is now a regression.")
     ap.add_argument("--state-drift", action="store_true",
                     help="also classify each lane's declared state against the host (timer enabled? cron line "
                          "present?). 2026-10-07: two NEVER_SCHEDULED rows were running and this gate said clean.")
@@ -105,6 +109,11 @@ def main() -> int:
         return EXIT_CANNOT_RUN
 
     errors = validate_registry(reg)
+    exemptions = len(reg.get("undeclared_baseline") or []) + sum(
+        len(t.get("lines") or []) for t in reg.get("inherited_tranches") or [])
+    if args.no_exemptions and exemptions:
+        errors.append(f"registry carries {exemptions} undeclared-baseline/inherited-tranche exemption(s); "
+                      "the baseline is retired (B1 2026-10-09) — declare the job as a lane instead")
     if args.discovery_json:
         try:
             found = json.loads(Path(args.discovery_json).read_text(encoding="utf-8"))
@@ -169,7 +178,7 @@ def main() -> int:
         drift_conflicts = conflicts(drift_rows)
 
     if args.json:
-        print(json.dumps({"declared": len(rows), "active": active,
+        print(json.dumps({"declared": len(rows), "active": active, "exemptions": exemptions,
                           "state_drift": drift_rows if args.state_drift else None,
                           "state_drift_conflicts": [r["lane_id"] for r in drift_conflicts],
                           "errors": errors, "undeclared": undeclared,
@@ -179,7 +188,7 @@ def main() -> int:
                           "correlated_reason_lanes": correlated}, indent=2))
     else:
         print(f"declared lanes          : {len(rows)}  ({active} ACTIVE)")
-        print(f"inherited-debt baseline : {len(reg.get('undeclared_baseline') or [])}")
+        print(f"inherited-debt baseline : {len(reg.get('undeclared_baseline') or [])}  (exemptions total {exemptions})")
         for _t in reg.get("inherited_tranches") or []:
             print(f"inherited tranche {_t.get('added')}: {len(_t.get('lines') or [])} lines — {str(_t.get('reason'))[:90]}…")
         print(f"reason ESTABLISHED     : "
