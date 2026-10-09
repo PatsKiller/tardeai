@@ -27,7 +27,6 @@ scripts/check_deep_overnight_health.py 2
 scripts/cio_event_brief.py 1
 scripts/claude_escalation_handler.py 2
 scripts/cloud_consensus_verdict.py 1
-scripts/continuous_runner.py 1
 scripts/credential_monitor.py 1
 scripts/cron_self_heal.py 1
 scripts/defense_execution.py 1
