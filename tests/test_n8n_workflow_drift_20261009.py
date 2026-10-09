@@ -148,14 +148,15 @@ def test_an_unsubstituted_placeholder_matches_git_but_is_flagged(tmp_path):
     assert rows[0]["status"] == D.OK and rows[0]["placeholder_unsubstituted"] is True
 
 
-def test_receipt_shape_counts_and_unwired_fanin_findings(tmp_path):
+def test_receipt_shape_counts_and_wired_fanin_findings(tmp_path):
     bad = _live(_git_doc())
     bad["nodes"][0]["parameters"]["rule"]["interval"][0]["expression"] = "* * * * *"
     rows = _eval(tmp_path, [bad])
     rec = D.build_receipt(rows, source="fixture")
     assert rec["schema"] == "N8nWorkflowDriftReceipt@v1" and rec["verdict"] == "DRIFT"
     assert rec["counts"] == {"OK": 0, "DRIFT": 1, "MISSING_IN_GIT": 0}
-    assert rec["fanin_wired"] is False
+    assert rec["fanin_wired"] is True
+    assert rec["fanin_findings"][0]["severity"] == "P2"
     assert rec["fanin_findings"][0]["source"] == "n8n_workflow_drift"
     assert rec["fanin_findings"][0]["artifact_rel"] == "data/runtime/n8n_workflow_drift_last.json"
 

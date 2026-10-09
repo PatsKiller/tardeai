@@ -1424,7 +1424,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
-| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `9ff8ae2ffa76` |
+| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `bba647ff6d2c` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `7ebd947c4dfa` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |
 | `docs/implementation/n8n-parallel/00-fact-reconciliation.md` | Fact reconciliation | review_required | MISSING HEADER | `f0da125c7130` |
@@ -1461,7 +1461,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
 | `docs/implementation/n8n-parallel/proposals/S2-dof-bind-and-role.md` | Proposal S2 — DOF app exposure and database role | review_required | OK | `df85877b88a0` |
 | `docs/implementation/n8n-parallel/proposals/config-write-grant-n1-20261008.md` | Config-write grant packet — N1 night (2026-10-08) | review_required | OK | `d766579de909` |
-| `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `77196f9bf014` |
+| `docs/implementation/n8n-parallel/proposals/cron-rank3-health-tick.md` | Cron consolidation RANK 3 — the health tick (proposal), 2026-10-07 | review_required | MISSING HEADER | `58aced1385fa` |
 | `docs/implementation/n8n-parallel/proposals/cron-rank4-maintenance-pipeline.md` | Cron consolidation RANK 4 — platform maintenance pipeline (PROPOSAL) | review_required | OK | `91ba4c978d19` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-a-decisions.md` | Cron tranche A — operator decisions (2026-10-07) | review_required | MISSING HEADER | `cff41e44423f` |
 | `docs/implementation/n8n-parallel/proposals/cron-tranche-b-cutover-plan-20261008.md` | Cron tranche B — cutover readiness and compressed plan (2026-10-08) | review_required | OK | `335afbe4b093` |

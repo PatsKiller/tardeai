@@ -54,7 +54,9 @@ RSI_OVERSOLD = 30.0
 DAYS_HELD_LONG = 180               # threshold for long-held position review
 RISK_SCORE_HIGH = 70.0              # risk score above which AVOID is considered
 HOLD_MIN_WEIGHT_PCT = 1.0           # positions below this weight are flagged for housekeeping
-IPS_MAX_POSITION_PCT = 8.0          # IPS single-position max (FIX-3 plausibility gate)
+IPS_MAX_POSITION_PCT = 8.0          # FALLBACK only: the IPS single-position max is read from
+                                    # config/investment_policy_statement.json constraints.max_single_position_pct
+                                    # via ips_max_position_pct() (FIX-3 plausibility gate)
 
 # ── Plausibility gate thresholds (FIX-3) ──────────────────────────────────
 MAX_ANY_VERDICT_PCT = 30.0          # no single verdict >30% of holdings rows
@@ -1158,6 +1160,23 @@ def _row_hash(row: dict[str, Any]) -> str:
 CONFIG_DIR = PROJECT_ROOT / "config"
 
 
+def ips_max_position_pct(config_dir: Path | None = None) -> float:
+    """The ratified IPS single-position max, read from the IPS config.
+
+    The validator and `_load_ips` used the hardcoded 8.0 while the IPS says
+    12.0 (operator policy 2026-10-03). Every holding between the two failed
+    `validation_ok`, so the Phase 5 shadow session exited 1 every day from
+    2026-09-30 (SCHD at 10.45%). Falls back to IPS_MAX_POSITION_PCT only when
+    the config is missing or the value is not a positive number.
+    """
+    raw = _load_json((config_dir or CONFIG_DIR) / "investment_policy_statement.json")
+    try:
+        v = float((raw.get("constraints") or {}).get("max_single_position_pct"))
+    except (TypeError, ValueError, AttributeError):
+        return IPS_MAX_POSITION_PCT
+    return v if v > 0 else IPS_MAX_POSITION_PCT
+
+
 def _load_model_portfolio() -> dict[str, Any]:
     raw = _load_json(CONFIG_DIR / "model_portfolio.json")
     return raw.get("strategic_allocation", {}) if raw.get("strategic_allocation") else raw
@@ -1253,7 +1272,7 @@ def _load_ips() -> dict[str, Any]:
     raw = _load_json(CONFIG_DIR / "investment_policy_statement.json")
     return {
         "state": "AVAILABLE",
-        "max_position_pct": IPS_MAX_POSITION_PCT,
+        "max_position_pct": ips_max_position_pct(),
         "beta_target": _f(raw.get("risk_tolerance", {}).get("target_beta") or raw.get("target_beta")),
     }
 
@@ -3481,6 +3500,7 @@ def validate_advisory_output(output: dict[str, Any]) -> list[str]:
 
     seen_symbols: set[str] = set()
     total_weight_pct = 0.0
+    ips_max = ips_max_position_pct()
     holdings_rows_count = 0
     holdings_verdicts: dict[str, int] = {}
     confidences: list[float] = []
@@ -3535,10 +3555,10 @@ def validate_advisory_output(output: dict[str, Any]) -> list[str]:
             holdings_verdicts[verdict_str] = holdings_verdicts.get(verdict_str, 0) + 1
 
             # FIX-3: IPS max position check (>8% without flag)
-            if wp is not None and wp > IPS_MAX_POSITION_PCT:
+            if wp is not None and wp > ips_max:
                 if "overweight" not in (row.get("risk_signals") or []):
                     errors.append(
-                        f"{symbol}: weight_pct {wp}% exceeds IPS max {IPS_MAX_POSITION_PCT}% "
+                        f"{symbol}: weight_pct {wp}% exceeds IPS max {ips_max}% "
                         f"without overweight risk signal"
                     )
 
