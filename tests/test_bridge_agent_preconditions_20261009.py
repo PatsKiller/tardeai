@@ -97,6 +97,15 @@ def _governed(monkeypatch: pytest.MonkeyPatch, projected: float = 0.002, *, fall
         return {"process_id": pid, "registered": True, "mode": "automated", "fallback_allowed": fallback_allowed,
                 "deepseek_allowed_policies": ["PRO", "PRO_THINK", "FAST", "FAST_THINK"],
                 "max_input_tokens": 16000, "max_output_tokens": 2048, "daily_soft_cap": 40, "daily_cost_cap_usd": 1.0}
+    from lib import llm_consumption
+    original_registry_process = llm_consumption._registry_process
+
+    def registry_process(pid):
+        row = original_registry_process(pid)
+        return {**row, "fallback_allowed": fallback_allowed} if row is not None else None
+
+    # Both raw-file and normalized consumption boundaries carry the explicit fixture grant.
+    monkeypatch.setattr(llm_consumption, "_registry_process", registry_process)
     monkeypatch.setattr("lib.llm_consumption.get_process_config", cfg)
     monkeypatch.setattr("lib.llm_consumption.reserve_projected_cost", ledger["reserve"])
     monkeypatch.setattr("lib.llm_consumption.settle_reservation", ledger["settle"])

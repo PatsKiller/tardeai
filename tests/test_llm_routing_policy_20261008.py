@@ -710,7 +710,7 @@ def test_measured_healthy_still_routes_when_unknown_would_refuse(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("TRADEAI_LLM_ROUTING_POLICY", str(_policy_copy(tmp_path, on_health_unknown="refuse")))
-    health = {"checked_at": "2026-10-09T12:00:00Z", "worst_severity": "OK", "findings": []}
+    health = _fresh_recovered_health("deepseek")
     health_path = tmp_path / "health.json"
     health_path.write_text(json.dumps(health), encoding="utf-8")
     monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(health_path))
