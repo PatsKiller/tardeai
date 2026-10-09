@@ -2,13 +2,33 @@
 
 Status: ACTIVE
 Owner: Agent A (release coordination); John (operator authorization)
-as_of: 2026-10-09T11:53:24-04:00
-Measured at: local CADI-01 fixtures on base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; no current release verification
-Current ticket: **CADI-01 APPROVAL VERIFIED; PEER INDEX HANDOFF / FINAL ACCEPTANCE PENDING**
+as_of: 2026-10-09T14:46:01-04:00
+Measured at: CADI-01 source `3c1c294fa22a68609e4e54b3f32fb40ed57da1d0`, integrated main `cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf`; local fixture/regression proof, not a CADI release
+Current ticket: **CADI-01 LOCAL ACCEPTANCE PASS; EXACT-SHA PUSH APPROVAL / AGENT A PR REVIEW PENDING**
 Full cross-asset recommendation: **NOT READY**
-Current test results: **155 post-approval targeted PASS; native authority PASS**; final full acceptance not run; prior adversarial **15 PASS**
+Current test results: **80 canonical PASS; full acceptance exit 0; all 348 parallel units + 20 serial gates PASS; authority zero findings; adversarial 15 PASS**
 
-### Latest authority checkpoint
+### Latest bill checkpoint — local validation complete, not deployed
+
+Agent A authorized INDEX regeneration on this isolated feature branch. Main through #1568 was
+integrated normally at `3c1c294fa22a68609e4e54b3f32fb40ed57da1d0`; all newer gates and active
+policy were preserved. Exactly one native acceptance run with two workers finished **exit 0**,
+all local green flags true, release **17/17**, canonical **80/80**, adversarial **15/15**, authority
+**zero findings**. No timing rerun or second full run. Independent read-only integration review
+cleared the candidate. Full transcript SHA256:
+`32e25c491d5dde3f158c9081e99784ba77179bc18ff6be4fdc8a875a1c7c30bb`, retained at
+`~/cadi-evidence/cadi01-main-acceptance-20261009-Fk5shS/acceptance.log`.
+The Test Plan retains skipped/expected-failure execution counts and the exact measured base.
+
+Before: approvals verified, but integration/index/full acceptance still pending.
+After: local CADI-01 foundation accepted; final documentation/index checkpoint precedes an
+exact-SHA native git-push request. **No CADI PR, merge, deployment or runtime activation yet.**
+Agent A reviews and merges the PR. Later main commits/promotions are other agents' work and do
+not make this unpushed foundation live. No release-write/service/scheduler authority is requested
+for this ticket. Production reader flag remains off; no new production store is created.
+Full cross-asset EV/replay/decision-shadow readiness stays **NOT READY / NO_PROVEN_WINNER**.
+
+### Named authority checkpoint — 11:53 EDT (historical before-state)
 
 John approved the two named CADI-01 registrations with sole writer
 `scripts/lib/cross_asset/decision_store.py`, explicitly without production activation.
@@ -45,17 +65,17 @@ writer activation and an honest gate finding, not an invented approval record.
 
 Agent A reviews the PR and controls its merge. Required local acceptance/normal pre-push and
 exact-SHA push authorization are not waived. No author self-merge or deployment. CADI-01 now
-implements the contract, adapters and explicit-path fixture writer, registers both proposed
-stores and classifies four schemas. Source approvals are pending; the authority gate remains red.
-Local targeted proof is 84 PASS and release-equivalent source checks are 17/17 PASS; this does not
-complete Bill 1 until actual approval, final acceptance and Agent A review/merge. No PR or push yet.
+implements the contract, adapters and explicit-path fixture writer, registers both operator-approved
+stores and classifies four schemas. Source approvals and final local acceptance now pass.
+Current proof is 80 canonical tests, release 17/17 and the full native wrapper exit 0; this does
+not complete Bill 1 until the exact-SHA push approval and Agent A review/merge. No PR or push yet.
 
-The full run exited 1 for missing source approvals and missing audit-read edges. The latter was
+The earlier, pre-approval full run exited 1 for missing source approvals and missing audit-read edges. The latter was
 repaired with a bounded, read-only adapter to the existing operator-artifacts audit panel;
 focused completeness and a combined 111-test run passed. This is not CADI-07's comparison UI,
 not production activation, and not a second store writer. Production read needs both approved
 registry records and an independent activation flag, currently off. A final scoped result is
-recorded at checkpoint; full acceptance must rerun after actual source approval.
+recorded at checkpoint; the fresh post-approval/integrated full run now passed as recorded above.
 
 ### Bill 2 — Source linking, economics and frozen model
 

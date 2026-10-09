@@ -2,13 +2,65 @@
 
 Status: ACTIVE  
 Owner: Agent A and independent QA; Parfit model owner, Halley independent model-risk reviewer
-as_of: 2026-10-09T11:53:24-04:00
-Measured at: isolated CADI-01 clone on base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; fixtures only
-Current ticket: **CADI-01 APPROVAL VERIFIED; PEER INDEX HANDOFF / FINAL ACCEPTANCE PENDING**
+as_of: 2026-10-09T14:46:01-04:00
+Measured at: isolated CADI-01 source `3c1c294fa22a68609e4e54b3f32fb40ed57da1d0`, integrated main `cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf`; fixtures/regression only
+Current ticket: **CADI-01 LOCAL ACCEPTANCE PASS; EXACT-SHA PUSH APPROVAL / AGENT A PR REVIEW PENDING**
 Program readiness: **NOT READY**
-Current results: **155 post-approval targeted PASS; native authority PASS**; final full acceptance **NOT RUN**; prior adversarial **15 PASS**
+Current results: **80 canonical PASS; full acceptance exit 0; native authority zero findings; adversarial 15 PASS**; prior overlapping post-approval targeted **155 PASS**
 
-### Source-approval checkpoint — 2026-10-09
+### Latest integrated acceptance — 2026-10-09 14:46 EDT
+
+This supersedes the earlier pending-index/full-acceptance states without changing their retained
+failure receipts. Tested source: `3c1c294fa22a68609e4e54b3f32fb40ed57da1d0`, merged base
+`cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf` (includes #1568). Branch-local INDEX regeneration is
+authorized by Agent A; the peer lease was not taken over or altered. No production flag/store
+activation, deployment, broker access or trade occurred.
+
+Command: `CIO_CI_JOBS=2 bash scripts/ai_local_acceptance.sh`, with the shared primary `.venv/bin`
+first on PATH, cwd `~/tradeai-wt-cadi01-20261009`. A read-only preflight confirmed the worktree's
+isolated `m2_shadow_test_231db057820d` on the test cluster exists; sandbox network restrictions
+were handled with explicit escalation, not by letting unavailable database tests silently skip.
+Exactly one full wrapper run; **no file-scoped timing rerun and no second full run**.
+
+| Validation | Exact observed result |
+|---|---|
+| Canonical acceptance wrapper | **exit 0**, `ready_to_request_sync: true`; targeted/regression/release-equivalent/authority flags all true |
+| Policy hook tests | 11 passed in each of the wrapper's two invocations; overlapping, not 22 unique tests |
+| Release-equivalent | **17/17 PASS**, 52.13s |
+| Native CIO runner | **348 parallel units + 20 serial gates PASS**, jobs 2, wall 1372s |
+| Canonical CADI-01 | **80 passed**, 2.67s |
+| Existing cross-asset regression batch | **47 passed**, 58.78s; overlaps other registered suites |
+| Existing v1 phase-one suite | **11 passed**, 0.51s |
+| Scalp-universe inherited failure | **12 passed**, 0.89s after integrating main's #1568 fix; not weakened locally |
+| Separate adversarial suite | **15 passed**, 1.92s |
+| Authority | **findings=0**; 54/54 domains and 22/22 providers approved; one writer per new CADI store |
+| Dark contracts / host paths | NEW unexplained 0; uncompilable 0; NEW host-path violations 0 |
+| Generated source-of-truth / INDEX | `stale: none`; inventory fingerprint `23795e636da9` matched during acceptance |
+| Independent integration review | No blocking findings; all 336 prior gates/141 classifications preserved, one gate/four classifications additive |
+
+The 368 native unit-result lines report **11,510 passed test executions, 62 skipped executions
+and two expected failures**. Counts include repeated registrations and are not a unique-test
+total. Skipped/optional integration paths and expected-failure controls are not silently described
+as executed/live validation. No historical replay, priced option superiority, organic 14-day
+decision-shadow or live CADI consumer is demonstrated by this fixture/regression run.
+
+Evidence packet: `~/cadi-evidence/cadi01-main-acceptance-20261009-Fk5shS/` contains the **complete**
+`acceptance.log`, generated `adv_html/` and `adv_units/` exports, and the PR-body draft. Transcript
+SHA256: `32e25c491d5dde3f158c9081e99784ba77179bc18ff6be4fdc8a875a1c7c30bb`.
+All four runtime/test hashes in the final-source table below remain unchanged. The final Git
+checkpoint changes only plan/test/bill evidence and the generated index, not tested runtime code.
+Governed read-only integration verifier receipt: `3566869b-137d-4078-9d4f-4e0ce3b97183`.
+Current local proof is complete; exact-SHA native push approval, remote PR/CI, Agent A review/
+merge and any later separate release/activation remain distinct gates. Main advanced during
+the run; its later, untested changes are not silently included in this accepted candidate.
+
+Post-evidence documentation checks (14:50 EDT): INDEX and generated source-of-truth match;
+line-ending range check has no churn across 21 tranche files; whole-tree secret/hardcoded-value
+scan passed (10,162 files); SOP integrity `ok=true`, control digest
+`4a56308b83ea1608e8cf6210611d68f2deec384f8b75e048e1dd4cc14bbaf52a`, no errors.
+Only the three owned evidence documents and generated INDEX change after the tested commit.
+
+### Source-approval checkpoint — 2026-10-09 11:53 EDT (historical before-state)
 
 John's explicit approval of both named stores and their sole writer is retained in the
 [approval archive manifest](governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009).

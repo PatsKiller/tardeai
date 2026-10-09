@@ -2,15 +2,50 @@
 
 Status: ACTIVE  
 Owner: Agent A (program supervisor); CADI implementation agent (ticket delivery)
-as_of: 2026-10-09T11:53:24-04:00
-Measured at: isolated CADI-01 clone, base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; fixture evidence, not live behavior
+as_of: 2026-10-09T14:46:01-04:00
+Measured at: isolated CADI-01 source `3c1c294fa22a68609e4e54b3f32fb40ed57da1d0`, integrated main `cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf`; fixture/regression evidence, not live behavior
 Program readiness: **NOT READY**
-Current ticket: **CADI-01 APPROVAL VERIFIED; PEER INDEX HANDOFF / FINAL ACCEPTANCE PENDING**
-Current tests: **155 post-approval targeted PASS**; full acceptance not green; prior adversarial **15 PASS**
+Current ticket: **CADI-01 LOCAL ACCEPTANCE PASS; EXACT-SHA PUSH APPROVAL / AGENT A PR REVIEW PENDING**
+Current tests: **80 canonical PASS; full native acceptance exit 0; 348 parallel units + 20 serial gates PASS; adversarial 15 PASS**; earlier overlapping targeted run **155 PASS**
 Authority: approved revised CADI plan and Agent A's four binding additions, recorded in the operator conversation
 Canonical repo path: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
 
-### Latest checkpoint — named registration approval
+### Latest checkpoint — integrated main and one-pass acceptance
+
+Status: LOCAL ACCEPTANCE COMPLETE; remote/release steps pending. Date: 2026-10-09.
+Commit tested: `3c1c294fa22a68609e4e54b3f32fb40ed57da1d0`. Agent A's explicit ruling permits
+INDEX generation in this isolated feature branch without taking another session's shared lease.
+Main `cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf` was merged normally; all newer gates,
+classifications and ratified AGENTS.md 3.0.0 policy were preserved. The index was regenerated
+after staging and checked. No peer worktree, lease or production state was edited.
+
+Exactly **one** `bash scripts/ai_local_acceptance.sh` ran with `CIO_CI_JOBS=2`, the shared
+interpreter and the isolated `m2_shadow_test_231db057820d` database. Result: **exit 0**,
+`ready_to_request_sync: true`, all four local green flags true. Release-equivalent **17/17**;
+all **348 parallel units and 20 serial gates**; canonical v2 **80/80**; adversarial **15/15**;
+authority **zero findings**, one writer for each CADI store; dark-contract NEW **0**;
+host-path NEW **0**; source-of-truth `stale: none`. No timing-file or full-suite rerun occurred.
+The native unit lines report **11,510 passed test executions, 62 skipped executions and two
+expected failures**. These are execution counts, not unique tests; optional/skipped paths are
+not live proof. Detailed before/after evidence is in the Test Plan.
+
+Complete transcript: `~/cadi-evidence/cadi01-main-acceptance-20261009-Fk5shS/acceptance.log`,
+SHA256 `32e25c491d5dde3f158c9081e99784ba77179bc18ff6be4fdc8a875a1c7c30bb`.
+This run's generated adversarial HTML/unit exports were moved into that same evidence packet,
+preserved rather than deleted. Runtime/test source hashes are unchanged from the reviewed
+approval checkpoint. Independent integration review found no blocking issues: all **336**
+existing gates and **141** classification entries retained; one gate and four classifications
+added. Read-only governed verifier receipt: `3566869b-137d-4078-9d4f-4e0ce3b97183`.
+
+Before: named approvals were fixed, but the final integration/index/acceptance were pending.
+After: integrated candidate is locally accepted; a documentation-only checkpoint and index
+regeneration record it. Exact-SHA native push approval is requested only after that checkpoint.
+Agent A owns PR review and merge; this agent does not merge, deploy or activate CADI. The
+supervisor's main advanced during this one-pass run, so the PR must disclose its tested base;
+no second, untested tree is silently called accepted. Full program stays NOT READY,
+NO_PROVEN_WINNER, with no downstream branch before CADI-01 merge.
+
+### Named registration checkpoint — 11:53 EDT (historical before-state)
 
 John replied "approved" to the explicit request naming `cross_asset_evaluation_history`,
 `cross_asset_decision_projection`, their sole writer `scripts/lib/cross_asset/decision_store.py`
@@ -39,9 +74,10 @@ This revision controls future work. The complete September document below is pre
 historical evidence, including its original execution claims. Its v1-only design, timer proposal,
 delete-module rollback, self-review and weaker readiness criteria are **not** current instructions.
 Approval of this engineering plan is not an operator data-source grant, retention decision, model
-promotion, workflow activation, merge or deployment authorization. At this base AGENTS.md 3.0.0 is
-PROPOSED; its header names 2.0.1 as governing until ratification. Apply the current ratified text
-and the safer rule, not an authority expansion inferred from a proposed amendment.
+promotion, workflow activation, merge or deployment authorization. The original source base
+advertised AGENTS.md 3.0.0 as PROPOSED; integrated main now records its operator ratification and
+ACTIVE status. Apply the current ratified text and the safer rule; ratification alone does not
+activate a runtime capability or grant financial authority.
 
 ### Before state and delivery boundaries
 
@@ -51,7 +87,7 @@ and the safer rule, not an authority expansion inferred from a proposed amendmen
 | `scripts/lib/cross_asset/expression_router.py` | Structural routing; candidate `expected_value` is null | No priced or model-validated superiority demonstrated |
 | `scripts/ops/run_cross_asset_historical_replay.py` | Archive-present branch explicitly returns zero evaluated signals and says replay is not implemented | No fresh replay performed; no invented replay metrics |
 | Retained readiness/test documents | 30/60/90-day table is 0/0/0; eight-test pass belongs to September | Historical evidence, not acceptance of CADI-01 |
-| Current local ticket | No unified v2 history/projection writer | Local implementation and 84 passing targeted tests; approval/acceptance/PR/merge/deployment remain distinct gates |
+| Current local ticket | No unified v2 history/projection writer | Canonical v2 fixture writer, named approvals, 80 canonical tests and full acceptance now pass; PR/merge/deployment/activation remain distinct gates |
 
 The separate decision object must consume existing CIO-owned research, identity and positions
 readers; it must not create private thesis stores or a second positions writer. Missing identity,

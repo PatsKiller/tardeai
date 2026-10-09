@@ -41,10 +41,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/COST_INTELLIGENCE_ARCHITECTURE.md` | Investment Cost Intelligence — Architecture (v1.2, 2026-07-19) | review_required | OK | `940b9795fc24` |
 | `docs/COST_MODEL.md` | Trade AI v12 -- Cloud Operating Cost Model | review_required | OK | `4de73e25bfea` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md` | Cross-Asset Decision Intelligence — Executable Backlog | review_required | OK | `d4bb770cd770` |
-| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md` | Cross-Asset Decision Intelligence — Master Implementation Plan | review_required | OK | `b7ef5d172ed3` |
-| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md` | Production bill — what “READY” means for Cross-Asset Decision Intelligence | review_required | OK | `7c7ed0e60c1c` |
+| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md` | Cross-Asset Decision Intelligence — Master Implementation Plan | review_required | OK | `4149d30e9edd` |
+| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md` | Production bill — what “READY” means for Cross-Asset Decision Intelligence | review_required | OK | `5750eb11ead9` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md` | Cross-Asset Decision Intelligence — Readiness Report | review_required | OK | `0101e148e885` |
-| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md` | Cross-Asset Decision Intelligence — Test Plan | review_required | OK | `2ac2a83595f5` |
+| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md` | Cross-Asset Decision Intelligence — Test Plan | review_required | OK | `f974e29ec8f2` |
 | `docs/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | OK | `5233c7dcd2e0` |
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
