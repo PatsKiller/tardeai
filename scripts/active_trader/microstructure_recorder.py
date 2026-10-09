@@ -326,10 +326,9 @@ def main(argv=None) -> int:
         symbols_fn = lambda: fixed  # noqa: E731
         conn = None
     else:
-        from db_adapter import get_connection
-        conn = get_connection()
         day = datetime.now(ET).date().isoformat()
-        symbols_fn = lambda: live_symbols(conn, cfg, rcfg, day)  # noqa: E731
+        symbols_fn = lambda: live_symbols(live_conn(), cfg, rcfg, day)  # noqa: E731
+        conn = live_conn()
     acfg = ma.AlertConfig.from_mapping(cfg.get("active_trader_alerts"))
     src = MoomooSource(levels=rcfg.book_levels, prints=rcfg.tape_prints)
     on_tick = None
@@ -338,7 +337,7 @@ def main(argv=None) -> int:
             from active_trader import exit_watch as ew
         except ModuleNotFoundError:  # pragma: no cover
             from scripts.active_trader import exit_watch as ew
-        ticks = [ew.ticker(cfg, conn_fn=(lambda: conn), alert_cfg=acfg)]
+        ticks = [ew.ticker(cfg, conn_fn=(live_conn if conn is not None else (lambda: None)), alert_cfg=acfg)]
         # Sub-minute alert sync (2026-10-05): the fast trigger loop is a pure CONSUMER of what this
         # recorder just published; it runs on the same tick, so no second process or subscription.
         try:
@@ -364,11 +363,35 @@ def main(argv=None) -> int:
     if not dry and conn is not None:
         try:   # end of window: build replays + learning records for today (best effort)
             from active_trader import trade_replay as tr
-            print(json.dumps({"replay": tr.run_day(datetime.now(ET).date().isoformat(), conn=conn, apply=True)},
+            print(json.dumps({"replay": tr.run_day(datetime.now(ET).date().isoformat(), conn=live_conn(), apply=True)},
                              default=str)[:2000])
         except Exception as e:  # noqa: BLE001
             print(f"[recorder] end-of-window replay failed: {type(e).__name__}: {e}")
     return 0
+
+
+_CONN: dict = {"conn": None}
+
+
+def live_conn():
+    """The recorder runs for the whole window (hours) on one connection; the server drops idle ones and every
+    later use failed "InterfaceError: connection already closed" (tick consumer + end-of-window replay,
+    recurring across sessions — 2026-10-09). Hand out a connection that is checked and reopened."""
+    from db_adapter import get_connection
+
+    c = _CONN["conn"]
+    try:
+        if c is not None and not getattr(c, "closed", 0):
+            with c.cursor() as cur:   # no rollback here: never discard a consumer's uncommitted work
+                cur.execute("SELECT 1")
+            return c
+    except Exception:  # noqa: BLE001 — broken: reopen below
+        try:
+            c.close()
+        except Exception:  # noqa: BLE001
+            pass
+    _CONN["conn"] = get_connection()
+    return _CONN["conn"]
 
 
 if __name__ == "__main__":

@@ -198,9 +198,18 @@ def test_a_live_pid_file_on_the_lane_lock_is_run_skipped_lock(bench):
 
 def test_flock_kind_reuses_a_cron_style_lock_and_reports_conflict_as_skipped(bench):
     lock = bench["locks"] / "fl.lock"
-    holder = subprocess.Popen(["flock", str(lock), "sleep", "30"], start_new_session=True)
+    ready = bench["locks"] / "fl.holder-ready"
+    # the holder signals only AFTER flock has acquired the lock (the inner sh runs under it); a fixed
+    # sleep raced the holder's startup on a loaded host and let the executor take the lock first.
+    holder = subprocess.Popen(
+        ["flock", str(lock), "sh", "-c", 'touch "$0" && exec sleep 300', str(ready)], start_new_session=True
+    )
     try:
-        time.sleep(0.3)
+        deadline = time.monotonic() + 60  # hang guard only
+        while not ready.exists():
+            assert holder.poll() is None, "lock holder exited before acquiring the lock"
+            assert time.monotonic() < deadline, "lock holder never acquired the lock"
+            time.sleep(0.01)
         _request(bench["ledger"], "run-flock-0000000001", "flock-lane", "live", T0)
         _once(bench)
     finally:
