@@ -455,3 +455,211 @@ def test_file_sources_hash_file_bytes_and_type_their_failures(tmp_path):
         with pytest.raises(D.DueSourceError) as exc:
             loader()
         assert exc.value.code == code
+
+
+# ── review blockers (PR #1602 round 2) ──────────────────────────────────────────────────────────
+
+def _et(hh, mm, day=9):
+    """An instant given in America/New_York wall time on 2026-10-<day> (EDT, UTC-4)."""
+    return datetime(2026, 10, day, hh + 4, mm, tzinfo=timezone.utc)
+
+
+def _check(rows, allow, store, key, lane, mode, now):
+    return D.check_slot_key(key, lane, mode, registry_rows=rows, allowlist=allow, policies=POLICIES,
+                            run_store=store, now=now)
+
+
+def test_retry_chain_stays_in_view_after_the_slot_leaves_the_catchup_window(store):
+    """Blocker 2 probe: daily lane, catchup 60 (transient-2), attempt 1 times out at slot+58m. Its :a2 is due at
+    slot+59 and must stay due after slot+60 until it is handled (or reported MISSED once retry_at + catchup
+    passes); a2's own failure must still mint :a3."""
+    rows = [_row("r-lane", ["0 9 * * *"])]
+    allow = _allow("r-lane")
+    base = "d:r-lane:dry_run:20261009T0900"
+    _put(store, base, "r-lane", "dry_run", "RUN_TIMEOUT", finished=_et(9, 58), attempt=1)
+    for now in (_et(9, 59), _et(10, 1), _et(10, 58)):
+        resp = _due(rows, allow, store, now=now)
+        assert _keys(resp) == [base + ":a2"], now
+        assert resp["items"][0]["reason"] == "retry" and resp["items"][0]["attempt"] == 2
+        _validate(resp)
+    c = _check(rows, allow, store, base + ":a2", "r-lane", "dry_run", _et(10, 1))
+    assert c.ok and c.state == "RETRY_DUE" and c.attempt == 2 and c.parent_run_id == base and c.slot_key == base
+    # never handled: once retry_at (09:58:30) + catchup (60) passes it is reported, not silently dropped
+    late = _due(rows, allow, store, now=_et(10, 59))
+    assert late["items"] == [] and late["counts"]["MISSED"] == 1
+    m = _held(late, "MISSED")[0]
+    assert m["slot_local"] == "20261009T0900" and m["retry_at"] == "2026-10-09T13:58:30Z"
+    assert not _check(rows, allow, store, base + ":a2", "r-lane", "dry_run", _et(10, 59)).ok
+    _validate(late)
+    # handled: a2 requested at 10:05 is IN_FLIGHT out of the window; its failure at 10:20 mints a3 at 10:22
+    _put(store, base + ":a2", "r-lane", "dry_run", "RUNNING", finished=None, attempt=2)
+    assert _due(rows, allow, store, now=_et(10, 30))["counts"]["IN_FLIGHT"] == 1
+    store._l._conn.execute("UPDATE runs SET state='RUN_FAILED', exit_code=75, finished_at=? WHERE run_id=?",
+                           (_et(10, 20).isoformat(), base + ":a2"))
+    store._l._conn.commit()
+    wait = _due(rows, allow, store, now=_et(10, 21))
+    assert wait["items"] == [] and _held(wait, "RETRY_WAIT")[0]["retry_at"] == "2026-10-09T14:22:00Z"
+    assert _keys(_due(rows, allow, store, now=_et(10, 23))) == [base + ":a3"]
+
+
+def test_settled_and_rearmed_slots_outside_the_window_drop_out(store):
+    rows = [_row("s-lane", ["0 9 * * *"])]
+    base = "d:s-lane:dry_run:20261009T0900"
+    _put(store, base, "s-lane", "dry_run", "RUN_DONE", finished=_et(9, 5))
+    resp = _due(rows, _allow("s-lane"), store, now=_et(11, 0))
+    assert resp["items"] == [] and sum(resp["counts"].values()) == 0      # DONE, out of window: not in view
+    # a released dead letter re-arms inside the catch-up window only (design 02 §3.3)
+    _put(store, base.replace("s-lane", "x-lane"), "x-lane", "dry_run", "RUN_FAILED", exit_code=75,
+         finished=_et(9, 3))
+    xrows = [_row("x-lane", ["0 9 * * *"])]
+    xkey = "d:x-lane:dry_run:20261009T0900"
+    store.record_dead_letter(slot_key=xkey, lane_id="x-lane", mode="dry_run", slot_local="20261009T0900", attempts=3,
+                             last_run_id=xkey, last_state="RUN_FAILED", last_reason=None, verdict="retryable",
+                             now=_et(9, 30).timestamp(), klass="monitor", max_attempts=3, policy="transient-2")
+    store.release_dead_letter(xkey, "operator", "late release", _et(10, 30).timestamp())
+    assert _due(xrows, _allow("x-lane"), store, now=_et(11, 0))["items"] == []
+
+
+def _design_example(store, *, soft, upstream_mode="live"):
+    """Design 02 §2 example: planning after close-capture, catchup 60, deadline 90 (> catchup)."""
+    edge = {"lane_id": "close-capture", "same_day": True, "deadline_min": 90}
+    if soft:
+        edge["soft"] = True
+    rows = [_row("close-capture", ["0 9 * * *"], mode=upstream_mode),
+            _row("planning", ["30 9 * * *"], mode="live", catchup=60, after=[edge])]
+    allow = {**_allow("planning", live=("--write",)), **_allow("close-capture", live=("--write",))}
+    return rows, allow
+
+
+def test_design_example_soft_deadline_beyond_catchup_releases_then_catches_up(store):
+    """Blocker 3: a soft deadline (90) longer than catchup (60) must release the slot at the deadline."""
+    rows, allow = _design_example(store, soft=True)
+    key = "d:planning:live:20261009T0930"
+    w = _due(rows, allow, store, now=_et(10, 45), lane_filter=["planning"])        # slot+75: past catchup
+    assert w["items"] == [] and _held(w, "WAITING_AFTER")[0]["wait_deadline"] == "2026-10-09T15:00:00Z"
+    assert w["errors"] == []
+    r = _due(rows, allow, store, now=_et(11, 5), lane_filter=["planning"])         # soft deadline 11:00 passed
+    assert _keys(r) == [key] and r["items"][0]["reason"] == "catchup"
+    assert _check(rows, allow, store, key, "planning", "live", _et(11, 5)).ok
+    _validate(r)
+    gone = _due(rows, allow, store, now=_et(12, 1), lane_filter=["planning"])      # release + catchup passed
+    assert gone["items"] == [] and _held(gone, "MISSED")[0]["slot_local"] == "20261009T0930"
+    assert not _check(rows, allow, store, key, "planning", "live", _et(12, 1)).ok
+
+
+def test_design_example_hard_edge_stays_visible_past_its_deadline_then_runs_when_released(store):
+    rows, allow = _design_example(store, soft=False)
+    key = "d:planning:live:20261009T0930"
+    w = _due(rows, allow, store, now=_et(11, 5), lane_filter=["planning"])
+    held = _held(w, "WAITING_AFTER")
+    assert w["items"] == [] and held[0]["wait_deadline"] == "2026-10-09T15:00:00Z"   # < now: after_deadline_missed
+    assert held[0]["waiting_on"] == ["close-capture"]
+    assert _check(rows, allow, store, key, "planning", "live", _et(11, 5)).state == "WAITING_AFTER"
+    # past deadline + catchup with no predecessor: out of view, reported MISSED
+    assert _held(_due(rows, allow, store, now=_et(12, 1), lane_filter=["planning"]), "MISSED")
+    # the predecessor finally runs at 11:10: the slot is released and catches up for 60 minutes from then
+    _put(store, "d:close-capture:live:20261009T0900", "close-capture", "live", "RUN_DONE", finished=_et(11, 10))
+    assert _keys(_due(rows, allow, store, now=_et(11, 15), lane_filter=["planning"])) == [key]
+    assert _keys(_due(rows, allow, store, now=_et(12, 9), lane_filter=["planning"])) == [key]
+    assert _due(rows, allow, store, now=_et(12, 11), lane_filter=["planning"])["items"] == []
+
+
+def test_soft_edge_without_deadline_uses_the_config_default(store):
+    edge = {"lane_id": "close-capture", "soft": True}
+    rows = [_row("close-capture", ["0 9 * * *"]), _row("planning", ["30 9 * * *"], after=[edge])]
+    allow = _allow("planning", "close-capture")
+    dflt = D.CONFIG.soft_after_default_deadline_min
+    before = _due(rows, allow, store, now=_et(9, 30) + timedelta(minutes=dflt - 1), lane_filter=["planning"])
+    assert _held(before, "WAITING_AFTER")[0]["wait_deadline"] == D._iso_z(_et(9, 30) + timedelta(minutes=dflt))
+    after = _due(rows, allow, store, now=_et(9, 30) + timedelta(minutes=dflt), lane_filter=["planning"])
+    assert _keys(after) == ["d:planning:dry_run:20261009T0930"]
+
+
+def test_sub_hourly_soft_edge_counts_its_deadline_from_the_first_fire_of_the_day(store):
+    """The newest slot of an every-minute lane is never older than a minute: a deadline from the slot would
+    never pass and the lane would wait forever."""
+    rows = [_row("incident-fanin", ["*/5 * * * *"]),
+            _row("incident-notify", ["* * * * *"], after=[{"lane_id": "incident-fanin", "soft": True,
+                                                           "deadline_min": 20}])]
+    allow = _allow("incident-fanin", "incident-notify")
+    early = _due(rows, allow, store, now=_et(0, 10), lane_filter=["incident-notify"])
+    assert early["items"] == []
+    assert _held(early, "WAITING_AFTER")[0]["wait_deadline"] == "2026-10-09T04:20:00Z"   # 00:00 ET + 20
+    late = _due(rows, allow, store, now=_et(0, 25), lane_filter=["incident-notify"])
+    assert _keys(late) == ["d:incident-notify:dry_run:20261009T0025"]
+    hard = [rows[0], _row("incident-notify", ["* * * * *"], after=[{"lane_id": "incident-fanin",
+                                                                     "deadline_min": 20}])]
+    h = _due(hard, allow, store, now=_et(0, 25), lane_filter=["incident-notify"])
+    assert h["items"] == [] and _held(h, "WAITING_AFTER")[0]["wait_deadline"] == "2026-10-09T04:20:00Z"
+
+
+def test_unsatisfiable_after_edges_are_reported_and_the_lane_still_evaluated(store):
+    rows = [_row("cron-up", ["0 9 * * *"], mode="off"),
+            _row("dry-up", ["0 9 * * *"], mode="dry_run"),
+            _row("live-up", ["0 9 * * *"], mode="live"),
+            _row("after-cron", ["30 9 * * *"], after=[{"lane_id": "cron-up", "soft": True, "deadline_min": 20}]),
+            _row("after-dry", ["30 9 * * *"], mode="live", after=[{"lane_id": "dry-up", "deadline_min": 20}]),
+            _row("dry-after-live", ["30 9 * * *"], after=[{"lane_id": "live-up", "deadline_min": 20}])]
+    allow = {**_allow("cron-up", "dry-up", "after-cron", "dry-after-live"),
+             **_allow("live-up", "after-dry", live=("--write",))}
+    resp = _due(rows, allow, store, lane_filter=["after-cron", "after-dry", "dry-after-live"])
+    codes = {e["lane_id"]: e["code"] for e in resp["errors"]}
+    assert codes == {"after-cron": "after_not_dispatched", "after-dry": "after_mode_unsatisfiable"}
+    assert _keys(resp) == ["d:after-cron:dry_run:20261009T0930"]               # soft: released at 09:50
+    assert {h["lane_id"] for h in _held(resp, "WAITING_AFTER")} == {"after-dry", "dry-after-live"}
+    _validate(resp)
+
+
+def test_missed_reports_only_the_latest_fire_before_the_window(store):
+    rows = [_row("m-lane", ["0 7 * * *", "0 8 * * *"])]                     # two fires, both before the window
+    resp = _due(rows, _allow("m-lane"), store)
+    assert [h["slot_local"] for h in _held(resp, "MISSED")] == ["20261009T0800"]
+
+
+@pytest.mark.parametrize("patch,needle", [
+    ({"schema": "nope"}, "schema"),
+    ({"max_limit": 101}, "max_limit"),
+    ({"max_lane_filter": 9}, "max_lane_filter"),
+    ({"max_held": True}, "max_held"),
+    ({"default_limit": 60, "max_limit": 50}, "default_limit"),
+    ({"tz": "Mars/Olympus"}, "tz"),
+    ({"extra": 1}, "unknown"),
+    ({"soft_after_default_deadline_min": 0}, "soft_after"),
+])
+def test_due_config_is_validated(tmp_path, patch, needle):
+    doc = json.loads((ROOT / "config" / "n8n_due.json").read_text(encoding="utf-8"))
+    doc.update(patch)
+    p = tmp_path / "due.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(D.DueConfigError) as exc:
+        D.load_due_config(p)
+    assert needle in str(exc.value)
+    with pytest.raises(D.DueConfigError):
+        D.load_due_config(tmp_path / "missing.json")
+
+
+def test_due_config_feeds_the_module_bounds():
+    cfg = D.load_due_config()
+    assert cfg == D.CONFIG
+    assert (D.DEFAULT_TZ, D.DEFAULT_LIMIT, D.MAX_LIMIT, D.MAX_LANE_FILTER, D.MAX_HELD) == \
+        (cfg.tz, cfg.default_limit, cfg.max_limit, cfg.max_lane_filter, cfg.max_held)
+
+
+# ── #1595 contract: dispatch_eligible(row) -> (bool, reason) refuses B1 reconcile markers ───────
+
+_NEEDS_1595 = pytest.mark.xfail(
+    strict=False,
+    reason="lane_dispatch.dispatch_eligible learns stay_on_cron / KEEP_ON_CRON in PR #1595 (head de68a240f); "
+           "passes once #1595 lands, n8n_due already routes every lane through dispatch_eligible(row)")
+
+
+@_NEEDS_1595
+@pytest.mark.parametrize("marker", [{"stay_on_cron": True}, {"recommendation": "KEEP_ON_CRON"},
+                                    {"rationalization": {"recommendation": "KEEP_ON_CRON"}}])
+def test_stay_on_cron_rows_are_lane_not_dispatched(store, marker):
+    rows = [_row("kept-lane", ["30 9 * * *"], **marker)]
+    resp = _due(rows, _allow("kept-lane"), store)
+    assert resp["items"] == [] and sum(resp["counts"].values()) == 0
+    assert D.validate_slot_key("d:kept-lane:dry_run:20261009T0930", "kept-lane", "dry_run", registry_rows=rows,
+                               allowlist=_allow("kept-lane"), policies=POLICIES, run_store=store,
+                               now=NOW) == (False, "LANE_NOT_DISPATCHED")

@@ -37,7 +37,9 @@ RELAY_CALLER = "n8n-relay"
 #: operation `due` only). It computes what is due from the registry; it writes nothing and runs nothing.
 ALLOWED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run", "coordination/due"})
 DUE_ROUTE = "coordination/due"
-#: `now` on a due request is advisory; more than this many seconds from the gateway clock is refused.
+#: `now` on a due request is advisory; more than this many seconds from the gateway clock is refused
+#: (`due_clock_skew`). The value is the design's, not a tunable: docs/implementation/n8n-maturity/
+#: 02-six-workflow-architecture.md §3.1 line 117 ("refuses `now` values more than 90 s from it") and failure row F12.
 DUE_MAX_SKEW_S = 90
 ALLOWED_PROJECTS = frozenset({"trade-ai", "nyc-dof-auction"})
 PILOT_LANES = frozenset(
@@ -337,9 +339,9 @@ def _due_mod():
 
 
 def _due_refused(code: str, peer) -> dict[str, Any]:
-    out = _refused(None, code, peer_ignored=peer)
-    out.update({"schema": "DueResponse@v1", "ok": False, "refused": code})
-    return out
+    """A due refusal is the gateway's ordinary typed refusal ({state: REFUSED, reason}); it does NOT carry the
+    DueResponse@v1 label, whose schema is closed and describes only a computed answer."""
+    return _refused(None, code, peer_ignored=peer)
 
 
 def _load_due_inputs(due_sources, run_allowlist):
@@ -437,14 +439,30 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sour
     requested_by = request.get("requested_by")
     if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
         return _refused(None, "malformed_event", peer_ignored=peer)
-    if run_id.startswith(("d:", "e:", "g:")):
+    if run_id[:2].lower() in ("d:", "e:", "g:"):
         # 2026-10-09 (B5.3, design 02 §3.3): a server-minted slot key. A replay of an accepted key returns the
         # existing row (it is IN_FLIGHT/DONE now, so it is no longer DUE); otherwise compute_due must currently
-        # hold this exact key DUE or RETRY_DUE in this mode, or n8n invented the slot.
+        # hold this exact key DUE or RETRY_DUE in this mode, or n8n invented the slot. The prefix test is
+        # case-insensitive so `D:`/`E:`/`G:` cannot bypass the check as a "legacy" key: only the exact lower-case,
+        # well-formed form is accepted, and its lane/mode must be the request's (a replay never returns another
+        # lane's row).
+        D = _due_mod()
+        parsed = D.parse_key(run_id)
+        if parsed is None:
+            out = _refused(None, "run_slot_not_due", peer_ignored=peer)
+            out["slot_state"] = "MALFORMED_KEY"
+            return out
+        if parsed[1] != lane_id or parsed[2] != mode:
+            out = _refused(None, "run_slot_not_due", peer_ignored=peer)
+            out["slot_state"] = "KEY_MISMATCH"
+            return out
         existing = run_store.get(run_id)
         if existing is not None:
+            if existing.get("lane_id") != lane_id or existing.get("mode") != mode:
+                out = _refused(None, "run_slot_not_due", peer_ignored=peer)
+                out["slot_state"] = "KEY_MISMATCH"
+                return out
             return _run_envelope(existing, True, run_store)
-        D = _due_mod()
         try:
             rows, _rsha, entries, _asha, policies, _psha = _load_due_inputs(due_sources, run_allowlist)
         except GatewayError:

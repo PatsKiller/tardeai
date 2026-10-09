@@ -136,7 +136,8 @@ def test_due_clock_skew(stores, delta, ok):
     if ok:
         assert out["ok"] is True
     else:
-        assert out["state"] == "REFUSED" and out["reason"] == "due_clock_skew" and out["refused"] == "due_clock_skew"
+        assert out["state"] == "REFUSED" and out["reason"] == "due_clock_skew"
+        assert out["schema"] != "DueResponse@v1"       # a refusal is the typed receipt, not the closed due schema
 
 
 @pytest.mark.parametrize("body,code", [
@@ -149,7 +150,7 @@ def test_due_clock_skew(stores, delta, ok):
 ])
 def test_due_typed_refusals(stores, body, code):
     out = _due(stores, **body)
-    assert out["state"] == "REFUSED" and out["reason"] == code and out["ok"] is False
+    assert out["state"] == "REFUSED" and out["reason"] == code and out["schema"] != "DueResponse@v1" and "ok" not in out
 
 
 @pytest.mark.parametrize("fail,code", [("registry", "registry_unreadable"), ("allowlist", "allowlist_unreadable"),
@@ -211,6 +212,33 @@ def test_run_refuses_a_key_that_is_not_currently_due(stores, key, mode, state):
     out = _run(stores, key, mode=mode)
     assert out["state"] == "REFUSED" and out["reason"] == "run_slot_not_due" and out["slot_state"] == state
     assert stores[3].get(key) is None
+
+
+@pytest.mark.parametrize("key", [
+    f"D:{LANE}:dry_run:20261009T0930",                    # upper-case prefix is not a legacy key
+    f"E:{LANE}:dry_run:20261009T0930",
+    f"g:{LANE}:DRY_RUN:20261009T0930",
+    f"d:{LANE.upper()}:dry_run:20261009T0930",
+])
+def test_run_refuses_case_variants_of_server_minted_prefixes(stores, key):
+    out = _run(stores, key)
+    assert out["state"] == "REFUSED" and out["reason"] == "run_slot_not_due"
+    assert out["slot_state"] in ("MALFORMED_KEY", "KEY_MISMATCH")
+    assert stores[3].get(key) is None
+
+
+def test_run_replay_naming_another_lane_is_refused_not_answered(stores):
+    assert _run(stores, KEY_0930)["state"] == "REQUESTED"
+    out = _run(stores, KEY_0930, lane="backup-verify")
+    assert out["state"] == "REFUSED" and out["slot_state"] == "KEY_MISMATCH" and "run_id" not in out
+    out = _run(stores, KEY_0930, mode="live")
+    assert out["state"] == "REFUSED" and out["slot_state"] == "KEY_MISMATCH"
+    # defence in depth: a stored row whose lane differs from its key is never returned as a duplicate
+    odd = f"d:{LANE}:dry_run:20261009T0800"
+    stores[3].request(run_id=odd, lane_id="backup-verify", mode="dry_run", requested_by="t", caller_id="t",
+                      now=NOW.timestamp())
+    out = _run(stores, odd)
+    assert out["state"] == "REFUSED" and out["slot_state"] == "KEY_MISMATCH"
 
 
 def test_run_slot_key_for_an_unknown_lane_keeps_the_allowlist_refusal(stores):
@@ -302,9 +330,63 @@ def test_relay_due_forwards_query_caps_limit_and_rejects_bad_queries(tmp_path, s
 
 def test_relay_due_relays_a_gateway_refusal(tmp_path, stores):
     relay = _relay(tmp_path, stores)
-    status, body = relay.due(f"Bearer {BEARER}", "source=cron")
-    assert status == 403 and body["reason"] == "bad_source"
-    assert _log_lines(tmp_path)[-1]["state"] == "REFUSED" and _log_lines(tmp_path)[-1]["reason"] == "bad_source"
+    status, body = relay.due(f"Bearer {BEARER}", "lane=no-such-lane")
+    assert status == 403 and body["reason"] == "bad_lane_filter"
+    assert _log_lines(tmp_path)[-1]["state"] == "REFUSED" and _log_lines(tmp_path)[-1]["reason"] == "bad_lane_filter"
+
+
+def test_relay_due_limit_accepts_only_short_ascii_digits(tmp_path, stores):
+    """Blocker: str.isdigit() accepts Unicode digits ('²' -> int() ValueError, '١٢' -> 12) and arbitrarily long
+    digit strings (int() of > 4300 digits raises). Only 1..3 ASCII digits reach int()."""
+    seen = []
+
+    def transport(url, payload):
+        seen.append(payload)
+        return 200, {"schema": "DueResponse@v1", "ok": True, "items": [], "truncated": 0}
+
+    relay = _relay(tmp_path, stores, transport=transport)
+    for bad in ("limit=%C2%B2", "limit=%D9%A1%D9%A2", "limit=%EF%BC%91", "limit=" + "1" * 5000, "limit=1000",
+                "limit=0100", "limit=-1", "limit=+5", "limit= 5"):
+        status, body = relay.due(f"Bearer {BEARER}", bad)
+        assert status == 400 and body["reason"] == "relay_bad_query", bad[:40]
+    assert seen == []
+    assert relay.due(f"Bearer {BEARER}", "limit=999")[0] == 200 and seen[-1]["limit"] == D.MAX_LIMIT
+    assert relay.due(f"Bearer {BEARER}", "limit=7")[0] == 200 and seen[-1]["limit"] == 7
+
+
+def test_relay_due_validates_source_and_lane_count_before_logging(tmp_path, stores):
+    seen = []
+
+    def transport(url, payload):
+        seen.append(payload)
+        return 200, {"schema": "DueResponse@v1", "ok": True, "items": [], "truncated": 0}
+
+    relay = _relay(tmp_path, stores, transport=transport)
+    for bad in ("source=cron", "source=" + "x" * 5000, "source=SCHEDULE"):
+        status, body = relay.due(f"Bearer {BEARER}", bad)
+        assert status == 400 and body["reason"] == "relay_bad_query"
+    nine = ",".join(f"lane-{i}" for i in range(D.MAX_LANE_FILTER + 1))
+    assert relay.due(f"Bearer {BEARER}", f"lane={nine}")[0] == 400
+    assert relay.due(f"Bearer {BEARER}", "lane=" + "a" * 5000)[0] == 400
+    assert seen == []
+    for line in _log_lines(tmp_path):                    # the raw source never reaches the log
+        assert "source" not in line and len(json.dumps(line)) < 512
+    eight = ",".join(f"lane-{i}" for i in range(D.MAX_LANE_FILTER))
+    assert relay.due(f"Bearer {BEARER}", f"source=event&lane={eight}")[0] == 200
+    assert len(seen[-1]["lane_filter"]) == D.MAX_LANE_FILTER
+
+
+def test_relay_and_gateway_take_the_due_bounds_from_one_config():
+    cfg = json.loads((ROOT / "config" / "n8n_due.json").read_text(encoding="utf-8"))
+    assert (R.DUE_DEFAULT_LIMIT, R.DUE_MAX_LIMIT, R.DUE_MAX_LANES, R.DUE_SOURCES) == \
+        (cfg["default_limit"], cfg["max_limit"], cfg["max_lane_filter"], D.SOURCES)
+    assert (D.DEFAULT_LIMIT, D.MAX_LIMIT, D.MAX_LANE_FILTER, D.MAX_HELD, D.DEFAULT_TZ) == \
+        (cfg["default_limit"], cfg["max_limit"], cfg["max_lane_filter"], cfg["max_held"], cfg["tz"])
+    schema = json.loads((ROOT / "docs/implementation/n8n-maturity/schemas/due-response.schema.json").read_text())
+    assert D.MAX_LIMIT <= schema["properties"]["limit"]["maximum"]
+    assert D.MAX_LANE_FILTER <= schema["properties"]["lane_filter"]["maxItems"]
+    assert D.MAX_HELD <= schema["properties"]["held"]["maxItems"]
+    assert G.DUE_MAX_SKEW_S == 90                        # design 02 §3.1 (line 117) and F12
 
 
 def test_relay_run_with_a_due_key_end_to_end(tmp_path, stores):

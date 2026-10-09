@@ -14,7 +14,17 @@ Slot identity. Slots come from `cron_schedule.fires_between(expr, now - catchup_
 end inclusive, DST gap fires once at the first valid minute, fold fires once on fold 0), so the key
 `d:<lane>:<mode>:<YYYYMMDDTHHMM local>` is one per local wall-clock minute. Attempt n > 1 appends `:a<n>` (n ≤ 9).
 `catchup_min` is the block's own value, else the retry policy's. A sub-hourly lane (any cron that can fire twice in
-an hour) keeps only its newest slot and never replays a backlog.
+an hour) keeps only its newest slot and never replays a backlog (a newer fire supersedes an older retry chain).
+
+Older slots in view (daily-or-slower lanes). A slot that fired before the catch-up window is still evaluated when
+it has unfinished business, looking back max(catchup, config retry_view_lookback_min, deadline + catchup of each
+`after` edge): an IN_FLIGHT attempt; a retry chain while now < retry_at + catchup (after that it is held MISSED
+with its retry_at, never silently dropped); an after-gated attempt-1 slot still waiting while now < its latest
+deadline + catchup, or released by its gate while now < release + catchup (reason catchup). DONE / DEAD_LETTER
+slots drop out, and a released dead letter re-arms inside the catch-up window only.
+
+Bounds (tz, limit, lane filter, held, the lookback, the soft-edge default deadline) come from config/n8n_due.json
+(N8nDueConfig@v1), loaded at import; the gateway and relay import them from here.
 
 State per slot (design §3.2 table; the slot's runs are the rows whose run_id is the base key or base `:a<n>`):
   DUE            no row, no dead letter                                          → item, attempt 1
@@ -30,20 +40,27 @@ State per slot (design §3.2 table; the slot's runs are the rows whose run_id is
   WAITING_AFTER  attempt-1 slot whose `after` predecessor has no RUN_DONE in the required mode on the slot's local
                  day (same_day, default) or in the 24 h before the slot (same_day false). A live lane needs a
                  LIVE predecessor run; a dry_run lane accepts dry_run or live. Soft edges stop waiting at
-                 slot + deadline_min; hard edges keep waiting (the watcher raises after_deadline_missed).
+                 slot + deadline_min (config soft_after_default_deadline_min when the edge has none); hard edges
+                 keep waiting (the watcher raises after_deadline_missed on wait_deadline < now). A sub-hourly
+                 lane counts deadlines from its first fire of the local day. Takes precedence over BREAKER_OPEN.
                                                                                  → held, wait_deadline, waiting_on
   BREAKER_OPEN   the lane's breaker is open (ledger.breaker_is_open) and the slot would otherwise be emitted
                                                                                  → held
-  MISSED         the most recent fire BEFORE the window has no row and no dead letter (daily-or-slower lanes
-                 only; one lookup per cron expression)                           → held, report only
+  MISSED         the most recent fire at or before the window start has no row, no dead letter and is not in
+                 view (daily-or-slower lanes only; only that ONE latest fire, one lookup per cron expression, so
+                 older gaps are not re-reported); or an older retry chain that expired un-requested
+                                                                                 → held, report only
 Mode filter everywhere: keys carry the mode, so a dry_run row never satisfies a live slot.
 
 Lanes are considered only when the row's dispatch mode is not off, `lane_dispatch.dispatch_eligible` passes (a
 forbidden lane is skipped silently, whatever its block says — check_lane_registry reports it) and the allowlist
 supports the mode. Per-lane defects go to `errors[]` and never stop other lanes: not_allowlisted,
 unknown_retry_policy, class_not_permitted (pre-R1 classes AND the policy's permitted_classes),
-after_unknown_lane, bad_cron (an unparseable cron in a block whose mode is dry_run/live). Any other malformed
-dispatch block is mode off (lane_dispatch fails closed) and is reported by check_lane_registry, not here.
+after_unknown_lane, bad_cron (an unparseable cron in a block whose mode is dry_run/live). Two `after` codes keep
+the lane evaluated: after_not_dispatched (the predecessor is off / on cron / ineligible, so it writes no ledger
+row and the edge can only time out) and after_mode_unsatisfiable (a live lane after a dry_run-dispatched
+predecessor). Any other malformed dispatch block is mode off (lane_dispatch fails closed) and is reported by
+check_lane_registry, not here.
 
 `source` "event" and "digest" (design §6, §9) are NOT computed yet: they return the schema shape with no items
 (follow-up: event cursors / digest windows).
@@ -81,15 +98,70 @@ NO_CONSUMER_REASON = (
 
 SCHEMA = "DueResponse@v1"
 SOURCES = ("schedule", "event", "digest")
-DEFAULT_TZ = "America/New_York"
-DEFAULT_LIMIT = 40
-MAX_LIMIT = 100
-MAX_LANE_FILTER = 8
-MAX_HELD = 200
+#: Structural, not tunable: the key format allows `:a2`..`:a9` (KEY_RE, due-response.schema.json item.attempt).
 MAX_ATTEMPT = 9
 ALLOWLIST_SCHEMA = "N8nRunAllowlist@v1"
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REGISTRY_PATH = ROOT / "config" / "lane_registry.json"
+DUE_CONFIG_PATH = ROOT / "config" / "n8n_due.json"
+DUE_CONFIG_SCHEMA = "N8nDueConfig@v1"
+#: Integer bounds of config/n8n_due.json. The upper bounds of the first four are the ceilings in
+#: schemas/due-response.schema.json (limit.maximum, lane_filter.maxItems, held.maxItems): the config may lower a
+#: bound, never raise it past what the response schema accepts.
+_DUE_CONFIG_INTS = {"default_limit": (1, 100), "max_limit": (1, 100), "max_lane_filter": (1, 8),
+                    "max_held": (1, 200), "retry_view_lookback_min": (1, 10080),
+                    "soft_after_default_deadline_min": (1, 720)}
+
+
+class DueConfigError(ValueError):
+    """config/n8n_due.json is missing or malformed. Raised at import: the gateway and relay fail closed."""
+
+
+@dataclass(frozen=True)
+class DueConfig:
+    tz: str
+    default_limit: int
+    max_limit: int
+    max_lane_filter: int
+    max_held: int
+    retry_view_lookback_min: int
+    soft_after_default_deadline_min: int
+
+
+def load_due_config(path: Path | str | None = None) -> DueConfig:
+    """Validate and load the `due` bounds (config/n8n_due.json, N8nDueConfig@v1). DueConfigError on any defect."""
+    p = Path(path) if path is not None else DUE_CONFIG_PATH
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DueConfigError(f"{p.name}: {type(exc).__name__}") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != DUE_CONFIG_SCHEMA:
+        raise DueConfigError(f"{p.name}: schema must be {DUE_CONFIG_SCHEMA}")
+    unknown = set(doc) - {"schema", "as_of", "description", "tz"} - set(_DUE_CONFIG_INTS)
+    if unknown:
+        raise DueConfigError(f"{p.name}: unknown keys {sorted(unknown)}")
+    vals: dict[str, Any] = {}
+    for k, (lo, hi) in _DUE_CONFIG_INTS.items():
+        v = doc.get(k)
+        if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+            raise DueConfigError(f"{p.name}: {k} must be an integer in [{lo}, {hi}]")
+        vals[k] = v
+    tz = doc.get("tz")
+    try:
+        ZoneInfo(str(tz))
+    except Exception as exc:                                  # ZoneInfoNotFoundError / ValueError
+        raise DueConfigError(f"{p.name}: unknown tz {tz!r}") from exc
+    if vals["default_limit"] > vals["max_limit"]:
+        raise DueConfigError(f"{p.name}: default_limit exceeds max_limit")
+    return DueConfig(tz=str(tz), **vals)
+
+
+CONFIG = load_due_config()
+DEFAULT_TZ = CONFIG.tz
+DEFAULT_LIMIT = CONFIG.default_limit
+MAX_LIMIT = CONFIG.max_limit
+MAX_LANE_FILTER = CONFIG.max_lane_filter
+MAX_HELD = CONFIG.max_held
 
 STATES = ("DUE", "RETRY_DUE", "IN_FLIGHT", "DONE", "RETRY_WAIT", "DEAD_LETTER", "WAITING_AFTER", "BREAKER_OPEN",
           "MISSED")
@@ -126,6 +198,10 @@ class SlotEval:
     retry_at: Optional[datetime] = None
     wait_deadline: Optional[datetime] = None
     waiting_on: list[str] = field(default_factory=list)
+    #: internal (never serialized): when the slot became runnable (retry_at for a retry, the after-gate release for
+    #: attempt 1) and, for WAITING_AFTER, until when an out-of-window slot stays in view.
+    release_at: Optional[datetime] = None
+    view_until: Optional[datetime] = None
 
     @property
     def base_key(self) -> str:
@@ -295,9 +371,42 @@ def _err(lane: str, code: str, detail: str) -> dict[str, str]:
     return {"lane_id": lane, "code": code, "detail": detail[:160]}
 
 
+def _dispatched_mode(row: Mapping[str, Any], entries: Mapping[str, Mapping]) -> Optional[str]:
+    """The mode the dispatcher runs `row` in (so the ledger gets RUN_DONE rows for it), or None: mode off, a
+    malformed block, ineligible (forbidden / stay-behind / on cron), or no allowlist argv for the mode."""
+    try:
+        block = _ld.parse_dispatch_block(row)
+    except _ld.DispatchBlockError:
+        return None
+    if block is None or block.mode == "off" or not _ld.dispatch_eligible(row)[0]:
+        return None
+    entry = entries.get(str(row.get("lane_id")))
+    if entry is None or entry.get(_MODE_ARG[block.mode]) is None:
+        return None
+    return block.mode
+
+
+def _after_errors(lane: str, block: Any, by_id: Mapping[str, dict], entries: Mapping[str, Mapping]) -> list[dict]:
+    """errors[] for `after` edges that can never be satisfied by a ledger row. The lane is still evaluated: a soft
+    edge releases at its deadline, a hard edge holds WAITING_AFTER (the watcher raises after_deadline_missed)."""
+    out = []
+    for e in block.after:
+        pm = _dispatched_mode(by_id[e.lane_id], entries)
+        how = "released at its soft deadline" if e.soft else "hard edge waits; watcher raises after_deadline_missed"
+        if pm is None:
+            out.append(_err(lane, "after_not_dispatched",
+                            f"after {e.lane_id}: predecessor is not dispatched (off/on cron), it writes no ledger "
+                            f"row; {how}"))
+        elif block.mode == "live" and pm != "live":
+            out.append(_err(lane, "after_mode_unsatisfiable",
+                            f"after {e.lane_id}: a live lane needs a live predecessor run, predecessor is {pm}; {how}"))
+    return out
+
+
 def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: Any,
                     lane_filter: Optional[Iterable[str]]) -> tuple[list[_Lane], list[dict]]:
-    known = {r["lane_id"] for r in rows}
+    by_id = {r["lane_id"]: r for r in rows}
+    known = set(by_id)
     wanted = set(lane_filter) if lane_filter else None
     lanes: list[_Lane] = []
     errors: list[dict] = []
@@ -334,6 +443,7 @@ def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: 
         if bad_after:
             errors.append(_err(lane, "after_unknown_lane", f"after {bad_after}"))
             continue
+        errors.extend(_after_errors(lane, block, by_id, entries))
         lanes.append(_Lane(row, block, policy, block.mode))
     return lanes, errors
 
@@ -366,57 +476,113 @@ class _Ledger:
         return self._done[k]
 
 
-def _slots(lane: _Lane, now: datetime, tz: str) -> tuple[list[Any], Optional[Any], bool]:
-    """(fires in the window, the most recent fire before it or None, sub_hourly). ValueError on a bad cron."""
-    catchup = lane.block.catchup_min or lane.policy.catchup_min
-    start = now - timedelta(minutes=int(catchup))
+def _catchup(lane: _Lane) -> int:
+    return int(lane.block.catchup_min or lane.policy.catchup_min)
+
+
+def _edge_deadline_min(edge: Any) -> Optional[int]:
+    """An edge's deadline in minutes. A soft edge without one takes config soft_after_default_deadline_min, so a
+    soft edge never waits forever; a hard edge without one has no deadline (it waits inside the window)."""
+    if edge.deadline_min:
+        return int(edge.deadline_min)
+    return CONFIG.soft_after_default_deadline_min if edge.soft else None
+
+
+def _lookback_min(lane: _Lane, sub: bool) -> int:
+    """How far back slots stay in view. Daily-or-slower lanes: the catch-up window, widened to keep an open retry
+    chain (config retry_view_lookback_min) and an after-gated slot (deadline + catch-up) visible. Sub-hourly lanes
+    keep only the newest slot, so their window is the catch-up window."""
+    catchup = _catchup(lane)
+    if sub:
+        return catchup
+    extra = [_edge_deadline_min(e) for e in lane.block.after]
+    after = max((d + catchup for d in extra if d), default=0)
+    return max(catchup, CONFIG.retry_view_lookback_min, after)
+
+
+def _slots(lane: _Lane, now: datetime, tz: str) -> tuple[list[Any], list[Any], Optional[Any], bool]:
+    """(fires in the catch-up window, older fires still in view, the most recent fire at or before the window
+    start or None, sub_hourly). ValueError on a bad cron."""
+    start = now - timedelta(minutes=_catchup(lane))
     fires: dict[str, Any] = {}
-    sub = False
+    sub = any(_cron.is_sub_hourly(expr) for expr in lane.block.cron)
     for expr in lane.block.cron:
-        sub = sub or _cron.is_sub_hourly(expr)
         for f in _cron.fires_between(expr, start, now, tz):
             if f.slot_local not in fires or f.at < fires[f.slot_local].at:
                 fires[f.slot_local] = f
     ordered = sorted(fires.values(), key=lambda f: f.at)
     if sub and ordered:
         ordered = ordered[-1:]
+    older: dict[str, Any] = {}
     missed = None
     if not sub:
+        view_start = now - timedelta(minutes=_lookback_min(lane, sub))
         for expr in lane.block.cron:
+            for f in _cron.fires_between(expr, view_start, start, tz):
+                if f.slot_local not in fires and (f.slot_local not in older or f.at < older[f.slot_local].at):
+                    older[f.slot_local] = f
             f = _cron.last_fire_at_or_before(expr, start, tz)
             if f is not None and f.slot_local not in fires and (missed is None or f.at > missed.at):
                 missed = f
-    return ordered, missed, sub
+    return ordered, sorted(older.values(), key=lambda f: f.at), missed, sub
 
 
-def _after_wait(lane: _Lane, fire: Any, now: datetime, tz: str, led: _Ledger) -> tuple[list[str], Optional[datetime]]:
+def _day_anchor(lane: _Lane, fire: Any, tz: str) -> datetime:
+    """First fire of the lane on the slot's local day: a sub-hourly lane's after-deadlines count from here, since
+    its newest slot is never older than one interval and a deadline from the slot would never pass."""
+    zone = ZoneInfo(tz)
+    local = fire.at.astimezone(zone)
+    midnight = datetime(local.year, local.month, local.day, tzinfo=zone)
+    firsts = []
+    for expr in lane.block.cron:
+        fs = _cron.fires_between(expr, midnight - timedelta(minutes=1), fire.at, tz)
+        if fs:
+            firsts.append(fs[0].at)
+    return min(firsts) if firsts else fire.at
+
+
+@dataclass
+class _AfterState:
+    waiting: list[str]
+    wait_deadline: Optional[datetime]           # earliest deadline among the waiting edges
+    view_until: Optional[datetime]              # latest waiting deadline + catch-up (None: no deadline)
+    released_at: datetime                       # when the last edge was satisfied (or a soft edge timed out)
+
+
+def _after_wait(lane: _Lane, fire: Any, now: datetime, tz: str, led: _Ledger, sub: bool) -> _AfterState:
     modes = frozenset({"live"}) if lane.mode == "live" else frozenset({"live", "dry_run"})
     zone = ZoneInfo(tz)
     day = fire.at.astimezone(zone).date()
+    anchor = _day_anchor(lane, fire, tz) if (sub and lane.block.after) else fire.at
     waiting: list[str] = []
     deadlines: list[datetime] = []
+    released = fire.at
     for edge in lane.block.after:
-        ok = False
+        sat: Optional[datetime] = None
         for r in led.done(edge.lane_id, modes):
             t = _parse_ts(r.get("finished_at"))
             if t is None or t > now:
                 continue
             if (t.astimezone(zone).date() == day) if edge.same_day else (t >= fire.at - timedelta(hours=24)):
-                ok = True
-                break
-        if ok:
+                sat = t if sat is None else min(sat, t)
+        if sat is not None:
+            released = max(released, sat)
             continue
-        deadline = fire.at + timedelta(minutes=edge.deadline_min) if edge.deadline_min else None
+        dmin = _edge_deadline_min(edge)
+        deadline = anchor + timedelta(minutes=dmin) if dmin else None
         if edge.soft and deadline is not None and now >= deadline:
-            continue                                       # soft edge: run anyway at the deadline
+            released = max(released, deadline)              # soft edge: run anyway at the deadline
+            continue
         waiting.append(edge.lane_id)
         if deadline is not None:
             deadlines.append(deadline)
-    return waiting, (min(deadlines) if deadlines else None)
+    catchup = timedelta(minutes=_catchup(lane))
+    return _AfterState(waiting, min(deadlines) if deadlines else None,
+                       (max(deadlines) + catchup) if deadlines else None, released)
 
 
 def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: datetime, tz: str,
-                   led: _Ledger, breaker_open: bool) -> SlotEval:
+                   led: _Ledger, breaker_open: bool, sub: bool = False) -> SlotEval:
     b = lane.block
     ev = SlotEval(lane_id=lane.row["lane_id"], mode=lane.mode, slot_local=fire.slot_local, at=fire.at, state="DUE",
                   priority=b.priority, klass=b.klass, reason="schedule" if newest else "catchup")
@@ -442,12 +608,13 @@ def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: 
                 ev.state = "BREAKER_OPEN"
             return ev
     if latest is None:
-        if breaker_open:
+        aw = _after_wait(lane, fire, now, tz, led, sub)
+        ev.release_at = aw.released_at
+        if aw.waiting:
+            ev.state, ev.waiting_on, ev.wait_deadline, ev.view_until = ("WAITING_AFTER", aw.waiting,
+                                                                         aw.wait_deadline, aw.view_until)
+        elif breaker_open:
             ev.state = "BREAKER_OPEN"
-            return ev
-        waiting, deadline = _after_wait(lane, fire, now, tz, led)
-        if waiting:
-            ev.state, ev.waiting_on, ev.wait_deadline = "WAITING_AFTER", waiting, deadline
         return ev
     ev.attempt = latest_attempt
     state = str(latest.get("state") or "")
@@ -469,6 +636,7 @@ def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: 
         finished = _parse_ts(latest.get("finished_at")) or _parse_ts(latest.get("requested_at")) or now
         retry_at = _rp.next_attempt_at(lane.policy, latest_attempt, finished, lane.block.klass)
         if retry_at is not None:
+            ev.release_at = retry_at
             if now >= retry_at:
                 ev.state, ev.attempt, ev.reason = "RETRY_DUE", latest_attempt + 1, "retry"
                 ev.parent_run_id = str(latest["run_id"])
@@ -481,10 +649,34 @@ def _evaluate_slot(lane: _Lane, fire: Any, newest: bool, rows: list[dict], now: 
     return ev
 
 
+def _older_view(ev: SlotEval, now: datetime, catchup: timedelta) -> Optional[SlotEval]:
+    """A slot that fired before the catch-up window stays in view only while it still has unfinished business:
+    an in-flight attempt, a retry chain (until retry_at + catch-up; after that it is reported MISSED with its
+    retry_at), an after-gated slot still waiting (until its latest deadline + catch-up) or released by its gate
+    (until release + catch-up). Settled slots (DONE / DEAD_LETTER) and dead-letter re-arms drop out: a release
+    re-arms inside the catch-up window only (design 02 §3.3)."""
+    if ev.state in ("IN_FLIGHT", "RETRY_WAIT"):
+        return ev
+    if ev.reason == "dlq_release":
+        return None
+    if ev.reason == "retry" and ev.state in ("RETRY_DUE", "BREAKER_OPEN") and ev.release_at is not None:
+        if now < ev.release_at + catchup:
+            return ev
+        ev.state, ev.retry_at = "MISSED", ev.release_at      # the chain expired without a request
+        return ev
+    if ev.state == "WAITING_AFTER":
+        return ev if ev.view_until is not None and now < ev.view_until else None
+    if ev.attempt == 1 and ev.state in ("DUE", "BREAKER_OPEN") and ev.release_at is not None:
+        if now < ev.release_at + catchup:
+            ev.reason = "catchup"
+            return ev
+    return None
+
+
 def _lane_evals(lane: _Lane, now: datetime, tz: str, led: _Ledger) -> list[SlotEval]:
-    fires, missed, _sub = _slots(lane, now, tz)
+    fires, older, missed, sub = _slots(lane, now, tz)
     lane_id = lane.row["lane_id"]
-    every = fires + ([missed] if missed is not None else [])
+    every = fires + older + ([missed] if missed is not None else [])
     if not every:
         return []
     lo = slot_key(lane_id, lane.mode, min(f.slot_local for f in every))
@@ -495,15 +687,25 @@ def _lane_evals(lane: _Lane, now: datetime, tz: str, led: _Ledger) -> list[SlotE
         if parsed and parsed[0] == "d" and parsed[1] == lane_id and parsed[2] == lane.mode:
             by_slot.setdefault(parsed[3], []).append(r)
     breaker_open = led.breaker_open(lane_id)
+    catchup = timedelta(minutes=_catchup(lane))
     out: list[SlotEval] = []
-    if missed is not None and not by_slot.get(missed.slot_local):
+    in_view: set[str] = set()
+    for f in older:
+        rows = by_slot.get(f.slot_local, [])
+        if not rows and not lane.block.after:
+            continue                                        # nothing pending on it: not in view
+        ev = _older_view(_evaluate_slot(lane, f, False, rows, now, tz, led, breaker_open, sub), now, catchup)
+        if ev is not None:
+            out.append(ev)
+            in_view.add(f.slot_local)
+    if missed is not None and missed.slot_local not in in_view and not by_slot.get(missed.slot_local):
         base = slot_key(lane_id, lane.mode, missed.slot_local)
         if led.dead_letter(base) is None:
             out.append(SlotEval(lane_id=lane_id, mode=lane.mode, slot_local=missed.slot_local, at=missed.at,
                                 state="MISSED", priority=lane.block.priority, klass=lane.block.klass, reason="catchup"))
     for i, f in enumerate(fires):
         out.append(_evaluate_slot(lane, f, i == len(fires) - 1, by_slot.get(f.slot_local, []), now, tz, led,
-                                  breaker_open))
+                                  breaker_open, sub))
     return out
 
 

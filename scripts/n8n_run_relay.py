@@ -37,6 +37,10 @@ if str(ROOT) not in sys.path:
 
 from scripts.lib.n8n_coordination_gateway import RUN_ID_RE, SCOPE_READ, SCOPE_RUN, RELAY_CALLER, sign_claim
 from scripts.lib.n8n_coordination_projection import ledger_path, project_runs
+from scripts.lib.n8n_due import DEFAULT_LIMIT as DUE_DEFAULT_LIMIT  # noqa: E402  (config/n8n_due.json)
+from scripts.lib.n8n_due import MAX_LANE_FILTER as DUE_MAX_LANES  # noqa: E402
+from scripts.lib.n8n_due import MAX_LIMIT as DUE_MAX_LIMIT  # noqa: E402
+from scripts.lib.n8n_due import SOURCES as DUE_SOURCES  # noqa: E402
 from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
 
 NO_CONSUMER_REASON = (
@@ -49,8 +53,8 @@ BEARER_PREVIOUS_ENV = "TRADEAI_N8N_RELAY_BEARER_PREVIOUS"
 N8N_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N"
 LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"
 DEFAULT_GATEWAY = "http://127.0.0.1:18091"
-DUE_DEFAULT_LIMIT = 40
-DUE_MAX_LIMIT = 100
+#: limit is at most 3 ASCII digits before int(): no Unicode digits ("²", "١٢"), no huge-int parsing.
+DUE_LIMIT_DIGITS = len(str(DUE_MAX_LIMIT))
 DUE_QUERY_KEYS = frozenset({"source", "lane", "limit"})
 RUN_MODES = frozenset({"dry_run", "live"})
 MAX_BODY = 1024
@@ -362,11 +366,17 @@ class Relay:
         if set(params) - DUE_QUERY_KEYS or any(len(params.get(k, [])) > 1 for k in ("source", "limit")):
             return self._refuse("relay_bad_query", 400, op="due")
         source = params.get("source", ["schedule"])[0]
-        lanes = [x for v in params.get("lane", []) for x in v.split(",") if x]
-        if any(not _LANE_ID_RE.fullmatch(x) for x in lanes) or len(lanes) > 64:
+        if source not in DUE_SOURCES:                      # validated before anything logs it
+            return self._refuse("relay_bad_query", 400, op="due")
+        lane_values = params.get("lane", [])
+        if sum(len(v) for v in lane_values) > DUE_MAX_LANES * 65:   # bound before splitting (64-char ids + commas)
+            return self._refuse("relay_bad_query", 400, op="due")
+        lanes = [x for v in lane_values for x in v.split(",") if x]
+        if any(not _LANE_ID_RE.fullmatch(x) for x in lanes) or len(lanes) > DUE_MAX_LANES:
             return self._refuse("relay_bad_query", 400, op="due")
         raw_limit = params.get("limit", [str(DUE_DEFAULT_LIMIT)])[0]
-        if not raw_limit.isdigit() or int(raw_limit) < 1:
+        if not (raw_limit.isascii() and raw_limit.isdigit() and len(raw_limit) <= DUE_LIMIT_DIGITS) \
+                or int(raw_limit) < 1:
             return self._refuse("relay_bad_query", 400, op="due")
         limit = min(int(raw_limit), DUE_MAX_LIMIT)
         now = self.clock()
@@ -402,7 +412,7 @@ class Relay:
             "at": datetime.now(timezone.utc).isoformat(),
             "op": "due",
             "state": "OK" if ok else "REFUSED",
-            "reason": None if ok else (reply.get("refused") or reply.get("reason")),
+            "reason": None if ok else str(reply.get("reason") or "")[:64],
             "source": source,
             "limit": limit,
             "items": len(items),

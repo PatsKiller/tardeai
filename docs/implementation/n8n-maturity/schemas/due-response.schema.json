@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "tradeai:n8n-maturity/due-response.schema.json",
   "title": "DueResponse@v1",
-  "description": "Response of gateway operation `due` on route `coordination/due` (design 02 §3). Read-only. Items carry only what n8n may echo to coordination/run: lane_id, mode, idempotency_key (server-minted). Commands, locks, argv, paths and timeouts never appear.",
+  "description": "Response of gateway operation `due` on route `coordination/due` (design 02 §3). Read-only. Only a computed answer carries this label (ok is always true); a refusal (due_clock_skew, bad_source, bad_lane_filter, registry_unreadable, allowlist_unreadable, policies_unreadable) is the gateway's ordinary typed refusal {state: REFUSED, reason} and does not carry `schema`. Items carry only what n8n may echo to coordination/run: lane_id, mode, idempotency_key (server-minted). Commands, locks, argv, paths and timeouts never appear.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "ok", "source", "computed_at", "registry_sha", "allowlist_sha", "policies_sha", "limit", "items", "counts"],
   "properties": {
     "schema": {"const": "DueResponse@v1"},
-    "ok": {"type": "boolean"},
+    "ok": {"const": true},
     "source": {"enum": ["schedule", "event", "digest"]},
     "lane_filter": {"type": "array", "items": {"$ref": "#/$defs/lane_id"}, "maxItems": 8},
     "computed_at": {"type": "string", "format": "date-time"},
@@ -59,7 +59,7 @@
       }
     },
     "errors": {
-      "description": "Registry rows skipped because their dispatch block could not be evaluated (bad cron, unknown policy). Never fatal for other lanes.",
+      "description": "Registry rows skipped because their dispatch block could not be evaluated (bad cron, unknown policy), plus after-edge defects that keep the lane evaluated (after_not_dispatched: the predecessor is off/on cron and writes no ledger row, so the edge can only time out; after_mode_unsatisfiable: a live lane after a dry_run-dispatched predecessor). Never fatal for other lanes.",
       "type": "array",
       "items": {
         "type": "object",
@@ -67,14 +67,10 @@
         "required": ["lane_id", "code"],
         "properties": {
           "lane_id": {"$ref": "#/$defs/lane_id"},
-          "code": {"enum": ["bad_cron", "unknown_retry_policy", "not_allowlisted", "class_not_permitted", "after_unknown_lane", "trigger_source_unreadable"]},
+          "code": {"enum": ["bad_cron", "unknown_retry_policy", "not_allowlisted", "class_not_permitted", "after_unknown_lane", "after_not_dispatched", "after_mode_unsatisfiable", "trigger_source_unreadable"]},
           "detail": {"type": "string", "maxLength": 160}
         }
       }
-    },
-    "refused": {
-      "description": "Present only when ok=false.",
-      "enum": ["due_clock_skew", "bad_source", "bad_lane_filter", "registry_unreadable", "allowlist_unreadable", "policies_unreadable"]
     }
   },
   "$defs": {
