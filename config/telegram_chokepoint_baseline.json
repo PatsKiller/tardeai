@@ -21,6 +21,7 @@
     "tests/test_alert_normalization_blockers.py",
     "tests/test_cio_phase1_notification_containment.py",
     "tests/test_notification_integrity_waves_cdeg.py",
+    "tests/test_system_telegram_interdict_scope_20261009.py",
     "tests/test_telegram_chokepoint_ratchet.py",
     "tests/test_telegram_notification_normalization.py",
     "tests/test_telegram_p0_card_gate.py"
