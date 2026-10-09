@@ -34,6 +34,20 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
+def _ips_position_limit() -> float:
+    """Single-position human-review line = the ratified IPS limit
+    (config/investment_policy_statement.json constraints.max_single_position_pct;
+    operator 2026-10-09). Replaces the hardcoded 8%; the shared helper falls back
+    to that stricter 8% with a logged warning when the config is missing."""
+    from lib.ips_policy import ips_max_position_pct
+    return ips_max_position_pct()
+
+
+def _weight_needs_review(weight: float, ips_max: float) -> bool:
+    """True when a position's weight is above the IPS single-position limit."""
+    return weight > ips_max
+
+
 def _decision_id(symbol, action):
     ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     return f"cio-{(symbol or 'portfolio').lower()}-{ts}"
@@ -77,6 +91,7 @@ def build_cio_decisions() -> list:
     goal_row = cur.fetchone()
     target_income = float(goal_row["target_income"]) if goal_row else 55000
 
+    ips_max = _ips_position_limit()
     decisions = []
     for ev in evaluations:
         sym = ev["symbol"]
@@ -113,7 +128,7 @@ def build_cio_decisions() -> list:
             action = "TRIM_REVIEW"
             action_class = "trim"
             priority = "high" if weight > 5 else "normal"
-            human_review = weight > 8 or income_pct > 15
+            human_review = _weight_needs_review(weight, ips_max) or income_pct > 15
             confidence = synth_conf
         elif synth_rec and synth_rec in ("BUY", "ADD", "ADD_ON_PULLBACK"):
             action = "ADD_REVIEW"
@@ -131,7 +146,7 @@ def build_cio_decisions() -> list:
             confidence = 0.5 + (research_score * 0.2)
 
         # High-impact gates
-        if weight > 8 and action in ("TRIM_REVIEW", "ADD_REVIEW"):
+        if _weight_needs_review(weight, ips_max) and action in ("TRIM_REVIEW", "ADD_REVIEW"):
             human_review = True
             priority = "critical"
         if income_pct > 15 and action in ("TRIM_REVIEW",):

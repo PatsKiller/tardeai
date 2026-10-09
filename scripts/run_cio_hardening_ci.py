@@ -909,6 +909,10 @@ GATES = [
             "tests/test_research_delta_index_20261002.py",
             # /api/v3/maturity/learning: stream + cache the 270 MB lesson store (was ~910 MB/request).
             "tests/test_maturity_lessons_stream_cache_20261002.py",
+            # 10-09 operator-approved: archive rotation of the lesson log (never deletes; latest-by-id stays live).
+            "tests/test_advisory_kb_lessons_retention.py",
+            # 10-09 operator-approved: lesson counters derived from events; vectors stored once.
+            "tests/test_kb_lessons_writer_derived_counters_20261009.py",
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",
@@ -1185,6 +1189,12 @@ GATES = [
     (
         "trade_ai_scalp_5min_20261009",
         ["tests/test_trade_ai_scalp_5min_20261009.py"],
+    ),
+    # Postgres connection-slot hygiene (n8nmat/b6 2026-10-09): PGAPPNAME attribution for raw connects, tests never use
+    # the stale ~/.pgpass, batched price counts, reconcile KeyError + real rc in run_protection_pipeline.sh.
+    (
+        "pg_conn_exhaustion_b6_20261009",
+        ["tests/test_pg_conn_exhaustion_b6_20261009.py"],
     ),
     # Scalp lane bulk catalyst read (operator 2026-10-09: "build the finviz API fix"): data-broker news plus the
     # Finviz Elite news export in batches instead of ~2 throttled Finviz page requests per ticker.
@@ -3549,6 +3559,10 @@ GATES = [
             "tests/test_monitor_finding_exit_codes_20261009.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
+            # 2026-10-09 operator: every single-position threshold follows the IPS
+            # limit (advisory overweight, CIO review gates, look-through guideline,
+            # specialist-shadow severity) via lib.ips_policy.
+            "tests/test_ips_position_limit_20261009.py",
             "tests/test_retention_registry_20261007.py",
             "tests/test_pgvector_migration_plan_20261008.py",
             "tests/test_maturity_score_independent_20261007.py",
@@ -3609,6 +3623,16 @@ GATES = [
         "n8n_maturity_generic_workflows_20261009",
         [
             "tests/test_n8n_maturity_generic_workflows_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
+        # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
+        # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
+        # live crontab, workflow drift over the generic set. Hermetic: tmp_path ledgers/receipts, no n8n.
+        "n8n_maturity_b5_followups_20261009",
+        [
+            "tests/test_n8n_maturity_b5_followups_20261009.py",
         ],
     ),
     (
@@ -3690,6 +3714,13 @@ GATES = [
         # fan-in source 3h, state saved before the send, slot guard. Hermetic: tmp state root, fakes, no send.
         "scalp_cycle_receipt_b4_20261009",
         ["tests/test_scalp_cycle_receipt_b4_20261009.py"],
+    ),
+    (
+        # SCALP_FOLLOWUPS_B4 — 2026-10-09: a GO is marked alerted only after its line built and the send was
+        # accepted (pre-alert save keeps it un-alerted; one bad trigger is isolated; rejected send rolls back);
+        # a release-dir TRADEAI_ROOT never becomes the state root. Hermetic: stubbed send, tmp home.
+        "scalp_followups_b4_20261009",
+        ["tests/test_scalp_followups_b4_20261009.py"],
     ),
     (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.

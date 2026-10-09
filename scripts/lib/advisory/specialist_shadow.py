@@ -27,7 +27,8 @@ DARWIN_PATH = SHADOW_DIR / "darwin_scorecards.jsonl"
 CIO_SENTINEL = PROJECT_ROOT / "data" / "cio" / "sentinel_reviews.jsonl"
 CIO_DARWIN = PROJECT_ROOT / "data" / "cio" / "darwin_scorecards.jsonl"
 
-IPS_MAX_POSITION_PCT = 8.0  # fallback only; live value = data_broker.advisory_desk.ips_max_position_pct()
+IPS_MAX_POSITION_PCT = 8.0  # fallback only; live value = lib.ips_policy.ips_max_position_pct()
+IPS_CRITICAL_POSITION_PCT = 15.0  # fallback only; live value = lib.ips_policy.ips_critical_position_pct()
 MODEL_PORTFOLIO = PROJECT_ROOT / "config" / "model_portfolio.json"
 HOLDINGS = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
@@ -135,10 +136,13 @@ def guardian_cash_concentration(*, session_id: str = "", desk: dict | None = Non
     cash_pct = cash_mv = total = None
     target_cash = 5.0
     try:
-        from lib.data_broker.advisory_desk import ips_max_position_pct
+        from lib.ips_policy import ips_critical_position_pct, ips_max_position_pct
         ips_max = ips_max_position_pct()
+        # Severe tier from config (operator 2026-10-09), not a hardcoded 15.
+        ips_critical = ips_critical_position_pct()
     except Exception:
         ips_max = IPS_MAX_POSITION_PCT
+        ips_critical = IPS_CRITICAL_POSITION_PCT
 
     try:
         mp = json.loads(MODEL_PORTFOLIO.read_text(encoding="utf-8"))
@@ -185,7 +189,7 @@ def guardian_cash_concentration(*, session_id: str = "", desk: dict | None = Non
             if r.get("row_class") == "holding" and wp is not None and float(wp) > ips_max:
                 findings.append({
                     "type": "ips_max_position",
-                    "severity": "high" if float(wp) > 15 else "medium",
+                    "severity": "high" if float(wp) > ips_critical else "medium",
                     "symbol": r.get("symbol"),
                     "weight_pct": wp,
                     "ips_max": ips_max,
@@ -231,6 +235,7 @@ def guardian_cash_concentration(*, session_id: str = "", desk: dict | None = Non
             "total_value": total,
             "target_cash_pct": target_cash,
             "ips_max_position_pct": ips_max,
+            "ips_critical_position_pct": ips_critical,
         },
         "findings": findings,
         "recommendation": (

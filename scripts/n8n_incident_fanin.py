@@ -264,7 +264,10 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     out.extend(_scalp_lane_findings(root, now))
     # 3h. Scalp cycle ledger (n8n maturity B4, 2026-10-09): per-slot ScalpCycleReceipt@v1 rules, market-hours aware.
     out.extend(_scalp_cycle_findings(root, now))
-    # 3i. n8n governance checks (AGENTS.md 3.0.0 §23.10 P16/P18, 2026-10-09): host-side cron receipts of
+    # 3i. Dead-letter queue + breakers (n8n maturity B5 follow-up, 2026-10-09): one P2 per unreleased dead letter,
+    # one P2 per open breaker. Ledger tables first (read-only), ExecutorStatus@v1 as the cross-check / fallback.
+    out.extend(_dlq_findings(root, now))
+    # 3j. n8n governance checks (AGENTS.md 3.0.0 §23.10 P16/P18, 2026-10-09): host-side cron receipts of
     # scripts/check_n8n_activation_grants.py and scripts/check_n8n_workflow_drift.py. See _governance_findings.
     out.extend(_governance_findings(root, now, prev))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
@@ -339,6 +342,86 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
         NOTES["runs_source"] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
         return []
+
+
+LEDGER_REL = "data/governance/n8n_coordination_ledger.sqlite"   # n8n_coordination_projection.ledger_path()
+EXECUTOR_STATUS_SCHEMA = "ExecutorStatus@v1"                      # n8n_run_executor STATUS_SCHEMA (executor v2)
+
+
+def _dlq_ledger_rows(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """(unreleased dead letters, open breakers) from the ledger, opened read-only (mode=ro, no migration).
+    None when the file or the B5.4 tables are absent (pre-#1594 ledger)."""
+    import sqlite3
+
+    from scripts.lib.n8n_coordination_ledger import breaker_is_open
+
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=3)
+    try:
+        conn.row_factory = sqlite3.Row
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {"dead_letters", "breakers"} <= tables:
+            return None
+        dead = [dict(r) for r in conn.execute(
+            "SELECT slot_key, lane_id, mode, attempts, last_state, last_reason, dead_at FROM dead_letters"
+            " WHERE released_at IS NULL ORDER BY dead_at, slot_key")]
+        brk = [dict(r) for r in conn.execute(
+            "SELECT lane_id, opened_at, consecutive, released_at FROM breakers ORDER BY lane_id")]
+        return dead, [b for b in brk if breaker_is_open(b)]
+    finally:
+        conn.close()
+
+
+def _dlq_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """P2 `dlq:<slot_key>` per unreleased dead letter, P2 `breaker:<lane>` per open breaker.
+
+    A finding stays open until the operator releases it (n8n_dlq.py release) or a RUN_DONE auto-releases the
+    breaker; then it disappears and the fan-in closes it. The ledger is the record of truth; the executor's
+    ExecutorStatus@v1 (`breakers_open`, `dlq_24h`) adds breakers the ledger read missed and, when the ledger cannot
+    be read, stands in: its breakers and one aggregate `dlq:status_count` finding. TRADEAI_FANIN_DLQ=0 opts out."""
+    NOTES.pop("dlq_source", None)
+    if os.environ.get("TRADEAI_FANIN_DLQ", "1") == "0":
+        NOTES["dlq_source"] = "unavailable:disabled_by_env"
+        return []
+    explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    ledger = Path(explicit) if explicit else root / LEDGER_REL
+    try:
+        rows = _dlq_ledger_rows(ledger)
+        ledger_note = "ok" if rows is not None else "absent"
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        rows = None
+        ledger_note = f"error:{type(exc).__name__}"
+    status = _load(root / EXECUTOR_LAST_REL)
+    if not (isinstance(status, dict) and status.get("schema") == EXECUTOR_STATUS_SCHEMA):
+        status = None
+    day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    found: list[dict[str, Any]] = []
+    dead, breakers = rows if rows is not None else ([], [])
+    for d in dead:
+        found.append({"source": "dlq", "item": f"dlq:{d.get('slot_key')}", "severity": "P2",
+                      "detail": f"{d.get('lane_id')} {d.get('mode') or ''} {d.get('last_state') or ''} "
+                                f"{d.get('last_reason') or ''} attempts {d.get('attempts')}"[:160],
+                      "artifact_rel": LEDGER_REL, "store": "persistent-state",
+                      "detected_at": d.get("dead_at") or day})
+    open_lanes = {str(b.get("lane_id")): b for b in breakers}
+    ledger_lanes = set(open_lanes)
+    for lane in (status or {}).get("breakers_open") or []:
+        open_lanes.setdefault(str(lane), {"lane_id": str(lane), "opened_at": None, "consecutive": None})
+    for lane, b in sorted(open_lanes.items()):
+        found.append({"source": "dlq", "item": f"breaker:{lane}", "severity": "P2",
+                      "detail": f"breaker open: {b.get('consecutive')} consecutive dead slots; lane paused"[:160],
+                      "artifact_rel": LEDGER_REL if lane in ledger_lanes else EXECUTOR_LAST_REL,
+                      "store": "persistent-state" if lane in ledger_lanes else "data/runtime",
+                      "detected_at": b.get("opened_at") or day})
+    status_dlq = (status or {}).get("dlq_24h")
+    if rows is None and isinstance(status_dlq, int) and status_dlq > 0:
+        found.append({"source": "dlq", "item": "dlq:status_count", "severity": "P2",
+                      "detail": f"executor reports {status_dlq} dead letter(s) in 24 h; ledger {ledger_note}",
+                      "artifact_rel": EXECUTOR_LAST_REL, "store": "data/runtime", "detected_at": day})
+    NOTES["dlq_source"] = (f"ledger:{ledger_note}:dead={len(dead)}:breakers={len(breakers)}:"
+                           f"status={'yes' if status else 'no'}:status_dlq_24h={status_dlq}")
+    return found
 
 
 RELAY_LAST_REL = "data/runtime/n8n_relay/n8n_run_relay_last.json"

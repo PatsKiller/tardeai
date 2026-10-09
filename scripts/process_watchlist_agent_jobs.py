@@ -108,7 +108,7 @@ def _get_conn():
     # causing "SSL connection has been closed unexpectedly" on the post-LLM INSERT.
     return psycopg2.connect(
         host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
-        sslmode="disable", connect_timeout=10,
+        sslmode="disable", connect_timeout=10, application_name="process_watchlist_agent_jobs",
         keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5,
     )
 

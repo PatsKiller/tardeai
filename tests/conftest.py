@@ -32,6 +32,16 @@ os.environ.setdefault("TRADEAI_PORTFOLIO_REPORTS_ROOT", _tempfile.mkdtemp(prefix
 # The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
 os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_fail_mode_tests_"), "absent"))
 
+# The operator's ~/.pgpass is STALE and must never be a test's credential (n8nmat/b6, 2026-10-09).
+# A worktree has no .env, so every script helper that reads DB_PASSWORD from PROJECT_ROOT/.env
+# (price_db_sync._get_conn and many more) passes password="" and libpq silently falls back to
+# ~/.pgpass, which fails "password authentication failed" AT THE LIVE SERVER: ~140 attempts per
+# worktree suite run, ~18k FATAL log lines a day on 2026-10-08/09, each one a forked backend
+# competing for the 100 connection slots. A PGPASSFILE that does not exist turns that into a
+# client-side "fe_sendauth: no password supplied" (same OperationalError class, so tests that skip
+# on a connect error still skip) and the server logs nothing. An explicit PGPASSFILE is kept.
+os.environ.setdefault("PGPASSFILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_no_pgpass_"), "absent"))
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 

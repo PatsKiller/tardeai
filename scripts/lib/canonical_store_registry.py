@@ -492,12 +492,43 @@ assert all(v.get("ownership_class") in OWNERSHIP_CLASSES for v in STORES.values(
 CANONICAL_FILENAMES = {Path(v["path"]).name for v in STORES.values() if v.get("path")}
 
 
+def _release_tree() -> Path:
+    return Path.home() / "trade-ai-releases" / "portfolio-server"
+
+
+def is_release_dir(path: Path | str) -> bool:
+    """True when ``path`` is (inside) a release checkout under trade-ai-releases/portfolio-server/.
+
+    Release directories are immutable code; state written under one is lost on the next promote."""
+    tree = _release_tree()
+    cand = Path(path).expanduser()
+    for base in {tree, tree.resolve()}:
+        for p in {cand, cand.resolve()}:
+            try:
+                rel = p.relative_to(base)
+            except ValueError:
+                continue
+            if rel.parts:
+                return True
+    return False
+
+
 def production_state_root(root: Path | str | None = None) -> Path:
+    """Resolve the persistent state root.
+
+    Order: explicit ``root`` -> TRADEAI_STATE_ROOT -> TRADEAI_ROOT (only when it is NOT a release directory)
+    -> TRADEAI_PERSISTENT_STATE_ROOT -> the persistent-state marker -> CURRENT -> repo.
+    TRADEAI_ROOT is a code-root variable: wrappers routinely point it at a release checkout, and honouring it
+    there would move state into an immutable release dir (n8n maturity B4 follow-up, 2026-10-09), so a
+    release-dir TRADEAI_ROOT is ignored and the persistent-state marker wins."""
     if root:
         return Path(root)
-    env = os.environ.get("TRADEAI_STATE_ROOT") or os.environ.get("TRADEAI_ROOT")
+    env = os.environ.get("TRADEAI_STATE_ROOT")
     if env:
         return Path(env)
+    code_root = os.environ.get("TRADEAI_ROOT")
+    if code_root and not is_release_dir(code_root):
+        return Path(code_root)
     persistent = os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
     if persistent:
         return Path(persistent)

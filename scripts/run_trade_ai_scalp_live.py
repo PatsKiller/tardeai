@@ -212,7 +212,8 @@ def _cycle_receipt(status: str, day: str, slot: str, t0: datetime, stats: dict, 
         scr.append(scr.build(
             status, day=day, slot=slot, started_at=t0, finished_at=finished, phase=stats.get("phase"),
             symbols_scanned=stats.get("symbols_scanned"), signals=stats.get("signals"), triggers=triggers,
-            alerts_sent=(None if triggers is None else (int(triggers) if stats.get("alert_sent") else 0)),
+            alerts_sent=(None if triggers is None else (int(stats["alerts_delivered"]) if "alerts_delivered" in stats
+                                                        else (int(triggers) if stats.get("alert_sent") else 0))),
             alerts_deduped=len(go_now & go_before) if status == "ok" else None,
             deadline_s=deadline_s, enrich_budget_s=enrich_s,
             errors=list(stats.get("errors") or []) + list(extra_errors), phase_s=stats.get("phase_s"),

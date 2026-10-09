@@ -80,6 +80,8 @@
   "constraints": {
     "prohibited_instruments": ["leveraged_etfs", "inverse_etfs_held_overnight", "crypto", "penny_stocks_under_1"],
     "max_single_position_pct": 12.0,
+    "critical_single_position_pct": 15.0,
+    "_critical_single_position_pct_note": "Derived key, not a new limit: the severe tier above max_single_position_pct, preserving the pre-existing 15% severe/critical split in the specialist shadow. Added with operator approval 2026-10-09 ~18:05 ET (\"Okay to everything except extending the scout to closing\"); existing values unchanged.",
     "max_sector_concentration_pct": 25.0,
     "max_portfolio_heat_pct": 2.0,
     "min_market_cap": 300000000,

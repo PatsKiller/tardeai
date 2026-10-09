@@ -126,7 +126,8 @@ def _get_conn():
             for line in env_path.read_text().splitlines():
                 if line.startswith("DB_PASSWORD="):
                     pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
+                            application_name="price_db_sync", connect_timeout=10)
 
 
 PROPOSAL_ACTIVE_STATUSES = (
@@ -185,7 +186,8 @@ def ensure_price_history(
     syms = [str(s).upper().strip() for s in (symbols or []) if s and str(s).strip()]
     syms = list(dict.fromkeys(syms))
     n_quotes = sync_quotes_to_ticker_prices(syms if syms else None)
-    short = [s for s in syms if count_price_rows(s) < min_rows] if syms else []
+    _counts = count_price_rows_many(syms) if syms else {}
+    short = [s for s in syms if _counts.get(s, 0) < min_rows] if syms else []
     cap = yfinance_cap if yfinance_cap is not None else (len(short) if len(short) <= 50 else 40)
     yf_result = {"filled": 0}
     if short and cap > 0:
@@ -213,7 +215,8 @@ def sync_daily_watchlist_prices(*, yfinance_cap: int = 40, min_rows: int = 60) -
     for etf in SECTOR_ETFS:
         if etf not in scope:
             scope.append(etf)
-    short = [s for s in scope if count_price_rows(s) < min_rows]
+    _counts = count_price_rows_many(scope)
+    short = [s for s in scope if _counts.get(str(s).upper(), 0) < min_rows]
     yf_result = {"filled": 0}
     if short and yfinance_cap > 0:
         yf_result = backfill_yfinance_history(short[:yfinance_cap])
@@ -402,13 +405,27 @@ def get_latest_price_from_db(symbol: str) -> float | None:
 
 def count_price_rows(symbol: str) -> int:
     """Count daily close rows for a symbol in ticker_prices."""
+    return count_price_rows_many([symbol]).get(str(symbol).upper(), 0)
+
+
+def count_price_rows_many(symbols: list[str]) -> dict[str, int]:
+    """Row counts for many symbols over ONE connection and ONE query.
+
+    The callers filtered `[s for s in syms if count_price_rows(s) < min_rows]`, which opened and
+    closed a connection per symbol from api_v2 request threads (n8nmat/b6, 2026-10-09)."""
+    syms = list(dict.fromkeys(str(s).upper() for s in symbols if s))
+    if not syms:
+        return {}
     conn = _get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM ticker_prices WHERE symbol=%s", (symbol.upper(),))
-    n = int((cur.fetchone() or [0])[0])
-    cur.close()
-    conn.close()
-    return n
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT symbol, COUNT(*) FROM ticker_prices WHERE symbol = ANY(%s) GROUP BY symbol",
+                    (syms,))
+        found = {str(r[0]).upper(): int(r[1]) for r in cur.fetchall()}
+        cur.close()
+    finally:
+        conn.close()
+    return {s: found.get(s, 0) for s in syms}
 
 
 def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
@@ -520,7 +537,8 @@ def sync_watchlist_prices(symbols: list[str] | None = None, *, min_rows: int = 6
     """Quotes sync + yfinance gap-fill for watchlist symbols (used by refresh + daily pipeline)."""
     syms = [str(s).upper() for s in (symbols or []) if s]
     n_quotes = sync_quotes_to_ticker_prices(syms if syms else None)
-    short = [s for s in syms if count_price_rows(s) < min_rows] if syms else []
+    _counts = count_price_rows_many(syms) if syms else {}
+    short = [s for s in syms if _counts.get(s, 0) < min_rows] if syms else []
     yf_result = backfill_yfinance_history(short) if short else {"filled": 0}
     return {"quotes_synced": n_quotes, "yfinance": yf_result}
 
