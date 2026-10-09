@@ -40,6 +40,12 @@ TRIGGER_STATE_PATH = STATE_DIR / "holdings_symbol_state.json"
 SHARE_DELTA_PCT = 0.10
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def _current_shares() -> dict[str, float]:
     """Per-symbol total shares from canonical holdings.json (non-cash positions only)."""
     if not HOLDINGS_PATH.exists():
@@ -166,7 +172,7 @@ def check_and_enqueue(apply: bool = False, baseline: bool = False) -> dict:
         # order-adjacent and stays untouched; the operator/stop-advisory cron acts on the alert.
         try:
             import subprocess
-            py = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+            py = venv_python(PROJECT_ROOT)
             for c in changes[:3]:
                 if c["new_shares"] > 0:
                     subprocess.Popen([py, str(Path(__file__).resolve().parent / "holdings_llm_refresh.py"),

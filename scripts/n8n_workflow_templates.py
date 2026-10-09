@@ -672,6 +672,17 @@ LANES: list[dict] = [
         "source": "registry row NEVER_SCHEDULED (AGENTS.md 3.0.0 §23.10 P18, #1554); proposed '20 6 * * * scripts/check_n8n_workflow_drift.py --write'",
         "note": "Daily cadence per the registry row (expected_cadence_hours 24). Read-only; receipt data/runtime/n8n_workflow_drift_last.json.",
     },
+    # Trade-AI scalp scan (operator 2026-10-09 "n8n drives a governed lane"; lanes/scalp-lane-20261009.md).
+    # The cron line stays the scheduler of record and fallback. Live allowed by the AGENTS.md 4.0.0 §23.3
+    # exception (APPROVE_AGENTS_POLICY_4_0_0, 2026-10-09); still needs the relay live-lane listing + activation grant.
+    {
+        "lane_id": "trade-ai-scalp-live",
+        "tranche": "N7",
+        "cron": ["*/5 9-15 * * 1-5"],
+        "fidelity": "EXACT",
+        "source": "crontab: */5 9-15 * * 1-5 run_trade_ai_scalp_live.py (registry kind cron); the script self-gates 09:30-16:00 ET, so the 09:00-09:25 fires exit with receipt status outside_rth",
+        "note": "Same /tmp/tradeai_scalp_live.lock (flock -n) as the cron line, so n8n and cron never overlap. Receipt data/runtime/trade_ai_scalp_live_last.json; the incident fan-in raises trade-ai-scalp-live:STALLED when last_ok_at is older than 12 min in RTH.",
+    },
 ]
 
 # ---------------------------------------------------------------------------

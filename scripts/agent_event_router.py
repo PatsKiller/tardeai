@@ -38,6 +38,12 @@ BATCH_LIMIT = 20
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def _env(key: str) -> str:
     env_path = PROJECT_ROOT / ".env"
     if not env_path.exists():
@@ -176,7 +182,7 @@ def auto_enrich_research_more(conn, symbol: str) -> bool:
     _log(f"  All agents RESEARCH_MORE for {symbol} — auto-enriching")
     try:
         import subprocess
-        subprocess.run([str(PROJECT_ROOT / ".venv/bin/python"),
+        subprocess.run([venv_python(PROJECT_ROOT),
                         str(PROJECT_ROOT / "scripts/phase2_ticker_enrichment.py"),
                         "--symbol", symbol], capture_output=True, timeout=60,
                        cwd=str(PROJECT_ROOT))
@@ -213,7 +219,7 @@ def handle_content_gap(conn, event: dict):
 
     _log(f"  CONTENT_GAP: {symbol} ({gap_type}) — triggering search + ingest loop")
     import subprocess
-    venv_py = str(PROJECT_ROOT / ".venv/bin/python3")
+    venv_py = venv_python(PROJECT_ROOT)
 
     # Step 1: Run targeted topic ingestion (gaps-only mode to be efficient)
     ingested = 0
@@ -228,7 +234,7 @@ def handle_content_gap(conn, event: dict):
         if "ingested" in (result.stdout or "").lower() or "saved" in (result.stdout or "").lower():
             ingested += 1
     except subprocess.TimeoutExpired:
-        _log(f"  Topic ingestion timed out (non-fatal)")
+        _log("  Topic ingestion timed out (non-fatal)")
     except Exception as e:
         _log(f"  Topic ingestion failed: {e}")
 

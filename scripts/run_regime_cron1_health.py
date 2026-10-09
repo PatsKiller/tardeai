@@ -13,6 +13,12 @@ from dotenv import load_dotenv
 load_dotenv(PROJ / ".env")
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def main():
     p = argparse.ArgumentParser(description="Risk regime health report (default: read-only)")
     p.add_argument("--output-json", type=str)
@@ -142,7 +148,7 @@ def main():
 
     if args.run_classifier_once and args.apply:
         print("\nRunning classifier once...")
-        r = subprocess.run([str(PROJ / ".venv/bin/python"),
+        r = subprocess.run([venv_python(PROJ),
                             str(PROJ / "scripts/market_regime_classifier.py"),
                             "--apply", "--verbose"],
                            capture_output=True, text=True, cwd=str(PROJ))

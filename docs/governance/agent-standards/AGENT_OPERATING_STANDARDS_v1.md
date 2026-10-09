@@ -111,7 +111,8 @@ PR/head SHA, environment, expiry, maximum uses, reason, approver and audit id. I
   (`.githooks/pre-push`, `scripts/lib/guard_push_auth.py`). **PARTIAL fix in this PR:** the hook now
   warns when the grant's reason names neither the branch nor the head SHA, and refuses under
   `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1` (`tests/test_guard_push_scope_20260925.py`). Refusing by
-  default is an operator decision.
+  default is an operator decision — **made 2026-10-09** ("enable push scope enforce too"): unscoped
+  grants are now refused and not consumed; `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0` restores warn-only.
 - **Merge is not separately enforced.** `main` needs 0 approving reviews and code-owner review is off
   (`enforce_admins` is on and `agent-governance` is required since 2026-09-25). **UNENFORCED** until an administrator acts
   (`REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`).
