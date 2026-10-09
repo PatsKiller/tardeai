@@ -65,17 +65,47 @@ def _parse_any(ts):
     return _parse(ts)
 
 
+def _cron_fields(expr: str) -> str | None:
+    """The schedule part of a registry cron ``expression``, as the 5 numeric fields ``cron_schedule`` parses.
+
+    Registry rows store the crontab line's schedule followed by the command text (2026-10-09: 88 of 112
+    ACTIVE cron lanes, e.g. ``"*/15 9-16 * * 1-5 portfolio_repricer.py"``), so the schedule is the first
+    5 whitespace tokens. ``@hourly``/``@daily``/``@midnight``/``@weekly``/``@monthly``/``@yearly``/``@annually``
+    map to their 5-field equivalents; month and weekday names map to numbers. ``@reboot`` has no recurring
+    fire and returns ``"@reboot"``. Anything else that is not 5 tokens or an alias returns None.
+    """
+    import cron_last_fire  # type: ignore  — one alias/name table for both parsers
+
+    tokens = str(expr or "").split()
+    if not tokens:
+        return None
+    head = tokens[0].lower()
+    if head.startswith("@"):
+        if head == "@reboot":
+            return "@reboot"
+        return cron_last_fire._ALIASES.get(head)
+    if len(tokens) < 5:
+        return None
+    fields = [t.lower() for t in tokens[:5]]
+    for idx, names in ((3, cron_last_fire._MONTHS), (4, cron_last_fire._DOWS)):
+        for name, num in names.items():
+            fields[idx] = fields[idx].replace(name, str(num))
+    return " ".join(fields)
+
+
 def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> tuple[_dt.datetime | None, str]:
     """When should this lane have produced by? Returns (deadline, basis).
 
-    cron lanes: the most recent scheduled fire ≤ now (5-field expression), so a weekday-only or
-    market-hours lane is not judged over a weekend (2026-09-27 triage: 6 false breaches). Other
-    lanes: 3 × cadence (min 15 min); inactive days are not due days.
+    cron lanes: the most recent scheduled fire ≤ now (the expression's first 5 fields, see _cron_fields), so a
+    weekday-only or market-hours lane is not judged over a weekend (2026-09-27 triage: 6 false breaches).
+    Other lanes, ``@reboot`` lanes and cron lanes with no fire inside the lookback: 3 × cadence (min 15 min);
+    inactive days are not due days.
     """
     sched = lane.get("scheduler") or {}
     expr = str(sched.get("expression") or "")
     cad_h = lane.get("expected_cadence_hours")
-    if sched.get("kind") == "cron" and expr:
+    fields = _cron_fields(expr) if sched.get("kind") == "cron" else None
+    if fields and fields != "@reboot":
         # the most recent fire that has had max_run to finish: a run still in progress is not a miss
         ref = now - _dt.timedelta(seconds=max_run_s)
         try:
@@ -83,20 +113,20 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
             # first valid minute and a fall-back fold fires once (fold 0), so neither transition hour moves the
             # deadline past a run that really happened. None (no fire inside the lookback) = unknown -> cadence rule.
             from cron_schedule import last_fire_at_or_before  # type: ignore
-            fire = last_fire_at_or_before(expr, ref, str(SCHEDULE_TZ), lookback_days=CRON_LOOKBACK_DAYS)
+            fire = last_fire_at_or_before(fields, ref, str(SCHEDULE_TZ), lookback_days=CRON_LOOKBACK_DAYS)
             if fire is not None:
-                return fire.at.astimezone(_dt.timezone.utc), f"cron:{expr}"
+                return fire.at.astimezone(_dt.timezone.utc), f"cron:{fields}"
             dst_safe_parsed = True
-        except Exception:  # noqa: BLE001 — names / @aliases: the legacy parser below
+        except Exception:  # noqa: BLE001 — a field cron_schedule rejects (e.g. out of range): the legacy parser
             dst_safe_parsed = False
         if not dst_safe_parsed:
             try:
                 import cron_last_fire  # type: ignore
                 local_ref = ref.astimezone(SCHEDULE_TZ)
-                lf = cron_last_fire.last_fire(expr, local_ref.replace(tzinfo=None))
+                lf = cron_last_fire.last_fire(fields, local_ref.replace(tzinfo=None))
                 if lf is not None:
                     lf = lf.replace(tzinfo=local_ref.tzinfo).astimezone(_dt.timezone.utc)
-                    return lf, f"cron:{expr}"
+                    return lf, f"cron_legacy:{fields}"
             except Exception:  # noqa: BLE001 — fall back to the cadence rule
                 pass
     if not cad_h:
