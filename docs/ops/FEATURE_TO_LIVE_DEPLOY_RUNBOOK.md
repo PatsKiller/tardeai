@@ -1,7 +1,7 @@
 # Feature-to-live deploy runbook (single-approval)
 
 Status:      ACTIVE
-as_of:       2026-10-05T18:58:00Z
+as_of:       2026-10-09T21:00:00Z
 Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
 Verified:    exact-SHA gate at 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96 (PRs #1442, #1443)
 Authority:   AGENTS.md §Local gates / docs/GIT_HYGIENE.md / RELEASE_COORDINATOR boundary
@@ -178,8 +178,12 @@ persistent state (live copies hashed, paths removed from the index only, re-hash
 non-zero *after* `PROMOTE OK` and names the blocking paths. The release is live either way; a non-zero
 exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips the step.
 
-`promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
-`tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service`). Promote
+`promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default, from
+`restart_root_frozen_units` in `scripts/cio_phase2_exact_main_deploy.sh`:
+`tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service
+tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service
+tradeai-n8n-run-relay.service tradeai-n8n-run-executor.service tradeai-phone-status.service`). A bound
+unit that is not installed or not running is skipped, not started. Promote
 reads back each bound unit's `/proc/<pid>/cwd` and must match the new CURRENT dir — see
 `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. The desk bot is in that default because it keeps the code it
 imported at start. After promote, its cwd must be the new CURRENT directory.

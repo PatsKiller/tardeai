@@ -74,7 +74,7 @@ route allowlist is `coordination/event`, `coordination/status`, `coordination/ru
 - The n8n database may hold the encrypted credential row; with `SAVE_ON_SUCCESS=none` it holds no successful
   execution input. Error executions are kept 168 h and may contain the request body (lane id, mode,
   idempotency key) — never the bearer, which lives in the credential table, not the node parameters.
-- The lab's `docs/AGENTS.md` sentence "No stored credentials" becomes false by one; the lab doc is the
+- The lab's AGENTS.md (`~/m8m-bakeoff-lab/docs/AGENTS.md`, outside this repo) sentence "No stored credentials" becomes false by one; the lab doc is the
   operator's and is updated by the operator when the credential is created.
 - `durable=false` on the gateway receipt and "no claim of exactly-once delivery outside the sqlite file"
   remain true; the ledger `runs` table uses the idempotency key as its primary key so a retried trigger
