@@ -141,7 +141,9 @@ def test_named_processes_keep_today_requested_policy() -> None:
 
     digest = bridge.resolve_model_policy("n8n_material_digest_draft")
     assert digest["requested_policy"] == "FAST"
-    assert digest["provider"] == "deepseek"
+    # AGENTS.md 3.0.0 §23.4 decision 2 (2026-10-09): n8n rows route Grok -> ChatGPT -> DeepSeek; the live
+    # transport walks to DeepSeek (tests/test_bridge_agent_preconditions_20261009.py).
+    assert digest["provider"] == "grok"
 
     smoke = bridge.resolve_model_policy("deepseek_flash_operator_smoke")
     assert smoke["requested_policy"] == "FAST"

@@ -68,8 +68,21 @@ def test_caller_task_type_selects_the_ops_process_server_side_and_cannot_escalat
     assert resolve_caller("n8n_model_job", task_type="alex_cio_synthesis") == "n8n_material_digest_draft"
 
 
-def test_governance_passes_with_the_entry_present_and_refuses_without_it(bridge_plumbing):
+def _schema_valid_mock(monkeypatch, B, answer: dict) -> None:
+    """2026-10-09 (AGENTS.md 3.0.0 §23.10 P6): the bridge validates n8n_* output against the process schema, so
+    the MockProvider's prose is refused there; these tests swap in a schema-valid answer at the provider."""
+    real = B.MockProvider.generate
+
+    def generate(self, *a, **k):
+        out = real(self, *a, **k)
+        out["choices"][0]["message"]["content"] = json.dumps(answer)
+        return out
+    monkeypatch.setattr(B.MockProvider, "generate", generate)
+
+
+def test_governance_passes_with_the_entry_present_and_refuses_without_it(bridge_plumbing, monkeypatch):
     B = bridge_plumbing
+    _schema_valid_mock(monkeypatch, B, OPS_ANSWER)
     ok = B.execute_governed_call([{"role": "user", "content": "weekly ops summary"}], process_id=PROC,
                                  response_format={"type": "json_object"}, max_tokens=512)
     assert "error" not in ok, ok.get("error")
@@ -175,11 +188,11 @@ def test_a_real_bridge_success_through_execute_governed_call_is_accepted_by_run_
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
     seen = {}
 
+    _schema_valid_mock(monkeypatch, B, OPS_ANSWER)   # mock prose -> schema-valid answer at the provider; envelope untouched
+
     def governed(messages, *, process_id, response_format, request_id, task_type=None, **named):
         seen.update(process_id=process_id, request_id=request_id, task_type=task_type)
-        out = B.execute_governed_call(messages, process_id=process_id, response_format=response_format, max_tokens=512, request_id=request_id)
-        out["choices"][0]["message"]["content"] = json.dumps(OPS_ANSWER)   # mock prose -> schema-valid answer; envelope untouched
-        return out
+        return B.execute_governed_call(messages, process_id=process_id, response_format=response_format, max_tokens=512, request_id=request_id)
     rec = M.run_model_job(_ops_job(root, "corr-ops-weekly-2026-W41"), governed_call=governed, now=NOW, root=root)
     assert (rec["state"], rec["reason"]) == ("ARTIFACT_WRITTEN", None), rec
     assert rec["cost"]["reservation_id"] == 42 and rec["cost"]["mock"] is True and rec["cost"]["bridge_request_id"] == "corr-ops-weekly-2026-W41"

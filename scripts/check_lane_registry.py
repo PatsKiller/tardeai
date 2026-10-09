@@ -15,6 +15,12 @@ Rules, in the order they are reported:
      RETIRED and PAUSED are declared states, not absences.
   3. A NEW scheduled job (cron or systemd) that is neither declared nor in the
      inherited-debt baseline fails.
+  4. (AGENTS.md 3.0.0 §23.10 P17) An ACTIVE n8n workflow whose id is neither a
+     kind-n8n row's scheduler.expression nor a generated workflow id
+     (docs/implementation/n8n-parallel/workflows/generated/INDEX.json) fails as
+     UNDECLARED_N8N_WORKFLOW. CI reads the committed snapshot
+     (docs/implementation/n8n-parallel/workflows/active_workflows_snapshot.json);
+     the host passes --n8n-live (one read-only SELECT through docker exec).
 
 Exit codes are distinct on purpose, because a gate returning 2 for a missing
 file reads identically to a pass and that has happened in this repository:
@@ -60,12 +66,24 @@ def main() -> int:
     ap.add_argument("--host-state-json", default=None,
                     help="captured {\"timers\": {unit: {unit_file_state, sub_state, next_elapse, recurring}}} for "
                          "CI and tests; without it and without systemd, systemd lanes are NOT_MEASURED")
+    ap.add_argument("--n8n-live", action="store_true",
+                    help="read ACTIVE n8n workflows live (docker exec m8m-n8n-db psql, SELECT only); "
+                         "a failed read is CANNOT RUN (exit 2), never clean")
+    ap.add_argument("--n8n-snapshot", default=None,
+                    help="read ACTIVE n8n workflows from this snapshot file (default: the committed "
+                         "active_workflows_snapshot.json) when --n8n-live is not given")
+    ap.add_argument("--no-n8n", action="store_true", help="skip the n8n source entirely")
+    ap.add_argument("--n8n-index", default=None,
+                    help="generated INDEX.json whose live/shadow ids are the known-id allowlist")
+    ap.add_argument("--n8n-snapshot-out", default=None,
+                    help="with --n8n-live: also write the active list as a snapshot file (repo file "
+                         "refresh; never a host write)")
     args = ap.parse_args()
 
     try:
         from scripts.lib.lane_registry import (
-            STATE_ACTIVE, discover_all, find_undeclared, load_registry,
-            validate_registry,
+            STATE_ACTIVE, discover_all, discover_n8n_live, discover_n8n_snapshot,
+            find_undeclared, load_registry, n8n_known_workflow_ids, validate_registry,
         )
     except Exception as e:                                  # cannot run != pass
         print(f"lane-registry gate CANNOT RUN: {type(e).__name__}: {e}",
@@ -95,8 +113,38 @@ def main() -> int:
                   file=sys.stderr)
             return EXIT_CANNOT_RUN
     else:
-        found = discover_all()
-    undeclared = find_undeclared(reg, found)
+        found = discover_all(include_n8n=False)
+    n8n_source = "off"
+    if args.no_n8n:
+        found.pop("n8n", None)
+    elif "n8n" in found:
+        n8n_source = "discovery-json"
+    else:
+        try:
+            if args.n8n_live:
+                found["n8n"] = discover_n8n_live()
+                n8n_source = "live"
+                if args.n8n_snapshot_out:
+                    from datetime import datetime, timezone
+                    from scripts.lib.n8n_live_inventory import snapshot_doc
+                    doc = snapshot_doc([{"id": r["expression"], "name": r.get("name")} for r in found["n8n"]],
+                                       captured_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                                       source="docker exec m8m-n8n-db psql -U n8n -d n8n -tAc (SELECT, active only)")
+                    Path(args.n8n_snapshot_out).write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8")
+            else:
+                found["n8n"] = discover_n8n_snapshot(Path(args.n8n_snapshot) if args.n8n_snapshot else None)
+                n8n_source = "snapshot"
+        except Exception as e:                              # cannot run != pass
+            print(f"lane-registry gate CANNOT RUN: n8n source unreadable: {type(e).__name__}: {e}",
+                  file=sys.stderr)
+            return EXIT_CANNOT_RUN
+    try:
+        n8n_known = (n8n_known_workflow_ids(Path(args.n8n_index) if args.n8n_index else None)
+                     if found.get("n8n") else {})
+    except Exception as e:
+        print(f"lane-registry gate CANNOT RUN: generated INDEX unreadable: {e}", file=sys.stderr)
+        return EXIT_CANNOT_RUN
+    undeclared = find_undeclared(reg, found, n8n_known_ids=n8n_known)
 
     active = sum(1 for r in rows if r.get("state") == STATE_ACTIVE)
     # Count the FIELD, not the prose. This grepped state_reason for the literal
@@ -126,6 +174,8 @@ def main() -> int:
                           "state_drift_conflicts": [r["lane_id"] for r in drift_conflicts],
                           "errors": errors, "undeclared": undeclared,
                           "unknown_reason_lanes": unknown,
+                          "n8n_source": n8n_source,
+                          "n8n_active": len(found.get("n8n") or []),
                           "correlated_reason_lanes": correlated}, indent=2))
     else:
         print(f"declared lanes          : {len(rows)}  ({active} ACTIVE)")
@@ -141,9 +191,11 @@ def main() -> int:
         print(f"structural errors       : {len(errors)}")
         for e in errors:
             print(f"    ✗ {e}")
+        print(f"n8n active workflows    : {len(found.get('n8n') or [])}  (source {n8n_source})")
         print(f"undeclared (NEW)        : {len(undeclared)}")
         for u in undeclared:
-            print(f"    ✗ {u['kind']}: {u['expression'][:110]}")
+            label = f"{u['code']} {u['expression']} {u.get('name') or ''}" if u.get("code") else u["expression"]
+            print(f"    ✗ {u['kind']}: {label[:110]}")
         if args.state_drift:
             nm = sum(1 for r in drift_rows if r["code"] == "NOT_MEASURED")
             print(f"state drift conflicts   : {len(drift_conflicts)}  ({nm} NOT_MEASURED)")
@@ -162,7 +214,9 @@ def main() -> int:
               "Add a row with an output_signal naming the durable artifact that\n"
               "proves it ran — not its exit code, not its log file existing.\n"
               "If it is deliberately off, declare RETIRED or PAUSED with a\n"
-              "state_reason and state_since. 'Off' must be a reported state.",
+              "state_reason and state_since. 'Off' must be a reported state.\n"
+              "An UNDECLARED_N8N_WORKFLOW is an active n8n workflow nobody declared: add the\n"
+              "lane row (kind n8n, expression = workflow id) or generate it, or deactivate it.",
               file=sys.stderr)
         return EXIT_VIOLATION
     return EXIT_OK

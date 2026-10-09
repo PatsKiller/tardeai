@@ -267,6 +267,25 @@
       ],
       "market_gate": false,
       "output_signal": "data/governance/maturity_latest.json"
+    },
+    {
+      "lane_id": "n8n-workflow-drift-check",
+      "source": "PROPOSED 2026-10-09 (AGENTS.md 3.0.0 §23.10 P18, audit C G9): no cron line, no unit, no workflow imported; registry row NEVER_SCHEDULED until the operator imports a generated workflow under a grant naming its id. Read-only: one SELECT on the n8n DB, compares active workflows to docs/implementation/n8n-parallel/workflows/generated/; --dry-run prints, --write writes the receipt",
+      "command": [
+        "$PY",
+        "scripts/check_n8n_workflow_drift.py"
+      ],
+      "lock": "/tmp/tradeai_n8n_workflow_drift.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 120,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--write"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/n8n_workflow_drift_last.json"
     }
   ],
   "blocked_reasons": {
