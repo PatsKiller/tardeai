@@ -1457,7 +1457,7 @@
       "state_reason": "Installed 2026-09-24 at the M5 tranche-2 deploy (operator: 'do the post-merge steps'): weekday cron 07:20 and 19:20 from the dev tree, flock /tmp/cio_stance_classify.lock, logs/cio_stance_classification_drain.log. Deterministic Phase-1 classification only; no LLM.",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/.local/state/tradeai/cio_stance_classification_receipts.jsonl"
+        "path": "logs/cio_stance_classification_drain.log"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/drain_cio_stance_classification.py docstring; the CIO engine inner-joins an active ticker_strategy_classifications row with strategy_rule_evaluations, and strategy_rule_engine.py has been unscheduled since 2026-09-06.",
@@ -1472,7 +1472,8 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "output_signal_note": "2026-10-09 (registry-signals-r1): was file_mtime ~/.local/state/tradeai/cio_stance_classification_receipts.jsonl, which the drain appends only when a request is pending, so an idle drain (pending=0) read as a false NO_OUTPUT breach (supervisor_breaches.jsonl 2026-10-01..05). The cron line appends to logs/cio_stance_classification_drain.log (state-root logs) and main() prints one '[APPLY] pending=N counts=...' line on every run."
     },
     {
       "lane_id": "cio-decision-engine",
@@ -2723,8 +2724,8 @@
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "5,20 16 * * 1,3,5 run_watch_review_workers.py --mode execute --allow-execute --role maria|cio",
-        "match": "run_watch_review_workers.py"
+        "expression": "5 16 * * 1,3,5 run_watch_review_workers.py --mode execute --allow-execute --role maria",
+        "match": "run_watch_review_workers.py --mode execute --allow-execute --role maria"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -2746,7 +2747,39 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "output_signal_note": "2026-10-09 (registry-signals-r1): split from the combined '5,20 16 * * 1,3,5 ... --role maria|cio' row: this row is the Maria 16:05 crontab line only (signal logs/watch_review_maria.log); the CIO 16:20 line is watch-review-workers-cio with its own log signal."
+    },
+    {
+      "lane_id": "watch-review-workers-cio",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 16 * * 1,3,5 run_watch_review_workers.py --mode execute --allow-execute --role cio",
+        "match": "run_watch_review_workers.py --mode execute --allow-execute --role cio"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "state_since": "2026-09-25",
+      "state_reason": "CIO (16:20) governed Watch Intelligence review, Mon/Wed/Fri ET, from the dev tree ($PROJ) with TRADEAI_RUNTIME_ROOT, flock /tmp/tradeai_watch_review_cio.lock and timeout 45m; appends to logs/watch_review_cio.log. Refuses before any provider call unless agent-jobs containment is ACTIVE (CONTAINMENT_REQUIRED).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/watch_review_cio.log"
+      },
+      "note": "2026-10-09 (registry-signals-r1): split out of watch-review-workers (which had one maria-only signal for two crontab lines). Rationalization joins to its own crontab line (F L829); the maria row keeps L827.",
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L829",
+        "pipeline": "P14",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE-into P14",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "output_signal_note": "2026-10-09 (registry-signals-r1): own signal logs/watch_review_cio.log (the 16:20 line's redirect)."
     },
     {
       "lane_id": "material-change-digest",
@@ -2780,9 +2813,8 @@
       "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "db_max",
-        "table": "due_diligence_questions",
-        "column": "created_at"
+        "kind": "file_mtime",
+        "path": "logs/due_diligence_questions.log"
       },
       "note": "Stages 3-5 curation and routing. | 2026-09-14: gated to the operator window; weekday 21:00-09:00 ET produces nothing by design. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
       "value_class": "Operationally Important",
@@ -2796,7 +2828,8 @@
         "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10",
         "event_driven_candidate": true,
         "f_evidence": "polls */20 * * * *"
-      }
+      },
+      "output_signal_note": "2026-10-09 (registry-signals-r1): was db_max due_diligence_questions.created_at, which does not move when a run curates/routes 0 rows (and outside the off-peak window by design). The cron line appends every */20 run (including the off-peak wrapper's skip line) to logs/due_diligence_questions.log."
     },
     {
       "lane_id": "document-mentions-backfill",
@@ -6534,7 +6567,7 @@
       "scheduler": {
         "kind": "none"
       },
-      "expected_cadence_hours": 24.0,
+      "expected_cadence_hours": 1.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-09",
       "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P18, audit C G9): scripts/check_n8n_workflow_drift.py compares every ACTIVE n8n workflow with its generated git copy (relay URL placeholder substituted) and writes data/runtime/n8n_workflow_drift_last.json with --write. Registry row first (§9.3): the allowlist entry exists (--dry-run / --write); since 2026-10-09 the generated workflows n8n-workflow-drift-check-shadow / n8n-workflow-drift-check exist (tranche N7, proposed 20 6 * * *) but nothing is imported and nothing schedules it. Activation = generated workflow + operator import under a grant naming the workflow id, then shadow -> canary -> live, then this row flips to kind n8n ACTIVE.",
@@ -6650,7 +6683,7 @@
       "scheduler": {
         "kind": "none"
       },
-      "expected_cadence_hours": 24.0,
+      "expected_cadence_hours": 0.5,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-09",
       "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P16, merged #1554): scripts/check_n8n_activation_grants.py --write writes the receipt. NOT in config/n8n_run_allowlist.json: its command, receipt and natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant', which the allowlist test refuses by design (blocked_reasons entry). Needs an operator decision (rename the entrypoint or an explicit exemption) before an allowlist entry or workflow; until then it runs by hand only.",

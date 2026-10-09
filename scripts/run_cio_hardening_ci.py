@@ -3904,6 +3904,8 @@ GATES = [
         "N8N_MATURITY_REGISTRY_RECONCILE",
         [
             "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+            # registry-signals-r1 2026-10-09: run-log signals for 3 false-NO_OUTPUT lanes; watch-review split.
+            "tests/test_registry_signals_r1_20261009.py",
         ],
     ),
     (
