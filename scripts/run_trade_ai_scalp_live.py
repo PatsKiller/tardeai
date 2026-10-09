@@ -141,6 +141,13 @@ def enrich_budget() -> Optional[float]:
         return None
 
 
+def bulk_catalysts() -> Optional[dict]:
+    """`catalysts` block of config/trade_ai_scalp_lane.yaml (bulk catalyst read); None when absent."""
+    from scalp_catalyst_bulk import load_config
+
+    return load_config(ROOT) or None
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--force", action="store_true", help="run outside 09:30-16:00 ET")
@@ -160,7 +167,7 @@ def main(argv=None) -> int:
     st = load_state(day)
     t0 = datetime.now(ET)
     scored = run_live_cycle(ROOT, RUN_LABEL, day, st, now.strftime("%H:%M"), publish_dashboard=False,
-                            enrich_budget_s=enrich_budget())
+                            enrich_budget_s=enrich_budget(), bulk_catalysts=bulk_catalysts())
     save_state(day, st)
     n = write_projection(scored, datetime.now(ET)) if scored else 0
     write_receipt("ok", datetime.now(ET), universe=n, go=len(st.prev_go),
