@@ -526,6 +526,7 @@
   "tests/test_n8n_gateway_concurrency_20261008.py": 1.9,
   "tests/test_n8n_gateway_durable_20261007.py": 0.9,
   "tests/test_n8n_gateway_http_20261007.py": 0.9,
+  "tests/test_n8n_incident_fanin_governance_20261009.py": 0.5,
   "tests/test_n8n_incident_fanin_relay_20261008.py": 0.5,
   "tests/test_n8n_incident_fanin_runs_20261008.py": 0.6,
   "tests/test_n8n_lab_watchdog_20261007.py": 0.9,

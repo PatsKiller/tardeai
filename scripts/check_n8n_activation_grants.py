@@ -26,9 +26,13 @@ weak attribution); UNGRANTED_ACTIVATION (nothing names it inside the window).
     python3 scripts/check_n8n_activation_grants.py --since ... --write     # receipt under the state root
     python3 scripts/check_n8n_activation_grants.py --evidence-json F --guard-log G   # offline / CI
 
-Receipt: ``$TRADEAI_STATE_ROOT/data/runtime/n8n_activation_grants_last.json``. The receipt carries
-``fanin_findings`` shaped like scripts/n8n_incident_fanin.py findings; nothing is wired to send.
-Exit codes: 0 report, 1 UNGRANTED_ACTIVATION with --fail-on-ungranted, 2 cannot run.
+Receipt: ``$TRADEAI_STATE_ROOT/data/runtime/n8n_activation_grants_last.json`` (``--receipt`` overrides),
+written atomically (tmp + replace) only with --write. scripts/n8n_incident_fanin.py reads it (source
+``n8n_activation_grants``): an UNGRANTED_ACTIVATION of a currently active workflow is a P1 incident, the
+other non-GRANTED verdicts P3, a stale receipt of a scheduled lane P2. Nothing here sends.
+Runs host-side on cron (not as an n8n lane: the gateway forbids the token 'grant' in allowlisted commands).
+Exit codes: 0 report (findings or not), 1 UNGRANTED_ACTIVATION with --fail-on-ungranted, 2 cannot run
+(n8n DB or guard log unreadable; no receipt is written, so the fan-in sees the receipt go stale).
 
 AUTHORITY: READ_ONLY_ADVISORY. SELECTs against the n8n DB and a read of the guard audit log; no n8n
 write, no ledger write, no send.
@@ -52,8 +56,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from scripts.lib import n8n_live_inventory as inv  # noqa: E402
 
 NO_CONSUMER_REASON = (
-    "AGENTS.md 3.0.0 §23.10 P16 attribution check, run by hand or by a future lane; its receipt carries "
-    "fan-in-shaped findings that no fan-in source reads yet (Telegram deliberately not wired)."
+    "AGENTS.md 3.0.0 §23.10 P16 attribution check, host-side cron (proposed */30); its receipt is read by "
+    "scripts/n8n_incident_fanin.py source n8n_activation_grants (Telegram deliberately not wired)."
 )
 SCHEMA = "N8nActivationAttribution@v1"
 RECEIPT_REL = Path("data") / "runtime" / "n8n_activation_grants_last.json"
@@ -173,6 +177,8 @@ def activation_events(evidence: dict, *, since: datetime) -> list[dict]:
                 "name": names.get(wid, ""),
                 "currently_active": active.get(wid, False),
                 "activated_at": times[0],
+                "last_activated_at": times[-1],
+                "times": times,
                 "imported_at": imp,
                 "sources": sorted(set(g["sources"])),
             }
@@ -195,7 +201,10 @@ def reconcile(
     skew = timedelta(seconds=skew_s)
     rows = []
     for ev in events:
-        times = [t for t in (ev["activated_at"], ev.get("imported_at")) if t is not None]
+        # Every recorded activation of this version counts: a workflow first activated without a grant and
+        # then re-activated under a grant naming its id (regularisation, 2026-10-09) is attributed by the
+        # later grant. imported_at stays a second time a grant may cover.
+        times = [t for t in [*(ev.get("times") or [ev["activated_at"]]), ev.get("imported_at")] if t is not None]
 
         def covering(match_name: bool) -> list[dict]:
             hits = []
@@ -224,6 +233,7 @@ def reconcile(
                 "version_id": ev["version_id"],
                 "currently_active": ev["currently_active"],
                 "activated_at": ev["activated_at"].isoformat(),
+                "last_activated_at": (ev.get("last_activated_at") or ev["activated_at"]).isoformat(),
                 "imported_at": ev["imported_at"].isoformat() if ev.get("imported_at") else None,
                 "sources": ev["sources"],
                 "status": status,
@@ -239,6 +249,17 @@ def reconcile(
             }
         )
     return rows
+
+
+def fanin_severity(row: dict) -> str:
+    """Incident severity for one non-GRANTED row; scripts/n8n_incident_fanin.py applies the same map.
+
+    P1: an ungranted activation of a workflow that is ACTIVE now (live, unattributed automation).
+    P3: an ungranted activation already switched off (history, no live exposure), or weak attribution
+    (named only by lane name, or by id under a tier that does not authorise an activation)."""
+    if row.get("status") == UNGRANTED_ACTIVATION and row.get("currently_active"):
+        return "P1"
+    return "P3"
 
 
 def build_receipt(
@@ -272,7 +293,7 @@ def build_receipt(
             {
                 "source": "n8n_activation_grants",
                 "item": f"{r['workflow_id']}:{r['status']}",
-                "severity": "P2" if r["status"] == UNGRANTED_ACTIVATION else "P3",
+                "severity": fanin_severity(r),
                 "detail": f"{r['name']} activated {r['activated_at']}",
                 "artifact_rel": str(RECEIPT_REL),
                 "store": "data/runtime",
@@ -280,9 +301,9 @@ def build_receipt(
             }
             for r in findings
         ],
-        # Fan-in source note: n8n_incident_fanin.py can read `fanin_findings` from this receipt as a new
-        # source in its own PR. Not wired here, and nothing here sends (Telegram is out of scope).
-        "fanin_wired": False,
+        # scripts/n8n_incident_fanin.py reads this receipt (source n8n_activation_grants, 2026-10-09) and
+        # derives its incidents from `activations` with the same fanin_severity map. Nothing here sends.
+        "fanin_wired": True,
     }
 
 
