@@ -100,7 +100,7 @@ caught in the local acceptance process.
 A third push requires explicit operator authorization.
 
 Program exception (operator decision 3, 2026-10-09; AGENTS.md 4.1.0 §23.13;
-status PROPOSED with AGENTS.md 4.1.0): a branch whose name starts with exactly
+status ACTIVE with AGENTS.md 4.1.0, ratified 2026-10-09): a branch whose name starts with exactly
 `n8nmat/` (case-sensitive, at least one character after the slash) has a budget
 of 4 authorized pushes instead of 2, until 2026-10-12T23:59:59-04:00. After that
 instant, and for every other branch, the budget is 2. The pre-push hook enforces
@@ -493,7 +493,7 @@ The pre-push hook:
 - allows pushes 1 and 2 for the current branch tranche;
 - blocks push 3+ unless a separate override is set.
 
-Program exception (PROPOSED with AGENTS.md 4.1.0, §23.13; see §3): on a branch
+Program exception (ACTIVE with AGENTS.md 4.1.0, §23.13; see §3): on a branch
 named `n8nmat/<something>` the hook allows pushes 1 through 4 and blocks push 5+
 unless the override is set, until 2026-10-12T23:59:59-04:00; after that the
 two-push rule above applies to those branches too. The block message prints the
