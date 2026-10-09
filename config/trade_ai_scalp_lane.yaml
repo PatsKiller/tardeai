@@ -1,0 +1,5 @@
+# Trade-AI 5-min scalp lane (scripts/run_trade_ai_scalp_live.py; lane trade-ai-scalp-live).
+# Operator 2026-10-09: "these are scalps should be every 5 minutes at least". The cron/executor timeout is 295 s,
+# so catalyst lookups stop after enrich_budget_s and the rest score on today's last cached lookup.
+schema: TradeAIScalpLane@v1
+enrich_budget_s: 150

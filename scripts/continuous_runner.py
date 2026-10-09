@@ -454,7 +454,8 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
 def run_live_cycle(root: Path, run_label: str, date_str: str,
                    state: CycleState, time_str: str,
                    _timeout: int = 600,  # 10 min max per live cycle
-                   publish_dashboard: bool = True) -> Optional[List[Dict]]:
+                   publish_dashboard: bool = True,
+                   enrich_budget_s: Optional[float] = None) -> Optional[List[Dict]]:
     sys.path.insert(0, str(root / "scripts"))
 
     try:
@@ -566,19 +567,34 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         cand_syms, tickers = filter_candidates(tickers, str(root), 8)
         cached, miss = get_bulk(cand_syms, str(root), date_str, 20)
         enrichments.update(cached)
-        fresh = {}
+        fresh, deferred = {}, []
+        _enrich_t0 = time.monotonic()
         for sym in miss:
             row = next((t for t in tickers if t.get("symbol","").upper() == sym), {})
             fps = set(row.get("catalyst_fingerprints",[]))
+            # 2026-10-09: the 5-min scalp lane caps lookups so the cycle always finishes inside its timeout;
+            # names past the budget score on today's last cached lookup and refresh on the next run.
+            if enrich_budget_s is not None and time.monotonic() - _enrich_t0 >= enrich_budget_s:
+                deferred.append(sym)
+                continue
             if state.needs_haiku(sym, fps):
                 try:
                     fresh[sym] = enrich_ticker(sym, row.get("company",""))
                     state.record_haiku(sym, fps)
+                    # 2026-10-09: write through per symbol. The 5-min scalp lane runs under a timeout; a cold
+                    # cycle (new release / new day) used to be killed before the single set_bulk at the end, so
+                    # nothing was cached and every following run started cold and was killed again.
+                    set_bulk({sym: fresh[sym]}, str(root), date_str)
                 except Exception:
                     pass
-        if fresh: set_bulk(fresh, str(root), date_str)
         enrichments.update(fresh)
-        print(f"  [live] catalysts: {len(cached)} cached  {len(fresh)} fresh")
+        stale = {}
+        if deferred:
+            stale, _ = get_bulk(deferred, str(root), date_str, 24 * 60)
+            enrichments.update(stale)
+        print(f"  [live] catalysts: {len(cached)} cached  {len(fresh)} fresh"
+              + (f"  {len(deferred)} deferred (budget {enrich_budget_s:.0f}s, {len(stale)} on stale cache)"
+                 if deferred else ""))
     except Exception as e:
         print(f"  [live] catalyst error: {e}")
 

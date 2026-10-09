@@ -22,6 +22,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -83,6 +84,18 @@ def save_state(day: str, st) -> None:
     tmp.replace(p)
 
 
+def enrich_budget() -> Optional[float]:
+    """Seconds of catalyst lookups per cycle (config/trade_ai_scalp_lane.yaml); None = unbounded."""
+    try:
+        import yaml
+
+        v = (yaml.safe_load((ROOT / "config" / "trade_ai_scalp_lane.yaml").read_text(encoding="utf-8")) or {}).get(
+            "enrich_budget_s")
+        return float(v) if v else None
+    except Exception:
+        return None
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--force", action="store_true", help="run outside 09:30-16:00 ET")
@@ -96,7 +109,8 @@ def main(argv=None) -> int:
     day = now.date().isoformat()
     st = load_state(day)
     t0 = datetime.now(ET)
-    scored = run_live_cycle(ROOT, RUN_LABEL, day, st, now.strftime("%H:%M"), publish_dashboard=False)
+    scored = run_live_cycle(ROOT, RUN_LABEL, day, st, now.strftime("%H:%M"), publish_dashboard=False,
+                            enrich_budget_s=enrich_budget())
     save_state(day, st)
     n = write_projection(scored, datetime.now(ET)) if scored else 0
     print(f"[scalp-live] heartbeat ok label={RUN_LABEL} go={len(st.prev_go)} universe={n} "
