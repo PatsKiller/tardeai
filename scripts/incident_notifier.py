@@ -17,14 +17,17 @@ Dedupe is per incident key (source|item, day-independent) for TRADEAI_INCIDENT_N
 an incident still open after the window is reminded once more; a worse severity re-notifies at once.
 Records survive recovery: a re-open within TRADEAI_INCIDENT_NOTIFIER_FLAP_COOLDOWN_MIN (60) of the recovery
 is a flap (counted, noted on the next message, not re-sent), and a flapping incident clears silently.
-At most TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP messages per America/New_York day (24); P1 is never capped; a
-capped message is CAPPED on the receipt and its incidents stay un-notified. Only delivered messages count
-and mark incidents: a comms-editor hold is HELD and retried. P3 never sends.
+At most TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP messages per America/New_York day (24); P1 — and a recovery
+that includes a P1 — is never capped; a capped message is CAPPED on the receipt and its incidents stay
+un-notified. Only delivered messages count and mark incidents: a comms-editor hold is HELD and retried (a
+held send never satisfies send_system's identity dedupe), and a dedupe is ALREADY_DELIVERED only when it
+carries the prior delivery's message_id (otherwise DEDUPED_UNCONFIRMED: not marked, exit 1). P3 never sends.
 
-Delivery: the SYSTEM ops family only, through `scripts/lib/autonomy_watchdog/telegram_system.send_system`
-(ops bot, ops chat, SYSTEM_TELEGRAM_ENABLED, SYSTEM_TELEGRAM_INTERDICT; the transport confirms the claim
-from the calling module, so this script cannot name a family, a token, a chat or a CIO bot). That module
-records every send in its own ledger and in the comms hub via telegram_alert.record_operator_message.
+Delivery: the SYSTEM ops family only: send_system (`scripts/lib/autonomy_watchdog/telegram_system.py`) →
+the shared transport's text chokepoint in the SYSTEM ops family (comms editor, then ops bot + ops chat, gated
+by SYSTEM_TELEGRAM_ENABLED / SYSTEM_TELEGRAM_INTERDICT; the transport confirms the family claim from the
+calling module, so this script cannot name a family, a token, a chat or a CIO bot) → send_system records the
+result in its own send ledger and in the comms hub via telegram_alert.record_operator_message.
 
     python3 scripts/incident_notifier.py --dry-run     # plan + transport gate preview; sends and records nothing
     python3 scripts/incident_notifier.py --live
@@ -464,8 +467,10 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
         row = {k: m[k] for k in ("kind", "severity", "identity", "incident_keys")}
         row["lines"] = m["text"].count("\n") + 1
         row["text"] = m["text"]
-        if used >= cfg["daily_cap"] and m["kind"] != "p1":
-            row["status"] = "CAPPED"          # incidents stay un-notified; tomorrow's budget sends them. P1 never caps.
+        p1_bearing = m["kind"] == "p1" or any(i.get("severity") == "P1" for i in m["incidents"])
+        if used >= cfg["daily_cap"] and not p1_bearing:
+            row["status"] = "CAPPED"          # incidents stay un-notified; tomorrow's budget sends them. P1 (and a
+            #                                   recovery that includes a P1) never caps.
         elif not live:
             try:
                 plan = preview(m["text"], identity=m["identity"], kind=f"incident_{m['kind']}")  # type: ignore[misc]
@@ -483,9 +488,14 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
                            if k in res}
             if res.get("ok") and res.get("suppressed"):
                 row["status"] = "HELD"        # the comms editor held or dropped it: not delivered, not counted, retried
-            elif res.get("ok") and res.get("deduped"):
+            elif res.get("ok") and res.get("deduped") and res.get("message_id") is not None:
                 row["status"] = "ALREADY_DELIVERED"   # this exact identity was delivered before; record, do not count
                 apply_result(state, m, now)
+            elif res.get("ok") and res.get("deduped"):
+                # A dedupe with no message_id proves no delivery: never mark notified on it. Not counted, retried
+                # next run, and the run exits 1 so the gap is visible.
+                row["status"] = "DEDUPED_UNCONFIRMED"
+                failed = True
             elif res.get("ok"):
                 row["status"] = "SENT"
                 used += 1

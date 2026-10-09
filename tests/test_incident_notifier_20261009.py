@@ -470,3 +470,95 @@ def test_reminder_after_the_window_gets_a_new_identity(tmp_path):
     _fanin(tmp_path, [_row(*P1ROW)], as_of=later)
     _run(tmp_path, now=later, sender=cap)
     assert len(cap.calls) == 2 and cap.calls[0]["identity"] != cap.calls[1]["identity"]
+
+
+# ── round 2 (2026-10-09): a held send must never count as delivered ─────────────────────────────────────────
+
+
+@pytest.fixture
+def real_send_system(tmp_path, monkeypatch):
+    """The REAL telegram_system.send_system with only the transport stubbed: a fake ``telegram_transport``
+    module (deliver_text scripted per call) and a no-op comms-hub recorder. The send ledger lives in a tmp
+    root; the env is an explicit dict of dummies, so nothing reaches a token store, a chat or a live ledger."""
+    import types
+
+    from scripts.lib.autonomy_watchdog import telegram_system as TG
+
+    script: list[dict] = []
+    calls: list[dict] = []
+
+    def deliver_text(**kw):
+        calls.append(kw)
+        return script.pop(0)
+
+    fake_transport = types.ModuleType("telegram_transport")
+    fake_transport.SendFamily = types.SimpleNamespace(SYSTEM_OPS="SYSTEM_OPS")
+    fake_transport.deliver_text = deliver_text
+    monkeypatch.setitem(sys.modules, "telegram_transport", fake_transport)
+    fake_alert = types.ModuleType("telegram_alert")
+    fake_alert.record_operator_message = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake_alert)
+    monkeypatch.setattr(TG, "_http_post", _never)
+    send_root = tmp_path / "send_ledger"
+    env = {"TELEGRAM_BOT_TOKEN": "dummy", "TELEGRAM_CHAT_ID": "1", "SYSTEM_TELEGRAM_ENABLED": "1"}
+
+    def sender(text, **kw):
+        return TG.send_system(text, root=send_root, env=env, **kw)
+
+    return types.SimpleNamespace(TG=TG, sender=sender, script=script, calls=calls, send_root=send_root)
+
+
+def test_real_send_system_held_then_delivered_then_already_delivered(tmp_path, real_send_system):
+    rs = real_send_system
+    rs.script.extend([
+        {"ok": True, "status_code": 200, "response": {}, "message_id": None, "suppressed": "editor_unavailable"},
+        {"ok": True, "status_code": 200, "response": {"ok": True, "result": {"message_id": 4242}}},
+    ])
+    nroot = tmp_path / "notifier"
+    nroot.mkdir()
+    # run 1: the comms editor holds the P1 — HELD, nothing marked, nothing counted
+    rec = _at(nroot, 0, [_row(*P1ROW)], rs.sender)
+    assert rec["messages"][0]["status"] == "HELD" and rec["cap"]["used"] == 0
+    assert _state(nroot)["notified"] == {} and len(rs.calls) == 1
+    ident = rec["messages"][0]["identity"]
+    assert rs.TG.already_sent(ident, root=rs.send_root) is None, "a held record must not satisfy the dedupe"
+    # run 2: the retry reaches the transport again and is delivered
+    rec = _at(nroot, 5, [_row(*P1ROW)], rs.sender)
+    assert len(rs.calls) == 2, "the held P1 must be retried through the transport"
+    assert rec["messages"][0]["identity"] == ident
+    assert rec["messages"][0]["status"] == "SENT" and rec["messages"][0]["send"]["message_id"] == 4242
+    assert N.incident_key(*P1ROW[:2]) in _state(nroot)["notified"]
+    # run 3: the notifier's state is lost; the same identity dedupes on the delivered record, with its message_id
+    (nroot / N.STATE_REL).unlink()
+    rec = _at(nroot, 10, [_row(*P1ROW)], rs.sender)
+    assert len(rs.calls) == 2, "a delivered identity must never reach the transport again"
+    assert rec["messages"][0]["status"] == "ALREADY_DELIVERED"
+    assert rec["messages"][0]["send"]["message_id"] == 4242
+    assert N.incident_key(*P1ROW[:2]) in _state(nroot)["notified"]
+
+
+def test_dedupe_without_message_id_is_never_marked_delivered(tmp_path):
+    _fanin(tmp_path, [_row(*P1ROW)])
+    rec = _run(tmp_path, sender=lambda text, **kw: {"ok": True, "deduped": True, "message_id": None})
+    assert rec["messages"][0]["status"] == "DEDUPED_UNCONFIRMED"
+    assert rec["ok"] is False and rec["status"] == "FAILED" and rec["cap"]["used"] == 0
+    assert _state(tmp_path)["notified"] == {}
+
+
+def test_recovery_that_includes_a_p1_is_never_capped(tmp_path):
+    cap = Capture()
+    env = {"TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP": "1"}
+    _fanin(tmp_path, [_row(*P1ROW), _row("db_hygiene", "T:1", "P2")])
+    first = _run(tmp_path, sender=cap, env=env)
+    assert [(m["kind"], m["status"]) for m in first["messages"]] == [("p1", "SENT"), ("p2_batch", "CAPPED")]
+    rec = _at(tmp_path, 40, [], cap, env=env)                             # the P1 clears with the cap spent
+    assert [(m["kind"], m["status"]) for m in rec["messages"]] == [("recovery", "SENT")]
+
+
+def test_p2_only_recovery_still_caps(tmp_path):
+    cap = Capture()
+    env = {"TRADEAI_INCIDENT_NOTIFIER_DAILY_CAP": "1"}
+    _fanin(tmp_path, [_row("db_hygiene", "T:1", "P2")])
+    _run(tmp_path, sender=cap, env=env)
+    rec = _at(tmp_path, 40, [], cap, env=env)
+    assert [(m["kind"], m["status"]) for m in rec["messages"]] == [("recovery", "CAPPED")]
