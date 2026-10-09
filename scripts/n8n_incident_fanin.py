@@ -79,6 +79,44 @@ def _tail_jsonl(path: Path, max_bytes: int = 2_000_000) -> list[dict]:
     return rows
 
 
+SCALP_RECEIPT_REL = "data/runtime/trade_ai_scalp_live_last.json"   # scripts/run_trade_ai_scalp_live.py receipt_path()
+SCALP_STALL_MIN = 12          # > two 5-min cycles plus the 295 s run budget
+SCALP_RTH_MIN = (9 * 60 + 30 + SCALP_STALL_MIN, 16 * 60)   # ET minutes; the first cycle needs time to land
+
+
+def _scalp_lane_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """trade-ai-scalp-live:STALLED (P2) when the receipt's last_ok_at is older than SCALP_STALL_MIN in RTH."""
+    from zoneinfo import ZoneInfo
+
+    et = now.astimezone(ZoneInfo("America/New_York"))
+    minute = et.hour * 60 + et.minute
+    if et.weekday() >= 5 or not SCALP_RTH_MIN[0] <= minute < SCALP_RTH_MIN[1]:
+        return []
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from market_session import is_trading_day
+        if not is_trading_day():
+            return []
+    except Exception:  # noqa: BLE001 — a broken calendar check fails open to the weekday rule
+        pass
+    doc = _load(root / SCALP_RECEIPT_REL)
+    if doc is None:
+        NOTES["scalp_lane_source"] = "no_receipt"
+        return []
+    try:
+        age_min = (now - datetime.fromisoformat(str(doc.get("last_ok_at")))).total_seconds() / 60
+    except Exception:  # noqa: BLE001 — no ok yet today reads as stalled
+        age_min = None
+    NOTES["scalp_lane_source"] = f"ok:last_ok_age_min={None if age_min is None else round(age_min, 1)}"
+    if age_min is not None and age_min <= SCALP_STALL_MIN:
+        return []
+    day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    return [{"source": "scalp_lane", "item": "trade-ai-scalp-live:STALLED", "severity": "P2",
+             "detail": f"no completed scalp cycle for {'?' if age_min is None else round(age_min)} min "
+                       f"(last_ok_at {doc.get('last_ok_at')}, status {doc.get('status')})",
+             "artifact_rel": SCALP_RECEIPT_REL, "store": "data/runtime", "detected_at": day}]
+
+
 PREV_RECEIPT: dict[str, Any] | None = None   # main() parks the previous fan-in receipt here before collect()
 
 
@@ -187,6 +225,9 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     # the executor is running n8n lanes and the unit is expected is a P1 (relay down: n8n cannot ask for runs).
     # Clears on the next file with no new failures. TRADEAI_FANIN_RELAY=0 opts out, like the runs source.
     out.extend(_relay_findings(root, now, prev))
+    # 3g. Trade-AI scalp scan (operator 2026-10-09 "n8n drives a governed lane"): no completed cycle for
+    # SCALP_STALL_MIN in RTH on a trading day is a P2. One event per UTC day; clears on the next ok receipt.
+    out.extend(_scalp_lane_findings(root, now))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:

@@ -13,18 +13,24 @@ const KIND_COLOR: Record<string, string> = {
 const VERDICT_COLOR: Record<string, string> = { GO: TOKENS.success, WAIT: TOKENS.warning, MANUAL_REVIEW: TOKENS.info }
 
 export default function ActiveTraderFiresStrip({ tradeAiTickers }: { tradeAiTickers: any[] }) {
-  const { data } = useApi<any>('/api/v3/active-trader/alerts?limit=500', 30_000)
-  const d = data?.data && data.data.decisions ? data.data : data
-  const sent: any[] = (d?.decisions || []).filter((x: any) => x.sent)
+  const { data, loading, error, stale } = useApi<any>('/api/v3/active-trader/alerts?limit=500', 30_000)
+  const d = data?.data ?? data
+  const available = d?.ok !== false && Array.isArray(d?.decisions)
+    && d.decisions.every((x: any) => x !== null && typeof x === 'object' && typeof x.sent === 'boolean')
+  const sent: any[] = available ? d.decisions.filter((x: any) => x.sent) : []
+  const retained = available && (stale || Boolean(error))
+  const status = retained ? 'Stale alerts · showing last observed response.'
+    : !available ? (loading ? 'Loading alerts…' : 'Alerts unavailable · count not measured.')
+      : !sent.length ? 'No Active Trader alerts sent today.' : null
   const verdict: Record<string, string> = {}
   for (const t of tradeAiTickers || []) if (t?.symbol) verdict[String(t.symbol).toUpperCase()] = String(t.decision || '')
   return (
     <div data-testid="at-fires-strip" style={{ border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: '8px 10px', marginBottom: 10, background: 'var(--bg0)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text0)' }}>Active Trader fired today · {sent.length}</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--text0)' }}>Active Trader {retained ? 'last observed' : 'fired today'} · {available ? sent.length : '—'}</span>
         <span style={{ fontSize: 10, color: 'var(--text3)' }}>scalp alerts sent · Trade-AI verdict beside each</span>
       </div>
-      {!sent.length && <div style={{ fontSize: 11, color: 'var(--text3)' }}>No Active Trader alerts sent today.</div>}
+      {status && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{status}</div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {sent.slice(0, 24).map((x: any) => {
           const v = verdict[String(x.symbol || '').toUpperCase()]

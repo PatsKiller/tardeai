@@ -205,8 +205,8 @@ async def run(max_seconds=None):
         except asyncio.TimeoutError:
             pass
         except Exception as e:
-            # websocket drop / decode error: exit non-zero so systemd Restart=on-failure reconnects us
-            print(f"[stream] stream error ({e}) — exiting for supervisor restart")
+            # websocket drop / decode error: return 1 so supervise() reconnects while the market is open
+            print(f"[stream] stream error ({e}) — returning for reconnect")
             cap.flush(conn)
             return 1
         now = dt.datetime.now(dt.timezone.utc)
@@ -240,11 +240,38 @@ async def run(max_seconds=None):
     return 0
 
 
+def supervise(run_once, market_open, sleep, max_restarts: int, backoff_s: float, backoff_cap_s: float = 300.0) -> int:
+    """Reconnect after a stream drop while the market is open.
+
+    2026-10-09: the cron line starts this daemon once at 09:31 and nothing restarts it (the "systemd
+    Restart=on-failure" the drop message relied on was never installed), so one websocket drop ended capture
+    for the day — 10-06 had no stream rows after 09:xx. run_once returns 1 on a drop / client error.
+    """
+    rc, restarts, wait = run_once(), 0, backoff_s
+    while rc == 1 and restarts < max_restarts and market_open():
+        restarts += 1
+        print(f"[stream] reconnect {restarts}/{max_restarts} in {wait:.0f}s")
+        sleep(wait)
+        if not market_open():
+            break
+        rc = run_once()
+        wait = min(wait * 2, backoff_cap_s)
+    return rc
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--max-seconds", type=int, default=None)
     a = ap.parse_args()
-    raise SystemExit(asyncio.run(run(a.max_seconds)))
+    try:
+        sys.stdout.reconfigure(line_buffering=True)   # the cron log otherwise shows nothing until exit
+    except Exception:
+        pass
+    import time
+
+    raise SystemExit(supervise(lambda: asyncio.run(run(a.max_seconds)), _market_open, time.sleep,
+                               int(os.getenv("STREAM_MAX_RESTARTS", "20")),
+                               float(os.getenv("STREAM_RESTART_BACKOFF_S", "30"))))
 
 
 if __name__ == "__main__":
