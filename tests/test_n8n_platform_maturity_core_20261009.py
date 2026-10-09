@@ -307,6 +307,13 @@ R2_REFUSED_SQL = [
     "select * from t for key share",
     "select * from t for no key update",
     "WITH m AS (MERGE INTO t USING s ON true WHEN MATCHED THEN DO NOTHING RETURNING *) SELECT 1",
+    # r2 probe 2 (Agent A): a comment between a function name and its paren
+    "select pg_read_file/**/('x')",
+    "select pg_sleep/*x*/(9)",
+    "select pg_terminate_backend --c\n(1)",
+    "select 1 -- trailing comment",
+    "select 1 /* block */",
+    "select pg_sleep\n(9)",
 ]
 
 
@@ -398,3 +405,22 @@ def test_r2_cap_on_fail_is_config_driven():
     assert core.cap_on_fail(cfg, 3.0, False) == 3.0
     with pytest.raises(core.ConfigError):
         core.cap_on_fail({}, 9.0, False)
+
+
+def test_r2_every_collector_query_passes_is_safe_sql():
+    """The scorer's own fixed SQL carries no comments, so refusing ``--`` and ``/*`` costs nothing."""
+    import datetime as _d
+    sys.path.insert(0, str(PROJ / "scripts"))
+    import n8n_live_inventory as inv
+    from n8n_maturity import dims_governance, dims_healing, dims_signal
+    since = _d.datetime(2026, 10, 9, tzinfo=_d.timezone.utc)
+    queries = [dims_signal.n8n_error_argv("c", "u", "d", ["error", "crashed"], since.isoformat())[-1],
+               dims_governance.PG_ROLES_SQL,
+               inv.WORKFLOW_LIST_SQL, inv.PUBLISH_HISTORY_SQL, inv.PUBLISHED_VERSION_SQL, inv.VERSION_HISTORY_SQL]
+    doc = json.loads((PROJ / "config" / "self_healing_mechanisms.json").read_text(encoding="utf-8"))
+    psql_srcs = [m["evidence_source"] for m in doc["mechanisms"] if m["evidence_source"].get("kind") == "psql"]
+    assert psql_srcs, "inventory has psql sources to check"
+    queries += [dims_healing.psql_sql(ev, since) for ev in psql_srcs]
+    for q in queries:
+        assert q and "--" not in q and "/*" not in q
+        assert core.is_safe_sql(q), q[:80]

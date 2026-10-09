@@ -86,10 +86,13 @@ def is_safe_sql(sql: str) -> bool:
 
     Quoted identifiers are scanned with their double quotes removed (``"pg_read_file"(`` is ``pg_read_file(``)
     and Unicode-escaped identifiers (``U&"..."`` / ``UESCAPE``) are refused outright, so a forbidden name
-    cannot be smuggled past the word scan. Legitimate quoted columns (``"startedAt"``) still pass."""
+    cannot be smuggled past the word scan. Any comment (``--`` or ``/*``) is refused: a comment can sit
+    between a function name and its paren. Legitimate quoted columns (``"startedAt"``) still pass."""
     s = str(sql)
     body = s.strip().rstrip(";")
     if not _SELECT_RE.match(s) or ";" in body or "\\" in s or _UNICODE_IDENT.search(s):
+        return False
+    if "--" in s or "/*" in s:  # a comment can split a name from its paren (pg_sleep/**/(9)); none needed
         return False
     return not _FORBIDDEN_SQL.search(body.replace('"', ""))
 
