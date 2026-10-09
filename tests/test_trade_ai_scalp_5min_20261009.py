@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime
+
+import pytest
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -130,7 +132,11 @@ def test_scalp_lane_runs_one_quiet_cycle(monkeypatch, tmp_path):
 
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     seen = {}
-    monkeypatch.setattr(cr, "run_live_cycle", lambda root, label, day, st, t, **k: seen.update(label=label, **k))
+    def completed_cycle(root, label, day, st, t, **k):
+        seen.update(label=label, **k)
+        return []
+
+    monkeypatch.setattr(cr, "run_live_cycle", completed_cycle)
     assert r.main(["--force"]) == 0
     assert seen == {"label": "scalp", "publish_dashboard": False}
 
@@ -179,3 +185,69 @@ def test_scalp_projection_feeds_active_trader_while_fresh(tmp_path, monkeypatch)
     r.projection_path().write_text(json.dumps(d))
     assert L.scalp_projection_rows(sf) == []
     assert L.scalp_projection_rows({}) == []
+
+
+@pytest.mark.parametrize("result", [None, {}, "unavailable", [None]])
+def test_failed_scalp_cycle_preserves_outputs_and_reports_failure(result, tmp_path, monkeypatch, capsys):
+    import continuous_runner as cr
+    import run_trade_ai_scalp_live as r
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    for p in (r.state_path(), r.projection_path()):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b'{"prior_observation": true}')
+    before = {p: p.read_bytes() for p in (r.state_path(), r.projection_path())}
+    monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: result)
+    assert r.main(["--force"]) != 0
+    out = capsys.readouterr()
+    assert "heartbeat ok" not in out.out
+    assert "cycle failed" in out.err
+    assert {p: p.read_bytes() for p in before} == before
+    assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_completed_empty_scalp_cycle_publishes_known_empty_result(tmp_path, monkeypatch, capsys):
+    import continuous_runner as cr
+    import run_trade_ai_scalp_live as r
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    r.write_projection([{"symbol": "OLD"}], datetime.now(ET) - timedelta(hours=1))
+    monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: [])
+    assert r.main(["--force"]) == 0
+    output = json.loads(r.projection_path().read_text())
+    assert output["schema"] == "TradeAIScalpUniverse@v1"
+    assert output["rows"] == []
+    assert datetime.fromisoformat(output["as_of"]) > datetime.now(ET) - timedelta(minutes=1)
+    assert "heartbeat ok" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("bad_field", [
+    {"as_of": "future"}, {"schema": "OtherUniverse@v1"}, {"schema": None},
+    {"rows": "bad"}, {"rows": [None]}, {"as_of": "naive"},
+])
+def test_scalp_projection_requires_current_versioned_aware_observation(bad_field, tmp_path):
+    import scalp_shadow_logger as L
+
+    observation = {"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                   "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}
+    bad_field = dict(bad_field)
+    if bad_field.get("as_of") == "future":
+        bad_field["as_of"] = (datetime.now(ET) + timedelta(hours=1)).isoformat()
+    elif bad_field.get("as_of") == "naive":
+        bad_field["as_of"] = datetime.now().isoformat()
+    observation.update(bad_field)
+    p = tmp_path / "universe.json"
+    p.write_text(json.dumps(observation))
+    before = p.read_bytes()
+    assert L.scalp_projection_rows({"scalp_projection_path": str(p)}) == []
+    assert p.read_bytes() == before
+
+
+@pytest.mark.parametrize("max_age", [float("nan"), float("inf"), -1, True, "bad"])
+def test_scalp_projection_invalid_freshness_contract_is_unproven(max_age, tmp_path):
+    import scalp_shadow_logger as L
+
+    p = tmp_path / "universe.json"
+    p.write_text(json.dumps({"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                             "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}))
+    assert L.scalp_projection_rows({"scalp_projection_path": str(p), "scalp_projection_max_age_min": max_age}) == []
