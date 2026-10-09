@@ -1,0 +1,12 @@
+
+Running 4 tests using 1 worker
+
+
+(node:708368) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/4] [chromium] › e2e/scheduler-operations.spec.ts:34:1 › scheduler rows, problem filter and durable run timeline
+[2/4] [chromium] › e2e/scheduler-operations.spec.ts:61:1 › expired successful response cannot label a row current LIVE
+[3/4] [chromium] › e2e/scheduler-operations.spec.ts:68:1 › unavailable endpoint ends loading without inventing counts
+[4/4] [chromium] › e2e/scheduler-operations.spec.ts:75:1 › 390px keeps wide table scrolling inside its panel
+  4 passed (2.4s)

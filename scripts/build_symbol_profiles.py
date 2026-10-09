@@ -75,6 +75,32 @@ def _finviz_map(symbols, root="."):
         return {}
 
 
+def _profile_lane() -> dict:
+    """profile_lane in config/opportunity_conviction.yaml (CIO-ranked coverage + stub retry). {} when absent."""
+    try:
+        import yaml
+
+        cfg = yaml.safe_load((PROJECT_ROOT / "config" / "opportunity_conviction.yaml").read_text(encoding="utf-8"))
+        return (cfg or {}).get("profile_lane") or {}
+    except Exception:
+        return {}
+
+
+def _cio_ranked(top_n: int) -> list[str]:
+    """The CIO projection's top_n ranked symbols, best rank first. [] when the projection is unreadable."""
+    if top_n <= 0:
+        return []
+    try:
+        from lib.cio_opportunity_store import CIOOpportunityStore
+
+        items = CIOOpportunityStore().read_projection().get("items") or {}
+        ranked = sorted((a["rank"], s.upper()) for s, a in items.items()
+                        if isinstance(a, dict) and a.get("rank") and a["rank"] <= top_n)
+        return [s for _, s in ranked if re.fullmatch(r"[A-Z]{1,5}", s)]
+    except Exception:
+        return []
+
+
 def run(symbols=None, force=False, watchlist_top=0):
     from db_adapter import _get_conn
     import watch_universe as wu
@@ -87,12 +113,30 @@ def run(symbols=None, force=False, watchlist_top=0):
         cur.execute("""SELECT symbol FROM watchlist_items WHERE status<>'removed' AND symbol ~ '^[A-Z]{1,5}$'
                        ORDER BY hermes_rank ASC NULLS LAST LIMIT %s""", (watchlist_top,))
         uni |= {r[0].upper() for r in cur.fetchall()}
+    lane = _profile_lane() if not symbols else {}
+    ranked = _cio_ranked(int(lane.get("top_n") or 0)) if lane.get("enabled") else []
+    uni |= set(ranked)
     uni = sorted(uni)
     if not force:
+        # A Finviz-synthesized one-liner ("Ceva Inc — Semiconductors.") is written when yfinance comes back empty;
+        # it is a stand-in, not a description, so it is retried after stub_retry_days instead of counting as fresh
+        # for 30 days (operator 2026-10-08: the opportunity modal said nothing about what the company does — 1,074
+        # profiles were stubs that had never been retried). Retries are capped per run, CIO top-ranked first.
         cur.execute("""SELECT symbol FROM symbol_profiles
-                       WHERE updated_at > now() - interval '30 days' AND description_1s IS NOT NULL""")
+                       WHERE updated_at > now() - interval '30 days' AND description_1s IS NOT NULL
+                         AND (COALESCE(source, '') <> 'finviz'
+                              OR updated_at > now() - make_interval(days => %s))""",
+                    (int(lane.get("stub_retry_days") or 30),))
         fresh = {r[0] for r in cur.fetchall()}
-        uni = [s for s in uni if s not in fresh]
+        stale = [s for s in uni if s not in fresh]
+        cap = int(lane.get("stub_retry_max") or 0)
+        if cap:
+            cur.execute("SELECT symbol FROM symbol_profiles WHERE COALESCE(source, '') = 'finviz'")
+            stubs = {r[0] for r in cur.fetchall()}
+            order = {s: i for i, s in enumerate(ranked)}
+            retry = sorted((s for s in stale if s in stubs), key=lambda s: (order.get(s, len(order)), s))[:cap]
+            stale = [s for s in stale if s not in stubs] + retry
+        uni = sorted(stale)
     if not uni:
         print(json.dumps({"status": "fresh", "updated": 0}))
         return

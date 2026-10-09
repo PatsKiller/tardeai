@@ -326,7 +326,7 @@ export default function CommunicationsHub() {
               )}
               <span style={{ fontSize: 10, color: MUTED }}>sort</span>
               <select value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0) }} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, color: TEXT }}>
-                {[['priority_score', 'Priority score'], ['confidence', 'Confidence'], ['risk_score', 'Risk'], ['reward_score', 'Reward'], ['time_sensitivity', 'Time sensitivity'], ['expires_at', 'Expiry'], ['actionable_since', 'Became actionable'], ['created_at', 'Newest']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {[['conviction', 'CIO conviction'], ['priority_score', 'Priority score'], ['confidence', 'Confidence'], ['risk_score', 'Risk'], ['reward_score', 'Reward'], ['time_sensitivity', 'Time sensitivity'], ['expires_at', 'Expiry'], ['actionable_since', 'Became actionable'], ['created_at', 'Newest']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
               <button type="button" onClick={() => setOrder((o) => (o === 'desc' ? 'asc' : 'desc'))} style={{ fontSize: 10, padding: '3px 6px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer' }}>{order === 'desc' ? '↓' : '↑'}</button>
               {eventsLoading && <span style={{ color: MUTED, fontSize: 10 }}>Loading…</span>}
@@ -380,8 +380,9 @@ export default function CommunicationsHub() {
                   <div style={{ fontSize: 10, color: TEXT2, lineHeight: 1.6, marginBottom: 10 }}>
                     {[
                       ['Symbols', (e.symbols || []).join(', ') || '—'],
-                      ['Priority score', e.priority_score ?? '—'],
-                      ['Confidence · Risk · Reward · Time', [e.confidence, e.risk_score, e.reward_score, e.time_sensitivity].map((v: any) => (v == null ? '—' : Number(v).toFixed(2))).join(' · ')],
+                      ['CIO conviction', e.levels?.conviction != null ? `${Math.round(e.levels.conviction)}/100${e.levels.rank ? ` · rank #${e.levels.rank}` : ''} (same number as Home and the ticker view)` : '— (not scored by the CIO)'],
+                      ['Message priority', e.priority_score ?? '—'],
+                      ['Message confidence · Risk · Reward · Time', [e.confidence, e.risk_score, e.reward_score, e.time_sensitivity].map((v: any) => (v == null ? '—' : Number(v).toFixed(2))).join(' · ')],
                       ['Status', e.lifecycle_status || '—'],
                       ['TTL', `${ttlLabel(e.ttl_remaining_s, e.legal_hold)} · expires ${fmtWhen(e.expires_at)}`],
                       ['Actionable', e.actionable ? `yes — ${e.action_hint || ''} (since ${fmtWhen(e.actionable_since)})` : 'no'],

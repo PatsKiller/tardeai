@@ -1,6 +1,7 @@
 // Coordination — what is waiting, in progress, written, consumed or refused in the n8n
 // coordination ledger (GET /api/v2/coordination/events). Read-only. 2026-10-07 roadmap Phase 1.
 import { useMemo, useState, type CSSProperties } from 'react'
+import SchedulerOperations from './SchedulerOperations'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
@@ -25,9 +26,9 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
 ]
 
 // Tabs: the events ledger (events + outbox + approvals) and the n8n migration board (stream G, 2026-10-08).
-const TABS = ['events', 'migration'] as const
+const TABS = ['operations', 'events', 'migration'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { events: 'Events', migration: 'Migration board' }
+const TAB_LABEL: Record<CoordinationTab, string> = { operations: 'Automation', events: 'Events', migration: 'Migration board' }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -58,18 +59,18 @@ export default function CoordinationPage() {
   const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
   const approvals = useMemo(() => projectApprovalBoard(approvalsApi.loading && !approvalsApi.data ? null : approvalsApi.data), [approvalsApi.data, approvalsApi.loading])
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = useState<CoordinationTab>(() => (searchParams.get('tab') === 'migration' ? 'migration' : 'events'))
+  const [tab, setTab] = useState<CoordinationTab>(() => (searchParams.get('tab') === 'migration' ? 'migration' : searchParams.get('tab') === 'events' ? 'events' : 'operations'))
   const boardApi = useApi<MigrationBoardPayload>('/api/v2/coordination/migration-board', 60_000, { enabled: tab === 'migration' })
   const board = useMemo(() => projectMigrationBoard(boardApi.loading && !boardApi.data ? null : boardApi.data), [boardApi.data, boardApi.loading])
   const boardSort = useSort(board.rows, { key: 'tranche', dir: 'asc' }, boardGetter)
   const selectTab = (t: CoordinationTab) => {
     setTab(t)
     const next = new URLSearchParams(searchParams)
-    if (t === 'events') next.delete('tab'); else next.set('tab', t)
+    if (t === 'operations') next.delete('tab'); else next.set('tab', t)
     setSearchParams(next, { replace: true })
   }
   return (
-    <div data-testid="coordination-page" style={{ display: 'grid', gap: 12 }}>
+    <div data-testid="coordination-page" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
       <nav style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} aria-label="Coordination sections" role="tablist">
         {TABS.map(t => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => selectTab(t)} style={tabButton(tab === t)} data-testid={`coordination-tab-${t}`}>
@@ -77,7 +78,7 @@ export default function CoordinationPage() {
           </button>
         ))}
       </nav>
-      {tab === 'migration' ? (
+      {tab === 'operations' ? <SchedulerOperations /> : tab === 'migration' ? (
       <div style={panel} data-testid="coordination-migration-board">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Migration board</div>

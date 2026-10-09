@@ -54019,6 +54019,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # Unified scheduler intent/observations/host receipts. Additive read-only route.
+    if base_path == "/api/v2/scheduler-operations":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from scripts.lib.scheduler_operations import load_projection as _scheduler_projection
+
+            def _signal_query(sql):
+                rows = _db_query(sql)
+                if rows is None:
+                    return None
+                return [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
+
+            return 200, {"ok": True, "data": _scheduler_projection(db_query=_signal_query)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
     # n8n coordination ledger projection (plan tranche B, 2026-10-07): waiting / in progress /
     # artifact / consumed / refused / failed in plain language. Read-only SQLite; never opens n8n.
     if base_path == "/api/v2/coordination/events":

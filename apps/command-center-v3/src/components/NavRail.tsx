@@ -84,6 +84,28 @@ export default function NavRail() {
   // Close on navigation — the sheet must never survive a route change.
   useEffect(() => { setOpen(false) }, [pathname])
 
+  // The rail always takes its clicks (operator 2026-10-08: "cant click watch"). Pages draw their own full-screen
+  // overlays (z 900–10000: message panels, drawers, modals) on top of the rail, so a click on a nav link landed on
+  // the backdrop instead. A click whose point is over the rail goes to the rail link under it, whatever is on top;
+  // the route change then unmounts the page and its overlay. Capture phase, so the overlay never sees the click.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const rail = panelRef.current
+      const target = e.target as Node | null
+      if (!rail || !target || rail.contains(target)) return
+      const r = rail.getBoundingClientRect()
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return
+      const under = document.elementsFromPoint(e.clientX, e.clientY).find(el => rail.contains(el))
+      const link = under?.closest('a') as HTMLAnchorElement | null
+      if (!link) return
+      e.preventDefault()
+      e.stopPropagation()
+      link.click()
+    }
+    window.addEventListener('click', onClick, true)
+    return () => window.removeEventListener('click', onClick, true)
+  }, [])
+
   // Escape closes; lock body scroll so the page behind cannot scroll under the sheet.
   useEffect(() => {
     if (!open) return

@@ -47,6 +47,8 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
   const fam: Family = familyFor(e.priority, e.category)
   const s = familyStyle(fam)
   const syms: string[] = e.symbols || []
+  // opportunity cards only: on a risk/stop card the urgency (priority) is the decision number
+  const conv: number | null = fam === 'opportunity' && e.levels?.conviction != null && Number.isFinite(Number(e.levels.conviction)) ? Number(e.levels.conviction) : null
   const soon = e.ttl_remaining_s != null && e.ttl_remaining_s > 0 && e.ttl_remaining_s < 12 * 3600
   return (
     <div data-feed-card={e.event_id} data-family={fam} onClick={onOpen}
@@ -69,7 +71,23 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
         <LevelsLine l={e.levels} />
       </div>
       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-        <div style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: 'var(--text0)', lineHeight: 1 }} title="priority score">{e.priority_score != null ? Math.round(e.priority_score) : '—'}</div>
+        {/* One number per ticker everywhere (operator 2026-10-08: "why confidence doesn't match"): the CIO conviction
+            that Home and the opportunity view show. Message priority (an urgency score per message, so two messages
+            on one ticker differed) is shown, labelled, on risk cards and when the CIO has no conviction for the name. */}
+        {conv != null ? (
+          <>
+            <div style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: e.levels?.low_conviction ? 'var(--text3)' : 'var(--text0)', lineHeight: 1 }} title={`CIO conviction ${Math.round(conv)}/100${e.priority_score != null ? ` · message priority ${Math.round(e.priority_score)}` : ''}`}>{Math.round(conv)}</div>
+            <div style={{ fontSize: 10, color: e.levels?.low_conviction ? 'var(--warning-color)' : 'var(--text3)' }}
+              title={e.levels?.low_conviction ? `below the CIO conviction floor ${e.levels.conviction_floor} — ranked last` : undefined}>
+              {e.levels?.low_conviction ? 'low conviction' : 'conviction'}{e.levels?.rank ? ` #${e.levels.rank}` : ''}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: 'var(--text3)', lineHeight: 1 }} title="message priority (urgency of this message)">{e.priority_score != null ? Math.round(e.priority_score) : '—'}</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>priority</div>
+          </>
+        )}
         <div style={{ fontSize: 11, color: soon ? 'var(--warning-color)' : 'var(--text3)' }}>{ttlLabel(e.ttl_remaining_s, e.legal_hold).replace('left', 'remaining')}</div>
       </div>
     </div>

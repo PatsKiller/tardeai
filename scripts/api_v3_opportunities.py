@@ -95,6 +95,44 @@ def _thesis(symbol: str) -> dict[str, Any] | None:
     return {k: t.get(k) for k in keep if t.get(k) not in (None, "", [])}
 
 
+def _modal_cfg() -> dict[str, Any]:
+    from lib.data_broker.opportunity import load_config
+
+    return load_config().get("modal") or {}
+
+
+def _news(sym: str) -> list[dict[str, Any]]:
+    """Latest articles (operator 2026-10-08: "nothing here on ... latest news"). Never raises."""
+    try:
+        from lib.data_broker.catalyst_record import get_symbol_news
+
+        c = _modal_cfg()
+        return get_symbol_news(_db_query, sym, days=int(c.get("news_days") or 45), limit=int(c.get("news_limit") or 6))
+    except Exception:
+        return []
+
+
+def _catalysts(sym: str) -> list[dict[str, Any]]:
+    try:
+        from lib.data_broker.catalyst_record import get_symbol_catalysts
+
+        c = _modal_cfg()
+        return get_symbol_catalysts(_db_query, sym, days=int(c.get("catalyst_days") or 90),
+                                    limit=int(c.get("catalyst_limit") or 5))
+    except Exception:
+        return []
+
+
+def _news_and_catalysts(sym: str) -> dict[str, list]:
+    """Catalysts first; news leaves out headlines already shown as a catalyst (they share a source row)."""
+    from lib.data_broker.catalyst_record import title_key
+
+    cats = _catalysts(sym)
+    shown = {title_key(c.get("headline")) for c in cats}
+    news = [n for n in _news(sym) if title_key(n.get("title")) not in shown]
+    return {"catalysts": cats, "news": news}
+
+
 def get_detail(symbol: str) -> dict[str, Any]:
     from lib.data_broker import opportunity as op
     from lib.data_broker.ohlc_bars import get_daily_ohlc
@@ -147,6 +185,7 @@ def get_detail(symbol: str) -> dict[str, Any]:
             "upside_pct": live.get("upside_pct"), "upside_flag": live.get("upside_flag"),
             "source": an.get("source"), "as_of": _iso((ctx.get("as_of") or {}).get("analyst")),
         },
+        **_news_and_catalysts(sym),
         "position": ctx.get("position") or {},
         "reentry_state": ctx.get("reentry_state"),
         "chart": get_daily_ohlc(_db_query, sym, days=180),

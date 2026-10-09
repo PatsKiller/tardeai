@@ -1,8 +1,8 @@
 /** Investment Opportunity modal (operator 2026-10-08): everything needed to decide from the dashboard —
  *  market data, technicals + chart, Street view, risk/reward ladder, portfolio context + stance, conviction
- *  breakdown, CIO thesis / AI brief. Curated assessment from CIO memory; live values read at request time.
+ *  breakdown, CIO thesis / AI brief, what the company does, catalysts and latest news (operator 2026-10-08). Curated assessment from CIO memory; live values read at request time.
  *  Data: GET /api/v3/opportunities/{symbol}. Read-only; stance is a label, never an instruction. */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, numStyle } from '../../lib/designTokens'
 import Modal from '../primitives/Modal'
@@ -54,6 +54,39 @@ function FactorBar({ label, score, detail, weight }: { label: string; score: num
   )
 }
 
+function ago(iso?: string | null): string {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms)) return ''
+  const h = Math.floor(ms / 3_600_000)
+  return h < 1 ? 'just now' : h < 48 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`
+}
+
+function sourceLabel(src?: string | null): string {
+  const s = String(src || '')
+  if (s.startsWith('google_news:')) return s.slice('google_news:'.length)
+  return ({ yahoo_rss: 'Yahoo', benzinga_rss: 'Benzinga', benzinga_api: 'Benzinga', seeking_alpha: 'Seeking Alpha', motley_fool: 'Motley Fool' } as Record<string, string>)[s] || s.replace(/_/g, ' ')
+}
+
+function Headline({ title, url, meta, tag, tagColor }: { title: string; url?: string | null; meta: string; tag?: string; tagColor?: string }) {
+  return (
+    <div style={{ padding: '5px 0', borderTop: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+        {tag && <span style={{ fontSize: 10, fontWeight: 800, color: tagColor || TOKENS.info, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{tag}</span>}
+        {url
+          ? <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: TEXT, textDecoration: 'none', lineHeight: 1.35 }}>{title}</a>
+          : <span style={{ fontSize: 12, color: TEXT, lineHeight: 1.35 }}>{title}</span>}
+      </div>
+      <div style={{ fontSize: 10, color: MUTED, marginTop: 1 }}>{meta}</div>
+    </div>
+  )
+}
+
+const CATALYST_COLOR: Record<string, string> = {
+  analyst_upgrade: TOKENS.success, earnings_beat: TOKENS.success, guidance_raise: TOKENS.success,
+  analyst_downgrade: TOKENS.danger, earnings_miss: TOKENS.danger, guidance_cut: TOKENS.danger,
+}
+
 export default function OpportunityModal({ symbol, onClose }: { symbol: string; onClose: () => void; onOpenSymbol?: (s: string) => void }) {
   const { data, loading, error } = useApi<any>(`/api/v3/opportunities/${encodeURIComponent(symbol)}`, 120_000)
   const d = data?.data && data.data.symbol ? data.data : data
@@ -65,6 +98,15 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
   const pos = d?.position || {}
   const prof = d?.profile || {}
   const th = d?.thesis || null
+  const [fullSummary, setFullSummary] = useState(false)
+  const summary = String(th?.summary || '')
+  const SUMMARY_MAX = 420
+  const cut = summary.length > SUMMARY_MAX && !fullSummary ? summary.slice(0, summary.lastIndexOf(' ', SUMMARY_MAX)) + '…' : summary
+  // date-only → local midnight (new Date('2026-11-09') is UTC midnight and renders a day early in ET)
+  const earnAt = prof.next_earnings_date ? new Date(String(prof.next_earnings_date).slice(0, 10) + 'T00:00:00') : null
+  const earnDays = earnAt && Number.isFinite(earnAt.getTime()) ? Math.ceil((earnAt.getTime() - Date.now()) / 86_400_000) : null
+  const news: any[] = d?.news || []
+  const cats: any[] = d?.catalysts || []
   const levels: ChartLevel[] = []
   const add = (price: any, title: string, kind: ChartLevel['kind']) => { if (price != null && Number.isFinite(Number(price))) levels.push({ price: Number(price), title, kind }) }
   add(t.support_1, 'S1', 'support'); add(t.support_2, 'S2', 'support'); add(t.resistance_1, 'R1', 'resistance'); add(t.resistance_2, 'R2', 'resistance')
@@ -98,6 +140,13 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
       {error && !d && <div style={{ color: TOKENS.danger, fontSize: 12 }}>Could not load {symbol}: {String(error)}</div>}
       {d && (
         <div style={{ display: 'grid', gap: 10 }}>
+          {/* What the company does */}
+          <Section title="About" note={earnDays != null && earnDays >= 0 ? `next earnings ${earnAt?.toLocaleDateString()} · in ${earnDays}d` : undefined}>
+            <div style={{ fontSize: 12, color: TEXT, lineHeight: 1.45 }} data-testid="opportunity-about">
+              {prof.description || <span style={{ color: MUTED }}>No company profile on file for {symbol}.</span>}
+            </div>
+          </Section>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
             {/* Risk / Reward — the headline */}
             <Section title="Risk / Reward" note={rr.entry_source ? `levels: ${rr.entry_source.replace(/_/g, ' ')}` : undefined}>
@@ -148,6 +197,30 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
             </Section>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
+            <Section title="Catalysts" note={cats.length ? `${cats.length} in 90d` : undefined}>
+              <div data-testid="opportunity-catalysts">
+                {earnDays != null && earnDays >= 0 && (
+                  <Headline title={`Earnings ${earnAt?.toLocaleDateString()}`} meta={`scheduled · in ${earnDays} days`} tag="upcoming" tagColor={TOKENS.warning} />
+                )}
+                {cats.map((c: any, i: number) => (
+                  <Headline key={i} title={c.headline} url={c.source_url} tag={String(c.catalyst_type || '').replace(/_/g, ' ')}
+                    tagColor={CATALYST_COLOR[c.catalyst_type] || TOKENS.info}
+                    meta={`${c.at ? new Date(c.at).toLocaleDateString() : ''}${c.at ? ` · ${ago(c.at)}` : ''}${c.verified ? '' : ' · low confidence'}`} />
+                ))}
+                {!cats.length && earnDays == null && <div style={{ fontSize: 11, color: MUTED }}>No catalysts recorded for {symbol} in 90 days.</div>}
+              </div>
+            </Section>
+            <Section title="Latest news" note={news[0]?.published_at ? `newest ${ago(news[0].published_at)}` : undefined}>
+              <div data-testid="opportunity-news">
+                {news.map((n: any, i: number) => (
+                  <Headline key={i} title={n.title} url={n.url} meta={`${sourceLabel(n.source)} · ${ago(n.published_at)}`} />
+                ))}
+                {!news.length && <div style={{ fontSize: 11, color: MUTED }}>{cats.length ? 'No other headlines in 45 days — the catalysts are the latest news.' : `No news collected for ${symbol} in 45 days. Ranked names now get a news fetch twice a day.`}</div>}
+              </div>
+            </Section>
+          </div>
+
           {/* Technical + chart */}
           <Section title="Technical" note={t.as_of ? `indicators ${new Date(t.as_of).toLocaleDateString()}` : undefined}>
             <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(220px, 1fr)', gap: 12 }}>
@@ -182,7 +255,7 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
                 <span style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: Number(an.upside_pct) >= 0 ? TOKENS.success : TOKENS.danger }}>{pct(an.upside_pct)}</span>
               </div>
               {an.upside_flag && <div style={{ fontSize: 10, color: TOKENS.warning, marginBottom: 4 }}>{an.upside_flag}</div>}
-              <Row k="Consensus" v={an.consensus ? String(an.consensus).replace(/_/g, ' ').toUpperCase() : '—'} />
+              <Row k="Consensus" v={an.consensus && String(an.consensus).toLowerCase() !== 'none' ? String(an.consensus).replace(/_/g, ' ').toUpperCase() : '—'} />
               <Row k="Analysts" v={an.analyst_count ?? '—'} />
               <Row k="Average target" v={money(an.target_mean)} />
               <Row k="High / low target" v={`${money(an.target_high)} / ${money(an.target_low)}`} />
@@ -195,7 +268,14 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
                 </ul>
               ) : th ? (
                 <div style={{ fontSize: 12, color: TEXT, lineHeight: 1.45 }}>
-                  <div style={{ marginBottom: 6 }}>{String(th.summary || '').slice(0, 420)}</div>
+                  <div style={{ marginBottom: 6 }}>
+                    {cut}
+                    {summary.length > SUMMARY_MAX && (
+                      <button onClick={() => setFullSummary(v => !v)} style={{ marginLeft: 6, fontSize: 11, color: TOKENS.info, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        {fullSummary ? 'less' : 'more'}
+                      </button>
+                    )}
+                  </div>
                   {(th.counter_evidence || []).length > 0 && <div style={{ color: TEXT2 }}><b>Risks:</b> {(th.counter_evidence || []).slice(0, 3).join(' · ')}</div>}
                   {(th.invalidation_conditions || []).length > 0 && <div style={{ color: TEXT2, marginTop: 4 }}><b>Invalidation:</b> {(th.invalidation_conditions || []).slice(0, 3).join(' · ')}</div>}
                   <div style={{ fontSize: 10, color: MUTED, marginTop: 6 }}>AI investment brief arrives with the next release; showing the CIO research thesis.</div>

@@ -23,7 +23,16 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
-    ("options_workflow", ["tests/test_options_workflow.py", "tests/test_options_workflow_execution.py", "tests/test_options_workflow_journal.py", "tests/test_options_workflow_submission.py", "tests/test_options_workflow_entry.py"]),
+    (
+        "options_workflow",
+        [
+            "tests/test_options_workflow.py",
+            "tests/test_options_workflow_execution.py",
+            "tests/test_options_workflow_journal.py",
+            "tests/test_options_workflow_submission.py",
+            "tests/test_options_workflow_entry.py",
+        ],
+    ),
     ("learning_outcome_governance", ["tests/test_learning_outcome_governance.py"]),
     ("learning_research_remediation", ["tests/test_learning_research_remediation.py"]),
     ("learning_operator_remediation", ["tests/test_learning_operator_remediation.py"]),
@@ -1140,6 +1149,19 @@ GATES = [
     (
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
+    ),
+    # Opportunity modal news (operator 2026-10-08: "nothing here on what company does or latest news, catalyst"):
+    # profile description, typed catalysts, latest news without catalyst repeats, and the news-ingestion opportunity
+    # lane that gives the CIO's top-ranked names news beyond the 60-symbol cap.
+    (
+        "opportunity_modal_news_20261008",
+        ["tests/test_opportunity_modal_news_20261008.py"],
+    ),
+    # Advice ranked by CIO conviction (operator 2026-10-08): Communications conviction sort + reward board, below-floor
+    # names last and tagged; advice digest entry/re-entry ordered by conviction, below-floor collapsed, CIO notes uncapped.
+    (
+        "conviction_ordering_20261008",
+        ["tests/test_conviction_ordering_20261008.py"],
     ),
     # Decision-speed redesign (operator 2026-10-08): Telegram decision cards route exactly like the old layout;
     # Home/Communications/Watch answer action-risk-opportunity first with strict colour families.
@@ -2987,8 +3009,11 @@ GATES = [
         # YTD, restatements, like-for-like YoY), PRIMARY_REGULATORY thesis evidence,
         # fundamentals freshness SLA in the curation monitor.
         "fundamentals_feed_20260927",
-        ["tests/test_fundamentals_feed_20260927.py", "tests/test_symbol_news_curation_20260927.py",
-         "tests/test_fundamentals_f3_f5_20260927.py"],
+        [
+            "tests/test_fundamentals_feed_20260927.py",
+            "tests/test_symbol_news_curation_20260927.py",
+            "tests/test_fundamentals_f3_f5_20260927.py",
+        ],
     ),
     (
         # 2026-09-27 -- options Wave A: honest expected P/L (not credit x POP), net cost if
@@ -2996,9 +3021,11 @@ GATES = [
         # policy, real not-approvable reasons, desk-side never-approvable guarantees, and
         # retirement of unanswerable thesis gaps.
         "options_economics_20260927",
-        ["tests/test_options_economics_20260927.py",
-         # SEC facts reach the thesis prompt; reworded gaps still retire (DELL v5).
-         "tests/test_thesis_packet_sec_and_stance_retire_20260927.py"],
+        [
+            "tests/test_options_economics_20260927.py",
+            # SEC facts reach the thesis prompt; reworded gaps still retire (DELL v5).
+            "tests/test_thesis_packet_sec_and_stance_retire_20260927.py",
+        ],
     ),
     (
         # 2026-09-27 -- options Wave B: per-leg liquidity, combined same-symbol exposure,
@@ -3014,9 +3041,11 @@ GATES = [
         # (with url + date) and the options CIO packet (with real per-leg liquidity,
         # fundamentals and the RPO-is-not-backlog note); web queries keep "AI" and ask sec.gov.
         "sec_filing_documents_20260927",
-        ["tests/test_sec_filing_documents_20260927.py",
-         # --since-days: one-off wider 8-K window (DELL Q1 FY27 release on 2026-05-28)
-         "tests/test_sec_ingest_since_days_20260927.py"],
+        [
+            "tests/test_sec_filing_documents_20260927.py",
+            # --since-days: one-off wider 8-K window (DELL Q1 FY27 release on 2026-05-28)
+            "tests/test_sec_ingest_since_days_20260927.py",
+        ],
     ),
     (
         # 2026-09-27 -- options fill truth (reviewer work order): credit spreads priced from an
@@ -3056,8 +3085,7 @@ GATES = [
         # fails closed regardless of source), buying power is read and gated, and changed
         # legs / account / quantity / limit / proposal version after approval fail closed.
         "options_order_authorization_20260927",
-        ["tests/test_options_order_authorization_20260927.py",
-         "tests/test_options_broker_gates_20260927.py"],
+        ["tests/test_options_order_authorization_20260927.py", "tests/test_options_broker_gates_20260927.py"],
     ),
     (
         # 2026-09-27 wave 3 -- researched-watchlist lane reads catalysts from catalyst_events and
@@ -3166,12 +3194,17 @@ GATES = [
         # 2026-09-26 -- watchlist names read at-the-money IV from their Schwab chain
         # (technical_snapshot.json is holdings-only); one chain read per pass.
         "chain_iv_fallback_20260926",
-        ["tests/test_chain_iv_fallback_20260926.py", "tests/test_options_holdings_funnel.py",
-         "tests/test_cc_yield_scoring_20260926.py", "tests/test_truthful_cards_20260926.py",
-         "tests/test_card_cleanup_20260926.py", "tests/test_calendar_catalyst_20260926.py",
-         "tests/test_options_validate_20260926.py",
-         "tests/test_option_spot_freshness_20260926.py",
-         "tests/test_iv_history_depth_20260926.py"],
+        [
+            "tests/test_chain_iv_fallback_20260926.py",
+            "tests/test_options_holdings_funnel.py",
+            "tests/test_cc_yield_scoring_20260926.py",
+            "tests/test_truthful_cards_20260926.py",
+            "tests/test_card_cleanup_20260926.py",
+            "tests/test_calendar_catalyst_20260926.py",
+            "tests/test_options_validate_20260926.py",
+            "tests/test_option_spot_freshness_20260926.py",
+            "tests/test_iv_history_depth_20260926.py",
+        ],
     ),
     (
         # 2026-09-26 -- options research answers improve the SYMBOL thesis through the one
@@ -3265,9 +3298,11 @@ GATES = [
         # collectors own the scalp lane: GO→proposal conversion, underfilled streaks for
         # real reasons, social-inject failures.
         "go_alerts_and_lane_collectors_20260928",
-        ["tests/test_go_alerts_and_lane_collectors_20260928.py",
-         "tests/test_screener_go_alerts_delivery_20260914.py",
-         "tests/test_cio_telegram_stance_gate_20260918.py"],
+        [
+            "tests/test_go_alerts_and_lane_collectors_20260928.py",
+            "tests/test_screener_go_alerts_delivery_20260914.py",
+            "tests/test_cio_telegram_stance_gate_20260918.py",
+        ],
     ),
     (
         # 2026-09-28 — execution truth: market_cap_usd beside the millions field; expired
@@ -3275,9 +3310,11 @@ GATES = [
         # a fund's cached NAV is not a degraded quote; extended-hours provider declared;
         # continuous runner derives its root (unit pinned to CURRENT).
         "execution_truth_20260928",
-        ["tests/test_execution_truth_20260928.py",
-         "tests/test_quote_selection_contract.py",
-         "tests/test_portfolio_aggregate_contract.py"],
+        [
+            "tests/test_execution_truth_20260928.py",
+            "tests/test_quote_selection_contract.py",
+            "tests/test_portfolio_aggregate_contract.py",
+        ],
     ),
     (
         # 2026-09-28 — pre-open window honesty: 0400/0700 run two screeners by design and
@@ -3298,8 +3335,7 @@ GATES = [
         # Finviz was never refreshed; the health agent now reads the refresh receipt
         # (missing / killed / stale / failed) and flags a lane that only ever skips refresh.
         "momentum_scalp_refresh_alarm_20260928",
-        ["tests/test_momentum_scalp_refresh_alarm_20260928.py",
-         "tests/test_momentum_scalp_source_health.py"],
+        ["tests/test_momentum_scalp_refresh_alarm_20260928.py", "tests/test_momentum_scalp_source_health.py"],
     ),
     (
         # 2026-09-28 — momentum-scalp lane refresh: the */15 Finviz-refresh cron line was
@@ -3314,8 +3350,10 @@ GATES = [
         # row broke check_lane_registry on main; recorded as a dated inherited tranche
         # with provenance (the original baseline is not grown) that the gate honours.
         "lane_registry_inherited_tranche_20260928",
-        ["tests/test_lane_registry_inherited_tranche_20260928.py",
-         "tests/test_alarm_fires_reminder_and_supervisor_20260928.py"],
+        [
+            "tests/test_lane_registry_inherited_tranche_20260928.py",
+            "tests/test_alarm_fires_reminder_and_supervisor_20260928.py",
+        ],
     ),
     (
         # 2026-09-28 — home book map. A zero day_change uses today's broker_day_pl.
@@ -3404,6 +3442,16 @@ GATES = [
         # stays off; the turn is not attached to a different subject.
         "wake_operator_turn_selection_20261005",
         ["tests/test_wake_operator_turn_selection_20261005.py"],
+    ),
+    (
+        # Runtime convergence: denied observations, unregistered schedulers, lock skips,
+        # shadow/live separation and release rebind coverage.
+        "scheduler_operations",
+        [
+            "tests/test_scheduler_operations.py",
+            "tests/test_n8n_release_rebind.py",
+            "tests/test_scheduler_launcher_roots.py",
+        ],
     ),
     (
         # 2026-10-08 — lane registry scheduler kind `n8n` (scheduler-of-record program):
@@ -3498,6 +3546,11 @@ GATES = [
         # N8N_AGENT2_W1 — 2026-10-08: observed registry rows, safe routing and durable legacy-job receipts.
         "N8N_AGENT2_W1",
         ["tests/test_n8n_w1_registry_20261008.py"],
+    ),
+    (
+        # N8N_AGENT2_W2 — 2026-10-08: N6 provenance and fail-closed external contracts.
+        "N8N_AGENT2_W2",
+        ["tests/test_n8n_w2_registry_20261008.py"],
     ),
     (
         # Cron tranche B (2026-10-07, ranks 5-7 of 13-cron-consolidation): manifest-driven serial

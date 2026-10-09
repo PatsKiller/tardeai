@@ -2,7 +2,8 @@
 # GOV-1: Scheduled A1A compliance check. Read-only.
 set -euo pipefail
 
-PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# Code follows the installed launcher/release; state symlinks and existing guards remain authoritative.
+PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 set -a; source "$PROJ/.env"; set +a
 PY="$PROJ/.venv/bin/python"
 LOG="$PROJ/logs/governance_a1a_check.log"
