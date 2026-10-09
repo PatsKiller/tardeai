@@ -251,7 +251,7 @@ def test_import_grant_does_not_authorize_later_activation(tmp_path):
     assert row["status"] == A.UNGRANTED_ACTIVATION
     assert row["grants"] == []
     assert row["import_status"] == A.GRANTED
-    assert row["import_grants"][0]["tier"] == "config-write"
+    assert row["import_grants"][0]["tier"] == "cron"
 
 
 def test_import_and_activation_grants_are_attributed_independently(tmp_path):
@@ -261,14 +261,14 @@ def test_import_and_activation_grants_are_attributed_independently(tmp_path):
             [
                 {
                     "event": "grant-issued",
-                    "tier": "config-write",
+                    "tier": "cron",
                     "seconds": 1800,
                     "ts": "2026-10-09T11:55:00Z",
                     "reason": "import c0d4c7845e5c4fcc",
                 },
                 {
                     "event": "grant-issued",
-                    "tier": "service",
+                    "tier": "cron",
                     "seconds": 1800,
                     "ts": "2026-10-09T13:25:00Z",
                     "reason": "activate c0d4c7845e5c4fcc",
@@ -279,8 +279,8 @@ def test_import_and_activation_grants_are_attributed_independently(tmp_path):
     rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
     row = rows["c0d4c7845e5c4fcc"]
     assert row["status"] == A.GRANTED and row["import_status"] == A.GRANTED
-    assert [g["tier"] for g in row["grants"]] == ["service"]
-    assert [g["tier"] for g in row["import_grants"]] == ["config-write"]
+    assert [g["reason"] for g in row["grants"]] == ["activate c0d4c7845e5c4fcc"]
+    assert [g["reason"] for g in row["import_grants"]] == ["import c0d4c7845e5c4fcc"]
     assert rows["e18d7849b4142927"]["import_status"] == "NOT_MEASURED"
 
 
@@ -291,7 +291,7 @@ def test_explicit_activation_window_can_cover_import_and_later_activation(tmp_pa
             [
                 {
                     "event": "grant-issued",
-                    "tier": "service",
+                    "tier": "cron",
                     "seconds": 7200,
                     "ts": "2026-10-09T11:55:00Z",
                     "reason": "import and activate c0d4c7845e5c4fcc",
