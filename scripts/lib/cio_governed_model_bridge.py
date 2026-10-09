@@ -315,53 +315,468 @@ def client_request_id_from(value: Any) -> str | None:
     return text if _CLIENT_REQUEST_ID_RE.match(text) else None
 
 
-def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any] | None:
-    """Look up model policy for a registered governance process.
+# ── Routing policy (LlmRoutingPolicy@v1) ────────────────────────────────
+# One row per registered process. Health is read from on-disk receipts only.
+ROUTING_POLICY_SCHEMA = "LlmRoutingPolicy@v1"
+ROUTING_POLICY_HEADER = "X-TradeAI-Routing-Policy"
+_DEFAULT_ROUTING_POLICY_ID = "default"
+_KNOWN_POLICY_NAMES = frozenset({"PRO", "FAST", "PRO_THINK", "FAST_THINK"})
+_ROUTING_POLICY_CACHE: dict[str, Any] = {}
+_ROUTING_POLICY_LOCK = threading.Lock()
+_PROVIDER_SEMAPHORES: dict[str, threading.BoundedSemaphore] = {}
+_PROVIDER_SEM_GUARD = threading.Lock()
+_HEALTH_NOT_READ = {
+    "provider_health": "not_read",
+    "provider_health_worst": None,
+    "deepseek_balance": "not_read",
+    "deepseek_balance_available": None,
+    "lanes": {},
+}
 
-    Returns dict with provider, model_id, thinking, display_name, requested_policy.
-    Unknown process_id returns None → fail closed.
+
+def normalize_routing_policy_header(value: str | None) -> str:
+    """Missing or blank selects policy_id default. Names are truncated to 64 characters."""
+    if value is None:
+        return _DEFAULT_ROUTING_POLICY_ID
+    text = str(value).strip()
+    if not text:
+        return _DEFAULT_ROUTING_POLICY_ID
+    return text[:64]
+
+
+def _env_path(env_name: str, default: Path) -> Path:
+    raw = os.environ.get(env_name)
+    if raw:
+        return Path(raw)
+    return default
+
+
+def routing_policy_path() -> Path:
+    return _env_path("TRADEAI_LLM_ROUTING_POLICY", _PROJECT_ROOT / "config" / "llm_routing_policy.json")
+
+
+def _receipt_path(env_name: str, default: Path) -> Path:
+    """Explicit env wins. A pytest run does not read the host's live receipt.
+
+    Production (no PYTEST_CURRENT_TEST) still reads data/runtime. A test that
+    sets TRADEAI_LLM_PROVIDER_HEALTH or TRADEAI_DEEPSEEK_BALANCE_HISTORY reads
+    that path, including a fixture it just wrote.
     """
-    # Map process_id → default policy
-    process_policy_map: dict[str, str] = {
-        "alex_cio_synthesis": "PRO",
-        "alex_cio_escalation": "PRO_THINK",
-        "maria_research_critique": "FAST",
-        "steph_allocation_review": "PRO",
-        "guardian_risk_critique": "FAST",
-        "ledger_tax_critique": "FAST",
-        "morgan_wealth_synthesis": "FAST",
-        "advisory_desk_opinion": "FAST",
-        "advisory_desk_synthesis": "PRO",
-        "cio_operator_reply": "FAST",
-        "cio_plan_enrichment": "FAST",
-        "cio_prompt_judge": "FAST",
-        "research_circle_analyzer": "FAST",
-        "hermes_cloud_json": "FAST",
-        "hermes_usefulness_score": "FAST",
-        "cio_hermes_research": "FAST",
-        "hermes_golden_judge": "FAST",
-        # 2026-10-08 (Phase 2 G1): both n8n model-job processes were registered in llm_process_registry.json
-        # but absent here, so Step 3 answered UNKNOWN_PROCESS for a registered process — the digest job
-        # could never have run live. Flash only; allowed_lanes/caps stay in the registry.
-        "n8n_material_digest_draft": "FAST",
-        "n8n_ops_summary_draft": "FAST",
+    raw = os.environ.get(env_name)
+    if raw:
+        return Path(raw)
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return Path("/tmp/tradeai-pytest-absent-receipts") / default.name
+    return default
+
+
+def provider_health_path() -> Path:
+    return _receipt_path(
+        "TRADEAI_LLM_PROVIDER_HEALTH",
+        _PROJECT_ROOT / "data" / "runtime" / "llm_provider_health.json",
+    )
+
+
+def deepseek_balance_history_path() -> Path:
+    return _receipt_path(
+        "TRADEAI_DEEPSEEK_BALANCE_HISTORY",
+        _PROJECT_ROOT / "data" / "runtime" / "deepseek_balance_history.jsonl",
+    )
+
+
+def load_routing_policy_document() -> dict[str, Any]:
+    """Cache the policy file by path and mtime. A bad file loads as empty, never as healthy."""
+    path = routing_policy_path()
+    try:
+        stat = path.stat()
+        key = (str(path), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return {}
+    with _ROUTING_POLICY_LOCK:
+        if _ROUTING_POLICY_CACHE.get("key") == key and isinstance(_ROUTING_POLICY_CACHE.get("doc"), dict):
+            return _ROUTING_POLICY_CACHE["doc"]
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        parsed = {}
+    if not isinstance(parsed, dict) or parsed.get("schema") not in (None, ROUTING_POLICY_SCHEMA):
+        parsed = {}
+    with _ROUTING_POLICY_LOCK:
+        _ROUTING_POLICY_CACHE["key"] = key
+        _ROUTING_POLICY_CACHE["doc"] = parsed
+    return parsed
+
+
+def iter_routing_policies(document: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    loaded = document if isinstance(document, dict) else load_routing_policy_document()
+    found: dict[str, dict[str, Any]] = {}
+    policies = loaded.get("policies")
+    if isinstance(policies, dict):
+        for key, block in policies.items():
+            if not isinstance(block, dict):
+                continue
+            found[str(key)] = block
+            name = block.get("policy_id")
+            if isinstance(name, str) and name.strip():
+                found[name.strip()] = block
+    if isinstance(loaded.get("processes"), dict):
+        name = str(loaded.get("policy_id") or _DEFAULT_ROUTING_POLICY_ID)
+        found.setdefault(name, loaded)
+    return found
+
+
+def routing_policy_known(name: str | None) -> bool:
+    return normalize_routing_policy_header(name) in iter_routing_policies()
+
+
+def _policy_block(name: str | None) -> dict[str, Any] | None:
+    return iter_routing_policies().get(normalize_routing_policy_header(name))
+
+
+def provider_concurrency_map(policy_name: str | None = None) -> dict[str, int]:
+    block = _policy_block(policy_name) or {}
+    raw = block.get("provider_concurrency")
+    if not isinstance(raw, dict):
+        return {}
+    limits: dict[str, int] = {}
+    for key, value in raw.items():
+        try:
+            limit = int(value)
+        except (TypeError, ValueError):
+            continue
+        if limit > 0:
+            limits[str(key)] = limit
+    return limits
+
+
+def provider_slot_limit(provider: str, policy_name: str | None = None) -> int:
+    """Semaphore size from the loaded policy. An unlisted provider gets one slot, never a code constant."""
+    limit = provider_concurrency_map(policy_name).get(str(provider or "deepseek"))
+    if isinstance(limit, int) and limit > 0:
+        return limit
+    return 1
+
+
+def provider_semaphore(provider: str, policy_name: str | None = None) -> threading.BoundedSemaphore:
+    policy_id = normalize_routing_policy_header(policy_name)
+    prov = str(provider or "deepseek")
+    limit = provider_slot_limit(prov, policy_id)
+    key = f"{policy_id}:{prov}:{limit}"
+    with _PROVIDER_SEM_GUARD:
+        sem = _PROVIDER_SEMAPHORES.get(key)
+        if sem is None:
+            sem = threading.BoundedSemaphore(limit)
+            _PROVIDER_SEMAPHORES[key] = sem
+        return sem
+
+
+def _read_json_object(path: Path) -> tuple[dict[str, Any] | None, str]:
+    if not path.is_file():
+        return None, "missing"
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return None, "unreadable"
+    if not isinstance(parsed, dict):
+        return None, "unreadable"
+    return parsed, "present"
+
+
+def _last_jsonl_object(path: Path) -> tuple[dict[str, Any] | None, str]:
+    if not path.is_file():
+        return None, "missing"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None, "unreadable"
+    last: dict[str, Any] | None = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            last = row
+    if last is None:
+        return None, "unreadable"
+    return last, "present"
+
+
+def _finding_hits_provider(finding: dict[str, Any], provider: str) -> bool:
+    lane = str(finding.get("lane") or "").lower()
+    prov = str(provider or "").lower()
+    return bool(lane and prov and prov in lane)
+
+
+def _balance_unavailable(row: dict[str, Any] | None, state: str) -> bool:
+    if state != "present" or not isinstance(row, dict):
+        return False
+    if row.get("is_available") is False:
+        return True
+    total = row.get("total_balance")
+    return isinstance(total, (int, float)) and not isinstance(total, bool) and total <= 0
+
+
+def _provider_health_status(
+    provider: str,
+    health: dict[str, Any] | None,
+    health_state: str,
+    balance_row: dict[str, Any] | None,
+    balance_state: str,
+) -> str:
+    """healthy only when a receipt says the writer ran and the provider is not indicted."""
+    indicted = False
+    if health_state == "present" and isinstance(health, dict):
+        findings = health.get("findings")
+        if isinstance(findings, list):
+            for finding in findings:
+                if not isinstance(finding, dict) or finding.get("recovered") is True:
+                    continue
+                if not _finding_hits_provider(finding, provider):
+                    continue
+                kind = str(finding.get("kind") or "").upper()
+                severity = str(finding.get("severity") or "").upper()
+                if severity == "CRITICAL" or kind in {"BILLING", "AUTH"}:
+                    indicted = True
+                    break
+    if provider == "deepseek":
+        embedded = health.get("balance") if isinstance(health, dict) else None
+        if _balance_unavailable(balance_row, balance_state) or _balance_unavailable(embedded if isinstance(embedded, dict) else None, health_state):
+            indicted = True
+    if indicted:
+        return "unhealthy"
+    if health_state == "present" and isinstance(health, dict):
+        if str(health.get("worst_severity") or "") in {"OK", "WARN", "CRITICAL"}:
+            return "healthy"
+    return "unknown"
+
+
+def read_health_snapshot(row: dict[str, Any] | None) -> dict[str, Any]:
+    """Status words only. No paths, prompts, keys, or balance amounts."""
+    health, health_state = _read_json_object(provider_health_path())
+    balance_row, balance_state = _last_jsonl_object(deepseek_balance_history_path())
+    providers: list[str] = []
+    if isinstance(row, dict):
+        for key in ("primary", "secondary", "fallback"):
+            spec = row.get(key)
+            if isinstance(spec, dict):
+                prov = str(spec.get("provider") or "")
+                if prov and prov not in providers:
+                    providers.append(prov)
+    lanes = {
+        prov: _provider_health_status(prov, health, health_state, balance_row, balance_state)
+        for prov in providers
     }
-    policy_name = process_policy_map.get(process_id)
-    try:  # Wave 4 O-W4-3: the ONE chooser observes (shadow) — disagreement with this map is a receipt, not a change
+    available = None
+    if balance_state == "present" and isinstance(balance_row, dict) and "is_available" in balance_row:
+        available = bool(balance_row.get("is_available"))
+    elif balance_state == "present" and isinstance(balance_row, dict):
+        total = balance_row.get("total_balance")
+        if isinstance(total, (int, float)) and not isinstance(total, bool):
+            available = total > 0
+    worst = None
+    if health_state == "present" and isinstance(health, dict):
+        worst = health.get("worst_severity")
+    return {
+        "provider_health": health_state,
+        "provider_health_worst": worst,
+        "deepseek_balance": balance_state,
+        "deepseek_balance_available": available,
+        "lanes": lanes,
+    }
+
+
+def _routing_decision(policy_id: str, lane_chosen: str | None, reason: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "policy_id": policy_id,
+        "lane_chosen": lane_chosen,
+        "reason": reason,
+        "health_snapshot": snapshot,
+    }
+
+
+def _lane_policy_name(spec: dict[str, Any]) -> str:
+    name = str(spec.get("policy") or "FAST")
+    if name not in _KNOWN_POLICY_NAMES:
+        return "FAST"
+    return name
+
+
+def select_governed_lane(process_id: str, routing_policy: str | None = None) -> dict[str, Any]:
+    """Pick a lane, or a typed refusal that must be returned before reservation and before any provider call."""
+    policy_id = normalize_routing_policy_header(routing_policy)
+    if not routing_policy_known(policy_id):
+        decision = _routing_decision(policy_id, None, "unknown_routing_policy", dict(_HEALTH_NOT_READ))
+        return {
+            "refused": "unknown_routing_policy",
+            "refused_status": 400,
+            "refused_message": f"Unknown routing policy {policy_id!r}",
+            "routing_decision": decision,
+        }
+    block = _policy_block(policy_id) or {}
+    processes = block.get("processes")
+    row = processes.get(process_id) if isinstance(processes, dict) else None
+    if not isinstance(row, dict):
+        decision = _routing_decision(policy_id, None, "process_not_in_routing_policy", dict(_HEALTH_NOT_READ))
+        return {"missing_process": True, "routing_decision": decision}
+    snapshot = read_health_snapshot(row)
+    lanes = snapshot.get("lanes") if isinstance(snapshot.get("lanes"), dict) else {}
+    health_gate = bool(row.get("health_gate", True))
+    chosen: str | None = None
+    reason = "lane_unhealthy"
+    primary = row.get("primary") if isinstance(row.get("primary"), dict) else None
+    if not health_gate and primary is not None:
+        chosen = "primary"
+        reason = "health_gate_off"
+    elif primary is not None and lanes.get(str(primary.get("provider") or "")) != "unhealthy":
+        chosen = "primary"
+        primary_status = lanes.get(str(primary.get("provider") or ""))
+        reason = "primary_healthy" if primary_status == "healthy" else "health_unknown"
+    else:
+        for lane_name in ("secondary", "fallback"):
+            spec = row.get(lane_name)
+            if not isinstance(spec, dict):
+                continue
+            if lanes.get(str(spec.get("provider") or "")) == "healthy":
+                chosen = lane_name
+                reason = f"failover_{lane_name}"
+                break
+    if chosen is None:
+        decision = _routing_decision(policy_id, None, "lane_unhealthy", snapshot)
+        return {
+            "refused": "lane_unhealthy",
+            "refused_status": 503,
+            "refused_message": f"Every health-gated lane for process {process_id} is unhealthy",
+            "routing_decision": decision,
+        }
+    spec = row.get(chosen)
+    if not isinstance(spec, dict):
+        decision = _routing_decision(policy_id, None, "lane_unhealthy", snapshot)
+        return {
+            "refused": "lane_unhealthy",
+            "refused_status": 503,
+            "refused_message": f"Routing row for process {process_id} has no usable lane",
+            "routing_decision": decision,
+        }
+    policy_name = _lane_policy_name(spec)
+    resolved = dict(POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"]))
+    provider = str(spec.get("provider") or resolved.get("provider") or "deepseek")
+    resolved["provider"] = provider
+    resolved["requested_policy"] = policy_name
+    decision = _routing_decision(policy_id, chosen, reason, snapshot)
+    decision["provider"] = provider
+    decision["requested_policy"] = policy_name
+    resolved["routing_decision"] = decision
+    resolved["health_gate"] = health_gate
+    try:
+        resolved["latency_budget_ms"] = float(row.get("latency_budget_ms"))
+    except (TypeError, ValueError):
+        resolved["latency_budget_ms"] = 0
+    try:
+        resolved["cost_ceiling_usd"] = float(row.get("cost_ceiling_usd"))
+    except (TypeError, ValueError):
+        resolved["cost_ceiling_usd"] = 0
+    return {"policy": resolved, "routing_decision": decision}
+
+
+def stream_policy_refusal(process_id: str, routing_policy: str | None, policy: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Typed JSON when the stream path's second resolve is not a usable lane.
+
+    None means the lane is usable. A refused lane keeps its code, status, and
+    routing_decision. A missing process is UNKNOWN_PROCESS / 400, with the
+    not_routed decision execute_governed_call attaches when resolve returns None.
+    """
+    if (
+        isinstance(policy, dict)
+        and not policy.get("refused")
+        and not policy.get("missing_process")
+        and "model_id" in policy
+    ):
+        return None
+    policy_id = normalize_routing_policy_header(routing_policy)
+    decision = _routing_decision(policy_id, None, "not_routed", dict(_HEALTH_NOT_READ))
+    if isinstance(policy, dict) and isinstance(policy.get("routing_decision"), dict):
+        decision = policy["routing_decision"]
+    if isinstance(policy, dict) and policy.get("refused"):
+        code = str(policy["refused"])
+        message = str(policy.get("refused_message") or policy["refused"])
+        status = int(policy.get("refused_status") or 503)
+    else:
+        code = "UNKNOWN_PROCESS"
+        message = f"Process '{process_id}' not registered in governance bridge"
+        status = 400
+    return {
+        "error": {"code": code, "message": message, "status": status},
+        "id": uuid.uuid4().hex[:12],
+        "object": "chat.completion.error",
+        "created": int(time.time()),
+        "model": "tradeai_governed",
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "cost_estimate": 0.0,
+        "governance_pass": False,
+        "routing_decision": decision,
+    }
+
+
+def unknown_routing_policy_response(policy_name: str | None) -> dict[str, Any]:
+    """Refusal body for an unknown header. Does not read health receipts or call a provider."""
+    policy_id = normalize_routing_policy_header(policy_name)
+    return {
+        "error": {
+            "code": "unknown_routing_policy",
+            "message": f"Unknown routing policy {policy_id!r}",
+            "status": 400,
+        },
+        "id": uuid.uuid4().hex[:12],
+        "object": "chat.completion.error",
+        "created": int(time.time()),
+        "model": "tradeai_governed",
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "cost_estimate": 0.0,
+        "governance_pass": False,
+        "routing_decision": _routing_decision(policy_id, None, "unknown_routing_policy", dict(_HEALTH_NOT_READ)),
+    }
+
+
+def resolve_model_policy(
+    process_id: str,
+    task_type: str = "",
+    routing_policy: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve provider, model_id, thinking, display_name, and requested_policy for a process.
+
+    Unknown process_id returns None. An unknown routing policy or an unhealthy gated lane
+    returns a refusal dict and does not call a provider.
+    """
+    selected = select_governed_lane(process_id, routing_policy)
+    chosen = selected.get("policy") if isinstance(selected.get("policy"), dict) else None
+    policy_name = chosen.get("requested_policy") if isinstance(chosen, dict) else None
+    try:  # Wave 4 O-W4-3: the ONE chooser observes (shadow) — disagreement is a receipt, not a change
         try:
             from model_chooser import apply as _choose_apply  # type: ignore
         except ImportError:
             from scripts.lib.model_chooser import apply as _choose_apply  # type: ignore
-        _choose_apply(process_id, "deepseek-flash" if policy_name in (None, "FAST") else "deepseek-pro", purpose=task_type, site="governed_model_bridge")
+        _choose_apply(
+            process_id,
+            "deepseek-flash" if policy_name in (None, "FAST") else "deepseek-pro",
+            purpose=task_type,
+            site="governed_model_bridge",
+        )
     except Exception:  # noqa: BLE001
         pass
-    if policy_name is None:
-        return None  # Unknown process → fail closed
-    base = POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])
-    out = dict(base)
-    # Required for deepseek_allowed_policies check (defaults to PRO if missing).
-    out["requested_policy"] = policy_name
-    return out
+    if selected.get("refused"):
+        return {
+            "refused": selected["refused"],
+            "refused_status": int(selected.get("refused_status") or 503),
+            "refused_message": str(selected.get("refused_message") or selected["refused"]),
+            "routing_decision": selected.get("routing_decision"),
+        }
+    if selected.get("missing_process") or chosen is None:
+        return None
+    return chosen
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -845,6 +1260,7 @@ def execute_governed_call(
     stream: bool = False,
     max_tokens: int = 16384,
     request_id: str | None = None,
+    routing_policy: str | None = None,
 ) -> dict[str, Any]:
     """Governed CIO model call pipeline — fail-closed, no silent fallback.
 
@@ -864,6 +1280,10 @@ def execute_governed_call(
     """
     rid = request_id or uuid.uuid4().hex[:12]
     t0 = time.time()
+    selected_policy_id = normalize_routing_policy_header(routing_policy)
+    routing_box: dict[str, Any] = {
+        "decision": _routing_decision(selected_policy_id, None, "not_routed", dict(_HEALTH_NOT_READ)),
+    }
 
     def _error(code: str, message: str, status: int = 400,
                **extra: Any) -> dict[str, Any]:
@@ -886,7 +1306,18 @@ def execute_governed_call(
             "cost_estimate": 0.0,
             "governance_pass": False,
             "latency_ms": int((time.time() - t0) * 1000),
+            "routing_decision": routing_box["decision"],
         }
+
+    if not routing_policy_known(selected_policy_id):
+        routing_box["decision"] = _routing_decision(
+            selected_policy_id, None, "unknown_routing_policy", dict(_HEALTH_NOT_READ)
+        )
+        return _error(
+            "unknown_routing_policy",
+            f"Unknown routing policy {selected_policy_id!r}",
+            status=400,
+        )
 
     # ── Step 1: Circuit breaker ────────────────────────────────────────
     if circuit_open():
@@ -915,9 +1346,17 @@ def execute_governed_call(
         )
 
     # ── Step 3: Model policy resolution (server-side) ──────────────────
-    policy = resolve_model_policy(process_id)
-    if policy is None:
+    policy = resolve_model_policy(process_id, routing_policy=selected_policy_id)
+    if isinstance(policy, dict) and isinstance(policy.get("routing_decision"), dict):
+        routing_box["decision"] = policy["routing_decision"]
+    if not isinstance(policy, dict) or policy.get("missing_process"):
         return _error("UNKNOWN_PROCESS", f"Process '{process_id}' not registered in governance bridge", status=400)
+    if policy.get("refused"):
+        return _error(
+            str(policy["refused"]),
+            str(policy.get("refused_message") or policy["refused"]),
+            status=int(policy.get("refused_status") or 503),
+        )
     model_id = policy["model_id"]
 
     # ── Step 4: Reject legacy model IDs ────────────────────────────────
@@ -936,6 +1375,13 @@ def execute_governed_call(
             f"Policy {requested_policy} not allowed for process {process_id}. "
             f"Allowed: {ds_pols}",
             status=403,
+        )
+
+    if BIND_MODE == "canary" and str(policy.get("provider") or "deepseek") != "deepseek":
+        return _error(
+            "provider_not_configured",
+            "Live bridge transport is DeepSeek only; this lane's provider is not configured",
+            status=503,
         )
 
     # ── Step 5: Cost cap checks ────────────────────────────────────────
@@ -1041,6 +1487,9 @@ def execute_governed_call(
                 provider_request_state=current.get("state") or journal_reservation.get("reason"),
             )
 
+    if isinstance(routing_box.get("decision"), dict) and reservation_id is not None:
+        routing_box["decision"]["reservation_id"] = reservation_id
+
     # ── Step 7: Provider (mock or real based on BIND_MODE) ──────────────
     if BIND_MODE == "canary":
         provider = RealProvider.instance()
@@ -1065,17 +1514,25 @@ def execute_governed_call(
             reservation_id=str(reservation_id) if reservation_id is not None else None,
             run_id=rid,
         ):
-            response = provider.generate(
-                messages, model_id,
-                tools=tools,
-                tool_choice=tool_choice,
-                response_format=response_format,
-                stream=False,
-                max_tokens=max_tokens,
-                thinking=policy.get("thinking", "disabled"),
-                reasoning_effort=policy.get("reasoning_effort"),
-                client_request_id=rid,
+            _provider_slot = provider_semaphore(
+                str(policy.get("provider") or "deepseek"),
+                selected_policy_id,
             )
+            _provider_slot.acquire()
+            try:
+                response = provider.generate(
+                    messages, model_id,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    response_format=response_format,
+                    stream=False,
+                    max_tokens=max_tokens,
+                    thinking=policy.get("thinking", "disabled"),
+                    reasoning_effort=policy.get("reasoning_effort"),
+                    client_request_id=rid,
+                )
+            finally:
+                _provider_slot.release()
     except Exception as e:
         provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
         _trip_circuit(f"provider_failure:{type(e).__name__}:{provider_name}")
@@ -1205,6 +1662,7 @@ def execute_governed_call(
         "cost_basis": "provider_usage_x_registry_snapshot",
         "legacy_model_ids_rejected": True,
         "client_model_ignored": True,
+        "routing_decision": routing_box["decision"],
         "mock": is_mock,
         "provider_request_journal": (
             {
@@ -1301,6 +1759,11 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                              f"Unknown caller '{caller}' — not in server-side mapping")
             return
 
+        routing_policy_name = normalize_routing_policy_header(self.headers.get(ROUTING_POLICY_HEADER))
+        if not routing_policy_known(routing_policy_name):
+            self._send_json(400, unknown_routing_policy_response(routing_policy_name))
+            return
+
         # Ring 2 (01 §2): the bridge is the paid path that bypasses gate_and_generate (advisory desk,
         # Hermes worker). A research-class caller must carry X-TradeAI-Context-Id; SHADOW records
         # the miss, ENFORCED answers 428 and spends nothing.
@@ -1388,6 +1851,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                 stream=stream,
                 max_tokens=max_tokens,
                 request_id=request_id,
+                routing_policy=routing_policy_name,
             )
         finally:
             with _INFLIGHT_LOCK:
@@ -1402,7 +1866,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
 
         # Streaming support
         if stream:
-            self._send_stream(result, messages, process_id, tools, max_tokens)
+            self._send_stream(result, messages, process_id, tools, max_tokens, routing_policy_name)
         else:
             self._send_json(200, result)
 
@@ -1429,23 +1893,33 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         self._send_json(status, result)
 
     def _send_stream(self, result: dict, messages: list, process_id: str,
-                     tools: list | None, max_tokens: int) -> None:
+                     tools: list | None, max_tokens: int, routing_policy: str | None = None) -> None:
+        # Resolve before any status line. A refusal that appears only on this
+        # second resolve is the same typed JSON the non-stream path returns.
+        policy = resolve_model_policy(process_id, routing_policy=routing_policy)
+        refusal = stream_policy_refusal(process_id, routing_policy, policy)
+        if refusal is not None:
+            self._send_json(int(refusal["error"]["status"]), refusal)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-TradeAI-Governed", f"cio_bridge_{'p1_2b' if BIND_MODE == 'canary' else 'p1_2a'}")
         self.end_headers()
-
-        policy = resolve_model_policy(process_id)
-        if policy is None:
-            self.send_error(400, f"Unknown process: {process_id}")
-            return
         model_id = policy["model_id"]
         provider = RealProvider.instance() if BIND_MODE == "canary" else MockProvider.instance()
         if BIND_MODE == "canary":
             try:
-                response = provider.generate(messages, model_id, tools=tools, max_tokens=max_tokens, stream=False)
+                _stream_slot = provider_semaphore(
+                    str(policy.get("provider") or "deepseek"),
+                    routing_policy,
+                )
+                _stream_slot.acquire()
+                try:
+                    response = provider.generate(messages, model_id, tools=tools, max_tokens=max_tokens, stream=False)
+                finally:
+                    _stream_slot.release()
                 content = response["choices"][0]["message"].get("content") or ""
                 chunks = [
                     f"data: {json.dumps(response)}\n\n",

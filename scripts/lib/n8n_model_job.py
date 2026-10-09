@@ -368,7 +368,7 @@ BRIDGE_URL_ENV = "TRADEAI_GOVERNED_BRIDGE_URL"
 BRIDGE_CALLER = "n8n_model_job"
 
 
-ROUTING_POLICY_HEADER = "X-TradeAI-Routing-Policy"   # carried, not yet read: the bridge ignores unknown headers today (Day 1 work)
+ROUTING_POLICY_HEADER = "X-TradeAI-Routing-Policy"   # the bridge reads this; an unknown name refuses before a provider call; a blank header selects policy_id "default"
 
 
 def bridge_governed_call(messages: list[dict[str, str]], *, process_id: str, response_format: Optional[dict] = None,
