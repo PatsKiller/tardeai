@@ -86,7 +86,15 @@ def schema_definitions(root: Path) -> tuple[dict[str, list[str]], dict[str, list
     scripts/lib/cio_*.py is a producer-catalog row is a catalog reference."""
     defined: dict[str, list[str]] = {}
     references: dict[str, list[str]] = {}
-    for path in sorted((root / "scripts" / "lib").glob("cio_*.py")):
+    paths = set((root / "scripts" / "lib").glob("cio_*.py"))
+    # CADI lives below cross_asset rather than a cio_* module. Without these
+    # explicit producers its registered schemas look stale and escape the CIO
+    # payload-flow guards. Do not widen discovery to unrelated legacy scripts.
+    for name in ("canonical_decision.py", "decision_store.py"):
+        path = root / "scripts" / "lib" / "cross_asset" / name
+        if path.exists():
+            paths.add(path)
+    for path in sorted(paths):
         text = path.read_text(encoding="utf-8", errors="replace")
         try:
             catalog = _catalog_literal_lines(ast.parse(text))

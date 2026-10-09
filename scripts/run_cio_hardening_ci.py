@@ -3446,6 +3446,12 @@ GATES = [
         ],
     ),
     (
+        # CADI01_CANONICAL_V2_GATES — one contract, lossless v1 adapters,
+        # immutable single-writer history, transactional projections and row errors.
+        "cadi01_canonical_v2_20261009",
+        ["tests/test_cadi01_canonical_v2.py"],
+    ),
+    (
         # 2026-10-05 — portfolio-server shutdown record names the signal and exit
         # code (the journal line at 15:06 ET had neither). The ATM protection
         # pass releases its read transaction before apply()'s quote/HTTP work.

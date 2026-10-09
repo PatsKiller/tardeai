@@ -1,4 +1,8 @@
-"""SymbolDecisionObject@v1 — canonical cross-asset decision record."""
+"""Legacy grouped v1 constructor retained for compatibility.
+
+The canonical contract is cross_asset.canonical_decision (v2). This legacy
+constructor must not be used to claim account-local coverage or a proven winner.
+"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -141,5 +145,7 @@ def attach_audit(obj: dict[str, Any], *, actor: str, action: str, detail: str | 
         row["detail"] = detail[:300]
     hist = list(out.get("audit_history") or [])
     hist.append(row)
-    out["audit_history"] = hist[-50:]
+    # History is durable evidence, not a UI tail. Consumers can page it without
+    # destroying older audit entries at an assembly boundary.
+    out["audit_history"] = hist
     return out

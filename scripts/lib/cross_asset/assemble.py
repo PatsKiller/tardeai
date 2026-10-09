@@ -104,9 +104,15 @@ def assemble_symbol_decision(
     }
 
     # Signal
-    kind = str(sig.get("kind") or sig.get("signal_kind") or "none").lower()
+    action_present = "kind" in sig or "signal_kind" in sig
+    raw_kind = sig.get("kind", sig.get("signal_kind", "none"))
+    kind = raw_kind.lower() if isinstance(raw_kind, str) else raw_kind
     obj["signal_state"] = {
-        "kind": kind if kind in {"buy", "hold", "sell", "reentry", "none"} else "none",
+        # Preserve raw action vocabulary for the v2 boundary. Silently turning
+        # unknown actions into 'none' erased the source error before receipt.
+        "kind": kind,
+        "raw_action": raw_kind if action_present else None,
+        "action_present": action_present,
         "lane": sig.get("lane"),
         "signal_id": sig.get("signal_id") or sig.get("id"),
         "fired_at": sig.get("fired_at") or sig.get("ts"),

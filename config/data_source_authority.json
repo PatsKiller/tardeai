@@ -481,6 +481,56 @@
   },
   "domains": [
     {
+      "domain": "cross_asset_evaluation_history",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-09",
+        "reference": "docs/governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009",
+        "scope": "Immutable advisory evaluation and per-symbol error history; single writer DecisionStore; no production activation"
+      },
+      "store": {
+        "file": "cio/cross_asset_decisions.sqlite",
+        "table": "cross_asset_evaluation_history"
+      },
+      "writer": "scripts/lib/cross_asset/decision_store.py",
+      "cadence": "explicit fixture/local invocation only; production scheduling is not activated in CADI-01",
+      "stale_after_hours": 24,
+      "projection": null,
+      "required_fields": ["evaluation_id", "schema_name", "as_of", "payload"],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [{"vector": "operator_ask", "cost_class": "free", "max_per_day": 1, "expected_seconds": 0}],
+      "_writer_note": "DecisionStore.append and append_error are the only writer. SymbolDecisionObject@v2 and CrossAssetDecisionError@v1 share this history. UPDATE/DELETE/replacement refused; legacy import is additive and explicit. Bounded read path: CIO operator-artifacts, with approval and separate activation required; never copied into its artifact store. Named registration approved by the operator on 2026-10-09; no production activation."
+    },
+    {
+      "domain": "cross_asset_decision_projection",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-09",
+        "reference": "docs/governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009",
+        "scope": "Rebuildable latest advisory decision projection, derived only from approved history; no production activation"
+      },
+      "store": {
+        "file": "cio/cross_asset_decisions.sqlite",
+        "table": "cross_asset_decision_projection"
+      },
+      "writer": "scripts/lib/cross_asset/decision_store.py",
+      "cadence": "same transaction as explicit local evaluation; rebuild only by the single writer",
+      "stale_after_hours": 24,
+      "projection": null,
+      "required_fields": ["subject_key", "symbol", "evaluation_id", "as_of", "payload"],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [{"vector": "operator_ask", "cost_class": "free", "max_per_day": 1, "expected_seconds": 0}],
+      "_writer_note": "DecisionStore owns projection writes and rebuilds; latest/projection are read-only. Keyed by security/subject identity, not ticker alone. Bounded CIO operator-artifacts audit read path is approval/activation-gated; CADI-07 still owns the comparison/ranking surface. No scheduler is activated."
+    },
+    {
       "domain": "quote_price",
       "class": "ingested",
       "approval": {
