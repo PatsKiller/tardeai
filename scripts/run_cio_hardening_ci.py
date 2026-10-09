@@ -1156,6 +1156,18 @@ GATES = [
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
     ),
+    # Cron interpreter resolution (operator 2026-10-09 "fix the broken cron jobs"): release dirs ship no .venv, so
+    # rotation_autopilot died on `import dotenv` every 15 min and hermes_coordinator's child steps hit "No such file".
+    (
+        "cron_venv_resolver_20261009",
+        ["tests/test_cron_venv_resolver_20261009.py"],
+    ),
+    # api_v2 served subprocesses (follow-up to #1575): 34 producer/remediation actions launched
+    # PROJECT_ROOT/.venv/bin/python, which no release ships; all now go through _project_python().
+    (
+        "api_v2_venv_resolver_20261009",
+        ["tests/test_api_v2_venv_resolver_20261009.py"],
+    ),
     # Symbol-thesis job repair (operator 2026-10-09 "fix the thesis job"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop
     # backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies.
     (

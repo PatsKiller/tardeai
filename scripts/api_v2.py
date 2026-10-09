@@ -17160,7 +17160,7 @@ def _shadow_batch_start(body=None):
 
     body = body or {}
     cmd = [
-        str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+        _project_python(),
         str(PROJECT_ROOT / "scripts" / "shadow_batch_generator.py"),
         "--run",
     ]
@@ -17529,7 +17529,7 @@ def _ticket_review_run(body):
 
     subprocess.Popen(
         [
-            str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+            _project_python(),
             str(PROJECT_ROOT / "scripts" / "run_ticket_review_job.py"),
             sym,
             lanes,
@@ -27350,7 +27350,7 @@ def _broker_queue_agent_batch(body: dict):
 
     b = body or {}
     sym = str(b.get("symbol") or "").strip().upper()
-    cmd = [str(PROJECT_ROOT / ".venv" / "bin" / "python"), "scripts/queue_proposal_agent_reviews.py", "--apply"]
+    cmd = [_project_python(), "scripts/queue_proposal_agent_reviews.py", "--apply"]
     if sym:
         cmd.extend(["--symbol", sym])
     proc = subprocess.run(cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=120)
@@ -30773,9 +30773,9 @@ def _system_applications():
         {
             "name": "Python (venv)",
             "category": "core",
-            "installed": _ver(_run([f"{pr}/.venv/bin/python", "--version"])),
+            "installed": _ver(_run([_project_python(), "--version"])),
             "latest": py_ver,
-            "path": f"{pr}/.venv/bin/python",
+            "path": _project_python(),
             "version_cmd": ".venv/bin/python --version",
             "update_cmd": "Manual review required",
         }
@@ -32187,7 +32187,7 @@ def _queue_control_tower():
         _qenv = dict(os.environ)
         _qenv["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path=/run/user/{os.getuid()}/bus"
         _rs = _sp_qct.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/queue_runtime_status.py"), "--json"],
+            [_project_python(), str(PROJECT_ROOT / "scripts/queue_runtime_status.py"), "--json"],
             capture_output=True,
             text=True,
             timeout=10,
@@ -38592,7 +38592,7 @@ def _journal_csv_import(body):
 
         subprocess.run(
             [
-                str(PROJECT_ROOT / ".venv/bin/python3"),
+                _project_python(),
                 str(PROJECT_ROOT / "scripts/schwab_journal_builder.py"),
                 "--apply",
             ],
@@ -48390,7 +48390,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import subprocess as _sp
 
                 _sp.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/journal_agent_coach.py")],
+                    [_project_python(), str(PROJECT_ROOT / "scripts/journal_agent_coach.py")],
                     cwd=str(PROJECT_ROOT),
                     stdout=open(str(PROJECT_ROOT / "logs/agent_coach.log"), "w"),
                     stderr=_sp.STDOUT,
@@ -49830,7 +49830,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 def _run():
                     subprocess.run(
                         [
-                            str(PROJECT_ROOT / ".venv/bin/python"),
+                            _project_python(),
                             str(PROJECT_ROOT / "scripts/rag_indexer.py"),
                             "--backfill",
                             "--source",
@@ -51477,7 +51477,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 def _run():
                     subprocess.run(
                         [
-                            str(PROJECT_ROOT / ".venv/bin/python"),
+                            _project_python(),
                             str(PROJECT_ROOT / "scripts/alex_retirement_advisor.py"),
                             "--weekly-health",
                             "--telegram",
@@ -51554,7 +51554,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 log_path = str(PROJECT_ROOT / "logs" / "youtube_ingest_manual.log")
                 subprocess.Popen(
                     [
-                        str(PROJECT_ROOT / ".venv/bin/python"),
+                        _project_python(),
                         str(PROJECT_ROOT / "scripts/youtube_transcript_ingest.py"),
                         "--all-channels",
                     ],
@@ -51597,7 +51597,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     def _ingest():
                         subprocess.run(
                             [
-                                str(PROJECT_ROOT / ".venv/bin/python"),
+                                _project_python(),
                                 str(PROJECT_ROOT / "scripts/youtube_transcript_ingest.py"),
                                 "--channel",
                                 ch["channel_name"],
@@ -51893,7 +51893,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
                 _sp.Popen(
                     [
-                        str(PROJECT_ROOT / ".venv/bin/python"),
+                        _project_python(),
                         str(PROJECT_ROOT / "scripts/continuous_runner.py"),
                         "--test",
                     ],
@@ -51911,7 +51911,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
                 _sp.Popen(
                     [
-                        str(PROJECT_ROOT / ".venv/bin/python"),
+                        _project_python(),
                         str(PROJECT_ROOT / "scripts/trade_ai_orchestrator.py"),
                         "--run-label",
                         "0900",
@@ -52819,7 +52819,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             def _apply():
                 _sp.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts" / f"{job}.py")],
+                    [_project_python(), str(PROJECT_ROOT / "scripts" / f"{job}.py")],
                     cwd=str(PROJECT_ROOT),
                     stdout=open(PROJECT_ROOT / "logs" / f"{job}.log", "a"),
                     stderr=_sp.STDOUT,
@@ -56236,7 +56236,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/proposal_intelligence_analyzer.py"),
                     "--proposal-id",
                     str(pid),
@@ -56260,7 +56260,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             result = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/proposal_execution_readiness.py"),
                     "--proposal-id",
                     str(pid),
@@ -56543,7 +56543,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             r = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/strategy_config_loader.py"),
                     "--validate",
                 ],
@@ -56586,7 +56586,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # Trigger sync
             _sync = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/strategy_config_loader.py"),
                     "--sync-db",
                 ],
@@ -56610,7 +56610,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             r = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/strategy_config_loader.py"),
                     "--sync-db",
                 ],
@@ -56691,7 +56691,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import subprocess as _sp
 
             args = [
-                str(PROJECT_ROOT / ".venv/bin/python"),
+                _project_python(),
                 str(PROJECT_ROOT / "scripts/proposal_monitor.py"),
                 "--pending",
                 "--apply",
@@ -57051,7 +57051,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         pass
                     try:
                         r = _sp.run(
-                            [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts" / script)] + args,
+                            [_project_python(), str(PROJECT_ROOT / "scripts" / script)] + args,
                             capture_output=True,
                             text=True,
                             timeout=timeout,
@@ -57115,7 +57115,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 try:
                     r = _sp.run(
                         [
-                            str(PROJECT_ROOT / ".venv/bin/python"),
+                            _project_python(),
                             str(PROJECT_ROOT / "scripts" / script),
                             "--proposal-id",
                             str(pid),
@@ -57206,7 +57206,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 pid_arg = ["--proposal-id", str(_req_body["proposal_id"])]
             r = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python3"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/proposal_enrichment_loop.py"),
                     "--run",
                     "--limit",
@@ -57233,7 +57233,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             r = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python3"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/proposal_enrichment_loop.py"),
                     "--run",
                     "--queue-llm-only",
@@ -57260,7 +57260,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             r = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python3"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/proposal_llm_review_worker.py"),
                     "--run",
                     "--limit",
@@ -59388,7 +59388,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             r = _sp.run(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"),
                     "--apply",
                 ],
@@ -60541,7 +60541,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import subprocess as _sp
 
             _proc = _sp.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/portfolio_yaml_advisor.py")],
+                [_project_python(), str(PROJECT_ROOT / "scripts/portfolio_yaml_advisor.py")],
                 cwd=str(PROJECT_ROOT),
                 stdout=_sp.PIPE,
                 stderr=_sp.STDOUT,
@@ -63027,7 +63027,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
                     "--replay-trades",
                     "--apply",
@@ -63047,7 +63047,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
                     "--replay-proposals",
                     "--apply",
@@ -63068,7 +63068,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
                     "--replay-trades",
                     "--strategy",
@@ -63235,7 +63235,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
                     "--analyze-trades",
                     "--limit",
@@ -63259,7 +63259,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
                     "--backtest-strategy",
                     strat,
@@ -63283,7 +63283,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
                     "--all-strategies",
                     "--limit",
@@ -63384,7 +63384,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import subprocess as _sp
 
             _sp.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/trailing_stop_analyzer.py")],
+                [_project_python(), str(PROJECT_ROOT / "scripts/trailing_stop_analyzer.py")],
                 cwd=str(PROJECT_ROOT),
                 stdout=_sp.PIPE,
                 stderr=_sp.STDOUT,
@@ -63593,7 +63593,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             _sp.Popen(
                 [
-                    str(PROJECT_ROOT / ".venv/bin/python"),
+                    _project_python(),
                     str(PROJECT_ROOT / "scripts/trade_execution_analyzer.py"),
                     "--all",
                 ],
