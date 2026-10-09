@@ -1,0 +1,22 @@
+.FFFFFFFFFFFFF.....FFFFFF                                                [100%]
+=========================== short test summary info ============================
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides0]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides1]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides2]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides3]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides4]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides5]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides6]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides7]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides8]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides9]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides10]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides11]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_rejects_unproven_live_predecessor[overrides12]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_requires_matching_read_only_projection_contract
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_anchors_business_day_to_request_across_midnight_and_dst
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_stops_after_five_total_checks_not_wait_item_count
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_accepts_only_completed_live_receipt_for_both_child_modes[dry_run]
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_n2_gate_accepts_only_completed_live_receipt_for_both_child_modes[live]
+FAILED tests/test_n8n_run_relay_20261008.py::test_last_run_exposes_required_exit_proof_without_mutating_ledger_or_runtime
+19 failed, 6 passed, 45 deselected in 1.72s

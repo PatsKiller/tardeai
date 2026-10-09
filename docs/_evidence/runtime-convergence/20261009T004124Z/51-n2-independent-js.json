@@ -1,0 +1,297 @@
+{
+  "schema": "IndependentN2JsContract@v1",
+  "source_head": "8554b00a0eb07f23e1299d5e42be51f0fead9ee0",
+  "test_count": 48,
+  "pass_count": 48,
+  "rows": [
+    {
+      "name": "same-day-valid-live",
+      "expected": true,
+      "observed": true,
+      "pass": true
+    },
+    {
+      "name": "same-day-live-proof-for-shadow-child",
+      "expected": true,
+      "observed": true,
+      "pass": true
+    },
+    {
+      "name": "terminal-state-REQUESTED",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "terminal-state-RUNNING",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "terminal-state-RUN_FAILED",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "terminal-state-RUN_TIMEOUT",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "terminal-state-RUN_SKIPPED_LOCK",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "terminal-state-RUN_REFUSED",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "bad-exit-1",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "bad-exit-75",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "bad-exit-None",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "bad-exit-False",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "bad-exit-0",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "dry-run-does-not-prove-live",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "dry-run-does-not-prove-shadow-business-dependency",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "wrong-lane",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "no-receipt",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "http-error",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "missing-mode",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "missing-exit_code",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "missing-requested_at",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "missing-finished_at",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "future-finish-same-day",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "future-request",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "finish-before-request",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "stale-request-completed-today",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "stale-completion",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "naive-request",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "naive-finish",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "malformed-finish",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "overnight-previous-evening",
+      "expected": true,
+      "observed": true,
+      "pass": true
+    },
+    {
+      "name": "overnight-cross-date-finish",
+      "expected": true,
+      "observed": true,
+      "pass": true
+    },
+    {
+      "name": "overnight-old-request-current-finish",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "overnight-future-finish",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "spring-DST",
+      "expected": true,
+      "observed": true,
+      "pass": true
+    },
+    {
+      "name": "fall-DST",
+      "expected": true,
+      "observed": true,
+      "pass": true
+    },
+    {
+      "name": "single-item-retry-0",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "single-item-retry-1",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "single-item-retry-2",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "single-item-retry-3",
+      "expected": false,
+      "observed": false,
+      "pass": true
+    },
+    {
+      "name": "single-item-retry-4",
+      "expected": "throw",
+      "observed": "throw",
+      "pass": true
+    },
+    {
+      "name": "success-at-fifth-check",
+      "expected": true,
+      "observed": true,
+      "pass": true
+    },
+    {
+      "name": "missing-run-index",
+      "expected": "throw",
+      "observed": "throw",
+      "pass": true
+    },
+    {
+      "name": "invalid-run-index-None",
+      "expected": "throw",
+      "observed": "throw",
+      "pass": true
+    },
+    {
+      "name": "invalid-run-index-False",
+      "expected": "throw",
+      "observed": "throw",
+      "pass": true
+    },
+    {
+      "name": "invalid-run-index--1",
+      "expected": "throw",
+      "observed": "throw",
+      "pass": true
+    },
+    {
+      "name": "invalid-run-index-1.5",
+      "expected": "throw",
+      "observed": "throw",
+      "pass": true
+    },
+    {
+      "name": "invalid-run-index-4",
+      "expected": "throw",
+      "observed": "throw",
+      "pass": true
+    }
+  ],
+  "template_sha256": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345"
+}

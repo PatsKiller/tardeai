@@ -47,9 +47,9 @@ MAX_BODY = 1024
 MIN_KEY_BYTES = 32
 LAST_SCHEMA = "N8nRunRelayLast@v1"
 _LANE_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-_LAST_FIELDS = ("run_id", "lane_id", "state", "finished_at", "requested_at", "mode")
-# Dropped first when the body would exceed MAX_BODY. state and finished_at stay until nothing else will.
-_LAST_OPTIONAL = ("requested_at", "mode", "run_id", "finished_at", "lane_id")
+_LAST_FIELDS = ("run_id", "lane_id", "state", "exit_code", "finished_at", "requested_at", "mode")
+# Only the display run id may be dropped; dependency proof fields remain or refuse the body.
+_LAST_OPTIONAL = ("run_id",)
 REFUSALS = frozenset(
     {
         "relay_bad_path",

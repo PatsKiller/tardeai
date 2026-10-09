@@ -275,7 +275,9 @@ def _assert_gated(wf: dict, lane_id: str, after: str, mode: str) -> None:
     code = next(n for n in wf["nodes"] if n["name"] == "Evaluate predecessor")["parameters"]["jsCode"]
     assert f"const MAX_GATE_RETRIES = {gen.MAX_GATE_RETRIES};" in code
     assert gen.MAX_GATE_RETRIES == 5
-    assert "attempt > MAX_GATE_RETRIES" in code
+    assert "attempt >= MAX_GATE_RETRIES" in code
+    assert "typeof $runIndex" in code
+    assert "$(\"Wait retry\").all().length" not in code
     assert "throw new Error" in code and lane_id in code
     assert "RUN_DONE" in code and "America/New_York" in code
     assert "new Date().toISOString()" in code
@@ -365,7 +367,8 @@ function run(nowIso, finishedAt) {
     constructor(...args) { super(...(args.length ? args : [nowIso])); }
     static now() { return new RealDate(nowIso).getTime(); }
   };
-  global.$input = { first: () => ({ json: { statusCode: 200, body: { last: { state: 'RUN_DONE', finished_at: finishedAt } } } }) };
+  global.$runIndex = 0;
+  global.$input = { first: () => ({ json: { statusCode: 200, body: { schema: 'N8nRunRelayLast@v1', lane_id: AFTER_LANE, status: 'OK', last: { lane_id: AFTER_LANE, state: 'RUN_DONE', mode: 'live', exit_code: 0, requested_at: finishedAt, finished_at: finishedAt } } } }) };
   global.$ = (name) => {
     if (name === 'Wait retry') throw new Error('first attempt');
     if (name === 'Relay constants') return { first: () => ({ json: { TRADEAI_N8N_RUN_URL: 'http://relay.example:18092' } }) };
@@ -379,7 +382,7 @@ const results = cases.map((row) => run(row.now, row.finished));
 process.stdout.write(JSON.stringify(results));
 """
         % code
-    )
+    ).replace("AFTER_LANE", json.dumps(lane["after"]))
     # 2026-10-09 02:20 ET (EDT, UTC-4) and the 23:13 ET close on 2026-10-08.
     cases = [
         {"now": "2026-10-09T06:20:00Z", "finished": "2026-10-09T03:13:00Z"},
@@ -388,7 +391,7 @@ process.stdout.write(JSON.stringify(results));
     ]
     proc = subprocess.run([node, "-e", harness, json.dumps(cases)], capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr
-    assert json.loads(proc.stdout) == [True, False, True]
+    assert json.loads(proc.stdout) == [True, False, False]
     same_day = next(row for row in gen.LANES if row["lane_id"] == "hermes-learning-pipeline-tune")
     same_code = gen._gate_js(
         same_day["lane_id"],
@@ -396,7 +399,7 @@ process.stdout.write(JSON.stringify(results));
         "live",
         crosses_midnight=False,
     )
-    same_harness = harness.replace(code, same_code, 1)
+    same_harness = harness.replace(code, same_code, 1).replace(json.dumps(lane["after"]), json.dumps(same_day["after"]))
     # learn is 10:50 ET the same morning; an evening finish the day before must not open the gate.
     same_cases = [
         {"now": "2026-10-08T21:00:00Z", "finished": "2026-10-08T14:50:00Z"},
@@ -407,6 +410,111 @@ process.stdout.write(JSON.stringify(results));
     )
     assert proc.returncode == 0, proc.stderr
     assert json.loads(proc.stdout) == [True, False]
+
+
+
+def _run_predecessor_gate(lane_id: str, cases: list[dict], mode: str = "live") -> list[dict]:
+    node = shutil.which("node")
+    assert node, "node is required to execute the generated gate"
+    lane = next(row for row in gen.LANES if row["lane_id"] == lane_id)
+    code = gen._gate_js(lane_id, lane["after"], mode, crosses_midnight=gen.predecessor_crosses_midnight(lane, lane["after"]))
+    harness = """
+const cases = JSON.parse(process.argv[1]);
+const RealDate = Date;
+const outputs = cases.map((row) => {
+  const now = row.now || '2026-10-08T21:35:00Z';
+  global.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return new RealDate(now).getTime(); }
+  };
+  global.$runIndex = row.run_index || 0;
+  global.$input = {first: () => ({json: {statusCode: 200, body: row.body}})};
+  global.$ = (name) => {
+    if (name === 'Wait retry') return {all: () => [{}]};
+    if (name === 'Relay constants') return {first: () => ({json: {TRADEAI_N8N_RUN_URL: 'http://relay.example:18092'}})};
+    throw new Error(name);
+  };
+  try { return (function() { GATE_SOURCE })()[0].json; }
+  catch (e) { return {error: String(e.message)}; }
+  finally { global.Date = RealDate; }
+});
+process.stdout.write(JSON.stringify(outputs));
+""".replace("GATE_SOURCE", code)
+    proc = subprocess.run([node, "-e", harness, json.dumps(cases)], capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def _predecessor_body(after: str = "after-close-pipeline-broker-truth", **overrides) -> dict:
+    last = {
+        "lane_id": after,
+        "run_id": "fixture-run",
+        "state": "RUN_DONE",
+        "mode": "live",
+        "exit_code": 0,
+        "requested_at": "2026-10-08T21:25:00Z",
+        "finished_at": "2026-10-08T21:26:00Z",
+    }
+    last.update(overrides)
+    return {"schema": "N8nRunRelayLast@v1", "lane_id": after, "status": "OK", "last": last}
+
+
+@pytest.mark.parametrize("overrides", [
+    {"mode": "dry_run"}, {"mode": None}, {"exit_code": 1}, {"exit_code": None}, {"exit_code": False},
+    {"exit_code": "0"}, {"requested_at": None}, {"requested_at": "2026-10-07T21:25:00Z"},
+    {"finished_at": "2026-10-08T21:40:00Z"}, {"finished_at": "2026-10-08T21:24:00Z"},
+    {"requested_at": "2026-10-08T21:25:00"}, {"finished_at": "2026-10-08T21:26:00"},
+    {"lane_id": "other-lane"},
+])
+def test_n2_gate_rejects_unproven_live_predecessor(overrides: dict) -> None:
+    result = _run_predecessor_gate("after-close-pipeline-planning", [{"body": _predecessor_body(**overrides)}])[0]
+    assert result.get("gate_ok") is False, result
+
+
+@pytest.mark.parametrize("state", ["RUN_FAILED", "RUN_SKIPPED_LOCK", "RUNNING", "RUN_TIMEOUT", "REQUESTED"])
+def test_n2_gate_rejects_non_completed_predecessor(state: str) -> None:
+    result = _run_predecessor_gate("after-close-pipeline-planning", [{"body": _predecessor_body(state=state)}])[0]
+    assert result["gate_ok"] is False
+
+
+def test_n2_gate_requires_matching_read_only_projection_contract() -> None:
+    bodies = []
+    for key, value in (("schema", "other-schema"), ("lane_id", "other-lane"), ("status", "UNREADABLE")):
+        body = _predecessor_body()
+        body[key] = value
+        bodies.append({"body": body})
+    outputs = _run_predecessor_gate("after-close-pipeline-planning", bodies)
+    assert all(result["gate_ok"] is False for result in outputs)
+
+
+def test_n2_gate_anchors_business_day_to_request_across_midnight_and_dst() -> None:
+    after = "hermes-overnight-pipeline-close"
+    cases = [
+        ("2026-10-09T06:20:00Z", "2026-10-09T03:13:00Z", "2026-10-09T04:13:00Z", True),
+        ("2026-10-09T06:20:00Z", "2026-10-08T03:13:00Z", "2026-10-09T04:13:00Z", False),
+        ("2026-10-09T06:20:00Z", "2026-10-09T05:00:00Z", "2026-10-09T05:01:00Z", False),
+        ("2026-10-09T06:20:00Z", "2026-10-09T03:13:00Z", "2026-10-09T20:00:00Z", False),
+        ("2026-03-08T07:20:00Z", "2026-03-08T04:13:00Z", "2026-03-08T05:13:00Z", True),
+        ("2026-11-01T07:20:00Z", "2026-11-01T03:13:00Z", "2026-11-01T04:13:00Z", True),
+    ]
+    inputs = [{"now": now, "body": _predecessor_body(after, requested_at=requested, finished_at=finished)} for now, requested, finished, _ in cases]
+    outputs = _run_predecessor_gate("hermes-overnight-pipeline-night", inputs)
+    assert [row["gate_ok"] for row in outputs] == [expected for *_, expected in cases]
+
+
+def test_n2_gate_stops_after_five_total_checks_not_wait_item_count() -> None:
+    cases = [{"run_index": index, "body": _predecessor_body(state="RUN_FAILED")} for index in range(5)]
+    outputs = _run_predecessor_gate("after-close-pipeline-planning", cases)
+    assert [row.get("gate_ok") for row in outputs[:4]] == [False] * 4
+    assert "after 5 attempts" in outputs[4].get("error", "")
+    assert "MAX_GATE_RETRIES=5" in outputs[4]["error"]
+
+
+@pytest.mark.parametrize("mode", ["dry_run", "live"])
+def test_n2_gate_accepts_only_completed_live_receipt_for_both_child_modes(mode: str) -> None:
+    cases = [{"body": _predecessor_body()}, {"body": _predecessor_body(mode="dry_run")}]
+    outputs = _run_predecessor_gate("after-close-pipeline-planning", cases, mode)
+    assert [row["gate_ok"] for row in outputs] == [True, False]
 
 
 def test_cli_rejects_unknown_tranche(tmp_path):

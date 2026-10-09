@@ -16,8 +16,9 @@ Node chain for an ungated lane (fixed; a test pins the node-type set):
 
 A lane with `after` (four N2 edges only) inserts a gate between Set and POST: HTTP GET
 {url}/runs/<after>/last, a Code node that requires state RUN_DONE on the same America/New_York
-calendar day as the execution, an IF, and on the false branch a Wait of GATE_RETRY_WAIT_S seconds
-that retries the GET. After MAX_GATE_RETRIES failed waits the Code node throws with the lane id.
+business day as the execution (the previous evening for overnight dependencies), live mode and
+exit 0, an IF, and on the false branch a Wait of GATE_RETRY_WAIT_S seconds that retries the GET.
+MAX_GATE_RETRIES bounds total checks: five checks, four waits, then a typed workflow failure.
 Ungated lanes keep the four-node chain above; their node types and ids do not change.
 
 Why a Set node and not `$env`: the lab compose sets `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`
@@ -71,7 +72,7 @@ RELAY_URL_VAR = "TRADEAI_N8N_RUN_URL"
 HTTP_TIMEOUT_MS = 10_000
 # Failed predecessor checks wait this long, then GET /runs/<after>/last again.
 GATE_RETRY_WAIT_S = 60
-# How many of those waits are allowed. The next failure throws. Pinned by the generator test.
+# Legacy constant name: maximum total predecessor checks, hence at most four waits.
 MAX_GATE_RETRIES = 5
 TRANCHES = ("N1", "N2", "N3", "N4", "N5", "N6")
 # Tranches committed under generated/ directly; the rest land under generated/pending/.
@@ -797,6 +798,10 @@ def _gate_js(lane_id: str, after: str, mode: str, *, crosses_midnight: bool) -> 
             f"const AFTER = {json.dumps(after)};",
             f"const CROSSES_MIDNIGHT = {crosses};",
             "const TZ = 'America/New_York';",
+            "function instant(value) {",
+            "  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)) return NaN;",
+            "  return Date.parse(value);",
+            "}",
             "function etDay(value) {",
             "  const d = new Date(value);",
             "  if (Number.isNaN(d.getTime())) return '';",
@@ -815,26 +820,35 @@ def _gate_js(lane_id: str, after: str, mode: str, *, crosses_midnight: bool) -> 
             "const status = item.statusCode;",
             "const body = (item.body && typeof item.body === 'object') ? item.body : {};",
             "const last = (body.last && typeof body.last === 'object') ? body.last : null;",
-            "const finished = last && last.finished_at ? String(last.finished_at) : '';",
+            "const finished = last && typeof last.finished_at === 'string' ? last.finished_at : '';",
+            "const requested = last && typeof last.requested_at === 'string' ? last.requested_at : '';",
             "const nowIso = new Date().toISOString();",
+            "const now = instant(nowIso);",
+            "const requestTime = instant(requested);",
+            "const finishTime = instant(finished);",
             "const today = etDay(nowIso);",
-            "const finishedDay = finished !== '' ? etDay(finished) : '';",
-            "const dayOk = finishedDay !== '' && (finishedDay === today ||",
-            "  (CROSSES_MIDNIGHT && finishedDay === previousEtDay(nowIso)));",
-            "const ok = status === 200 && !!last && last.state === 'RUN_DONE' && dayOk;",
-            "let attempt = 1;",
-            "try {",
-            '  attempt = $("Wait retry").all().length + 1;',
-            "} catch (e) {",
-            "  attempt = 1;",
+            "const expectedDay = CROSSES_MIDNIGHT ? previousEtDay(nowIso) : today;",
+            "const requestDay = Number.isFinite(requestTime) ? etDay(requested) : '';",
+            "const finishedDay = Number.isFinite(finishTime) ? etDay(finished) : '';",
+            "const dayOk = requestDay === expectedDay && (finishedDay === expectedDay ||",
+            "  (CROSSES_MIDNIGHT && finishedDay === today));",
+            "const timeOk = Number.isFinite(requestTime) && Number.isFinite(finishTime) &&",
+            "  requestTime <= finishTime && finishTime <= now;",
+            "const ok = status === 200 && body.schema === 'N8nRunRelayLast@v1' && body.status === 'OK' &&",
+            "  body.lane_id === AFTER && !!last && last.lane_id === AFTER && last.mode === 'live' &&",
+            "  last.state === 'RUN_DONE' && last.exit_code === 0 && dayOk && timeOk;",
+            "const attempt = typeof $runIndex === 'number' && Number.isInteger($runIndex) && $runIndex >= 0",
+            "  ? $runIndex + 1 : NaN;",
+            "if (!Number.isInteger(attempt) || attempt > MAX_GATE_RETRIES) {",
+            "  throw new Error('[' + LANE + '/' + MODE + '] invalid predecessor check counter');",
             "}",
             f'const relayUrl = $("Relay constants").first().json.{RELAY_URL_VAR};',
-            "if (!ok && attempt > MAX_GATE_RETRIES) {",
+            "if (!ok && attempt >= MAX_GATE_RETRIES) {",
             "  const windowText = CROSSES_MIDNIGHT",
-            "    ? 'the America/New_York day or the previous evening'",
+            "    ? 'the previous America/New_York business day'",
             "    : 'the America/New_York day';",
             "  throw new Error('[' + LANE + '/' + MODE + '] predecessor ' + AFTER +",
-            "    ' not RUN_DONE for ' + windowText + ' after ' + String(attempt) +",
+            "    ' lacks a live RUN_DONE exit-0 receipt for ' + windowText + ' after ' + String(attempt) +",
             "    ' attempts (MAX_GATE_RETRIES=' + String(MAX_GATE_RETRIES) + ')');",
             "}",
             "return [{ json: {",

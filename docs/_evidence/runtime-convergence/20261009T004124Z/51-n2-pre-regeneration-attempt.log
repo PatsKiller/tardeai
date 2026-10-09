@@ -1,0 +1,13 @@
+..F.................................................................     [100%]
+=================================== FAILURES ===================================
+___________________ test_committed_files_match_the_generator ___________________
+tests/test_n8n_workflow_templates_20261008.py:66: in test_committed_files_match_the_generator
+    assert diffs == [], diffs
+E   AssertionError: ['stale: pending/after-close-pipeline-broker-truth-shadow.json', 'stale: pending/after-close-pipeline-broker-truth.jso..., 'stale: pending/hermes-learning-pipeline-tune-shadow.json', 'stale: pending/hermes-learning-pipeline-tune.json', ...]
+E   assert ['stale: pend...ne.json', ...] == []
+E
+E     Left contains 9 more items, first extra item: 'stale: pending/after-close-pipeline-broker-truth-shadow.json'
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED tests/test_n8n_workflow_templates_20261008.py::test_committed_files_match_the_generator
+1 failed, 67 passed, 2 deselected in 1.72s

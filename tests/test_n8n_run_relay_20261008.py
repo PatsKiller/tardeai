@@ -325,6 +325,28 @@ def test_previous_bearer_is_accepted_and_a_short_one_refuses_start(tmp_path):
         relay(tmp_path, TRADEAI_N8N_RELAY_BEARER_PREVIOUS="short")
 
 
+
+def test_last_run_exposes_required_exit_proof_without_mutating_ledger_or_runtime(tmp_path):
+    import hashlib
+
+    lane = "after-close-pipeline-close-capture"
+    row = list(_run_row("run-proof", lane, "live", "RUN_DONE", "2026-10-08T21:00:00+00:00"))
+    row[9] = 1  # A mismatched state must never hide the nonzero exit proof.
+    path = _ledger(tmp_path)
+    _insert_runs(path, [tuple(row)])
+    before = {p.relative_to(tmp_path): hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.rglob("*") if p.is_file()}
+    transport_calls = []
+    held = relay(tmp_path, transport=lambda *_a, **_k: transport_calls.append(1))
+    status, payload = held.last_run(f"Bearer {BEARER}", lane)
+    assert status == 200
+    assert payload["last"]["exit_code"] == 1
+    assert payload["last"]["mode"] == "live"
+    after = {p.relative_to(tmp_path): hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.rglob("*") if p.is_file()}
+    assert after == before
+    assert transport_calls == []
+    assert held.counts == {"requested": 0, "refused": 0, "auth_failures": 0, "gateway_unreachable": 0}
+
+
 def test_every_emitted_refusal_is_declared():
     assert R.REFUSALS
     for reason in (
