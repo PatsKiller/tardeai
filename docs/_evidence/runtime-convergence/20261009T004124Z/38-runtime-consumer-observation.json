@@ -1,0 +1,254 @@
+{
+  "schema": "IndependentN1ConsumerObservation@v1",
+  "as_of": "2026-10-09T02:19:09.797001+00:00",
+  "evidence_class": "OBSERVED_CURRENT",
+  "mutations_performed": false,
+  "operations_projection": {
+    "envelope_ok": true,
+    "schema": "SchedulerOperations@v1",
+    "as_of": "2026-10-09T02:19:11.076681Z",
+    "rows": [
+      {
+        "lane_id": "crontab-snapshot-for-health-agent",
+        "scheduler_type": "cron",
+        "runtime_state": "ORPHANED",
+        "schedule": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
+        "receipt": "n8n-wf-c0d4c7845e5c4fcc-769",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+        },
+        "output_age": 1146.35,
+        "freshness": "FRESH",
+        "scheduler_drift": true,
+        "evidence_class": "OBSERVED_HOST",
+        "consumer": null,
+        "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8"
+      },
+      {
+        "lane_id": "n8n-pilot-dispatch",
+        "scheduler_type": "cron",
+        "runtime_state": "ORPHANED",
+        "schedule": "*/15 * * * * n8n_pilot_dispatch.py --apply",
+        "receipt": "n8n-wf-078e8fcbea0c5020-775",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_pilot_dispatch_last.json"
+        },
+        "output_age": 250.07,
+        "freshness": "FRESH",
+        "scheduler_drift": true,
+        "evidence_class": "OBSERVED_HOST",
+        "consumer": null,
+        "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8"
+      },
+      {
+        "lane_id": "n8n-incident-fanin",
+        "scheduler_type": "cron",
+        "runtime_state": "ORPHANED",
+        "schedule": "*/5 * * * * n8n_incident_fanin.py --apply",
+        "receipt": "n8n-wf-722fac0e043ea5c4-778",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_incident_fanin_last.json"
+        },
+        "output_age": 247.99,
+        "freshness": "FRESH",
+        "scheduler_drift": true,
+        "evidence_class": "OBSERVED_HOST",
+        "consumer": null,
+        "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8"
+      },
+      {
+        "lane_id": "n8n-lab-watchdog",
+        "scheduler_type": "systemd",
+        "runtime_state": "NOT_MEASURED",
+        "schedule": "tradeai-n8n-lab-watchdog.timer (5m)",
+        "receipt": null,
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_lab_watchdog_last.json"
+        },
+        "output_age": 272.0,
+        "freshness": "FRESH",
+        "scheduler_drift": null,
+        "evidence_class": "SOURCE_ONLY",
+        "consumer": null,
+        "code_sha": null
+      },
+      {
+        "lane_id": "n8n-research-intake-consumer",
+        "scheduler_type": "cron",
+        "runtime_state": "ORPHANED",
+        "schedule": "*/15 * * * * n8n_research_intake_consumer.py --apply",
+        "receipt": "n8n-wf-21fd15d5f8a4c4da-777",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/n8n_research_intake_last.json"
+        },
+        "output_age": 249.76,
+        "freshness": "FRESH",
+        "scheduler_drift": true,
+        "evidence_class": "OBSERVED_HOST",
+        "consumer": null,
+        "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8"
+      }
+    ]
+  },
+  "coordination_receipt_states": {
+    "query": "SELECT lane_id,state,count(*) AS count,count(json_extract(receipt_json,'$.consumer_receipt_id')) AS consumer_receipt_count,max(updated_at) AS last_updated FROM receipts GROUP BY lane_id,state ORDER BY lane_id,state",
+    "rows": [
+      {
+        "lane_id": "approval-package-reminder",
+        "state": "ARTIFACT_WRITTEN",
+        "count": 42,
+        "consumer_receipt_count": 0,
+        "last_updated": "2026-10-09T02:15:00.960499+00:00"
+      },
+      {
+        "lane_id": "incident-fanin",
+        "state": "ARTIFACT_WRITTEN",
+        "count": 104,
+        "consumer_receipt_count": 0,
+        "last_updated": "2026-10-09T00:00:09.153957+00:00"
+      },
+      {
+        "lane_id": "incident-fanin",
+        "state": "CONSUMED",
+        "count": 347,
+        "consumer_receipt_count": 347,
+        "last_updated": "2026-10-09T00:10:02.397964+00:00"
+      },
+      {
+        "lane_id": "llm-spend-report-daily",
+        "state": "ARTIFACT_WRITTEN",
+        "count": 2,
+        "consumer_receipt_count": 0,
+        "last_updated": "2026-10-08T11:15:02.196463+00:00"
+      },
+      {
+        "lane_id": "morning-brief-0730",
+        "state": "ARTIFACT_WRITTEN",
+        "count": 2,
+        "consumer_receipt_count": 0,
+        "last_updated": "2026-10-08T11:30:02.393660+00:00"
+      },
+      {
+        "lane_id": "research-intake",
+        "state": "CONSUMED",
+        "count": 1,
+        "consumer_receipt_count": 1,
+        "last_updated": "2026-10-08T02:12:12.284033+00:00"
+      },
+      {
+        "lane_id": "research-scheduler-holdings",
+        "state": "ARTIFACT_WRITTEN",
+        "count": 1,
+        "consumer_receipt_count": 0,
+        "last_updated": "2026-10-08T13:15:07.025235+00:00"
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "file": "data/runtime/n8n_pilot_dispatch_last.json",
+      "sha256": "6b26b8306a7266e9b35950e2e3b8b3a89c99b1899a035c03f8e1216b056d189f",
+      "schema": "N8nPilotDispatchRun@v1",
+      "as_of": "2026-10-09T02:15:00.879712+00:00",
+      "mode": "apply",
+      "served_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "ok": true,
+      "fired": 2,
+      "listed": null,
+      "enqueued_today": null,
+      "gateway": {
+        "url": "http://127.0.0.1:18091",
+        "has_key": true,
+        "list": null
+      },
+      "pilot_rows": [
+        {
+          "lane_id": "morning-brief-0730",
+          "fired": false,
+          "outcome": "NO_FIRE",
+          "observation_status": "ABSENT"
+        },
+        {
+          "lane_id": "research-scheduler-holdings",
+          "fired": false,
+          "outcome": "NO_FIRE",
+          "observation_status": null
+        },
+        {
+          "lane_id": "material-change-digest",
+          "fired": false,
+          "outcome": "NO_FIRE",
+          "observation_status": "NOT_MEASURED (no read-only query supplied)"
+        },
+        {
+          "lane_id": "llm-spend-report-daily",
+          "fired": true,
+          "outcome": "ARTIFACT_WRITTEN",
+          "observation_status": "OBSERVED"
+        },
+        {
+          "lane_id": "approval-package-reminder",
+          "fired": true,
+          "outcome": "ARTIFACT_WRITTEN",
+          "observation_status": "OBSERVED"
+        }
+      ],
+      "request_count": 0
+    },
+    {
+      "file": "data/runtime/n8n_incident_fanin_last.json",
+      "sha256": "c36ce30958ee80e07b446bed60ebb5b5c06ba4ceab12261d3470f9654ea4ca5a",
+      "schema": "N8nIncidentFanin@v1",
+      "as_of": "2026-10-09T02:15:01.518835+00:00",
+      "mode": "apply",
+      "served_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "ok": true,
+      "fired": null,
+      "listed": null,
+      "enqueued_today": null,
+      "gateway": {
+        "url": "http://127.0.0.1:18091",
+        "has_key": true,
+        "list": null
+      },
+      "pilot_rows": [],
+      "request_count": 0
+    },
+    {
+      "file": "data/runtime/n8n_research_intake_last.json",
+      "sha256": "26aa46fc1a57386d6990ce7f5d9659c415063902f93d51b03ba823a2867cd7f7",
+      "schema": "N8nResearchIntake@v1",
+      "as_of": "2026-10-09T02:15:01.301454+00:00",
+      "mode": "apply",
+      "served_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "ok": true,
+      "fired": null,
+      "listed": 0,
+      "enqueued_today": 0,
+      "gateway": {
+        "url": "http://127.0.0.1:18091",
+        "has_key": true,
+        "list": {
+          "state": "OK",
+          "reason": null
+        }
+      },
+      "pilot_rows": [],
+      "request_count": 0
+    }
+  ],
+  "snapshot": {
+    "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt",
+    "mtime": "2026-10-09T02:00:04.722605+00:00",
+    "sha256": "b4c0ca54adbb71b7d2779a6f4ded6d117de8b3bc89620dd4aa8a07c49226807f",
+    "line_count": 1047,
+    "current_crontab_exit": 0,
+    "matches_current_crontab": false,
+    "natural_health_agent_consumption_proof": "NOT_MEASURED: source reader exists; no per-read snapshot/run id receipt"
+  }
+}

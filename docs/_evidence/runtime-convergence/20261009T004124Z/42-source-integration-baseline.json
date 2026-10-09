@@ -1,0 +1,23 @@
+{
+  "schema": "CorrectiveSourceCandidate@v1",
+  "evidence_class": "SOURCE_ONLY",
+  "as_of": "2026-10-09T02:27:07.624920+00:00",
+  "head": "a74f4e3ef4f8b1545e81f81f58ce82ce458e07cd",
+  "origin_main": "4d7753c121a0fd9824406397488294687d40388d",
+  "CURRENT_SHA": "4673f135f001b59f01a2b8fd938738542200d5f8",
+  "file_sha256": {
+    "linux_launchers/run_pg_backup.sh": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+    "linux_launchers/run_portfolio.sh": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+    "linux_launchers/run_portfolio_weekly.sh": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+    "linux_launchers/run_portfolio_monthly.sh": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+    "linux_launchers/run_lookthrough.sh": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+    "linux_launchers/run_price_cache.sh": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+    "scripts/pipelines/cutover/_cutover.py": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+    "scripts/lib/lane_registry.py": "6132690806626ba7dce014a426f1f1a4c86af45feb4a87e4bf1a0a9816561e63",
+    "config/lane_registry.json": "d72a1e3c343b90d4c7a45e5575d27c2c477abfa1a700515840f62faed83a50f2"
+  },
+  "remote_pushes_this_tranche": 0,
+  "github_ci_cycles_this_tranche": 0,
+  "ready_to_sync": false,
+  "remaining_local_work": "Finish registry negative tests, integrate currentmain, run full acceptance/secret/generation, commit coherent source/evidence."
+}

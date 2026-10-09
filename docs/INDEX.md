@@ -135,6 +135,15 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261008T215341Z/20-final-report.md` | TradeAI runtime convergence due diligence — 2026-10-08 | review_required | MISSING HEADER | `626eebbbe301` |
 | `docs/_evidence/runtime-convergence/20261008T215341Z/20-operator-change-packet.md` | Operator-only runtime packet — prepared, NOT APPLIED | review_required | MISSING HEADER | `85cb1ab42d5a` |
 | `docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md` | Source validation — 2026-10-08 | review_required | MISSING HEADER | `746c0fb2e84e` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/00-current-baseline.md` | Current runtime baseline | review_required | OK | `36be52287048` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/20-rollout-change-packet.md` | Authorized rollout packet — prepared, host changes NOT APPLIED | review_required | MISSING HEADER | `76718c812903` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/27-child-root-remediation.md` | Portfolio child launcher execution roots | review_required | OK | `4353f4bfad58` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/28-snapshot-duplicate-change-packet.md` | Snapshot duplicate scheduler correction — prepared, NOT APPLIED | review_required | MISSING HEADER | `1dc6593ff5df` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/31-rollout-status.md` | Runtime convergence rollout and source remediation status | review_required | OK | `4018f6134fc2` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/38-rollback-readiness.md` | N1 per-lane rollback and renewed acceptance packet | review_required | OK | `6688f9c9bdf0` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/39-independent-source-review.md` | Independent source review and cadence regression evidence | review_required | OK | `0cf3c6d7f2cc` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/40-program-closeout.md` | TradeAI runtime convergence program closeout | review_required | OK | `687d4c911fa1` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/41-source-cadence-correction.md` | N1 scheduler intent and cadence source correction | review_required | OK | `dfa804697335` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |

@@ -1,0 +1,205 @@
+{
+  "schema": "IndependentN8nSecurityMetadata@v1",
+  "as_of": "2026-10-09T02:17:14.424881+00:00",
+  "evidence_class": "OBSERVED_N8N",
+  "mutations_performed": false,
+  "container": {
+    "image": "n8nio/n8n:2.43.0",
+    "image_digest": "sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c",
+    "restart_count": 0,
+    "state": {
+      "Status": "running",
+      "Running": true,
+      "StartedAt": "2026-10-09T02:03:48.705961248Z",
+      "FinishedAt": "2026-10-09T02:03:48.507288412Z",
+      "ExitCode": 0,
+      "OOMKilled": false
+    },
+    "healthcheck_configured": false,
+    "compose_file": "/home/johnclaw/m8m-bakeoff-lab/docker-compose.n8n.yml",
+    "published_ports": {
+      "5678/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "5678"
+        }
+      ]
+    },
+    "networks": [
+      "m8m-n8n_lab"
+    ],
+    "encryption_key_configured": true,
+    "hardening_env": {
+      "N8N_COMMUNITY_PACKAGES_ENABLED": "false",
+      "EXECUTIONS_DATA_SAVE_ON_ERROR": "all",
+      "DB_TYPE": "postgresdb",
+      "EXECUTIONS_DATA_PRUNE": "true",
+      "EXECUTIONS_DATA_MAX_AGE": "168",
+      "N8N_DIAGNOSTICS_ENABLED": "false",
+      "NODES_EXCLUDE": "[\"n8n-nodes-base.executeCommand\",\"n8n-nodes-base.executeCommandTool\",\"n8n-nodes-base.ssh\",\"n8n-nodes-base.ftp\",\"n8n-nodes-base.emailSend\",\"n8n-nodes-base.emailSendTool\",\"n8n-nodes-base.emailSendHitlTool\",\"n8n-nodes-base.localFileTrigger\"]",
+      "EXECUTIONS_DATA_SAVE_ON_SUCCESS": "none",
+      "N8N_BLOCK_ENV_ACCESS_IN_NODE": "true"
+    }
+  },
+  "version": "2.43.0",
+  "db_observations": {
+    "database": {
+      "query": "SELECT json_build_object('version',version(),'size_bytes',pg_database_size(current_database()),'role',(SELECT row_to_json(r) FROM (SELECT rolname,rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user) r))",
+      "exit": 0,
+      "data": {
+        "version": "PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+        "size_bytes": 19962903,
+        "role": {
+          "rolname": "n8n",
+          "rolsuper": true,
+          "rolcreaterole": true,
+          "rolcreatedb": true,
+          "rolreplication": true,
+          "rolbypassrls": true
+        }
+      }
+    },
+    "workflows": {
+      "query": "SELECT json_build_object('total',count(*),'active',count(*) FILTER(WHERE active),'inactive',count(*) FILTER(WHERE NOT active)) FROM workflow_entity",
+      "exit": 0,
+      "data": {
+        "total": 15,
+        "active": 7,
+        "inactive": 8
+      }
+    },
+    "owner_mfa": {
+      "query": "SELECT json_agg(t) FROM (SELECT \"roleSlug\" AS role,\"mfaEnabled\",count(*) AS count FROM \"user\" GROUP BY \"roleSlug\",\"mfaEnabled\") t",
+      "exit": 0,
+      "data": [
+        {
+          "role": "global:owner",
+          "mfaEnabled": false,
+          "count": 1
+        }
+      ]
+    },
+    "credential_metadata_only": {
+      "query": "SELECT json_agg(t) FROM (SELECT name,type,count(*) AS count FROM credentials_entity GROUP BY name,type) t",
+      "exit": 0,
+      "data": [
+        {
+          "name": "tradeai-run-relay",
+          "type": "httpHeaderAuth",
+          "count": 1
+        }
+      ]
+    },
+    "public_api_keys": {
+      "query": "SELECT json_build_object('count',count(*)) FROM user_api_keys",
+      "exit": 0,
+      "data": {
+        "count": 0
+      }
+    },
+    "community_packages": {
+      "query": "SELECT json_build_object('packages',(SELECT count(*) FROM installed_packages),'nodes',(SELECT count(*) FROM installed_nodes))",
+      "exit": 0,
+      "data": {
+        "packages": 0,
+        "nodes": 0
+      }
+    },
+    "execution_metadata": {
+      "query": "SELECT json_agg(t) FROM (SELECT status,mode,count(*) AS count,min(\"startedAt\") AS first,max(\"startedAt\") AS last FROM execution_entity GROUP BY status,mode) t",
+      "exit": 0,
+      "data": [
+        {
+          "status": "error",
+          "mode": "webhook",
+          "count": 1,
+          "first": "2026-10-06T22:30:05.894+00:00",
+          "last": "2026-10-06T22:30:05.894+00:00"
+        },
+        {
+          "status": "error",
+          "mode": "trigger",
+          "count": 15,
+          "first": "2026-10-08T16:55:00.061+00:00",
+          "last": "2026-10-08T19:00:00.037+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "error",
+          "count": 1,
+          "first": "2026-10-06T22:30:06.007+00:00",
+          "last": "2026-10-06T22:30:06.007+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "webhook",
+          "count": 2,
+          "first": "2026-10-06T22:30:05.522+00:00",
+          "last": "2026-10-06T22:30:05.798+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "trigger",
+          "count": 413,
+          "first": "2026-10-06T22:20:41.031+00:00",
+          "last": "2026-10-07T15:45:51.016+00:00"
+        },
+        {
+          "status": "running",
+          "mode": "trigger",
+          "count": 25,
+          "first": "2026-10-09T01:45:00.021+00:00",
+          "last": "2026-10-09T02:15:00.044+00:00"
+        },
+        {
+          "status": "error",
+          "mode": "manual",
+          "count": 1,
+          "first": "2026-10-08T13:20:54.564+00:00",
+          "last": "2026-10-08T13:20:54.564+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "manual",
+          "count": 3,
+          "first": "2026-10-06T22:18:21.214+00:00",
+          "last": "2026-10-08T13:22:15.071+00:00"
+        }
+      ]
+    }
+  },
+  "host_ledger_event_states": [],
+  "journal": {
+    "tradeai-n8n-coordination-gateway.service": {
+      "exit": 0,
+      "since": "2026-10-09T01:58:20+00:00",
+      "traceback_count": 0,
+      "handler_error_count": 0,
+      "observed_line_count": 0
+    },
+    "tradeai-n8n-run-relay.service": {
+      "exit": 0,
+      "since": "2026-10-09T01:58:20+00:00",
+      "traceback_count": 0,
+      "handler_error_count": 0,
+      "observed_line_count": 4
+    },
+    "tradeai-n8n-run-executor.service": {
+      "exit": 0,
+      "since": "2026-10-09T01:58:20+00:00",
+      "traceback_count": 0,
+      "handler_error_count": 0,
+      "observed_line_count": 22
+    }
+  },
+  "operations_projection": {
+    "schema": null,
+    "as_of": null,
+    "code_sha": null,
+    "keys": [
+      "data",
+      "ok"
+    ],
+    "rows": []
+  }
+}

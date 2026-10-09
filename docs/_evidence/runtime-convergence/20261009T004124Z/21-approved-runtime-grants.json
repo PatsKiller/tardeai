@@ -1,0 +1,33 @@
+{
+  "evidence_class": "OBSERVED_HOST",
+  "scopes": {
+    "release-write": {
+      "expires": 1791508854,
+      "uses": 2,
+      "reason": "Deploy PR 1539 exact merged main SHA d8c527aea977fd0136cfc302001117a8c2919e6e via canonical cio_phase2_exact_main_deploy.sh prepare/promote only after exact main CI passes; rollback target eec946b2c-main-exact-phase2-20261008-165420 SHA eec946b2cebaa1378dab285c506c789f6dff1fb4. Include conditional canonical rollback on any semantic failure. No broker/order/stop/risk/send authority change or scheduler cutover. [remote_request_id=d90218de25ef9b80 chat=8797974247 via=button]",
+      "created_at": 1791507054,
+      "grant_id": "46a143bb80444aa1b2aa50db77808c8b"
+    },
+    "config-write": {
+      "expires": 1791508868,
+      "uses": 2,
+      "reason": "PR 1539 merge d8c527aea977fd0136cfc302001117a8c2919e6e: archive four measured dangling links for tradeai-n8n-run-relay.service and tradeai-n8n-run-executor.service under ~/.config/systemd/user and default.target.wants; install only these two exact approved regular unit files and restore stable wanted links. Preserve all EnvironmentFile contents and live-lane flags; no cron/workflow/notification/secret changes. Rollback retains valid prior-release regular definitions. [remote_request_id=6d69b1ba109c4582 chat=8797974247 via=button]",
+      "created_at": 1791507068,
+      "grant_id": "e87b648b82554d368c1e6b0d323a78fb"
+    },
+    "service": {
+      "expires": 1791508890,
+      "uses": 3,
+      "reason": "PR 1539 deployment d8c527aea977fd0136cfc302001117a8c2919e6e: reload and re-enable only existing relay/executor units with repaired stable links; canonical portfolio-server promotion plus CURRENT rebind of health-agent, cio-governed-bridge, cio-telegram, telegram-callback-poller, n8n-gateway, n8n-relay, n8n-executor; conditional rollback/rebind same set to eec946b2c-main-exact-phase2-20261008-165420 on failed acceptance. No other service, broker process, schedule or notification policy changes. [remote_request_id=74ccb4bc9b00c5bc chat=8797974247 via=button]",
+      "created_at": 1791507090,
+      "grant_id": "5c1911bac76e41ebb36397fca15613e3"
+    },
+    "maintree": {
+      "expires": 1791508904,
+      "uses": 1,
+      "reason": "After PR 1539 exact d8c527aea977fd0136cfc302001117a8c2919e6e CURRENT deployment passes semantic/browser acceptance, run canonical ff_dev_tree helper only for clean fast-forward of /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild to that exact SHA. Refuse dirty/divergent checkout. No feature edits, reset, force push, history rewrite or broker mutation. [remote_request_id=ea4723cdfbf2bd9c chat=8797974247 via=button]",
+      "created_at": 1791507104,
+      "grant_id": "8a3f6c45fbd247eaba8adfa2ea9e582d"
+    }
+  }
+}

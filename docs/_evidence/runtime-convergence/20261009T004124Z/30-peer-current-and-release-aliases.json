@@ -1,0 +1,35 @@
+{
+  "schema": "ReleaseAliasObservation@v1",
+  "evidence_class": "OBSERVED_CURRENT",
+  "as_of": "2026-10-09T01:33:55.573124+00:00",
+  "CURRENT": "/home/johnclaw/trade-ai-releases/portfolio-server/4673f135f-main-exact-phase2-20261008-212602",
+  "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+  "aliases": {
+    "data": {
+      "exists": true,
+      "is_symlink": false,
+      "resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/4673f135f-main-exact-phase2-20261008-212602/data"
+    },
+    "logs": {
+      "exists": true,
+      "is_symlink": true,
+      "resolved_path": "/home/johnclaw/trade-ai-releases/persistent-state/logs"
+    },
+    "reports": {
+      "exists": true,
+      "is_symlink": true,
+      "resolved_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports"
+    },
+    ".venv": {
+      "exists": false,
+      "is_symlink": false,
+      "resolved_path": "/home/johnclaw/trade-ai-releases/portfolio-server/4673f135f-main-exact-phase2-20261008-212602/.venv"
+    },
+    ".env": {
+      "exists": true,
+      "is_symlink": true,
+      "resolved_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env"
+    }
+  },
+  "primary_sha": "4673f135f001b59f01a2b8fd938738542200d5f8"
+}

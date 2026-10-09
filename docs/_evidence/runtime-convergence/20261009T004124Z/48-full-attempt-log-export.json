@@ -1,0 +1,9 @@
+{
+  "schema": "EvidenceLogExport@v1",
+  "as_of": "2026-10-09T03:04:14.544560+00:00",
+  "source_log": "46-final-local-acceptance.raw.log",
+  "export_log": "46-final-local-acceptance.log",
+  "source_sha256": "c705017feb6e37da416a543c9bbd407cb986960cf16db5229dde92aa67cdf873",
+  "export_sha256": "cb523a83873437704e90cdd322552b96641bf29adf984d63a379af72d0ff8cb9",
+  "transformation": "Remove trailing spaces/tabs only; raw retained; W4 negative failures remain failed."
+}

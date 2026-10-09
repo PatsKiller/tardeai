@@ -1,0 +1,17 @@
+{
+  "schema": "SourceCandidateDigest@v1",
+  "evidence_class": "SOURCE_ONLY",
+  "as_of": "2026-10-09T01:56:33.664055+00:00",
+  "base_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+  "files": {
+    "linux_launchers/run_pg_backup.sh": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+    "linux_launchers/run_portfolio.sh": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+    "linux_launchers/run_portfolio_weekly.sh": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+    "linux_launchers/run_portfolio_monthly.sh": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+    "linux_launchers/run_lookthrough.sh": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+    "linux_launchers/run_price_cache.sh": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+    "tests/test_scheduler_launcher_roots.py": "130fa77d2bb24e0b10a64928b80dd872586a717e12c0896d2c6112eddbd34cfa"
+  },
+  "validation_log": "33-local-acceptance-host-permissions.log",
+  "broker_authority": "UNCHANGED"
+}

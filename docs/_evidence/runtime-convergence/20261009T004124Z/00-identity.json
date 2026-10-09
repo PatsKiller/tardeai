@@ -1,0 +1,137 @@
+{
+  "as_of": "2026-10-09T00:44:41.598413Z",
+  "evidence_class": "OBSERVED_CURRENT",
+  "origin_main": {
+    "command": [
+      "git",
+      "-C",
+      "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008",
+      "rev-parse",
+      "origin/main"
+    ],
+    "exit": 0,
+    "stdout": "d8c527aea977fd0136cfc302001117a8c2919e6e\n",
+    "stderr": "",
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "HEAD": {
+    "command": [
+      "git",
+      "-C",
+      "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008",
+      "rev-parse",
+      "HEAD"
+    ],
+    "exit": 0,
+    "stdout": "d8c527aea977fd0136cfc302001117a8c2919e6e\n",
+    "stderr": "",
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "merge_base": {
+    "command": [
+      "git",
+      "-C",
+      "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008",
+      "merge-base",
+      "HEAD",
+      "origin/main"
+    ],
+    "exit": 0,
+    "stdout": "d8c527aea977fd0136cfc302001117a8c2919e6e\n",
+    "stderr": "",
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "worktree": {
+    "command": [
+      "git",
+      "-C",
+      "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008",
+      "status",
+      "--porcelain=v1"
+    ],
+    "exit": 0,
+    "stdout": "?? docs/_evidence/runtime-convergence/20261009T004124Z/\n",
+    "stderr": "",
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "primary_worktree": {
+    "command": [
+      "git",
+      "-C",
+      "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "status",
+      "--porcelain=v1"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "",
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "CURRENT_release": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+  "CURRENT_SHA": {
+    "command": [
+      "git",
+      "-C",
+      "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+      "rev-parse",
+      "HEAD"
+    ],
+    "exit": 0,
+    "stdout": "eec946b2cebaa1378dab285c506c789f6dff1fb4\n",
+    "stderr": "",
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "portfolio_server": {
+    "pid": "302872",
+    "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+    "unit": {
+      "command": [
+        "systemctl",
+        "--user",
+        "show",
+        "portfolio-server.service",
+        "--property=ActiveState,SubState,FragmentPath,WorkingDirectory,ExecStart,ActiveEnterTimestamp"
+      ],
+      "exit": 0,
+      "stdout": "ActiveState=active\nSubState=running\nFragmentPath=/home/johnclaw/.config/systemd/user/portfolio-server.service\nActiveEnterTimestamp=Thu 2026-10-08 16:55:15 EDT\nExecStart={ path=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ; argv[]=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_server.py ; ignore_errors=no ; start_time=[Thu 2026-10-08 16:55:15 EDT] ; stop_time=[n/a] ; pid=302872 ; code=(null) ; status=0/0 }\nWorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420\n",
+      "stderr": "",
+      "as_of": "2026-10-09T00:44:41.598413Z"
+    }
+  },
+  "api_health": {
+    "url": "http://127.0.0.1:7777/api/health",
+    "status": 200,
+    "data": {
+      "ok": true,
+      "version": "2.0",
+      "port": 7777,
+      "holdings_exists": true
+    },
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "command_center_build": {
+    "url": "http://127.0.0.1:7777/v3/build-meta.json",
+    "status": 200,
+    "data": {
+      "ui_version": "3.14+mv00mcmo",
+      "base_version": "3.14",
+      "built_at": "2026-10-08T20:55:11.633Z",
+      "release_notes": "cc-header-truth-v2: source-explicit header provenance, setup-run population, per-field freshness, served build identity",
+      "git_sha": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+      "build_sha": "eec946b2ceba",
+      "source_sha": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+      "source_commit": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+      "branch": "main",
+      "release_label": "main-exact-phase2"
+    },
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  },
+  "n8n_health": {
+    "url": "http://127.0.0.1:5678/healthz",
+    "status": 200,
+    "data": {
+      "status": "ok"
+    },
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  }
+}

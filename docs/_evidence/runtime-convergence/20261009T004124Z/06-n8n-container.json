@@ -1,0 +1,294 @@
+{
+  "as_of": "2026-10-09T00:44:41.598413Z",
+  "evidence_class": "OBSERVED_HOST",
+  "containers": {
+    "m8m-n8n": {
+      "image": "n8nio/n8n:2.43.0",
+      "image_id": "sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 19697,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-08T19:58:56.591617215Z",
+        "FinishedAt": "2026-10-08T19:58:56.37741154Z"
+      },
+      "restart_count": 0,
+      "created": "2026-10-08T13:18:53.813400196Z",
+      "healthcheck": null,
+      "ports": {
+        "5678/tcp": [
+          {
+            "HostIp": "127.0.0.1",
+            "HostPort": "5678"
+          }
+        ]
+      },
+      "networks": {
+        "m8m-n8n_lab": {
+          "IPAMConfig": null,
+          "Links": null,
+          "Aliases": [
+            "m8m-n8n",
+            "n8n"
+          ],
+          "DriverOpts": null,
+          "GwPriority": 0,
+          "NetworkID": "fdc1921eeccb00c873de34a39e25a2c4879f322be49b2ae5272d54c3f29135c8",
+          "EndpointID": "d950d68e1a66375626f6d07a94bbaaa64c43e1e4d6efac3e97bd83d02fa33833",
+          "Gateway": "172.19.0.1",
+          "IPAddress": "172.19.0.3",
+          "MacAddress": "c2:da:d4:42:4f:bf",
+          "IPPrefixLen": 16,
+          "IPv6Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "DNSNames": [
+            "m8m-n8n",
+            "n8n",
+            "8e64a8847b61"
+          ]
+        }
+      },
+      "mounts": [
+        {
+          "Type": "volume",
+          "Name": "m8m-n8n_n8n-data",
+          "Source": "/var/lib/docker/volumes/m8m-n8n_n8n-data/_data",
+          "Destination": "/home/node/.n8n",
+          "Driver": "local",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": ""
+        }
+      ],
+      "compose_files": "/home/johnclaw/m8m-bakeoff-lab/docker-compose.n8n.yml",
+      "env_names": [
+        "DB_POSTGRESDB_DATABASE",
+        "DB_POSTGRESDB_HOST",
+        "DB_POSTGRESDB_PASSWORD",
+        "DB_POSTGRESDB_PORT",
+        "DB_POSTGRESDB_USER",
+        "DB_TYPE",
+        "EXECUTIONS_DATA_MAX_AGE",
+        "EXECUTIONS_DATA_PRUNE",
+        "EXECUTIONS_DATA_SAVE_ON_ERROR",
+        "EXECUTIONS_DATA_SAVE_ON_SUCCESS",
+        "GENERIC_TIMEZONE",
+        "N8N_BLOCK_ENV_ACCESS_IN_NODE",
+        "N8N_COMMUNITY_PACKAGES_ENABLED",
+        "N8N_DIAGNOSTICS_ENABLED",
+        "N8N_ENCRYPTION_KEY",
+        "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS",
+        "N8N_HIRING_BANNER_ENABLED",
+        "N8N_HOST",
+        "N8N_LISTEN_ADDRESS",
+        "N8N_PERSONALIZATION_ENABLED",
+        "N8N_PORT",
+        "N8N_PROTOCOL",
+        "N8N_PYTHON_ENABLED",
+        "N8N_RELEASE_TYPE",
+        "N8N_TEMPLATES_ENABLED",
+        "N8N_VERSION_NOTIFICATIONS_ENABLED",
+        "NODES_EXCLUDE",
+        "NODE_ENV",
+        "NODE_PATH",
+        "NODE_VERSION",
+        "NPM_CONFIG_UPDATE_NOTIFIER",
+        "PATH",
+        "SHELL",
+        "WEBHOOK_URL"
+      ],
+      "safe_config": {
+        "N8N_HOST": "127.0.0.1",
+        "EXECUTIONS_DATA_PRUNE": "true",
+        "EXECUTIONS_DATA_SAVE_ON_ERROR": "all",
+        "DB_TYPE": "postgresdb",
+        "N8N_PORT": "5678",
+        "N8N_BLOCK_ENV_ACCESS_IN_NODE": "true",
+        "DB_POSTGRESDB_HOST": "n8n-db",
+        "DB_POSTGRESDB_USER": "n8n",
+        "GENERIC_TIMEZONE": "America/New_York",
+        "N8N_DIAGNOSTICS_ENABLED": "false",
+        "N8N_PROTOCOL": "http",
+        "EXECUTIONS_DATA_MAX_AGE": "168",
+        "NODES_EXCLUDE": "[\"n8n-nodes-base.executeCommand\",\"n8n-nodes-base.executeCommandTool\",\"n8n-nodes-base.ssh\",\"n8n-nodes-base.ftp\",\"n8n-nodes-base.emailSend\",\"n8n-nodes-base.emailSendTool\",\"n8n-nodes-base.emailSendHitlTool\",\"n8n-nodes-base.localFileTrigger\"]",
+        "N8N_COMMUNITY_PACKAGES_ENABLED": "false",
+        "N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS": "true",
+        "DB_POSTGRESDB_DATABASE": "n8n",
+        "EXECUTIONS_DATA_SAVE_ON_SUCCESS": "none"
+      },
+      "encryption_key_configured": true,
+      "image_digest": {
+        "command": [
+          "docker",
+          "image",
+          "inspect",
+          "sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c",
+          "--format",
+          "{{json .RepoDigests}}"
+        ],
+        "exit": 0,
+        "stdout": "[\"n8nio/n8n@sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c\"]\n",
+        "stderr": "",
+        "as_of": "2026-10-09T00:44:41.598413Z"
+      }
+    },
+    "m8m-n8n-db": {
+      "image": "postgres:16.15-alpine",
+      "image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+      "state": {
+        "Status": "running",
+        "Running": true,
+        "Paused": false,
+        "Restarting": false,
+        "OOMKilled": false,
+        "Dead": false,
+        "Pid": 2125676,
+        "ExitCode": 0,
+        "Error": "",
+        "StartedAt": "2026-10-06T22:04:21.572358639Z",
+        "FinishedAt": "0001-01-01T00:00:00Z",
+        "Health": {
+          "Status": "healthy",
+          "FailingStreak": 0,
+          "Log": [
+            {
+              "Start": "2026-10-08T20:44:23.893026422-04:00",
+              "End": "2026-10-08T20:44:23.971788815-04:00",
+              "ExitCode": 0,
+              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-08T20:44:28.973312419-04:00",
+              "End": "2026-10-08T20:44:29.029665253-04:00",
+              "ExitCode": 0,
+              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-08T20:44:34.031095505-04:00",
+              "End": "2026-10-08T20:44:34.093549816-04:00",
+              "ExitCode": 0,
+              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-08T20:44:39.09442628-04:00",
+              "End": "2026-10-08T20:44:39.159713352-04:00",
+              "ExitCode": 0,
+              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+            },
+            {
+              "Start": "2026-10-08T20:44:44.161255976-04:00",
+              "End": "2026-10-08T20:44:44.222055065-04:00",
+              "ExitCode": 0,
+              "Output": "/var/run/postgresql:5432 - accepting connections\n"
+            }
+          ]
+        }
+      },
+      "restart_count": 0,
+      "created": "2026-10-06T22:04:07.117406244Z",
+      "healthcheck": {
+        "Test": [
+          "CMD-SHELL",
+          "pg_isready -d n8n -U n8n"
+        ],
+        "Interval": 5000000000,
+        "Timeout": 3000000000,
+        "Retries": 20
+      },
+      "ports": {
+        "5432/tcp": null
+      },
+      "networks": {
+        "m8m-n8n_lab": {
+          "IPAMConfig": null,
+          "Links": null,
+          "Aliases": [
+            "m8m-n8n-db",
+            "n8n-db"
+          ],
+          "DriverOpts": null,
+          "GwPriority": 0,
+          "NetworkID": "fdc1921eeccb00c873de34a39e25a2c4879f322be49b2ae5272d54c3f29135c8",
+          "EndpointID": "a03723f5842e71370afb0f80c51a946440cd4e63193c7eea734f6f9f99839c74",
+          "Gateway": "172.19.0.1",
+          "IPAddress": "172.19.0.2",
+          "MacAddress": "9a:7f:b3:e6:1c:62",
+          "IPPrefixLen": 16,
+          "IPv6Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "DNSNames": [
+            "m8m-n8n-db",
+            "n8n-db",
+            "0a49e04d6e93"
+          ]
+        }
+      },
+      "mounts": [
+        {
+          "Type": "volume",
+          "Name": "m8m-n8n_n8n-pg",
+          "Source": "/var/lib/docker/volumes/m8m-n8n_n8n-pg/_data",
+          "Destination": "/var/lib/postgresql/data",
+          "Driver": "local",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": ""
+        }
+      ],
+      "compose_files": "/home/johnclaw/m8m-bakeoff-lab/docker-compose.n8n.yml",
+      "env_names": [
+        "DOCKER_PG_LLVM_DEPS",
+        "GOSU_VERSION",
+        "LANG",
+        "PATH",
+        "PGDATA",
+        "PG_MAJOR",
+        "PG_SHA256",
+        "PG_VERSION",
+        "POSTGRES_DB",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_USER"
+      ],
+      "safe_config": {
+        "POSTGRES_USER": "n8n",
+        "POSTGRES_DB": "n8n"
+      },
+      "encryption_key_configured": false,
+      "image_digest": {
+        "command": [
+          "docker",
+          "image",
+          "inspect",
+          "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+          "--format",
+          "{{json .RepoDigests}}"
+        ],
+        "exit": 0,
+        "stdout": "[\"postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea\"]\n",
+        "stderr": "",
+        "as_of": "2026-10-09T00:44:41.598413Z"
+      }
+    }
+  },
+  "version": {
+    "command": [
+      "docker",
+      "exec",
+      "m8m-n8n",
+      "n8n",
+      "--version"
+    ],
+    "exit": 0,
+    "stdout": "2.43.0\n",
+    "stderr": "",
+    "as_of": "2026-10-09T00:44:41.598413Z"
+  }
+}

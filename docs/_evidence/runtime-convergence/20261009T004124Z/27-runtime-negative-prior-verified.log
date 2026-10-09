@@ -1,0 +1,22 @@
+..................FFFFFF......                                           [100%]
+=================================== FAILURES ===================================
+E   subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r0/release/linux_launchers/run_pg_backup.sh']' returned non-zero exit status 127.
+/usr/lib/python3.14/subprocess.py:578: subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r0/release/linux_launchers/run_pg_backup.sh']' returned non-zero exit status 127.
+E   subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r1/release/linux_launchers/run_portfolio.sh']' returned non-zero exit status 1.
+/usr/lib/python3.14/subprocess.py:578: subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r1/release/linux_launchers/run_portfolio.sh']' returned non-zero exit status 1.
+E   subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r2/release/linux_launchers/run_portfolio_weekly.sh']' returned non-zero exit status 1.
+/usr/lib/python3.14/subprocess.py:578: subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r2/release/linux_launchers/run_portfolio_weekly.sh']' returned non-zero exit status 1.
+E   subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r3/release/linux_launchers/run_portfolio_monthly.sh']' returned non-zero exit status 1.
+/usr/lib/python3.14/subprocess.py:578: subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r3/release/linux_launchers/run_portfolio_monthly.sh']' returned non-zero exit status 1.
+E   subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r4/release/linux_launchers/run_lookthrough.sh']' returned non-zero exit status 1.
+/usr/lib/python3.14/subprocess.py:578: subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r4/release/linux_launchers/run_lookthrough.sh']' returned non-zero exit status 1.
+E   subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r5/release/linux_launchers/run_price_cache.sh']' returned non-zero exit status 1.
+/usr/lib/python3.14/subprocess.py:578: subprocess.CalledProcessError: Command '['bash', '/tmp/pytest-of-johnclaw/pytest-111302/test_portfolio_child_selects_r5/release/linux_launchers/run_price_cache.sh']' returned non-zero exit status 1.
+=========================== short test summary info ============================
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_selects_runtime_without_using_dev_code[False-run_pg_backup.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_selects_runtime_without_using_dev_code[False-run_portfolio.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_selects_runtime_without_using_dev_code[False-run_portfolio_weekly.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_selects_runtime_without_using_dev_code[False-run_portfolio_monthly.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_selects_runtime_without_using_dev_code[False-run_lookthrough.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_selects_runtime_without_using_dev_code[False-run_price_cache.sh]
+6 failed, 24 passed in 1.77s

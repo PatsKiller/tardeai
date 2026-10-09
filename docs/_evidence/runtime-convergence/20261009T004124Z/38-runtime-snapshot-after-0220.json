@@ -1,0 +1,17 @@
+{
+  "schema": "SnapshotOutputProof@v1",
+  "evidence_class": "OBSERVED_HOST",
+  "as_of": "2026-10-09T02:25:26.125643+00:00",
+  "mtime": "2026-10-09T02:20:03.314928+00:00",
+  "snapshot_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt",
+  "sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+  "line_count": 1047,
+  "comparison_evidence": "38-runtime-post-0220-host-metadata.json",
+  "comparison_as_of": "2026-10-09T02:24:01.745952+00:00",
+  "current_crontab_sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+  "matches_current_crontab": true,
+  "natural_run_id": "n8n-wf-c0d4c7845e5c4fcc-779",
+  "natural_receipt_evidence": "38-runtime-natural-runs-after-0220.json",
+  "natural_health_agent_per_read_ack": "NOT_MEASURED",
+  "manual_triggered": false
+}

@@ -1,0 +1,50 @@
+{
+  "schema": "PeerLeaseContext@v1",
+  "evidence_class": "OBSERVED_HOST",
+  "as_of": "2026-10-09T02:22:48.522338+00:00",
+  "receipt_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.git/tradeai-agent-coordination/receipts/ea4bb44b-9b64-40cb-ba83-56651e7b2139.json",
+  "session": {
+    "schema": "AgentSessionReceipt@v1",
+    "session_id": "ea4bb44b-9b64-40cb-ba83-56651e7b2139",
+    "agent_id": "codex",
+    "mode": "mutating",
+    "issued_at": "2026-10-09T01:29:34+00:00",
+    "task_scope": "Agent 2 W2 PR 1541 approved review correction: merge current origin/main locally, validate all gates, exact-SHA guarded second push only; no remote merge, deployment, activation, broker or trading",
+    "base_sha": "931415f7f29dc3331e7d9e82ab8b9f7477ac47c6",
+    "branch": "wt/agent2-n8n-w2-20261008",
+    "worktree_path": "/home/johnclaw/tradeai-wt-agent2-n8n-w2-20261008",
+    "expected_head": "931415f7f29dc3331e7d9e82ab8b9f7477ac47c6",
+    "expected_worktree": "/home/johnclaw/tradeai-wt-agent2-n8n-w2-20261008",
+    "claimed_paths": [
+      "config/lane_registry.json",
+      "config/n8n_run_allowlist.json",
+      "docs/implementation/n8n-parallel/21-agent2-w2-n6-20261008.md",
+      "docs/INDEX.md",
+      "scripts/run_cio_hardening_ci.py",
+      "tests/test_lane_registry_n8n_kind_20261008.py",
+      "tests/test_n8n_w2_registry_20261008.py"
+    ],
+    "claimed_stores": []
+  },
+  "recorded_lease": {
+    "schema": "AgentFileLease@v2",
+    "lease_id": "538f225b-fe4e-48bb-8300-1c13fae70d95",
+    "session_id": "ea4bb44b-9b64-40cb-ba83-56651e7b2139",
+    "paths": [
+      "config/lane_registry.json",
+      "config/n8n_run_allowlist.json",
+      "docs/implementation/n8n-parallel/21-agent2-w2-n6-20261008.md",
+      "docs/INDEX.md",
+      "scripts/run_cio_hardening_ci.py",
+      "tests/test_lane_registry_n8n_kind_20261008.py",
+      "tests/test_n8n_w2_registry_20261008.py"
+    ],
+    "stores": [],
+    "deployment": false,
+    "production": false,
+    "issued_at_utc": 1791509374.4229417,
+    "expires_at_utc": 1791512974.4229417
+  },
+  "current_lease_file_exists": false,
+  "authority_conclusion": "Session receipt explicitly excludes deployment; no release-SHA-specific deployment grant can be inferred from this lease."
+}

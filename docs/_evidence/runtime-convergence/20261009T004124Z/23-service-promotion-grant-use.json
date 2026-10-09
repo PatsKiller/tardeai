@@ -1,0 +1,8 @@
+{
+  "consumed": true,
+  "uses_left": 1,
+  "reason": "PR 1539 deployment d8c527aea977fd0136cfc302001117a8c2919e6e: reload and re-enable only existing relay/executor units with repaired stable links; canonical portfolio-server promotion plus CURRENT rebind of health-agent, cio-governed-bridge, cio-telegram, telegram-callback-poller, n8n-gateway, n8n-relay, n8n-executor; conditional rollback/rebind same set to eec946b2c-main-exact-phase2-20261008-165420 on failed acceptance. No other service, broker process, schedule or notification policy changes. [remote_request_id=74ccb4bc9b00c5bc chat=8797974247 via=button]",
+  "grant_id": "5c1911bac76e41ebb36397fca15613e3",
+  "consumption_id": "630aa3ca021745019cae5aff608b13df",
+  "ok": true
+}

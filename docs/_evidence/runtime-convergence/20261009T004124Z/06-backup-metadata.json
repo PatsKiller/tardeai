@@ -1,0 +1,1445 @@
+{
+  "as_of": "2026-10-09T00:47:10.741998Z",
+  "files": [
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_run_executor_last.json",
+      "size_bytes": 1152,
+      "mtime": "2026-10-09T00:45:02.484824+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_migration_board_last.json",
+      "size_bytes": 47124,
+      "mtime": "2026-10-08T16:16:52.830273+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_research_intake_last.json",
+      "size_bytes": 493,
+      "mtime": "2026-10-09T00:45:02.449142+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_lane_registry_drift_last.json",
+      "size_bytes": 223,
+      "mtime": "2026-10-09T00:45:02.384236+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_pilot_dispatch_last.json",
+      "size_bytes": 2860,
+      "mtime": "2026-10-09T00:45:02.470769+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_lab_watchdog_last.json",
+      "size_bytes": 579,
+      "mtime": "2026-10-09T00:43:16.529370+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_incident_fanin_last.json",
+      "size_bytes": 73025,
+      "mtime": "2026-10-09T00:45:03.896471+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_relay/n8n_run_relay_last.json",
+      "size_bytes": 324,
+      "mtime": "2026-10-09T00:45:00.255487+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-548.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T20:20:01.226811+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-528.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T19:45:09.661105+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-628.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T22:25:03.357862+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-688.json",
+      "size_bytes": 1388,
+      "mtime": "2026-10-09T00:00:09.097455+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-509.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T19:15:02.329399+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-654.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:05:01.880907+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-704.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-09T00:25:00.836897+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-476.json",
+      "size_bytes": 1354,
+      "mtime": "2026-10-08T18:15:06.340109+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-686.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-09T00:00:05.780064+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-533.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T19:55:02.075239+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-525.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T19:40:07.036600+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-631.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T22:30:06.179415+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-662.json",
+      "size_bytes": 976,
+      "mtime": "2026-10-08T23:20:01.373408+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-440.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:15:05.363828+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-594.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:30:03.498805+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-627.json",
+      "size_bytes": 977,
+      "mtime": "2026-10-08T22:20:02.285814+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-585.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:15:04.615254+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-479.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T18:20:03.036249+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-595.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:30:04.272637+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-664.json",
+      "size_bytes": 994,
+      "mtime": "2026-10-08T23:20:01.784737+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-480.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:25:04.203234+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-487.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:35:07.719697+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-680.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:45:01.718224+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-567.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:45:06.208400+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-536.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:00:04.225668+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-571.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:55:03.395743+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-629.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:25:04.295315+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-578.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:05:02.111162+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-497.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:55:05.909536+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-500.json",
+      "size_bytes": 1168,
+      "mtime": "2026-10-08T19:00:01.760221+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-448.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T17:30:01.163165+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-492.json",
+      "size_bytes": 1354,
+      "mtime": "2026-10-08T18:45:00.966749+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-444.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T17:20:01.343439+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-587.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T21:20:05.308676+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-600.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:40:00.703245+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-449.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T17:30:02.482499+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-641.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T22:45:04.893899+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-701.json",
+      "size_bytes": 977,
+      "mtime": "2026-10-09T00:20:04.359134+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-647.json",
+      "size_bytes": 1592,
+      "mtime": "2026-10-08T22:55:03.671413+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-632.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:30:06.289307+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-540.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T20:05:01.911798+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-677.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:40:05.775522+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-696.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-09T00:15:02.520982+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-695.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-09T00:10:01.403631+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-608.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:55:05.448354+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-456.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T17:45:00.608227+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-672.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:35:03.560139+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-508.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T19:15:01.932722+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-558.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T20:35:01.743300+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-537.json",
+      "size_bytes": 1355,
+      "mtime": "2026-10-08T20:00:08.184396+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-607.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:50:04.696901+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-606.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:50:03.560744+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-514.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T19:20:06.642682+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-659.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T23:15:04.409135+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-565.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T20:45:05.258475+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-570.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T20:55:02.660954+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-483.json",
+      "size_bytes": 1593,
+      "mtime": "2026-10-08T18:30:08.111845+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-716.json",
+      "size_bytes": 1384,
+      "mtime": "2026-10-09T00:45:00.652545+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-463.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:55:04.704250+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-473.json",
+      "size_bytes": 1167,
+      "mtime": "2026-10-08T18:15:04.001592+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-692.json",
+      "size_bytes": 1602,
+      "mtime": "2026-10-09T00:05:01.070862+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-546.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T20:15:05.899313+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-667.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T23:25:04.580798+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-604.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T21:45:02.491920+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-703.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-09T00:20:05.078144+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-614.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:00:03.437455+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-561.json",
+      "size_bytes": 976,
+      "mtime": "2026-10-08T20:40:03.030267+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-652.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:00:05.403894+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-683.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T23:50:03.608202+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-714.json",
+      "size_bytes": 1602,
+      "mtime": "2026-10-09T00:40:05.129717+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-484.json",
+      "size_bytes": 1149,
+      "mtime": "2026-10-08T18:30:08.333210+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-655.json",
+      "size_bytes": 1595,
+      "mtime": "2026-10-08T23:05:02.497346+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-451.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:35:02.475605+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-684.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T23:55:04.249905+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-603.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T21:45:02.282292+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-589.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:20:06.392829+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-626.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:20:03.128414+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-460.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T17:50:03.855764+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-638.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:40:03.031851+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-618.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:10:05.130233+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-712.json",
+      "size_bytes": 977,
+      "mtime": "2026-10-09T00:40:04.300517+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-519.json",
+      "size_bytes": 1460,
+      "mtime": "2026-10-08T19:30:09.548867+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-577.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:00:06.368918+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-681.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T23:45:02.765940+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-715.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-09T00:40:04.411216+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-597.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:35:05.138109+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-583.json",
+      "size_bytes": 1408,
+      "mtime": "2026-10-08T21:15:03.991097+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-534.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T20:00:11.783237+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-615.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:00:01.631800+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-700.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-09T00:20:04.148910+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-535.json",
+      "size_bytes": 976,
+      "mtime": "2026-10-08T20:00:05.082224+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-553.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T20:25:03.904235+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-625.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:20:01.989580+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-675.json",
+      "size_bytes": 976,
+      "mtime": "2026-10-08T23:40:05.664445+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-554.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T20:30:04.641173+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-669.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T23:30:05.909176+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-475.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T18:15:05.735346+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-442.json",
+      "size_bytes": 994,
+      "mtime": "2026-10-08T17:20:01.231515+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-503.json",
+      "size_bytes": 1592,
+      "mtime": "2026-10-08T19:00:03.853289+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-699.json",
+      "size_bytes": 1602,
+      "mtime": "2026-10-09T00:15:03.784909+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-469.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:05:02.365361+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-516.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T19:25:02.663555+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-562.json",
+      "size_bytes": 1152,
+      "mtime": "2026-10-08T20:40:03.246971+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-531.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T19:50:05.961086+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-586.json",
+      "size_bytes": 977,
+      "mtime": "2026-10-08T21:20:05.050157+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-581.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T21:10:03.386386+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-461.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:50:03.531028+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-549.json",
+      "size_bytes": 994,
+      "mtime": "2026-10-08T20:20:01.116832+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-653.json",
+      "size_bytes": 1595,
+      "mtime": "2026-10-08T23:00:06.753472+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-555.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T20:30:06.281790+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-713.json",
+      "size_bytes": 995,
+      "mtime": "2026-10-09T00:40:04.046695+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-518.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T19:30:07.665608+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-443.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:20:01.002809+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-668.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T23:30:05.369838+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-709.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-09T00:30:01.747760+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-493.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:45:02.802132+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-504.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T19:05:04.082802+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-671.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T23:30:08.289270+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-485.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T18:30:09.032419+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-612.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T22:00:02.143545+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-693.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-09T00:05:01.180585+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-616.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:05:04.260101+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-482.json",
+      "size_bytes": 1354,
+      "mtime": "2026-10-08T18:30:05.496343+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-521.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T19:35:01.965534+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-551.json",
+      "size_bytes": 977,
+      "mtime": "2026-10-08T20:20:03.041513+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-499.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T19:00:01.162939+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-630.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T22:30:04.808430+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-697.json",
+      "size_bytes": 1388,
+      "mtime": "2026-10-09T00:15:02.850611+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-611.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T22:00:02.711214+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-510.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T19:15:02.651282+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-547.json",
+      "size_bytes": 1595,
+      "mtime": "2026-10-08T20:15:05.786361+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-719.json",
+      "size_bytes": 1152,
+      "mtime": "2026-10-09T00:45:02.483850+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-452.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T17:35:01.182400+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-454.json",
+      "size_bytes": 994,
+      "mtime": "2026-10-08T17:40:03.462450+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-676.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T23:40:05.438116+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-580.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:10:02.559552+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-559.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:35:02.480473+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-459.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:45:01.559744+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-658.json",
+      "size_bytes": 1355,
+      "mtime": "2026-10-08T23:15:04.041388+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-705.json",
+      "size_bytes": 1602,
+      "mtime": "2026-10-09T00:25:00.720731+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-543.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:10:04.258890+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-527.json",
+      "size_bytes": 1354,
+      "mtime": "2026-10-08T19:45:06.244972+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-agentA-smoke-agentA-1791476156.json",
+      "size_bytes": 1163,
+      "mtime": "2026-10-08T16:15:56.615348+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-584.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T21:15:04.728795+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-588.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:20:05.520224+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-678.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T23:45:01.506653+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-498.json",
+      "size_bytes": 1592,
+      "mtime": "2026-10-08T18:55:05.797178+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-462.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T17:55:03.980436+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-457.json",
+      "size_bytes": 1167,
+      "mtime": "2026-10-08T17:45:00.825311+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-706.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-09T00:30:01.203224+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-621.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T22:15:00.783072+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-517.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T19:30:03.471864+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-502.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T19:00:02.400862+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-445.json",
+      "size_bytes": 1593,
+      "mtime": "2026-10-08T17:25:05.395840+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-645.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:50:02.601163+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-582.json",
+      "size_bytes": 1168,
+      "mtime": "2026-10-08T21:15:03.630469+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-522.json",
+      "size_bytes": 1592,
+      "mtime": "2026-10-08T19:35:04.795647+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-552.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:25:03.794332+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-602.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T21:45:01.813139+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-579.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:05:02.325364+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-515.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T19:25:02.552818+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-656.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T23:10:03.329393+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-707.json",
+      "size_bytes": 1388,
+      "mtime": "2026-10-09T00:30:01.637733+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-477.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:20:01.575491+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-633.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:30:05.928730+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-439.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T17:15:04.370416+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-620.json",
+      "size_bytes": 1408,
+      "mtime": "2026-10-08T22:15:00.569262+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-544.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T20:15:04.949327+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-613.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T22:00:03.213545+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-466.json",
+      "size_bytes": 1168,
+      "mtime": "2026-10-08T18:00:06.196583+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-560.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T20:40:02.773168+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-646.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:55:02.825509+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-592.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T21:30:03.335469+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-524.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T19:40:07.252495+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-591.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:25:02.319085+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-624.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T22:20:01.771311+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-670.json",
+      "size_bytes": 1150,
+      "mtime": "2026-10-08T23:30:06.231199+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-636.json",
+      "size_bytes": 976,
+      "mtime": "2026-10-08T22:40:02.719845+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-490.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:40:05.061140+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-593.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T21:30:02.849608+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-596.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:35:04.395308+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-563.json",
+      "size_bytes": 1593,
+      "mtime": "2026-10-08T20:40:04.535444+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-682.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:50:02.888856+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-495.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:50:03.034346+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-691.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-09T00:00:07.031831+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-532.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T19:55:01.928358+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-599.json",
+      "size_bytes": 977,
+      "mtime": "2026-10-08T21:40:00.592564+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-520.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T19:30:11.319400+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-550.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:20:02.648525+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-650.json",
+      "size_bytes": 1354,
+      "mtime": "2026-10-08T23:00:05.087865+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-491.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T18:45:00.513439+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-465.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T18:00:05.745825+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-557.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:30:05.902020+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-496.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:50:04.642567+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-574.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T21:00:04.502729+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-590.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T21:25:02.202650+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-642.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T22:45:06.113230+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-617.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:05:04.368777+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-643.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:45:06.001238+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-450.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:30:05.953596+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-698.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-09T00:15:03.913414+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-481.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:25:04.414499+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-564.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T20:45:04.891484+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-471.json",
+      "size_bytes": 1592,
+      "mtime": "2026-10-08T18:10:03.383770+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-708.json",
+      "size_bytes": 1600,
+      "mtime": "2026-10-09T00:30:02.860365+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-572.json",
+      "size_bytes": 977,
+      "mtime": "2026-10-08T21:00:03.713488+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-710.json",
+      "size_bytes": 1600,
+      "mtime": "2026-10-09T00:35:03.819866+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-455.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T17:40:05.270962+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-539.json",
+      "size_bytes": 994,
+      "mtime": "2026-10-08T20:00:05.692343+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-623.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:15:01.514374+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-447.json",
+      "size_bytes": 1167,
+      "mtime": "2026-10-08T17:30:00.946274+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-689.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-09T00:00:08.375717+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-661.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:15:06.088444+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-478.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:20:02.726520+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-526.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T19:45:03.731116+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-575.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T21:00:04.720465+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-639.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:40:04.132147+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-467.json",
+      "size_bytes": 1152,
+      "mtime": "2026-10-08T18:00:06.414449+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-569.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:50:02.526075+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-489.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T18:40:03.587398+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-538.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T20:00:11.013710+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-598.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T21:40:00.371521+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-648.json",
+      "size_bytes": 975,
+      "mtime": "2026-10-08T23:00:03.953989+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-651.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T23:00:04.622037+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-513.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T19:20:06.417111+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-438.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T17:15:04.120919+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-507.json",
+      "size_bytes": 1098,
+      "mtime": "2026-10-08T19:10:01.211579+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-660.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T23:15:05.975816+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-718.json",
+      "size_bytes": 1602,
+      "mtime": "2026-10-09T00:45:02.264462+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-694.json",
+      "size_bytes": 1602,
+      "mtime": "2026-10-09T00:10:02.138586+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-494.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:45:02.567403+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-545.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T20:15:04.599077+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-666.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:25:03.726370+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-605.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:45:03.336559+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-542.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T20:10:02.877747+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-512.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T19:20:04.272460+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-523.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T19:40:05.268692+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-576.json",
+      "size_bytes": 1167,
+      "mtime": "2026-10-08T21:00:05.100432+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-464.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T18:00:05.052300+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-644.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T22:50:01.338424+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-530.json",
+      "size_bytes": 1150,
+      "mtime": "2026-10-08T19:50:03.508641+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-634.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T22:35:01.411347+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-453.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T17:40:03.072222+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-711.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-09T00:35:02.983332+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-635.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T22:35:02.444068+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-717.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-09T00:45:01.048968+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-657.json",
+      "size_bytes": 1147,
+      "mtime": "2026-10-08T23:10:03.439962+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-649.json",
+      "size_bytes": 994,
+      "mtime": "2026-10-08T23:00:04.236009+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-609.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T21:55:05.560277+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-488.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T18:40:03.368894+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-446.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T17:25:01.578856+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-566.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T20:45:05.472289+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-619.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:10:05.239981+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-687.json",
+      "size_bytes": 976,
+      "mtime": "2026-10-09T00:00:07.371177+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-568.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T20:50:01.332591+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-474.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:15:05.522093+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-506.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T19:10:01.203660+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-c0d4c7845e5c4fcc-610.json",
+      "size_bytes": 976,
+      "mtime": "2026-10-08T22:00:00.797205+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-577f9dfaede632f3-640.json",
+      "size_bytes": 1169,
+      "mtime": "2026-10-08T22:45:04.509534+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-622.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T22:15:00.893268+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-541.json",
+      "size_bytes": 1596,
+      "mtime": "2026-10-08T20:05:02.639287+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-486.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:35:04.819749+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-505.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T19:05:05.358292+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-674.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T23:40:04.709200+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-673.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T23:35:04.430927+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-baddad5487f9c288-679.json",
+      "size_bytes": 1356,
+      "mtime": "2026-10-08T23:45:01.126692+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-529.json",
+      "size_bytes": 1151,
+      "mtime": "2026-10-08T19:45:04.261767+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-511.json",
+      "size_bytes": 1593,
+      "mtime": "2026-10-08T19:15:03.658892+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-637.json",
+      "size_bytes": 994,
+      "mtime": "2026-10-08T22:40:03.270910+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-702.json",
+      "size_bytes": 1602,
+      "mtime": "2026-10-09T00:20:04.968357+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-685.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:55:04.359425+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-5439cd4d82e1f305-573.json",
+      "size_bytes": 996,
+      "mtime": "2026-10-08T21:00:04.017951+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-663.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T23:20:03.353850+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-690.json",
+      "size_bytes": 1599,
+      "mtime": "2026-10-09T00:00:10.403392+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-470.json",
+      "size_bytes": 1594,
+      "mtime": "2026-10-08T18:05:02.254546+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-472.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T18:10:03.495383+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-665.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T23:20:03.594380+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-9208ac827e514183-556.json",
+      "size_bytes": 1153,
+      "mtime": "2026-10-08T20:30:06.392548+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/n8n-wf-e511583d42831b8b-601.json",
+      "size_bytes": 1597,
+      "mtime": "2026-10-08T21:40:01.420065+00:00"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_runs/shadow/n8n_lab_watchdog_last.json",
+      "size_bytes": 579,
+      "mtime": "2026-10-09T00:45:02.398553+00:00"
+    }
+  ]
+}

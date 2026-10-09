@@ -1,0 +1,998 @@
+{
+  "schema": "IndependentN1RuntimeProof@v1",
+  "as_of": "2026-10-09T02:14:56.135107+00:00",
+  "evidence_class": "OBSERVED_CURRENT",
+  "CURRENT_SHA": "4673f135f001b59f01a2b8fd938738542200d5f8",
+  "CURRENT_release": "/home/johnclaw/trade-ai-releases/portfolio-server/4673f135f-main-exact-phase2-20261008-212602",
+  "natural_artifact": "38-runtime-natural-runs.json",
+  "natural_artifact_as_of": "2026-10-09T02:11:44.887099+00:00",
+  "registry_sources": {
+    "CURRENT": {
+      "path": "/home/johnclaw/trade-ai-releases/portfolio-server/4673f135f-main-exact-phase2-20261008-212602/config/lane_registry.json",
+      "sha256": "1214e19db41914b17b9eb7ef5f42dc089f1e4bb6777c6691f0eb96fe0eec5569",
+      "rows": [
+        {
+          "lane_id": "crontab-snapshot-for-health-agent",
+          "owner": "ops",
+          "state": "ACTIVE",
+          "scheduler_kind": "cron",
+          "expression": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
+          "match": "crontab_snapshot.txt.tmp",
+          "cadence": {
+            "value": null,
+            "shape_valid": false,
+            "length": 0,
+            "fields": 0,
+            "control_characters": false,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected_cadence": "*/20 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+          },
+          "consumer": null
+        },
+        {
+          "lane_id": "n8n-pilot-dispatch",
+          "owner": "platform",
+          "state": "ACTIVE",
+          "scheduler_kind": "cron",
+          "expression": "*/15 * * * * n8n_pilot_dispatch.py --apply",
+          "match": "scripts/n8n_pilot_dispatch.py",
+          "cadence": {
+            "value": null,
+            "shape_valid": false,
+            "length": 0,
+            "fields": 0,
+            "control_characters": false,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected_cadence": "*/15 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_pilot_dispatch_last.json"
+          },
+          "consumer": null
+        },
+        {
+          "lane_id": "n8n-incident-fanin",
+          "owner": "platform",
+          "state": "ACTIVE",
+          "scheduler_kind": "cron",
+          "expression": "*/5 * * * * n8n_incident_fanin.py --apply",
+          "match": "scripts/n8n_incident_fanin.py",
+          "cadence": {
+            "value": null,
+            "shape_valid": false,
+            "length": 0,
+            "fields": 0,
+            "control_characters": false,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected_cadence": "*/5 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_incident_fanin_last.json"
+          },
+          "consumer": null
+        },
+        {
+          "lane_id": "n8n-research-intake-consumer",
+          "owner": "platform",
+          "state": "ACTIVE",
+          "scheduler_kind": "cron",
+          "expression": "*/15 * * * * n8n_research_intake_consumer.py --apply",
+          "match": "scripts/n8n_research_intake_consumer.py",
+          "cadence": {
+            "value": null,
+            "shape_valid": false,
+            "length": 0,
+            "fields": 0,
+            "control_characters": false,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "expected_cadence": "*/15 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_research_intake_last.json"
+          },
+          "consumer": null
+        }
+      ]
+    },
+    "peer_SOURCE_ONLY": {
+      "path": "/home/johnclaw/tradeai-wt-n1cut-20261008/config/lane_registry.json",
+      "sha256": "0f79fe42678d416318a54f7ee46d68c72699265a6f904cdf65c651769de2bf32",
+      "rows": [
+        {
+          "lane_id": "crontab-snapshot-for-health-agent",
+          "owner": "ops",
+          "state": "ACTIVE",
+          "scheduler_kind": "n8n",
+          "expression": "c0d4c7845e5c4fcc",
+          "match": "crontab_snapshot.txt.tmp",
+          "cadence": {
+            "value": null,
+            "shape_valid": false,
+            "length": 5224,
+            "fields": 337,
+            "control_characters": true,
+            "sha256": "6a07c14f44ce639b17b2bd48911a446ba79e666763a27cacaacd4074dfdda3f4"
+          },
+          "expected_cadence": "*/20 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+          },
+          "consumer": null
+        },
+        {
+          "lane_id": "n8n-pilot-dispatch",
+          "owner": "platform",
+          "state": "ACTIVE",
+          "scheduler_kind": "n8n",
+          "expression": "078e8fcbea0c5020",
+          "match": "scripts/n8n_pilot_dispatch.py",
+          "cadence": {
+            "value": "*/15 * * * *",
+            "shape_valid": true,
+            "length": 12,
+            "fields": 5,
+            "control_characters": false,
+            "sha256": "98f2fd36b3d9fab7e139a6ee597639c060bdefe028559f8db9978562be4f6b4c"
+          },
+          "expected_cadence": "*/15 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_pilot_dispatch_last.json"
+          },
+          "consumer": null
+        },
+        {
+          "lane_id": "n8n-incident-fanin",
+          "owner": "platform",
+          "state": "ACTIVE",
+          "scheduler_kind": "n8n",
+          "expression": "722fac0e043ea5c4",
+          "match": "scripts/n8n_incident_fanin.py",
+          "cadence": {
+            "value": null,
+            "shape_valid": false,
+            "length": 5223,
+            "fields": 337,
+            "control_characters": true,
+            "sha256": "f41901b6d7b10cb7b20e5df7a286d6bb53f33e388380ae66a8a9713410a37188"
+          },
+          "expected_cadence": "*/5 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_incident_fanin_last.json"
+          },
+          "consumer": null
+        },
+        {
+          "lane_id": "n8n-research-intake-consumer",
+          "owner": "platform",
+          "state": "ACTIVE",
+          "scheduler_kind": "n8n",
+          "expression": "21fd15d5f8a4c4da",
+          "match": "scripts/n8n_research_intake_consumer.py",
+          "cadence": {
+            "value": null,
+            "shape_valid": false,
+            "length": 5224,
+            "fields": 337,
+            "control_characters": true,
+            "sha256": "526c279f08195d7f8915b2d71c8496c80ca8abd337564ea9850f0b5f3d9abb5c"
+          },
+          "expected_cadence": "*/15 * * * *",
+          "output_signal": {
+            "kind": "file_mtime",
+            "path": "data/runtime/n8n_research_intake_last.json"
+          },
+          "consumer": null
+        }
+      ]
+    }
+  },
+  "cutover_receipts": [
+    {
+      "file": "data/runtime/n8n_cutover/crontab-snapshot-for-health-agent-20261009T020135Z-cutover.json",
+      "sha256": "8c411632c9e30dd5bb2e4d9d60e31b6de6cce9c498fde5f6fd0986152bda9f3d",
+      "schema": "CutoverReceipt@v1",
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "action": "cutover",
+      "at": "2026-10-09T02:01:35+00:00",
+      "applied": true,
+      "mode": "apply",
+      "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "registry_path": "/home/johnclaw/tradeai-wt-n1cut-20261008/config/lane_registry.json",
+      "workflow_id": "c0d4c7845e5c4fcc",
+      "problems": [],
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
+        "match": "crontab_snapshot.txt.tmp"
+      },
+      "scheduler_after_kind": "n8n",
+      "cadence": {
+        "value": null,
+        "shape_valid": false,
+        "length": 5224,
+        "fields": 337,
+        "control_characters": true,
+        "sha256": "6a07c14f44ce639b17b2bd48911a446ba79e666763a27cacaacd4074dfdda3f4"
+      },
+      "owner_declared": false,
+      "review_date_declared": false,
+      "line_schedule": "*/20 * * * *",
+      "original_lock": "/tmp/tradeai_crontab_snapshot.lock",
+      "original_lock_kind": "safe_flock",
+      "cron_lock_matches_allowlist": false,
+      "cron_safe_flock_matches": false,
+      "retired_line_present": true,
+      "live_original_present": false,
+      "backup": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-20261009T020135Z-pre-cutover-lane-crontab-snapshot-for-health-agent.txt",
+        "exists": true,
+        "size": 155525,
+        "mtime": "2026-10-09T02:01:35.304058+00:00",
+        "sha256": "ed240a64bdf66150a3d4e80b2e7b038f0e94ae67f8c57cf3acf2cc8803334186"
+      }
+    },
+    {
+      "file": "data/runtime/n8n_cutover/n8n-incident-fanin-20261009T020135Z-cutover.json",
+      "sha256": "de637f1fc6fd2f615bd38176a1e15d38ecef93eaaeeca48993389c7423738cb3",
+      "schema": "CutoverReceipt@v1",
+      "lane_id": "n8n-incident-fanin",
+      "action": "cutover",
+      "at": "2026-10-09T02:01:35+00:00",
+      "applied": true,
+      "mode": "apply",
+      "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "registry_path": "/home/johnclaw/tradeai-wt-n1cut-20261008/config/lane_registry.json",
+      "workflow_id": "722fac0e043ea5c4",
+      "problems": [],
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/5 * * * * n8n_incident_fanin.py --apply",
+        "match": "scripts/n8n_incident_fanin.py"
+      },
+      "scheduler_after_kind": "n8n",
+      "cadence": {
+        "value": null,
+        "shape_valid": false,
+        "length": 5223,
+        "fields": 337,
+        "control_characters": true,
+        "sha256": "f41901b6d7b10cb7b20e5df7a286d6bb53f33e388380ae66a8a9713410a37188"
+      },
+      "owner_declared": false,
+      "review_date_declared": false,
+      "line_schedule": "*/5 * * * *",
+      "original_lock": "/tmp/tradeai_n8n_incident_fanin.lock",
+      "original_lock_kind": "safe_flock",
+      "cron_lock_matches_allowlist": true,
+      "cron_safe_flock_matches": true,
+      "retired_line_present": true,
+      "live_original_present": false,
+      "backup": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-20261009T020135Z-pre-cutover-lane-n8n-incident-fanin.txt",
+        "exists": true,
+        "size": 155411,
+        "mtime": "2026-10-09T02:01:35.091042+00:00",
+        "sha256": "8e09628cac4f34f77f45cad3be8b213c616560466a5c5f435f58988f7fe77641"
+      }
+    },
+    {
+      "file": "data/runtime/n8n_cutover/n8n-pilot-dispatch-20261009T020135Z-cutover.json",
+      "sha256": "e9849b06df53f7f1b6a588b527c7ed399e9dbaf91e9ebe7fa4e2395e044ad3a5",
+      "schema": "CutoverReceipt@v1",
+      "lane_id": "n8n-pilot-dispatch",
+      "action": "cutover",
+      "at": "2026-10-09T02:01:34+00:00",
+      "applied": true,
+      "mode": "apply",
+      "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "registry_path": "/home/johnclaw/tradeai-wt-n1cut-20261008/config/lane_registry.json",
+      "workflow_id": "078e8fcbea0c5020",
+      "problems": [],
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_pilot_dispatch.py --apply",
+        "match": "scripts/n8n_pilot_dispatch.py"
+      },
+      "scheduler_after_kind": "n8n",
+      "cadence": {
+        "value": null,
+        "shape_valid": false,
+        "length": 5224,
+        "fields": 337,
+        "control_characters": true,
+        "sha256": "526c279f08195d7f8915b2d71c8496c80ca8abd337564ea9850f0b5f3d9abb5c"
+      },
+      "owner_declared": false,
+      "review_date_declared": false,
+      "line_schedule": "*/15 * * * *",
+      "original_lock": "/tmp/tradeai_n8n_pilot_dispatch.lock",
+      "original_lock_kind": "safe_flock",
+      "cron_lock_matches_allowlist": true,
+      "cron_safe_flock_matches": true,
+      "retired_line_present": true,
+      "live_original_present": false,
+      "backup": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-20261009T020134Z-pre-cutover-lane-n8n-pilot-dispatch.txt",
+        "exists": true,
+        "size": 155359,
+        "mtime": "2026-10-09T02:01:34.991879+00:00",
+        "sha256": "b4c0ca54adbb71b7d2779a6f4ded6d117de8b3bc89620dd4aa8a07c49226807f"
+      }
+    },
+    {
+      "file": "data/runtime/n8n_cutover/n8n-pilot-dispatch-20261009T020145Z-cutover.json",
+      "sha256": "475fa1597dcc97d98c8edf3c8914057f5c62c4125c9f13a37ab06ae7b1f1a64f",
+      "schema": "CutoverReceipt@v1",
+      "lane_id": "n8n-pilot-dispatch",
+      "action": "cutover",
+      "at": "2026-10-09T02:01:45+00:00",
+      "applied": true,
+      "mode": "apply",
+      "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "registry_path": "/home/johnclaw/tradeai-wt-n1cut-20261008/config/lane_registry.json",
+      "workflow_id": "078e8fcbea0c5020",
+      "problems": [],
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_pilot_dispatch.py --apply",
+        "match": "scripts/n8n_pilot_dispatch.py"
+      },
+      "scheduler_after_kind": "n8n",
+      "cadence": {
+        "value": "*/15 * * * *",
+        "shape_valid": true,
+        "length": 12,
+        "fields": 5,
+        "control_characters": false,
+        "sha256": "98f2fd36b3d9fab7e139a6ee597639c060bdefe028559f8db9978562be4f6b4c"
+      },
+      "owner_declared": false,
+      "review_date_declared": false,
+      "line_schedule": "*/15 * * * *",
+      "original_lock": "/tmp/tradeai_n8n_pilot_dispatch.lock",
+      "original_lock_kind": "safe_flock",
+      "cron_lock_matches_allowlist": true,
+      "cron_safe_flock_matches": true,
+      "retired_line_present": true,
+      "live_original_present": false,
+      "backup": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-20261009T020145Z-pre-cutover-lane-n8n-pilot-dispatch.txt",
+        "exists": true,
+        "size": 155540,
+        "mtime": "2026-10-09T02:01:45.842579+00:00",
+        "sha256": "7050077da1bca0aaee5819a2f538453e6655938f8d16a84d81c6252e5e0d4c22"
+      }
+    },
+    {
+      "file": "data/runtime/n8n_cutover/n8n-pilot-dispatch-20261009T020145Z-rollback.json",
+      "sha256": "d0becbca34cb001fb0f44decc0b50a02d71db6c2cb3b8b260a763c1c93cc385a",
+      "schema": "CutoverReceipt@v1",
+      "lane_id": "n8n-pilot-dispatch",
+      "action": "rollback",
+      "at": "2026-10-09T02:01:45+00:00",
+      "applied": true,
+      "mode": "apply",
+      "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "registry_path": "/home/johnclaw/tradeai-wt-n1cut-20261008/config/lane_registry.json",
+      "workflow_id": null,
+      "problems": [],
+      "scheduler_before": {
+        "kind": "n8n",
+        "expression": "078e8fcbea0c5020",
+        "match": "scripts/n8n_pilot_dispatch.py",
+        "cadence": "*/15 \u0004 126514 agent_orchestration.html agents AGENTS.md AI_WORK_POLICY.md apps ARCHITECTURE.md archive artifacts assets backfill_acct_periods_v3.py bin _c3c4_checkpoint_audit.py CLAUDE.md claude_prompts cleanup_ms01.sh config crontab_backup.txt crontab_pipeline_controller_proposal.txt crontab_pre_holiday_gate.txt crontab_private_proxy_proposal.txt crontab_session35_phase1_proposed.txt crontab_session35_phase1_rollback.txt crontab_session36_phase2_proposed.txt crontab_session36_phase2_rollback.txt crontab_stop_advisory_batch_proposal.txt crontab_system_facts_proposal.txt crontab_warrior_audit_proposal.txt data deploy docker docs evidence exports fixtures hermes_sidecar imports infra install-guardrails.sh launchers linux_launchers linux_port linux_port_v2 logs M migrations OPERATIONS.md ops ops-evidence package.json package-lock.json patch_ai_tab_v2.py patches phase1b_fix.py phase2b_analyst.py phase2_weekly.py prompts pyproject.toml README_DEPLOYMENT.txt README.txt reference references requirements.txt restart_server.bat run_dashboard.bat run_health_check.bat run_portfolio.bat run_portfolio_monthly.bat run_portfolio_weekly.bat run_price_cache.bat run_price_cache_force.bat S1_DIAGNOSIS_2026-08-10.md S6_REPORT.md schemas scripts skills sql templates tests tools trade_ai tradeai_fix validation \u0004 126514 agent_orchestration.html agents AGENTS.md AI_WORK_POLICY.md apps ARCHITECTURE.md archive artifacts assets backfill_acct_periods_v3.py bin _c3c4_checkpoint_audit.py CLAUDE.md claude_prompts cleanup_ms01.sh config crontab_backup.txt crontab_pipeline_controller_proposal.txt crontab_pre_holiday_gate.txt crontab_private_proxy_proposal.txt crontab_session35_phase1_proposed.txt crontab_session35_phase1_rollback.txt crontab_session36_phase2_proposed.txt crontab_session36_phase2_rollback.txt crontab_stop_advisory_batch_proposal.txt crontab_system_facts_proposal.txt crontab_warrior_audit_proposal.txt data deploy docker docs evidence exports fixtures hermes_sidecar imports infra install-guardrails.sh launchers linux_launchers linux_port linux_port_v2 logs M migrations OPERATIONS.md ops ops-evidence package.json package-lock.json patch_ai_tab_v2.py patches phase1b_fix.py phase2b_analyst.py phase2_weekly.py prompts pyproject.toml README_DEPLOYMENT.txt README.txt reference references requirements.txt restart_server.bat run_dashboard.bat run_health_check.bat run_portfolio.bat run_portfolio_monthly.bat run_portfolio_weekly.bat run_price_cache.bat run_price_cache_force.bat S1_DIAGNOSIS_2026-08-10.md S6_REPORT.md schemas scripts skills sql templates tests tools trade_ai tradeai_fix validation \u0004 126514 agent_orchestration.html agents AGENTS.md AI_WORK_POLICY.md apps ARCHITECTURE.md archive artifacts assets backfill_acct_periods_v3.py bin _c3c4_checkpoint_audit.py CLAUDE.md claude_prompts cleanup_ms01.sh config crontab_backup.txt crontab_pipeline_controller_proposal.txt crontab_pre_holiday_gate.txt crontab_private_proxy_proposal.txt crontab_session35_phase1_proposed.txt crontab_session35_phase1_rollback.txt crontab_session36_phase2_proposed.txt crontab_session36_phase2_rollback.txt crontab_stop_advisory_batch_proposal.txt crontab_system_facts_proposal.txt crontab_warrior_audit_proposal.txt data deploy docker docs evidence exports fixtures hermes_sidecar imports infra install-guardrails.sh launchers linux_launchers linux_port linux_port_v2 logs M migrations OPERATIONS.md ops ops-evidence package.json package-lock.json patch_ai_tab_v2.py patches phase1b_fix.py phase2b_analyst.py phase2_weekly.py prompts pyproject.toml README_DEPLOYMENT.txt README.txt reference references requirements.txt restart_server.bat run_dashboard.bat run_health_check.bat run_portfolio.bat run_portfolio_monthly.bat run_portfolio_weekly.bat run_price_cache.bat run_price_cache_force.bat S1_DIAGNOSIS_2026-08-10.md S6_REPORT.md schemas scripts skills sql templates tests tools trade_ai tradeai_fix validation \u0004 126514 agent_orchestration.html agents AGENTS.md AI_WORK_POLICY.md apps ARCHITECTURE.md archive artifacts assets backfill_acct_periods_v3.py bin _c3c4_checkpoint_audit.py CLAUDE.md claude_prompts cleanup_ms01.sh config crontab_backup.txt crontab_pipeline_controller_proposal.txt crontab_pre_holiday_gate.txt crontab_private_proxy_proposal.txt crontab_session35_phase1_proposed.txt crontab_session35_phase1_rollback.txt crontab_session36_phase2_proposed.txt crontab_session36_phase2_rollback.txt crontab_stop_advisory_batch_proposal.txt crontab_system_facts_proposal.txt crontab_warrior_audit_proposal.txt data deploy docker docs evidence exports fixtures hermes_sidecar imports infra install-guardrails.sh launchers linux_launchers linux_port linux_port_v2 logs M migrations OPERATIONS.md ops ops-evidence package.json package-lock.json patch_ai_tab_v2.py patches phase1b_fix.py phase2b_analyst.py phase2_weekly.py prompts pyproject.toml README_DEPLOYMENT.txt README.txt reference references requirements.txt restart_server.bat run_dashboard.bat run_health_check.bat run_portfolio.bat run_portfolio_monthly.bat run_portfolio_weekly.bat run_price_cache.bat run_price_cache_force.bat S1_DIAGNOSIS_2026-08-10.md S6_REPORT.md schemas scripts skills sql templates tests tools trade_ai tradeai_fix validation"
+      },
+      "scheduler_after_kind": "cron",
+      "cadence": {
+        "value": null,
+        "shape_valid": false,
+        "length": 0,
+        "fields": 0,
+        "control_characters": false,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "owner_declared": false,
+      "review_date_declared": false,
+      "line_schedule": "# RETIRED 2026-10-09 n8n-cutover n8n-pilot-dispatch",
+      "original_lock": "/tmp/tradeai_n8n_pilot_dispatch.lock",
+      "original_lock_kind": "safe_flock",
+      "cron_lock_matches_allowlist": true,
+      "cron_safe_flock_matches": true,
+      "retired_line_present": false,
+      "live_original_present": true,
+      "backup": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-20261009T020145Z-pre-rollback-lane-n8n-pilot-dispatch.txt",
+        "exists": true,
+        "size": 155592,
+        "mtime": "2026-10-09T02:01:45.678233+00:00",
+        "sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974"
+      }
+    },
+    {
+      "file": "data/runtime/n8n_cutover/n8n-research-intake-consumer-20261009T020135Z-cutover.json",
+      "sha256": "5123fa967bbafe371d3128e8822dac5bf316e18baca5be0d71dd8797aaccaeda",
+      "schema": "CutoverReceipt@v1",
+      "lane_id": "n8n-research-intake-consumer",
+      "action": "cutover",
+      "at": "2026-10-09T02:01:35+00:00",
+      "applied": true,
+      "mode": "apply",
+      "code_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+      "registry_path": "/home/johnclaw/tradeai-wt-n1cut-20261008/config/lane_registry.json",
+      "workflow_id": "21fd15d5f8a4c4da",
+      "problems": [],
+      "scheduler_before": {
+        "kind": "cron",
+        "expression": "*/15 * * * * n8n_research_intake_consumer.py --apply",
+        "match": "scripts/n8n_research_intake_consumer.py"
+      },
+      "scheduler_after_kind": "n8n",
+      "cadence": {
+        "value": null,
+        "shape_valid": false,
+        "length": 5224,
+        "fields": 337,
+        "control_characters": true,
+        "sha256": "526c279f08195d7f8915b2d71c8496c80ca8abd337564ea9850f0b5f3d9abb5c"
+      },
+      "owner_declared": false,
+      "review_date_declared": false,
+      "line_schedule": "*/15 * * * *",
+      "original_lock": "/tmp/tradeai_n8n_research_intake_consumer.lock",
+      "original_lock_kind": "safe_flock",
+      "cron_lock_matches_allowlist": true,
+      "cron_safe_flock_matches": true,
+      "retired_line_present": true,
+      "live_original_present": false,
+      "backup": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_cutover/crontab-20261009T020135Z-pre-cutover-lane-n8n-research-intake-consumer.txt",
+        "exists": true,
+        "size": 155463,
+        "mtime": "2026-10-09T02:01:35.200287+00:00",
+        "sha256": "17e5f0be25e180f01174674cd333904db4d7b1f9eb94129c2c7acbf6c137e95c"
+      }
+    }
+  ],
+  "lanes": {
+    "n8n-pilot-dispatch": {
+      "cadence": "*/15 * * * *",
+      "cutover_at": "2026-10-09T02:01:45+00:00",
+      "runs": {
+        "dry_run": {
+          "states": {
+            "RUN_DONE": 4
+          },
+          "natural_current_done_count": 3,
+          "pre_cutover_natural_current_done_count": 3,
+          "post_cutover_natural_current_done_count": 0,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-baddad5487f9c288-737",
+              "requested_at": "2026-10-09T01:15:00.152731+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791508501.4358242,
+              "output_after": 1791508501.4358242
+            },
+            {
+              "run_id": "n8n-wf-baddad5487f9c288-744",
+              "requested_at": "2026-10-09T01:30:00.078668+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791508501.4358242,
+              "output_after": 1791509401.7979133
+            },
+            {
+              "run_id": "n8n-wf-baddad5487f9c288-754",
+              "requested_at": "2026-10-09T01:45:00.058903+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791510302.064305,
+              "output_after": 1791510302.064305
+            },
+            {
+              "run_id": "n8n-wf-baddad5487f9c288-763",
+              "requested_at": "2026-10-09T02:00:00.565306+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511203.0358646,
+              "output_after": 1791511203.0358646
+            }
+          ]
+        },
+        "live": {
+          "states": {
+            "RUN_DONE": 1
+          },
+          "natural_current_done_count": 1,
+          "pre_cutover_natural_current_done_count": 1,
+          "post_cutover_natural_current_done_count": 0,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-078e8fcbea0c5020-768",
+              "requested_at": "2026-10-09T02:00:00.754581+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511203.0358646,
+              "output_after": 1791511205.9253342
+            }
+          ]
+        }
+      },
+      "output": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_pilot_dispatch_last.json",
+        "exists": true,
+        "size": 2860,
+        "mtime": "2026-10-09T02:00:05.925334+00:00",
+        "sha256": "21ed92999d4d4ae800e608cc38983c664e38cb5fe7d289ab290b1129635fb288",
+        "contract": {
+          "schema": "N8nPilotDispatchRun@v1",
+          "authority": "READ_ONLY_ADVISORY",
+          "as_of": "2026-10-09T02:00:05.698015+00:00",
+          "mode": "apply",
+          "served_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+          "state_root": "/home/johnclaw/trade-ai-releases/persistent-state",
+          "ok": true
+        },
+        "top_level_keys": [
+          "approval_board",
+          "as_of",
+          "authority",
+          "fired",
+          "gateway",
+          "lanes",
+          "mode",
+          "ok",
+          "schema",
+          "served_sha",
+          "state_root"
+        ],
+        "row_counts": {
+          "lanes": 5
+        }
+      }
+    },
+    "n8n-incident-fanin": {
+      "cadence": "*/5 * * * *",
+      "cutover_at": "2026-10-09T02:01:35+00:00",
+      "runs": {
+        "dry_run": {
+          "states": {
+            "RUN_DONE": 9,
+            "RUN_SKIPPED_LOCK": 1
+          },
+          "natural_current_done_count": 6,
+          "pre_cutover_natural_current_done_count": 6,
+          "post_cutover_natural_current_done_count": 0,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-735",
+              "requested_at": "2026-10-09T01:15:00.084796+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791508203.0177627,
+              "output_after": 1791508203.0177627
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-738",
+              "requested_at": "2026-10-09T01:20:00.065590+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791508802.74084,
+              "output_after": 1791508802.74084
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-742",
+              "requested_at": "2026-10-09T01:25:00.067570+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791509102.9238753,
+              "output_after": 1791509102.9238753
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-747",
+              "requested_at": "2026-10-09T01:30:00.123672+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791509102.9238753,
+              "output_after": 1791509402.9898791
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-749",
+              "requested_at": "2026-10-09T01:35:00.308802+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791509704.0194006,
+              "output_after": 1791509704.0194006
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-753",
+              "requested_at": "2026-10-09T01:40:00.218055+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791509704.0194006,
+              "output_after": 1791509704.0194006
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-757",
+              "requested_at": "2026-10-09T01:45:00.125313+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791510303.07659,
+              "output_after": 1791510303.07659
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-759",
+              "requested_at": "2026-10-09T01:50:00.084360+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791510303.07659,
+              "output_after": 1791510303.07659
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-760",
+              "requested_at": "2026-10-09T01:55:00.047174+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791510602.4859407,
+              "output_after": 1791510602.4859407
+            },
+            {
+              "run_id": "n8n-wf-e511583d42831b8b-766",
+              "requested_at": "2026-10-09T02:00:00.609993+00:00",
+              "state": "RUN_SKIPPED_LOCK",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791510602.4859407,
+              "output_after": 1791510602.4859407
+            }
+          ]
+        },
+        "live": {
+          "states": {
+            "RUN_SKIPPED_LOCK": 1,
+            "RUN_DONE": 2
+          },
+          "natural_current_done_count": 2,
+          "pre_cutover_natural_current_done_count": 0,
+          "post_cutover_natural_current_done_count": 2,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-722fac0e043ea5c4-765",
+              "requested_at": "2026-10-09T02:00:00.609221+00:00",
+              "state": "RUN_SKIPPED_LOCK",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791510602.4859407,
+              "output_after": 1791510602.4859407
+            },
+            {
+              "run_id": "n8n-wf-722fac0e043ea5c4-772",
+              "requested_at": "2026-10-09T02:05:00.217154+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511204.7202656,
+              "output_after": 1791511503.601114
+            },
+            {
+              "run_id": "n8n-wf-722fac0e043ea5c4-774",
+              "requested_at": "2026-10-09T02:10:00.085663+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511503.601114,
+              "output_after": 1791511805.630396
+            }
+          ]
+        }
+      },
+      "output": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_incident_fanin_last.json",
+        "exists": true,
+        "size": 73024,
+        "mtime": "2026-10-09T02:10:05.630396+00:00",
+        "sha256": "c5f4a10f62e9d68b243cf65647da92ccb009081f7c5bff61c9ab83202e11f603",
+        "contract": {
+          "schema": "N8nIncidentFanin@v1",
+          "authority": "READ_ONLY_ADVISORY",
+          "as_of": "2026-10-09T02:10:04.239639+00:00",
+          "mode": "apply",
+          "served_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+          "state_root": "/home/johnclaw/trade-ai-releases/persistent-state",
+          "ok": true
+        },
+        "top_level_keys": [
+          "as_of",
+          "authority",
+          "by_severity",
+          "gateway",
+          "incidents",
+          "mode",
+          "ok",
+          "open",
+          "outbox_source",
+          "recovered",
+          "relay_counts",
+          "schema",
+          "served_sha",
+          "source_notes",
+          "state_root"
+        ],
+        "row_counts": {
+          "incidents": 104
+        }
+      }
+    },
+    "n8n-research-intake-consumer": {
+      "cadence": "*/15 * * * *",
+      "cutover_at": "2026-10-09T02:01:35+00:00",
+      "runs": {
+        "dry_run": {
+          "states": {
+            "RUN_DONE": 4
+          },
+          "natural_current_done_count": 3,
+          "pre_cutover_natural_current_done_count": 3,
+          "post_cutover_natural_current_done_count": 0,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-577f9dfaede632f3-736",
+              "requested_at": "2026-10-09T01:15:00.140137+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791508501.207721,
+              "output_after": 1791508501.207721
+            },
+            {
+              "run_id": "n8n-wf-577f9dfaede632f3-745",
+              "requested_at": "2026-10-09T01:30:00.101387+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791509401.622155,
+              "output_after": 1791509401.622155
+            },
+            {
+              "run_id": "n8n-wf-577f9dfaede632f3-756",
+              "requested_at": "2026-10-09T01:45:00.111579+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791510301.852213,
+              "output_after": 1791510301.852213
+            },
+            {
+              "run_id": "n8n-wf-577f9dfaede632f3-764",
+              "requested_at": "2026-10-09T02:00:00.541886+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511202.3794382,
+              "output_after": 1791511202.3794382
+            }
+          ]
+        },
+        "live": {
+          "states": {
+            "RUN_DONE": 1
+          },
+          "natural_current_done_count": 1,
+          "pre_cutover_natural_current_done_count": 1,
+          "post_cutover_natural_current_done_count": 0,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-21fd15d5f8a4c4da-770",
+              "requested_at": "2026-10-09T02:00:00.734713+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511202.3794382,
+              "output_after": 1791511205.2163832
+            }
+          ]
+        }
+      },
+      "output": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/n8n_research_intake_last.json",
+        "exists": true,
+        "size": 493,
+        "mtime": "2026-10-09T02:00:05.216383+00:00",
+        "sha256": "5b193c5bae255c6ecca8623431708cfbabcb47dfbdce98591f7848edb1ef4104",
+        "contract": {
+          "schema": "N8nResearchIntake@v1",
+          "authority": "READ_ONLY_ADVISORY",
+          "as_of": "2026-10-09T02:00:05.180512+00:00",
+          "mode": "apply",
+          "served_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+          "state_root": "/home/johnclaw/trade-ai-releases/persistent-state",
+          "ok": true,
+          "listed": 0,
+          "cap": 10,
+          "enqueued_today": 0
+        },
+        "top_level_keys": [
+          "as_of",
+          "authority",
+          "cap",
+          "enqueued_today",
+          "gateway",
+          "listed",
+          "mode",
+          "ok",
+          "requests",
+          "schema",
+          "served_sha",
+          "state_root",
+          "utc_day"
+        ],
+        "row_counts": {
+          "requests": 0
+        }
+      }
+    },
+    "crontab-snapshot-for-health-agent": {
+      "cadence": "*/20 * * * *",
+      "cutover_at": "2026-10-09T02:01:35+00:00",
+      "runs": {
+        "dry_run": {
+          "states": {
+            "RUN_DONE": 3
+          },
+          "natural_current_done_count": 2,
+          "pre_cutover_natural_current_done_count": 2,
+          "post_cutover_natural_current_done_count": 0,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-5439cd4d82e1f305-741",
+              "requested_at": "2026-10-09T01:20:00.111015+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791508803.6635559,
+              "output_after": 1791508803.6635559
+            },
+            {
+              "run_id": "n8n-wf-5439cd4d82e1f305-750",
+              "requested_at": "2026-10-09T01:40:00.194728+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791510001.1703665,
+              "output_after": 1791510001.1703665
+            },
+            {
+              "run_id": "n8n-wf-5439cd4d82e1f305-767",
+              "requested_at": "2026-10-09T02:00:00.541052+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511201.8624015,
+              "output_after": 1791511201.8624015
+            }
+          ]
+        },
+        "live": {
+          "states": {
+            "RUN_DONE": 3
+          },
+          "natural_current_done_count": 2,
+          "pre_cutover_natural_current_done_count": 2,
+          "post_cutover_natural_current_done_count": 0,
+          "all_receipts": [
+            {
+              "run_id": "n8n-wf-c0d4c7845e5c4fcc-740",
+              "requested_at": "2026-10-09T01:20:00.099825+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+              "natural_green": true,
+              "host_completed_current": false,
+              "output_before": 1791508801.3963943,
+              "output_after": 1791508803.6635559
+            },
+            {
+              "run_id": "n8n-wf-c0d4c7845e5c4fcc-751",
+              "requested_at": "2026-10-09T01:40:00.121579+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791508803.6635559,
+              "output_after": 1791510001.1703665
+            },
+            {
+              "run_id": "n8n-wf-c0d4c7845e5c4fcc-769",
+              "requested_at": "2026-10-09T02:00:00.633427+00:00",
+              "state": "RUN_DONE",
+              "current_sha": "4673f135f001b59f01a2b8fd938738542200d5f8",
+              "natural_green": true,
+              "host_completed_current": true,
+              "output_before": 1791511201.8624015,
+              "output_after": 1791511204.7226052
+            }
+          ]
+        }
+      },
+      "output": {
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt",
+        "exists": true,
+        "size": 155359,
+        "mtime": "2026-10-09T02:00:04.722605+00:00",
+        "sha256": "b4c0ca54adbb71b7d2779a6f4ded6d117de8b3bc89620dd4aa8a07c49226807f"
+      }
+    }
+  },
+  "mutations_performed": false,
+  "cron": {
+    "exit": 0,
+    "sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+    "raw_lines": 1047
+  },
+  "independent_watchdog_timer": {
+    "exit": 0,
+    "properties": {
+      "Id": "tradeai-n8n-lab-watchdog.timer",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "UnitFileState": "enabled",
+      "TimersMonotonic": "{ OnBootUSec=2min ; next_elapse=2min }",
+      "NextElapseUSecRealtime": "",
+      "LastTriggerUSec": "Thu 2026-10-08 22:14:38 EDT"
+    }
+  },
+  "host_ollama": {
+    "exit": 0,
+    "stdout": "Id=ollama.service\nLoadState=loaded\nActiveState=active\nUnitFileState=enabled\n"
+  }
+}

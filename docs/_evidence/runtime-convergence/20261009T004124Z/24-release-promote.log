@@ -1,0 +1,61 @@
+{"action": "promote", "allowed": true, "consumed": {"ledger": {"consumed": true, "consumption_id": "43a1b91ec5234de88b92f7837c010cab", "grant_id": "46a143bb80444aa1b2aa50db77808c8b", "ok": true, "reason": "Deploy PR 1539 exact merged main SHA d8c527aea977fd0136cfc302001117a8c2919e6e via canonical cio_phase2_exact_main_deploy.sh prepare/promote only after exact main CI passes; rollback target eec946b2c-main-exact-phase2-20261008-165420 SHA eec946b2cebaa1378dab285c506c789f6dff1fb4. Include conditional canonical rollback on any semantic failure. No broker/order/stop/risk/send authority change or scheduler cutover. [remote_request_id=d90218de25ef9b80 chat=8797974247 via=button]", "uses_left": 1}, "ok": true, "rc": 0, "tier": "release-write"}, "grant_id": "46a143bb80444aa1b2aa50db77808c8b", "matched_by": ["sha:d8c527aea977"], "mode": "enforce", "pending_request_ids": [], "pr": 1539, "reason": "grant names this release", "refused_grants": [], "schema": "ReleaseGrantBinding@v1", "sha": "d8c527aea977fd0136cfc302001117a8c2919e6e"}
+{
+ "schema": "ConformanceGateReceipt@v1",
+ "ts": "2026-10-09T01:08:00.593850+00:00",
+ "sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+ "report": "/home/johnclaw/trade-ai-releases/persistent-state/data/governance/platform_conformance_latest.json",
+ "report_as_of": "2026-10-08T05:15:02.744757+00:00",
+ "allow": true,
+ "verdict": "WARN",
+ "reasons": [
+  "SILOS_BELOW_FLOOR:cio-decision:0.742,hermes-cio-research:0.75,hermes-external:0.477,watchlist-agents:0.667,holdings-advisory:0.731,portfolio-review:0.625,agent-runtime:0.75,health-watchdog:0.736,desk-bot:0.694,signals-defense:0.719,platform-ops:0.605"
+ ],
+ "silos_below": [
+  "cio-decision:0.742",
+  "hermes-cio-research:0.75",
+  "hermes-external:0.477",
+  "watchlist-agents:0.667",
+  "holdings-advisory:0.731",
+  "portfolio-review:0.625",
+  "agent-runtime:0.75",
+  "health-watchdog:0.736",
+  "desk-bot:0.694",
+  "signals-defense:0.719",
+  "platform-ops:0.605"
+ ],
+ "silos_degraded": [
+  "options-desk:0.895"
+ ],
+ "mode": "warn"
+}
+{"candidate_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "checked_at": "2026-10-09T01:08:01.133554Z", "checks": [{"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096276", "id": 37866096276, "name": "agent-governance", "path": ".github/workflows/agent-governance.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:43:01Z", "workflow_id": 348659845}, {"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096271", "id": 37866096271, "name": "aif-financial-senses-integration-ci", "path": ".github/workflows/aif-financial-senses-integration-ci.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:44:26Z", "workflow_id": 336505727}, {"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096283", "id": 37866096283, "name": "cio-production-hardening-ci", "path": ".github/workflows/cio-production-hardening-ci.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:50:59Z", "workflow_id": 334294732}, {"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096416", "id": 37866096416, "name": "financial-senses-ci", "path": ".github/workflows/financial-senses-ci.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:42:23Z", "workflow_id": 335905080}, {"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096264", "id": 37866096264, "name": "options-lifecycle-ci", "path": ".github/workflows/options-lifecycle-ci.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:43:11Z", "workflow_id": 316312538}, {"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096270", "id": 37866096270, "name": "provider-cost-ci", "path": ".github/workflows/provider-cost-ci.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:42:33Z", "workflow_id": 336532638}, {"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096315", "id": 37866096315, "name": "release-readiness", "path": ".github/workflows/release-readiness.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:43:47Z", "workflow_id": 303394199}, {"conclusion": "success", "event": "push", "head_branch": "main", "head_sha": "d8c527aea977fd0136cfc302001117a8c2919e6e", "html_url": "https://github.com/PatsKiller/tardeai/actions/runs/37866096273", "id": 37866096273, "name": "research-governance", "path": ".github/workflows/research-governance-ci.yml", "run_attempt": 1, "status": "completed", "updated_at": "2026-10-09T00:42:51Z", "workflow_id": 334616189}], "errors": [], "ok": true, "repository": "PatsKiller/tardeai", "required_workflows": [".github/workflows/agent-governance.yml", ".github/workflows/cio-production-hardening-ci.yml"]}
+[phase2 01:08:01] systemd drop-in → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321 sha=d8c527aea977fd0136cfc302001117a8c2919e6e (INTERDICT owned by 25-cio-only-live.conf; PR=1539)
+[phase2 01:08:02] CURRENT → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321 ; service restarted
+[phase2 01:08:05] PASS promote: health ok + /v3/cio=200
+[phase2 01:08:08]   tradeai-health-agent.service re-resolved → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321
+[phase2 01:08:12]   cio-governed-bridge.service re-resolved → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321
+[phase2 01:08:15]   tradeai-cio-telegram.service re-resolved → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321
+[phase2 01:08:18]   tradeai-telegram-callback-poller.service re-resolved → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321
+[phase2 01:08:21]   tradeai-n8n-coordination-gateway.service re-resolved → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321
+[phase2 01:08:25]   tradeai-n8n-run-relay.service re-resolved → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321
+[phase2 01:08:28]   tradeai-n8n-run-executor.service re-resolved → /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205321
+[phase2 01:08:28]   expected-release pin → /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/runtime/expected_release_pin.txt
+[phase2 01:08:28]   expected-release pin → /home/johnclaw/trade-ai-releases/portfolio-server/EXPECTED_RELEASE
+[phase2 01:08:28]   active-release pin → /home/johnclaw/trade-ai-releases/portfolio-server/ACTIVE_RELEASE
+wrote deploy receipt /home/johnclaw/.local/state/cio-phase2-exact-main/deploy_receipt.json
+[phase2 01:08:28] PROMOTE OK live=d8c527aea977fd0136cfc302001117a8c2919e6e
+served_sha=d8c527aea977fd0136cfc302001117a8c2919e6e
+  unit portfolio-server.service                      SERVED               sha=d8c527aea /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205
+  unit tradeai-cio-telegram.service                  SERVED               sha=d8c527aea /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205
+  unit tradeai-health-agent.service                  SERVED               sha=d8c527aea /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205
+  unit cio-governed-bridge.service                   SERVED               sha=d8c527aea /home/johnclaw/trade-ai-releases/portfolio-server/d8c527aea-main-exact-phase2-20261008-205
+  unit tradeai-aec-command-center-cycle.service      INACTIVE             sha=None None
+  unit tradeai-cio-reactive.service                  INACTIVE             sha=None None
+  cron reconcile_alpaca_paper_options                SERVED               sha=d8c527aea977 0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_RO
+  cron cio_wake_dispatch_entrypoint                  SERVED               sha=d8c527aea977 */5 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && WAKE_L3_JUDGME
+  cron resolve_due_checkpoints                       SERVED               sha=d8c527aea977 20 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_PENDING
+  cron run_persistent_wake                           SERVED               sha=d8c527aea977 0 * * * * CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) &&
+  cron cio_gate_measurement_bridge                   SERVED               sha=d8c527aea977 35 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a
+  cron sweep_commitment_outcomes                     SERVED               sha=d8c527aea977 20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sw
+  cron write_instrument_beliefs                      SERVED               sha=d8c527aea977 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/wr
+[phase2 01:08:28] dev tree fast-forward skipped (CIO_DEPLOY_FF_DEV_TREE=0)

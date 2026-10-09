@@ -1,0 +1,56 @@
+{
+  "schema": "UnitRecovery@v1",
+  "evidence_class": "OBSERVED_HOST",
+  "sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+  "started_at": "2026-10-09T00:58:12.009700+00:00",
+  "applied": true,
+  "links": [
+    {
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-run-relay.service",
+      "kind": "unit",
+      "unit": "tradeai-n8n-run-relay.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-relay.service"
+    },
+    {
+      "path": "/home/johnclaw/.config/systemd/user/default.target.wants/tradeai-n8n-run-relay.service",
+      "kind": "wants",
+      "unit": "tradeai-n8n-run-relay.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-relay.service"
+    },
+    {
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-run-executor.service",
+      "kind": "unit",
+      "unit": "tradeai-n8n-run-executor.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-executor.service"
+    },
+    {
+      "path": "/home/johnclaw/.config/systemd/user/default.target.wants/tradeai-n8n-run-executor.service",
+      "kind": "wants",
+      "unit": "tradeai-n8n-run-executor.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-executor.service"
+    }
+  ],
+  "grant_uses": [
+    {
+      "scope": "config-write",
+      "consumed": true,
+      "uses_left": 1,
+      "reason": "PR 1539 merge d8c527aea977fd0136cfc302001117a8c2919e6e: archive four measured dangling links for tradeai-n8n-run-relay.service and tradeai-n8n-run-executor.service under ~/.config/systemd/user and default.target.wants; install only these two exact approved regular unit files and restore stable wanted links. Preserve all EnvironmentFile contents and live-lane flags; no cron/workflow/notification/secret changes. Rollback retains valid prior-release regular definitions. [remote_request_id=6d69b1ba109c4582 chat=8797974247 via=button]",
+      "grant_id": "e87b648b82554d368c1e6b0d323a78fb",
+      "consumption_id": "5fe9a41b1516409aa257576c5a384fd4",
+      "ok": true
+    },
+    {
+      "scope": "service",
+      "consumed": true,
+      "uses_left": 2,
+      "reason": "PR 1539 deployment d8c527aea977fd0136cfc302001117a8c2919e6e: reload and re-enable only existing relay/executor units with repaired stable links; canonical portfolio-server promotion plus CURRENT rebind of health-agent, cio-governed-bridge, cio-telegram, telegram-callback-poller, n8n-gateway, n8n-relay, n8n-executor; conditional rollback/rebind same set to eec946b2c-main-exact-phase2-20261008-165420 on failed acceptance. No other service, broker process, schedule or notification policy changes. [remote_request_id=74ccb4bc9b00c5bc chat=8797974247 via=button]",
+      "grant_id": "5c1911bac76e41ebb36397fca15613e3",
+      "consumption_id": "97f327d67764467489d26220e41768dd",
+      "ok": true
+    }
+  ],
+  "backup_dir": "/home/johnclaw/.local/state/tradeai-runtime-convergence/recovery/20261009T004124Z",
+  "unit_properties": "Id=tradeai-n8n-run-relay.service\nLoadState=loaded\nActiveState=active\nFragmentPath=/home/johnclaw/.config/systemd/user/tradeai-n8n-run-relay.service\nRestart=always\nMainPID=18112\nCPUQuotaPerSecUSec=100ms\nMemoryMax=134217728\n\nId=tradeai-n8n-run-executor.service\nLoadState=loaded\nActiveState=active\nFragmentPath=/home/johnclaw/.config/systemd/user/tradeai-n8n-run-executor.service\nRestart=always\nMainPID=4160257\nCPUQuotaPerSecUSec=infinity\nMemoryMax=1073741824\n",
+  "finished_at": "2026-10-09T00:58:13.322955+00:00"
+}

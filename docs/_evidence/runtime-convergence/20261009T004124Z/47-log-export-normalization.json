@@ -1,0 +1,9 @@
+{
+  "schema": "EvidenceLogExport@v1",
+  "as_of": "2026-10-09T02:43:44.077017+00:00",
+  "source_log": "45-final-local-acceptance.raw.log",
+  "export_log": "45-final-local-acceptance.log",
+  "source_sha256": "fd93d77896d770db304603e6e84a746e27736f1df64789664882dead02d483f6",
+  "export_sha256": "f72333ce95548c1ee64628554e9c3a2482c8e41f1672a2bff52e537426e22ef0",
+  "transformation": "Remove line-final spaces/tabs only; raw file retained locally; failed outcome remains failed."
+}

@@ -1,0 +1,88 @@
+...FFFFFFFFFFFF...                                                       [100%]
+=================================== FAILURES ===================================
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con0/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con0/versioned-releas..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con0/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con1/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con1/versioned-releas..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con1/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con2/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con2/versioned-releas..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con2/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con3/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con3/versioned-releas..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con3/versioned-release')
+E   AssertionError: assert PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/versioned-release')
+     +  where PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/versioned-releas...ohnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con4/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con5/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con5/versioned-releas..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con5/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con6/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con6/CURRENT/scripts/..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con6/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con7/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con7/CURRENT/scripts/..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con7/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con8/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con8/CURRENT/scripts/..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con8/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con9/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con9/CURRENT/scripts/..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con9/versioned-release')
+E   AssertionError: assert PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/versioned-release')
+     +  where PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/CURRENT/scripts...hnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/empty-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con10/versioned-release')
+E   AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con11/versioned-release')
+     +  where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = resolve()
+     +    where resolve = PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild').resolve
+     +      where PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') = Path('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild')
+     +        where '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild' = CompletedProcess(args=['bash', '/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con11/CURRENT/scripts..._maintenance_pipeline.sh'], returncode=0, stdout='/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild', stderr='').stdout
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scheduler_launcher_roots.py:73: AssertionError: assert PosixPath('/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild') == PosixPath('/tmp/pytest-of-johnclaw/pytest-111224/test_portfolio_child_keeps_con11/versioned-release')
+=========================== short test summary info ============================
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[False-run_pg_backup.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[False-run_portfolio.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[False-run_portfolio_weekly.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[False-run_portfolio_monthly.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[False-run_lookthrough.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[False-run_price_cache.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[True-run_pg_backup.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[True-run_portfolio.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[True-run_portfolio_weekly.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[True-run_portfolio_monthly.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[True-run_lookthrough.sh]
+FAILED tests/test_scheduler_launcher_roots.py::test_portfolio_child_keeps_controller_release_root[True-run_price_cache.sh]
+12 failed, 6 passed in 0.52s

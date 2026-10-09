@@ -1,0 +1,393 @@
+{
+  "as_of": "2026-10-09T00:44:41.598413Z",
+  "path": "/home/johnclaw/.openclaw/cron/jobs.json",
+  "evidence_class": "OBSERVED_HOST",
+  "jobs": [
+    {
+      "id": "aegis-evening-surveillance",
+      "name": "Aegis Evening Surveillance",
+      "enabled": true,
+      "createdAtMs": 1783179499974,
+      "updatedAtMs": 1791504115163,
+      "agentId": "aegis",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 20 * * 1-5",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1791590400000,
+        "lastRunAtMs": 1791504000041,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 115122,
+        "consecutiveErrors": 0,
+        "lastDeliveryStatus": "delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "steph-weekly-allocation-review",
+      "name": "Steph Weekly Allocation Review",
+      "enabled": false,
+      "createdAtMs": 1783179499975,
+      "updatedAtMs": 1785676423935,
+      "agentId": "steph",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 0",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "lastRunAtMs": 1785676293338,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 130597,
+        "consecutiveErrors": 0,
+        "lastDeliveryStatus": "delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "steph-income-progress",
+      "name": "Steph Monthly Income Progress",
+      "enabled": false,
+      "createdAtMs": 1783179499975,
+      "updatedAtMs": 1785589630747,
+      "agentId": "steph",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 1 * *",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "lastRunAtMs": 1785589531747,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 99000,
+        "lastDeliveryStatus": "delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "676c2212-f18a-4913-b96d-e7790b7b173c",
+      "name": "Claude plan reminder, about a week before month end",
+      "enabled": true,
+      "createdAtMs": 1777652290405,
+      "updatedAtMs": 1790254800031,
+      "agentId": "main",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 24 * *",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1792846800000,
+        "lastRunAtMs": 1790254800024,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 7,
+        "consecutiveErrors": 0,
+        "lastDeliveryStatus": "not-requested",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveSkipped": 0
+      },
+      "delivery_mode": "none",
+      "delivery_channel": null,
+      "payload_kind": "systemEvent",
+      "payload_omitted": true
+    },
+    {
+      "id": "0775cd6b-2186-40fb-9b56-a3e36f6faf14",
+      "name": "Claude plan reminder, last day of month",
+      "enabled": true,
+      "createdAtMs": 1777652290412,
+      "updatedAtMs": 1790773200027,
+      "agentId": "main",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 L * *",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1793451600000,
+        "lastRunAtMs": 1790773200020,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 7,
+        "consecutiveErrors": 0,
+        "lastDeliveryStatus": "not-requested",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveSkipped": 0
+      },
+      "delivery_mode": "none",
+      "delivery_channel": null,
+      "payload_kind": "systemEvent",
+      "payload_omitted": true
+    },
+    {
+      "id": "e7b71848-ec62-436f-b21b-18eb63195796",
+      "name": "Weekly Gemma4:26B on Volken Intel B50 research",
+      "enabled": false,
+      "createdAtMs": 1778518850213,
+      "updatedAtMs": 1789391986865,
+      "agentId": "main",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 1",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "lastRunAtMs": 1789391010255,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 90977,
+        "consecutiveErrors": 0,
+        "lastDeliveryStatus": "delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveSkipped": 0,
+        "lastDelivered": true
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "9a26d34d-b940-4185-9fe1-32403c0b3bc1",
+      "name": "SuperGrok promo expiry reminder",
+      "enabled": true,
+      "createdAtMs": 1785163202375,
+      "updatedAtMs": 1785163202375,
+      "agentId": "maria",
+      "schedule": {
+        "kind": "at",
+        "at": "2026-10-20T14:00:00.000Z"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1792504800000
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "920bef5f-3b4b-4066-b695-92e72825e00a",
+      "name": "Alex Monthly Retirement Check-in",
+      "enabled": true,
+      "createdAtMs": 1785505763807,
+      "updatedAtMs": 1790859854221,
+      "agentId": "alex",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 1 * *",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1793541600000,
+        "lastRunAtMs": 1790859600029,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 254192,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+      "name": "Iris Weekly Research Digest",
+      "enabled": true,
+      "createdAtMs": 1785505764796,
+      "updatedAtMs": 1791118903540,
+      "agentId": "iris",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 0",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1791723600000,
+        "lastRunAtMs": 1791118800020,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 103520,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "a9c337e0-7a4d-4a83-8089-5aa3bf5f5059",
+      "name": "SentinelOne (S) earnings reminder",
+      "enabled": true,
+      "createdAtMs": 1790166482850,
+      "updatedAtMs": 1790166482850,
+      "agentId": "maria",
+      "schedule": {
+        "kind": "at",
+        "at": "2026-12-07T13:00:00.000Z"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1796648400000
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "729e2b82-7ace-4a13-8456-c469cb1072e9",
+      "name": "SentinelOne (S) entry monitor",
+      "enabled": true,
+      "createdAtMs": 1790166642811,
+      "updatedAtMs": 1791489918374,
+      "agentId": "maria",
+      "schedule": {
+        "kind": "cron",
+        "expr": "5 16 * * 1-5",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1791576300000,
+        "lastRunAtMs": 1791489900030,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 18344,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "31941553-99d1-4ab2-b420-782b19addca9",
+      "name": "INTC Hermes write-up follow-up",
+      "enabled": false,
+      "createdAtMs": 1791222398137,
+      "updatedAtMs": 1791224444414,
+      "agentId": "maria",
+      "schedule": {
+        "kind": "at",
+        "at": "2026-10-05T18:20:00.000Z"
+      },
+      "wakeMode": "now",
+      "state": {
+        "lastRunAtMs": 1791224400021,
+        "lastRunStatus": "error",
+        "lastStatus": "error",
+        "lastDurationMs": 44393,
+        "lastError": "\u26a0\ufe0f \u23f0 Cron: `INTC Hermes write-up follow-up #2` failed",
+        "lastDiagnostics": {
+          "summary": "\u26a0\ufe0f \u23f0 Cron: `INTC Hermes write-up follow-up #2` failed",
+          "entries": [
+            {
+              "ts": 1791224444390,
+              "source": "tool",
+              "severity": "error",
+              "message": "\u26a0\ufe0f \u23f0 Cron: `INTC Hermes write-up follow-up #2` failed"
+            },
+            {
+              "ts": 1791224444391,
+              "source": "agent-run",
+              "severity": "error",
+              "message": "\u26a0\ufe0f \u23f0 Cron: `INTC Hermes write-up follow-up #2` failed"
+            }
+          ]
+        },
+        "lastDiagnosticSummary": "\u26a0\ufe0f \u23f0 Cron: `INTC Hermes write-up follow-up #2` failed",
+        "lastDelivered": false,
+        "lastDeliveryStatus": "not-delivered",
+        "lastDeliveryError": "\u26a0\ufe0f \u23f0 Cron: `INTC Hermes write-up follow-up #2` failed",
+        "lastFailureNotificationDelivered": false,
+        "lastFailureNotificationDeliveryStatus": "not-delivered",
+        "lastFailureNotificationDeliveryError": "\u26a0\ufe0f \u23f0 Cron: `INTC Hermes write-up follow-up #2` failed",
+        "consecutiveErrors": 1,
+        "consecutiveSkipped": 0
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    },
+    {
+      "id": "b8b18bf7-5154-42c6-b290-45f04854dfe0",
+      "name": "Reflection AI listing tracker",
+      "enabled": true,
+      "createdAtMs": 1791229064293,
+      "updatedAtMs": 1791464420420,
+      "agentId": "maria",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * *",
+        "tz": "America/New_York"
+      },
+      "wakeMode": "now",
+      "state": {
+        "nextRunAtMs": 1791550800000,
+        "lastRunAtMs": 1791464400013,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 20407,
+        "lastDelivered": false,
+        "lastDeliveryStatus": "not-delivered",
+        "lastFailureNotificationDeliveryStatus": "not-requested",
+        "consecutiveErrors": 0,
+        "consecutiveSkipped": 0
+      },
+      "delivery_mode": "announce",
+      "delivery_channel": "telegram",
+      "payload_kind": "agentTurn",
+      "payload_omitted": true
+    }
+  ],
+  "count": 13
+}

@@ -1,0 +1,8 @@
+{
+  "consumed": true,
+  "uses_left": 0,
+  "reason": "After PR 1539 exact d8c527aea977fd0136cfc302001117a8c2919e6e CURRENT deployment passes semantic/browser acceptance, run canonical ff_dev_tree helper only for clean fast-forward of /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild to that exact SHA. Refuse dirty/divergent checkout. No feature edits, reset, force push, history rewrite or broker mutation. [remote_request_id=ea4723cdfbf2bd9c chat=8797974247 via=button]",
+  "grant_id": "8a3f6c45fbd247eaba8adfa2ea9e582d",
+  "consumption_id": "8633ed0489694ceca2a2b1dbcd0277ad",
+  "ok": true
+}

@@ -1,0 +1,4 @@
+  sop evidence: clean
+  docs index: [PASS]
+  changed generated files (stage them explicitly if you want them in the commit):
+     M docs/INDEX.md

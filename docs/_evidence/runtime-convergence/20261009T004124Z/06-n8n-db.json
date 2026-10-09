@@ -1,0 +1,1981 @@
+{
+  "as_of": "2026-10-09T00:47:10.741998Z",
+  "evidence_class": "OBSERVED_N8N",
+  "results": {
+    "db": {
+      "query": "SELECT json_build_object('version',version(),'size_bytes',pg_database_size(current_database()),'role',(SELECT row_to_json(r) FROM (SELECT rolname,rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user) r))",
+      "exit": 0,
+      "data": {
+        "version": "PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+        "size_bytes": 19733527,
+        "role": {
+          "rolname": "n8n",
+          "rolsuper": true,
+          "rolcreaterole": true,
+          "rolcreatedb": true,
+          "rolreplication": true,
+          "rolbypassrls": true
+        }
+      },
+      "error": null
+    },
+    "columns": {
+      "query": "SELECT json_agg(t) FROM (SELECT table_name,column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('workflow_entity','execution_entity','user','user_api_keys','workflow_published_version','workflow_history','webhook_entity','scheduled_job','scheduled_task') ORDER BY table_name,ordinal_position) t",
+      "exit": 0,
+      "data": [
+        {
+          "table_name": "execution_entity",
+          "column_name": "id",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "finished",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "mode",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "retryOf",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "retrySuccessId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "startedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "stoppedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "waitTill",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "status",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "workflowId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "deletedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "storedAt",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "tracingContext",
+          "data_type": "json"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "deduplicationKey",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "jsonSizeBytes",
+          "data_type": "bigint"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "workflowVersionId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "binaryDataSizeBytes",
+          "data_type": "bigint"
+        },
+        {
+          "table_name": "execution_entity",
+          "column_name": "usedPrivateCredentials",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "id",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "name",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "taskType",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "payload",
+          "data_type": "json"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "kind",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "cronExpression",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "timezone",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "intervalSeconds",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "fireAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "enabled",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "nextRunAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "lastFiredAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "maxAttempts",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "updatedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "recurrenceUnit",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "recurrenceSize",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "misfirePolicy",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "misfireGraceSeconds",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "ownerType",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "ownerId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "ownerMemberId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "orphanedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_job",
+          "column_name": "concurrencyLimit",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "id",
+          "data_type": "bigint"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "jobId",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "taskType",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "payload",
+          "data_type": "json"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "scheduledFor",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "runAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "status",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "attempts",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "maxAttempts",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "claimedBy",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "leaseExpiresAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "leaseEpoch",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "startedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "finishedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "errorMessage",
+          "data_type": "text"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "dispatchedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "scheduled_task",
+          "column_name": "missedAfter",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "user",
+          "column_name": "id",
+          "data_type": "uuid"
+        },
+        {
+          "table_name": "user",
+          "column_name": "email",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user",
+          "column_name": "firstName",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user",
+          "column_name": "lastName",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user",
+          "column_name": "password",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user",
+          "column_name": "personalizationAnswers",
+          "data_type": "json"
+        },
+        {
+          "table_name": "user",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "user",
+          "column_name": "updatedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "user",
+          "column_name": "settings",
+          "data_type": "json"
+        },
+        {
+          "table_name": "user",
+          "column_name": "disabled",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "user",
+          "column_name": "mfaEnabled",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "user",
+          "column_name": "mfaSecret",
+          "data_type": "text"
+        },
+        {
+          "table_name": "user",
+          "column_name": "mfaRecoveryCodes",
+          "data_type": "text"
+        },
+        {
+          "table_name": "user",
+          "column_name": "lastActiveAt",
+          "data_type": "date"
+        },
+        {
+          "table_name": "user",
+          "column_name": "roleSlug",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "id",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "userId",
+          "data_type": "uuid"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "label",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "apiKey",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "updatedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "scopes",
+          "data_type": "json"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "audience",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "user_api_keys",
+          "column_name": "lastUsedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "webhook_entity",
+          "column_name": "webhookPath",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "webhook_entity",
+          "column_name": "method",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "webhook_entity",
+          "column_name": "node",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "webhook_entity",
+          "column_name": "webhookId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "webhook_entity",
+          "column_name": "pathLength",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "webhook_entity",
+          "column_name": "workflowId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "name",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "active",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "nodes",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "connections",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "updatedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "settings",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "staticData",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "pinData",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "versionId",
+          "data_type": "character"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "triggerCount",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "id",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "meta",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "parentFolderId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "isArchived",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "versionCounter",
+          "data_type": "integer"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "description",
+          "data_type": "text"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "activeVersionId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "nodeGroups",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_entity",
+          "column_name": "sourceWorkflowId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "versionId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "workflowId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "authors",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "updatedAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "nodes",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "connections",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "name",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "autosaved",
+          "data_type": "boolean"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "description",
+          "data_type": "text"
+        },
+        {
+          "table_name": "workflow_history",
+          "column_name": "nodeGroups",
+          "data_type": "json"
+        },
+        {
+          "table_name": "workflow_published_version",
+          "column_name": "workflowId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_published_version",
+          "column_name": "publishedVersionId",
+          "data_type": "character varying"
+        },
+        {
+          "table_name": "workflow_published_version",
+          "column_name": "createdAt",
+          "data_type": "timestamp with time zone"
+        },
+        {
+          "table_name": "workflow_published_version",
+          "column_name": "updatedAt",
+          "data_type": "timestamp with time zone"
+        }
+      ],
+      "error": null
+    },
+    "workflow_counts": {
+      "query": "SELECT json_build_object('total',count(*),'active',count(*) FILTER(WHERE active),'inactive',count(*) FILTER(WHERE NOT active)) FROM workflow_entity",
+      "exit": 0,
+      "data": {
+        "total": 12,
+        "active": 8,
+        "inactive": 4
+      },
+      "error": null
+    },
+    "workflow_metadata": {
+      "query": "SELECT json_agg(t) FROM (SELECT id,name,active,\"updatedAt\",settings FROM workflow_entity ORDER BY name) t",
+      "exit": 0,
+      "data": [
+        {
+          "id": "c0d4c7845e5c4fcc",
+          "name": "crontab-snapshot-for-health-agent",
+          "active": true,
+          "updatedAt": "2026-10-08T19:58:55.867+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "5439cd4d82e1f305",
+          "name": "crontab-snapshot-for-health-agent-shadow",
+          "active": true,
+          "updatedAt": "2026-10-08T17:10:19.043+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "e6f62397d5ae2aa2",
+          "name": "lane-governance-packet-weekly-shadow",
+          "active": true,
+          "updatedAt": "2026-10-08T17:10:05.838+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "a26114588930ae9b",
+          "name": "maturity-remeasure-shadow",
+          "active": true,
+          "updatedAt": "2026-10-08T17:10:12.563+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "Bi002YOPSpZOQpEo",
+          "name": "n8n-bench-error",
+          "active": false,
+          "updatedAt": "2026-10-07T00:08:46.669+00:00",
+          "settings": {
+            "executionOrder": "v1"
+          }
+        },
+        {
+          "id": "2yPuOGW9yYtJsoYk",
+          "name": "n8n-bench-nodes",
+          "active": false,
+          "updatedAt": "2026-10-07T00:12:00.857+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "errorWorkflow": "Bi002YOPSpZOQpEo"
+          }
+        },
+        {
+          "id": "e511583d42831b8b",
+          "name": "n8n-incident-fanin-shadow",
+          "active": true,
+          "updatedAt": "2026-10-08T17:10:24.19+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "9208ac827e514183",
+          "name": "n8n-lab-watchdog-shadow",
+          "active": true,
+          "updatedAt": "2026-10-08T17:10:27.652+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "GXwhbRkwsGcYZxgn",
+          "name": "n8n-monitor-dof",
+          "active": false,
+          "updatedAt": "2026-10-07T15:11:42.526+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "s57KBllvqf6Jb5xF",
+          "name": "n8n-monitor-trade-ai",
+          "active": false,
+          "updatedAt": "2026-10-07T15:48:14.12+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "baddad5487f9c288",
+          "name": "n8n-pilot-dispatch-shadow",
+          "active": true,
+          "updatedAt": "2026-10-08T17:10:31.497+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        },
+        {
+          "id": "577f9dfaede632f3",
+          "name": "n8n-research-intake-consumer-shadow",
+          "active": true,
+          "updatedAt": "2026-10-08T17:10:35.61+00:00",
+          "settings": {
+            "executionOrder": "v1",
+            "saveManualExecutions": true,
+            "timezone": "America/New_York"
+          }
+        }
+      ],
+      "error": null
+    },
+    "workflow_nodes": {
+      "query": "SELECT json_agg(json_build_object('workflow_id',id,'nodes',(SELECT json_agg(json_build_object('name',n->>'name','type',n->>'type','typeVersion',n->'typeVersion','disabled',n->'disabled','credentials',n->'credentials','schedule',n->'parameters'->'rule','authentication',n->'parameters'->'authentication','host_route',CASE WHEN n->'parameters'->>'url' LIKE 'http%' THEN substring(n->'parameters'->>'url' from '^https?://[^/?#]+') ELSE NULL END,'method',n->'parameters'->'method','lane_id',n->'parameters'->'lane_id','mode',n->'parameters'->'mode')) FROM json_array_elements(nodes) n))) FROM workflow_entity",
+      "exit": 0,
+      "data": [
+        {
+          "workflow_id": "9208ac827e514183",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "*/5 * * * *",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "577f9dfaede632f3",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "*/15 * * * *",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "a26114588930ae9b",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "40 6 * * 1",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "baddad5487f9c288",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "*/15 * * * *",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "e511583d42831b8b",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "*/5 * * * *",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "GXwhbRkwsGcYZxgn",
+          "nodes": [
+            {
+              "name": "Every 5 minutes",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "field": "minutes",
+                    "minutesInterval": 5
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "GET run-scope",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": "none",
+              "host_route": "http://172.19.0.1:7776",
+              "method": "GET",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Require HTTP 200",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "Bi002YOPSpZOQpEo",
+          "nodes": [
+            {
+              "name": "Error Trigger",
+              "type": "n8n-nodes-base.errorTrigger",
+              "typeVersion": 1,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Record error",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "2yPuOGW9yYtJsoYk",
+          "nodes": [
+            {
+              "name": "Webhook",
+              "type": "n8n-nodes-base.webhook",
+              "typeVersion": 2.1,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Probe is health",
+              "type": "n8n-nodes-base.if",
+              "typeVersion": 2.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "GET build-meta",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": "none",
+              "host_route": "http://172.19.0.1:7777",
+              "method": "GET",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Keep status",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            },
+            {
+              "name": "Probe is boom",
+              "type": "n8n-nodes-base.if",
+              "typeVersion": 2.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Throw",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            },
+            {
+              "name": "Refuse",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "s57KBllvqf6Jb5xF",
+          "nodes": [
+            {
+              "name": "Every 5 minutes",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "field": "minutes",
+                    "minutesInterval": 5
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "GET build-meta",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": "none",
+              "host_route": "http://172.19.0.1:7777",
+              "method": "GET",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Require HTTP 200",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "c0d4c7845e5c4fcc",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "*/20 * * * *",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "e6f62397d5ae2aa2",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "20 6 * * 1",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        },
+        {
+          "workflow_id": "5439cd4d82e1f305",
+          "nodes": [
+            {
+              "name": "Schedule",
+              "type": "n8n-nodes-base.scheduleTrigger",
+              "typeVersion": 1.2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": {
+                "interval": [
+                  {
+                    "expression": "*/20 * * * *",
+                    "field": "cronExpression"
+                  }
+                ]
+              },
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Relay constants",
+              "type": "n8n-nodes-base.set",
+              "typeVersion": 3.4,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "POST relay /run",
+              "type": "n8n-nodes-base.httpRequest",
+              "typeVersion": 4.2,
+              "disabled": null,
+              "credentials": {
+                "httpHeaderAuth": {
+                  "id": "tradeai-run-relay",
+                  "name": "tradeai-run-relay"
+                }
+              },
+              "schedule": null,
+              "authentication": "genericCredentialType",
+              "host_route": null,
+              "method": "POST",
+              "lane_id": null,
+              "mode": null
+            },
+            {
+              "name": "Assert REQUESTED",
+              "type": "n8n-nodes-base.code",
+              "typeVersion": 2,
+              "disabled": null,
+              "credentials": null,
+              "schedule": null,
+              "authentication": null,
+              "host_route": null,
+              "method": null,
+              "lane_id": null,
+              "mode": "runOnceForAllItems"
+            }
+          ]
+        }
+      ],
+      "error": null
+    },
+    "execution_counts": {
+      "query": "SELECT json_agg(t) FROM (SELECT status,mode,count(*) AS count,min(\"startedAt\") AS first,max(\"startedAt\") AS last FROM execution_entity GROUP BY status,mode ORDER BY status,mode) t",
+      "exit": 0,
+      "data": [
+        {
+          "status": "error",
+          "mode": "manual",
+          "count": 1,
+          "first": "2026-10-08T13:20:54.564+00:00",
+          "last": "2026-10-08T13:20:54.564+00:00"
+        },
+        {
+          "status": "error",
+          "mode": "trigger",
+          "count": 15,
+          "first": "2026-10-08T16:55:00.061+00:00",
+          "last": "2026-10-08T19:00:00.037+00:00"
+        },
+        {
+          "status": "error",
+          "mode": "webhook",
+          "count": 1,
+          "first": "2026-10-06T22:30:05.894+00:00",
+          "last": "2026-10-06T22:30:05.894+00:00"
+        },
+        {
+          "status": "running",
+          "mode": "trigger",
+          "count": 4,
+          "first": "2026-10-09T00:45:00.056+00:00",
+          "last": "2026-10-09T00:45:00.067+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "error",
+          "count": 1,
+          "first": "2026-10-06T22:30:06.007+00:00",
+          "last": "2026-10-06T22:30:06.007+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "manual",
+          "count": 3,
+          "first": "2026-10-06T22:18:21.214+00:00",
+          "last": "2026-10-08T13:22:15.071+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "trigger",
+          "count": 413,
+          "first": "2026-10-06T22:20:41.031+00:00",
+          "last": "2026-10-07T15:45:51.016+00:00"
+        },
+        {
+          "status": "success",
+          "mode": "webhook",
+          "count": 2,
+          "first": "2026-10-06T22:30:05.522+00:00",
+          "last": "2026-10-06T22:30:05.798+00:00"
+        }
+      ],
+      "error": null
+    },
+    "last_executions": {
+      "query": "SELECT json_agg(t) FROM (SELECT id,\"workflowId\",status,mode,\"startedAt\",\"stoppedAt\",finished FROM (SELECT *,row_number() OVER(PARTITION BY \"workflowId\" ORDER BY id DESC) AS rn FROM execution_entity) e WHERE rn<=5 ORDER BY \"workflowId\",id DESC) t",
+      "exit": 0,
+      "data": [
+        {
+          "id": 12,
+          "workflowId": "2yPuOGW9yYtJsoYk",
+          "status": "error",
+          "mode": "webhook",
+          "startedAt": "2026-10-06T22:30:05.894+00:00",
+          "stoppedAt": "2026-10-06T22:30:05.959+00:00",
+          "finished": false
+        },
+        {
+          "id": 11,
+          "workflowId": "2yPuOGW9yYtJsoYk",
+          "status": "success",
+          "mode": "webhook",
+          "startedAt": "2026-10-06T22:30:05.798+00:00",
+          "stoppedAt": "2026-10-06T22:30:05.839+00:00",
+          "finished": true
+        },
+        {
+          "id": 10,
+          "workflowId": "2yPuOGW9yYtJsoYk",
+          "status": "success",
+          "mode": "webhook",
+          "startedAt": "2026-10-06T22:30:05.522+00:00",
+          "stoppedAt": "2026-10-06T22:30:05.755+00:00",
+          "finished": true
+        },
+        {
+          "id": 430,
+          "workflowId": "5439cd4d82e1f305",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:00:00.089+00:00",
+          "stoppedAt": "2026-10-08T17:00:00.435+00:00",
+          "finished": false
+        },
+        {
+          "id": 717,
+          "workflowId": "577f9dfaede632f3",
+          "status": "running",
+          "mode": "trigger",
+          "startedAt": "2026-10-09T00:45:00.059+00:00",
+          "stoppedAt": null,
+          "finished": false
+        },
+        {
+          "id": 441,
+          "workflowId": "577f9dfaede632f3",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:15:00.128+00:00",
+          "stoppedAt": "2026-10-08T17:15:00.458+00:00",
+          "finished": false
+        },
+        {
+          "id": 431,
+          "workflowId": "577f9dfaede632f3",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:00:00.096+00:00",
+          "stoppedAt": "2026-10-08T17:00:00.471+00:00",
+          "finished": false
+        },
+        {
+          "id": 719,
+          "workflowId": "9208ac827e514183",
+          "status": "running",
+          "mode": "trigger",
+          "startedAt": "2026-10-09T00:45:00.067+00:00",
+          "stoppedAt": null,
+          "finished": false
+        },
+        {
+          "id": 501,
+          "workflowId": "9208ac827e514183",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T19:00:00.037+00:00",
+          "stoppedAt": "2026-10-08T19:00:00.152+00:00",
+          "finished": false
+        },
+        {
+          "id": 458,
+          "workflowId": "9208ac827e514183",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:45:00.032+00:00",
+          "stoppedAt": "2026-10-08T17:45:00.14+00:00",
+          "finished": false
+        },
+        {
+          "id": 436,
+          "workflowId": "9208ac827e514183",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:10:00.03+00:00",
+          "stoppedAt": "2026-10-08T17:10:00.078+00:00",
+          "finished": false
+        },
+        {
+          "id": 434,
+          "workflowId": "9208ac827e514183",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:05:00.066+00:00",
+          "stoppedAt": "2026-10-08T17:05:00.178+00:00",
+          "finished": false
+        },
+        {
+          "id": 13,
+          "workflowId": "Bi002YOPSpZOQpEo",
+          "status": "success",
+          "mode": "error",
+          "startedAt": "2026-10-06T22:30:06.007+00:00",
+          "stoppedAt": "2026-10-06T22:30:06.049+00:00",
+          "finished": true
+        },
+        {
+          "id": 414,
+          "workflowId": "GXwhbRkwsGcYZxgn",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T15:10:41.011+00:00",
+          "stoppedAt": "2026-10-07T15:10:41.025+00:00",
+          "finished": true
+        },
+        {
+          "id": 412,
+          "workflowId": "GXwhbRkwsGcYZxgn",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T15:05:41.008+00:00",
+          "stoppedAt": "2026-10-07T15:05:41.023+00:00",
+          "finished": true
+        },
+        {
+          "id": 410,
+          "workflowId": "GXwhbRkwsGcYZxgn",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T15:00:41.01+00:00",
+          "stoppedAt": "2026-10-07T15:00:41.027+00:00",
+          "finished": true
+        },
+        {
+          "id": 408,
+          "workflowId": "GXwhbRkwsGcYZxgn",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T14:55:41.01+00:00",
+          "stoppedAt": "2026-10-07T14:55:41.03+00:00",
+          "finished": true
+        },
+        {
+          "id": 406,
+          "workflowId": "GXwhbRkwsGcYZxgn",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T14:50:41.009+00:00",
+          "stoppedAt": "2026-10-07T14:50:41.027+00:00",
+          "finished": true
+        },
+        {
+          "id": 716,
+          "workflowId": "baddad5487f9c288",
+          "status": "running",
+          "mode": "trigger",
+          "startedAt": "2026-10-09T00:45:00.056+00:00",
+          "stoppedAt": null,
+          "finished": false
+        },
+        {
+          "id": 429,
+          "workflowId": "baddad5487f9c288",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:00:00.084+00:00",
+          "stoppedAt": "2026-10-08T17:00:00.404+00:00",
+          "finished": false
+        },
+        {
+          "id": 718,
+          "workflowId": "e511583d42831b8b",
+          "status": "running",
+          "mode": "trigger",
+          "startedAt": "2026-10-09T00:45:00.064+00:00",
+          "stoppedAt": null,
+          "finished": false
+        },
+        {
+          "id": 468,
+          "workflowId": "e511583d42831b8b",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T18:00:00.058+00:00",
+          "stoppedAt": "2026-10-08T18:00:00.198+00:00",
+          "finished": false
+        },
+        {
+          "id": 437,
+          "workflowId": "e511583d42831b8b",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:10:00.032+00:00",
+          "stoppedAt": "2026-10-08T17:10:00.142+00:00",
+          "finished": false
+        },
+        {
+          "id": 435,
+          "workflowId": "e511583d42831b8b",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:05:00.072+00:00",
+          "stoppedAt": "2026-10-08T17:05:00.287+00:00",
+          "finished": false
+        },
+        {
+          "id": 433,
+          "workflowId": "e511583d42831b8b",
+          "status": "error",
+          "mode": "trigger",
+          "startedAt": "2026-10-08T17:00:00.104+00:00",
+          "stoppedAt": "2026-10-08T17:00:00.45+00:00",
+          "finished": false
+        },
+        {
+          "id": 424,
+          "workflowId": "s57KBllvqf6Jb5xF",
+          "status": "success",
+          "mode": "manual",
+          "startedAt": "2026-10-08T13:22:15.071+00:00",
+          "stoppedAt": "2026-10-08T13:22:15.421+00:00",
+          "finished": true
+        },
+        {
+          "id": 423,
+          "workflowId": "s57KBllvqf6Jb5xF",
+          "status": "error",
+          "mode": "manual",
+          "startedAt": "2026-10-08T13:20:54.564+00:00",
+          "stoppedAt": "2026-10-08T13:20:54.79+00:00",
+          "finished": false
+        },
+        {
+          "id": 422,
+          "workflowId": "s57KBllvqf6Jb5xF",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T15:45:51.016+00:00",
+          "stoppedAt": "2026-10-07T15:45:51.041+00:00",
+          "finished": true
+        },
+        {
+          "id": 421,
+          "workflowId": "s57KBllvqf6Jb5xF",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T15:40:51.016+00:00",
+          "stoppedAt": "2026-10-07T15:40:51.039+00:00",
+          "finished": true
+        },
+        {
+          "id": 420,
+          "workflowId": "s57KBllvqf6Jb5xF",
+          "status": "success",
+          "mode": "trigger",
+          "startedAt": "2026-10-07T15:35:51.021+00:00",
+          "stoppedAt": "2026-10-07T15:35:51.052+00:00",
+          "finished": true
+        }
+      ],
+      "error": null
+    },
+    "credentials": {
+      "query": "SELECT json_agg(t) FROM (SELECT name,type,count(*) AS count FROM credentials_entity GROUP BY name,type) t",
+      "exit": 0,
+      "data": [
+        {
+          "name": "tradeai-run-relay",
+          "type": "httpHeaderAuth",
+          "count": 1
+        }
+      ],
+      "error": null
+    },
+    "webhooks": {
+      "query": "SELECT json_build_object('count',count(*)) FROM webhook_entity",
+      "exit": 0,
+      "data": {
+        "count": 0
+      },
+      "error": null
+    },
+    "community": {
+      "query": "SELECT json_build_object('packages',(SELECT count(*) FROM installed_packages),'nodes',(SELECT count(*) FROM installed_nodes))",
+      "exit": 0,
+      "data": {
+        "packages": 0,
+        "nodes": 0
+      },
+      "error": null
+    },
+    "public_api_keys": {
+      "query": "SELECT json_build_object('count',count(*)) FROM user_api_keys",
+      "exit": 0,
+      "data": {
+        "count": 0
+      },
+      "error": null
+    },
+    "mfa": {
+      "query": "SELECT json_agg(t) FROM (SELECT \"roleSlug\" AS role,\"mfaEnabled\",count(*) AS count FROM \"user\" GROUP BY \"roleSlug\",\"mfaEnabled\") t",
+      "exit": 0,
+      "data": [
+        {
+          "role": "global:owner",
+          "mfaEnabled": false,
+          "count": 1
+        }
+      ],
+      "error": null
+    }
+  }
+}

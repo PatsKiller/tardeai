@@ -1,0 +1,34 @@
+{
+  "schema": "UnitRecovery@v1",
+  "evidence_class": "OBSERVED_HOST",
+  "sha": "d8c527aea977fd0136cfc302001117a8c2919e6e",
+  "started_at": "2026-10-09T00:56:57.978069+00:00",
+  "applied": false,
+  "links": [
+    {
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-run-relay.service",
+      "kind": "unit",
+      "unit": "tradeai-n8n-run-relay.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-relay.service"
+    },
+    {
+      "path": "/home/johnclaw/.config/systemd/user/default.target.wants/tradeai-n8n-run-relay.service",
+      "kind": "wants",
+      "unit": "tradeai-n8n-run-relay.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-relay.service"
+    },
+    {
+      "path": "/home/johnclaw/.config/systemd/user/tradeai-n8n-run-executor.service",
+      "kind": "unit",
+      "unit": "tradeai-n8n-run-executor.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-executor.service"
+    },
+    {
+      "path": "/home/johnclaw/.config/systemd/user/default.target.wants/tradeai-n8n-run-executor.service",
+      "kind": "wants",
+      "unit": "tradeai-n8n-run-executor.service",
+      "target": "/home/johnclaw/trade-ai-releases/portfolio-server/72b0ce6be-main-exact-phase2-20261008-120818/config/systemd/user/tradeai-n8n-run-executor.service"
+    }
+  ],
+  "mode": "DRY_RUN"
+}
