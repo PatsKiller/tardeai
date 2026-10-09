@@ -501,10 +501,19 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
     # are unaffected: only exact, case-insensitive matches against this list are
     # refused, and only for the company_name path. A ticker match is untouched --
     # "V" resolving to Visa is a different claim with different evidence.
+    # The index from THIS module's own package (relative import). `scripts.lib.X`
+    # and bare `lib.X` are two module objects with two _build() caches; a fixed
+    # absolute `lib.` import made scripts.lib.inbound_identity_tagger read the
+    # bare copy, so a refresh() through scripts.lib (the sweep, the tests) left
+    # it serving whatever an earlier caller had cached. 2026-10-09: CI shard 7
+    # failed that way on the Sentinel One test.
     try:
-        from lib.company_name_index import resolve_name  # noqa: PLC0415
+        from .company_name_index import resolve_name  # noqa: PLC0415
     except Exception:
-        resolve_name = None                                # type: ignore
+        try:
+            from lib.company_name_index import resolve_name  # type: ignore  # noqa: PLC0415
+        except Exception:
+            resolve_name = None                                # type: ignore
 
     for name in extract_name_mentions(text):
         # A lone capitalised word opening a sentence is punctuation, not a
@@ -557,10 +566,13 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
     # while "SentinelOne" worked — turn 393 / parity class. resolve_name is still
     # the authority (compacted SENTINELONE → S); we never invent a mapping here.
     if resolve_name is not None:
-        try:
-            from lib.company_name_index import is_exact_name, normalize_name  # noqa: PLC0415
+        try:  # same module object as resolve_name above
+            from .company_name_index import is_exact_name, normalize_name  # noqa: PLC0415
         except Exception:
-            is_exact_name = normalize_name = None            # type: ignore
+            try:
+                from lib.company_name_index import is_exact_name, normalize_name  # type: ignore  # noqa: PLC0415
+            except Exception:
+                is_exact_name = normalize_name = None            # type: ignore
         if is_exact_name is not None:
             _anycase_windows(
                 text or "", doc=doc, resolve_name=resolve_name,

@@ -831,6 +831,7 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            "tests/test_identity_tagger_single_name_index_20261009.py",
             # Failed-lane bodies never reach research consumers; the news guard vetoes a
             # headline whose stated 52-week extreme contradicts ours (PR #255 refresh).
             "tests/test_research_packet_hygiene_20260925.py",
