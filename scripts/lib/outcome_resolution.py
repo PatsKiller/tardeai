@@ -66,6 +66,11 @@ NON_SECURITY_RECOMMENDATIONS = frozenset({"HOLD_CASH", "RAISE_CASH", "DEPLOY_CAS
 # entity_type values that are explicitly not a tradable security.
 NON_SECURITY_ENTITY_TYPES = frozenset({"PORTFOLIO_CASH", "GOAL", "PORTFOLIO"})
 
+# Book-level pseudo-subjects (cio_plan_outcome_checkpoints.NON_SECURITY_SUBJECTS minus CASH, which is also a
+# listed equity and is told apart by the recommendation above). 2026-10-09: nine "BOOK" checkpoints sat in
+# OUTCOME_PENDING_DATA as "no_price_history_either_end" every hour since 09-29 — no price will ever exist.
+NON_SECURITY_SUBJECTS = frozenset({"BOOK", "PORTFOLIO", "REENTRY", "MMKT"})
+
 # A price lookup returns (close, as_of_date) or None.
 PriceLookup = Callable[[str, str], "tuple[float, str] | None"]
 
@@ -201,6 +206,8 @@ def price_resolvable(cp: dict[str, Any], registry_lookup: Callable[[str], bool] 
     symbol = checkpoint_symbol(cp)
     if not symbol:
         return False, "no_security_subject"
+    if symbol in NON_SECURITY_SUBJECTS:
+        return False, f"book_level_subject_{symbol.lower()}"
     if registry_lookup is not None and not registry_lookup(symbol):
         # A pseudo-symbol such as REENTRY is a lane marker, not an instrument.
         return False, "subject_not_a_registered_security"

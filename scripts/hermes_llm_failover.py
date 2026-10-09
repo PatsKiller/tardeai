@@ -109,6 +109,20 @@ def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None, task_type
     return str(message.get("content") or message.get("reasoning_content") or "")
 
 
+def _bridge_refusal_code(exc: BaseException) -> str:
+    """The governed bridge answers a refusal with a JSON body {"error": {"code": ...}} (BRIDGE_BUSY,
+    lane_unhealthy, health_unknown, a cost cap ...). urllib's HTTPError drops it, so 2026-10-09's
+    usefulness backfill logged 73 bare "HTTP Error 503" lines and the reason was unrecoverable.
+    Returns ":<code>" or ""; never raises."""
+    try:
+        body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        err = (json.loads(body) or {}).get("error") or {}
+        code = err.get("code") if isinstance(err, dict) else None
+        return f":{code}" if code else ""
+    except Exception:
+        return ""
+
+
 def chat_json(
     prompt: str,
     *,
@@ -128,7 +142,7 @@ def chat_json(
         content = _bridge_flash_chat(prompt, timeout_s=cloud_timeout_s, task_type=task_type)
     except Exception as exc:
         raise HermesLlmError(
-            f"bridge_flash_error:{type(exc).__name__}:{exc}"[:300]
+            f"bridge_flash_error:{type(exc).__name__}:{exc}{_bridge_refusal_code(exc)}"[:300]
         ) from exc
     text = _extract_json_text(content)
     if not text:

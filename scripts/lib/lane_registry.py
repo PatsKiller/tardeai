@@ -930,6 +930,31 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
     return out
 
 
+#: An ACTIVE kind-n8n row whose workflow is not active in n8n (2026-10-09 audit: n8n-monitor-trade-ai and
+#: n8n-monitor-dof were deactivated 13:04Z yet the registry still said ACTIVE and the gate printed "clean").
+INACTIVE_N8N_WORKFLOW = "INACTIVE_N8N_WORKFLOW"
+
+
+def find_inactive_n8n_rows(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str, Any]]:
+    """ACTIVE kind-n8n rows whose workflow id is absent from the active-workflow discovery.
+
+    Only meaningful when n8n was actually looked at (``"n8n" in found``); with no n8n source the
+    answer is "not measured", never "all fine", so this returns [] and the caller reports the source.
+    """
+    if "n8n" not in found:
+        return []
+    active_ids = {str(wf.get("expression") or "") for wf in found.get("n8n") or []}
+    out: list[dict[str, Any]] = []
+    for row in reg.get("lanes") or []:
+        sched = row.get("scheduler") or {}
+        if row.get("state") != STATE_ACTIVE or sched.get("kind") != SCHEDULER_N8N:
+            continue
+        wid = str(sched.get("expression") or "")
+        if wid not in active_ids:
+            out.append({"lane_id": row.get("lane_id"), "expression": wid, "code": INACTIVE_N8N_WORKFLOW})
+    return out
+
+
 # ── the report the monitor appends ─────────────────────────────────────────
 
 def collect_lane_registry_report(*, now: Optional[datetime] = None,

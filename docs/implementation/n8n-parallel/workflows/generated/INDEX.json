@@ -1,9 +1,9 @@
 {
-  "code_sha": "ef4b6f60d089",
+  "code_sha": "0c55f1adfd49",
   "credential_name": "tradeai-run-relay",
-  "generated_at": "2026-10-09T17:02:22+00:00",
+  "generated_at": "2026-10-09T19:26:25+00:00",
   "generator": "scripts/n8n_workflow_templates.py",
-  "lane_count": 74,
+  "lane_count": 75,
   "lanes": [
     {
       "committed": true,
@@ -1074,6 +1074,21 @@
       "shadow_file": "n8n-workflow-drift-check-shadow.json",
       "shadow_workflow_id": "80c7607ea0c0cbbe",
       "tranche": "N7"
+    },
+    {
+      "committed": true,
+      "lane_id": "trade-ai-scalp-live",
+      "live_file": "trade-ai-scalp-live.json",
+      "live_workflow_id": "537142069dd5b352",
+      "note": "Same /tmp/tradeai_scalp_live.lock (flock -n) as the cron line, so n8n and cron never overlap. Receipt data/runtime/trade_ai_scalp_live_last.json; the incident fan-in raises trade-ai-scalp-live:STALLED when last_ok_at is older than 12 min in RTH.",
+      "schedule": [
+        "*/5 9-15 * * 1-5"
+      ],
+      "schedule_fidelity": "EXACT",
+      "schedule_source": "crontab: */5 9-15 * * 1-5 run_trade_ai_scalp_live.py (registry kind cron); the script self-gates 09:30-16:00 ET, so the 09:00-09:25 fires exit with receipt status outside_rth",
+      "shadow_file": "trade-ai-scalp-live-shadow.json",
+      "shadow_workflow_id": "15b22c523f844467",
+      "tranche": "N7"
     }
   ],
   "lanes_by_tranche": {
@@ -1083,7 +1098,7 @@
     "N4": 20,
     "N5": 6,
     "N6": 6,
-    "N7": 4
+    "N7": 5
   },
   "node_types": [
     "n8n-nodes-base.code",

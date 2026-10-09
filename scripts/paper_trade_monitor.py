@@ -42,6 +42,16 @@ PHANTOM_GRACE_MIN = 15
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+
+def _child_python(code_root) -> str:
+    """Interpreter for child Python steps: release dirs ship no .venv (lib/live_project_root.venv_python)."""
+    try:
+        from lib.live_project_root import venv_python
+    except ImportError:
+        from live_project_root import venv_python
+    return venv_python(code_root)
+
+
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -603,7 +613,7 @@ def monitor(dry_run=False):
             conn.commit()
             results.append({
                 "symbol": dbt['symbol'], "action": "phantom_closed",
-                "reason": f"DB open but no Alpaca position — auto-closed",
+                "reason": "DB open but no Alpaca position — auto-closed",
                 "pnl": _pnl, "pnl_pct": _pnl_pct, "r_multiple": _r_mult or 0,
             })
 
@@ -634,7 +644,7 @@ def monitor(dry_run=False):
             import subprocess
             # Thesis reviewer: compares plan vs actual, classifies thesis outcome
             subprocess.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [_child_python(PROJECT_ROOT),
                  str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
                 cwd=str(PROJECT_ROOT),
                 stdout=open(str(PROJECT_ROOT / "logs/post_trade_thesis_auto.log"), "a"),
@@ -643,7 +653,7 @@ def monitor(dry_run=False):
             # Scored thesis review → trade_thesis_reviews (journal-learning lane). Idempotent
             # (skips already-reviewed trades); previously had no scheduled runner.
             subprocess.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [_child_python(PROJECT_ROOT),
                  str(PROJECT_ROOT / "scripts/trade_thesis_review_engine.py"), "--apply", "--json"],
                 cwd=str(PROJECT_ROOT),
                 stdout=open(str(PROJECT_ROOT / "logs/trade_thesis_review_engine_auto.log"), "a"),
@@ -651,7 +661,7 @@ def monitor(dry_run=False):
             )
             # Outcome analytics: builds R-multiple, MFE/MAE, plan adherence stats
             subprocess.Popen(
-                [str(PROJECT_ROOT / ".venv/bin/python"),
+                [_child_python(PROJECT_ROOT),
                  str(PROJECT_ROOT / "scripts/paper_outcome_analytics.py"), "--since", "7", "--apply"],
                 cwd=str(PROJECT_ROOT),
                 stdout=open(str(PROJECT_ROOT / "logs/paper_outcome_analytics_auto.log"), "a"),

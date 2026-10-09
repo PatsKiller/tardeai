@@ -620,7 +620,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
-| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `80d5c4a8a4c7` |
+| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `119c7cb11c9d` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
@@ -1088,8 +1088,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/governance/PHASE119C_TONIGHT_GO_LIVE_BOUNDARY_DECISION.md` | Phase 119C — Tonight Go-Live Boundary Decision | review_required | OK | `5d8fe282fca5` |
 | `docs/governance/PHASE182A_LIVE_READINESS_EVIDENCE_STANDARD.md` | Phase 182A: Live-Readiness Evidence Standard | review_required | OK | `b42ed5069903` |
 | `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | Phase 182B: Live Readiness Scoring Model | review_required | OK | `a4b194f75fab` |
-| `docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md` | Agent operating standards v1 (companion to AGENTS.md) | review_required | MISSING HEADER | `397cbb5907a1` |
-| `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md` | AGENTS.md 1.3.0 — authority amendment (RATIFIED 2026-09-27) | review_required | OK | `5a337116e02f` |
+| `docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md` | Agent operating standards v1 (companion to AGENTS.md) | review_required | MISSING HEADER | `607b53ab566b` |
+| `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md` | AGENTS.md 1.3.0 — authority amendment (RATIFIED 2026-09-27) | review_required | OK | `4f3b0923ca4c` |
 | `docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` | Repository protection — actions only a repository administrator can take | review_required | MISSING HEADER | `9adc27a4862c` |
 | `docs/governance/agent-standards/TRADING_SESSION_GRANT_CONTRACT.md` | TradingSessionGrant@v1 — contract and enforcement point | review_required | OK | `98355d33c64d` |
 | `docs/governance/phase9c_scheduled_maturity_board/00_README.md` | Phase 9C — Scheduled Maturity Control Board | current_phase_keep | OK | `514ad61e8c46` |
@@ -1452,6 +1452,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/21-agent2-w2-n6-20261008.md` | Agent 2 W2 — N6 schedules and explicit activation blockers | review_required | OK | `5fd263547725` |
 | `docs/implementation/n8n-parallel/23-n6-retained-20261009.md` | N6 retained on current schedulers by policy — program scope 65 lanes | review_required | OK | `3fbeaeccacb0` |
 | `docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md` | Ops lanes 2026-10-09 — storage-watch, backup-verify, trade-ai-restore-drill (tranche N7) | review_required | OK | `e136f2e0d04a` |
+| `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md` | trade-ai-scalp-live as an n8n-driven lane — 2026-10-09 | review_required | MISSING HEADER | `9558b6a89ce9` |
 | `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `9d5cc13f4722` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
@@ -1887,6 +1888,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | Research quality, thesis mint gap, alarms — 2026-08-22 | review_required | OK | `6310c0e41813` |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM | review_required | OK | `28c7d73a7129` |
 | `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `1bf79024085d` |
+| `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md` | Scalp lane bulk catalyst read — 2026-10-09 | review_required | MISSING HEADER | `a5dd57667b7a` |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 | review_required | OK | `22febcb04ade` |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery | review_required | OK | `3cc1521e57e5` |
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE | archive_superseded | OK | `c2b8e5cfeebb` |

@@ -178,13 +178,16 @@
         "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.08333333333333333,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id s57KBllvqf6Jb5xF, Schedule Every 5 minutes -> GET build-meta. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10e7c19321c906a is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
-      "state_since": "2026-10-08",
+      "state_since": "2026-10-09",
+      "state_reason": "Legacy n8n HTTP monitor workflow s57KBllvqf6Jb5xF deactivated (not deleted) 2026-10-09 13:04Z per the N1 cutover packet (19-n1-cutover-packet §3.8/3.9): it lost its target when S1/S2 bound the API/DOF to loopback; n8n-lab-watchdog replaces it. The generated relay replacement is not allowlisted and stays unimported.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "m8m-n8n-db workflow_entity active=f, updatedAt 2026-10-09 13:04Z; last trigger executions 10-07 (audit 2026-10-09 scratch A_cron_migration.md / D_n8n_docs.md); absent from workflows/active_workflows_snapshot.json captured 2026-10-09T16:00:39Z.",
       "value_class": "Obsolete",
       "recommendation": "R0_ELIMINATE",
       "rationalization": {
@@ -208,13 +211,16 @@
         "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.08333333333333333,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id GXwhbRkwsGcYZxgn, Schedule Every 5 minutes -> GET run-scope. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10087387b964e87 is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
-      "state_since": "2026-10-08",
+      "state_since": "2026-10-09",
+      "state_reason": "Legacy n8n HTTP monitor workflow GXwhbRkwsGcYZxgn deactivated (not deleted) 2026-10-09 13:04Z per the N1 cutover packet (19-n1-cutover-packet §3.8/3.9): it lost its target when S1/S2 bound the API/DOF to loopback; n8n-lab-watchdog replaces it. The generated relay replacement is not allowlisted and stays unimported.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "m8m-n8n-db workflow_entity active=f, updatedAt 2026-10-09 13:04Z; last trigger executions 10-07 (audit 2026-10-09 scratch A_cron_migration.md / D_n8n_docs.md); absent from workflows/active_workflows_snapshot.json captured 2026-10-09T16:00:39Z.",
       "value_class": "Obsolete",
       "recommendation": "R0_ELIMINATE",
       "rationalization": {
@@ -4213,15 +4219,15 @@
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-03",
+      "state_reason": "The cron line above was declared but never installed (it needs the operator's cron grant): `crontab -l` has no score_alert_quality line and logs/score_alert_quality.log does not exist (cron audit 2026-10-09). The expression is the proposed install; flip to ACTIVE in the same change that installs it.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "2026-10-09 read-only audit: no crontab line matches scripts/score_alert_quality.py; logs/score_alert_quality.log and data/runtime/alert_quality_last.json absent; the row's own note says install requires the operator's cron grant.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/alert_quality_last.json"
       },
-      "note": "Declared 2026-10-03 (operator chose to wire a real AlertQuality@v1 producer). Daily at 07:05 ET it scores the previous completed ET day from communication_deliveries/events and the comms-editor receipts and persists one row through the operator-artifact store. Read-only on the ledgers; no LLM, no sends. Install requires the operator's cron grant.",
-      "state_since": "2026-10-09",
-      "state_reason": "Cron line drafted 2026-10-03 but never installed: no live or commented crontab line on 2026-10-09 and data/runtime/alert_quality_last.json does not exist. Install needs the operator's cron grant (this row's note). Was declared ACTIVE, which made the lane monitor report a scheduler that does not exist.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "crontab -l (read-only) 2026-10-09 B1 reconciliation; docs/implementation/n8n-maturity/01-registry-reconciliation.md"
+      "note": "Declared 2026-10-03 (operator chose to wire a real AlertQuality@v1 producer). Daily at 07:05 ET it scores the previous completed ET day from communication_deliveries/events and the comms-editor receipts and persists one row through the operator-artifact store. Read-only on the ledgers; no LLM, no sends. Install requires the operator's cron grant."
     },
     {
       "lane_id": "build-lesson-candidates",
@@ -6546,10 +6552,11 @@
       "state_reason": "Trade-AI scalp scan every 5 min in RTH (operator 2026-10-09: \"these are scalps should be every 5 minutes at least … same should be feeding both tradeai and also active trader\"). Deterministic live cycle over the scalp screeners (assets/screeners.yaml window `scalp`), own run_label `scalp`, no paid LLM; writes trade_ai_scans and the shared scalp universe projection that Active Trader reads. Cycle ~204 s warm (470 s cold) — flock -n skips a start while one is running.",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "~/trade-ai-releases/persistent-state/data/trade_ai/scalp_universe_latest.json"
+        "path": "data/runtime/trade_ai_scalp_live_last.json"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md; tests/test_trade_ai_scalp_5min_20261009.py; dry run 2026-10-09 (writes/sends stubbed): 104 scored, 13 rows, 0 alerts, 470 s cold / 204 s warm",
+      "note": "2026-10-09: output_signal was the literal '~/trade-ai-releases/…/scalp_universe_latest.json'; observe_signal never expands '~', so the monitor read the lane as never producing. Now the per-run receipt, relative to the state root like the other rows. n8n: LIVE CANDIDATE (AGENTS.md 4.0.0 §23.3 exception, APPROVE_AGENTS_POLICY_4_0_0 2026-10-09; allowlist --dry-run and live_arg []; generated workflows trade-ai-scalp-live-shadow / trade-ai-scalp-live, not yet imported or active; relay live-lane listing pending a config-write grant); cron stays scheduler of record and fallback until 3 clean n8n market days (operator 2026-10-09 \"n8n drives a governed lane\"; docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md).",
       "value_class": "Business Critical",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {

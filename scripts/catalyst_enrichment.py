@@ -445,16 +445,19 @@ def enrich_ticker(symbol: str, company: str = "") -> Dict[str, Any]:
       has_fresh_catalyst: bool (any article within PREFERRED_MAX_HOURS)
       sources_hit       : list of provider names that returned data
     """
-    now    = _now_utc()
-    cutoff = _cutoff_utc(LOOKBACK_MAX_HOURS)
-
     # Gather from the live providers
     raw: List[Dict] = []
     # finnhub / newsapi / polygon / fmp retired 2026-09-13 — config/data_source_authority.json
     raw += _fetch_alpha_vantage(symbol)
     raw += _fetch_finviz_news(symbol)     # ← Source 6: Finviz News API
     raw += _fetch_yahoo_news(symbol)      # ← Source 7: Yahoo Finance
+    return build_enrichment(symbol, raw)
 
+
+def build_enrichment(symbol: str, raw: List[Dict]) -> Dict[str, Any]:
+    """Filter, classify and rank raw articles ({title, summary, url, source, published_at ISO, provider}) for one
+    ticker into the enrich_ticker shape. Shared by the per-ticker fetch and the scalp lane's bulk reader
+    (scripts/scalp_catalyst_bulk.py, 2026-10-09) so both score identically."""
     # Track which providers returned something
     sources_hit = list({a["provider"] for a in raw if a.get("title")})
 
