@@ -8,10 +8,12 @@ EXACTLY ONE shard:
 
 * ``pg``      -- files that need a Postgres database (the m2_conn / psycopg2 / alert-DSN tests
                  that SKIP on a runner without one). The workflow gives this shard a service
-                 container, and every file runs one at a time.
+                 container. Every file runs in its OWN pytest process, one at a time, and
+                 each gets a fresh database for the per-file DSN env vars
+                 (run_cio_hardening_ci.PER_FILE_DB_ENV, e.g. ALERT_TEST_DSN).
 * ``serial``  -- the other files the runner's shared-state classifier sends to the serial
-                 tail (docs/INDEX.md, git operations, probe files planted in scripts/). One at
-                 a time, on their own runner, so no other test sees their side effects.
+                 tail (docs/INDEX.md, git operations, probe files planted in scripts/). One
+                 pytest process per file, one at a time, on their own runner.
 * ``0..N-1``  -- everything else, by greedy longest-processing-time assignment on duration
                  hints. Ties break on the path, so the plan is a pure function of
                  (registered files, hints, N): every shard job computes the same plan.

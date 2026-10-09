@@ -4041,7 +4041,8 @@ def _run_unit_junit(job):
 
     from scripts.lib import ci_shards
 
-    (name, files), xml_path = job
+    (name, files), xml_path = job[0], job[1]
+    env = job[2] if len(job) > 2 else None
     t0 = time.monotonic()
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "--tb=line", "-p", "no:cacheprovider",
@@ -4049,6 +4050,7 @@ def _run_unit_junit(job):
         cwd=str(REPO),
         capture_output=True,
         text=True,
+        env=env,
     )
     secs = time.monotonic() - t0
     out = (r.stdout or "") + (r.stderr or "")
@@ -4077,6 +4079,37 @@ def _run_unit_junit(job):
         "output": out,
         "file_seconds": ci_shards.file_seconds_from_junit(xml_text, files, secs),
     }
+
+
+#: DSN env vars whose database each pg-shard file gets fresh (``<database>_f<i>``).
+PER_FILE_DB_ENV = ("ALERT_TEST_DSN",)
+
+
+def _per_file_db_env(path: str, index: int) -> dict | None:
+    """Environment for one pg-shard file: each PER_FILE_DB_ENV DSN re-pointed at a new database.
+
+    The database is created by scripts/ensure_m2_test_database.py, which refuses any name that
+    is not ``m2_shadow_test[_suffix]`` -- so this can never point a test at a live database.
+    A DSN whose database does not fit that pattern is left unchanged.
+    """
+    sys.path.insert(0, str(REPO))
+    from scripts.lib.m2_live_shadow_guard import TEST_DATABASE_RE, dsn_database, with_database
+
+    env = dict(os.environ)
+    changed = False
+    for var in PER_FILE_DB_ENV:
+        dsn = env.get(var, "").strip()
+        base = dsn_database(dsn) if dsn else ""
+        if not base or not TEST_DATABASE_RE.match(f"{base}_f{index}"):
+            continue
+        name = f"{base}_f{index}"
+        r = subprocess.run([sys.executable, "scripts/ensure_m2_test_database.py", "--name", name],
+                           cwd=str(REPO), capture_output=True, text=True)
+        print(f"[shard] {path}: {var} -> database {name} (ensure rc={r.returncode})", flush=True)
+        if r.returncode == 0:
+            env[var] = with_database(dsn, name)
+            changed = True
+    return env if changed else None
 
 
 def run_shard(shard_arg: str, *, jobs: int, out: Path | None) -> int:
@@ -4111,8 +4144,14 @@ def run_shard(shard_arg: str, *, jobs: int, out: Path | None) -> int:
         jobs_list = [(u, str(Path(tmp) / f"u{i}.xml")) for i, u in enumerate(parallel + serial)]
         par_jobs, ser_jobs = jobs_list[: len(parallel)], jobs_list[len(parallel):]
         if one_at_a_time:
-            for j in par_jobs + ser_jobs:
-                record(_run_unit_junit(j))
+            # serial/pg: one pytest process PER FILE (a gate unit may hold several files that
+            # share state), and in the pg shard each file gets its own fresh database for the
+            # per-file DSN env vars (two alert-DB files sharing one database failed in CI run
+            # 37957892733: "cannot drop columns from view").
+            singles = [(name, [f]) for name, fs in parallel + serial for f in fs]
+            for i, u in enumerate(singles):
+                env = _per_file_db_env(u[1][0], i) if sid == ci_shards.PG_SHARD else None
+                record(_run_unit_junit((u, str(Path(tmp) / f"f{i}.xml"), env)))
         else:
             with ThreadPoolExecutor(max_workers=jobs) as pool:
                 for res in pool.map(_run_unit_junit, par_jobs):

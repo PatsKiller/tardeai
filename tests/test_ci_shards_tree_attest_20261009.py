@@ -488,3 +488,39 @@ def test_backstop_status_and_receipt(tmp_path, evidence, status, rc):
     assert pf.backstop_check(M, receipt, push=lambda _s: dict(evidence)) == rc
     body = json.loads(receipt.read_text(encoding="utf-8"))
     assert body["status"] == status and body["candidate_sha"] == M and body["exit_code"] == rc
+
+
+# ---------------------------------------------------------------------------
+# pg shard: one fresh database per file for the per-file DSN env vars
+# ---------------------------------------------------------------------------
+
+
+def test_per_file_db_env_repoints_alert_dsn_to_fresh_test_database(monkeypatch):
+    import subprocess as sp
+
+    import run_cio_hardening_ci as runner
+
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return sp.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    monkeypatch.setenv("ALERT_TEST_DSN", "postgresql://u:p@127.0.0.1:55432/m2_shadow_test_alerts")
+    env = runner._per_file_db_env("tests/test_x.py", 3)
+    assert env["ALERT_TEST_DSN"].endswith("/m2_shadow_test_alerts_f3")
+    assert calls and calls[0][-2:] == ["--name", "m2_shadow_test_alerts_f3"]
+
+
+def test_per_file_db_env_leaves_non_test_database_alone(monkeypatch):
+    import run_cio_hardening_ci as runner
+
+    def boom(*a, **k):
+        raise AssertionError("must not create a database outside the m2_shadow_test pattern")
+
+    monkeypatch.setattr(runner.subprocess, "run", boom)
+    monkeypatch.setenv("ALERT_TEST_DSN", "postgresql://u:p@127.0.0.1:55435/delivtest")
+    assert runner._per_file_db_env("tests/test_x.py", 0) is None
+    monkeypatch.delenv("ALERT_TEST_DSN")
+    assert runner._per_file_db_env("tests/test_x.py", 0) is None

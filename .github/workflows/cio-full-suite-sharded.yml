@@ -5,8 +5,9 @@ name: cio-full-suite-sharded
 #
 # EVERY registered test file (GATES in scripts/run_cio_hardening_ci.py) runs on every PR --
 # nothing is deferred -- split across 8 duration-balanced shards x 4 workers, a serial shard
-# (shared-state files, one at a time) and a Postgres shard (the m2_conn/psycopg2/alert-DSN files
-# that SKIP on a runner without a database). The `integrity` job carries the rails the
+# (shared-state files, one pytest process per file) and a Postgres shard (the m2_conn/psycopg2/
+# alert-DSN files that SKIP on a runner without a database; one process and, for ALERT_TEST_DSN,
+# one fresh database per file). The `integrity` job carries the rails the
 # `cio-hardening` job runs after its gates. `ci-gate` is the ONE aggregate: it fails if any job
 # failed or was skipped, or if the files the shards report running are not exactly the
 # registered list (each file once, same tree, same plan). See scripts/lib/ci_shards.py.
@@ -150,7 +151,7 @@ jobs:
         run: |
           python3 scripts/ensure_m2_test_database.py --name "$M2_TEST_DATABASE"
           python3 scripts/ensure_m2_test_database.py --name m2_shadow_test_alerts
-      - name: Postgres shard (one file at a time)
+      - name: Postgres shard (one pytest process + fresh alert database per file)
         run: |
           python3 scripts/run_cio_hardening_ci.py \
             --shard "pg/$CIO_SHARDS" --shard-out "$RUNNER_TEMP/shard/cio_shard_pg.json"
