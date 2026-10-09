@@ -18,13 +18,21 @@ GO alerts once, not every 5 minutes. Market-day gated by the cron wrapper; outsi
 Every completed run (a cycle, or an outside-RTH exit) writes the receipt
 $TRADEAI_STATE_ROOT/data/runtime/trade_ai_scalp_live_last.json (TradeAIScalpLiveReceipt@v1): the n8n run
 executor's output_signal and the incident fan-in's stall source (last_ok_at older than 12 min in RTH).
+
+Every RTH cycle also appends ScalpCycleReceipt@v1 records (scripts/lib/scalp_cycle_receipt.py) to
+$TRADEAI_STATE_ROOT/data/runtime/scalp_cycle_receipts/<day>.jsonl: ``started`` before any work, then ``ok`` /
+``error`` / ``killed`` (SIGTERM from the 295 s timeout) with the phase reached, symbols scanned, signals, alerts
+sent/deduped and the budget used. A ``started`` with no final record is a cycle lost to SIGKILL. Log lines are
+line-buffered and timestamped, so a killed cycle no longer vanishes from the log (n8n maturity B4, 2026-10-09).
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import signal
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -104,8 +112,15 @@ def dry_run_plan(now: datetime) -> dict:
 
 
 def in_rth(now: datetime) -> bool:
-    m = now.hour * 60 + now.minute
-    return RTH[0][0] * 60 + RTH[0][1] <= m < RTH[1][0] * 60 + RTH[1][1]
+    """Regular session per scripts/market_session (holidays and 13:00 early closes included); the fixed
+    09:30-16:00 window only if the calendar cannot be read."""
+    try:
+        from market_session import current_market_session
+
+        return current_market_session(now) == "regular"
+    except Exception:  # noqa: BLE001 — a broken calendar falls back to the fixed window
+        m = now.hour * 60 + now.minute
+        return RTH[0][0] * 60 + RTH[0][1] <= m < RTH[1][0] * 60 + RTH[1][1]
 
 
 def load_state(day: str):
@@ -141,6 +156,50 @@ def enrich_budget() -> Optional[float]:
         return None
 
 
+def post_enrich_reserve() -> float:
+    """Seconds kept for scoring + persist + send after catalyst lookups (config post_enrich_reserve_s)."""
+    try:
+        import yaml
+
+        v = (yaml.safe_load((ROOT / "config" / "trade_ai_scalp_lane.yaml").read_text(encoding="utf-8")) or {}).get(
+            "post_enrich_reserve_s")
+        return float(v) if v is not None else 100.0
+    except Exception:  # noqa: BLE001
+        return 100.0
+
+
+def cycle_deadline() -> float:
+    """Hard per-cycle deadline in seconds (config/trade_ai_scalp_lane.yaml cycle_deadline_s; the cron timeout)."""
+    try:
+        import yaml
+
+        v = (yaml.safe_load((ROOT / "config" / "trade_ai_scalp_lane.yaml").read_text(encoding="utf-8")) or {}).get(
+            "cycle_deadline_s")
+        return float(v) if v else 295.0
+    except Exception:  # noqa: BLE001 — unreadable config keeps the cron line's timeout
+        return 295.0
+
+
+def _cycle_receipt(status: str, day: str, slot: str, t0: datetime, stats: dict, *, deadline_s: float,
+                   enrich_s: Optional[float], go_before: set, finished: Optional[datetime] = None,
+                   extra_errors: tuple = ()) -> None:
+    """Append one ScalpCycleReceipt@v1 record; a ledger failure never breaks the cycle."""
+    try:
+        import scalp_cycle_receipt as scr
+
+        go_now = set(stats.get("go_now") or ())
+        triggers = stats.get("triggers")
+        scr.append(scr.build(
+            status, day=day, slot=slot, started_at=t0, finished_at=finished, phase=stats.get("phase"),
+            symbols_scanned=stats.get("symbols_scanned"), signals=stats.get("signals"), triggers=triggers,
+            alerts_sent=(None if triggers is None else (int(triggers) if stats.get("alert_sent") else 0)),
+            alerts_deduped=len(go_now & go_before) if status == "ok" else None,
+            deadline_s=deadline_s, enrich_budget_s=enrich_s,
+            errors=list(stats.get("errors") or []) + list(extra_errors), release=ROOT.name))
+    except Exception as e:  # noqa: BLE001 — the receipt is evidence, not a dependency of the cycle
+        print(f"[scalp-live] cycle receipt write failed: {type(e).__name__}: {e}")
+
+
 def bulk_catalysts() -> Optional[dict]:
     """`catalysts` block of config/trade_ai_scalp_lane.yaml (bulk catalyst read); None when absent."""
     from scalp_catalyst_bulk import load_config
@@ -153,6 +212,12 @@ def main(argv=None) -> int:
     ap.add_argument("--force", action="store_true", help="run outside 09:30-16:00 ET")
     ap.add_argument("--dry-run", action="store_true", help="print the plan; no scan, write or send")
     a = ap.parse_args(argv)
+    proc_t0 = time.monotonic()   # the cron/executor timeout counts from (about) here, not from enrichment
+    try:  # cron appends stdout to a file: block buffering lost every line of a killed cycle
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:  # noqa: BLE001 — a replaced stream without reconfigure keeps its buffering
+        pass
     now = datetime.now(ET)
     if a.dry_run:
         print(f"[scalp-live] dry-run {json.dumps(dry_run_plan(now), sort_keys=True)}")
@@ -161,20 +226,71 @@ def main(argv=None) -> int:
         print(f"[scalp-live] {now:%H:%M} ET outside RTH — nothing to do")
         write_receipt("outside_rth", now)
         return 0
-    from continuous_runner import run_live_cycle
+    import scalp_cycle_receipt as scr
 
     day = now.date().isoformat()
-    st = load_state(day)
+    slot = scr.slot_of(now)
+    if not a.force and scr.fold(scr.read_day(day)).get(slot, {}).get("status") == "ok":
+        # cron and n8n share the flock, which stops two cycles at once but not two in a row in one slot
+        print(f"[scalp-live] {now:%H:%M:%S} ET slot {slot} already has an ok cycle — skipped (slot done)")
+        return 0
+    deadline_s, enrich_s = cycle_deadline(), enrich_budget()
+    stats: dict = {"phase": "start", "errors": []}
     t0 = datetime.now(ET)
-    scored = run_live_cycle(ROOT, RUN_LABEL, day, st, now.strftime("%H:%M"), publish_dashboard=False,
-                            enrich_budget_s=enrich_budget(), bulk_catalysts=bulk_catalysts())
-    save_state(day, st)
-    n = write_projection(scored, datetime.now(ET)) if scored else 0
-    write_receipt("ok", datetime.now(ET), universe=n, go=len(st.prev_go),
-                  seconds=(datetime.now(ET) - t0).total_seconds())
-    print(f"[scalp-live] heartbeat ok label={RUN_LABEL} go={len(st.prev_go)} universe={n} "
-          f"seconds={(datetime.now(ET) - t0).total_seconds():.0f}")
-    return 0
+    go_before: set = set()
+    print(f"[scalp-live] {t0:%Y-%m-%d %H:%M:%S} ET cycle start slot={slot} pid={os.getpid()} release={ROOT.name}")
+    _cycle_receipt("started", day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s, go_before=go_before)
+
+    def _on_term(signum, _frame):  # the cron/executor timeout: record the kill before dying
+        _cycle_receipt("killed", day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s,
+                       go_before=go_before, finished=datetime.now(ET), extra_errors=(f"signal {signum}",))
+        print(f"[scalp-live] {datetime.now(ET):%H:%M:%S} ET killed by signal {signum} in phase "
+              f"{stats.get('phase')} after {(datetime.now(ET) - t0).total_seconds():.0f}s")
+        os._exit(128 + int(signum))
+
+    prev_handler = None
+    try:
+        prev_handler = signal.signal(signal.SIGTERM, _on_term)
+    except (ValueError, OSError):  # not the main thread: no handler, the receipt still covers ok/error
+        pass
+    try:
+        return _run_cycle(day, slot, now, t0, stats, deadline_s, enrich_s, go_before, proc_t0 + deadline_s)
+    finally:
+        if prev_handler is not None:
+            signal.signal(signal.SIGTERM, prev_handler)
+
+
+def _run_cycle(day: str, slot: str, now: datetime, t0: datetime, stats: dict, deadline_s: float,
+               enrich_s: Optional[float], go_before: set, deadline_mono: Optional[float] = None) -> int:
+    try:
+        from continuous_runner import run_live_cycle
+
+        st = load_state(day)
+        go_before.update(st.prev_go)
+        scored = run_live_cycle(ROOT, RUN_LABEL, day, st, now.strftime("%H:%M"), publish_dashboard=False,
+                                enrich_budget_s=enrich_s, bulk_catalysts=bulk_catalysts(), cycle_stats=stats,
+                                state_saver=lambda s: save_state(day, s), deadline_monotonic=deadline_mono,
+                                post_enrich_reserve_s=post_enrich_reserve())
+        stats["go_now"] = sorted(st.prev_go)
+        save_state(day, st)
+        n = write_projection(scored, datetime.now(ET)) if scored else 0
+    except Exception as e:  # noqa: BLE001 — record the failure, then let cron see a non-zero exit
+        _cycle_receipt("error", day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s, go_before=go_before,
+                       finished=datetime.now(ET), extra_errors=(f"{type(e).__name__}: {e}",))
+        print(f"[scalp-live] {datetime.now(ET):%H:%M:%S} ET cycle error in phase {stats.get('phase')}: "
+              f"{type(e).__name__}: {e}")
+        return 1
+    finished = datetime.now(ET)
+    secs = (finished - t0).total_seconds()
+    # run_live_cycle returns early (None) on an ingestion or scoring failure; it records those in stats["errors"]
+    # and never reaches phase "done". An early return with no error (an empty screener) is still an ok cycle.
+    status = "ok" if stats.get("phase") in (None, "start", "done") or not stats.get("errors") else "error"
+    _cycle_receipt(status, day, slot, t0, stats, deadline_s=deadline_s, enrich_s=enrich_s, go_before=go_before,
+                   finished=finished)
+    write_receipt(status, finished, universe=n, go=len(st.prev_go), seconds=secs)
+    print(f"[scalp-live] heartbeat {status} label={RUN_LABEL} go={len(st.prev_go)} universe={n} seconds={secs:.0f} "
+          f"budget_pct={100 * secs / deadline_s:.0f} at={finished:%Y-%m-%dT%H:%M:%S} slot={slot}")
+    return 0 if status == "ok" else 1
 
 
 if __name__ == "__main__":

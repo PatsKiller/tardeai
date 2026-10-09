@@ -115,6 +115,29 @@ def _scalp_lane_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
              "artifact_rel": SCALP_RECEIPT_REL, "store": "data/runtime", "detected_at": day}]
 
 
+def _scalp_cycle_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """ScalpCycleReceipt@v1 rules (scripts/lib/scalp_cycle_monitor.py): P2 MISSED_CYCLES on 2 consecutive missed
+    RTH slots, P1 NO_CYCLES_30M on 30 min of RTH without an ok cycle. Silent until the day's ledger exists (the
+    receipt ships with n8n maturity B4), so a release without it never pages; outside RTH it is always quiet."""
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+        import scalp_cycle_monitor as scm
+        import scalp_cycle_receipt as scr
+        from zoneinfo import ZoneInfo
+
+        day = now.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+        if not scr.ledger_path(day, root).exists():
+            NOTES["scalp_cycle_source"] = "no_ledger"
+            return []
+        doc = scm.evaluate(scr.read_day(day, root), now, day=day)
+    except Exception as e:  # noqa: BLE001 — a broken monitor is a note, not a page
+        NOTES["scalp_cycle_source"] = f"error:{type(e).__name__}"
+        return []
+    NOTES["scalp_cycle_source"] = f"ok:{doc['slots_ok']}/{doc['slots_due']}"
+    return list(doc["incidents"])
+
+
 PREV_RECEIPT: dict[str, Any] | None = None   # main() parks the previous fan-in receipt here before collect()
 
 
@@ -226,6 +249,8 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     # 3g. Trade-AI scalp scan (operator 2026-10-09 "n8n drives a governed lane"): no completed cycle for
     # SCALP_STALL_MIN in RTH on a trading day is a P2. One event per UTC day; clears on the next ok receipt.
     out.extend(_scalp_lane_findings(root, now))
+    # 3h. Scalp cycle ledger (n8n maturity B4, 2026-10-09): per-slot ScalpCycleReceipt@v1 rules, market-hours aware.
+    out.extend(_scalp_cycle_findings(root, now))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
