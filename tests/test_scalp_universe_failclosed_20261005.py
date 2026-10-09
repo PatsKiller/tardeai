@@ -34,6 +34,10 @@ import scalp_shadow_logger as ssl  # noqa: E402
 import scalp_float_lookup as sfl  # noqa: E402
 
 CFG = yaml.safe_load((ROOT / "config" / "scalp_signal_engine.yaml").read_text())
+# Hermetic: the 2026-10-09 shared feeds (config universe.shared_feeds) read live host files after the
+# universe SQL; these tests cover the SQL and float lookup only (the feeds are covered by
+# tests/test_trade_ai_scalp_5min_20261009.py), so they run with the feeds off.
+CFG["universe"]["shared_feeds"] = {**(CFG["universe"].get("shared_feeds") or {}), "enabled": False}
 U = CFG["universe"]
 
 
