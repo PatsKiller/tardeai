@@ -3573,6 +3573,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
+        # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
+        # Pure and hermetic: explicit instants only, no clock, no I/O.
+        "n8n_maturity_cron_tz_20261009",
+        [
+            "tests/test_n8n_maturity_cron_tz_20261009.py",
+        ],
+    ),
+    (
         # N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n
         # scheduler-of-record workflow generator and the per-lane cutover checklist. The tests
         # pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set
