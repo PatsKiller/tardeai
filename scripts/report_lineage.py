@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-REPORT_OUT = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+REPORT_OUT = _portfolio_reports_root() / "analyst"
 HISTORY_DIR = REPORT_OUT / "history"
 LINEAGE_INDEX_PATH = HISTORY_DIR / "index.json"
 
@@ -58,7 +62,7 @@ def _resolve_report_json(path_str: str | None) -> Path | None:
         return p
     s = str(path_str).lstrip("/")
     if s.startswith("data/"):
-        candidate = PROJECT_ROOT / s
+        candidate = _resolve_served_path(s, PROJECT_ROOT)
         if candidate.exists():
             return candidate
     name = Path(s).name

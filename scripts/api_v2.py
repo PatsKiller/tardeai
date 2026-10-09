@@ -44,6 +44,10 @@ for _stale in (
     _sys_heal.modules.pop(_stale, None)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # Dev tree often owns the venv while portfolio-server runs from a release stamp
 # that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
@@ -2726,7 +2730,7 @@ def _reports_analyst_status(query=None):
     import datetime as _dt
 
     try:
-        reg = _j.loads((PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst" / "registry.json").read_text())
+        reg = _j.loads((_portfolio_reports_root() / "analyst" / "registry.json").read_text())
     except Exception:
         reg = {}
     reps = reg.get("reports") or []

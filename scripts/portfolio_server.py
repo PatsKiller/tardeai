@@ -44,6 +44,10 @@ from urllib.parse import urlparse, parse_qs
 
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, report_url as _report_url  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, report_url as _report_url  # noqa: E402
 PROCESS_STARTED_AT = datetime.now().astimezone().isoformat(timespec="seconds")
 
 
@@ -2086,7 +2090,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 import os as _os
                 _cat = {"live": [], "trade_ai_daily": [], "portfolio_daily": [], "weekly": [], "monthly": [], "docx": []}
                 _r = PROJECT_ROOT / "reports"
-                _pf = PROJECT_ROOT / "data" / "portfolios" / "reports"
+                _pf = _portfolio_reports_root()
                 # Live dashboards
                 # SECURITY 2026-08-31: portfolio_live.html withheld from the catalogue.
                 # Historic copies embed a live Anthropic key in client-side JS (201 of 228
@@ -2105,30 +2109,29 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                         "time": _fp.parent.name, "size_kb": round(_fp.stat().st_size / 1024, 1)})
                 # Portfolio daily
                 for _fp in sorted(_pf.glob("portfolio_dashboard_*.html"), reverse=True)[:20]:
-                    _rel = str(_fp.relative_to(PROJECT_ROOT))
-                    _cat["portfolio_daily"].append({"name": _fp.name, "path": f"/{_rel}",
+                    _cat["portfolio_daily"].append({"name": _fp.name, "path": _report_url(_fp),
                         "size_kb": round(_fp.stat().st_size / 1024, 1)})
                 # Weekly
                 _wk = _pf / "weekly"
                 if _wk.exists():
                     for _fp in sorted(_wk.glob("*.html"), reverse=True)[:10]:
-                        _cat["weekly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "html",
+                        _cat["weekly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "html",
                             "size_kb": round(_fp.stat().st_size / 1024, 1)})
                     for _fp in sorted(_wk.glob("*.docx"), reverse=True)[:10]:
-                        _cat["weekly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "docx",
+                        _cat["weekly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "docx",
                             "size_kb": round(_fp.stat().st_size / 1024, 1)})
                 # Monthly
                 _mo = _pf / "monthly"
                 if _mo.exists():
                     for _fp in sorted(_mo.glob("*.html"), reverse=True)[:10]:
-                        _cat["monthly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "html",
+                        _cat["monthly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "html",
                             "size_kb": round(_fp.stat().st_size / 1024, 1)})
                     for _fp in sorted(_mo.glob("*.docx"), reverse=True)[:10]:
-                        _cat["monthly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "docx",
+                        _cat["monthly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "docx",
                             "size_kb": round(_fp.stat().st_size / 1024, 1)})
                 # DOCX files (briefs + Trade AI)
                 for _fp in sorted(_pf.glob("portfolio_brief_*.docx"), reverse=True)[:10]:
-                    _cat["docx"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "category": "portfolio_brief",
+                    _cat["docx"].append({"name": _fp.name, "path": _report_url(_fp), "category": "portfolio_brief",
                         "size_kb": round(_fp.stat().st_size / 1024, 1)})
                 for _fp in sorted(_r.glob("2026-*/*/*.docx"), reverse=True)[:10]:
                     _cat["docx"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "category": "trade_ai",
@@ -2231,7 +2234,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         file_map = [
             ("/data/portfolios/state/", PROJECT_ROOT / "data" / "portfolios" / "state"),
             ("/data/portfolios/charts/", PROJECT_ROOT / "data" / "portfolios" / "charts"),
-            ("/data/portfolios/reports/", PROJECT_ROOT / "data" / "portfolios" / "reports"),
+            ("/data/portfolios/reports/", _portfolio_reports_root()),
             ("/archive/", PROJECT_ROOT / "archive"),
             ("/reports/", PROJECT_ROOT / "reports"),
             ("/config/", PROJECT_ROOT / "config"),

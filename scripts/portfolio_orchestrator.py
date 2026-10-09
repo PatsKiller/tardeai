@@ -114,7 +114,12 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     date_str  = datetime.now().strftime("%Y-%m-%d")
     now_str   = datetime.now().strftime("%H:%M ET")
     state_dir = root/"data"/"portfolios"/"state"
-    report_dir= root/"data"/"portfolios"/"reports"
+    # Reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py).
+    try:
+        from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root
+    report_dir = _portfolio_reports_root()
     charts_dir= root/"data"/"portfolios"/"charts"
     for d in [report_dir, charts_dir, state_dir]: d.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(root/"scripts"))

@@ -25,8 +25,12 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
-REPORT_OUT = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+REPORT_OUT = _portfolio_reports_root() / "analyst"
 PROSPECTUS_DIR = REPORT_OUT / "prospectus"
 REGISTRY_PATH = REPORT_OUT / "registry.json"
 
@@ -437,11 +441,7 @@ def verified_export_urls(symbol: str, report_type: str = "symbol_holding") -> di
     def _url(p: Path | None) -> str | None:
         if not p:
             return None
-        try:
-            rel = p.relative_to(PROJECT_ROOT)
-            return "/" + str(rel).replace("\\", "/")
-        except ValueError:
-            return str(p)
+        return _served_url(p, PROJECT_ROOT)
 
     generated_at = None
     if paths["json"].exists():

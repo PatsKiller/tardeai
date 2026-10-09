@@ -14,13 +14,15 @@ import json, os, sys, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SUMMARY = os.path.join(ROOT, "data", "runtime", "portfolio_maintenance_pipeline_last_run.json")
 HOME = os.path.expanduser("~")
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from lib.portfolio_reports_root import portfolio_reports_root  # noqa: E402  reports live in persistent-state
 
 # expected outputs produced by the P0-safe launchers
 EXPECTED = [
     {"label": "db backup (.sql.gz)", "kind": "newest_glob", "dir": os.path.join(HOME, "db_backups"),
      "suffix": ".sql.gz", "min_bytes": 1000},
     {"label": "portfolio report html", "kind": "file",
-     "path": os.path.join(ROOT, "data/portfolios/reports/portfolio_live.html"), "min_bytes": 100},
+     "path": str(portfolio_reports_root() / "portfolio_live.html"), "min_bytes": 100},
     {"label": "lookthrough holdings.json", "kind": "json",
      "path": os.path.join(ROOT, "data/portfolios/state/holdings.json"), "min_bytes": 2},
 ]

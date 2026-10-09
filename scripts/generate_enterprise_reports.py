@@ -8,12 +8,16 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from analyst_report_builder import build_report, save_report_json  # noqa: E402
 from report_export import _resolve_chart_path, export_report  # noqa: E402
 
-ENTERPRISE_DIR = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst" / "enterprise"
+ENTERPRISE_DIR = _portfolio_reports_root() / "analyst" / "enterprise"
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
 
@@ -131,10 +135,10 @@ def main() -> int:
                 "sections": sections,
                 "charts": charts,
                 "charts_embedded": resolved,
-                "json": str(json_dest.relative_to(PROJECT_ROOT)),
-                "docx": str(docx_dest.relative_to(PROJECT_ROOT)),
+                "json": _served_url(json_dest, PROJECT_ROOT).lstrip("/"),
+                "docx": _served_url(docx_dest, PROJECT_ROOT).lstrip("/"),
                 "docx_url": docx.get("url"),
-                "pdf": str(pdf_dest.relative_to(PROJECT_ROOT)) if pdf_dest else None,
+                "pdf": _served_url(pdf_dest, PROJECT_ROOT).lstrip("/") if pdf_dest else None,
                 "pdf_url": pdf.get("url") if pdf.get("ok") else None,
                 "ok": True,
             }

@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-REPORT_CHARTS = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst" / "charts"
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+REPORT_CHARTS = _portfolio_reports_root() / "analyst" / "charts"
 
 DARK_BG = "#0d0d1a"
 CARD_BG = "#1a1a35"
@@ -38,11 +42,7 @@ def _save(fig, path: Path) -> str:
 
 def chart_url(path: Path | str) -> str:
     p = Path(path)
-    try:
-        rel = p.relative_to(PROJECT_ROOT)
-        return "/" + str(rel).replace("\\", "/")
-    except ValueError:
-        return str(p)
+    return _served_url(p, PROJECT_ROOT)
 
 
 def chart_health_gauge(score: float, status: str = "", stem: str = "health") -> dict:

@@ -25,6 +25,10 @@ os.environ["CIO_OPERATOR_ARTIFACTS_JSONL"] = os.path.join(
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
 # failed on every host where the file says live. A test that exercises the editor sets its own mode.
 os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_mode_tests_"), "absent"))
+# Generated reports resolve to persistent-state (lib/portfolio_reports_root.py). A test that
+# imports a report writer without patching its output dir must not write into the live
+# reports tree (2026-10-09).
+os.environ.setdefault("TRADEAI_PORTFOLIO_REPORTS_ROOT", _tempfile.mkdtemp(prefix="tradeai_portfolio_reports_tests_"))
 # The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
 os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_fail_mode_tests_"), "absent"))
 
