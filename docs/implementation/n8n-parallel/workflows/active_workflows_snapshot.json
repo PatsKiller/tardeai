@@ -1,0 +1,121 @@
+{
+ "schema": "N8nActiveWorkflowSnapshot@v1",
+ "captured_at": "2026-10-09T14:45:17+00:00",
+ "source": "docker exec m8m-n8n-db psql -U n8n -d n8n -tAc (SELECT, active only)",
+ "authority": "READ_ONLY_ADVISORY",
+ "count": 28,
+ "workflows": [
+  {
+   "id": "078e8fcbea0c5020",
+   "name": "n8n-pilot-dispatch"
+  },
+  {
+   "id": "0a170db6744afd7f",
+   "name": "hermes-overnight-pipeline-night-shadow"
+  },
+  {
+   "id": "0d48d2951cdc0cd0",
+   "name": "after-close-pipeline-broker-truth-shadow"
+  },
+  {
+   "id": "128dfb29e4faec7f",
+   "name": "hermes-overnight-pipeline-close-shadow"
+  },
+  {
+   "id": "18b20ea58617ffc2",
+   "name": "platform-maintenance-monthly-shadow"
+  },
+  {
+   "id": "19e0ed9711cfb320",
+   "name": "after-close-pipeline-planning-shadow"
+  },
+  {
+   "id": "21fd15d5f8a4c4da",
+   "name": "n8n-research-intake-consumer"
+  },
+  {
+   "id": "283ceeb030de5e66",
+   "name": "catalyst-calibration-monitor-shadow"
+  },
+  {
+   "id": "2c725c7dfd4ac62f",
+   "name": "finviz-view-contracts-shadow"
+  },
+  {
+   "id": "498d749165a93ff9",
+   "name": "source-attribution-monitor-shadow"
+  },
+  {
+   "id": "4a447dec9837c273",
+   "name": "portfolio-lookthrough-cadence-shadow"
+  },
+  {
+   "id": "4b11eabaa6735a90",
+   "name": "platform-maintenance-weekly-shadow"
+  },
+  {
+   "id": "5966437c872aa18b",
+   "name": "watch-directives-monitor-shadow"
+  },
+  {
+   "id": "6c04dc250b7d6a04",
+   "name": "portfolio-daily-cadence-shadow"
+  },
+  {
+   "id": "722fac0e043ea5c4",
+   "name": "n8n-incident-fanin"
+  },
+  {
+   "id": "8a9162783109e7bb",
+   "name": "platform-maintenance-nightly-shadow"
+  },
+  {
+   "id": "9208ac827e514183",
+   "name": "n8n-lab-watchdog-shadow"
+  },
+  {
+   "id": "a33cd415e30d6f01",
+   "name": "hermes-learning-pipeline-learn-shadow"
+  },
+  {
+   "id": "a8b8cbf625caebb0",
+   "name": "portfolio-monthly-cadence-shadow"
+  },
+  {
+   "id": "aac827ce00ff8ae4",
+   "name": "after-close-pipeline-close-capture-shadow"
+  },
+  {
+   "id": "ae61fa66dba00c9f",
+   "name": "portfolio-weekly-cadence-shadow"
+  },
+  {
+   "id": "bcbcc68b9c8c5e56",
+   "name": "governance-pipeline-shadow"
+  },
+  {
+   "id": "c0d4c7845e5c4fcc",
+   "name": "crontab-snapshot-for-health-agent"
+  },
+  {
+   "id": "c7dc5a8273bf6f44",
+   "name": "hermes-learning-pipeline-tune-shadow"
+  },
+  {
+   "id": "e18d7849b4142927",
+   "name": "maturity-remeasure"
+  },
+  {
+   "id": "e6f62397d5ae2aa2",
+   "name": "lane-governance-packet-weekly-shadow"
+  },
+  {
+   "id": "f4553ff360e21a9f",
+   "name": "premarket-data-pipeline-shadow"
+  },
+  {
+   "id": "ffa6bbfa93ad4056",
+   "name": "generate-analyst-daily-digest-shadow"
+  }
+ ]
+}
