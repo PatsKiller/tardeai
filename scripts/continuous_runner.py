@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse, json, os, sys, time, subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 from dotenv import load_dotenv
 
 
@@ -203,6 +203,37 @@ class CycleState:
         self.sonnet_last:    Dict[str, datetime] = {}
         self.sonnet_plans:   Set[str]         = set()   # tickers with plans today
         self.cat_fingerprints: Dict[str, Set[str]] = {}
+
+    # Persistence (2026-10-09): the 5-minute scalp lane is one process per run, so the "what was already GO /
+    # already alerted" memory must survive between runs or every GO would re-alert every 5 minutes.
+    _SETS = ("prev_go", "halted_seen", "rvol5x_seen", "rvol8x_seen", "sonnet_plans")
+    _DICTS = ("prev_rvol", "prev_score")
+    _TIMES = ("haiku_last", "sonnet_last")
+
+    def to_dict(self) -> dict:
+        d: dict = {k: sorted(getattr(self, k)) for k in self._SETS}
+        d.update({k: dict(getattr(self, k)) for k in self._DICTS})
+        d.update({k: {s: v.isoformat() for s, v in getattr(self, k).items()} for k in self._TIMES})
+        d["cat_fingerprints"] = {s: sorted(v) for s, v in self.cat_fingerprints.items()}
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CycleState":
+        st = cls()
+        for k in cls._SETS:
+            setattr(st, k, set(d.get(k) or []))
+        for k in cls._DICTS:
+            setattr(st, k, dict(d.get(k) or {}))
+        for k in cls._TIMES:
+            out = {}
+            for s, v in (d.get(k) or {}).items():
+                try:
+                    out[s] = datetime.fromisoformat(v)
+                except (TypeError, ValueError):
+                    pass
+            setattr(st, k, out)
+        st.cat_fingerprints = {s: set(v) for s, v in (d.get("cat_fingerprints") or {}).items()}
+        return st
 
     def needs_haiku(self, sym: str, cat_fingerprints: Set[str]) -> bool:
         """Return True if Haiku should re-evaluate this ticker."""
@@ -422,7 +453,8 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
 
 def run_live_cycle(root: Path, run_label: str, date_str: str,
                    state: CycleState, time_str: str,
-                   _timeout: int = 600) -> None:  # 10 min max per live cycle
+                   _timeout: int = 600,  # 10 min max per live cycle
+                   publish_dashboard: bool = True) -> Optional[List[Dict]]:
     sys.path.insert(0, str(root / "scripts"))
 
     try:
@@ -614,7 +646,8 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                 "industry": t.get("industry",""), "sector": t.get("sector",""),
             } for t in scored if t.get("decision") in ("GO","WAIT")]
         }
-        (root / "data" / "live_run_state.json").write_text(_json.dumps(_live_state, indent=2))
+        if publish_dashboard:   # the scalp lane's subset must not replace the full-run live state
+            (root / "data" / "live_run_state.json").write_text(_json.dumps(_live_state, indent=2))
     except Exception as _e:
         print(f"  [live] state write error: {_e}")
 
@@ -695,7 +728,10 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     else:
         print("  [live] no changes  -- alerts suppressed")
 
-    # Refresh dashboard (no PDF/DOCX)
+    # Refresh dashboard (no PDF/DOCX). The 5-min scalp lane scores a scalp-only subset, so it does not
+    # overwrite the main dashboard / delta state (publish_dashboard=False).
+    if not publish_dashboard:
+        return scored
     try:
         from html_dashboard import generate_html_dashboard
         from delta_tracker import compute_delta, save_state, load_state
@@ -712,6 +748,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         _shutil.copy2(html, str(_live))
     except Exception as e:
         print(f"  [live] dashboard error: {e}")
+    return scored
 
 
 # "   "    Full cycle "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   

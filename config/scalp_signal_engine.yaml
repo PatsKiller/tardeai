@@ -55,6 +55,18 @@ universe:
   float_column: float_mm
   float_mm_max: 30            # operator decision 2026-07-27 for momentum_scalp_intraday
   lookback_days: 21           # distinct symbols seen in this window
+  # One feed for both engines (operator 2026-10-09): also watch the live Finviz screener snapshot (refreshed
+  # every 5 min by run_finviz_momentum_scalp_scan → screener_symbol_membership; the same screeners Trade-AI
+  # scans) and today's Trade-AI GO/WAIT/MANUAL_REVIEW names. Same float/price fail-closed rules apply.
+  shared_feeds:
+    enabled: true
+    screener_ids: [prime_setups, watchlist_setups]
+    screener_max_age_min: 30
+    # RTH: Trade-AI's 5-min scalp lane is the Finviz pull (the early screener lane runs 06-11 only)
+    scalp_projection_path: ~/trade-ai-releases/persistent-state/data/trade_ai/scalp_universe_latest.json
+    scalp_projection_max_age_min: 15
+    trade_ai_decisions: [GO, WAIT, MANUAL_REVIEW]
+    trade_ai_exclude_setup_classes: [unenriched_inject]
   # Fail closed (operator 2026-10-05): a symbol needs a KNOWN float <= float_mm_max and a KNOWN
   # price inside the scalp band. Bare social rows with no float (HPE, DELL, CHPT) used to leak in
   # under "float IS NULL OR ...". Float = latest non-null from any scan, else float_lookup below.

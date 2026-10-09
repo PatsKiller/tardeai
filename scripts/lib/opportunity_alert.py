@@ -39,6 +39,10 @@ def _cfg() -> dict[str, Any]:
     return load_config().get("telegram") or {}
 
 
+#: message classes whose own levels are intraday: the CIO line is labelled as the swing view
+SWING_VIEW_CLASSES = ("active_trader_scalp_alert",)
+
+
 def line_for(a: dict[str, Any], total: Optional[int], base: str) -> str:
     rr = (a.get("risk_reward") or {}).get("rr")
     up = a.get("upside_pct")
@@ -89,6 +93,10 @@ def enrich(message: str, *, message_class: str = "operator_alert", projection_pa
                  if s in items and items[s].get("conviction") is not None]
         if not lines:
             return message
+        if message_class in SWING_VIEW_CLASSES:
+            # a scalp alert's R is minutes-scale; the CIO line is the multi-week swing view of the same name.
+            # Said so, or "R:R 3.8x" beside "R 0.04" reads as a contradiction (operator 2026-10-09, XNDU).
+            lines = [ln.replace(MARK, f"{MARK} CIO swing view (not this scalp):", 1) for ln in lines]
         out = message.rstrip() + "\n\n" + "\n".join(lines)
         return out if len(out) <= 4000 else message
     except Exception:  # noqa: BLE001 — an alert is never lost or delayed over an enrichment
