@@ -404,3 +404,29 @@ def test_q3_duration_hints_receipt():
     assert receipt["measured_at"][:4] == "2026"
     assert len(doc["files"]) > 48  # was 48 files from one 2026-09-25 local run
     assert all(isinstance(v, (int, float)) and v > 0 for v in doc["files"].values())
+
+
+def test_q3_ci_log_split_requires_exact_alignment_and_splits_by_weight():
+    ci = _module("quickwins_runner", "scripts/run_cio_hardening_ci.py")
+    log = (
+        "x [PASS] g1 (2 files, 30.0s) 5 passed\n"
+        "noise [PASS] docs_index_drift\n"
+        "y [FAIL] N8N_GATE (1 files, 4.5s) 1 failed\n"
+    )
+    lines = ci.ci_unit_lines(log)
+    assert lines == [("g1", 2, 30.0), ("N8N_GATE", 1, 4.5)]
+    units = [("g1", ["tests/a.py", "tests/b.py"]), ("N8N_GATE", ["tests/c.py"])]
+    out = ci.split_ci_units(units, lines, {"tests/a.py": 2.0, "tests/b.py": 1.0})
+    assert out == {"tests/a.py": 20.0, "tests/b.py": 10.0, "tests/c.py": 4.5}
+    # a log from a different plan is never attributed
+    assert ci.split_ci_units(units[:1], lines, {}) is None
+    assert ci.split_ci_units([("g1", ["tests/a.py"]), units[1]], lines, {}) is None
+    assert ci.split_ci_units([("other", units[0][1]), units[1]], lines, {}) is None
+
+
+def test_q3_hints_doc_scales_and_records_the_receipt():
+    ci = _module("quickwins_runner_doc", "scripts/run_cio_hardening_ci.py")
+    doc = ci.duration_hints_doc({"tests/a.py": 10.0, "tests/b.py": 5.0}, jobs=4, scale=0.3, receipt={"source": "x"})
+    assert doc["files"] == {"tests/a.py": 3.0}  # 1.5 s falls under the 2 s floor
+    assert doc["receipt"]["scale_to_ci"] == 0.3 and doc["receipt"]["source"] == "x"
+    assert doc["receipt"]["refresh"].startswith("weekly") and "--hints-from-ci-runs" in doc["note"]

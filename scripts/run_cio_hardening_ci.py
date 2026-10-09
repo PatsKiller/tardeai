@@ -11,6 +11,7 @@ Exit 0 only if all gates pass.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import re
 import subprocess
@@ -4020,11 +4021,12 @@ def duration_hints_doc(
             "Per-file wall seconds (one pytest process per file). Used ONLY to order and pack work in "
             "run_cio_hardening_ci.py --profile fast, and as the PR selector's budget estimate; never "
             "decides which tests a full run executes. Files below 2 s are omitted (default weight 1 s). "
-            "REFRESH WEEKLY (and after a large test batch lands): with the CI dependency set "
-            "(pytest pyyaml requests python-docx ruff; no psycopg2) run "
-            "`scripts/run_cio_hardening_ci.py --write-duration-hints --jobs 4 --hints-scale <CI/host>` "
-            "and commit the result with its receipt (scale: see duration_hints_doc). Stale hints "
-            "mis-pack work (CI design audit 2026-10-09, P3)."
+            "REFRESH WEEKLY (and after a large test batch lands): "
+            "`scripts/run_cio_hardening_ci.py --hints-from-ci-runs 5` (per-file CI seconds from the last "
+            "5 green push/main job logs, each run's plan replayed from its own commit), then commit the "
+            "result with its receipt. Without gh: `--write-duration-hints --jobs 4 --hints-scale <CI/host>` "
+            "with the CI dependency set (pytest pyyaml requests python-docx ruff; no psycopg2). Stale "
+            "hints mis-pack work (CI design audit 2026-10-09, P3)."
         ),
         "receipt": {
             "measured_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -4039,6 +4041,126 @@ def duration_hints_doc(
         },
         "files": files,
     }
+
+
+_CI_UNIT_RE = re.compile(r"\[(?:PASS|FAIL)\] ([A-Za-z0-9_]+) \((\d+) files, ([0-9.]+)s\)")
+
+
+def ci_unit_lines(log_text: str) -> list[tuple[str, int, float]]:
+    """(gate, n_files, seconds) for every ``[PASS]/[FAIL] gate (k files, Xs)`` unit line, in order."""
+    return [(m.group(1), int(m.group(2)), float(m.group(3))) for m in _CI_UNIT_RE.finditer(log_text)]
+
+
+def split_ci_units(units, lines, weights: dict[str, float]) -> dict[str, float] | None:
+    """Per-file CI seconds from one run: ``units`` is that run's own plan (parallel + serial, in
+    execution order), ``lines`` its log's unit lines. A multi-file unit's seconds are split by
+    ``weights``. None unless every unit lines up (same gate, same file count), so a log from a
+    different plan can never be misattributed."""
+    if len(units) != len(lines):
+        return None
+    out: dict[str, float] = {}
+    for (name, files), (gate, n, secs) in zip(units, lines):
+        if name != gate or len(files) != n:
+            return None
+        w = [weights.get(f, DEFAULT_FILE_SECONDS) for f in files]
+        total = sum(w) or 1.0
+        for f, wi in zip(files, w):
+            out[f] = secs * wi / total
+    return out
+
+
+def write_duration_hints_from_ci(runs: int = 5) -> int:
+    """Rewrite the hints from the last ``runs`` successful push/main runs' job logs (gh CLI).
+
+    Each run's plan is replayed from ITS OWN commit (runner, tests and hints via git archive),
+    so the log's unit lines map to exact file lists; then the per-file median across runs.
+    """
+    import io
+    import json
+    import statistics
+    import tarfile
+    import tempfile
+
+    def gh(*args: str) -> str:
+        return subprocess.run(["gh", *args], cwd=str(REPO), capture_output=True, text=True, check=True).stdout
+
+    listed = json.loads(
+        gh(
+            "run",
+            "list",
+            "--workflow",
+            "cio-production-hardening-ci.yml",
+            "--event",
+            "push",
+            "--branch",
+            "main",
+            "--status",
+            "success",
+            "-L",
+            str(runs),
+            "--json",
+            "databaseId,headSha",
+        )
+    )
+    repo = gh("repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner").strip()
+    weights = load_duration_hints()
+    per_file: dict[str, list[float]] = {}
+    used = []
+    for run in listed:
+        rid, sha = str(run["databaseId"]), run["headSha"]
+        jobs = json.loads(gh("run", "view", rid, "--json", "jobs"))["jobs"]
+        job = next((j for j in jobs if j.get("name") == "cio-hardening"), None)
+        if job is None:
+            continue
+        lines = ci_unit_lines(gh("api", f"repos/{repo}/actions/jobs/{job['databaseId']}/logs"))
+        with tempfile.TemporaryDirectory() as tmp:
+            arc = subprocess.run(
+                [
+                    "git",
+                    "archive",
+                    "--format=tar",
+                    sha,
+                    "scripts/run_cio_hardening_ci.py",
+                    "tests",
+                    "config/ci_test_duration_hints.json",
+                ],
+                cwd=str(REPO),
+                capture_output=True,
+                check=True,
+            ).stdout
+            with tarfile.open(fileobj=io.BytesIO(arc)) as tf:
+                tf.extractall(tmp, filter="data")
+            spec = importlib.util.spec_from_file_location(
+                f"cio_ci_{rid}", Path(tmp) / "scripts" / "run_cio_hardening_ci.py"
+            )
+            mod = importlib.util.module_from_spec(spec)
+            assert spec.loader is not None
+            spec.loader.exec_module(mod)
+            parallel, serial = mod.plan_units(mod.GATES)
+        split = split_ci_units(parallel + serial, lines, weights)
+        print(f"run {rid} {sha[:9]}: {len(lines)} unit lines, {'aligned' if split else 'NOT aligned -- skipped'}")
+        if split:
+            used.append(rid)
+            for f, secs in split.items():
+                per_file.setdefault(f, []).append(secs)
+    if not used:
+        print("no run's log aligned with its replayed plan; hints unchanged")
+        return 1
+    measured = {f: statistics.median(v) for f, v in per_file.items()}
+    doc = duration_hints_doc(
+        measured,
+        jobs=4,
+        receipt={
+            "source": "ci_job_logs",
+            "runs": used,
+            "files_measured": len(measured),
+            "python": "CI runner (setup-python 3.13)",
+            "psycopg2_present": False,
+        },
+    )
+    DURATION_HINTS_PATH.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"wrote {DURATION_HINTS_PATH.relative_to(REPO)} ({len(doc['files'])} files >= 2 s of {len(measured)})")
+    return 0
 
 
 def write_duration_hints(*, jobs: int, scale: float = 1.0) -> int:
@@ -4093,6 +4215,13 @@ def main(argv: list[str] | None = None) -> int:
         default=1.0,
         help="--write-duration-hints: multiply host seconds by this CI/host ratio (recorded in the receipt)",
     )
+    ap.add_argument(
+        "--hints-from-ci-runs",
+        type=int,
+        default=0,
+        metavar="N",
+        help="rewrite the hints from the last N successful push/main CI runs' job logs (gh CLI; preferred)",
+    )
     args = ap.parse_args(argv)
 
     os.chdir(REPO)
@@ -4101,6 +4230,8 @@ def main(argv: list[str] | None = None) -> int:
     # Ensure pytest interdicts telegram
     os.environ.setdefault("PYTEST_ADDOPTS", "")
 
+    if args.hints_from_ci_runs:
+        return write_duration_hints_from_ci(args.hints_from_ci_runs)
     if args.write_duration_hints:
         return write_duration_hints(jobs=args.jobs, scale=args.hints_scale)
 
