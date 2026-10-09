@@ -194,14 +194,19 @@ def test_23_13_program_window_push_budget_and_standing_merge_approval():
     assert re.search(r"\b(?:4|four)\b[^.]*\bpush", f, re.I), "push budget of 4 for n8nmat/*"
     assert WINDOW_END in f
     for frag in (
-        "merge queue",
         "agent-governance",
         "cio-hardening",
         "release-readiness",
         "exact head",
-        "review comment",
+        "review verdict",
+        "program board",
+        "self-approval",
+        "main CI is green on the exact merged SHA",
     ):
         assert frag in f, frag
+    # the merge queue is not available on a user-owned repository; no condition may depend on it
+    assert "goes through the merge queue" not in f
+    assert "operator enables the GitHub merge queue" not in _flat(AGENTS)
     assert "tradeai_push_budget.py" in f and ".githooks/pre-push" in f
     # the standing approval never covers the policy, the hooks, the guard or the broker file set
     for frag in ("AGENTS.md", ".githooks/", "bin/guard"):

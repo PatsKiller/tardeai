@@ -325,11 +325,17 @@ under a standing approval written into AGENTS.md. AGENTS.md 4.1.0 §23.13
 (PROPOSED) grants a standing 48 h merge approval for `n8nmat/*` PRs only when
 all three hold:
 
-1. a review comment is posted on the PR;
+1. Agent A's review verdict for the exact head is recorded on the program
+   board (a GitHub review comment by Agent A on a PR it merges is blocked as
+   self-approval);
 2. the required checks `agent-governance`, `cio-hardening` and
    `release-readiness` are green on the exact head SHA being merged;
-3. the merge goes through the GitHub merge queue (if the merge queue is not
-   enabled on `main`, the standing approval does not apply).
+3. nothing goes live until main CI is green on the exact merged SHA (the
+   promote gate).
+
+There is no merge queue (the repository is user-owned) and strict up-to-date
+protection is off, so main CI on the merged SHA is the check that a green PR
+still works on the `main` it merged into.
 
 It expires at the `Expires-At` timestamp stated in §23.13 (never later than
 2026-10-12T23:59:59-04:00) and does not cover the PR classes §23.13 excludes.

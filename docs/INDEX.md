@@ -1090,7 +1090,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | Phase 182B: Live Readiness Scoring Model | review_required | OK | `a4b194f75fab` |
 | `docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md` | Agent operating standards v1 (companion to AGENTS.md) | review_required | MISSING HEADER | `607b53ab566b` |
 | `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md` | AGENTS.md 1.3.0 — authority amendment (RATIFIED 2026-09-27) | review_required | OK | `4f3b0923ca4c` |
-| `docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` | Repository protection — actions only a repository administrator can take | review_required | MISSING HEADER | `e3fba5c2de78` |
+| `docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` | Repository protection — actions only a repository administrator can take | review_required | MISSING HEADER | `8d451c290ade` |
 | `docs/governance/agent-standards/TRADING_SESSION_GRANT_CONTRACT.md` | TradingSessionGrant@v1 — contract and enforcement point | review_required | OK | `98355d33c64d` |
 | `docs/governance/phase9c_scheduled_maturity_board/00_README.md` | Phase 9C — Scheduled Maturity Control Board | current_phase_keep | OK | `514ad61e8c46` |
 | `docs/governance/phase_gov1_scheduled_facts_a1a/00_README.md` | GOV-1 — Scheduled System Facts and A1A Checks | current_phase_keep | OK | `174c5a2c8411` |

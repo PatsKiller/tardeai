@@ -46,12 +46,14 @@ nothing until an administrator turns the matching settings on.
    merging, can merge a green PR. Items 2 and 4 are what would make merge authority real (item 3 is now on).
 8. Turn on GitHub **secret scanning push protection**, as a server-side layer behind
    `scripts/check_no_secrets.py`.
-9. Enable the GitHub **merge queue on `main`**. Expected by AGENTS.md 4.1.0 §23.13 (PROPOSED): the
-   standing 48 h merge approval for `n8nmat/*` PRs applies only to merges that go through the merge
-   queue, with `agent-governance`, `cio-hardening` and `release-readiness` green on the exact head.
-   **Not performed by any agent** (operator-only, §17). Details in the section below.
+9. ~~Enable the GitHub **merge queue on `main`**~~ **NOT AVAILABLE for user-owned repositories**
+   (measured 2026-10-09: `owner.type: "User"`). AGENTS.md 4.1.0 §23.13 no longer depends on it: the
+   standing merge approval rests on Agent A's board review verdict, the three required checks green on
+   the exact head, and main CI green on the merged SHA before any promote. The section below is kept
+   as the record and applies only if the repository is ever transferred to an organization (an
+   operator decision).
 
-## Action 9 — enable the merge queue on `main` (operator)
+## Action 9 — enable the merge queue on `main` (operator) — NOT AVAILABLE (user-owned repository)
 
 Preconditions found 2026-10-09 (read-only `gh api repos/PatsKiller/tardeai` and `.../rulesets`):
 
