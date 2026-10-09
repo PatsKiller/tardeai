@@ -127,6 +127,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/r20-r24/WORKFLOW_ACCEPTANCE_HARNESS.md` | Workflow Acceptance Harness | review_required | OK | `eb1687008437` |
 | `docs/_evidence/r20/R20_VS_R21.md` | R20 live specialist status vs R21 admin visibility | review_required | OK | `b36cacccd2e2` |
 | `docs/_evidence/r21/R21_1_DETAIL_ENDPOINTS.md` | R21.1 Detail Endpoints | review_required | OK | `7718fd1bdf0b` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/00-current-baseline.md` | Current runtime baseline | review_required | OK | `5450148b6e41` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/07-n8n-security-audit.md` | Installed n8n security audit | review_required | OK | `ced3f7d164d1` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/11-n2-dependency-design.md` | N2 receipt dependency review — source only, NO_GO | review_required | MISSING HEADER | `a1279aa228b2` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/12-consolidation-review.md` | Cron consolidation re-measurement | review_required | MISSING HEADER | `5d6b1fe72112` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/18-19-model-and-vector-review.md` | Model routing and embedding load — separate governed decisions | review_required | MISSING HEADER | `13da3fbb8461` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/20-final-report.md` | TradeAI runtime convergence due diligence — 2026-10-08 | review_required | MISSING HEADER | `626eebbbe301` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/20-operator-change-packet.md` | Operator-only runtime packet — prepared, NOT APPLIED | review_required | MISSING HEADER | `85cb1ab42d5a` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md` | Source validation — 2026-10-08 | review_required | MISSING HEADER | `746c0fb2e84e` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |
@@ -1439,6 +1447,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | review_required | OK | `84e7bcaab5cd` |
 | `docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md` | 19 — N1 cutover packet (2026-10-08) | review_required | OK | `1c12618061f9` |
 | `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |
+| `docs/implementation/n8n-parallel/21-agent2-w2-n6-20261008.md` | Agent 2 W2 — N6 schedules and explicit activation blockers | review_required | OK | `5fd263547725` |
 | `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `9d5cc13f4722` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |
 | `docs/implementation/n8n-parallel/proposals/S1-portfolio-server-bind.md` | Proposal S1 — stop serving the Trade AI API unauthenticated on 0.0.0.0:7777 | review_required | OK | `5345f335f12b` |
@@ -1812,7 +1821,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HERMES_TICKER_INTELLIGENCE_WIRING_CLOSEOUT_2026-08-23.md` | Hermes Ticker Intelligence Wiring Closeout | review_required | OK | `d7e283f4cd5a` |
 | `docs/ops/HOLDINGS_STATE_RECONCILIATION_2026-09-01.md` | Holdings state — per-file reconciliation plan | review_required | OK | `8f08e31c9da8` |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 | review_required | OK | `613aea387bc6` |
-| `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) | review_required | MISSING HEADER | `bd4a30866e4a` |
+| `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) | review_required | MISSING HEADER | `ac7ddd15c21f` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
