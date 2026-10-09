@@ -3663,6 +3663,15 @@ GATES = [
             "tests/test_bridge_executor_hardening_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: AGENTS_GUARD_HOOK — 2026-10-09 Claude Code PreToolUse hook enforcing the AGENTS.md hard rails
+        # (broker, delete, remote routing, secrets, live ops behind guard grants, governed served paths); log-only
+        # first week, fail-open on its own errors, redacted AgentsGuardDecision@v1 log. Hermetic: tmp HOME/state/ledger.
+        "AGENTS_GUARD_HOOK",
+        [
+            "tests/test_agents_guard_hook_20261009.py",
+        ],
+    ),
 ]
 
 
