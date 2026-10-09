@@ -501,3 +501,21 @@ def test_heartbeat_runner_reports_pid_and_beats_and_enforces_the_deadline(tmp_pa
     with pytest.raises(subprocess.TimeoutExpired):
         run([sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.2, env=dict(os.environ), cwd=tmp_path)
 
+
+def test_serve_survives_a_locked_ledger_tick(rig, monkeypatch):
+    import sqlite3
+
+    ex = rig.make({}, workers=2)
+    ex.quiet = True
+    calls = {"n": 0}
+
+    def step():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise sqlite3.OperationalError("database is locked")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(ex, "step", step)
+    with pytest.raises(KeyboardInterrupt):
+        ex.serve(poll_s=0.01)
+    assert calls["n"] == 2

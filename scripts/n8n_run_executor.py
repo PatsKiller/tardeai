@@ -37,6 +37,7 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -838,8 +839,13 @@ class ExecutorV2:
             self.wait(poll_s)
 
     def serve(self, *, poll_s: float = V2_POLL_S) -> None:
+        """Daemon loop. A transient ledger error (F19: ``database is locked`` past the busy timeout) is logged and
+        retried next tick: exiting would let systemd kill the cgroup and every running lane with it."""
         while True:
-            self.step()
+            try:
+                self.step()
+            except sqlite3.OperationalError as exc:
+                self._log({"executor": "step_error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
             self.wait(poll_s)
 
 
