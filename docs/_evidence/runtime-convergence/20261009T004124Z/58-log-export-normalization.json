@@ -1,0 +1,26 @@
+{
+  "evidence_class": "SOURCE_ONLY",
+  "exports": [
+    {
+      "file": "51-n2-pre-regeneration-attempt.log",
+      "raw_local_file": "docs/_evidence/runtime-convergence/20261009T004124Z/51-n2-pre-regeneration-attempt.raw.log",
+      "raw_sha256": "14ef1186044c3417e617ea273636ddec3942745cf9866ed92561ff8f46b189e2",
+      "export_sha256": "5b75f528746786f3f35327b6997fa1f4efb87aa45bcb3ce3b5a5a65fc1fb62c9",
+      "transformation": "trailing whitespace only; failed verdict unchanged"
+    },
+    {
+      "file": "56-n1-intent-first-regression-attempt.log",
+      "raw_local_file": "docs/_evidence/runtime-convergence/20261009T004124Z/56-n1-intent-first-regression-attempt.raw.log",
+      "raw_sha256": "8cb87b1b08d9d86aaf865cdf016cc2f3cb144d35f3f0c78baa4e1b78fa70257b",
+      "export_sha256": "fd47334e31ea4c10edbd130b3499e47b0355f35a60ef34f4213d505ced8e980f",
+      "transformation": "trailing whitespace only; failed verdict unchanged"
+    },
+    {
+      "file": "56-n1-intent-negative-prior.log",
+      "raw_local_file": "docs/_evidence/runtime-convergence/20261009T004124Z/56-n1-intent-negative-prior.raw.log",
+      "raw_sha256": "2ef159b5c2b7f8b66a6994aad266cba9d3f31e4a81b5767c5dee8b4cc0471ab6",
+      "export_sha256": "56e2f516f2ba6e5d13bf00338794f572702a5164c9bb2fded343737f91acdf51",
+      "transformation": "trailing whitespace only; failed verdict unchanged"
+    }
+  ]
+}

@@ -1,0 +1,242 @@
+{
+  "schema": "N1OwnershipObservation@v1",
+  "evidence_class": "OBSERVED_HOST",
+  "as_of": "2026-10-09T12:43:44.158694+00:00",
+  "mutations": false,
+  "CURRENT": "/home/johnclaw/trade-ai-releases/portfolio-server/ea90bd880-main-exact-phase2-20261008-232541",
+  "CURRENT_SHA": "ea90bd8807f6e258a013e9f5fd7e6d989e090e89",
+  "workflows": [
+    {
+      "id": "078e8fcbea0c5020",
+      "name": "n8n-pilot-dispatch",
+      "active": true,
+      "activeVersionId": "721fb59b-eb8e-4760-99e4-60282b987581",
+      "versionId": "721fb59b-eb8e-4760-99e4-60282b987581"
+    },
+    {
+      "id": "0a170db6744afd7f",
+      "name": "hermes-overnight-pipeline-night-shadow",
+      "active": true,
+      "activeVersionId": "b2678933-b7e1-402e-b565-3bd989a27f5a",
+      "versionId": "b2678933-b7e1-402e-b565-3bd989a27f5a"
+    },
+    {
+      "id": "0d48d2951cdc0cd0",
+      "name": "after-close-pipeline-broker-truth-shadow",
+      "active": true,
+      "activeVersionId": "d6e47033-441c-4589-bd4e-b3bbecedee4c",
+      "versionId": "d6e47033-441c-4589-bd4e-b3bbecedee4c"
+    },
+    {
+      "id": "128dfb29e4faec7f",
+      "name": "hermes-overnight-pipeline-close-shadow",
+      "active": true,
+      "activeVersionId": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24",
+      "versionId": "0d9a5efe-c8bd-4423-9ce6-7971acf43c24"
+    },
+    {
+      "id": "18b20ea58617ffc2",
+      "name": "platform-maintenance-monthly-shadow",
+      "active": true,
+      "activeVersionId": "267ad403-f2d8-4655-9138-e31571ce7bf8",
+      "versionId": "267ad403-f2d8-4655-9138-e31571ce7bf8"
+    },
+    {
+      "id": "19e0ed9711cfb320",
+      "name": "after-close-pipeline-planning-shadow",
+      "active": true,
+      "activeVersionId": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7",
+      "versionId": "a3f9af99-47d3-4b1e-89df-bd2fa4c20fd7"
+    },
+    {
+      "id": "21fd15d5f8a4c4da",
+      "name": "n8n-research-intake-consumer",
+      "active": true,
+      "activeVersionId": "d2719005-4750-44d2-b7fc-51aad9f86dee",
+      "versionId": "d2719005-4750-44d2-b7fc-51aad9f86dee"
+    },
+    {
+      "id": "2yPuOGW9yYtJsoYk",
+      "name": "n8n-bench-nodes",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "257ee2a5-3b61-44d4-8b2e-e2c8b290e2c4"
+    },
+    {
+      "id": "4a447dec9837c273",
+      "name": "portfolio-lookthrough-cadence-shadow",
+      "active": true,
+      "activeVersionId": "7fee50e1-507f-4b75-9f08-447ee3965b5b",
+      "versionId": "7fee50e1-507f-4b75-9f08-447ee3965b5b"
+    },
+    {
+      "id": "4b11eabaa6735a90",
+      "name": "platform-maintenance-weekly-shadow",
+      "active": true,
+      "activeVersionId": "8d6df53f-fd8c-406d-b326-f6f88331d102",
+      "versionId": "8d6df53f-fd8c-406d-b326-f6f88331d102"
+    },
+    {
+      "id": "5439cd4d82e1f305",
+      "name": "crontab-snapshot-for-health-agent-shadow",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "a69e14b6-6b7a-4880-a023-c9ebf5fa1eb5"
+    },
+    {
+      "id": "577f9dfaede632f3",
+      "name": "n8n-research-intake-consumer-shadow",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "d60156e8-c875-47cb-bdb6-7610a5c527e8"
+    },
+    {
+      "id": "6c04dc250b7d6a04",
+      "name": "portfolio-daily-cadence-shadow",
+      "active": true,
+      "activeVersionId": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb",
+      "versionId": "33bbfc75-3deb-45b8-bd07-6bee781eb4cb"
+    },
+    {
+      "id": "722fac0e043ea5c4",
+      "name": "n8n-incident-fanin",
+      "active": true,
+      "activeVersionId": "e6844480-561f-4f16-ba43-9879cfa07538",
+      "versionId": "e6844480-561f-4f16-ba43-9879cfa07538"
+    },
+    {
+      "id": "8a9162783109e7bb",
+      "name": "platform-maintenance-nightly-shadow",
+      "active": true,
+      "activeVersionId": "b830c2c1-de89-4812-a7ce-208bd036818a",
+      "versionId": "b830c2c1-de89-4812-a7ce-208bd036818a"
+    },
+    {
+      "id": "9208ac827e514183",
+      "name": "n8n-lab-watchdog-shadow",
+      "active": true,
+      "activeVersionId": "d4191382-aa72-44c4-93ef-64ca80ff788e",
+      "versionId": "d4191382-aa72-44c4-93ef-64ca80ff788e"
+    },
+    {
+      "id": "Bi002YOPSpZOQpEo",
+      "name": "n8n-bench-error",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "adb965c1-57da-438e-8dde-e3248bfe00e0"
+    },
+    {
+      "id": "GXwhbRkwsGcYZxgn",
+      "name": "n8n-monitor-dof",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "8ced2415-3edb-4044-8eb6-fc8df273d3b1"
+    },
+    {
+      "id": "a26114588930ae9b",
+      "name": "maturity-remeasure-shadow",
+      "active": true,
+      "activeVersionId": "02df9385-f8df-43cd-8c0d-fa1389479760",
+      "versionId": "02df9385-f8df-43cd-8c0d-fa1389479760"
+    },
+    {
+      "id": "a33cd415e30d6f01",
+      "name": "hermes-learning-pipeline-learn-shadow",
+      "active": true,
+      "activeVersionId": "c80e187e-0b61-4795-a673-2416d6c942ce",
+      "versionId": "c80e187e-0b61-4795-a673-2416d6c942ce"
+    },
+    {
+      "id": "a8b8cbf625caebb0",
+      "name": "portfolio-monthly-cadence-shadow",
+      "active": true,
+      "activeVersionId": "934d34eb-56a2-4322-b838-fff6dcc8f2be",
+      "versionId": "934d34eb-56a2-4322-b838-fff6dcc8f2be"
+    },
+    {
+      "id": "aac827ce00ff8ae4",
+      "name": "after-close-pipeline-close-capture-shadow",
+      "active": true,
+      "activeVersionId": "12acb54b-1339-4937-9f27-845e89a36549",
+      "versionId": "12acb54b-1339-4937-9f27-845e89a36549"
+    },
+    {
+      "id": "ae61fa66dba00c9f",
+      "name": "portfolio-weekly-cadence-shadow",
+      "active": true,
+      "activeVersionId": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd",
+      "versionId": "2da5c16f-4f6d-4270-9a24-5a96f54cacfd"
+    },
+    {
+      "id": "baddad5487f9c288",
+      "name": "n8n-pilot-dispatch-shadow",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "b7949bcc-c8c1-4bf5-9533-01417961da97"
+    },
+    {
+      "id": "bcbcc68b9c8c5e56",
+      "name": "governance-pipeline-shadow",
+      "active": true,
+      "activeVersionId": "975a7e41-48e2-424f-80f3-e69af419c515",
+      "versionId": "975a7e41-48e2-424f-80f3-e69af419c515"
+    },
+    {
+      "id": "c0d4c7845e5c4fcc",
+      "name": "crontab-snapshot-for-health-agent",
+      "active": true,
+      "activeVersionId": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda",
+      "versionId": "5ef056b6-7fc1-4463-9bfa-afb3548bbdda"
+    },
+    {
+      "id": "c7dc5a8273bf6f44",
+      "name": "hermes-learning-pipeline-tune-shadow",
+      "active": true,
+      "activeVersionId": "cdb973be-e2c4-442f-9a84-7a1721e13a44",
+      "versionId": "cdb973be-e2c4-442f-9a84-7a1721e13a44"
+    },
+    {
+      "id": "e511583d42831b8b",
+      "name": "n8n-incident-fanin-shadow",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "f70c3aeb-376e-4387-8a89-f50665f5a0e9"
+    },
+    {
+      "id": "e6f62397d5ae2aa2",
+      "name": "lane-governance-packet-weekly-shadow",
+      "active": true,
+      "activeVersionId": "2b037961-d9d0-4dfc-861c-44f380534cc6",
+      "versionId": "2b037961-d9d0-4dfc-861c-44f380534cc6"
+    },
+    {
+      "id": "f4553ff360e21a9f",
+      "name": "premarket-data-pipeline-shadow",
+      "active": true,
+      "activeVersionId": "faf1e382-6146-45e6-97b5-78d2c46c501c",
+      "versionId": "faf1e382-6146-45e6-97b5-78d2c46c501c"
+    },
+    {
+      "id": "s57KBllvqf6Jb5xF",
+      "name": "n8n-monitor-trade-ai",
+      "active": false,
+      "activeVersionId": null,
+      "versionId": "dd9dd637-841f-4265-91ba-dee14947d4cf"
+    }
+  ],
+  "selected_host_requests_in_flight": [],
+  "container": {
+    "id": "8e64a8847b612eda36a9e34569b8dc9ed8dffd5e117f0843f014e7f1c0348b68",
+    "image_id": "sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c",
+    "state": "running",
+    "started_at": "2026-10-09T02:03:48.705961248Z",
+    "restart_count": 0
+  },
+  "cron_sha256": "b336c72c5c122ae5eeb7e664d6fa767f5dbd3ab1697ea63493c7c98120f65974",
+  "selected_retirement_tag_counts": {
+    "n8n-incident-fanin": 1,
+    "crontab-snapshot-for-health-agent": 1,
+    "n8n-pilot-dispatch": 1,
+    "n8n-research-intake-consumer": 1
+  }
+}

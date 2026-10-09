@@ -142,8 +142,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261009T004124Z/31-rollout-status.md` | Runtime convergence rollout and source remediation status | review_required | OK | `4018f6134fc2` |
 | `docs/_evidence/runtime-convergence/20261009T004124Z/38-rollback-readiness.md` | N1 per-lane rollback and renewed acceptance packet | review_required | OK | `6688f9c9bdf0` |
 | `docs/_evidence/runtime-convergence/20261009T004124Z/39-independent-source-review.md` | Independent source review and cadence regression evidence | review_required | OK | `0cf3c6d7f2cc` |
-| `docs/_evidence/runtime-convergence/20261009T004124Z/40-program-closeout.md` | TradeAI runtime convergence program closeout | review_required | OK | `687d4c911fa1` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/40-program-closeout.md` | TradeAI runtime convergence program closeout | review_required | OK | `0d50dc53f646` |
 | `docs/_evidence/runtime-convergence/20261009T004124Z/41-source-cadence-correction.md` | N1 scheduler intent and cadence source correction | review_required | OK | `dfa804697335` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/48-w4-source-remediation.md` | Host routing and streaming source remediation | review_required | OK | `36d436457e8c` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/51-n2-receipt-gating-correction.md` | N2 predecessor proof and bounded polling correction | review_required | OK | `d0481f395ec6` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/55-corrective-rollout-plan.md` | Corrective deployment and N1 recovery plan | review_required | OK | `d6cbd2d641aa` |
+| `docs/_evidence/runtime-convergence/20261009T004124Z/60-corrective-status.md` | TradeAI corrective status supplement — 2026-10-09 | review_required | MISSING HEADER | `1971e4e4f6df` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |
@@ -1453,7 +1457,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md` | Cron consolidation — the 487 lines, what overlaps, what to merge, what to leave alone | review_required | MISSING HEADER | `054270f4802e` |
 | `docs/implementation/n8n-parallel/14-execution-week-20261008.md` | Execution plan — cron close-out and n8n Phase 2 in one week (2026-10-07 → 2026-10-14) | review_required | MISSING HEADER | `bd4d849645a2` |
 | `docs/implementation/n8n-parallel/15-pgvector-migration-decision-20261008.md` | pgvector migration of `content_embeddings` — decision packet (2026-10-08) | review_required | MISSING HEADER | `aa88f58c8ec5` |
-| `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | review_required | OK | `3bf623a3f9a5` |
+| `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | review_required | OK | `84e7bcaab5cd` |
 | `docs/implementation/n8n-parallel/18-ai-routing-architecture-20261008.md` | AI routing architecture — governed bridge (n8n program W4, 2026-10-08) | review_required | OK | `f3394b71114f` |
 | `docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md` | 19 — N1 cutover packet (2026-10-08) | review_required | OK | `1c12618061f9` |
 | `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |

@@ -1,0 +1,38 @@
+{
+  "schema": "FinalCorrectiveLocalAcceptance@v1",
+  "evidence_class": "TEST_ONLY",
+  "source_checkpoint": "f0549d44452f792192100132a0ba1d3c9904777f",
+  "flags": {
+    "targeted_green": true,
+    "regression_green": true,
+    "release_equivalent_green": true,
+    "authority_green": true,
+    "ready_to_request_sync": true
+  },
+  "profile": "fast",
+  "parallel_units": 339,
+  "serial_gates": 20,
+  "log_sha256": "b9582ca9d77519760de236a133700868e40da02fb115a2a8632a564c06bbd4ec",
+  "source_sha256": {
+    "config/lane_registry.json": "15f467ecd6f19b149a1b2d2d202244b6fdc4c4876054fdcaaa843c3214ab36fd",
+    "linux_launchers/run_lookthrough.sh": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+    "linux_launchers/run_pg_backup.sh": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+    "linux_launchers/run_portfolio.sh": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+    "linux_launchers/run_portfolio_monthly.sh": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+    "linux_launchers/run_portfolio_weekly.sh": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+    "linux_launchers/run_price_cache.sh": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+    "scripts/lib/cio_governed_model_bridge.py": "315276f8160a19f6a6dc8735c14596dc47a728849bb2221dc01f2ca6531ae726",
+    "scripts/lib/lane_registry.py": "033b9bbd61aacad266c2b7d41a7ba1b0d2e08fb14341f03c47ec4e7851201ae2",
+    "scripts/n8n_run_relay.py": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc",
+    "scripts/n8n_workflow_templates.py": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345",
+    "scripts/pipelines/cutover/_cutover.py": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+    "tests/test_lane_registry_n8n_kind_20261008.py": "6a4b1fd4eab1aa9f61416e9c1cd7222a765b83af1430bbe8a821ab783db88169",
+    "tests/test_llm_routing_policy_20261008.py": "13827febc4ad8dc9ff304ff1e1b8284101d40479c71d6cbe7ae3b4fd2bc3795c",
+    "tests/test_n8n_lane_cutover_20261008.py": "8a32e154bb972c1b79bd40d98544953278967e8ca0d462dd56c9041714a463ea",
+    "tests/test_n8n_run_relay_20261008.py": "bf34157ece3144e6db9282d4f5cf4419d727dfa1aaafe960ed2b332ac81c9261",
+    "tests/test_n8n_workflow_templates_20261008.py": "c07a01b95bb44ac4b86853652af8c75393edad81d24702207350e4ffcc79e17c",
+    "tests/test_scheduler_launcher_roots.py": "130fa77d2bb24e0b10a64928b80dd872586a717e12c0896d2c6112eddbd34cfa"
+  },
+  "runtime_deployment_claim": false,
+  "full_program_source_acceptance": "BLOCKED"
+}

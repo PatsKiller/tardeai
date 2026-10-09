@@ -1,0 +1,43 @@
+{
+  "evidence_class": "SOURCE_ONLY",
+  "meaning": "COORDINATION_ONLY; no runtime authority",
+  "lease": {
+    "lease_id": "29ceb237-16da-42b6-ad59-6e0fc5bea4cf",
+    "session_id": "5f8557f9-b6d8-4380-8775-2913d8035230",
+    "agent_id": "root/runtime-convergence",
+    "paths": [
+      "config/lane_registry.json",
+      "docs/implementation/n8n-parallel/workflows/generated/INDEX.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth-shadow.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-broker-truth.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning-shadow.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/after-close-pipeline-planning.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune-shadow.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-learning-pipeline-tune.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night-shadow.json",
+      "docs/implementation/n8n-parallel/workflows/generated/pending/hermes-overnight-pipeline-night.json",
+      "scripts/n8n_run_relay.py",
+      "scripts/n8n_workflow_templates.py",
+      "tests/test_lane_registry_n8n_kind_20261008.py",
+      "tests/test_n8n_run_relay_20261008.py",
+      "tests/test_n8n_workflow_templates_20261008.py",
+      "docs/_evidence/runtime-convergence/20261009T004124Z",
+      "docs/INDEX.md"
+    ],
+    "stores": [
+      "portfolio-server-exact-main-rollout"
+    ],
+    "issued_at_utc": 1791549271.7338583,
+    "expires_at_utc": 1791552871.7338583,
+    "heartbeat_s": 60.0,
+    "boot_id": "6f2050e7-2540-4734-a5b9-0065ec568df3",
+    "schema_version": 2,
+    "deployment": true,
+    "production": true,
+    "issued_at_monotonic": 2302332.04387339,
+    "last_heartbeat_monotonic": 2302332.04387339,
+    "schema": "AgentFileLease@v2",
+    "issued_at": 1791549271.7338583,
+    "expires_at": 1791552871.7338583
+  }
+}
