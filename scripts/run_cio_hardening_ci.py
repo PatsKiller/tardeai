@@ -3620,6 +3620,14 @@ GATES = [
             "tests/test_ops_summary_model_job_live_wiring_20261008.py",
         ],
     ),
+    (
+        # ANCHOR: N8N_W4_ROUTING_20261008 — routing policy load, unknown header refusal,
+        # lane_unhealthy before any provider call, receipt routing_decision, per-provider semaphore size.
+        "n8n_w4_routing_20261008",
+        [
+            "tests/test_llm_routing_policy_20261008.py",
+        ],
+    ),
 ]
 
 
