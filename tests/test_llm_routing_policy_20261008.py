@@ -110,6 +110,7 @@ def test_one_policy_row_per_registered_process() -> None:
     policy = _load("llm_routing_policy.json")
     assert policy["schema"] == "LlmRoutingPolicy@v1"
     assert policy["default_policy_id"] == "default"
+    assert policy["policies"]["default"]["on_health_unknown"] == "route"
     rows = policy["policies"]["default"]["processes"]
     registered = {row["id"] for row in registry["processes"]}
     assert set(rows) == registered
@@ -131,7 +132,7 @@ def test_named_processes_keep_today_requested_policy() -> None:
     assert synthesis["requested_policy"] == "PRO"
     assert synthesis["provider"] == "deepseek"
     assert synthesis["model_id"]
-    assert synthesis["routing_decision"]["reason"] == "health_unknown"
+    assert synthesis["routing_decision"]["reason"] == "health_unknown_routed"
 
     escalation = bridge.resolve_model_policy("alex_cio_escalation")
     assert escalation["requested_policy"] == "PRO_THINK"
@@ -268,7 +269,7 @@ def test_pytest_ignores_the_host_health_file_unless_the_env_points_at_it(
     ignored = bridge.select_governed_lane("alex_cio_synthesis")
     assert ignored.get("refused") is None
     assert ignored["policy"]["requested_policy"] == "PRO"
-    assert ignored["routing_decision"]["reason"] == "health_unknown"
+    assert ignored["routing_decision"]["reason"] == "health_unknown_routed"
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     assert bridge.provider_health_path() == live
 
@@ -304,7 +305,7 @@ def test_success_receipt_joins_routing_decision_to_reservation(monkeypatch: pyte
     decision = result["_tradeai"]["routing_decision"]
     assert decision["policy_id"] == "default"
     assert decision["lane_chosen"] == "primary"
-    assert decision["reason"] == "health_unknown"
+    assert decision["reason"] == "health_unknown_routed"
     assert isinstance(decision["health_snapshot"], dict)
     assert result["_tradeai"]["reservation_id"] == 4242
     assert decision["reservation_id"] == 4242
@@ -671,6 +672,90 @@ def test_initial_unconfigured_provider_refusal_never_starts_stream(
         )
     assert result["error"]["code"] == "provider_not_configured"
     assert reserve.call_count == generate.call_count == 0
+
+
+def _policy_copy(tmp_path: Path, **policy_fields: object) -> Path:
+    document = _load("llm_routing_policy.json")
+    document["policies"]["default"].update(policy_fields)
+    path = tmp_path / "llm_routing_policy.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
+def test_on_health_unknown_refuse_does_not_call_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TRADEAI_LLM_ROUTING_POLICY", str(_policy_copy(tmp_path, on_health_unknown="refuse")))
+    generate = MagicMock(side_effect=AssertionError("provider must not be called"))
+    monkeypatch.setattr(bridge.MockProvider, "generate", generate)
+    monkeypatch.setattr(bridge.RealProvider, "generate", generate)
+    with _governed(monkeypatch) as reserve:
+        result = bridge.execute_governed_call(
+            [{"role": "user", "content": "should not run"}],
+            process_id="alex_cio_synthesis",
+        )
+    assert result["error"]["code"] == "health_unknown"
+    assert result["error"]["status"] == 503
+    decision = result["routing_decision"]
+    assert decision["reason"] == "health_unknown_refused"
+    assert decision["lane_chosen"] is None
+    assert decision["policy_id"] == "default"
+    assert generate.call_count == 0
+    assert reserve.call_count == 0
+
+
+def test_measured_healthy_still_routes_when_unknown_would_refuse(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TRADEAI_LLM_ROUTING_POLICY", str(_policy_copy(tmp_path, on_health_unknown="refuse")))
+    health = {"checked_at": "2026-10-09T12:00:00Z", "worst_severity": "OK", "findings": []}
+    health_path = tmp_path / "health.json"
+    health_path.write_text(json.dumps(health), encoding="utf-8")
+    monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(health_path))
+    selected = bridge.select_governed_lane("alex_cio_synthesis")
+    assert selected.get("refused") is None
+    assert selected["routing_decision"]["reason"] == "primary_healthy"
+    assert selected["routing_decision"]["lane_chosen"] == "primary"
+
+
+def test_row_on_health_unknown_overrides_the_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    document = _load("llm_routing_policy.json")
+    document["policies"]["default"]["on_health_unknown"] = "route"
+    document["policies"]["default"]["processes"]["alex_cio_synthesis"]["on_health_unknown"] = "refuse"
+    path = tmp_path / "row-policy.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setenv("TRADEAI_LLM_ROUTING_POLICY", str(path))
+    selected = bridge.select_governed_lane("alex_cio_synthesis")
+    other = bridge.select_governed_lane("alex_cio_escalation")
+    assert selected["refused"] == "health_unknown"
+    assert selected["routing_decision"]["reason"] == "health_unknown_refused"
+    assert other.get("refused") is None
+    assert other["routing_decision"]["reason"] == "health_unknown_routed"
+
+
+def test_unknown_health_policy_value_refuses_before_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TRADEAI_LLM_ROUTING_POLICY", str(_policy_copy(tmp_path, on_health_unknown="guess")))
+    generate = MagicMock(side_effect=AssertionError("provider must not be called"))
+    monkeypatch.setattr(bridge.MockProvider, "generate", generate)
+    with _governed(monkeypatch) as reserve:
+        result = bridge.execute_governed_call(
+            [{"role": "user", "content": "should not run"}],
+            process_id="alex_cio_synthesis",
+        )
+    assert result["error"]["code"] == "unknown_health_policy"
+    assert result["error"]["status"] == 400
+    assert result["routing_decision"]["reason"] == "unknown_health_policy"
+    assert result["routing_decision"]["lane_chosen"] is None
+    assert generate.call_count == 0
+    assert reserve.call_count == 0
 
 
 def test_semaphore_size_is_the_configured_integer() -> None:
