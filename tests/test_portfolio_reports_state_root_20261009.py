@@ -185,3 +185,155 @@ def test_migration_skips_a_release_already_linked_to_dest(tmp_path):
     (rel / "reports").symlink_to(dest)
     out = json.loads(_run(["--releases-root", str(base), "--dest", str(dest)], cwd=tmp_path).stdout)
     assert out["releases"] == []
+
+
+# ── review round 1 (2026-10-09) ──────────────────────────────────────────────
+
+def test_tradeai_root_naming_a_release_follows_its_state_link(tmp_path, monkeypatch):
+    """Units/launchers export TRADEAI_ROOT=<release>; reports must still land in persistent-state."""
+    monkeypatch.delenv(prr.ENV_OVERRIDE, raising=False)
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)
+    monkeypatch.delenv("TRADEAI_PERSISTENT_STATE_ROOT", raising=False)
+    ps = tmp_path / "persistent-state"
+    (ps / "data" / "portfolios" / "state").mkdir(parents=True)
+    release = tmp_path / "portfolio-server" / "abc-release"
+    (release / "data" / "portfolios").mkdir(parents=True)
+    (release / "data" / "portfolios" / "state").symlink_to(ps / "data" / "portfolios" / "state")
+    monkeypatch.setenv("TRADEAI_ROOT", str(release))
+    assert prr.portfolio_reports_root() == ps / "data" / "portfolios" / "reports"
+
+
+def test_report_url_skips_paths_and_symlinks_outside_the_root(reports_root, tmp_path):
+    reports_root.mkdir(parents=True)
+    outside = tmp_path / "outside.html"
+    outside.write_text("x")
+    link = reports_root / "escape.html"
+    link.symlink_to(outside)
+    assert prr.report_url(outside) is None
+    assert prr.report_url(link) == "/data/portfolios/reports/escape.html"  # the link's own name
+    assert prr.report_url(link.resolve()) is None  # resolved target is outside: skipped, no raise
+    assert prr.served_url(link.resolve(), tmp_path / "proj") == str(link.resolve())
+
+
+@pytest.fixture
+def two_roots(reports_root, tmp_path):
+    proj = tmp_path / "release"
+    legacy = proj / "data" / "portfolios" / "reports"
+    (legacy / "weekly").mkdir(parents=True)
+    (reports_root / "weekly").mkdir(parents=True)
+    (legacy / "weekly" / "weekly_old.html").write_text("legacy-only")
+    (legacy / "weekly" / "weekly_both.html").write_text("legacy")
+    (reports_root / "weekly" / "weekly_both.html").write_text("new")
+    (reports_root / "weekly" / "weekly_new.html").write_text("new-only")
+    return proj, legacy
+
+
+def test_read_fallback_during_the_migration_window(two_roots, reports_root):
+    proj, legacy = two_roots
+    assert prr.resolve_report_file("weekly/weekly_both.html", proj).read_text() == "new"
+    assert prr.resolve_report_file("weekly/weekly_old.html", proj) == (legacy / "weekly" / "weekly_old.html").resolve()
+    assert prr.resolve_report_file("weekly/nope.html", proj) is None
+
+
+def test_read_fallback_is_contained(two_roots, reports_root, tmp_path):
+    proj, legacy = two_roots
+    (tmp_path / "secret.txt").write_text("s")
+    for rel in ("../../secret.txt", "../../../secret.txt", "weekly/../../../../secret.txt", "/etc/passwd"):
+        assert prr.resolve_report_file(rel, proj) is None, rel
+    (reports_root / "out.txt").symlink_to(tmp_path / "secret.txt")
+    assert prr.resolve_report_file("out.txt", proj) is None
+
+
+def test_catalog_union_new_root_wins_on_name(two_roots, reports_root):
+    proj, legacy = two_roots
+    got = {p.name: p for p in prr.union_glob("weekly/*.html", proj)}
+    assert set(got) == {"weekly_old.html", "weekly_both.html", "weekly_new.html"}
+    assert got["weekly_both.html"].read_text() == "new"
+    assert prr.url_for_report_file(got["weekly_old.html"], proj) == "/data/portfolios/reports/weekly/weekly_old.html"
+
+
+class _FakeHandler:
+    def __init__(self):
+        self.status = None
+        self.body = b""
+
+    def send_error(self, code, msg=None):
+        self.status = code
+
+    def send_response(self, code):
+        self.status = code
+
+    def send_header(self, *a):
+        pass
+
+    def end_headers(self):
+        pass
+
+    @property
+    def wfile(self):
+        h = self
+
+        class _W:
+            def write(self, b):
+                h.body += b
+        return _W()
+
+
+def test_serve_file_contains_the_resolved_path(tmp_path):
+    import portfolio_server as ps
+
+    base = tmp_path / "mount"
+    base.mkdir()
+    (base / "ok.txt").write_text("ok")
+    (tmp_path / "secret.txt").write_text("secret")
+    (base / "link.txt").symlink_to(tmp_path / "secret.txt")
+    h = _FakeHandler()
+    ps.serve_file(h, base / "ok.txt", root=base)
+    assert (h.status, h.body) == (200, b"ok")
+    for bad in (base / ".." / "secret.txt", base / "link.txt"):
+        h = _FakeHandler()
+        ps.serve_file(h, bad, root=base)
+        assert h.status == 404 and h.body == b"", bad
+
+
+def test_launchers_no_longer_copy_the_release_local_live_dashboard():
+    for name in ("run_portfolio.sh", "run_portfolio_weekly.sh", "run_portfolio_monthly.sh"):
+        body = (ROOT / "linux_launchers" / name).read_text(encoding="utf-8")
+        assert "cp data/portfolios/reports/portfolio_live.html" not in body, name
+    reprice = (ROOT / "linux_launchers" / "run_reprice_only.sh").read_text(encoding="utf-8")
+    assert "src = portfolio_reports_root() / 'portfolio_live.html'" in reprice
+    assert "'data' / 'portfolios' / 'reports'" not in reprice
+
+
+def test_dead_js_brief_is_marked():
+    body = (SCRIPTS / "portfolio_brief_v2.js").read_text(encoding="utf-8")
+    assert "DEAD PATH (2026-10-09)" in body
+    assert "process.env.TRADEAI_PORTFOLIO_REPORTS_ROOT" in body
+
+
+def test_migration_apply_never_overwrites_a_racing_writer(releases, tmp_path, monkeypatch):
+    sys.path.insert(0, str(SCRIPTS))
+    import migrate_portfolio_reports_to_state_root as mig
+
+    base, _, _ = releases
+    dest = tmp_path / "dest"
+    plan = mig.plan_copy(mig.release_sources(base, dest), dest)
+    # A writer lands one planned name between plan and apply.
+    racer = Path(plan["actions"][0]["dest"])
+    racer.parent.mkdir(parents=True, exist_ok=True)
+    racer.write_bytes(b"RACER")
+    res = mig.apply_plan(plan)
+    assert res == {"copied": len(plan["actions"]) - 1, "skipped_exists": 1}
+    assert racer.read_bytes() == b"RACER"
+
+
+def test_extra_source_label_handles_short_paths(tmp_path):
+    sys.path.insert(0, str(SCRIPTS))
+    import migrate_portfolio_reports_to_state_root as mig
+
+    tree = tmp_path / "devtree" / "data" / "portfolios" / "reports"
+    tree.mkdir(parents=True)
+    assert mig.extra_source_label(tree) == "extra-devtree"
+    assert mig.extra_source_label(tmp_path / "x") == "extra-x"
+    assert mig.extra_source_label(Path("/")) == "extra-root"
+    assert mig.extra_source_label(Path("/a")) == "extra-a"  # parents[2] raised IndexError here

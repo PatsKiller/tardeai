@@ -45,9 +45,9 @@ from urllib.parse import urlparse, parse_qs
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
-    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, report_url as _report_url  # noqa: E402
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, union_glob as _reports_union_glob, url_for_report_file as _report_file_url, resolve_report_file as _resolve_report_file  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
-    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, report_url as _report_url  # noqa: E402
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, union_glob as _reports_union_glob, url_for_report_file as _report_file_url, resolve_report_file as _resolve_report_file  # noqa: E402
 PROCESS_STARTED_AT = datetime.now().astimezone().isoformat(timespec="seconds")
 
 
@@ -1032,7 +1032,19 @@ def _content_type_for_path(path: Path) -> str:
     return guessed or "application/octet-stream"
 
 
-def serve_file(handler, path: Path) -> None:
+def serve_file(handler, path: Path, root: Path | None = None) -> None:
+    """Serve one file. With ``root``, the RESOLVED path must stay inside ``root`` —
+    ``..`` segments and symlinks pointing out of the mounted dir answer 404."""
+    if root is not None:
+        try:
+            _rr = Path(root).resolve()
+            _pr = Path(path).resolve()
+        except (OSError, RuntimeError):
+            handler.send_error(404, "Not found")
+            return
+        if not (_pr == _rr or _rr in _pr.parents):
+            handler.send_error(404, "Not found")
+            return
     if not path.exists() or not path.is_file():
         handler.send_error(404, f"Not found: {path.name}")
         return
@@ -2090,7 +2102,6 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 import os as _os
                 _cat = {"live": [], "trade_ai_daily": [], "portfolio_daily": [], "weekly": [], "monthly": [], "docx": []}
                 _r = PROJECT_ROOT / "reports"
-                _pf = _portfolio_reports_root()
                 # Live dashboards
                 # SECURITY 2026-08-31: portfolio_live.html withheld from the catalogue.
                 # Historic copies embed a live Anthropic key in client-side JS (201 of 228
@@ -2107,32 +2118,26 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _rel = str(_fp.relative_to(PROJECT_ROOT))
                     _cat["trade_ai_daily"].append({"name": _fp.name, "path": f"/{_rel}", "date": _fp.parent.parent.name,
                         "time": _fp.parent.name, "size_kb": round(_fp.stat().st_size / 1024, 1)})
-                # Portfolio daily
-                for _fp in sorted(_pf.glob("portfolio_dashboard_*.html"), reverse=True)[:20]:
-                    _cat["portfolio_daily"].append({"name": _fp.name, "path": _report_url(_fp),
-                        "size_kb": round(_fp.stat().st_size / 1024, 1)})
-                # Weekly
-                _wk = _pf / "weekly"
-                if _wk.exists():
-                    for _fp in sorted(_wk.glob("*.html"), reverse=True)[:10]:
-                        _cat["weekly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "html",
-                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
-                    for _fp in sorted(_wk.glob("*.docx"), reverse=True)[:10]:
-                        _cat["weekly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "docx",
-                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
-                # Monthly
-                _mo = _pf / "monthly"
-                if _mo.exists():
-                    for _fp in sorted(_mo.glob("*.html"), reverse=True)[:10]:
-                        _cat["monthly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "html",
-                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
-                    for _fp in sorted(_mo.glob("*.docx"), reverse=True)[:10]:
-                        _cat["monthly"].append({"name": _fp.name, "path": _report_url(_fp), "type": "docx",
-                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                # Portfolio daily / weekly / monthly / briefs: persistent reports root, plus the
+                # release-local dir until the one-shot migration has run (persistent wins on name).
+                def _rep_rows(_pattern, _limit, **_extra):
+                    _rows = []
+                    for _fp in sorted(_reports_union_glob(_pattern, PROJECT_ROOT), key=lambda p: p.name, reverse=True):
+                        _u = _report_file_url(_fp, PROJECT_ROOT)
+                        if _u is None or not _fp.is_file():
+                            continue  # e.g. a symlink pointing outside the reports dirs
+                        _rows.append({"name": _fp.name, "path": _u, **_extra,
+                                      "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                        if len(_rows) >= _limit:
+                            break
+                    return _rows
+                _cat["portfolio_daily"].extend(_rep_rows("portfolio_dashboard_*.html", 20))
+                _cat["weekly"].extend(_rep_rows("weekly/*.html", 10, type="html"))
+                _cat["weekly"].extend(_rep_rows("weekly/*.docx", 10, type="docx"))
+                _cat["monthly"].extend(_rep_rows("monthly/*.html", 10, type="html"))
+                _cat["monthly"].extend(_rep_rows("monthly/*.docx", 10, type="docx"))
                 # DOCX files (briefs + Trade AI)
-                for _fp in sorted(_pf.glob("portfolio_brief_*.docx"), reverse=True)[:10]:
-                    _cat["docx"].append({"name": _fp.name, "path": _report_url(_fp), "category": "portfolio_brief",
-                        "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                _cat["docx"].extend(_rep_rows("portfolio_brief_*.docx", 10, category="portfolio_brief"))
                 for _fp in sorted(_r.glob("2026-*/*/*.docx"), reverse=True)[:10]:
                     _cat["docx"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "category": "trade_ai",
                         "size_kb": round(_fp.stat().st_size / 1024, 1)})
@@ -2246,8 +2251,17 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         for prefix, base_dir in file_map:
             if path.startswith(prefix):
                 rel = path[len(prefix):]
-                file_path = base_dir / rel
-                serve_file(self, file_path)
+                if prefix == "/data/portfolios/reports/":
+                    # Persistent root first, release-local fallback until migrated; both
+                    # lookups are contained (lib.portfolio_reports_root.contained).
+                    file_path = _resolve_report_file(rel, PROJECT_ROOT)
+                    if file_path is None:
+                        self.send_error(404, "Not found")
+                        return
+                    serve_file(self, file_path)
+                    return
+                # Contained: ../ segments and symlinks out of the mounted dir answer 404.
+                serve_file(self, base_dir / rel.lstrip("/"), root=base_dir)
                 return
 
         self.send_error(404, f"Not found: {path}")

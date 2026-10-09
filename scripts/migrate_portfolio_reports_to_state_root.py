@@ -9,7 +9,8 @@ carries the history across.
 
 Rules (AGENTS.md: never delete — copy/archive):
   * DRY-RUN by default. ``--apply`` is required to write anything.
-  * Copies only (``shutil.copy2``). Never moves, never deletes, never overwrites.
+  * Copies only, each with an exclusive create (O_EXCL). Never moves, never deletes,
+    never overwrites; a name taken between plan and apply is counted ``skipped_exists``.
   * Releases are visited CURRENT first, then newest-first by directory mtime, so the copy
     being served today claims the plain filename.
   * A file whose bytes already exist at that relative path (plain name or an earlier
@@ -30,11 +31,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
-    from lib.portfolio_reports_root import REPORTS_RELPATH, portfolio_reports_root  # noqa: E402
-    from lib.canonical_store_registry import production_state_root  # noqa: E402
+    from lib.portfolio_reports_root import REPORTS_RELPATH, portfolio_reports_root, state_root  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
-    from scripts.lib.portfolio_reports_root import REPORTS_RELPATH, portfolio_reports_root  # noqa: E402
-    from scripts.lib.canonical_store_registry import production_state_root  # noqa: E402
+    from scripts.lib.portfolio_reports_root import REPORTS_RELPATH, portfolio_reports_root, state_root  # noqa: E402
 
 CURRENT_LINK = "CURRENT"
 CONFLICT_TAG = ".release-"
@@ -42,7 +41,7 @@ CONFLICT_TAG = ".release-"
 
 def default_releases_root() -> Path:
     """``portfolio-server`` sits beside the persistent-state root."""
-    return production_state_root().parent / "portfolio-server"
+    return state_root().parent / "portfolio-server"
 
 
 def _sha256(path: Path, cache: dict[Path, str]) -> str:
@@ -148,16 +147,50 @@ def plan_copy(sources: list[tuple[str, Path]], dest: Path) -> dict:
     return {"counts": counts, "per_release": per_release, "actions": actions}
 
 
-def apply_plan(plan: dict) -> int:
-    done = 0
+def _exclusive_copy(src: Path, target: Path) -> bool:
+    """Copy ``src`` to ``target`` only if ``target`` does not exist, atomically.
+
+    ``O_CREAT | O_EXCL`` makes the existence check and the create one syscall, so a
+    writer that lands the same name between plan and apply is never overwritten (the
+    old exists()-then-copy2 left that window open). Metadata is copied after the bytes.
+    Returns False when the name was already taken.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        return False
+    try:
+        with os.fdopen(fd, "wb") as out, src.open("rb") as inp:
+            shutil.copyfileobj(inp, out, 1 << 20)
+    except BaseException:
+        # Only the partial file WE just created is removed; nothing pre-existing is touched.
+        target.unlink(missing_ok=True)
+        raise
+    shutil.copystat(src, target)
+    return True
+
+
+def apply_plan(plan: dict) -> dict:
+    copied = skipped_exists = 0
     for a in plan["actions"]:
-        target = Path(a["dest"])
-        if target.exists():  # never overwrite — a racing writer got there first
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(a["src"], target)
-        done += 1
-    return done
+        if _exclusive_copy(Path(a["src"]), Path(a["dest"])):
+            copied += 1
+        else:  # a racing writer got there first — never overwrite
+            skipped_exists += 1
+    return {"copied": copied, "skipped_exists": skipped_exists}
+
+
+def extra_source_label(src: Path) -> str:
+    """Name for an --extra-source in conflict suffixes: the tree that owns
+    ``data/portfolios/reports`` when the path has that shape, else the dir itself."""
+    r = src.resolve()
+    parts = r.parts
+    if len(parts) >= 4 and Path(*parts[-3:]) == REPORTS_RELPATH:
+        owner = parts[-4]
+    else:
+        owner = r.name or "root"
+    return f"extra-{owner}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -181,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     for extra in args.extra_source:
         src = Path(extra)
         if src.is_dir() and src.resolve() != (dest.resolve() if dest.exists() else dest):
-            sources.append((f"extra-{src.resolve().parents[2].name}", src))
+            sources.append((extra_source_label(src), src))
     plan = plan_copy(sources, dest)
     summary = {
         "ok": True,
@@ -197,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.show_actions:
         summary["actions_sample"] = plan["actions"][: args.show_actions]
     if args.apply:
-        summary["copied"] = apply_plan(plan)
+        summary.update(apply_plan(plan))
     print(json.dumps(summary, indent=2))
     return 0
 
