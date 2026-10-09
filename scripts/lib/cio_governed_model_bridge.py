@@ -16,12 +16,14 @@ import hashlib
 import http.server
 import json
 import logging
+import math
 import os
 import re
 import sys
 import threading
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -508,7 +510,7 @@ def _last_jsonl_object(path: Path) -> tuple[dict[str, Any] | None, str]:
 def _finding_hits_provider(finding: dict[str, Any], provider: str) -> bool:
     lane = str(finding.get("lane") or "").lower()
     prov = str(provider or "").lower()
-    return bool(lane and prov and prov in lane)
+    return bool(prov and (lane == prov or lane.startswith(prov + "-") or lane.startswith(prov + "_")))
 
 
 def _balance_unavailable(row: dict[str, Any] | None, state: str) -> bool:
@@ -520,6 +522,33 @@ def _balance_unavailable(row: dict[str, Any] | None, state: str) -> bool:
     return isinstance(total, (int, float)) and not isinstance(total, bool) and total <= 0
 
 
+def _provider_health_is_fresh(health: dict[str, Any]) -> bool:
+    """Use the writer's declared cadence; window_hours is only its DB lookback."""
+    checked_at = health.get("checked_at")
+    if not isinstance(checked_at, str):
+        return False
+    try:
+        checked = datetime.fromisoformat(checked_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if checked.tzinfo is None or checked.utcoffset() is None:
+        return False
+    registry, state = _read_json_object(_PROJECT_ROOT / "config" / "lane_registry.json")
+    if state != "present" or not isinstance(registry, dict):
+        return False
+    for lane in registry.get("lanes") or []:
+        if not isinstance(lane, dict) or lane.get("lane_id") != "llm-provider-health":
+            continue
+        cadence = lane.get("expected_cadence_hours")
+        if not isinstance(cadence, (int, float)) or isinstance(cadence, bool):
+            return False
+        if not math.isfinite(cadence) or cadence <= 0:
+            return False
+        age = time.time() - checked.timestamp()
+        return 0 <= age <= cadence * 3600
+    return False
+
+
 def _provider_health_status(
     provider: str,
     health: dict[str, Any] | None,
@@ -527,15 +556,26 @@ def _provider_health_status(
     balance_row: dict[str, Any] | None,
     balance_state: str,
 ) -> str:
-    """healthy only when a receipt says the writer ran and the provider is not indicted."""
+    """Only current, attributable provider recovery can qualify an alternate."""
+    from lib.provider_health import DEFAULT_RECOVERY_SUCCESSES
+
     indicted = False
+    recovered = False
     if health_state == "present" and isinstance(health, dict):
         findings = health.get("findings")
         if isinstance(findings, list):
             for finding in findings:
-                if not isinstance(finding, dict) or finding.get("recovered") is True:
+                if not isinstance(finding, dict) or not _finding_hits_provider(finding, provider):
                     continue
-                if not _finding_hits_provider(finding, provider):
+                if finding.get("recovered") is True:
+                    calls = finding.get("calls")
+                    failures = finding.get("failures")
+                    if (
+                        isinstance(calls, int) and not isinstance(calls, bool)
+                        and isinstance(failures, int) and not isinstance(failures, bool)
+                        and failures > 0 and calls - failures >= DEFAULT_RECOVERY_SUCCESSES
+                    ):
+                        recovered = True
                     continue
                 kind = str(finding.get("kind") or "").upper()
                 severity = str(finding.get("severity") or "").upper()
@@ -548,9 +588,8 @@ def _provider_health_status(
             indicted = True
     if indicted:
         return "unhealthy"
-    if health_state == "present" and isinstance(health, dict):
-        if str(health.get("worst_severity") or "") in {"OK", "WARN", "CRITICAL"}:
-            return "healthy"
+    if recovered and isinstance(health, dict) and _provider_health_is_fresh(health):
+        return "healthy"
     return "unknown"
 
 
@@ -636,7 +675,12 @@ def select_governed_lane(process_id: str, routing_policy: str | None = None) -> 
         primary_status = lanes.get(str(primary.get("provider") or ""))
         reason = "primary_healthy" if primary_status == "healthy" else "health_unknown"
     else:
-        for lane_name in ("secondary", "fallback"):
+        from lib.llm_consumption import _registry_process
+
+        # Match the consumption registry's default False without its DB-backed overrides.
+        process = _registry_process(process_id) or {}
+        alternates = ("secondary", "fallback") if process.get("fallback_allowed", False) is True else ()
+        for lane_name in alternates:
             spec = row.get(lane_name)
             if not isinstance(spec, dict):
                 continue
@@ -1894,12 +1938,10 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
 
     def _send_stream(self, result: dict, messages: list, process_id: str,
                      tools: list | None, max_tokens: int, routing_policy: str | None = None) -> None:
-        # Resolve before any status line. A refusal that appears only on this
-        # second resolve is the same typed JSON the non-stream path returns.
-        policy = resolve_model_policy(process_id, routing_policy=routing_policy)
-        refusal = stream_policy_refusal(process_id, routing_policy, policy)
-        if refusal is not None:
-            self._send_json(int(refusal["error"]["status"]), refusal)
+        # The result already passed routing, reservation, provider journal and settlement.
+        # Rendering it must never resolve again or make a second, unaccounted model call.
+        if "error" in result:
+            self._send_json(int(result["error"].get("status", 500)), result)
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -1907,31 +1949,28 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.send_header("X-TradeAI-Governed", f"cio_bridge_{'p1_2b' if BIND_MODE == 'canary' else 'p1_2a'}")
         self.end_headers()
-        model_id = policy["model_id"]
-        provider = RealProvider.instance() if BIND_MODE == "canary" else MockProvider.instance()
-        if BIND_MODE == "canary":
-            try:
-                _stream_slot = provider_semaphore(
-                    str(policy.get("provider") or "deepseek"),
-                    routing_policy,
-                )
-                _stream_slot.acquire()
-                try:
-                    response = provider.generate(messages, model_id, tools=tools, max_tokens=max_tokens, stream=False)
-                finally:
-                    _stream_slot.release()
-                content = response["choices"][0]["message"].get("content") or ""
-                chunks = [
-                    f"data: {json.dumps(response)}\n\n",
-                    "data: [DONE]\n\n",
+        envelope = {key: result[key] for key in ("id", "created", "model") if key in result}
+        envelope["object"] = "chat.completion.chunk"
+        choices = []
+        final_choices = []
+        for index, choice in enumerate(result.get("choices") or []):
+            message = dict(choice.get("message") or {})
+            if isinstance(message.get("tool_calls"), list):
+                message["tool_calls"] = [
+                    {**call, "index": call.get("index", tool_index)}
+                    for tool_index, call in enumerate(message["tool_calls"])
                 ]
-            except NotImplementedError:
-                chunks = ["data: [DONE]\n\n"]
-        else:
-            chunks = provider.generate_stream(messages, model_id, tools=tools, max_tokens=max_tokens)
-        for chunk in chunks:
-            self.wfile.write(chunk.encode("utf-8"))
-            self.wfile.flush()
+            choices.append({"index": choice.get("index", index), "delta": message, "finish_reason": None})
+            final_choices.append({"index": choice.get("index", index), "delta": {}, "finish_reason": choice.get("finish_reason")})
+        chunk = {**envelope, "choices": choices}
+        final = {
+            **envelope, "choices": final_choices,
+            **{key: result[key] for key in ("usage", "_tradeai") if key in result},
+        }
+        for frame in (chunk, final):
+            self.wfile.write(f"data: {json.dumps(frame)}\n\n".encode("utf-8"))
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
 
 
 # ══════════════════════════════════════════════════════════════════════════

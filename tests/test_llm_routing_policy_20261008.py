@@ -329,8 +329,8 @@ def test_provider_semaphore_releases_when_generate_raises(monkeypatch: pytest.Mo
     assert sem._value == sem._initial_value
 
 
-def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A refusal that appears only on the stream path's second resolve is JSON, before HTTP 200."""
+def test_stream_preserves_first_settled_route_when_health_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Once settled, response rendering cannot re-route or re-run the provider."""
     calls = {"n": 0}
     real = bridge.resolve_model_policy
 
@@ -351,7 +351,10 @@ def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyP
         }
 
     monkeypatch.setattr(bridge, "resolve_model_policy", _flip)
-    stream = MagicMock(side_effect=AssertionError("stream must not start"))
+    stream = MagicMock(side_effect=AssertionError("stream cannot call a provider again"))
+    original_generate = bridge.MockProvider.generate
+    generate = MagicMock(side_effect=lambda self, *a, **k: original_generate(self, *a, **k))
+    monkeypatch.setattr(bridge.MockProvider, "generate", lambda self, *a, **k: generate(self, *a, **k))
     monkeypatch.setattr(bridge.MockProvider, "generate_stream", stream)
     monkeypatch.setattr(bridge.RealProvider, "generate", MagicMock(side_effect=AssertionError("real provider")))
     server = bridge.start_server("127.0.0.1", 0)
@@ -369,23 +372,286 @@ def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyP
                 headers={"Content-Type": "application/json", "X-TradeAI-Agent": "alex"},
             )
             response = conn.getresponse()
-            raw = response.read()
+            parts = []
+            while True:
+                line = response.readline()
+                parts.append(line)
+                if line.strip() == b"data: [DONE]" or not line:
+                    break
+            raw = b"".join(parts)
             content_type = response.getheader("Content-Type")
             conn.close()
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-    payload = json.loads(raw.decode("utf-8"))
-    assert response.status == 503
-    assert content_type == "application/json"
-    assert payload["error"]["code"] == "lane_unhealthy"
-    assert payload["error"]["status"] == 503
-    assert payload["routing_decision"]["reason"] == "lane_unhealthy"
-    assert payload["routing_decision"]["lane_chosen"] is None
-    assert calls["n"] == 2
+    frames = [
+        json.loads(line[6:])
+        for line in raw.decode("utf-8").splitlines()
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ]
+    assert response.status == 200
+    assert content_type == "text/event-stream"
+    assert frames[-1]["_tradeai"]["routing_decision"]["lane_chosen"] == "primary"
+    assert frames[-1]["_tradeai"]["reservation_id"] == 4242
+    assert calls["n"] == generate.call_count == 1
     assert stream.call_count == 0
-    assert not raw.startswith(b"data:")
+    assert raw.count(b"data: [DONE]") == 1
+
+
+def _fresh_recovered_health(provider: str = "grok") -> dict:
+    from datetime import datetime, timezone
+
+    return {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "window_hours": 3,
+        "worst_severity": "OK",
+        "findings": [{"lane": provider, "recovered": True, "calls": 4, "failures": 1}],
+    }
+
+
+@pytest.mark.parametrize(
+    "process_id",
+    ["maria_research_critique", "portfolio_ai_analyst", "watchlist_agent_oauth_fallback"],
+)
+def test_explicit_no_fallback_refuses_before_reservation_and_provider(
+    monkeypatch: pytest.MonkeyPatch, process_id: str
+) -> None:
+    policy = _load("llm_routing_policy.json")["policies"]["default"]["processes"][process_id]
+    primary = policy["primary"]["provider"]
+    lanes = {spec["provider"]: "healthy" for key, spec in policy.items() if key in {"primary", "secondary", "fallback"}}
+    lanes[primary] = "unhealthy"
+    monkeypatch.setattr(bridge, "read_health_snapshot", lambda _: {"lanes": lanes})
+    generate = MagicMock(side_effect=AssertionError("no-fallback process must not call a provider"))
+    monkeypatch.setattr(bridge.MockProvider, "generate", generate)
+    monkeypatch.setattr(bridge.RealProvider, "generate", generate)
+    with _governed(monkeypatch) as reserve:
+        result = bridge.execute_governed_call([{"role": "user", "content": "hermetic fixture"}], process_id=process_id)
+    assert result["error"]["code"] == "lane_unhealthy"
+    assert result["error"]["status"] == 503
+    assert result["routing_decision"]["lane_chosen"] is None
+    assert reserve.call_count == generate.call_count == 0
+
+
+@pytest.mark.parametrize("fallback_allowed", [True, None])
+def test_fallback_authority_preserves_explicit_grant_and_default_false(
+    monkeypatch: pytest.MonkeyPatch, fallback_allowed: bool | None
+) -> None:
+    from lib import llm_consumption
+
+    row = dict(llm_consumption._registry_process("maria_research_critique"))
+    if fallback_allowed is None:
+        row.pop("fallback_allowed")
+    else:
+        row["fallback_allowed"] = fallback_allowed
+    monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+    monkeypatch.setattr(
+        bridge,
+        "read_health_snapshot",
+        lambda _: {"lanes": {"deepseek": "unhealthy", "grok": "healthy"}},
+    )
+    result = bridge.select_governed_lane("maria_research_critique")
+    if fallback_allowed is True:
+        assert result["policy"]["provider"] == "grok"
+        assert result["routing_decision"]["lane_chosen"] == "secondary"
+    else:
+        assert result["refused"] == "lane_unhealthy"
+        assert result["routing_decision"]["lane_chosen"] is None
+
+
+@pytest.mark.parametrize("clock", ["missing", "malformed", "naive", "future", "stale"])
+def test_unproven_health_clock_cannot_qualify_an_alternate(clock: str) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    health = _fresh_recovered_health()
+    now = datetime.now(timezone.utc)
+    if clock == "missing":
+        health.pop("checked_at")
+    elif clock == "malformed":
+        health["checked_at"] = "not-a-clock"
+    elif clock == "naive":
+        health["checked_at"] = now.replace(tzinfo=None).isoformat()
+    elif clock == "future":
+        health["checked_at"] = (now + timedelta(hours=1)).isoformat()
+    else:
+        health["checked_at"] = (now - timedelta(hours=2)).isoformat()
+        health["window_hours"] = 10000  # The writer lookback is never a freshness TTL.
+    assert bridge._provider_health_status("grok", health, "present", None, "missing") == "unknown"
+
+
+@pytest.mark.parametrize("provider", ["grok", "deepseek", "chatgpt"])
+def test_global_health_receipt_without_attributable_recovery_is_unknown(provider: str) -> None:
+    health = _fresh_recovered_health("other-provider")
+    assert bridge._provider_health_status(provider, health, "present", None, "missing") == "unknown"
+    health["findings"] = []
+    assert bridge._provider_health_status(provider, health, "present", None, "missing") == "unknown"
+
+
+@pytest.mark.parametrize("calls,failures", [(True, 0), (4, True), (3, 1), (4, 0), (2, 4), ("4", 1)])
+def test_recovered_finding_requires_the_producer_success_count(calls: object, failures: object) -> None:
+    health = _fresh_recovered_health()
+    health["findings"][0].update(calls=calls, failures=failures)
+    assert bridge._provider_health_status("grok", health, "present", None, "missing") == "unknown"
+
+
+@pytest.mark.parametrize("lane", ["not-grok", "grokish", "other-grok-wrapper"])
+def test_unattributable_provider_name_cannot_qualify_an_alternate(lane: str) -> None:
+    health = _fresh_recovered_health(lane)
+    assert bridge._provider_health_status("grok", health, "present", None, "missing") == "unknown"
+
+
+@pytest.mark.parametrize("cadence", [0, -1, True, float("nan"), float("inf"), None])
+def test_health_requires_finite_positive_declared_cadence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cadence: object
+) -> None:
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "lane_registry.json").write_text(
+        json.dumps({"lanes": [{"lane_id": "llm-provider-health", "expected_cadence_hours": cadence}]}), encoding="utf-8"
+    )
+    monkeypatch.setattr(bridge, "_PROJECT_ROOT", tmp_path)
+    health = _fresh_recovered_health()
+    assert bridge._provider_health_status("grok", health, "present", None, "missing") == "unknown"
+
+
+def test_fresh_attributable_recovery_is_healthy_but_indictment_wins() -> None:
+    health = _fresh_recovered_health()
+    assert bridge._provider_health_status("grok", health, "present", None, "missing") == "healthy"
+    health["findings"].append({"lane": "grok", "kind": "AUTH", "severity": "CRITICAL", "recovered": False})
+    assert bridge._provider_health_status("grok", health, "present", None, "missing") == "unhealthy"
+
+
+@pytest.mark.parametrize("mode", ["mock", "canary"])
+def test_stream_reuses_accounted_result_without_resolve_or_provider(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+    import io
+
+    result = {
+        "id": "settled-fixture",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "deepseek-flash",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "exact  whitespace\nUnicode: café",
+                    "reasoning_content": "reason",
+                    "tool_calls": [
+                        {"id": "tool-1", "type": "function", "function": {"name": "fixture", "arguments": "{}"}}
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+        "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+        "_tradeai": {"reservation_id": 4242, "routing_decision": {"provider": "deepseek", "lane_chosen": "primary"}},
+    }
+    resolve = MagicMock(return_value={"provider": "grok", "model_id": "deepseek-flash"})
+    generate = MagicMock(side_effect=AssertionError("stream cannot make an unaccounted second call"))
+    monkeypatch.setattr(bridge, "BIND_MODE", mode)
+    monkeypatch.setattr(bridge, "resolve_model_policy", resolve)
+    monkeypatch.setattr(bridge.RealProvider, "generate", generate)
+    monkeypatch.setattr(bridge.MockProvider, "generate_stream", generate)
+    handler = MagicMock()
+    handler.wfile = io.BytesIO()
+    bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
+    assert resolve.call_count == generate.call_count == 0
+    handler.send_response.assert_called_once_with(200)
+    handler._send_json.assert_not_called()
+    raw = handler.wfile.getvalue().decode("utf-8")
+    frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+    assert raw.count("data: [DONE]") == 1
+    assert all(frame["id"] == result["id"] for frame in frames)
+    assert frames[0]["choices"][0]["delta"]["content"] == result["choices"][0]["message"]["content"]
+    assert frames[0]["choices"][0]["delta"]["reasoning_content"] == "reason"
+    assert frames[0]["choices"][0]["delta"]["tool_calls"][0]["index"] == 0
+    assert frames[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert frames[-1]["usage"] == result["usage"]
+    assert frames[-1]["_tradeai"] == result["_tradeai"]
+
+
+def test_stream_error_is_typed_json_before_any_success_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    error = {"error": {"code": "provider_not_configured", "message": "fixture", "status": 503}}
+    monkeypatch.setattr(
+        bridge, "resolve_model_policy", MagicMock(return_value={"provider": "grok", "model_id": "deepseek-flash"})
+    )
+    handler = MagicMock()
+    bridge.GovernedBridgeHandler._send_stream(handler, error, [], "alex_cio_synthesis", None, 10)
+    handler._send_json.assert_called_once_with(503, error)
+    handler.send_response.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "choices",
+    [
+        [],
+        [
+            {
+                "index": 2,
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "tool-only", "type": "function", "function": {"name": "fixture", "arguments": "{}"}}
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+        [
+            {"index": 3, "message": {"content": ""}, "finish_reason": "stop"},
+            {"index": 7, "message": {"content": "second"}, "finish_reason": "length"},
+        ],
+    ],
+)
+def test_stream_preserves_empty_tool_only_and_multiple_choices(choices: list) -> None:
+    import io
+
+    result = {
+        "id": "fixture",
+        "created": 1,
+        "model": "deepseek-flash",
+        "choices": choices,
+        "usage": {"total_tokens": 3},
+        "_tradeai": {"reservation_id": 1},
+    }
+    handler = MagicMock()
+    handler.wfile = io.BytesIO()
+    bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
+    raw = handler.wfile.getvalue().decode("utf-8")
+    frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
+    assert len(frames) == 2
+    assert raw.count("data: [DONE]") == 1
+    assert [choice["index"] for choice in frames[0]["choices"]] == [choice["index"] for choice in choices]
+    assert [choice["finish_reason"] for choice in frames[-1]["choices"]] == [
+        choice["finish_reason"] for choice in choices
+    ]
+    for actual, expected in zip(frames[0]["choices"], choices):
+        assert actual["delta"].get("content") == expected["message"].get("content")
+        if "tool_calls" in expected["message"]:
+            assert actual["delta"]["tool_calls"][0]["index"] == 0
+    assert frames[-1]["usage"] == result["usage"]
+    assert frames[-1]["_tradeai"] == result["_tradeai"]
+
+
+def test_initial_unconfigured_provider_refusal_never_starts_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+    monkeypatch.setattr(
+        bridge,
+        "resolve_model_policy",
+        lambda *a, **k: {"provider": "grok", "model_id": "deepseek-flash", "requested_policy": "FAST"},
+    )
+    generate = MagicMock(side_effect=AssertionError("unconfigured provider must not run"))
+    monkeypatch.setattr(bridge.RealProvider, "generate", generate)
+    with _governed(monkeypatch) as reserve:
+        result = bridge.execute_governed_call(
+            [{"role": "user", "content": "fixture"}], process_id="alex_cio_synthesis", stream=True
+        )
+    assert result["error"]["code"] == "provider_not_configured"
+    assert reserve.call_count == generate.call_count == 0
 
 
 def test_semaphore_size_is_the_configured_integer() -> None:
