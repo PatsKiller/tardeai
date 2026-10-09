@@ -12,7 +12,7 @@ Activation evidence (read-only SELECTs, scripts/lib/n8n_live_inventory.py):
   * ``workflow_publish_history`` rows with event ``activated`` (UI activations);
   * ``workflow_published_version`` rows — ``createdAt`` is when the current version was published
     (``updatedAt`` is touched on every n8n restart and is NOT an activation time);
-  * ``workflow_history`` — when that version was imported, used as a second time a grant may cover.
+  * ``workflow_history`` — when that version was imported, attributed separately from activation.
 
 One event per (workflow id, version id). A ``grant-issued`` ledger entry covers it when its reason names
 the workflow id (a tranche grant listing several ids covers each), its tier is one of ``--tiers``
@@ -195,28 +195,43 @@ def reconcile(
     skew = timedelta(seconds=skew_s)
     rows = []
     for ev in events:
-        times = [t for t in (ev["activated_at"], ev.get("imported_at")) if t is not None]
 
-        def covering(match_name: bool) -> list[dict]:
+        def covering(match_name: bool, at: datetime) -> list[dict]:
             hits = []
             for g in grants:
                 token = ev["name"] if match_name else ev["workflow_id"]
                 if not _names(g["reason"], token):
                     continue
                 lo, hi = _window(g, skew)
-                if any(lo <= t <= hi for t in times):
+                if lo <= at <= hi:
                     hits.append(g)
             return hits
 
-        by_id = covering(False)
-        good = [g for g in by_id if g["tier"] in tiers]
-        if good:
-            status, used = GRANTED, good
-        elif by_id:
-            status, used = NAMED_IN_OTHER_TIER, by_id
-        else:
-            by_name = [g for g in covering(True) if g["tier"] in tiers]
-            status, used = (NAME_ONLY_GRANT, by_name) if by_name else (UNGRANTED_ACTIVATION, [])
+        def attribution(at: Optional[datetime]) -> tuple[str, list[dict]]:
+            if at is None:
+                return "NOT_MEASURED", []
+            by_id = covering(False, at)
+            good = [g for g in by_id if g["tier"] in tiers]
+            if good:
+                return GRANTED, good
+            if by_id:
+                return NAMED_IN_OTHER_TIER, by_id
+            by_name = [g for g in covering(True, at) if g["tier"] in tiers]
+            return (NAME_ONLY_GRANT, by_name) if by_name else (UNGRANTED_ACTIVATION, [])
+
+        def grant_metadata(used: list[dict]) -> list[dict]:
+            return [
+                {
+                    "ts": g["ts"].isoformat(),
+                    "tier": g["tier"],
+                    "event_id": g.get("event_id"),
+                    "reason": g["reason"][:160],
+                }
+                for g in used
+            ]
+
+        status, used = attribution(ev["activated_at"])
+        import_status, import_used = attribution(ev.get("imported_at"))
         rows.append(
             {
                 "workflow_id": ev["workflow_id"],
@@ -227,15 +242,9 @@ def reconcile(
                 "imported_at": ev["imported_at"].isoformat() if ev.get("imported_at") else None,
                 "sources": ev["sources"],
                 "status": status,
-                "grants": [
-                    {
-                        "ts": g["ts"].isoformat(),
-                        "tier": g["tier"],
-                        "event_id": g.get("event_id"),
-                        "reason": g["reason"][:160],
-                    }
-                    for g in used
-                ],
+                "grants": grant_metadata(used),
+                "import_status": import_status,
+                "import_grants": grant_metadata(import_used),
             }
         )
     return rows
