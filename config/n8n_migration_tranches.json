@@ -49,25 +49,29 @@
      "lane_id": "premarket-data-pipeline"
     },
     {
-     "lane_id": "after-close-pipeline-broker-truth"
+     "lane_id": "after-close-pipeline-broker-truth",
+     "after": "after-close-pipeline-close-capture"
     },
     {
      "lane_id": "after-close-pipeline-close-capture"
     },
     {
-     "lane_id": "after-close-pipeline-planning"
+     "lane_id": "after-close-pipeline-planning",
+     "after": "after-close-pipeline-broker-truth"
     },
     {
      "lane_id": "hermes-learning-pipeline-learn"
     },
     {
-     "lane_id": "hermes-learning-pipeline-tune"
+     "lane_id": "hermes-learning-pipeline-tune",
+     "after": "hermes-learning-pipeline-learn"
     },
     {
      "lane_id": "hermes-overnight-pipeline-close"
     },
     {
-     "lane_id": "hermes-overnight-pipeline-night"
+     "lane_id": "hermes-overnight-pipeline-night",
+     "after": "hermes-overnight-pipeline-close"
     },
     {
      "lane_id": "platform-maintenance-nightly"

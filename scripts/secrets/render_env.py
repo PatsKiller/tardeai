@@ -173,6 +173,87 @@ def _atomic_write(path: Path, text: str, mode: int = 0o600) -> None:
         raise
 
 
+def _overlap_pairs() -> list[tuple[str, str]]:
+    """(current, previous) names from secret_registry overlap_previous. Names only."""
+    registry = ROOT / "config" / "secret_registry.yaml"
+    try:
+        import yaml
+
+        doc = yaml.safe_load(registry.read_text(encoding="utf-8")) or {}
+        secrets = doc.get("secrets") or {}
+        pairs: list[tuple[str, str]] = []
+        for name, entry in secrets.items():
+            if not isinstance(entry, dict):
+                continue
+            previous = entry.get("overlap_previous")
+            if (
+                isinstance(name, str)
+                and isinstance(previous, str)
+                and SHELL_VAR_RE.match(name)
+                and SHELL_VAR_RE.match(previous)
+            ):
+                pairs.append((name, previous))
+        return pairs
+    except Exception:
+        return [
+            ("TRADEAI_N8N_RELAY_BEARER", "TRADEAI_N8N_RELAY_BEARER_PREVIOUS"),
+            ("TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N", "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N_PREVIOUS"),
+        ]
+
+
+def _unquote_env(raw: str) -> str:
+    if len(raw) >= 2 and raw[0] == "'" and raw[-1] == "'":
+        return raw[1:-1].replace("'\"'\"'", "'")
+    return raw
+
+
+def _read_rendered_values(path: Path) -> dict[str, str]:
+    """Last rendered env values. The caller must not log the result."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, raw = stripped.partition("=")
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export ") :].strip()
+        if not SHELL_VAR_RE.match(key):
+            continue
+        out[key] = _unquote_env(raw.strip())
+    return out
+
+
+def _roll_overlap(shell_secrets: dict[str, str], prior: dict[str, str]) -> list[str]:
+    """Copy a replaced overlap value into its *_PREVIOUS name. Never logs values.
+
+    A re-render that does not change the current value keeps the previous
+    overlap already on disk. An explicit non-empty SM value for the previous
+    name wins. Returned names are the previous slots written or kept.
+    """
+    rolled: list[str] = []
+    for current, previous in _overlap_pairs():
+        if current not in shell_secrets:
+            continue
+        published = shell_secrets.get(previous, "")
+        if published:
+            rolled.append(previous)
+            continue
+        new_val = shell_secrets[current]
+        old_val = prior.get(current, "")
+        if old_val and old_val != new_val:
+            shell_secrets[previous] = old_val
+            rolled.append(previous)
+        elif prior.get(previous):
+            shell_secrets[previous] = prior[previous]
+            rolled.append(previous)
+    return rolled
+
+
 def _previous_render_keys() -> list[str]:
     """Shell-exportable key NAMES from the last good render. Never values.
 
@@ -283,6 +364,12 @@ def render(*, force: bool = False, force_shrink: bool = False) -> dict:
             raise RuntimeError(
                 "SM_KEYS_DISAPPEARED: %s (cache kept; --allow-key-removal to "
                 "accept)" % ", ".join(dropped[:8]))
+        # shell_keys stays the SM set. Overlap *_PREVIOUS names are synthesized
+        # into the env file from the last render and must not look like deleted
+        # SM secrets on the next pass.
+        sm_keys = sorted(shell_secrets)
+        prior_values = _read_rendered_values(RENDER_PATH)
+        overlap_rolled = _roll_overlap(shell_secrets, prior_values)
         text = _format_env(shell_secrets, skipped_keys=skipped_keys)
         # Hash all SM keys (incl. nonshell) for drift; values never logged
         hashes = _hashes(secrets)
@@ -292,10 +379,12 @@ def render(*, force: bool = False, force_shrink: bool = False) -> dict:
             json.dumps(
                 {
                     "rendered_at": datetime.now(timezone.utc).isoformat(),
-                    "n_keys": len(shell_secrets),
+                    "n_keys": len(sm_keys),
                     "n_sm_keys": len(secrets),
                     # Names only — the guard above compares these, never values.
-                    "shell_keys": sorted(shell_secrets),
+                    # Overlap previous names are not SM keys; they stay out of this list.
+                    "shell_keys": sm_keys,
+                    "overlap_previous": overlap_rolled,
                     "skipped_nonshell_keys": skipped_keys,
                     "hashes": hashes,
                     "project": PROJECT_NAME,
@@ -318,7 +407,7 @@ def render(*, force: bool = False, force_shrink: bool = False) -> dict:
             {
                 "last_ok_at": datetime.now(timezone.utc).isoformat(),
                 "last_error": None,
-                "n_keys": len(shell_secrets),
+                "n_keys": len(sm_keys),
                 "n_sm_keys": len(secrets),
                 "skipped_nonshell_keys": skipped_keys,
                 "render_path": str(RENDER_PATH),
@@ -329,7 +418,7 @@ def render(*, force: bool = False, force_shrink: bool = False) -> dict:
         result.update(
             ok=True,
             source="bitwarden_sm",
-            n_keys=len(shell_secrets),
+            n_keys=len(sm_keys),
             n_sm_keys=len(secrets),
             skipped_nonshell=len(skipped_keys),
             stale_hours=0.0,
