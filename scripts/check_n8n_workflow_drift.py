@@ -186,7 +186,7 @@ def fanin_findings(rows: list[dict]) -> list[dict]:
             out.append(
                 {
                     "source": "n8n_workflow_drift",
-                    "item": f"{r['id']}:{r['status']}",
+                    "item": f"{r['id']}:{r['status']}:P2",
                     "severity": "P2",
                     "detail": f"{r.get('name')} {','.join(r['diffs'])[:120]}",
                     "artifact_rel": str(RECEIPT_REL),
@@ -197,7 +197,7 @@ def fanin_findings(rows: list[dict]) -> list[dict]:
             out.append(
                 {
                     "source": "n8n_workflow_drift",
-                    "item": f"{r['id']}:placeholder_unsubstituted",
+                    "item": f"{r['id']}:placeholder_unsubstituted:P2",
                     "severity": "P2",
                     "detail": f"{r.get('name')} still carries the relay URL placeholder; every fire fails",
                     "artifact_rel": str(RECEIPT_REL),

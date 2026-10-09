@@ -74,7 +74,10 @@ GRANTED = "GRANTED"
 NAMED_IN_OTHER_TIER = "NAMED_IN_OTHER_TIER"
 NAME_ONLY_GRANT = "NAME_ONLY_GRANT"
 UNGRANTED_ACTIVATION = "UNGRANTED_ACTIVATION"
-FINDINGS = (UNGRANTED_ACTIVATION, NAMED_IN_OTHER_TIER, NAME_ONLY_GRANT)
+# The LATEST activation of the version is GRANTED but an earlier one was not: the ungranted window is still
+# reported (P3) with its start/end; a later grant never erases it (Agent A review of #1608).
+UNGRANTED_ACTIVATION_REGULARISED = "UNGRANTED_ACTIVATION_REGULARISED"
+FINDINGS = (UNGRANTED_ACTIVATION, UNGRANTED_ACTIVATION_REGULARISED, NAMED_IN_OTHER_TIER, NAME_ONLY_GRANT)
 
 # AGENTS.md 3.1.0: one n8n activation tier. --tiers widens it for a historical audit only.
 DEFAULT_TIERS = ("cron",)
@@ -245,14 +248,21 @@ def reconcile(
                 for g in used
             ]
 
-        # Every recorded activation of this version counts and the best attribution wins: a workflow first
-        # activated without a grant and then re-activated under a grant naming its id (regularisation,
-        # 2026-10-09) is attributed by the later grant. Import attribution stays separate (#1587).
-        rank = {GRANTED: 0, NAMED_IN_OTHER_TIER: 1, NAME_ONLY_GRANT: 2, UNGRANTED_ACTIVATION: 3}
-        status, used = min(
-            (attribution(t) for t in (ev.get("times") or [ev["activated_at"]])),
-            key=lambda su: rank.get(su[0], 9),
-        )
+        # Every recorded activation time of this version gets its own verdict (same skew window). The row's
+        # status is the LATEST activation's verdict, so P1 follows what is live now; an earlier ungranted
+        # activation followed by a granted re-activation is UNGRANTED_ACTIVATION_REGULARISED with the
+        # ungranted window [first ungranted activation, granted re-activation] — never erased.
+        # Import attribution stays separate (#1587).
+        times = sorted(ev.get("times") or [ev["activated_at"]])
+        per_time = [(t, *attribution(t)) for t in times]
+        _, status, used = per_time[-1]
+        ungranted = [t for t, st, _ in per_time if st == UNGRANTED_ACTIVATION]
+        window = None
+        if ungranted and status != UNGRANTED_ACTIVATION:
+            end = next((t for t, st, _ in per_time if t > ungranted[-1] and st != UNGRANTED_ACTIVATION), times[-1])
+            window = {"start": ungranted[0].isoformat(), "end": end.isoformat()}
+            if status == GRANTED:
+                status = UNGRANTED_ACTIVATION_REGULARISED
         import_status, import_used = attribution(ev.get("imported_at"))
         rows.append(
             {
@@ -266,6 +276,8 @@ def reconcile(
                 "sources": ev["sources"],
                 "status": status,
                 "grants": grant_metadata(used),
+                "activation_verdicts": [{"at": t.isoformat(), "status": st} for t, st, _ in per_time],
+                "ungranted_window": window,
                 "import_status": import_status,
                 "import_grants": grant_metadata(import_used),
             }
@@ -277,8 +289,9 @@ def fanin_severity(row: dict) -> str:
     """Incident severity for one non-GRANTED row; scripts/n8n_incident_fanin.py applies the same map.
 
     P1: an ungranted activation of a workflow that is ACTIVE now (live, unattributed automation).
-    P3: an ungranted activation already switched off (history, no live exposure), or weak attribution
-    (named only by lane name, or by id under a tier that does not authorise an activation)."""
+    P3: an ungranted activation already switched off (history, no live exposure), an ungranted window
+    later regularised by a granted re-activation, or weak attribution (named only by lane name, or by id
+    under a tier that does not authorise an activation). Status is the LATEST activation's verdict."""
     if row.get("status") == UNGRANTED_ACTIVATION and row.get("currently_active"):
         return "P1"
     return "P3"
@@ -296,7 +309,7 @@ def build_receipt(
     now = now or datetime.now(timezone.utc)
     counts = {
         s: sum(1 for r in rows if r["status"] == s)
-        for s in (GRANTED, NAMED_IN_OTHER_TIER, NAME_ONLY_GRANT, UNGRANTED_ACTIVATION)
+        for s in (GRANTED, NAMED_IN_OTHER_TIER, NAME_ONLY_GRANT, UNGRANTED_ACTIVATION, UNGRANTED_ACTIVATION_REGULARISED)
     }
     findings = [r for r in rows if r["status"] in FINDINGS]
     return {
@@ -314,7 +327,7 @@ def build_receipt(
         "fanin_findings": [
             {
                 "source": "n8n_activation_grants",
-                "item": f"{r['workflow_id']}:{r['status']}",
+                "item": f"{r['workflow_id']}:{r['status']}:{fanin_severity(r)}",
                 "severity": fanin_severity(r),
                 "detail": f"{r['name']} activated {r['activated_at']}",
                 "artifact_rel": str(RECEIPT_REL),
@@ -390,7 +403,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(
             f"n8n activations since {since.isoformat()}: {receipt['events']}  GRANTED={c[GRANTED]} "
             f"NAMED_IN_OTHER_TIER={c[NAMED_IN_OTHER_TIER]} NAME_ONLY_GRANT={c[NAME_ONLY_GRANT]} "
-            f"UNGRANTED_ACTIVATION={c[UNGRANTED_ACTIVATION]}  "
+            f"UNGRANTED_ACTIVATION={c[UNGRANTED_ACTIVATION]} "
+            f"REGULARISED={c[UNGRANTED_ACTIVATION_REGULARISED]}  "
             f"({'written ' + receipt['receipt_path'] if a.write else 'dry-run, nothing written'})"
         )
         for r in rows:

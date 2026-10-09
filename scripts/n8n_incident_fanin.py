@@ -264,7 +264,7 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     out.extend(_scalp_cycle_findings(root, now))
     # 3i. n8n governance checks (AGENTS.md 3.0.0 §23.10 P16/P18, 2026-10-09): host-side cron receipts of
     # scripts/check_n8n_activation_grants.py and scripts/check_n8n_workflow_drift.py. See _governance_findings.
-    out.extend(_governance_findings(root, now))
+    out.extend(_governance_findings(root, now, prev))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -428,25 +428,30 @@ def _governance_rows(source: str, doc: dict[str, Any]) -> list[tuple[str, str, s
     if source == "n8n_activation_grants":
         for r in doc.get("activations") or []:
             st = str(r.get("status") or "")
-            if st not in {"UNGRANTED_ACTIVATION", "NAMED_IN_OTHER_TIER", "NAME_ONLY_GRANT"}:
+            if st not in {"UNGRANTED_ACTIVATION", "UNGRANTED_ACTIVATION_REGULARISED", "NAMED_IN_OTHER_TIER",
+                          "NAME_ONLY_GRANT"}:
                 continue
-            # P1 only while the workflow is live: an unattributed activation that is still running automation.
+            # P1 only while the LATEST activation is ungranted and the workflow is live; a regularised window
+            # (earlier ungranted, latest granted) stays reported as P3 with its start/end.
             sev = "P1" if st == "UNGRANTED_ACTIVATION" and r.get("currently_active") else "P3"
-            out.append((f"{r.get('workflow_id')}:{st}", sev,
-                        f"{r.get('name')} activated {r.get('activated_at')} active={bool(r.get('currently_active'))}",
-                        r.get("activated_at")))
+            win = r.get("ungranted_window") or {}
+            detail = f"{r.get('name')} activated {r.get('activated_at')} active={bool(r.get('currently_active'))}"
+            if win:
+                detail += f" ungranted {win.get('start')}..{win.get('end')}"
+            # severity is part of the item: a same-day P3 -> P1 escalation gets its own idempotency key
+            out.append((f"{r.get('workflow_id')}:{st}:{sev}", sev, detail, r.get("activated_at")))
     else:
         for r in doc.get("workflows") or []:
             st = str(r.get("status") or "")
             if st in {"DRIFT", "MISSING_IN_GIT"}:
-                out.append((f"{r.get('id')}:{st}", "P2", f"{r.get('name')} {','.join(r.get('diffs') or [])}", None))
+                out.append((f"{r.get('id')}:{st}:P2", "P2", f"{r.get('name')} {','.join(r.get('diffs') or [])}", None))
             if r.get("placeholder_unsubstituted"):
-                out.append((f"{r.get('id')}:placeholder_unsubstituted", "P2",
+                out.append((f"{r.get('id')}:placeholder_unsubstituted:P2", "P2",
                             f"{r.get('name')} still carries the relay URL placeholder", None))
     return out
 
 
-def _governance_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+def _governance_findings(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """P16 activation attribution + P18 git-vs-live drift, read from their receipts.
 
     Severity: UNGRANTED_ACTIVATION of a currently active workflow P1; ungranted-but-off, name-only and
@@ -456,15 +461,23 @@ def _governance_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     (registry row ACTIVE with a scheduler); then missing, or older than GOVERNANCE_STALE_FACTOR x cadence,
     is a P2 `receipt:missing` / `receipt:stale`. A stale receipt of an unscheduled lane (a hand run) is
     not read at all. Dedupe is the fan-in's usual source|item|UTC day key; detected_at is the activation
-    time or the UTC day start so the payload is stable. TRADEAI_FANIN_GOVERNANCE=0 opts out."""
+    time or the UTC day start so the payload is stable. TRADEAI_FANIN_GOVERNANCE=0 opts out.
+    A broken source (unreadable registry row, malformed receipt) is a note, and also a P2
+    `governance:source_unavailable` when the lane is scheduled or the previous fan-in receipt already
+    recorded that source unavailable (2 consecutive runs). The env opt-out never alarms."""
+    if prev is None:
+        prev = PREV_RECEIPT
+    prev_notes = (prev or {}).get("source_notes") or {}
     found: list[dict[str, Any]] = []
     day0 = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     for source, rel, lane_id, default_cadence in GOVERNANCE_SOURCES:
         key = f"{source}_source"
         NOTES.pop(key, None)
+        scheduled = False
+        if os.environ.get("TRADEAI_FANIN_GOVERNANCE", "1") == "0":
+            NOTES[key] = "unavailable:RuntimeError:disabled_by_env"
+            continue
         try:
-            if os.environ.get("TRADEAI_FANIN_GOVERNANCE", "1") == "0":
-                raise RuntimeError("disabled_by_env")
             row = _governance_lane(lane_id) or {}
             scheduled = row.get("state") == "ACTIVE" and (row.get("scheduler") or {}).get("kind") not in (None, "", "none")
             cadence = float(row.get("expected_cadence_hours") or default_cadence) if scheduled else default_cadence
@@ -491,10 +504,16 @@ def _governance_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
             for item, sev, detail, detected in rows:
                 found.append({"source": source, "item": item, "severity": sev, "detail": detail[:160],
                               "artifact_rel": rel, "store": "data/runtime", "detected_at": detected or day0})
-            NOTES[key] = (f"ok:{len(rows)}:verdict={doc.get('verdict')}:age_h={round(age_h, 2)}:"
+            NOTES[key] = (f"ok:{len(rows)}:verdict={doc.get('verdict')}:age_h={None if age_h is None else round(age_h, 2)}:"
                           f"scheduled={'yes' if scheduled else 'no'}{':stale' if stale else ''}")
         except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
             NOTES[key] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
+            repeated = str(prev_notes.get(key) or "").startswith("unavailable:") and "disabled_by_env" not in str(prev_notes.get(key))
+            if scheduled or repeated:
+                found.append({"source": source, "item": "governance:source_unavailable", "severity": "P2",
+                              "detail": (f"{NOTES[key]} (lane {lane_id} scheduled={'yes' if scheduled else 'unknown/no'}, "
+                                         f"previous run unavailable={'yes' if repeated else 'no'})")[:160],
+                              "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
     return found
 
 
