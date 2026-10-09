@@ -3992,7 +3992,9 @@ def select_pr_gates(
     return sel["gates"], "fast"
 
 
-def duration_hints_doc(measured: dict[str, float], *, jobs: int, scale: float = 1.0, receipt: dict | None = None) -> dict:
+def duration_hints_doc(
+    measured: dict[str, float], *, jobs: int, scale: float = 1.0, receipt: dict | None = None
+) -> dict:
     """The hints document for per-file seconds ``measured`` (x ``scale``), with its receipt.
 
     ``scale`` maps host seconds onto CI seconds: a loaded host runs the same file several

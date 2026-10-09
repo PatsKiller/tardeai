@@ -50,6 +50,7 @@ def _step_names(doc: dict, job: str) -> list[str]:
 
 # ── Q1 / Q2: concurrency ──────────────────────────────────────────────────────────
 
+
 def test_q1_agent_governance_cancels_only_superseded_pr_runs():
     doc = _wf("agent-governance.yml")
     assert doc["concurrency"]["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
@@ -63,13 +64,14 @@ def test_q2_cio_hardening_cancels_superseded_runs_on_main_too():
 
 def test_q2_premise_prepare_only_promotes_the_origin_main_tip():
     src = DEPLOY.read_text(encoding="utf-8")
-    body = src[src.index("require_head_is_origin_main() {"):src.index("current_release() {")]
+    body = src[src.index("require_head_is_origin_main() {") : src.index("current_release() {")]
     assert 'die "ROOT HEAD $head != origin/main $origin_main' in body
-    prepare = src[src.index("cmd_prepare() {"):src.index("conformance_gate() {")]
+    prepare = src[src.index("cmd_prepare() {") : src.index("conformance_gate() {")]
     assert prepare.index("require_head_is_origin_main") < prepare.index('CONTENT_SHA="$(git_sha)"')
 
 
 # ── Q5 / Q6: required job slimmed ─────────────────────────────────────────────────
+
 
 def test_q5_pdf_and_docx_smokes_run_nightly_not_in_the_required_job():
     doc = _wf("cio-production-hardening-ci.yml")
@@ -94,7 +96,9 @@ def test_q6_shallow_pr_checkout_with_base_fetch_and_pip_cache():
     py = next(s for s in steps if s.get("name") == "Set up Python")
     assert py["with"]["cache"] == "pip"
     names = [s.get("name", "") for s in steps]
-    assert names.index("Fetch PR base for the selector merge-base") < names.index("CIO hardening gates (unit + manifest)")
+    assert names.index("Fetch PR base for the selector merge-base") < names.index(
+        "CIO hardening gates (unit + manifest)"
+    )
     # the nightly isolation run keeps full history
     full = next(s for s in _steps(doc, "cio-hardening-full") if str(s.get("uses", "")).startswith("actions/checkout"))
     assert full["with"]["fetch-depth"] == 0
@@ -102,9 +106,12 @@ def test_q6_shallow_pr_checkout_with_base_fetch_and_pip_cache():
 
 # ── Q11: secrets scan of the pushed range, in CI and pre-push ─────────────────────
 
+
 def test_q11_agent_governance_scans_every_pr_commit_and_nightly_scans_the_tree():
     ag = _wf("agent-governance.yml")
-    step = next(s for s in _steps(ag, "agent-governance") if s.get("name") == "Secrets scan (PR commits / pushed range)")
+    step = next(
+        s for s in _steps(ag, "agent-governance") if s.get("name") == "Secrets scan (PR commits / pushed range)"
+    )
     assert "continue-on-error" not in step  # blocking: agent-governance is a required context
     assert 'check_no_secrets.py --range "${PR_BASE_SHA}..${PR_HEAD_SHA}"' in step["run"]
     assert "--tree" in step["run"]  # fallback when a push range cannot be resolved
@@ -118,7 +125,7 @@ def test_q11_pre_push_scans_the_pushed_range_and_falls_back_to_the_tree():
     assert 'check_no_secrets.py" --range "${range[@]}"' in hook
     assert 'range=("${rsha}..${lsha}")' in hook and 'range=("$lsha" --not --remotes)' in hook
     assert 'check_no_secrets.py" --tree' in hook
-    assert 'TRADEAI_SKIP_SECRETS_SCAN' in hook
+    assert "TRADEAI_SKIP_SECRETS_SCAN" in hook
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -140,8 +147,9 @@ def scan_repo(tmp_path):
 
 
 def _scan(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "scripts/check_no_secrets.py", *args], cwd=repo,
-                          capture_output=True, text=True)
+    return subprocess.run(
+        [sys.executable, "scripts/check_no_secrets.py", *args], cwd=repo, capture_output=True, text=True
+    )
 
 
 def test_q11_range_scan_catches_a_secret_added_then_deleted_inside_the_range(scan_repo):
@@ -181,6 +189,7 @@ def test_q11_range_scan_blocks_a_secret_file_name(scan_repo):
 
 # ── release-readiness is required for promote ─────────────────────────────────────
 
+
 def test_promote_preflight_requires_release_readiness():
     gate = _module("quickwins_release_preflight", "scripts/release_grant_preflight.py")
     assert ".github/workflows/release-readiness.yml" in gate.REQUIRED_PUSH_WORKFLOWS
@@ -189,16 +198,32 @@ def test_promote_preflight_requires_release_readiness():
     assert "main" in on["push"]["branches"]  # it produces exact-SHA push/main evidence
 
     def run(i, path, **kw):
-        return dict(id=i, workflow_id=i + 10, path=path, name=path, run_number=1, head_sha=SHA,
-                    event="push", head_branch="main", status="completed", conclusion="success",
-                    run_attempt=1, **kw)
+        return dict(
+            id=i,
+            workflow_id=i + 10,
+            path=path,
+            name=path,
+            run_number=1,
+            head_sha=SHA,
+            event="push",
+            head_branch="main",
+            status="completed",
+            conclusion="success",
+            run_attempt=1,
+            **kw,
+        )
 
     others = [p for p in sorted(gate.REQUIRED_PUSH_WORKFLOWS) if not p.endswith("release-readiness.yml")]
     rows = [run(i, p) for i, p in enumerate(others, 1)]
     report = gate.evaluate_push_checks(SHA, rows)
     assert not report["ok"]
     assert "missing:.github/workflows/release-readiness.yml" in report["errors"]
-    rows.append(run(9, ".github/workflows/release-readiness.yml", ))
+    rows.append(
+        run(
+            9,
+            ".github/workflows/release-readiness.yml",
+        )
+    )
     assert gate.evaluate_push_checks(SHA, rows)["ok"]
     rows[-1].update(conclusion="failure")
     assert "not_successful:.github/workflows/release-readiness.yml" in gate.evaluate_push_checks(SHA, rows)["errors"]
@@ -206,9 +231,10 @@ def test_promote_preflight_requires_release_readiness():
 
 # ── Q9: exact-SHA CI before the grant is consumed ─────────────────────────────────
 
+
 def _promote_harness(tmp_path: Path, ci_ok: bool) -> subprocess.CompletedProcess:
     source = DEPLOY.read_text(encoding="utf-8")
-    source = source[:source.rindex('case "$MODE" in')]
+    source = source[: source.rindex('case "$MODE" in')]
     candidate = tmp_path / "candidate"
     candidate.mkdir()
     (candidate / "BUILD_SHA").write_text(SHA)
@@ -218,7 +244,12 @@ def _promote_harness(tmp_path: Path, ci_ok: bool) -> subprocess.CompletedProcess
     fake_py.write_text(f"#!/bin/sh\necho CI_CHECK >> '{log}'\nexit {0 if ci_ok else 2}\n")
     fake_py.chmod(0o700)
     script = tmp_path / "harness.sh"
-    script.write_text(source + '\nROOT="' + str(ROOT) + '"\nEMERGENCY_SHA=""\n' + f'''
+    script.write_text(
+        source
+        + '\nROOT="'
+        + str(ROOT)
+        + '"\nEMERGENCY_SHA=""\n'
+        + f"""
 load_state() {{ :; }}
 current_release() {{ echo previous; }}
 release_grant_preflight() {{ echo GRANT_CONSUMED >> '{log}'; }}
@@ -233,7 +264,8 @@ worker_pin_check() {{ :; }}
 ff_dev_tree_after_promote() {{ :; }}
 VENV_PYTHON='{fake_py}'
 cmd_promote "$1"
-''')
+"""
+    )
     r = subprocess.run(["bash", str(script), str(candidate)], capture_output=True, text=True)
     r.events = log.read_text().split() if log.is_file() else []
     return r
@@ -255,9 +287,10 @@ def test_q9_green_ci_then_grant_then_recheck_then_activate(tmp_path):
 
 # ── Q10: frontend build fails closed ──────────────────────────────────────────────
 
+
 def test_q10_prepare_build_has_no_vite_only_fallback(tmp_path):
     src = DEPLOY.read_text(encoding="utf-8")
-    body = src[src.index("build_frontend() {"):src.index("\n}\n", src.index("build_frontend() {"))]
+    body = src[src.index("build_frontend() {") : src.index("\n}\n", src.index("build_frontend() {"))]
     code = [ln for ln in body.splitlines() if not ln.lstrip().startswith("#")]
     assert not any("vite build" in ln for ln in code)
     assert "npm run build || die" in body
@@ -268,15 +301,19 @@ def test_q10_prepare_build_has_no_vite_only_fallback(tmp_path):
     dest = tmp_path / "dest"
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    (bin_dir / "npm").write_text("#!/bin/sh\necho npm \"$@\" >> \"$NPM_LOG\"\nexit 1\n")
-    (bin_dir / "npx").write_text("#!/bin/sh\necho npx \"$@\" >> \"$NPM_LOG\"\nexit 0\n")
+    (bin_dir / "npm").write_text('#!/bin/sh\necho npm "$@" >> "$NPM_LOG"\nexit 1\n')
+    (bin_dir / "npx").write_text('#!/bin/sh\necho npx "$@" >> "$NPM_LOG"\nexit 0\n')
     for b in ("npm", "npx"):
         (bin_dir / b).chmod(0o700)
-    funcs = src[:src.rindex('case "$MODE" in')]
+    funcs = src[: src.rindex('case "$MODE" in')]
     script = tmp_path / "harness.sh"
     script.write_text(funcs + f'\nbuild_frontend "{src_tree}" "{dest}"\necho BUILD_RETURNED\n')
-    env = {**os.environ, "HOME": str(tmp_path), "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
-           "NPM_LOG": str(tmp_path / "npm.log")}
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path),
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+        "NPM_LOG": str(tmp_path / "npm.log"),
+    }
     r = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env)
     assert r.returncode != 0
     assert "BUILD_RETURNED" not in r.stdout
@@ -287,6 +324,7 @@ def test_q10_prepare_build_has_no_vite_only_fallback(tmp_path):
 
 
 # ── Q3: duration hints carry a measurement receipt and a refresh cadence ──────────
+
 
 def test_q3_duration_hints_receipt():
     doc = json.loads((ROOT / "config" / "ci_test_duration_hints.json").read_text(encoding="utf-8"))

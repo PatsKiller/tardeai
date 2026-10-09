@@ -132,7 +132,8 @@ _PLANT_RE = re.compile(
 
 def test_no_unlisted_registered_test_plants_into_the_checkout():
     offenders = sorted(
-        p for p in _registered_files()
+        p
+        for p in _registered_files()
         if p not in ci.SERIAL_FILES and _PLANT_RE.search((ROOT / p).read_text(encoding="utf-8", errors="replace"))
     )
     assert offenders == [], f"add to SERIAL_FILES (with evidence) or make hermetic: {offenders}"
@@ -153,6 +154,7 @@ def test_regex_false_positives_now_run_in_the_pool():
 
 
 # ── Q4: a file registered in several gates runs once; every gate still reports ───
+
 
 def _fake_repo(tmp_path, monkeypatch, names):
     monkeypatch.setattr(ci, "REPO", tmp_path)
@@ -184,12 +186,15 @@ def test_registered_duplicates_exist_and_are_folded():
     assert folded == total - len(_registered_files())
 
 
-@pytest.mark.parametrize("fail_file,expect_failed", [
-    (None, []),
-    ("tests/b.py", ["g1", "g2"]),  # the shared file's unit failed: both registrants fail
-    ("tests/c.py", ["g2"]),
-    ("tests/a.py", ["g1", "g3"]),  # g3 has no unit of its own and still reports the failure
-])
+@pytest.mark.parametrize(
+    "fail_file,expect_failed",
+    [
+        (None, []),
+        ("tests/b.py", ["g1", "g2"]),  # the shared file's unit failed: both registrants fail
+        ("tests/c.py", ["g2"]),
+        ("tests/a.py", ["g1", "g3"]),  # g3 has no unit of its own and still reports the failure
+    ],
+)
 def test_shared_file_result_is_reported_under_every_gate(tmp_path, monkeypatch, capsys, fail_file, expect_failed):
     _fake_repo(tmp_path, monkeypatch, ["a.py", "b.py", "c.py"])
     gates = [("g1", ["tests/a.py", "tests/b.py"]), ("g2", ["tests/b.py", "tests/c.py"]), ("g3", ["tests/a.py"])]
