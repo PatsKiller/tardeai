@@ -32,7 +32,7 @@ The bridge reads those two receipts from disk. It does not call the health scrip
 `select_governed_lane` walks the row:
 
 1. `health_gate` false: choose `primary` (`reason = health_gate_off`).
-2. Primary exists and its provider is not `unhealthy`: choose `primary`. `primary_healthy` when the receipt says healthy, `health_unknown` when the receipt is missing or does not indict the provider.
+2. Primary exists and its provider is not `unhealthy`: choose `primary`. `primary_healthy` when the receipt says healthy, `health_unknown_routed` when the receipt is missing or does not indict the provider. The lane still routes. The reason records that the choice was not a measured healthy receipt.
 3. Otherwise secondary, then fallback, only when that lane's provider is explicitly `healthy` (`failover_secondary`, `failover_fallback`).
 4. Otherwise refuse `lane_unhealthy` (HTTP 503) before the cost cap, the reservation, and `provider.generate`.
 

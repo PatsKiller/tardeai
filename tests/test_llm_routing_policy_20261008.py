@@ -131,7 +131,7 @@ def test_named_processes_keep_today_requested_policy() -> None:
     assert synthesis["requested_policy"] == "PRO"
     assert synthesis["provider"] == "deepseek"
     assert synthesis["model_id"]
-    assert synthesis["routing_decision"]["reason"] == "health_unknown"
+    assert synthesis["routing_decision"]["reason"] == "health_unknown_routed"
 
     escalation = bridge.resolve_model_policy("alex_cio_escalation")
     assert escalation["requested_policy"] == "PRO_THINK"
@@ -266,7 +266,7 @@ def test_pytest_ignores_the_host_health_file_unless_the_env_points_at_it(
     ignored = bridge.select_governed_lane("alex_cio_synthesis")
     assert ignored.get("refused") is None
     assert ignored["policy"]["requested_policy"] == "PRO"
-    assert ignored["routing_decision"]["reason"] == "health_unknown"
+    assert ignored["routing_decision"]["reason"] == "health_unknown_routed"
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     assert bridge.provider_health_path() == live
 
@@ -302,7 +302,7 @@ def test_success_receipt_joins_routing_decision_to_reservation(monkeypatch: pyte
     decision = result["_tradeai"]["routing_decision"]
     assert decision["policy_id"] == "default"
     assert decision["lane_chosen"] == "primary"
-    assert decision["reason"] == "health_unknown"
+    assert decision["reason"] == "health_unknown_routed"
     assert isinstance(decision["health_snapshot"], dict)
     assert result["_tradeai"]["reservation_id"] == 4242
     assert decision["reservation_id"] == 4242

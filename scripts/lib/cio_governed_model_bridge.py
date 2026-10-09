@@ -634,7 +634,7 @@ def select_governed_lane(process_id: str, routing_policy: str | None = None) -> 
     elif primary is not None and lanes.get(str(primary.get("provider") or "")) != "unhealthy":
         chosen = "primary"
         primary_status = lanes.get(str(primary.get("provider") or ""))
-        reason = "primary_healthy" if primary_status == "healthy" else "health_unknown"
+        reason = "primary_healthy" if primary_status == "healthy" else "health_unknown_routed"
     else:
         for lane_name in ("secondary", "fallback"):
             spec = row.get(lane_name)
