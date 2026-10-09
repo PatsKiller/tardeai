@@ -323,8 +323,20 @@ def test_the_gate_fails_on_a_double_scheduler_and_passes_once_the_line_is_retire
 
 
 def test_native_monitor_rows_do_not_flip_a_host_scheduler():
-    """Only pre-existing native workflows are declared; cron/timer cutovers stay operator-owned."""
+    """Only existing native monitors are active; pending reminders never hide a host conversion."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
-    native = {r["lane_id"] for r in reg["lanes"] if (r.get("scheduler") or {}).get("kind") == "n8n"}
-    assert native == {"n8n-monitor-trade-ai", "n8n-monitor-dof"}
+    native = {
+        r["lane_id"]: r for r in reg["lanes"]
+        if (r.get("scheduler") or {}).get("kind") == "n8n"
+    }
+    monitors = {"n8n-monitor-trade-ai", "n8n-monitor-dof"}
+    reminders = {
+        "openclaw-reminder-claude-plan-1",
+        "openclaw-reminder-claude-plan-2",
+        "openclaw-reminder-supergrok-expiry",
+        "openclaw-reminder-sentinelone-earnings",
+    }
+    assert set(native) == monitors | reminders
+    assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
+    assert all(native[lane]["state"] == "NEVER_SCHEDULED" for lane in reminders)
