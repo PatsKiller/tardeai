@@ -352,7 +352,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)
     assert all((native[lane]["scheduler"].get("match") or "").strip() for lane in cutover)
     assert all(native[lane]["scheduler"]["expression"] != native[lane]["scheduler"]["match"] for lane in cutover)
-    assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
+    # Legacy HTTP monitors deactivated 2026-10-09 13:04Z (N1 packet §3.8/3.9): RETIRED, still kind n8n.
+    assert all(native[lane]["state"] == "RETIRED" for lane in monitors)
     rows = {r["lane_id"]: r for r in reg["lanes"]}
     for lane in reminders:
         sched = rows[lane]["scheduler"]

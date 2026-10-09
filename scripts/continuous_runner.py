@@ -454,7 +454,9 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
 def run_live_cycle(root: Path, run_label: str, date_str: str,
                    state: CycleState, time_str: str,
                    _timeout: int = 600,  # 10 min max per live cycle
-                   publish_dashboard: bool = True) -> Optional[List[Dict]]:
+                   publish_dashboard: bool = True,
+                   enrich_budget_s: Optional[float] = None,
+                   bulk_catalysts: Optional[Dict] = None) -> Optional[List[Dict]]:
     sys.path.insert(0, str(root / "scripts"))
 
     try:
@@ -566,19 +568,56 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         cand_syms, tickers = filter_candidates(tickers, str(root), 8)
         cached, miss = get_bulk(cand_syms, str(root), date_str, 20)
         enrichments.update(cached)
-        fresh = {}
+        fresh, deferred = {}, []
+        _enrich_t0 = time.monotonic()
+        bulk_note = ""
+        if bulk_catalysts and bulk_catalysts.get("bulk_enabled"):
+            # 2026-10-09: the scalp lane reads catalysts in bulk (data-broker news + batched Finviz Elite news
+            # export, scripts/scalp_catalyst_bulk.py) instead of ~2 throttled Finviz page requests per ticker.
+            from scalp_catalyst_bulk import enrich_bulk
+            due = {}
+            for sym in miss:
+                row = next((t for t in tickers if t.get("symbol","").upper() == sym), {})
+                fps = set(row.get("catalyst_fingerprints",[]))
+                if state.needs_haiku(sym, fps):
+                    due[sym] = fps
+            bulk, bstats = enrich_bulk(list(due), bulk_catalysts)
+            for sym, enr in bulk.items():
+                fresh[sym] = enr
+                state.record_haiku(sym, due.get(sym, set()))
+            if bulk:
+                set_bulk(bulk, str(root), date_str)
+            cap = int(bulk_catalysts.get("per_ticker_fallback_max", 0))
+            left = [s for s in bstats.get("uncovered", []) if s in due]
+            miss, deferred = left[:cap], left[cap:]
+            bulk_note = (f"  bulk {len(bulk)}/{len(due)} in {bstats.get('seconds')}s"
+                         f" ({bstats.get('finviz_calls')} finviz calls"
+                         + (f", {bstats['finviz_error']}" if bstats.get("finviz_error") else "") + ")")
         for sym in miss:
             row = next((t for t in tickers if t.get("symbol","").upper() == sym), {})
             fps = set(row.get("catalyst_fingerprints",[]))
+            # 2026-10-09: the 5-min scalp lane caps lookups so the cycle always finishes inside its timeout;
+            # names past the budget score on today's last cached lookup and refresh on the next run.
+            if enrich_budget_s is not None and time.monotonic() - _enrich_t0 >= enrich_budget_s:
+                deferred.append(sym)
+                continue
             if state.needs_haiku(sym, fps):
                 try:
                     fresh[sym] = enrich_ticker(sym, row.get("company",""))
                     state.record_haiku(sym, fps)
+                    # 2026-10-09: write through per symbol. The 5-min scalp lane runs under a timeout; a cold
+                    # cycle (new release / new day) used to be killed before the single set_bulk at the end, so
+                    # nothing was cached and every following run started cold and was killed again.
+                    set_bulk({sym: fresh[sym]}, str(root), date_str)
                 except Exception:
                     pass
-        if fresh: set_bulk(fresh, str(root), date_str)
         enrichments.update(fresh)
-        print(f"  [live] catalysts: {len(cached)} cached  {len(fresh)} fresh")
+        stale = {}
+        if deferred:
+            stale, _ = get_bulk(deferred, str(root), date_str, 24 * 60)
+            enrichments.update(stale)
+        print(f"  [live] catalysts: {len(cached)} cached  {len(fresh)} fresh" + bulk_note
+              + (f"  {len(deferred)} deferred ({len(stale)} on stale cache)" if deferred else ""))
     except Exception as e:
         print(f"  [live] catalyst error: {e}")
 

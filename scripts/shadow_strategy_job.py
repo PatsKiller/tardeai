@@ -49,7 +49,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-PY = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+PY = venv_python(PROJECT_ROOT)
 
 # Env-configurable SLA (no hardcoded thresholds).
 SLA_SECONDS = int(os.getenv("SHADOW_JOB_SLA_SECONDS", "180"))

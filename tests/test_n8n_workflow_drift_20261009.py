@@ -214,6 +214,7 @@ def test_the_proposed_lane_is_declared_never_scheduled_and_allowlisted_dry_run_f
     assert entry["command"] == ["$PY", "scripts/check_n8n_workflow_drift.py"]
     assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] == ["--write"]
     assert entry["output_signal"] == row["output_signal"]["path"]
-    # not generated, so not importable yet: no workflow id exists for it
-    lanes = {lane["lane_id"] for lane in INV.load_generated_index()["lanes"]}
-    assert "n8n-workflow-drift-check" not in lanes
+    # generated (N7 ops lanes, 2026-10-09) but inactive: importable only under a grant naming its id
+    lanes = {lane["lane_id"]: lane for lane in INV.load_generated_index()["lanes"]}
+    assert lanes["n8n-workflow-drift-check"]["tranche"] == "N7"
+    assert lanes["n8n-workflow-drift-check"]["shadow_workflow_id"]

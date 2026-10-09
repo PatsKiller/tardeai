@@ -197,7 +197,7 @@ def test_index_shape(tmp_path):
             "schedule_source",
             "schedule_fidelity",
         }
-        if row["tranche"] != "N1":
+        if row["tranche"] not in gen.COMMITTED_TRANCHES:
             assert row["shadow_file"].startswith("pending/") and row["committed"] is False
     # pipeline stage order is recorded for the N2 chains
     stages = [r for r in index["lanes"] if r.get("pipeline") == "after_close"]

@@ -39,6 +39,12 @@ LOG = ROOT / "logs" / "weekly_disk_cleanup.log"
 PRECLEAN_MAX_AGE_DAYS = 7
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def _log(msg: str) -> None:
     line = f"{datetime.now(timezone.utc).isoformat()}  {msg}"
     print(line, flush=True)
@@ -182,7 +188,7 @@ def build_telegram(summary: dict) -> str:
 
 def run(*, apply: bool, notify: bool) -> dict:
     dry = not apply
-    py = str(ROOT / ".venv" / "bin" / "python")
+    py = venv_python(ROOT)
     if not Path(py).is_file():
         py = sys.executable
 

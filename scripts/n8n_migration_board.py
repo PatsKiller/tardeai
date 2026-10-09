@@ -67,6 +67,7 @@ FLAG_NO_REGISTRY_ROW = "NO_REGISTRY_ROW"
 FLAG_RUN_REFUSED = "RUN_REFUSED"
 FLAG_EXECUTOR_STALLED = "EXECUTOR_STALLED"
 FLAG_RETAINED_LANE_ON_N8N = "RETAINED_LANE_ON_N8N"
+FLAG_LANE_NOT_ACTIVE = "LANE_NOT_ACTIVE"     # registry row RETIRED/PAUSED: nothing schedules it (2026-10-09)
 
 
 def _load_json(p: Path) -> Optional[dict]:
@@ -128,8 +129,9 @@ def _latest(rows: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     return max(rows, key=key) if rows else None
 
 
-def _cutover_receipts(root: Path) -> dict[str, dict[str, Any]]:
-    """Latest CutoverReceipt@v1 per lane (by `at`, then file name)."""
+def _cutover_receipts(root: Path, kinds: Optional[dict[str, str]] = None) -> dict[str, dict[str, Any]]:
+    """Latest CutoverReceipt@v1 per lane (by `at`; a same-second tie by `kinds`, the registry's current
+    scheduler kind per lane, then the scheduler chain, then write time — see _follows)."""
     out: dict[str, dict[str, Any]] = {}
     cdir = root / CUTOVER_DIR_REL
     if not cdir.is_dir():
@@ -143,10 +145,42 @@ def _cutover_receipts(root: Path) -> dict[str, dict[str, Any]]:
             continue
         doc = dict(doc)
         doc["_ref"] = f"{CUTOVER_DIR_REL}/{p.name}"
+        try:
+            doc["_mtime_ns"] = p.stat().st_mtime_ns
+        except OSError:
+            doc["_mtime_ns"] = 0
         prev = out.get(lane)
-        if prev is None or str(doc.get("at") or "") >= str(prev.get("at") or ""):
+        if prev is None or _follows(doc, prev, (kinds or {}).get(lane)):
             out[lane] = doc
     return out
+
+
+def _follows(doc: dict[str, Any], prev: dict[str, Any], registry_kind: Optional[str] = None) -> bool:
+    """True when `doc` is the later receipt. `at` has 1 s resolution, and a rollback plus re-cutover in the
+    same second (n8n-pilot-dispatch, 2026-10-09 02:01:45Z) used to tie and fall to file-name order, so the
+    board read ROLLED_BACK for a lane that was cut over. On a tie: the receipt that left the lane on the
+    registry's current scheduler kind is the later one; else the scheduler chain (the later receipt starts
+    from the kind the earlier one left — ambiguous for an inverse pair); else the write time."""
+    a, b = str(doc.get("at") or ""), str(prev.get("at") or "")
+    if a != b:
+        return a > b
+    if registry_kind:
+        doc_now = str((doc.get("scheduler_after") or {}).get("kind") or "") == registry_kind
+        prev_now = str((prev.get("scheduler_after") or {}).get("kind") or "") == registry_kind
+        if doc_now != prev_now:
+            return doc_now
+
+    def before(r: dict[str, Any]) -> str:
+        return str(r.get("lane_kind_before") or "")
+
+    def after(r: dict[str, Any]) -> str:
+        return str((r.get("scheduler_after") or {}).get("kind") or "")
+
+    doc_after_prev = before(doc) == after(prev)
+    prev_after_doc = before(prev) == after(doc)
+    if doc_after_prev != prev_after_doc:
+        return doc_after_prev
+    return int(doc.get("_mtime_ns") or 0) >= int(prev.get("_mtime_ns") or 0)
 
 
 def _readiness(root: Path) -> dict[str, dict[str, Any]]:
@@ -197,6 +231,8 @@ def lane_row(spec: dict[str, Any], tranche: str, *, reg_row: Optional[dict[str, 
         phase = "ROLLED_BACK"
     elif kind == "n8n":
         phase = "CUT_OVER"
+        if str((reg_row or {}).get("state") or "") != "ACTIVE":
+            flags.append(FLAG_LANE_NOT_ACTIVE)
     elif has_live:
         phase = "CANARY"
     elif has_dry:
@@ -273,7 +309,8 @@ def build_board(*, root: Optional[Path] = None, registry: Optional[dict[str, Any
     runs_by_lane: dict[str, list[dict[str, Any]]] = {}
     for r in runs:
         runs_by_lane.setdefault(str(r.get("lane_id")), []).append(r)
-    cutovers = _cutover_receipts(root)
+    cutovers = _cutover_receipts(root, {lid: str((r.get("scheduler") or {}).get("kind") or "")
+                                        for lid, r in by_lane.items()})
     ready = _readiness(root)
     n8n_cadences = [float(r.get("expected_cadence_hours")) for r in by_lane.values()
                     if ((r.get("scheduler") or {}).get("kind") == "n8n") and r.get("expected_cadence_hours")]
