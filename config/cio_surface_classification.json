@@ -5,6 +5,13 @@
   "as_of": "2026-10-02",
   "entries": [
     {
+      "name": "schema:ExecutorEnvAllowlistReport@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Executor security rollout telemetry: lane/run ids, requested/effective modes and names of inherited variables enforcement would drop, never values. Stored in data/runtime/executor_env_allowlist_report.jsonl for engineering review; contains no investment judgment or operator advisory output.",
+      "owner_hint": "scripts/n8n_run_executor.py"
+    },
+    {
       "name": "route:/api/v2/cio",
       "kind": "route",
       "classification": "RETIRE_CANDIDATE",

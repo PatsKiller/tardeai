@@ -85,15 +85,88 @@ CHILD_ENV_LANE_PASSTHROUGH: dict[str, frozenset[str]] = {
     "n8n-research-intake-consumer": frozenset({GATEWAY_DISPATCH_KEY_ENV}),
 }
 
+# P7 (2026-10-09): start in report so incomplete source inventories do not break a scheduled lane.
+# Only reviewed per-lane lists can be enforced; the switch belongs to the executor, never its children.
+CHILD_ENV_BASE_NAMES = frozenset({
+    "PATH", "HOME", "LANG", "TZ", "PROJ", "PY", "TRADEAI_ENV", "TRADEAI_STATE_ROOT",
+    "LLM_DEFER_OFFPEAK", "BLIND_REVIEW_LANES", "PYTHONPATH",
+})
+ENV_ALLOWLIST_MODE_ENV = "TRADEAI_EXECUTOR_ENV_ALLOWLIST"
+ENV_ALLOWLIST_MODES = ("off", "report", "enforce")
+ENV_ALLOWLIST_REPORT_SCHEMA = "ExecutorEnvAllowlistReport@v1"
+ENV_ALLOWLIST_REPORT_REL = Path("data/runtime/executor_env_allowlist_report.jsonl")
+ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
 
 class AllowlistError(ValueError):
     pass
 
 
-def child_env(env: Mapping[str, str], lane_id: str) -> dict[str, str]:
-    """The env a lane is spawned with: ``env`` minus every n8n secret, plus only that lane's declared passthrough."""
+def legacy_child_env(env: Mapping[str, str], lane_id: str) -> dict[str, str]:
+    """Pre-P7 environment, still used by off/report. The n8n credential boundary applies in every mode."""
     keep = CHILD_ENV_N8N_NON_SECRET | CHILD_ENV_LANE_PASSTHROUGH.get(lane_id, frozenset())
     return {k: v for k, v in env.items() if k in keep or not k.startswith(CHILD_ENV_STRIP_PREFIXES)}
+
+
+def _env_policy_problem(entry: Mapping[str, Any], lane_id: str) -> str | None:
+    names = entry.get("env_names")
+    if names is not None:
+        if (not isinstance(names, list)
+                or not all(isinstance(name, str) and ENV_NAME_RE.fullmatch(name) for name in names)
+                or len(names) != len(set(names))):
+            return "bad_env_names"
+        permitted_n8n = CHILD_ENV_N8N_NON_SECRET | CHILD_ENV_LANE_PASSTHROUGH.get(lane_id, frozenset())
+        if any(name.startswith(CHILD_ENV_STRIP_PREFIXES) and name not in permitted_n8n for name in names):
+            return "forbidden_env_name"
+    if entry.get("env_allowlist_mode", "enforce") not in ("report", "enforce"):
+        return "bad_lane_env_allowlist_mode"
+    return None
+
+
+def _env_plan(
+    env: Mapping[str, str], lane_id: str, entry: Mapping[str, Any] | None,
+) -> tuple[str, str, str | None, dict[str, str], list[str]]:
+    """Pure selection: requested/effective mode, fallback reason, child env, names enforce would drop."""
+    requested = env.get(ENV_ALLOWLIST_MODE_ENV, "report")
+    if requested not in ENV_ALLOWLIST_MODES:
+        raise AllowlistError("bad_env_allowlist_mode")
+    entry = entry if entry is not None else {}
+    problem = _env_policy_problem(entry, lane_id)
+    if problem:
+        raise AllowlistError(problem)
+    legacy = legacy_child_env(env, lane_id)
+    names = entry.get("env_names")
+    keep = CHILD_ENV_BASE_NAMES | frozenset(names or [])
+    enforced = {name: value for name, value in legacy.items() if name in keep}
+    effective, reason = requested, None
+    if requested != "off":
+        if names is None:
+            effective, reason = "report", "env_names_missing"
+        elif entry.get("env_allowlist_mode") == "report":
+            effective, reason = "report", "lane_report_only"
+    return requested, effective, reason, enforced if effective == "enforce" else legacy, sorted(set(legacy) - set(enforced))
+
+
+def child_env(
+    env: Mapping[str, str], lane_id: str, entry: Mapping[str, Any] | None = None,
+) -> dict[str, str]:
+    """Base plus explicit lane names in enforce; legacy env in off/report. Does not mutate or write state."""
+    return _env_plan(env, lane_id, entry)[3]
+
+
+def _report_env_allowlist(
+    state_root: Path, *, lane_id: str, run_id: str, requested: str, reason: str | None, dropped_names: list[str],
+) -> None:
+    """Executor-only telemetry: field names, never environment values, stdout or exception text."""
+    path = state_root / ENV_ALLOWLIST_REPORT_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    report = {
+        "schema": ENV_ALLOWLIST_REPORT_SCHEMA, "as_of": _iso(time.time()),
+        "lane_id": lane_id, "run_id": run_id, "requested_mode": requested, "effective_mode": "report",
+        "reason": reason, "dropped_names": dropped_names, "authority": "READ_ONLY_ADVISORY",
+    }
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(report, sort_keys=True) + "\n")
 
 
 def load_allowlist(path: Path) -> dict[str, dict[str, Any]]:
@@ -140,7 +213,7 @@ def validate_entry(entry: Mapping[str, Any]) -> str | None:
     sig = entry.get("output_signal")
     if sig is not None and (not isinstance(sig, str) or sig.startswith("/") or ".." in sig):
         return "bad_output_signal"
-    return None
+    return _env_policy_problem(entry, entry["lane_id"])
 
 
 def resolve_token(token: str, *, env: Mapping[str, str], state_root: Path, code_root: Path) -> str:
@@ -236,7 +309,17 @@ def execute(
     timeout_s = float(entry["timeout_s"])
     run = runner or _subprocess_runner
     try:
-        result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=child_env(env, lane_id), cwd=code_root)
+        requested, effective, reason, selected_env, dropped = _env_plan(env, lane_id, entry)
+    except AllowlistError as exc:
+        return _finish(receipt, "RUN_REFUSED", reason=str(exc), started=started)
+    if effective == "report":
+        try:
+            _report_env_allowlist(state_root, lane_id=lane_id, run_id=run_id,
+                                  requested=requested, reason=reason, dropped_names=dropped)
+        except OSError as exc:
+            return _finish(receipt, "RUN_REFUSED", reason=f"env_allowlist_report:{type(exc).__name__}", started=started)
+    try:
+        result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=selected_env, cwd=code_root)
     except subprocess.TimeoutExpired:
         receipt["timed_out"] = True
         receipt["output_signal_mtime_after"] = _mtime(signal_path)

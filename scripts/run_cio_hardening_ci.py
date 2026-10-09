@@ -24,6 +24,11 @@ REPO = Path(__file__).resolve().parents[1]
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
     (
+        # ANCHOR: N8N_AGENT_GATE_EXECUTOR_ENV — P7 per-lane env selection and names-only reports.
+        "n8n_agent_gate_executor_env_20261009",
+        ["tests/test_n8n_executor_env_allowlist_20261009.py"],
+    ),
+    (
         "options_workflow",
         [
             "tests/test_options_workflow.py",

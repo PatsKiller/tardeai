@@ -7,10 +7,15 @@
     "$STATE_ROOT": "TRADEAI_STATE_ROOT (persistent-state)",
     "$CODE_ROOT": "the tree the executor runs from (served CURRENT)"
   },
+  "_env_policy": "P7: TRADEAI_EXECUTOR_ENV_ALLOWLIST=off|report|enforce, default report. env_names are additions to the executor base set. env_allowlist_mode=report pins unresolved lanes to legacy environment even under global enforce; a missing list also stays report. env_evidence names source reads; env_report_reason explains incomplete inventories. Existing n8n secret exclusions remain in every mode. Report rows contain names only at data/runtime/executor_env_allowlist_report.jsonl.",
   "_entry_shape": "lane_id, command (argv, run with cwd = code root), lock (absolute; reused from the live cron/unit so n8n and cron cannot double-run), lock_kind (safe_flock default | flock = cron-style `flock -n`, conflict exit 75), timeout_s, dry_run_arg / live_arg (argv appended for that mode; null = mode unavailable, run refused), market_gate (bool; executor prepends scripts/market_day_gate.sh), output_signal (relative to $STATE_ROOT; mtime recorded before/after on the RunReceipt@v1)",
   "lanes": [
     {
       "lane_id": "generate-analyst-daily-digest",
+      "env_names": ["AGENT_FRESHNESS_DAYS", "AGENT_POSITION_DEVIATION_PCT", "DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "REPORT_INCOME_TARGET", "REPORT_LT_CAPGAINS_RATE", "REPORT_ST_CAPGAINS_RATE", "XDG_RUNTIME_DIR"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "generate_analyst_daily_digest.py imports analyst_report_builder.py (os.getenv constants) and report_export.py; DB names from db_adapter.py; XDG_RUNTIME_DIR from lib/env_bootstrap.py.",
+      "env_report_reason": "Broad lazy report dependencies are not fully inventoried; db_adapter can bootstrap arbitrary rendered names. Candidate names are partial; no enforcement.",
       "source": "30 7 * * 1-5; flock -n /tmp/analyst_daily_digest.lock $PY scripts/generate_analyst_daily_digest.py --format docx; shadow builds report JSON (existing script semantics)",
       "command": [
         "$PY",
@@ -31,6 +36,10 @@
     },
     {
       "lane_id": "desk-suggestions-digest",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_N8N_COORDINATION_LEDGER", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT", "XDG_RUNTIME_DIR"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "desk_suggestions_digest.py imports db_adapter._get_conn and lib/scheduled_job_receipt.py -> lib/lane_registry.py. DB names from db_adapter.py; XDG_RUNTIME_DIR from lib/env_bootstrap.py. lib/lane_registry.py also imports canonical_store_registry.py (STATE_ROOT/ROOT/PERSISTENT_STATE_ROOT). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "db_adapter can call env_bootstrap.load_env and load arbitrary names from tmpfs or disk; report until that loader is bounded.",
       "source": "0 8 * * 1-5; $PY scripts/desk_suggestions_digest.py; no cron lock or dry-run; canary NOT lock-equivalent until operator adds a shared lock",
       "command": [
         "$PY",
@@ -46,6 +55,10 @@
     },
     {
       "lane_id": "job-coverage-monitor",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_N8N_COORDINATION_LEDGER", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT", "XDG_RUNTIME_DIR"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "job_coverage_monitor.py imports db_adapter.get_connection and lib/scheduled_job_receipt.py -> lib/lane_registry.py. DB names from db_adapter.py; XDG_RUNTIME_DIR from lib/env_bootstrap.py. lib/lane_registry.py also imports canonical_store_registry.py (STATE_ROOT/ROOT/PERSISTENT_STATE_ROOT). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "db_adapter can bootstrap arbitrary rendered names; report until that loader is bounded.",
       "source": "30 8,20 * * *; $PY scripts/job_coverage_monitor.py; no cron lock or dry-run; canary NOT lock-equivalent until operator adds a shared lock",
       "command": [
         "$PY",
@@ -61,6 +74,9 @@
     },
     {
       "lane_id": "catalyst-calibration-monitor",
+      "env_names": [],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "catalyst_calibration_monitor.py imports only sys/json/datetime/pathlib; no os.environ/getenv reads. flock wrapper has no project env requirements.",
       "source": "40 5 * * *; flock -n /tmp/catalyst_calibration_monitor.lock $PY scripts/catalyst_calibration_monitor.py",
       "command": [
         "$PY",
@@ -78,6 +94,10 @@
     },
     {
       "lane_id": "source-attribution-monitor",
+      "env_names": ["DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "source_attribution_monitor.py:_db os.getenv reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD. No local Python imports.",
+      "env_report_reason": "At module scope the script loads every name from code-root .env via os.environ.setdefault(k,...); requirements cannot be bounded by literal getenv reads.",
       "source": "0 6 * * *; flock -n /tmp/source_attribution_monitor.lock $PY scripts/source_attribution_monitor.py",
       "command": [
         "$PY",
@@ -95,6 +115,10 @@
     },
     {
       "lane_id": "watch-directives-monitor",
+      "env_names": ["DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "watch_directives_monitor.py:_db os.getenv reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD. No local Python imports.",
+      "env_report_reason": "At module scope the script loads every name from code-root .env via os.environ.setdefault(k,...); requirements cannot be bounded by literal getenv reads.",
       "source": "20 6 * * *; flock -n /tmp/watch_directives_monitor.lock $PY scripts/watch_directives_monitor.py",
       "command": [
         "$PY",
@@ -112,6 +136,10 @@
     },
     {
       "lane_id": "finviz-view-contracts",
+      "env_names": ["DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_USER", "FINVIZ_API_TOKEN", "FINVIZ_COOKIE", "FINVIZ_PROBE_THROTTLE_TIMEOUT", "FINVIZ_SESSION", "FINVIZ_USER_AGENT", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "check_finviz_view_contracts.py:_latest_quotes reads DB_HOST/DB_NAME/DB_USER/DB_PASSWORD; imports lib/finviz_csv.py (none), finviz_http.py (FINVIZ_PROBE_THROTTLE_TIMEOUT), portfolio_technical.py (_env literal FINVIZ_API_TOKEN/COOKIE/SESSION/USER_AGENT). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "portfolio_technical._load_env_file loads arbitrary .env names; dynamic _env(k) and throttle dependencies require a bounded inventory before enforcement.",
       "source": "tradeai-finviz-view-contracts.service ExecStart=$PY scripts/check_finviz_view_contracts.py; no lock in unit, canary requires operator lock equivalence",
       "command": [
         "$PY",
@@ -129,6 +157,10 @@
     },
     {
       "lane_id": "n8n-pilot-dispatch",
+      "env_names": ["DATABASE_URL", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_APPROVAL_BOARD", "TRADEAI_APPROVAL_LEDGER_PATH", "TRADEAI_GOVERNANCE_DIR", "TRADEAI_N8N_GATEWAY_HMAC_KEY", "TRADEAI_N8N_GATEWAY_URL", "TRADEAI_READ_DSN", "TRADEAI_ROOT", "TRADEAI_SERVED_SHA", "TRADE_AI_DSN"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "n8n_pilot_dispatch.py os.environ reads APPROVAL_BOARD and the three DSNs; lib/n8n_gateway_client.py resolves KEY_ENV/URL_ENV constants to the dispatch key and URL; lib/n8n_pilot_observations.py reads STATE_ROOT/SERVED_SHA; lib/approval_board_projection.py imports lib/approval_package.py (GOVERNANCE_DIR/ROOT/APPROVAL_LEDGER_PATH). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "approval_board_projection.load_grants invokes the external guard ledger CLI; its inherited environment requirements are outside the repo inventory, so this lane remains report.",
       "source": "crontab */15 * * * * ... $PY scripts/n8n_pilot_dispatch.py --apply (no lock on the cron line)",
       "command": [
         "$PY",
@@ -148,6 +180,10 @@
     },
     {
       "lane_id": "n8n-incident-fanin",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_FANIN_LANE_REGISTRY", "TRADEAI_FANIN_RELAY", "TRADEAI_FANIN_RUNS", "TRADEAI_N8N_COORDINATION_LEDGER", "TRADEAI_N8N_GATEWAY_HMAC_KEY", "TRADEAI_N8N_GATEWAY_URL", "TRADEAI_OUTBOX_PROJECTION", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT", "TRADEAI_SERVED_SHA", "XDG_RUNTIME_DIR"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "n8n_incident_fanin.py reads three FANIN switches; lib/n8n_gateway_client.py KEY_ENV/URL_ENV; lib/n8n_pilot_observations.py STATE_ROOT/SERVED_SHA; lib/lane_registry.py and n8n_coordination_projection.py read COORDINATION_LEDGER; notification_outbox_projection.py reads OUTBOX_PROJECTION/DB_PASSWORD and imports db_adapter.py (DB names) -> env_bootstrap.py (XDG_RUNTIME_DIR). lib/lane_registry.py also imports canonical_store_registry.py (STATE_ROOT/ROOT/PERSISTENT_STATE_ROOT). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "The outbox DB path can bootstrap arbitrary rendered names through db_adapter; report until that loader is bounded.",
       "source": "crontab */5 * * * * ... $PY scripts/n8n_incident_fanin.py --apply (no lock on the cron line)",
       "command": [
         "$PY",
@@ -167,6 +203,10 @@
     },
     {
       "lane_id": "n8n-research-intake-consumer",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_N8N_GATEWAY_HMAC_KEY", "TRADEAI_N8N_GATEWAY_URL", "TRADEAI_RESEARCH_INTAKE_DAILY_CAP", "TRADEAI_SERVED_SHA", "XDG_RUNTIME_DIR"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "n8n_research_intake_consumer.py resolves DAILY_CAP_ENV; lib/n8n_gateway_client.py resolves KEY_ENV/URL_ENV; lib/n8n_pilot_observations.py STATE_ROOT/SERVED_SHA; default_enqueue imports research_intelligence_queue.py -> db_adapter.py (DB names) -> env_bootstrap.py (XDG_RUNTIME_DIR). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "The enqueue DB path can bootstrap arbitrary rendered names through db_adapter; report until that loader is bounded.",
       "source": "crontab */15 * * * * ... $PY scripts/n8n_research_intake_consumer.py --apply (no lock on the cron line)",
       "command": [
         "$PY",
@@ -186,6 +226,9 @@
     },
     {
       "lane_id": "crontab-snapshot-for-health-agent",
+      "env_names": ["PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR"],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "Inline bash command in this entry uses only positional $1 (resolved STATE_ROOT in argv), crontab and mv. safe_flock.sh reads PROJECT_ROOT/SAFE_FLOCK_LOG_DIR; no Python imports.",
       "source": "crontab */20 * * * * crontab -l > <snapshot>.tmp && mv -f <snapshot>.tmp <snapshot>; the target path is the mode argument ($1), dry_run writes the shadow copy",
       "command": [
         "bash",
@@ -207,6 +250,9 @@
     },
     {
       "lane_id": "n8n-lab-watchdog",
+      "env_names": [],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "n8n_lab_watchdog.py imports only standard library and has no os.environ/getenv reads; os is used for atomic replace. flock wrapper has no project env requirements.",
       "source": "tradeai-n8n-lab-watchdog.service: flock -n /tmp/tradeai-n8n-lab-watchdog.lock $PY scripts/n8n_lab_watchdog.py --url http://127.0.0.1:5678/healthz --receipt <state>/data/runtime/n8n_lab_watchdog_last.json --timeout 3; dry_run writes the shadow receipt",
       "command": [
         "$PY",
@@ -232,6 +278,10 @@
     },
     {
       "lane_id": "lane-governance-packet-weekly",
+      "env_names": ["PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_DEPLOY_STATE_DIR", "TRADEAI_GOVERNED_BRIDGE_URL", "TRADEAI_N8N_COORDINATION_LEDGER", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT", "TRADEAI_SERVED_SHA"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "report_lane_governance_packet.py reads STATE_ROOT/DEPLOY_STATE_DIR/SERVED_SHA; imports lib/lane_registry.py and lib/n8n_coordination_projection.py (COORDINATION_LEDGER/STATE_ROOT), lib/n8n_model_job.py (STATE_ROOT and BRIDGE_URL_ENV=TRADEAI_GOVERNED_BRIDGE_URL). Optional ops-summary preflight imports cio_governed_model_bridge.py and llm_consumption.py (broad transitive environment readers). lib/lane_registry.py also imports canonical_store_registry.py (STATE_ROOT/ROOT/PERSISTENT_STATE_ROOT). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "Optional ops-summary preflight imports the bridge and llm_consumption with broad and dynamic environment readers; the full requirement set is unresolved. Candidate names are partial; no enforcement.",
       "source": "registry NEVER_SCHEDULED (no cron line, no unit); scripts/report_lane_governance_packet.py --period weekly, --dry-run default / --write",
       "command": [
         "$PY",
@@ -253,6 +303,9 @@
     },
     {
       "lane_id": "maturity-remeasure",
+      "env_names": ["TRADEAI_HEARTBEAT_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_RELEASE_SHA", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "maturity_remeasure.py reads env STATE_ROOT; lazy canonical_store_registry.py reads STATE_ROOT/ROOT/PERSISTENT_STATE_ROOT and imports product_availability.py (no env); supervisor_heartbeat.py reads HEARTBEAT_DIR/ROOT/RELEASE_SHA and imports only standard library. flock wrapper has no project env requirements.",
       "source": "crontab 40 6 * * 1 cd CURRENT && flock -n /tmp/tradeai_maturity_remeasure.lock $PY scripts/maturity_remeasure.py --write; without --write the script measures and prints, writing nothing",
       "command": [
         "$PY",
