@@ -329,8 +329,13 @@ def test_provider_semaphore_releases_when_generate_raises(monkeypatch: pytest.Mo
     assert sem._value == sem._initial_value
 
 
-def test_stream_preserves_first_settled_route_when_health_changes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Once settled, response rendering cannot re-route or re-run the provider."""
+def test_stream_resolves_once_and_streams_the_governed_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-10-09 (audit B, H1): the stream path no longer re-resolves or calls a provider a second time.
+
+    Before, a refusal that appeared only on a second resolve was answered as typed JSON; that second resolve
+    existed only to feed a second, unreserved provider call. Now the policy is resolved once, inside the
+    governed call, and a later lane flip cannot reach the stream at all.
+    """
     calls = {"n": 0}
     real = bridge.resolve_model_policy
 
@@ -338,17 +343,7 @@ def test_stream_preserves_first_settled_route_when_health_changes(monkeypatch: p
         calls["n"] += 1
         if calls["n"] == 1:
             return real(process_id, task_type, routing_policy)
-        return {
-            "refused": "lane_unhealthy",
-            "refused_status": 503,
-            "refused_message": "Every health-gated lane for process alex_cio_synthesis is unhealthy",
-            "routing_decision": {
-                "policy_id": "default",
-                "lane_chosen": None,
-                "reason": "lane_unhealthy",
-                "health_snapshot": {"provider_health": "present", "lanes": {"deepseek": "unhealthy"}},
-            },
-        }
+        return {"refused": "lane_unhealthy", "refused_status": 503, "refused_message": "flipped"}
 
     monkeypatch.setattr(bridge, "resolve_model_policy", _flip)
     stream = MagicMock(side_effect=AssertionError("stream cannot call a provider again"))
@@ -521,6 +516,19 @@ def test_fresh_attributable_recovery_is_healthy_but_indictment_wins() -> None:
     assert bridge._provider_health_status("grok", health, "present", None, "missing") == "unhealthy"
 
 
+def _settled_messages_from_sse(frames: list[dict]) -> dict[int, dict]:
+    messages = {}
+    for frame in frames:
+        for choice in frame["choices"]:
+            message = messages.setdefault(choice["index"], {})
+            for key, value in choice["delta"].items():
+                if key in {"content", "reasoning_content"} and isinstance(value, str):
+                    message[key] = (message.get(key) or "") + value
+                else:
+                    message[key] = value
+    return messages
+
+
 @pytest.mark.parametrize("mode", ["mock", "canary"])
 def test_stream_reuses_accounted_result_without_resolve_or_provider(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
     import io
@@ -563,9 +571,10 @@ def test_stream_reuses_accounted_result_without_resolve_or_provider(monkeypatch:
     frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
     assert raw.count("data: [DONE]") == 1
     assert all(frame["id"] == result["id"] for frame in frames)
-    assert frames[0]["choices"][0]["delta"]["content"] == result["choices"][0]["message"]["content"]
-    assert frames[0]["choices"][0]["delta"]["reasoning_content"] == "reason"
-    assert frames[0]["choices"][0]["delta"]["tool_calls"][0]["index"] == 0
+    messages = _settled_messages_from_sse(frames)
+    expected = dict(result["choices"][0]["message"])
+    expected["tool_calls"] = [{**call, "index": index} for index, call in enumerate(expected["tool_calls"])]
+    assert messages == {0: expected}
     assert frames[-1]["choices"][0]["finish_reason"] == "tool_calls"
     assert frames[-1]["usage"] == result["usage"]
     assert frames[-1]["_tradeai"] == result["_tradeai"]
@@ -621,18 +630,26 @@ def test_stream_preserves_empty_tool_only_and_multiple_choices(choices: list) ->
     bridge.GovernedBridgeHandler._send_stream(handler, result, [], "alex_cio_synthesis", None, 10)
     raw = handler.wfile.getvalue().decode("utf-8")
     frames = [json.loads(line[6:]) for line in raw.splitlines() if line.startswith("data: ") and line != "data: [DONE]"]
-    assert len(frames) == 2
     assert raw.count("data: [DONE]") == 1
     assert [choice["index"] for choice in frames[0]["choices"]] == [choice["index"] for choice in choices]
     assert [choice["finish_reason"] for choice in frames[-1]["choices"]] == [
         choice["finish_reason"] for choice in choices
     ]
-    for actual, expected in zip(frames[0]["choices"], choices):
-        assert actual["delta"].get("content") == expected["message"].get("content")
-        if "tool_calls" in expected["message"]:
-            assert actual["delta"]["tool_calls"][0]["index"] == 0
+    expected_messages = {}
+    for choice in choices:
+        message = dict(choice["message"])
+        if "tool_calls" in message:
+            message["tool_calls"] = [{**call, "index": index} for index, call in enumerate(message["tool_calls"])]
+        expected_messages[choice["index"]] = message
+    assert _settled_messages_from_sse(frames) == expected_messages
     assert frames[-1]["usage"] == result["usage"]
     assert frames[-1]["_tradeai"] == result["_tradeai"]
+
+
+def test_stream_preserves_zero_created_in_settled_result() -> None:
+    result = {"id": "zero-time", "created": 0, "model": "fixture", "choices": [], "usage": {}}
+    frames = [json.loads(chunk[6:]) for chunk in bridge.governed_result_sse_chunks(result) if chunk != "data: [DONE]\n\n"]
+    assert all(frame["created"] == 0 for frame in frames)
 
 
 def test_initial_unconfigured_provider_refusal_never_starts_stream(

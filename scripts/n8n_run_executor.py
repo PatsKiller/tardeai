@@ -69,8 +69,31 @@ SAFE_FLOCK_SKIP = "safe_flock: skipped"
 TAIL_CHARS = 800
 
 
+#: 2026-10-09 (guardrail audit B, M2): the executor's own env holds the n8n gateway keys, the relay run-scope
+#: key and the relay bearer (EnvironmentFile %t/tradeai/env + n8n-gateway.env). A lane gets none of them by
+#: default: every name under these prefixes is dropped from the child env before the lane is spawned.
+CHILD_ENV_STRIP_PREFIXES = ("TRADEAI_N8N_", "N8N_")
+#: Non-secret routing values a lane may still read (where the gateway is, which ledger file).
+CHILD_ENV_N8N_NON_SECRET = frozenset({"TRADEAI_N8N_GATEWAY_URL", "TRADEAI_N8N_COORDINATION_LEDGER"})
+#: The source-side dispatch key (read scope, caller ``tradeai-*``) is re-admitted ONLY for the lanes whose code
+#: signs gateway claims with it (scripts/lib/n8n_gateway_client.py KEY_ENV) and that held it under cron
+#: (their retired cron lines sourced %t/tradeai/env). Never the relay key, the relay bearer or any _PREVIOUS key.
+GATEWAY_DISPATCH_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY"
+CHILD_ENV_LANE_PASSTHROUGH: dict[str, frozenset[str]] = {
+    "n8n-pilot-dispatch": frozenset({GATEWAY_DISPATCH_KEY_ENV}),
+    "n8n-incident-fanin": frozenset({GATEWAY_DISPATCH_KEY_ENV}),
+    "n8n-research-intake-consumer": frozenset({GATEWAY_DISPATCH_KEY_ENV}),
+}
+
+
 class AllowlistError(ValueError):
     pass
+
+
+def child_env(env: Mapping[str, str], lane_id: str) -> dict[str, str]:
+    """The env a lane is spawned with: ``env`` minus every n8n secret, plus only that lane's declared passthrough."""
+    keep = CHILD_ENV_N8N_NON_SECRET | CHILD_ENV_LANE_PASSTHROUGH.get(lane_id, frozenset())
+    return {k: v for k, v in env.items() if k in keep or not k.startswith(CHILD_ENV_STRIP_PREFIXES)}
 
 
 def load_allowlist(path: Path) -> dict[str, dict[str, Any]]:
@@ -213,7 +236,7 @@ def execute(
     timeout_s = float(entry["timeout_s"])
     run = runner or _subprocess_runner
     try:
-        result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=dict(env), cwd=code_root)
+        result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=child_env(env, lane_id), cwd=code_root)
     except subprocess.TimeoutExpired:
         receipt["timed_out"] = True
         receipt["output_signal_mtime_after"] = _mtime(signal_path)

@@ -1,21 +1,32 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      2.0.1
+Policy-Version:      3.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-08
-Last-Reviewed:       2026-10-08T12:00:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-09T12:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          2.0.0
+Supersedes:          2.0.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**2.0.0 is PROPOSED (MAJOR) — the n8n carve-out, §23.** Awaiting operator ratification
-(`APPROVE_AGENTS_POLICY_2_0_0 <pr> <sha>`, §20). Until then **1.6.1 is the governing text**
-and §23 grants nothing. It adds §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n
+**3.0.0 is PROPOSED (MAJOR) — governed LLM and Agent capability in n8n (§23 amendment).** Awaiting
+operator ratification (`APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`, §20). Until then **2.0.1 is the
+governing text** and nothing 3.0.0 adds grants anything. It replaces §23.3's first bullet, §23.4 and
+§23.5's first bullet, and adds §23.8 (n8n Agent nodes), §23.9 (governance parity) and §23.10
+(preconditions before the first Agent node, which grant nothing until each is measured true with a
+receipt). It records five operator decisions of 2026-10-09: ratify the proposal's §3 text; n8n
+routing order Grok (OAuth) → ChatGPT (OAuth) → DeepSeek (metered); container internet egress
+BLOCKED, not proxied; the first Agent is read-only "explain why lane X failed", shadowed first;
+owner MFA waived, the non-superuser DB role still required. MAJOR because egress policy and the
+n8n actor's authority change (version policy).
+
+**2.0.0 is ACTIVE from 2026-10-08 (MAJOR) — the n8n carve-out, §23.** Ratified by the operator
+(`APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d`, §20; merged #1513 2026-10-08T09:06:46-04:00; 2.0.1
+PATCH on top). It adds §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n
 only)": n8n workflows are scheduler entries under §9.3; n8n may request a run only through the
 gateway `coordination/run` operation for allowlisted lanes; n8n may choose among registered `n8n_*`
 processes, template ids and routing policies but never a model, a provider or a raw prompt; n8n holds
@@ -3411,7 +3422,9 @@ overnight LLM window · merging divergent copies of any authoritative store · *
 retiring a data source, or a writer of an authoritative store** (§7A — an agent proposes the
 registry row; the operator's grant is recorded in its `approval`; the gate fails an ungranted
 source) · **activating, editing or deactivating an n8n workflow that schedules a Trade AI lane**
-(§23 — a `cron` grant; ACTIVE in 2.0.0) · branch-protection or required-context changes ·
+(§23 — a `cron` grant; ACTIVE in 2.0.0) · **activating an n8n Agent node, or creating the n8n bridge
+token** (§23.8, §23.10 — a grant naming the workflow id; PROPOSED in 3.0.0) · branch-protection or
+required-context changes ·
 provisioning or funding any model or data
 plan · deleting anything · live broker authority (A4/A5): live flags, live sessions, 2FA, credentials, the
 Stage 14 canary, and any change to `DETERMINISTIC_ENTRY_POINTS`, session-grant limits or the grant contract.
@@ -3859,10 +3872,14 @@ superseded).
 
 ---
 
-# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 2.0.0
+# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 2.0.0 · 3.0.0 PROPOSED
 
-**Status: PROPOSED.** Awaiting `APPROVE_AGENTS_POLICY_2_0_0 <pr> <sha>`. Until the operator
-ratifies it, the 1.6.1 text governs and nothing in this section grants anything. Operator direction
+**Status: 2.0.0 ACTIVE since 2026-10-08** (`APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d`).
+**3.0.0 PROPOSED** — §23.3 first bullet, §23.4 and §23.5 first bullet replaced, §23.8–§23.10 added;
+awaiting `APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`. Until then the 2.0.1 text of those subsections
+governs (recorded in §23.7) and nothing 3.0.0 adds grants anything. Operator direction 2026-10-09:
+n8n gets governed AI capability, never unrestricted AI access or provider credentials; no capability
+expands until a guardrail audit proves governance parity or better. Operator direction
 2026-10-08: *"make agents.md carve out just for n8n"*, after the three decisions of the same day —
 (1) one scoped key may live in n8n; (2) the cron-lane ladder is shadow → canary → cutover → rollback;
 (3) broader AI routing in n8n, implemented as a carve-out scoped only to n8n. The program is
@@ -3923,12 +3940,35 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
 
 ## 23.3 The only trigger path — `coordination/run`, allowlisted lanes, host-side execution
 
-- **n8n may request a run only through the coordination gateway (`127.0.0.1:18091`) operation
-  `coordination/run`**, reached from the container through the relay on the docker bridge
-  (`172.19.0.1:18092`, pending the operator's permission to bind it), with claim scope
-  `coordination_run` and caller `n8n-relay`. No other port, route, socket, SSH, `docker exec`,
-  file drop or webhook is a trigger path. A run request names a `lane_id` and a `mode ∈ {dry_run,
-  live}` and nothing else that changes what executes.
+- **n8n workflows and n8n Agent nodes may cause host work only through the relay to the gateway's
+  `coordination/run` operation, for lanes in `config/n8n_run_allowlist.json`, and through the read-only
+  coordination endpoints.** An Agent tool is a call to one of those endpoints and nothing else. The relay
+  listens on the docker bridge (`172.19.0.1:18092`) with claim scope `coordination_run` and caller
+  `n8n-relay`; the gateway stays on `127.0.0.1:18091`. No other port, route, socket, SSH,
+  `docker exec`, file drop or webhook is a trigger path. A run request names a `lane_id` and a
+  `mode ∈ {dry_run, live}` and nothing else that changes what executes. *Cause (§20): audit C G12 — no
+  policy text addressed n8n Agent nodes; they were forbidden only by implication (3.0.0, replaces the
+  2.0.1 first bullet).*
+- **An Agent may not invoke unrestricted execution, create or read credentials, change policy, change a
+  workflow, approve or mint a grant, or bypass an approval.** The never-list (broker, order, stop,
+  position, paper execution, every sender, secret render, guard, release deploy, destructive retention,
+  memory and learning writers, authoritative ingest, DOF SQL) applies to Agent tools exactly as to
+  lanes. *Cause (§20): audit A high (`config/n8n_run_allowlist.json#never` is prose enforced only at
+  merge time) and audit C G2 — nothing on the n8n side blocked Agent, tool, MCP, messaging, Postgres or
+  file nodes.*
+- **Every Agent tool call is checked against a per-process tool allowlist at the bridge** before the
+  result reaches n8n, and against the gateway's forbidden-route tokens. A tool the allowlist does not
+  name is refused with a typed reason, not dropped. *Cause (§20): audit B H4 — the bridge passed client
+  `tools` / `tool_choice` to the provider and returned `tool_calls` unvalidated, so n8n would execute
+  whatever tool a model named.*
+- **The n8n container reaches the host only at `172.19.0.1:18092`, and its internet egress is
+  BLOCKED, not proxied.** Operator decision recorded 2026-10-09 (decision 3): a `DOCKER-USER` rule
+  drops the container's traffic to the internet; host reach is the ufw allow for 18092 followed by a
+  deny for the rest of `172.19.0.0/16` (measured 2026-10-09: host 22/7777/7776/9090 time out). An
+  egress proxy with a destination allowlist was the rejected alternative; admitting one is a later
+  amendment, not a configuration change. *Cause (§20): audit C G3 — from the container 1.1.1.1:443 and
+  172.19.0.1:22 were OPEN, so a workflow or Agent could reach any provider directly and bypass §2A,
+  the bridge and the $2.00/day cap.*
 - **Only lanes in `config/n8n_run_allowlist.json` (`N8nRunAllowlist@v1`) may be requested, and the
   allowlist is data with a test.** It may never contain a broker, order, stop, position,
   paper-execution, sender (Telegram or email), secret-render, guard, release-deploy,
@@ -3952,21 +3992,34 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   `send_telegram` on the host stays the single chokepoint (§9.1). The email-send nodes remain in
   `NODES_EXCLUDE`.
 
-## 23.4 Governed routing — n8n chooses among registered options, never a model or a provider
+## 23.4 Governed LLM access — n8n requests a capability, never a model or a provider
 
-- **n8n may choose, per `model_job`:** a `process_id` from the registered `n8n_*` processes in
-  `config/llm_process_registry.json` (today `n8n_material_digest_draft`, `n8n_ops_summary_draft`); an
-  optional `template_id` from the versioned `config/n8n_prompt_templates.json`
-  (`N8nPromptTemplate@v1`, rendered **server-side**); and an optional `routing_policy` name from
-  `config/llm_routing_policy.json` (`LlmRoutingPolicy@v1`). That is the whole surface.
-- **n8n may not:** name a model or a provider (the client model field is ignored); send raw prompt
-  text (a template id is the only prompt input, so §2A's egress line is enforced in one place on the
-  host); hold a provider key; call a provider; or supply its own caller identity. Caller identity
-  stays server-side (`CALLER_PROCESS_MAP` / `CALLER_TASK_PROCESS_MAP`, §7 governed bridge, §9.2
-  "every bridge caller names itself"); the gateway derives the task type from `job.process_id`, not
-  from the caller. *Cause (§9.2, 2026-09-14): 88% of a week's spend sat under one shared id carrying
-  six callers because callers could relabel themselves; a routing surface that accepted a model
-  name or a prompt from n8n would reopen that and add an egress path no host code could sanitise.*
+- **n8n workflows and Agent nodes may request AI capability only through the governed bridge**, by
+  naming a registered process (`n8n_*` in `config/llm_process_registry.json`; today
+  `n8n_material_digest_draft`, `n8n_ops_summary_draft`), a versioned template
+  (`config/n8n_prompt_templates.json`, `N8nPromptTemplate@v1`, rendered server-side) and optionally a
+  routing policy (`config/llm_routing_policy.json`, `LlmRoutingPolicy@v1`). That is the whole surface.
+  *Cause (§20): operator direction 2026-10-09 — "a workflow requests a capability, never a provider or a
+  model"; audit C G4 — an Agent holding its own provider key would bypass the bridge, the $2.00/day
+  cap, the process registry, deferral and caller identity.*
+- **They may not select a provider, select a model, send raw prompt text that bypasses the egress
+  filter, supply their own caller identity, or bypass logging, spend caps, schema validation or
+  deferral.** The client model field is ignored; caller identity is bound server-side to the
+  credential that made the request, never read from a header (§9.2 "every bridge caller names
+  itself"). *Cause (§9.2, 2026-09-14): 88% of a week's spend sat under one shared id because callers
+  could relabel themselves; audit B H2 — the bridge's `X-TradeAI-Agent` header is self-asserted.*
+- **Routing order is a policy, not a workflow choice.** Operator decision recorded 2026-10-09
+  (decision 2): the default capability policy for n8n processes is **primary Grok (OAuth proxy),
+  secondary ChatGPT (OAuth proxy), fallback DeepSeek (metered)**. Health gating, concurrency limits and
+  the global daily cap apply to every lane. A process that needs a different order gets its own named
+  routing policy, reviewed like any other config change. *Cause (§20): audit A medium — the routing
+  policy's `cost_ceiling_usd` / `latency_budget_ms` were not enforced, so an order chosen per workflow
+  could not be held to a cost or latency bound; the OAuth-backed lanes carry no per-call spend.*
+- **Free-text Agent input is allowed only after it passes the single egress sanitiser
+  (`sanitise_for_external`, §2A) on the host**, and only for processes whose registry row sets
+  `free_text_allowed: true`. Until that sanitiser is built (§23.10 P4) a template id is the only prompt
+  input. *Cause (§20): audit B H3 and audit C G4 — no §2A egress filter exists anywhere; `model_job`
+  forwards artifact bodies unscanned and the bridge forwards any free text.*
 - **Every call is capped twice and refuses typed.** The process registry row caps requests and
   dollars per day; `LLM_GLOBAL_DAILY_USD_CAP = 2.00` (§12) rules above it. The bridge resolves
   model and lane, records `routing_decision` on every receipt, and refuses with a typed reason
@@ -3975,26 +4028,36 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   operator's window (§9.3, §12); a refused call is queued by `lib/llm_deferral`, not dropped.
   *Cause (§12, 2026-09-17..19): a provider that answered every call with HTTP 402 for three days
   looked, to every monitor, like a system doing no work.*
-- **Outputs are drafts.** Every `n8n_*` process is `READ_ONLY_ADVISORY`, `recommendation` must be
-  `NONE`, output is validated against `config/schemas/n8n_model_job_outputs.json`, and no model
-  output from this path writes an InstrumentRecord, a belief, a lesson or a memory store (§2,
-  `MBI_BEHAVIOR = 0`; §7A one writer per store).
+- **Every model output used by a workflow is validated against the process's output schema and scanned
+  for behaviour fields (size, quantity, order, stop, limit, weight, trade) at the bridge before it
+  returns to n8n.** Outputs are drafts: `READ_ONLY_ADVISORY`, `recommendation: NONE`, never written to
+  an InstrumentRecord, belief, lesson or memory store from this path (§2, `MBI_BEHAVIOR = 0`; §7A one
+  writer per store). *Cause (§20): audit B M3 — only `n8n_model_job` validated output; the bridge
+  returned whatever the provider produced.*
 
-## 23.5 Secrets — exactly one n8n credential, and the precondition for its existence
+## 23.5 Secrets — at most two n8n credentials, each valid only at its own door
 
-- **n8n holds exactly one credential: the relay bearer** (`TRADEAI_N8N_RELAY_BEARER`, a Header-Auth
-  credential), rendered from Bitwarden SM (project `trade-ai-prod`) by `render_env.py`, valid only
-  at the relay, rotated weekly through `config/secret_registry.yaml` and `rotation_daemon.py` once
-  that daemon is scheduled. It can request a run of an allowlisted lane in `dry_run` or `live` and
-  nothing else. A second n8n credential of any kind — provider, broker, database, messaging, n8n
-  API key — is a §17 decision and, until granted, a defect (§2A: SM is the only store; §7A rule 1).
+- **n8n holds at most two credentials: the relay bearer (run requests and reads) and, once the Agent
+  gate opens (§23.10), one bridge token (AI requests).** Each is valid only at its own door, rendered
+  from Bitwarden SM (project `trade-ai-prod`) by `render_env.py`, rotated weekly through
+  `config/secret_registry.yaml` with a `_PREVIOUS` overlap. Any other credential in n8n — provider,
+  broker, database, messaging, n8n API key — is a defect and a §17 decision. Execution data on success
+  is not retained; error data is pruned at 168 h. *Cause (§20): audit C G7 — the public API was
+  enabled, so one n8n API key would have been a third, unbounded credential; audit C G18 — the
+  rotation daemon is unscheduled.*
+- **Operator waiver recorded 2026-10-09 (decision 5): owner MFA is not required.** Rationale: the n8n
+  editor listens on 127.0.0.1 only and is reached through an SSH tunnel over Tailscale. **The waiver
+  does not extend to the database role:** the non-superuser `n8n_app` role remains a precondition for
+  the bridge token (§23.10 P13). *Cause (§20): audit C G1 — the relay credential was created while
+  MFA was off and the DB role was a superuser; the operator closed the MFA half by waiver, not the
+  role half.*
 - **The gateway HMAC key stays host-side.** `TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N` is read by the relay
   from the rendered tmpfs env; it never enters n8n, a workflow, an execution record or a log.
   `TRADEAI_N8N_GATEWAY_HMAC_KEY` (caller `tradeai-dispatch`) is unchanged.
 - **Execution data on success is not retained, as the precondition for any credential existing.**
   `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`, `EXECUTIONS_DATA_SAVE_ON_ERROR=all`,
   `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE=168` (hours). If the running compose file
-  does not say so, the credential is not created. Owner MFA is on and the n8n database role is not a
+  does not say so, the credential is not created. Owner MFA is waived (above); the n8n database role is not a
   superuser before the credential exists. *Cause: `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md`
   — n8n stores execution input, so a bearer in a workflow is a bearer in the n8n database; the lab
   measured `EXECUTIONS_DATA_SAVE_ON_SUCCESS=all` on 2026-10-07.*
@@ -4015,7 +4078,9 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   `CRON_PRESENT_WHILE_SCHEDULER_N8N`; relay bearer failures; n8n `healthz` down > 10 min; any
   `RUN_REFUSED` row. Rollback target: under five minutes, by re-enabling the exact line.
 
-## 23.7 Sentences amended in place by this version (§20: replaced, not accumulated)
+## 23.7 Sentences amended in place by 2.0.0 and 3.0.0 (§20: replaced, not accumulated)
+
+2.0.0:
 
 - §9.3 "Installing, editing or removing a scheduler entry is operator-only" now names an n8n
   workflow as a scheduler entry.
@@ -4024,7 +4089,117 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
 - `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` moves from "no n8n credential" (PROPOSED) to
   ACCEPTED with exactly one; the superseded text is kept there under its own heading.
 
+3.0.0 (PROPOSED; the replaced 2.0.1 text stays readable at `origin/main` `bbff99766`):
+
+- §23.3 first bullet: "n8n may request a run only through the coordination gateway" now reads "n8n
+  workflows and n8n Agent nodes may cause host work only through the relay … and the read-only
+  coordination endpoints"; the gateway/relay addresses, claim scope and the closed list of trigger
+  paths are kept. Three bullets are added: the Agent prohibitions and never-list, the bridge tool
+  allowlist, and the internet-egress block (decision 3).
+- §23.4 "Governed routing — n8n chooses among registered options" is replaced by "Governed LLM access":
+  "a template id is the only prompt input" becomes "only until the §2A sanitiser is built, then free
+  text for `free_text_allowed` processes"; the routing order Grok → ChatGPT → DeepSeek is policy
+  (decision 2); output validation moves from `n8n_model_job` alone to the bridge; caller identity is
+  bound to the credential. "Every call is capped twice and refuses typed" is kept verbatim.
+- §23.5 "n8n holds exactly one credential: the relay bearer" now reads "at most two credentials"
+  (the bridge token only after §23.10); "Owner MFA is on" now reads "Owner MFA is waived"
+  (decision 5); the non-superuser DB role precondition is unchanged.
+- §17 gains "activating an n8n Agent node, or creating the n8n bridge token".
+- The §23 status line and the top-of-file "2.0.0 is PROPOSED" sentence are corrected to 2.0.0 ACTIVE
+  (audit C G11).
+- `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md`: its Policy line no longer says "PROPOSED
+  2.0.0" (audit C G11), and it gains a 3.0.0 addendum (second credential only after §23.10; MFA waiver).
+
 No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
+
+## 23.8 n8n Agent nodes (3.0.0)
+
+Evidence for every rule below: the three read-only guardrail audits of `origin/main` `a9fa8b89b`
+(2026-10-09), `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md` (audit A,
+216 rows, 41 gaps), `docs/implementation/n8n-parallel/audits/guardrail-audit-b-code-20261009.md`
+(audit B, 59 rows, 16 gaps) and `docs/implementation/n8n-parallel/audits/guardrail-audit-c-policy-n8n-20261009.md`
+(audit C, 70 rules + 17 controls, 18 gaps); proposal
+`docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`.
+
+- **An Agent node is permitted only in a workflow that has a lane registry row, a host receipt per turn,
+  and a grant naming the workflow id for its activation.** *Cause (§20): audit C G5 — 17 shadow
+  activations on 2026-10-09 happened with no matching grant, and n8n history records only `import`.*
+- **Its model node points at the governed bridge's Agent endpoint, never at a provider.** *Cause (§20):
+  audit C G4 — an Agent with its own provider key bypasses every §9.2/§12 control.*
+- **Its tools are limited to the bridge-enforced allowlist in §23.3.** Code, HTTP, database, file,
+  messaging, MCP and vector-store tool nodes stay excluded in `NODES_EXCLUDE` unless a later amendment
+  admits a specific one with its own guardrail. *Cause (§20): audit C G2 and G13 (79 active third-party
+  MCP servers in the registry table); audit A high — the node-type allowlist covers generated templates
+  only, so an `httpRequest` or `code` node can reach any provider or sender unscanned.*
+- **Turn count, `max_tokens` and wall time are capped per process. Streaming is refused** until the
+  bridge streams the governed result instead of calling the provider again. *Cause (§20): audit B H1 —
+  the bridge's streaming path made a second, unreserved provider call after the governed one.*
+- **The n8n container has no internet egress (§23.3).** An Agent cannot reach a provider, a sender or
+  a third-party API except through the relay and the bridge on the docker bridge address. *Cause
+  (§20): audit C G3.*
+- **The first Agent is read-only and explains a lane failure.** Operator decision recorded 2026-10-09
+  (decision 4): the first Agent answers "explain why lane X failed". Its only tools are coordination
+  reads — ledger runs, the relay's `GET /runs/<lane>/last`, and run receipts. It has one process, the
+  §23.4 default routing order, a turn cap of 4, a grant naming its workflow id, and it runs **shadowed
+  first**: its answers are compared with the receipts before any operator surface shows them, and it
+  sends nothing (§23.3 "No sends from n8n"). Any further Agent capability is a new registry row,
+  template, routing policy, tool list and parity table (§23.9), reviewed like a lane cutover. *Cause
+  (§20): audit C G12 — enablement needs a named scope; a read-only first use touches no store, sender
+  or money path, so its failure mode is a wrong explanation, not a wrong action.*
+
+## 23.9 Governance parity (3.0.0)
+
+- **Before any lane or capability moves into n8n, its guardrails are listed** with: where each executes
+  today, its source (code, JSON, policy), its kind (technical, procedural, policy), how it is enforced in
+  n8n, how that is validated, and how it is monitored. A gap blocks the move until it has a remediation
+  and an owner. The three 2026-10-09 audits are the baseline; each tranche PR updates them and adds one
+  parity table per lane under `docs/implementation/n8n-parallel/parity/`. *Cause (§20): the audits
+  measured that today's run path keeps parity (audit B: 44 of 59 code guardrails enforced on it) while
+  a direct Agent would not (audit B: 35 of 59 not enforced; audit C: 26 of 70 policy rules not
+  enforced) — n8n is the orchestration layer, never the source of truth for governance.*
+
+## 23.10 Preconditions before the first Agent node (3.0.0)
+
+**Ratifying 3.0.0 grants nothing by itself.** No Agent node is activated and no bridge token is
+created until **every** item below is measured true and leaves a receipt (a command output, a test
+run or a guard log entry quoted in the closing PR). An item without a receipt is open. The identifiers
+are the proposal's §5 table; the cause of each is the audit finding named beside it.
+
+- [ ] **P2** — the bridge streams the governed result; no second provider call (audit B H1).
+- [ ] **P3** — bridge caller identity is signed: report mode, then enforce (audit B H2).
+- [ ] **P4** — the single egress sanitiser `sanitise_for_external()` is built and on the bridge path
+  (audit B H3, audit A, audit C G4).
+- [ ] **P5** — the per-process tool allowlist is enforced at the bridge (audit B H4).
+- [ ] **P6** — output schema plus behaviour-field scan at the bridge for every n8n process (audit B M3).
+- [ ] **P7** — the executor and Agent paths get a per-lane secret allowlist, not the full rendered env
+  of 126 names (audit A high, audit B M2).
+- [ ] **P8** — off-peak deferral and the crontab-wide flags apply on the executor and bridge paths
+  (audit A, audit B M1).
+- [ ] **P9** — `NODES_EXCLUDE` extended (Telegram, Slack, Discord, Postgres, Files, MCP, HTTP/Code
+  tools, vector stores) and a live check that active node types ⊆ the approved set (audit C G2, G13;
+  audit A high).
+- [ ] **P11** — container internet egress blocked by the `DOCKER-USER` rule (decision 3; audit C G3).
+- [ ] **P12** — n8n public API disabled; zero n8n API keys (audit C G7).
+- [ ] **P13** — n8n database role is the non-superuser `n8n_app` (audit C G1, G6). Not waived.
+- [ ] **P15** — the owner password is out of the agent-readable `.env` (audit C G6).
+- [ ] **P16** — workflow edits attributable: activation only under a grant naming the workflow id,
+  reconciled against `guard log` by a check, not only by process (audit C G5).
+- [ ] **P17** — registry-first: an undeclared n8n schedule fails CI and alerts (audit A medium, audit C G10).
+- [ ] **P18** — a scheduled git-vs-live workflow drift check (audit C G9).
+- [ ] **P19** — retention: manual executions not saved, pre-hardening execution data purged, backup
+  scope decided (audit C G8).
+- [ ] **P20** — n8n declared in `config/agent_clients.yaml` and `config/agent_registry.json`; the
+  gateway's forbidden routes kept in step with `global_denied_tools` (audit A high).
+- [ ] **P21** — routing policy `cost_ceiling_usd` / `latency_budget_ms` enforced; registry
+  `tools_allowed` / `advisory_only` checked by the bridge (audit A medium).
+- [ ] **P22** — n8n instance AI, AI builder and chat hub features confirmed off (audit C G13).
+
+Closed or waived before this version and therefore not listed: **P1** (this amendment and the §23/ADR
+status lines, audit C G11/G12 — closes on ratification), **P10** (container reaches only
+`172.19.0.1:18092` on the host, done 2026-10-09), **P14** (owner MFA, waived 2026-10-09, §23.5),
+**P23** (legacy monitors replaced so the network deny does not blind them, done 2026-10-09).
+*Cause (§20): audit C "minimum controls before an Agent" — every gap the three audits rated
+CRITICAL or HIGH for Agent enablement maps to one item here.*
 
 ---
 
@@ -4032,6 +4207,7 @@ No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 3.0.0 | 2026-10-09 | PROPOSED | MAJOR | §23 amended for governed LLM and Agent capability in n8n: §23.3 first bullet replaced (n8n workflows **and Agent nodes** cause host work only through the relay → gateway `coordination/run` for allowlisted lanes and the read-only coordination endpoints; Agent tools = those endpoints; never-list incl. DOF SQL applies to Agent tools; per-process tool allowlist enforced at the bridge with typed refusal; container internet egress BLOCKED by a DOCKER-USER rule, host reach only `172.19.0.1:18092`); §23.4 replaced (capability not provider: registered `n8n_*` process + versioned template + optional routing policy through the governed bridge; default routing Grok OAuth → ChatGPT OAuth → DeepSeek metered; free text only after `sanitise_for_external` for `free_text_allowed` processes; output schema + behaviour-field scan at the bridge; caps and typed refusal kept); §23.5 first bullet replaced (at most two credentials — relay bearer, and a bridge token only after §23.10; owner MFA waived; non-superuser `n8n_app` role still required); §23.8 n8n Agent nodes (registry row, receipt per turn, grant naming the workflow id, model node → bridge only, tool nodes excluded, turn/token/wall caps, no streaming until audit B H1 is fixed; first Agent read-only "explain why lane X failed", coordination-read tools only, shadowed first); §23.9 governance parity; §23.10 preconditions P2–P9, P11–P13, P15–P22 as a checklist that grants nothing until each is measured true with a receipt. §17 gains Agent-node activation / bridge-token creation; §23 and top-of-file 2.0.0 status lines corrected; ADR_COORDINATION_SECRETS Policy line fixed + 3.0.0 addendum. Proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`; audits `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md`, `guardrail-audit-b-code-20261009.md`, `guardrail-audit-c-policy-n8n-20261009.md`. MAJOR: egress policy and the n8n actor's authority change; nothing in §0, §2, §2A, §2B or §7A is weakened for any actor. | **PENDING** — `APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`; operator decisions recorded 2026-10-09: (1) ratify the proposal's §3 text as 3.0.0; (2) routing Grok → ChatGPT → DeepSeek; (3) container internet egress blocked, not proxied; (4) first Agent read-only lane-failure explainer, shadowed first; (5) owner MFA waived, `n8n_app` role still required. |
 | 2.0.1 | 2026-10-08 | ACTIVE on merge | PATCH | On top of 2.0.0: Telegram/Communications section gains the Investment Command Center rule: opportunity rules in `config/opportunity_conviction.yaml`; curated assessments persisted only by `cio_opportunity_curator.py` into the CIO opportunity store (never as a thesis version); no behaviour keys; the Telegram opportunity line only via `send_telegram`. Adds obligations, weakens nothing; §0/§2/§17 untouched. | Operator-directed 2026-10-08 (/plan Investment Command Center; "make sure all data is curated by and persistent in CIO memory"; "resonate in telegram alerts"). |
 | 2.0.0 | 2026-10-08 | ACTIVE | MAJOR | §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n only)" added: scope limited to the `m8m-n8n` compose project; n8n workflows are §9.3 scheduler entries (registry row with `output_signal` first, grant-gated install/activate/edit/retire, shadow → canary → cutover → per-line rollback, `# RETIRED <date> n8n-cutover <lane_id>` never deleted, double scheduler fails the registry gate); the only trigger path is the gateway `coordination/run` operation for lanes in `config/n8n_run_allowlist.json` (never broker/order/stop/position/paper-execution/sender/secret-render/guard/release-deploy/destructive-retention/memory-writer/authoritative-ingest), gateway never spawns, executor reuses the lane's lock, RunReceipt is the evidence; n8n may pick registered `n8n_*` process ids, versioned template ids and named routing policies but never a model, provider, raw prompt or caller identity, every call capped by the process registry and the $2.00/day cap with typed refusal; exactly one n8n credential (relay bearer from Bitwarden SM, weekly rotation, valid only at the relay), HMAC key host-side, `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` + prune ≤168 h as the precondition; n8n is replaceable. §9.3 and §17 amended in place; ADR_COORDINATION_SECRETS moves to ACCEPTED (one credential). MAJOR: routing and scheduler reach widen for one actor; nothing weakened for any other. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d88ac4943612b6703402f638ba3ed9af` (operator, 2026-10-08, in session: "i approve"); merged #1513 at 2026-10-08T09:06:46-04:00; operator direction 2026-10-08 ("make agents.md carve out just for n8n"; decisions 1–3 of the n8n program plan). |
 | 1.6.1 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications rule extended to the Watchlist: Watch decision standards live in `config/watch_decision_standards.yaml` via `lib/data_broker/watch_decision.py`; the signal expires, never the membership. No rule weakened; §0/§2/§17 untouched. | Operator-directed 2026-10-07 ("watchlist etc"; "start the watchlist"). |

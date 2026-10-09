@@ -13,6 +13,7 @@ Bind: 127.0.0.1 (never 0.0.0.0). Port: configurable (default 8766).
 from __future__ import annotations
 
 import hashlib
+import hmac
 import http.server
 import json
 import logging
@@ -1755,6 +1756,199 @@ def execute_governed_call(
 
 
 # ══════════════════════════════════════════════════════════════════════════
+#  STREAM RE-EMIT (2026-10-09 guardrail audit B, H1)
+# ══════════════════════════════════════════════════════════════════════════
+# The stream path used to call the provider a SECOND time after execute_governed_call had already
+# reserved, called and settled: no reservation, settlement, journal or cost event for that call.
+# The governed result is the only provider output a stream may carry; these chunks re-emit it.
+
+_SSE_PIECE = re.compile(r"\S+\s*|\s+")
+
+
+def governed_result_sse_chunks(result: dict[str, Any]) -> list[str]:
+    """Re-emit every settled choice and message field without another provider call."""
+    choices = result.get("choices") or []
+    base = {
+        "id": result.get("id"),
+        "object": "chat.completion.chunk",
+        "created": result["created"] if "created" in result else int(time.time()),
+        "model": result.get("model"),
+    }
+
+    def _chunk(rows: list[dict[str, Any]], **extra: Any) -> str:
+        return f"data: {json.dumps({**base, 'choices': rows, **extra})}\n\n"
+
+    initial = []
+    final = []
+    text_chunks = []
+    for ordinal, choice in enumerate(choices):
+        index = choice.get("index", ordinal)
+        message = dict(choice.get("message") or {})
+        delta = dict(message)
+        content = message.get("content")
+        if isinstance(content, str):
+            delta["content"] = ""
+            for piece in _SSE_PIECE.findall(content):
+                text_chunks.append(_chunk([{
+                    "index": index, "delta": {"content": piece}, "finish_reason": None,
+                }]))
+        if isinstance(message.get("tool_calls"), list):
+            delta["tool_calls"] = [
+                {**call, "index": call.get("index", tool_index)} if isinstance(call, dict) else call
+                for tool_index, call in enumerate(message["tool_calls"])
+            ]
+        initial.append({"index": index, "delta": delta, "finish_reason": None})
+        finish = choice.get("finish_reason") if "finish_reason" in choice else (
+            "tool_calls" if message.get("tool_calls") else "stop"
+        )
+        final.append({"index": index, "delta": {}, "finish_reason": finish})
+    final_extra: dict[str, Any] = {"usage": result.get("usage") or {}}
+    if isinstance(result.get("_tradeai"), dict):
+        final_extra["_tradeai"] = result["_tradeai"]
+    return [_chunk(initial), *text_chunks, _chunk(final, **final_extra), "data: [DONE]\n\n"]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  CALLER AUTHENTICATION (2026-10-09 guardrail audit B, H2) — REPORT-ONLY first
+# ══════════════════════════════════════════════════════════════════════════
+# X-TradeAI-Agent is self-asserted. A caller may now also present `Authorization: Bearer <key>`,
+# checked in constant time against TRADEAI_BRIDGE_CALLER_KEY_<CALLER> (rotation overlap:
+# ..._PREVIOUS). Keys come from the environment only (rendered from Secrets Manager); a key value is
+# never logged, returned or written. TRADEAI_BRIDGE_CALLER_AUTH selects the mode:
+#   off     - not checked (today's behaviour, no record)
+#   report  - DEFAULT: every caller is served exactly as before; an unverified caller is counted and
+#             recorded once per caller per hour in data/runtime/bridge_caller_auth_report.jsonl
+#   enforce - an unverified caller gets a typed 401 before any reservation or provider call
+# Changing callers to send keys is a later PR; this one only measures who still needs one.
+
+CALLER_AUTH_ENV = "TRADEAI_BRIDGE_CALLER_AUTH"
+CALLER_AUTH_MODES = ("off", "report", "enforce")
+CALLER_AUTH_DEFAULT_MODE = "report"
+CALLER_KEY_ENV_PREFIX = "TRADEAI_BRIDGE_CALLER_KEY_"
+CALLER_KEY_MIN_LEN = 32
+CALLER_AUTH_REPORT_SCHEMA = "BridgeCallerAuthReport@v1"
+CALLER_AUTH_VERDICTS = ("verified", "unsigned", "bad_key", "no_key_configured")
+
+_CALLER_AUTH_LOCK = threading.Lock()
+_CALLER_AUTH_COUNTS: dict[str, dict[str, int]] = {}
+_CALLER_AUTH_REPORTED: set[tuple[str, str]] = set()
+
+
+def caller_auth_mode() -> str:
+    raw = (os.environ.get(CALLER_AUTH_ENV) or CALLER_AUTH_DEFAULT_MODE).strip().lower()
+    return raw if raw in CALLER_AUTH_MODES else CALLER_AUTH_DEFAULT_MODE
+
+
+def caller_key_env_name(caller: str) -> str:
+    return CALLER_KEY_ENV_PREFIX + re.sub(r"[^A-Za-z0-9]", "_", str(caller)).upper()
+
+
+def _caller_keys(caller: str) -> list[bytes]:
+    name = caller_key_env_name(caller)
+    keys = []
+    for env_name in (name, name + "_PREVIOUS"):
+        value = os.environ.get(env_name) or ""
+        if len(value) >= CALLER_KEY_MIN_LEN:
+            keys.append(value.encode("utf-8"))
+    return keys
+
+
+def caller_auth_verdict(caller: str, authorization: str | None) -> str:
+    """One of CALLER_AUTH_VERDICTS. Every configured key is compared, in constant time, even after a match."""
+    keys = _caller_keys(caller)
+    if not keys:
+        return "no_key_configured"
+    text = (authorization or "").strip()
+    if not text.lower().startswith("bearer "):
+        return "unsigned"
+    presented = text[7:].strip().encode("utf-8")
+    if not presented:
+        return "unsigned"
+    ok = False
+    for key in keys:
+        ok = hmac.compare_digest(hashlib.sha256(presented).digest(), hashlib.sha256(key).digest()) or ok
+    return "verified" if ok else "bad_key"
+
+
+def caller_auth_report_path() -> Path:
+    state_root = os.environ.get("TRADEAI_STATE_ROOT")
+    base = Path(state_root) if state_root else _PROJECT_ROOT
+    return _receipt_path(
+        "TRADEAI_BRIDGE_CALLER_AUTH_REPORT",
+        base / "data" / "runtime" / "bridge_caller_auth_report.jsonl",
+    )
+
+
+def caller_auth_snapshot() -> dict[str, Any]:
+    with _CALLER_AUTH_LOCK:
+        counts = {caller: dict(row) for caller, row in _CALLER_AUTH_COUNTS.items()}
+    return {"mode": caller_auth_mode(), "counts": counts}
+
+
+def _reset_caller_auth() -> None:
+    with _CALLER_AUTH_LOCK:
+        _CALLER_AUTH_COUNTS.clear()
+        _CALLER_AUTH_REPORTED.clear()
+
+
+def record_caller_auth(caller: str, process_id: str, verdict: str, mode: str) -> None:
+    """Count every verdict; append one report line per unverified caller per UTC hour. Never raises."""
+    hour = time.strftime("%Y-%m-%dT%H", time.gmtime())
+    with _CALLER_AUTH_LOCK:
+        row = _CALLER_AUTH_COUNTS.setdefault(caller, {})
+        row[verdict] = row.get(verdict, 0) + 1
+        counts = dict(row)
+        first_this_hour = verdict != "verified" and (caller, hour) not in _CALLER_AUTH_REPORTED
+        if first_this_hour:
+            _CALLER_AUTH_REPORTED.add((caller, hour))
+    if not first_this_hour:
+        return
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("TRADEAI_BRIDGE_CALLER_AUTH_REPORT"):
+        return  # a test that did not name a report file writes none (counter only)
+    line = {
+        "schema": CALLER_AUTH_REPORT_SCHEMA,
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "hour": hour,
+        "caller": caller,
+        "process_id": process_id,
+        "verdict": verdict,
+        "mode": mode,
+        "served": mode != "enforce",
+        "key_env": caller_key_env_name(caller),
+        "key_configured": bool(_caller_keys(caller)),
+        "counts": counts,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+    try:
+        path = caller_auth_report_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(line, sort_keys=True) + "\n")
+    except OSError:
+        log.warning("caller auth report not written (caller=%s verdict=%s)", caller, verdict)
+
+
+def caller_auth_refusal(caller: str, verdict: str) -> dict[str, Any]:
+    code = "CALLER_AUTH_INVALID" if verdict == "bad_key" else "CALLER_AUTH_REQUIRED"
+    return {
+        "error": {
+            "code": code,
+            "message": f"Caller '{caller}' is not authenticated ({verdict}); "
+                       f"send Authorization: Bearer <{caller_key_env_name(caller)}>",
+            "status": 401,
+        },
+        "id": uuid.uuid4().hex[:12],
+        "object": "chat.completion.error",
+        "created": int(time.time()),
+        "model": "tradeai_governed",
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "cost_estimate": 0.0,
+        "governance_pass": False,
+        "caller_auth": {"mode": "enforce", "verdict": verdict, "key_env": caller_key_env_name(caller)},
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
 #  HTTP HANDLER
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -1781,6 +1975,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
             "circuit_errors": int(_CIRCUIT.get("errors") or 0),
             "last_error": _CIRCUIT.get("last_error"),
             "upstream_deadline_s": UPSTREAM_DEADLINE_S,
+            "caller_auth": caller_auth_snapshot(),
             **inflight_snapshot(),
         })
 
@@ -1801,6 +1996,8 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         if not process_id:
             self._send_error(401, "UNAUTHORIZED",
                              f"Unknown caller '{caller}' — not in server-side mapping")
+            return
+        if not self._caller_auth_admits(caller, process_id):
             return
 
         routing_policy_name = normalize_routing_policy_header(self.headers.get(ROUTING_POLICY_HEADER))
@@ -1936,6 +2133,18 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         }
         self._send_json(status, result)
 
+    def _caller_auth_admits(self, caller: str, process_id: str) -> bool:
+        """False only in enforce mode for an unverified caller, after a typed 401 is sent (H2)."""
+        mode = caller_auth_mode()
+        if mode == "off":
+            return True
+        verdict = caller_auth_verdict(caller, self.headers.get("Authorization"))
+        record_caller_auth(caller, process_id, verdict, mode)
+        if mode == "enforce" and verdict != "verified":
+            self._send_json(401, caller_auth_refusal(caller, verdict))
+            return False
+        return True
+
     def _send_stream(self, result: dict, messages: list, process_id: str,
                      tools: list | None, max_tokens: int, routing_policy: str | None = None) -> None:
         # The result already passed routing, reservation, provider journal and settlement.
@@ -1943,34 +2152,20 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         if "error" in result:
             self._send_json(int(result["error"].get("status", 500)), result)
             return
+        del messages, process_id, tools, max_tokens, routing_policy
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        # No Content-Length on a stream, so the end of the body is the close; "keep-alive" here left
+        # the server waiting on the socket after [DONE] and a reader without SSE parsing never returned.
+        self.send_header("Connection", "close")
+        self.close_connection = True
         self.send_header("X-TradeAI-Governed", f"cio_bridge_{'p1_2b' if BIND_MODE == 'canary' else 'p1_2a'}")
         self.end_headers()
-        envelope = {key: result[key] for key in ("id", "created", "model") if key in result}
-        envelope["object"] = "chat.completion.chunk"
-        choices = []
-        final_choices = []
-        for index, choice in enumerate(result.get("choices") or []):
-            message = dict(choice.get("message") or {})
-            if isinstance(message.get("tool_calls"), list):
-                message["tool_calls"] = [
-                    {**call, "index": call.get("index", tool_index)}
-                    for tool_index, call in enumerate(message["tool_calls"])
-                ]
-            choices.append({"index": choice.get("index", index), "delta": message, "finish_reason": None})
-            final_choices.append({"index": choice.get("index", index), "delta": {}, "finish_reason": choice.get("finish_reason")})
-        chunk = {**envelope, "choices": choices}
-        final = {
-            **envelope, "choices": final_choices,
-            **{key: result[key] for key in ("usage", "_tradeai") if key in result},
-        }
-        for frame in (chunk, final):
-            self.wfile.write(f"data: {json.dumps(frame)}\n\n".encode("utf-8"))
-        self.wfile.write(b"data: [DONE]\n\n")
-        self.wfile.flush()
+        chunks = governed_result_sse_chunks(result)
+        for chunk in chunks:
+            self.wfile.write(chunk.encode("utf-8"))
+            self.wfile.flush()
 
 
 # ══════════════════════════════════════════════════════════════════════════
