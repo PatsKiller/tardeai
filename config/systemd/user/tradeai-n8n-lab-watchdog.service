@@ -10,7 +10,11 @@ After=network.target
 [Service]
 Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
-ExecStart=/usr/bin/flock -n /tmp/tradeai-n8n-lab-watchdog.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_lab_watchdog.py --url http://127.0.0.1:5678/healthz --receipt %h/trade-ai-releases/persistent-state/data/runtime/n8n_lab_watchdog_last.json --timeout 3
+ExecStart=/usr/bin/flock -w 10 -E 75 /tmp/tradeai-n8n-lab-watchdog.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_lab_watchdog.py --url http://127.0.0.1:5678/healthz --receipt %h/trade-ai-releases/persistent-state/data/runtime/n8n_lab_watchdog_last.json --timeout 3
+# 2026-10-09: the n8n executor's n8n-lab-watchdog-shadow dry_run shares this lock (lock-equivalent by design).
+# A same-second collision used to exit 1 and leave the unit FAILED (10-08 15:15/15:30, 10-09 15:00). Wait up to
+# 10 s for the ~1 s probe to release it; if still held, flock exits 75 = a clean, journaled skip, not a failure.
+SuccessExitStatus=75
 Nice=15
 MemoryMax=128M
 CPUQuota=10%

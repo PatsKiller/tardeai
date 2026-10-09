@@ -16,6 +16,12 @@ log = logging.getLogger("no_leads_diagnostic")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def main():
     p = argparse.ArgumentParser(description="No-leads diagnostic alert (default: dry-run)")
     p.add_argument("--since-hours", type=int, default=24)
@@ -30,7 +36,7 @@ def main():
     # Run root cause
     import subprocess
     rc = subprocess.run(
-        [str(PROJ / ".venv/bin/python"), str(PROJ / "scripts/report_no_leads_root_cause.py"),
+        [venv_python(PROJ), str(PROJ / "scripts/report_no_leads_root_cause.py"),
          "--since-hours", str(args.since_hours), "--output-json", "/dev/stdout"],
         capture_output=True, text=True, timeout=30
     )

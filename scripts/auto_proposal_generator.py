@@ -37,7 +37,11 @@ TREND_LOOKBACK_DAYS = 2
 STRATEGY_PRIORITY = ["momentum_scalp", "swing_breakout", "fib_retracement_bounce", "earnings_post_momentum"]
 
 BASE = str(PROJECT_ROOT)
-PYTHON = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+PYTHON = venv_python(PROJECT_ROOT)
 
 
 def _unified_edge_for_signal(signal: dict, sizing: dict | None = None) -> float:

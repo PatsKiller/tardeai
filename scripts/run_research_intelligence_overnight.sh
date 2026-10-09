@@ -17,7 +17,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PROJ="$(pwd)"
-PY="${PROJ}/.venv/bin/python"
+. "$PROJ/scripts/lib/venv_python.sh"; PY="$(tradeai_venv_python "$PROJ")"  # release dirs ship no .venv
 LOG_DIR="${PROJ}/logs"
 mkdir -p "$LOG_DIR"
 LOG="${LOG_DIR}/ri_overnight.log"

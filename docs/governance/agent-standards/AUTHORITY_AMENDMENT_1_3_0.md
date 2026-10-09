@@ -63,7 +63,8 @@ relationship under 1.3.0:
   **only when its reason names the branch or head SHA being pushed**.
 - This PR adds that check. By default it only warns, so sessions aren't broken mid-flight;
   `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1` makes it refuse. Making refusal the default is an operator
-  decision.
+  decision. **Decided 2026-10-09:** the operator ("enable push scope enforce too") made refusal the
+  default; `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0` restores warn-only.
 - A push grant never authorizes merge, deploy, configuration, secret access or broker action
   (AI_WORK_POLICY §27).
 - **Merge is not a separately enforced grant today:** `main` requires 0 approving reviews and

@@ -67,6 +67,12 @@ LAST_REL = Path("data") / "runtime" / "n8n_run_executor_last.json"
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 SAFE_FLOCK_SKIP = "safe_flock: skipped"
 TAIL_CHARS = 800
+# Bounded retry (2026-10-09 audit: RUN_FAILED / RUN_TIMEOUT were terminal and no workflow had retryOnFail).
+# Opt-in per allowlist entry: "retry": {"max": 1, "backoff_s": 60, "on": ["RUN_FAILED", "RUN_TIMEOUT"]}.
+# Off by default: only an entry whose command is safe to re-run (idempotent, same lock) may set it.
+RETRY_MAX_CAP = 3
+RETRY_BACKOFF_CAP_S = 300.0
+RETRYABLE_STATES = ("RUN_FAILED", "RUN_TIMEOUT")
 
 
 #: 2026-10-09 (guardrail audit B, M2): the executor's own env holds the n8n gateway keys, the relay run-scope
@@ -140,7 +146,27 @@ def validate_entry(entry: Mapping[str, Any]) -> str | None:
     sig = entry.get("output_signal")
     if sig is not None and (not isinstance(sig, str) or sig.startswith("/") or ".." in sig):
         return "bad_output_signal"
+    if entry.get("retry") is not None and retry_policy(entry) is None:
+        return "bad_retry"
     return None
+
+
+def retry_policy(entry: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The entry's validated retry policy, {"max": 0, ...} when absent, None when malformed. Pure."""
+    raw = entry.get("retry")
+    if raw is None:
+        return {"max": 0, "backoff_s": 0.0, "on": RETRYABLE_STATES}
+    if not isinstance(raw, Mapping):
+        return None
+    n, backoff = raw.get("max", 0), raw.get("backoff_s", 0)
+    on = raw.get("on", list(RETRYABLE_STATES))
+    if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= RETRY_MAX_CAP:
+        return None
+    if not isinstance(backoff, (int, float)) or isinstance(backoff, bool) or not 0 <= backoff <= RETRY_BACKOFF_CAP_S:
+        return None
+    if not isinstance(on, list) or not on or any(st not in RETRYABLE_STATES for st in on):
+        return None
+    return {"max": n, "backoff_s": float(backoff), "on": tuple(on)}
 
 
 def resolve_token(token: str, *, env: Mapping[str, str], state_root: Path, code_root: Path) -> str:
@@ -195,8 +221,39 @@ def execute(
     state_root: Path,
     code_root: Path,
     runner=None,
+    sleeper=time.sleep,
 ) -> dict[str, Any]:
-    """Run one claimed row and return its RunReceipt@v1. ``runner`` is injected by tests (argv, timeout -> result)."""
+    """Run one claimed row (plus the entry's opt-in bounded retries) and return its RunReceipt@v1.
+
+    ``runner`` / ``sleeper`` are injected by tests. The receipt is the LAST attempt's, with ``attempts`` and
+    ``attempt_states`` recording every try; ``started_at`` and ``output_signal_mtime_before`` stay the first's.
+    """
+    receipt = _execute_once(row, entry, env=env, state_root=state_root, code_root=code_root, runner=runner)
+    policy = retry_policy(entry) if entry is not None else None
+    states = [str(receipt["state"])]
+    first = receipt
+    while policy and len(states) <= policy["max"] and states[-1] in policy["on"]:
+        sleeper(policy["backoff_s"])
+        receipt = _execute_once(row, entry, env=env, state_root=state_root, code_root=code_root, runner=runner)
+        states.append(str(receipt["state"]))
+    if len(states) > 1:
+        receipt["started_at"] = first["started_at"]
+        receipt["output_signal_mtime_before"] = first["output_signal_mtime_before"]
+    receipt["attempts"] = len(states)
+    receipt["attempt_states"] = states
+    return receipt
+
+
+def _execute_once(
+    row: Mapping[str, Any],
+    entry: Mapping[str, Any] | None,
+    *,
+    env: Mapping[str, str],
+    state_root: Path,
+    code_root: Path,
+    runner=None,
+) -> dict[str, Any]:
+    """One attempt: run the claimed row and return its RunReceipt@v1."""
     run_id, lane_id, mode = str(row["run_id"]), str(row["lane_id"]), str(row["mode"])
     started = time.time()
     receipt: dict[str, Any] = {

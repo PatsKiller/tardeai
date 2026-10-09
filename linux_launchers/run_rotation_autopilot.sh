@@ -6,8 +6,7 @@
 #   */15 4-16 * * 1-5 cd $PROJ && bash linux_launchers/run_rotation_autopilot.sh cron >> logs/rotation_autopilot.log 2>&1
 set -euo pipefail
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-PY="$PROJ/.venv/bin/python"
-[ -x "$PY" ] || PY="python3"
+. "$PROJ/scripts/lib/venv_python.sh"; PY="$(tradeai_venv_python "$PROJ")"  # release dirs ship no .venv
 TRIGGER="${1:-cron}"
 LOCK="/tmp/tradeai_rotation_autopilot.lock"
 
