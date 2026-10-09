@@ -33549,9 +33549,13 @@ def _hermes_maturity_dashboard():
             dbname=os.getenv("DB_NAME", "trade_ai"),
             user=os.getenv("DB_USER", "trade_ai"),
             password=os.getenv("DB_PASSWORD", ""),
+            application_name="api_v2:hermes_maturity",
+            connect_timeout=10,
         )
-        report = build_maturity_report(conn)
-        conn.close()
+        try:
+            report = build_maturity_report(conn)
+        finally:
+            conn.close()  # was skipped when build_maturity_report raised (n8nmat/b6)
         return {k: _json_clean(v) for k, v in report.items()}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200], "advisory_notice": "Maturity dashboard unavailable"}

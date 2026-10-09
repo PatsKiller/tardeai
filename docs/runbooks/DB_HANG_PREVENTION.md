@@ -1,7 +1,7 @@
 # DB-induced dashboard hang — prevention & recovery
 
 Status:      ACTIVE
-as_of:       2026-07-17T08:55:29-04:00
+as_of:       2026-10-09T17:45:00-04:00
 Measured at: efcc51365 / not measured
 
 **Symptom:** Command Center shows `⟳ Reconnecting to backend… showing last-known data`, all KPIs `—`,
@@ -63,6 +63,21 @@ PY
 > they reconnect and inherit the guards: `bash linux_launchers/restart_server.sh`.
 
 To confirm: `SHOW lock_timeout;` on a fresh connection should return `3s` (was `0`).
+
+### 3. Attribution + auth-noise hygiene (2026-10-09, n8nmat/b6)
+- **Every connection is named.** `scripts/lib/pg_attribution.ensure_pgappname()` sets `PGAPPNAME`
+  (libpq's fallback when a caller passes no `application_name`) once per process. It runs on import
+  of `db_adapter` and on every `env_bootstrap.load_env()`, so the ~400 raw `psycopg2.connect()`
+  callers in those processes are attributed with no per-call edit. Why: on 2026-10-05 the health
+  agent saw 73/100 slots held and the top holder was application_name `''` (19 connections).
+  A `-m` run is named by its module; a child that inherits a parent's value re-derives its own;
+  an explicitly set `PGAPPNAME` (unit file) is never overwritten.
+- **Tests never use `~/.pgpass`.** It is stale. A worktree has no `.env`, so script helpers sent
+  `password=""` and libpq fell back to `~/.pgpass` → `FATAL: password authentication failed` at the
+  live server: ~140 per worktree suite run, ~18k FATAL lines/day on 2026-10-08/09.
+  `tests/conftest.py` points `PGPASSFILE` at a non-existent file.
+- Find holders: `SELECT application_name, state, count(*), max(now()-state_change) FROM
+  pg_stat_activity WHERE backend_type='client backend' GROUP BY 1,2 ORDER BY 3 DESC;`
 
 ## Recovery (when it is hung right now)
 

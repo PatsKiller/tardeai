@@ -65,6 +65,23 @@ def _load_dotenv_if_needed():
 _load_dotenv_if_needed()
 
 
+def _ensure_pgappname() -> str:
+    """Attribute every connection this process opens — including raw psycopg2.connect callers
+    that pass no application_name — via libpq's PGAPPNAME fallback (see lib/pg_attribution)."""
+    try:
+        import sys as _sys
+        _lib = str(Path(__file__).resolve().parent / "lib")
+        if _lib not in _sys.path:
+            _sys.path.insert(0, _lib)
+        from pg_attribution import ensure_pgappname
+        return ensure_pgappname()
+    except Exception:
+        return ""
+
+
+_ensure_pgappname()
+
+
 def _db_enabled() -> bool:
     """Return True if running on Linux with DB credentials configured."""
     if platform.system() != "Linux":
@@ -135,7 +152,7 @@ def _get_conn():
         import sys as _sys
         # application_name = calling script, so pg_stat_activity / PG-log victims are
         # attributable (the 2026-07-04 idle-in-transaction audit had to guess offenders).
-        _app = os.path.basename(_sys.argv[0] or "python")[:60] or "python"
+        _app = (_ensure_pgappname() or os.path.basename(_sys.argv[0] or "python"))[:60] or "python"
         conn = psycopg2.connect(
             host=os.getenv("DB_HOST", "localhost"),
             port=int(os.getenv("DB_PORT", "5432")),
@@ -183,7 +200,7 @@ def _get_conn():
     except Exception as e:
         import datetime as _edt
         print(f"{_edt.datetime.now():%Y-%m-%d %H:%M:%S}  [db_adapter] PostgreSQL connection failed: {e}")
-        print(f"  [db_adapter] Falling back to JSON")
+        print("  [db_adapter] Falling back to JSON")
         return None
 
 
