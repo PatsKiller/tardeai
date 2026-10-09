@@ -323,7 +323,9 @@ def test_the_gate_fails_on_a_double_scheduler_and_passes_once_the_line_is_retire
 
 
 def test_native_monitor_rows_do_not_flip_a_host_scheduler():
-    """Only existing native monitors are active; pending reminders never hide a host conversion."""
+    """Only existing native monitors and cut-over N1 lanes are kind n8n. The four OpenClaw reminders were
+    kind n8n NEVER_SCHEDULED until 2026-10-09; N6 is retained by policy (AGENTS.md §23.3), so they are
+    kind event (fired by the OpenClaw scheduler, no host entry to go missing) and ACTIVE."""
     reg = lr.load_registry()
     assert lr.validate_registry(reg) == []
     native = {
@@ -345,12 +347,23 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "n8n-research-intake-consumer",
         "crontab-snapshot-for-health-agent",
     }
-    assert set(native) == monitors | reminders | cutover
+    assert set(native) == monitors | cutover
+    assert not reminders & set(native)
     assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)
     assert all((native[lane]["scheduler"].get("match") or "").strip() for lane in cutover)
     assert all(native[lane]["scheduler"]["expression"] != native[lane]["scheduler"]["match"] for lane in cutover)
     assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
-    assert all(native[lane]["state"] == "NEVER_SCHEDULED" for lane in reminders)
+    rows = {r["lane_id"]: r for r in reg["lanes"]}
+    for lane in reminders:
+        sched = rows[lane]["scheduler"]
+        assert sched["kind"] == "event" and sched["emitted_by"] == "openclaw-scheduler"
+        assert sched["expression"] == f"openclaw-cron:{sched['match']}"
+        assert rows[lane]["state"] == "ACTIVE"
+        assert "AGENTS.md §23.3" in rows[lane]["note"]
+        # kind event has no scheduler that can go missing: never ORPHANED, and with no output signal
+        # the lane monitor says UNVERIFIABLE rather than inventing a finding
+        verdict = lr.evaluate_lane(rows[lane], found={"cron": [], "systemd": []})["verdict"]
+        assert verdict == "UNVERIFIABLE"
 
 
 def test_every_n8n_row_cadence_is_one_valid_five_field_cron():

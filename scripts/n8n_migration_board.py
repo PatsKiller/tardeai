@@ -15,7 +15,9 @@ then says NOT_STARTED / NO_REGISTRY_ROW / UNVERIFIABLE instead of guessing.
 
 Phase per lane: NOT_STARTED | SHADOW (a dry_run RunReceipt exists) | CANARY (a live RunReceipt
 while the registry still says cron/systemd) | CUT_OVER (registry scheduler.kind == n8n) |
-ROLLED_BACK (the last cutover receipt is a rollback). Served by GET /api/v2/coordination/migration-board.
+ROLLED_BACK (the last cutover receipt is a rollback) | RETAINED (the lane's tranche carries
+`status: RETAINED_BY_POLICY`: it stays on its current scheduler and is out of the program's scope;
+2026-10-09 N6, AGENTS.md §23.3). Served by GET /api/v2/coordination/migration-board.
 
 AUTHORITY: READ_ONLY_ADVISORY. No cutover, no rollback, no send, no write except its own receipt.
 """
@@ -52,7 +54,10 @@ READINESS_REL = "data/runtime/n8n_lane_readiness_last.json"
 # Kept as a literal so this reader does not import the executor entrypoint; the drift test
 # tests/test_n8n_migration_board_20261008.py asserts executor, board and fan-in agree.
 EXECUTOR_LAST_REL = "data/runtime/n8n_run_executor_last.json"
-PHASES = ("NOT_STARTED", "SHADOW", "CANARY", "CUT_OVER", "ROLLED_BACK")
+PHASES = ("NOT_STARTED", "SHADOW", "CANARY", "CUT_OVER", "ROLLED_BACK", "RETAINED")
+# A tranche with this status is closed by policy: its lanes stay on their current scheduler, are
+# shown RETAINED (never NOT_STARTED) and are not counted in the program's in-scope total.
+TRANCHE_RETAINED = "RETAINED_BY_POLICY"
 RUN_FAILURE_STATES = {"RUN_FAILED", "RUN_TIMEOUT"}
 STALE_FACTOR = 2.0          # output signal older than 2x cadence = rollback trigger (plan §Rollback triggers)
 FLAG_RUN_FAILED_AFTER_CUTOVER = "RUN_FAILED_AFTER_CUTOVER"
@@ -61,6 +66,7 @@ FLAG_DOUBLE_SCHEDULER = "DOUBLE_SCHEDULER"
 FLAG_NO_REGISTRY_ROW = "NO_REGISTRY_ROW"
 FLAG_RUN_REFUSED = "RUN_REFUSED"
 FLAG_EXECUTOR_STALLED = "EXECUTOR_STALLED"
+FLAG_RETAINED_LANE_ON_N8N = "RETAINED_LANE_ON_N8N"
 
 
 def _load_json(p: Path) -> Optional[dict]:
@@ -171,7 +177,8 @@ def _cron_present(match: Optional[str], cron_text: Optional[str]) -> Optional[bo
 
 def lane_row(spec: dict[str, Any], tranche: str, *, reg_row: Optional[dict[str, Any]], runs: list[dict[str, Any]],
              cutover: Optional[dict[str, Any]], readiness: Optional[dict[str, Any]], now: datetime, root: Path,
-             cron_text: Optional[str], units: Optional[list[str]], executor_stalled: bool) -> dict[str, Any]:
+             cron_text: Optional[str], units: Optional[list[str]], executor_stalled: bool,
+             retained: bool = False) -> dict[str, Any]:
     lane_id = spec["lane_id"]
     flags: list[str] = []
     sched = (reg_row or {}).get("scheduler") or {}
@@ -182,7 +189,11 @@ def lane_row(spec: dict[str, Any], tranche: str, *, reg_row: Optional[dict[str, 
     last = _latest(runs)
     has_live = any(str(r.get("mode") or "") == "live" for r in runs)
     has_dry = any(str(r.get("mode") or "") == "dry_run" for r in runs)
-    if cutover and str(cutover.get("action") or "") == "rollback" and cutover.get("applied") is not False:
+    if retained:
+        phase = "RETAINED"
+        if kind == "n8n":
+            flags.append(FLAG_RETAINED_LANE_ON_N8N)
+    elif cutover and str(cutover.get("action") or "") == "rollback" and cutover.get("applied") is not False:
         phase = "ROLLED_BACK"
     elif kind == "n8n":
         phase = "CUT_OVER"
@@ -243,7 +254,9 @@ def lane_row(spec: dict[str, Any], tranche: str, *, reg_row: Optional[dict[str, 
         "output_signal_detail": signal_detail, "rollback_ready": rollback_ready,
         "cutover": None if not cutover else {k: cutover.get(k) for k in ("action", "scheduler_before", "scheduler_after", "applied", "at", "_ref")},
         "readiness": verdict, "readiness_reasons": reasons, "risk_flags": flags, "double_scheduler": double,
-        "note": spec.get("note"),
+        "note": spec.get("note"), "retained": retained,
+        "retained_on": spec.get("retained_on") if retained else None,
+        "retained_reason": spec.get("retained_reason") if retained else None,
     }
 
 
@@ -268,15 +281,20 @@ def build_board(*, root: Optional[Path] = None, registry: Optional[dict[str, Any
     exec_age_h = _hours_since((exec_doc or {}).get("finished_at") or (exec_doc or {}).get("as_of") or (exec_doc or {}).get("at"), now)
     executor_stalled = bool(n8n_cadences and exec_age_h is not None and exec_age_h > STALE_FACTOR * min(n8n_cadences))
     lanes: list[dict[str, Any]] = []
+    tranche_status: dict[str, Optional[str]] = {}
     for tname, tdoc in (tr.get("tranches") or {}).items():
+        tranche_status[tname] = tdoc.get("status")
+        retained = tdoc.get("status") == TRANCHE_RETAINED
         for spec in tdoc.get("lanes") or []:
             lid = spec["lane_id"]
             lanes.append(lane_row(spec, tname, reg_row=by_lane.get(lid), runs=runs_by_lane.get(lid, []),
                                   cutover=cutovers.get(lid), readiness=ready.get(lid), now=now, root=root,
-                                  cron_text=cron_text, units=units, executor_stalled=executor_stalled))
+                                  cron_text=cron_text, units=units, executor_stalled=executor_stalled,
+                                  retained=retained))
     per_tranche: dict[str, dict[str, Any]] = {}
     for row in lanes:
-        t = per_tranche.setdefault(row["tranche"], {"lanes": 0, "by_phase": {p: 0 for p in PHASES}, "risks": 0, "no_registry_row": 0})
+        t = per_tranche.setdefault(row["tranche"], {"lanes": 0, "status": tranche_status.get(row["tranche"]),
+                                                     "by_phase": {p: 0 for p in PHASES}, "risks": 0, "no_registry_row": 0})
         t["lanes"] += 1
         t["by_phase"][row["phase"]] += 1
         t["risks"] += len([f for f in row["risk_flags"] if f != FLAG_NO_REGISTRY_ROW])
@@ -284,9 +302,11 @@ def build_board(*, root: Optional[Path] = None, registry: Optional[dict[str, Any
     open_risks = [{"lane_id": r["lane_id"], "tranche": r["tranche"], "flag": f, "phase": r["phase"]}
                   for r in lanes for f in r["risk_flags"] if f != FLAG_NO_REGISTRY_ROW]
     totals = {p: sum(t["by_phase"][p] for t in per_tranche.values()) for p in PHASES}
+    n_retained = sum(1 for r in lanes if r["retained"])
     return {
         "schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(), "served_sha": served_sha() or None,
         "state_root": str(root), "status": "OK", "lane_count": len(lanes),
+        "in_scope_lane_count": len(lanes) - n_retained, "retained_lane_count": n_retained,
         "sources": {"tranches": str(TRANCHES_PATH.relative_to(ROOT)), "registry_lanes": len(by_lane), **run_src,
                     "cutover_receipts": len(cutovers), "readiness_lanes": len(ready),
                     "executor_last_age_h": exec_age_h, "executor_stalled": executor_stalled,
@@ -300,7 +320,8 @@ def build_board(*, root: Optional[Path] = None, registry: Optional[dict[str, Any
 def render_markdown(board: dict[str, Any]) -> str:
     s = board.get("summary") or {}
     out = [f"# n8n migration board — {board.get('as_of')}", "",
-           f"lanes {board.get('lane_count')} · phases " + " · ".join(f"{k} {v}" for k, v in (s.get('by_phase') or {}).items())
+           f"lanes {board.get('lane_count')} ({board.get('in_scope_lane_count')} in scope / "
+           f"{board.get('retained_lane_count')} retained) · phases " + " · ".join(f"{k} {v}" for k, v in (s.get('by_phase') or {}).items())
            + f" · open risks {s.get('open_risk_count', 0)} · no registry row {s.get('no_registry_row', 0)}", "",
            "| tranche | lane | scheduler | phase | last run | signal age h | ready | rollback | risk |", "|---|---|---|---|---|---|---|---|---|"]
     for r in board.get("lanes") or []:
@@ -350,7 +371,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         sys.stdout.write(render_markdown(board))
     else:
         s = board["summary"]
-        print(json.dumps({"schema": SCHEMA, "as_of": board["as_of"], "lanes": board["lane_count"], "by_phase": s["by_phase"],
+        print(json.dumps({"schema": SCHEMA, "as_of": board["as_of"], "lanes": board["lane_count"],
+                          "in_scope": board["in_scope_lane_count"], "retained": board["retained_lane_count"],
+                          "by_phase": s["by_phase"],
                           "open_risks": s["open_risk_count"], "no_registry_row": s["no_registry_row"],
                           "written": board.get("written")}, default=str) if args.write else json.dumps(board, indent=1, default=str))
     return 0
