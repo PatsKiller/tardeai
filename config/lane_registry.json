@@ -154,13 +154,16 @@
         "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.08333333333333333,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id s57KBllvqf6Jb5xF, Schedule Every 5 minutes -> GET build-meta. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10e7c19321c906a is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
-      "state_since": "2026-10-08"
+      "state_since": "2026-10-09",
+      "state_reason": "Legacy n8n HTTP monitor workflow s57KBllvqf6Jb5xF deactivated (not deleted) 2026-10-09 13:04Z per the N1 cutover packet (19-n1-cutover-packet §3.8/3.9): it lost its target when S1/S2 bound the API/DOF to loopback; n8n-lab-watchdog replaces it. The generated relay replacement is not allowlisted and stays unimported.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "m8m-n8n-db workflow_entity active=f, updatedAt 2026-10-09 13:04Z; last trigger executions 10-07 (audit 2026-10-09 scratch A_cron_migration.md / D_n8n_docs.md); absent from workflows/active_workflows_snapshot.json captured 2026-10-09T16:00:39Z."
     },
     {
       "lane_id": "n8n-monitor-dof",
@@ -172,13 +175,16 @@
         "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.08333333333333333,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none",
         "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id GXwhbRkwsGcYZxgn, Schedule Every 5 minutes -> GET run-scope. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10087387b964e87 is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
-      "state_since": "2026-10-08"
+      "state_since": "2026-10-09",
+      "state_reason": "Legacy n8n HTTP monitor workflow GXwhbRkwsGcYZxgn deactivated (not deleted) 2026-10-09 13:04Z per the N1 cutover packet (19-n1-cutover-packet §3.8/3.9): it lost its target when S1/S2 bound the API/DOF to loopback; n8n-lab-watchdog replaces it. The generated relay replacement is not allowlisted and stays unimported.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "m8m-n8n-db workflow_entity active=f, updatedAt 2026-10-09 13:04Z; last trigger executions 10-07 (audit 2026-10-09 scratch A_cron_migration.md / D_n8n_docs.md); absent from workflows/active_workflows_snapshot.json captured 2026-10-09T16:00:39Z."
     },
     {
       "lane_id": "alert-daily-digest",
