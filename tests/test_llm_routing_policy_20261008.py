@@ -330,8 +330,13 @@ def test_provider_semaphore_releases_when_generate_raises(monkeypatch: pytest.Mo
     assert sem._value == sem._initial_value
 
 
-def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A refusal that appears only on the stream path's second resolve is JSON, before HTTP 200."""
+def test_stream_resolves_once_and_streams_the_governed_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-10-09 (audit B, H1): the stream path no longer re-resolves or calls a provider a second time.
+
+    Before, a refusal that appeared only on a second resolve was answered as typed JSON; that second resolve
+    existed only to feed a second, unreserved provider call. Now the policy is resolved once, inside the
+    governed call, and a later lane flip cannot reach the stream at all.
+    """
     calls = {"n": 0}
     real = bridge.resolve_model_policy
 
@@ -339,17 +344,7 @@ def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyP
         calls["n"] += 1
         if calls["n"] == 1:
             return real(process_id, task_type, routing_policy)
-        return {
-            "refused": "lane_unhealthy",
-            "refused_status": 503,
-            "refused_message": "Every health-gated lane for process alex_cio_synthesis is unhealthy",
-            "routing_decision": {
-                "policy_id": "default",
-                "lane_chosen": None,
-                "reason": "lane_unhealthy",
-                "health_snapshot": {"provider_health": "present", "lanes": {"deepseek": "unhealthy"}},
-            },
-        }
+        return {"refused": "lane_unhealthy", "refused_status": 503, "refused_message": "flipped"}
 
     monkeypatch.setattr(bridge, "resolve_model_policy", _flip)
     stream = MagicMock(side_effect=AssertionError("stream must not start"))
@@ -377,16 +372,12 @@ def test_stream_second_resolve_refusal_is_typed_json(monkeypatch: pytest.MonkeyP
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-    payload = json.loads(raw.decode("utf-8"))
-    assert response.status == 503
-    assert content_type == "application/json"
-    assert payload["error"]["code"] == "lane_unhealthy"
-    assert payload["error"]["status"] == 503
-    assert payload["routing_decision"]["reason"] == "lane_unhealthy"
-    assert payload["routing_decision"]["lane_chosen"] is None
-    assert calls["n"] == 2
+    assert response.status == 200
+    assert content_type == "text/event-stream"
+    assert calls["n"] == 1
     assert stream.call_count == 0
-    assert not raw.startswith(b"data:")
+    assert raw.startswith(b"data:")
+    assert raw.rstrip().endswith(b"data: [DONE]")
 
 
 def _policy_copy(tmp_path: Path, **policy_fields: object) -> Path:
