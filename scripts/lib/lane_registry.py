@@ -997,3 +997,10 @@ def lane_state_for_command(cmd: str, reg: dict[str, Any] | None = None) -> dict[
 
 
 PAUSED_OR_RETIRED = frozenset({"PAUSED", "RETIRED", "NEVER_SCHEDULED"})
+
+
+# ── N8N Maturity B5.2: dispatch/watch blocks live in lane_dispatch.py (design 02 §2); re-exported here ──
+try:
+    from scripts.lib.lane_dispatch import dispatch_eligible, dispatch_mode, parse_dispatch_block, parse_watch_block, validate_dispatch_block  # noqa: E402,F401
+except ImportError:                                       # imported as lib.lane_registry
+    from lib.lane_dispatch import dispatch_eligible, dispatch_mode, parse_dispatch_block, parse_watch_block, validate_dispatch_block  # type: ignore # noqa: E402,F401
