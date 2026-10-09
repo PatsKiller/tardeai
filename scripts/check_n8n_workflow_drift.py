@@ -13,6 +13,10 @@ with the same id (pending/ included), after normalising:
   * node ``position`` and ``webhookId`` are dropped (canvas layout and n8n-assigned ids are not behaviour);
   * nodes are keyed by name; keys whose value is null are dropped.
 
+Since 2026-10-09 (n8n maturity B5 follow-up) the reviewed copy also includes the six generic, registry-driven
+workflows under docs/implementation/n8n-maturity/workflows/ (``build-generic``; ``--generic-dir`` overrides).
+Their relay URL is the bridge IP, which the same host normalisation covers.
+
 Verdicts per workflow: OK, DRIFT (with the differing fields), MISSING_IN_GIT (no generated file has the
 id: a UI-built or hand-imported workflow). A workflow that still carries the unsubstituted placeholder
 host is reported as ``placeholder_unsubstituted`` beside its verdict: it matches git but cannot reach the
@@ -61,6 +65,7 @@ MISSING_IN_GIT = "MISSING_IN_GIT"
 FINDING_STATUSES = (DRIFT, MISSING_IN_GIT)
 
 DEFAULT_PLACEHOLDER = "http://RELAY_HOST:18092"
+GENERIC_DIR = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows"   # n8n_workflow_templates GENERIC_DEFAULT_OUT
 DROP_NODE_KEYS = ("position", "webhookId")
 
 
@@ -132,6 +137,19 @@ def diff_fields(live: dict, git: dict) -> list[str]:
             if ln[name].get(key) != gn[name].get(key):
                 out.append(f"node:{name}:{key}")
     return out
+
+
+def git_reviewed_set(generated_dir: Optional[Path] = None, generic_dir: Optional[Path] = None) -> dict[str, tuple[Path, dict]]:
+    """{workflow id: (file, json)} over the per-lane generated set (pending included) AND the generic set.
+    A missing generic dir contributes nothing; an id present in both is a CANNOT RUN (ambiguous reviewed copy)."""
+    git = dict(inv.git_workflows(generated_dir))
+    gdir = Path(generic_dir) if generic_dir else GENERIC_DIR
+    generic = inv.git_workflows(gdir) if gdir.is_dir() else {}
+    clash = sorted(set(git) & set(generic))
+    if clash:
+        raise ValueError(f"workflow id(s) in both the generated and the generic set: {clash}")
+    git.update(generic)
+    return git
 
 
 def evaluate(
@@ -216,6 +234,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     ap.add_argument("--container", default=inv.DB_CONTAINER)
     ap.add_argument("--generated-dir", default=None)
+    ap.add_argument("--generic-dir", default=None, help="generic workflow set (default " + str(GENERIC_DIR.relative_to(ROOT)) + ")")
     ap.add_argument("--index", default=None, help="generated INDEX.json (relay placeholder)")
     ap.add_argument("--receipt", default=None, help="receipt path (default $STATE_ROOT/" + str(RECEIPT_REL) + ")")
     ap.add_argument("--include-inactive", action="store_true")
@@ -231,7 +250,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             workflows = inv.read_workflow_bodies(container=a.container)
             source = f"docker exec {a.container} psql (SELECT workflow_entity)"
         index = inv.load_generated_index(Path(a.index) if a.index else None)
-        git = inv.git_workflows(Path(a.generated_dir) if a.generated_dir else None)
+        git = git_reviewed_set(Path(a.generated_dir) if a.generated_dir else None,
+                               Path(a.generic_dir) if a.generic_dir else None)
     except Exception as exc:  # noqa: BLE001 — cannot run != clean
         print(f"n8n workflow drift CANNOT RUN: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2

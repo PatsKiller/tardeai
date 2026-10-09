@@ -3605,6 +3605,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
+        # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
+        # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
+        # live crontab, workflow drift over the generic set. Hermetic: tmp_path ledgers/receipts, no n8n.
+        "n8n_maturity_b5_followups_20261009",
+        [
+            "tests/test_n8n_maturity_b5_followups_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_AGENT_GATE_GOVERNANCE — 2026-10-09 AGENTS.md 3.0.0 §23.10 preconditions before any n8n
         # Agent node: P16 activation attribution (n8n publish evidence vs guard grants naming the workflow id),
         # P17 registry-first (active n8n workflows are a lane-registry discovery source; UNDECLARED_N8N_WORKFLOW

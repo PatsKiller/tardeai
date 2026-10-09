@@ -21,6 +21,10 @@ Rules, in the order they are reported:
      UNDECLARED_N8N_WORKFLOW. CI reads the committed snapshot
      (docs/implementation/n8n-parallel/workflows/active_workflows_snapshot.json);
      the host passes --n8n-live (one read-only SELECT through docker exec).
+  5. (n8n maturity B5 follow-up) A row with a `dispatch` block whose class its
+     retry_policy does not permit (or an unknown policy/class) fails; while the
+     row is on cron, `dispatch.cron` must equal the live crontab line's schedule
+     (skipped when no crontab is readable, e.g. CI).
 
 Exit codes are distinct on purpose, because a gate returning 2 for a missing
 file reads identically to a pass and that has happened in this repository:
@@ -145,6 +149,22 @@ def main() -> int:
         print(f"lane-registry gate CANNOT RUN: generated INDEX unreadable: {e}", file=sys.stderr)
         return EXIT_CANNOT_RUN
     undeclared = find_undeclared(reg, found, n8n_known_ids=n8n_known)
+    # Rule 5 (n8n maturity B5 follow-up, 2026-10-09): dispatch blocks. Class must be permitted by its
+    # retry_policy (the class_verdict rails), and dispatch.cron must equal the live crontab line while the
+    # row is still on cron. No crontab (CI) -> the cron comparison is skipped.
+    try:
+        from scripts.lib.n8n_dispatch_registry_checks import (
+            class_policy_findings, cron_mismatch_findings, dispatch_rows,
+        )
+        dispatch_findings: list = []
+        if dispatch_rows(rows):
+            from scripts.lib.n8n_retry_policy import load_policies
+            dispatch_findings = class_policy_findings(rows, load_policies())
+            dispatch_findings += cron_mismatch_findings(
+                rows, [c.get("expression") for c in found.get("cron") or []])
+    except Exception as e:                                  # cannot run != pass
+        print(f"lane-registry gate CANNOT RUN: dispatch checks: {type(e).__name__}: {e}", file=sys.stderr)
+        return EXIT_CANNOT_RUN
     # An ACTIVE kind-n8n row needs its workflow active. Judged against the live n8n list, a discovery file
     # that carries n8n, or the committed snapshot when it describes the committed registry (a fixture
     # registry or a discovery file without n8n is not compared with the real host's snapshot).
@@ -183,6 +203,7 @@ def main() -> int:
                           "n8n_source": n8n_source,
                           "n8n_active": len(found.get("n8n") or []),
                           "inactive_n8n_rows": inactive_n8n,
+                          "dispatch_findings": dispatch_findings,
                           "correlated_reason_lanes": correlated}, indent=2))
     else:
         print(f"declared lanes          : {len(rows)}  ({active} ACTIVE)")
@@ -211,7 +232,10 @@ def main() -> int:
         print(f"inactive n8n rows       : {len(inactive_n8n)}")
         for r in inactive_n8n:
             print(f"    ✗ {r['lane_id']}: declared ACTIVE kind n8n but workflow {r['expression']} is not active")
-        if not errors and not undeclared and not drift_conflicts and not inactive_n8n:
+        print(f"dispatch findings       : {len(dispatch_findings)}")
+        for f in dispatch_findings:
+            print(f"    ✗ {f['code']} {f['lane_id']}: {f['detail'][:110]}")
+        if not errors and not undeclared and not drift_conflicts and not inactive_n8n and not dispatch_findings:
             print("lane registry: clean")
 
     if args.fail_on_new and drift_conflicts:
@@ -222,6 +246,12 @@ def main() -> int:
     if args.fail_on_new and inactive_n8n:
         print("\nAn ACTIVE kind-n8n lane whose workflow is inactive is a false registry: nothing schedules it.\n"
               "Reactivate the workflow, or flip the row to RETIRED/PAUSED with state_since and evidence.",
+              file=sys.stderr)
+        return EXIT_VIOLATION
+    if args.fail_on_new and dispatch_findings:
+        print("\nA dispatch block must name a retry_policy that permits its class (config/n8n_retry_policies.json\n"
+              "permitted_classes), and while the row is on cron its dispatch.cron must equal the live crontab\n"
+              "schedule. Fix the row or the policy; never widen a policy to fit a lane without review.",
               file=sys.stderr)
         return EXIT_VIOLATION
     if args.fail_on_new and (errors or undeclared):

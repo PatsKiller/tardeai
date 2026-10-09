@@ -43,6 +43,8 @@ sys.path.insert(0, str(PROJ / "scripts"))
 SCHEMA = "Breach@v1"
 KINDS = ("SILENT", "HUNG", "BACKLOG", "FAILING", "NO_OUTPUT", "MEMORY_UNREACHABLE", "SLO_MISS", "UNGOVERNED")
 SCHEDULE_TZ = ZoneInfo("America/New_York")
+#: cron_schedule.last_fire_at_or_before lookback; parity with cron_last_fire.last_fire(max_days=400) for monthly lanes.
+CRON_LOOKBACK_DAYS = 400
 
 
 def _parse(ts):
@@ -74,17 +76,29 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
     expr = str(sched.get("expression") or "")
     cad_h = lane.get("expected_cadence_hours")
     if sched.get("kind") == "cron" and expr:
+        # the most recent fire that has had max_run to finish: a run still in progress is not a miss
+        ref = now - _dt.timedelta(seconds=max_run_s)
         try:
-            import cron_last_fire as cron_schedule  # type: ignore
-            # the most recent fire that has had max_run to finish: a run still in progress is not a miss
-            local_ref = (now - _dt.timedelta(seconds=max_run_s)).astimezone(SCHEDULE_TZ)
-            lf = cron_schedule.last_fire(expr, local_ref.replace(tzinfo=None))
-            local_now = local_ref
-            if lf is not None:
-                lf = lf.replace(tzinfo=local_now.tzinfo).astimezone(_dt.timezone.utc)
-                return lf, f"cron:{expr}"
-        except Exception:  # noqa: BLE001 — fall back to the cadence rule
-            pass
+            # 2026-10-09 (n8n maturity B5 follow-up): the DST-safe API. A spring-forward gap fire lands on the
+            # first valid minute and a fall-back fold fires once (fold 0), so neither transition hour moves the
+            # deadline past a run that really happened. None (no fire inside the lookback) = unknown -> cadence rule.
+            from cron_schedule import last_fire_at_or_before  # type: ignore
+            fire = last_fire_at_or_before(expr, ref, str(SCHEDULE_TZ), lookback_days=CRON_LOOKBACK_DAYS)
+            if fire is not None:
+                return fire.at.astimezone(_dt.timezone.utc), f"cron:{expr}"
+            dst_safe_parsed = True
+        except Exception:  # noqa: BLE001 — names / @aliases: the legacy parser below
+            dst_safe_parsed = False
+        if not dst_safe_parsed:
+            try:
+                import cron_last_fire  # type: ignore
+                local_ref = ref.astimezone(SCHEDULE_TZ)
+                lf = cron_last_fire.last_fire(expr, local_ref.replace(tzinfo=None))
+                if lf is not None:
+                    lf = lf.replace(tzinfo=local_ref.tzinfo).astimezone(_dt.timezone.utc)
+                    return lf, f"cron:{expr}"
+            except Exception:  # noqa: BLE001 — fall back to the cadence rule
+                pass
     if not cad_h:
         return None, "no_cadence"
     limit_s = max(3 * float(cad_h) * 3600, 900)
