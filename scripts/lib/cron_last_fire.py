@@ -4,6 +4,7 @@ Used by the supervisor breach detector (06 §5) so that NO_OUTPUT means "a sched
 produced since the last output and did not", instead of "the file is older than 3 × cadence" — which
 paged every weekday-only lane on a Sunday (2026-09-27 triage: 6 of 25 breaches).
 
+Accepts a registry expression with command text after the 5 fields (only the first 5 are read).
 Supports: `*`, lists `a,b`, ranges `a-b`, steps `*/n` and `a-b/n`, names for months and weekdays,
 `@hourly` / `@daily` / `@weekly` / `@monthly`. Day-of-month and day-of-week combine with OR when both
 are restricted (Vixie cron semantics). Times are naive local wall-clock like the crontab itself.
@@ -13,10 +14,14 @@ from __future__ import annotations
 
 import datetime as _dt
 
-_MONTHS = {m: i + 1 for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split())}
-_DOWS = {d: i for i, d in enumerate("sun mon tue wed thu fri sat".split())}
-_ALIASES = {"@hourly": "0 * * * *", "@daily": "0 0 * * *", "@midnight": "0 0 * * *", "@weekly": "0 0 * * 0",
-            "@monthly": "0 0 1 * *", "@yearly": "0 0 1 1 *", "@annually": "0 0 1 1 *"}
+# One extractor and one name/alias table for every cron reader (2026-10-09 breach triage: 102 of 421 ACTIVE
+# cron lanes store "<5 fields> <command>" and fell back to the 3 x cadence rule here and in the detector).
+if __package__:
+    from .cron_schedule import (ALIASES as _ALIASES, DOW_NAMES as _DOWS, MONTH_NAMES as _MONTHS, cron_fields,
+                                 cron_schedules)
+else:  # imported as a top-level module with scripts/lib on sys.path
+    from cron_schedule import (ALIASES as _ALIASES, DOW_NAMES as _DOWS, MONTH_NAMES as _MONTHS,  # type: ignore
+                               cron_fields, cron_schedules)
 
 
 def _field(spec: str, lo: int, hi: int, names: dict | None = None) -> tuple[set[int], bool]:
@@ -46,10 +51,13 @@ def _field(spec: str, lo: int, hi: int, names: dict | None = None) -> tuple[set[
 
 
 def parse(expr: str) -> dict | None:
-    expr = _ALIASES.get(expr.strip(), expr.strip())
-    parts = expr.split()
-    if len(parts) != 5:
+    """Parsed schedule of ``expr``: its first 5 fields (``cron_schedule.cron_fields``), so a registry
+    expression that carries the command after the schedule parses. None when there is no recurring
+    schedule (``@reboot``, fewer than 5 tokens) or a field is malformed."""
+    fields = cron_fields(expr)
+    if not fields or fields == "@reboot":
         return None
+    parts = fields.split()
     try:
         mins, _ = _field(parts[0], 0, 59)
         hours, _ = _field(parts[1], 0, 23)
@@ -108,4 +116,4 @@ def next_fire(expr: str, now: _dt.datetime, *, max_days: int = 400) -> _dt.datet
     return None
 
 
-__all__ = ["parse", "last_fire", "next_fire"]
+__all__ = ["cron_fields", "cron_schedules", "parse", "last_fire", "next_fire"]

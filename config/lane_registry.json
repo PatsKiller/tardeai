@@ -9643,9 +9643,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/runtime/topic_curator_latest.json",
+        "path": "data/runtime/topic_curator_ensemble_latest.json",
         "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/topic_curator.py:52,683 main() always calls _write_desk_projection -> data/runtime/topic_curator_latest.json (generated_at); shared by both curator lanes; host mtime 2026-10-09T13:34:56"
+        "evidence_ref": "scripts/topic_curator.py ensemble_rescue() -> _write_ensemble_receipt (ENSEMBLE_RECEIPT) on every --ensemble run, status ok|error|unavailable; own signal since the 2026-10-09 breach triage (the shared topic_curator_latest.json hid every [1b] crash)"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -12029,8 +12029,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/stop_health_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "path": "data/runtime/stop_health_last.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/stop_health_check.py main() -> _write_heartbeat (HEARTBEAT_FILE) on every run incl. --quiet and failures; 2026-10-09 breach triage: --quiet left logs/stop_health_cron.log unchanged on clean runs"
       },
       "value_class": "Technical Debt",
       "recommendation": "KEEP_ON_CRON",

@@ -25,6 +25,26 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 _COMPONENT = "stop_health"
+#: Per-run proof (2026-10-09 breach triage): cron runs this with --quiet, which prints nothing unless an alert
+#: fires, so the redirect log could not tell "ran clean" from "did not run". One small JSON per run, success
+#: or failure; the stop-health-check lane's output signal. Monitor bookkeeping only — no broker call.
+HEARTBEAT_FILE = PROJECT_ROOT / "data" / "runtime" / "stop_health_last.json"
+
+
+def _write_heartbeat(doc: dict, path: Path | None = None) -> None:
+    """Atomically replace the per-run heartbeat. Never raises: the check's own result comes first."""
+    import json
+    import os
+
+    path = path or HEARTBEAT_FILE
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps({"schema": "StopHealthRun@v1", **doc}, indent=1, default=str) + "\n",
+                       encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"stop_health: heartbeat write failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 def _send_telegram(msg: str, *, reply_markup: dict | None = None, link_preview_options: dict | None = None) -> str | None:
@@ -621,7 +641,27 @@ def run(quiet: bool = False) -> dict:
             "portfolio_drawdown": dd}
 
 
+def main(argv: list[str] | None = None, *, heartbeat_path: Path | None = None) -> dict:
+    """run() plus the per-run heartbeat (written on success and on failure; a failure still raises)."""
+    from datetime import datetime, timezone
+
+    argv = sys.argv[1:] if argv is None else argv
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        out = run(quiet="--quiet" in argv)
+    except BaseException as exc:
+        _write_heartbeat({"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
+                          "status": "error", "error": f"{type(exc).__name__}: {exc}"[:300]}, heartbeat_path)
+        raise
+    summary = out.get("summary") or {}
+    _write_heartbeat({"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
+                      "status": "ok", "stops": summary.get("total"), "by_health": summary.get("by_health"),
+                      "alert_count": out.get("alert_count"), "telegram_fired": out.get("telegram_fired"),
+                      "incident_recovery_ok": (summary.get("incident_recovery") or {}).get("ok")}, heartbeat_path)
+    return out
+
+
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv(str(PROJECT_ROOT / ".env"))
-    run(quiet="--quiet" in sys.argv)
+    main()

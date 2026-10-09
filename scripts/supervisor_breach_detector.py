@@ -66,69 +66,60 @@ def _parse_any(ts):
 
 
 def _cron_fields(expr: str) -> str | None:
-    """The schedule part of a registry cron ``expression``, as the 5 numeric fields ``cron_schedule`` parses.
+    """The schedule part of a registry cron ``expression`` (first 5 fields; ``@`` aliases and names mapped).
 
-    Registry rows store the crontab line's schedule followed by the command text (2026-10-09: 88 of 112
-    ACTIVE cron lanes, e.g. ``"*/15 9-16 * * 1-5 portfolio_repricer.py"``), so the schedule is the first
-    5 whitespace tokens. ``@hourly``/``@daily``/``@midnight``/``@weekly``/``@monthly``/``@yearly``/``@annually``
-    map to their 5-field equivalents; month and weekday names map to numbers. ``@reboot`` has no recurring
-    fire and returns ``"@reboot"``. Anything else that is not 5 tokens or an alias returns None.
+    Delegates to the shared extractor ``cron_schedule.cron_fields`` so the detector, ``cron_last_fire``, the
+    job coverage monitor, scheduler operations and source clocks read a schedule the same way (#1616 moved
+    here, 2026-10-09 breach triage). ``@reboot`` returns ``"@reboot"``; anything unreadable returns None.
     """
-    import cron_last_fire  # type: ignore  — one alias/name table for both parsers
+    from cron_schedule import cron_fields  # type: ignore
 
-    tokens = str(expr or "").split()
-    if not tokens:
-        return None
-    head = tokens[0].lower()
-    if head.startswith("@"):
-        if head == "@reboot":
-            return "@reboot"
-        return cron_last_fire._ALIASES.get(head)
-    if len(tokens) < 5:
-        return None
-    fields = [t.lower() for t in tokens[:5]]
-    for idx, names in ((3, cron_last_fire._MONTHS), (4, cron_last_fire._DOWS)):
-        for name, num in names.items():
-            fields[idx] = fields[idx].replace(name, str(num))
-    return " ".join(fields)
+    return cron_fields(expr)
+
+
+def _last_cron_fire(fields: str, ref: _dt.datetime) -> tuple[_dt.datetime, str] | None:
+    """(most recent fire <= ref in UTC, basis) for one 5-field schedule, or None (no fire in the lookback)."""
+    try:
+        # 2026-10-09 (n8n maturity B5 follow-up): the DST-safe API. A spring-forward gap fire lands on the
+        # first valid minute and a fall-back fold fires once (fold 0), so neither transition hour moves the
+        # deadline past a run that really happened. None (no fire inside the lookback) = unknown -> cadence rule.
+        from cron_schedule import last_fire_at_or_before  # type: ignore
+        fire = last_fire_at_or_before(fields, ref, str(SCHEDULE_TZ), lookback_days=CRON_LOOKBACK_DAYS)
+        return (fire.at.astimezone(_dt.timezone.utc), f"cron:{fields}") if fire is not None else None
+    except Exception:  # noqa: BLE001 — a field cron_schedule rejects (e.g. out of range): the legacy parser
+        pass
+    try:
+        import cron_last_fire  # type: ignore
+        local_ref = ref.astimezone(SCHEDULE_TZ)
+        lf = cron_last_fire.last_fire(fields, local_ref.replace(tzinfo=None))
+        if lf is not None:
+            return lf.replace(tzinfo=local_ref.tzinfo).astimezone(_dt.timezone.utc), f"cron_legacy:{fields}"
+    except Exception:  # noqa: BLE001 — fall back to the cadence rule
+        pass
+    return None
 
 
 def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> tuple[_dt.datetime | None, str]:
     """When should this lane have produced by? Returns (deadline, basis).
 
-    cron lanes: the most recent scheduled fire ≤ now (the expression's first 5 fields, see _cron_fields), so a
-    weekday-only or market-hours lane is not judged over a weekend (2026-09-27 triage: 6 false breaches).
+    cron lanes: the most recent scheduled fire ≤ now (each `` + ``-joined schedule's first 5 fields, see
+    cron_schedule.cron_fields; the latest over all of them), so a weekday-only or market-hours lane is not
+    judged over a weekend (2026-09-27 triage: 6 false breaches).
     Other lanes, ``@reboot`` lanes and cron lanes with no fire inside the lookback: 3 × cadence (min 15 min);
     inactive days are not due days.
     """
     sched = lane.get("scheduler") or {}
     expr = str(sched.get("expression") or "")
     cad_h = lane.get("expected_cadence_hours")
-    fields = _cron_fields(expr) if sched.get("kind") == "cron" else None
-    if fields and fields != "@reboot":
+    if sched.get("kind") == "cron":
         # the most recent fire that has had max_run to finish: a run still in progress is not a miss
         ref = now - _dt.timedelta(seconds=max_run_s)
-        try:
-            # 2026-10-09 (n8n maturity B5 follow-up): the DST-safe API. A spring-forward gap fire lands on the
-            # first valid minute and a fall-back fold fires once (fold 0), so neither transition hour moves the
-            # deadline past a run that really happened. None (no fire inside the lookback) = unknown -> cadence rule.
-            from cron_schedule import last_fire_at_or_before  # type: ignore
-            fire = last_fire_at_or_before(fields, ref, str(SCHEDULE_TZ), lookback_days=CRON_LOOKBACK_DAYS)
-            if fire is not None:
-                return fire.at.astimezone(_dt.timezone.utc), f"cron:{fields}"
-            dst_safe_parsed = True
-        except Exception:  # noqa: BLE001 — a field cron_schedule rejects (e.g. out of range): the legacy parser
-            dst_safe_parsed = False
-        if not dst_safe_parsed:
-            try:
-                import cron_last_fire  # type: ignore
-                local_ref = ref.astimezone(SCHEDULE_TZ)
-                lf = cron_last_fire.last_fire(fields, local_ref.replace(tzinfo=None))
-                if lf is not None:
-                    lf = lf.replace(tzinfo=local_ref.tzinfo).astimezone(_dt.timezone.utc)
-                    return lf, f"cron_legacy:{fields}"
-            except Exception:  # noqa: BLE001 — fall back to the cadence rule
-                pass
+        # A lane run by several crontab lines stores them joined by " + "; the deadline is the latest fire
+        # over all of them (cron_schedule.cron_schedules), not just the first line's.
+        from cron_schedule import cron_schedules  # type: ignore
+        fires = [f for f in (_last_cron_fire(fields, ref) for fields in cron_schedules(expr) if fields != "@reboot") if f]
+        if fires:
+            return max(fires, key=lambda f: f[0])
     if not cad_h:
         return None, "no_cadence"
     limit_s = max(3 * float(cad_h) * 3600, 900)

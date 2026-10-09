@@ -429,8 +429,13 @@ def _cron_matches(lane: dict[str, Any], entry: dict[str, Any]) -> bool:
     if not marker or marker not in entry.get("command", ""):
         return False
     # Multi-stage lanes sharing a runner are distinguished by their declared stage/cadence.
-    expr = str(lane.get("scheduler", {}).get("expression") or "")
-    return expr == entry.get("expression") if expr and cron_last_fire.parse(expr) else True
+    # Compare schedules, not text: a registry expression may carry the command after its 5 fields.
+    # A multi-line lane stores its schedules joined by " + "; the entry matches when it is one of them.
+    schedules = [f for f in cron_last_fire.cron_schedules(str(lane.get("scheduler", {}).get("expression") or ""))
+                 if cron_last_fire.parse(f)]
+    if not schedules:
+        return True
+    return cron_last_fire.cron_fields(str(entry.get("expression") or "")) in schedules
 
 
 def cron_collides(a: dict[str, Any], b: dict[str, Any], now: datetime) -> bool:
