@@ -14,6 +14,10 @@ sustained outage. Read-only: no orders, no trade unlock, no subscriptions kept.
 
   .venv/bin/python scripts/moomoo/opend_health.py
   .venv/bin/python scripts/moomoo/opend_health.py --alert
+
+Exit codes: 0 data plane up; 3 (EXIT_FINDING) data plane down — a finding, not a
+crash. 1 is left to Python's uncaught-exception exit so health_tick.py can tell
+the two apart (n8n maturity B3.1, 2026-10-09; was 1 for "down" before).
 """
 from __future__ import annotations
 
@@ -26,6 +30,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from scripts.lib.monitor_exit_codes import EXIT_FINDING  # noqa: E402
 STATE = ROOT / "data" / "runtime" / "moomoo_opend_health.json"
 FAIL_STREAK = ROOT / "data" / "runtime" / "moomoo_opend_fail_streak.json"
 UNIT = "trade-ai-lab-moomoo-opend.service"
@@ -148,7 +155,7 @@ def main() -> int:
         except Exception as e:
             print(f"[warn] alert failed: {e}", file=sys.stderr)
 
-    return 0 if ok else 1
+    return 0 if ok else EXIT_FINDING
 
 
 if __name__ == "__main__":

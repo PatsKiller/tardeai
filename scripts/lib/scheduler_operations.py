@@ -377,7 +377,8 @@ def read_lock_metrics(path: Path, now: datetime) -> dict[str, Any]:
 
 def receipt_proves_run(run: dict[str, Any], now: datetime) -> bool:
     receipt = run.get("receipt")
-    if not isinstance(receipt, dict) or receipt.get("schema") != "RunReceipt@v1":
+    # RunReceipt@v2 (executor v2, n8n maturity B5.5) is a strict superset of v1's fields.
+    if not isinstance(receipt, dict) or receipt.get("schema") not in ("RunReceipt@v1", "RunReceipt@v2"):
         return False
     if not run.get("run_id") or not run.get("lane_id"):
         return False

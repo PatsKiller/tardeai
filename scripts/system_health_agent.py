@@ -1917,11 +1917,14 @@ def main():
         Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output_json).write_text(json.dumps(report, indent=2, default=str))
 
-    # Return non-zero if any critical component is down
+    # Exit EXIT_FINDING (3) if any critical component is down. Not 1: 1 is what an
+    # uncaught exception exits with, and health_tick.py must tell a crash of this
+    # agent from a finding (n8n maturity B3.1, 2026-10-09; scripts/lib/monitor_exit_codes.py).
     critical_down = [c for c in report.get("checks", [])
                      if c.get("critical") and c.get("status") not in ("OK", "RECOVERED")]
     if critical_down and not args.dry_run:
-        sys.exit(1)
+        from lib.monitor_exit_codes import EXIT_FINDING
+        sys.exit(EXIT_FINDING)
 
 
 if __name__ == "__main__":
