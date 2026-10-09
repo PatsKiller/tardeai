@@ -179,3 +179,12 @@ def test_scalp_projection_feeds_active_trader_while_fresh(tmp_path, monkeypatch)
     r.projection_path().write_text(json.dumps(d))
     assert L.scalp_projection_rows(sf) == []
     assert L.scalp_projection_rows({}) == []
+
+
+def test_live_cycle_writes_catalyst_cache_through_per_symbol():
+    # a cold cycle killed by the lane's timeout must still leave its catalyst work cached (2026-10-09: the first
+    # live runs after deploy were all killed at 295 s with nothing cached, so every run started cold again)
+    src = (ROOT / "scripts/continuous_runner.py").read_text(encoding="utf-8")
+    i = src.index("fresh[sym] = enrich_ticker(sym")
+    assert "set_bulk({sym: fresh[sym]}, str(root), date_str)" in src[i:i + 900]
+    assert "if fresh: set_bulk(fresh, str(root), date_str)" not in src
