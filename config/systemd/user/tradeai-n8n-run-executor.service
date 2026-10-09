@@ -19,6 +19,15 @@ EnvironmentFile=-%t/tradeai/env
 EnvironmentFile=-%h/.config/tradeai/n8n-gateway.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment=TRADEAI_VENV_PYTHON=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+# Crontab-wide parity (2026-10-09, guardrail audit B M1): a lane cut over from cron must see the same
+# behaviour-affecting globals the crontab header gives every cron line (pinned by
+# tests/test_bridge_executor_hardening_20261009.py). LLM_DEFER_OFFPEAK=1 keeps scheduled paid work off peak.
+# SHELL is omitted on purpose: the executor spawns argv directly, with no shell.
+Environment=PROJ=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PY=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
+Environment=LLM_DEFER_OFFPEAK=1
+Environment=TRADEAI_ENV=%t/tradeai/env
+Environment=BLIND_REVIEW_LANES=deepseek-flash,grok,chatgpt
 ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_executor.py --interval 5
 Restart=always
 RestartSec=10
