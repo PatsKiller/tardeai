@@ -1,0 +1,121 @@
+{
+  "credential_name": "tradeai-run-relay",
+  "generator": "scripts/n8n_workflow_templates.py build-generic",
+  "node_types": [
+    "n8n-nodes-base.code",
+    "n8n-nodes-base.errorTrigger",
+    "n8n-nodes-base.httpRequest",
+    "n8n-nodes-base.if",
+    "n8n-nodes-base.scheduleTrigger",
+    "n8n-nodes-base.set",
+    "n8n-nodes-base.splitInBatches",
+    "n8n-nodes-base.stopAndError",
+    "n8n-nodes-base.wait",
+    "n8n-nodes-base.webhook"
+  ],
+  "relay_url": "http://172.19.0.1:18092",
+  "schema": "N8nGenericWorkflowSet@v1",
+  "system_filter_lanes": [
+    "approval-escalate",
+    "heartbeat-watch",
+    "incident-fanin",
+    "incident-notify",
+    "n8n-workflow-error"
+  ],
+  "workflows": [
+    {
+      "active": false,
+      "error_workflow": "tradeai-incident-router",
+      "file": "tradeai-dispatcher.json",
+      "id": "tradeai-dispatcher",
+      "kind": "dispatcher",
+      "relay_calls": [
+        "GET /due?source=schedule&limit=40",
+        "POST /run"
+      ],
+      "sha256": "ad665d5d8f4e3e2de0d1239d49c291eb4a17763778cfeb338c89949560e21b40",
+      "triggers": [
+        "schedule * * * * *"
+      ]
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-incident-router",
+      "file": "tradeai-event-router.json",
+      "id": "tradeai-event-router",
+      "kind": "event-router",
+      "relay_calls": [
+        "GET /due?source=event&limit=40",
+        "POST /run"
+      ],
+      "sha256": "71bccdfb5aa9c1ff80bb584fb0530d3c44a6eda86b7454cacd8a1b676e7b1175",
+      "triggers": [
+        "schedule * * * * *",
+        "webhook POST tradeai-nudge"
+      ]
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-incident-router",
+      "file": "tradeai-heartbeat-watcher.json",
+      "id": "tradeai-heartbeat-watcher",
+      "kind": "heartbeat-watcher",
+      "relay_calls": [
+        "GET /due?source=schedule&limit=40&lane=heartbeat-watch",
+        "POST /run",
+        "GET /runs/heartbeat-watch/last?mode=live"
+      ],
+      "sha256": "7f1f97231265077ec637f32dada052251e3cb4f19fb7ed6b7090c819663d7806",
+      "triggers": [
+        "schedule */5 * * * *"
+      ]
+    },
+    {
+      "active": false,
+      "error_workflow": null,
+      "file": "tradeai-incident-router.json",
+      "id": "tradeai-incident-router",
+      "kind": "incident-router",
+      "relay_calls": [
+        "GET /due?source=schedule&limit=40&lane=incident-fanin,incident-notify",
+        "POST /run",
+        "POST /event"
+      ],
+      "sha256": "127b79d1b416eeadee574fb32081bd81b9644a6a5bb0566c58f2ad2a89c83ebc",
+      "triggers": [
+        "schedule * * * * *",
+        "error trigger"
+      ]
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-incident-router",
+      "file": "tradeai-digest-scheduler.json",
+      "id": "tradeai-digest-scheduler",
+      "kind": "digest-scheduler",
+      "relay_calls": [
+        "GET /due?source=digest&limit=40",
+        "POST /run"
+      ],
+      "sha256": "8ca789a8a3614b734dbb19529a836702ef324a3c3997a50b99e5b1032602ca41",
+      "triggers": [
+        "schedule */5 * * * *"
+      ]
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-incident-router",
+      "file": "tradeai-approval-router.json",
+      "id": "tradeai-approval-router",
+      "kind": "approval-router",
+      "relay_calls": [
+        "GET /due?source=schedule&limit=40&lane=approval-escalate",
+        "POST /run"
+      ],
+      "sha256": "a7d237beb89eb0a64f08855b8322fa7b740fda4a84fafd88be8818f9aafd7846",
+      "triggers": [
+        "schedule */5 * * * *"
+      ]
+    }
+  ]
+}

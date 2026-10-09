@@ -46,7 +46,7 @@ def test_migration_adds_runs_table_to_an_existing_ledger_file(tmp_path):
         "exit_code",
         "duration_s",
         "receipt_json",
-    }
+    } | set(L.RUN_EXT_COLUMNS)  # 2026-10-09 B5.4: additive nullable dispatch columns
     assert again._conn.execute("SELECT count(*) AS n FROM events").fetchone()["n"] == 0  # older tables untouched
     again.close()
 
