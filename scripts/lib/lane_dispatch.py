@@ -12,13 +12,16 @@ scripts/check_lane_registry.py.
 FORBIDDEN-TOKEN RULE (AGENTS.md §0 rails 1-2, §23.3). Broker, order, stop, positions, secret, guard, deploy and
 sender lanes are never dispatch-eligible, whatever their dispatch block says. The tokens are derived from the
 existing sources of truth, not a parallel list:
-  * scripts/lib/n8n_coordination_gateway.FORBIDDEN_ROUTE_TOKENS — matched on token boundaries;
-  * scripts/pipelines/pipeline_manifest.FORBIDDEN_COMMAND_TOKENS — script names, matched as substrings;
-  * EXTRA_FORBIDDEN_TOKENS / EXTRA_FORBIDDEN_SUBSTRINGS below — secret/sm-render, stop/positions, guard, deploy,
-    sender, which neither list spells out.
-They are matched against the lane_id and the row's command-bearing fields (scheduler.expression,
-scheduler.match, and a top-level command/script if a row ever carries one). A row with watch.stay_behind=true
-is never eligible either.
+  * scripts/lib/n8n_coordination_gateway.forbidden_route_token — the gateway's own matcher over
+    FORBIDDEN_ROUTE_TOKENS (whole tokens AND substrings), run on the raw and the fully collapsed text;
+  * n8n_coordination_gateway.SECRET_KEYS (token, password, ...) — substrings;
+  * scripts/pipelines/pipeline_manifest.FORBIDDEN_COMMAND_TOKENS — script names, substrings;
+  * EXTRA_FORBIDDEN_SUBSTRINGS below — stop/positions, guard, deploy, sender, sm-render and broker/execution
+    names, which neither list spells out.
+They are matched against the lane_id, every string in `scheduler` (or the whole string when `scheduler` is a
+plain string), exec_start/service, command/script, and the lane's real argv in config/n8n_run_allowlist.json.
+A row marked `stay_on_cron` or recommendation KEEP_ON_CRON (B1 reconcile, PR #1597), or with
+watch.stay_behind=true, is never eligible either. dispatchable(row) = mode != off AND eligible.
 
 Scalp exception, documented and NOT carved out here: trade-ai-scalp-live is governed by AGENTS.md 4.0.0 §23.3
 through config/n8n_run_allowlist.json. Its cron expression wraps `scripts/market_day_gate.sh`, which is a
@@ -27,17 +30,23 @@ explicit, reviewed change to this module (or to the allowlist contract), never a
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
 try:
     from scripts.lib import cron_schedule as _cron
     from scripts.lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS as _ROUTE_TOKENS
+    from scripts.lib.n8n_coordination_gateway import SECRET_KEYS as _SECRET_WORDS
+    from scripts.lib.n8n_coordination_gateway import forbidden_route_token as _gateway_forbidden_token
     from scripts.pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS as _COMMAND_TOKENS
 except ImportError:                                        # imported as lib.lane_dispatch
     from lib import cron_schedule as _cron  # type: ignore
     from lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS as _ROUTE_TOKENS  # type: ignore
+    from lib.n8n_coordination_gateway import SECRET_KEYS as _SECRET_WORDS  # type: ignore
+    from lib.n8n_coordination_gateway import forbidden_route_token as _gateway_forbidden_token  # type: ignore
     from pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS as _COMMAND_TOKENS  # type: ignore
 
 DISPATCH_MODES = ("off", "dry_run", "live")
@@ -60,14 +69,20 @@ ISSUE_AFTER_UNKNOWN_LANE = "after_unknown_lane"
 ISSUE_BAD_BLOCK = "bad_block"
 ISSUE_FORBIDDEN_LANE = "forbidden_lane"
 
-EXTRA_FORBIDDEN_TOKENS = frozenset({
-    "secret", "secrets", "stop", "stops", "position", "positions", "guard", "deploy", "sender",
-})
-EXTRA_FORBIDDEN_SUBSTRINGS = ("sm-render", "sm_render")
-#: Token-boundary set: the gateway's route tokens plus the extras.
-FORBIDDEN_LANE_TOKENS = frozenset(_ROUTE_TOKENS) | EXTRA_FORBIDDEN_TOKENS
-#: Substring set: pipeline_manifest's excluded scripts plus the secret renderers.
-FORBIDDEN_LANE_SUBSTRINGS = tuple(_COMMAND_TOKENS) + EXTRA_FORBIDDEN_SUBSTRINGS
+#: Words neither source list spells out, matched as SUBSTRINGS (like the gateway): secret renderers, stops and
+#: positions, guard, deploy, senders, and the broker/execution names (schwab, alpaca, snaptrade, moomoo, ibkr,
+#: paper, executor) that AGENTS §0 rails 1-2 and the allowlist's `never` list keep off n8n.
+EXTRA_FORBIDDEN_SUBSTRINGS = (
+    "secret", "stop", "position", "guard", "deploy", "sender", "sm-render", "sm_render", "smrender",
+    "schwab", "alpaca", "snaptrade", "moomoo", "ibkr", "paper", "executor",
+)
+#: Kept for callers/tests of the first cut; the gateway's route tokens (its matcher also does substrings).
+FORBIDDEN_LANE_TOKENS = frozenset(_ROUTE_TOKENS)
+#: Substring set: pipeline_manifest's excluded scripts, the gateway's secret words, and the extras.
+FORBIDDEN_LANE_SUBSTRINGS = tuple(_COMMAND_TOKENS) + tuple(sorted(_SECRET_WORDS)) + EXTRA_FORBIDDEN_SUBSTRINGS
+#: Registry markers (B1 reconcile, PR #1597) that pin a lane to cron/systemd whatever its dispatch block says.
+KEEP_ON_CRON = "KEEP_ON_CRON"
+DEFAULT_RUN_ALLOWLIST = Path(__file__).resolve().parents[2] / "config" / "n8n_run_allowlist.json"
 
 _CRON_SHAPE = re.compile(r"^\S+ \S+ \S+ \S+ \S+$")
 _RETRY_POLICY_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
@@ -299,8 +314,7 @@ def parse_watch_block(row: Mapping[str, Any]) -> WatchBlock:
 def dispatch_mode(row: Mapping[str, Any]) -> str:
     """"off" when the block is absent or unparseable (fail closed); otherwise the declared mode.
 
-    This does NOT apply the forbidden-token rule: callers that run anything must also require
-    dispatch_eligible(row)[0]."""
+    This does NOT apply the forbidden-token rule: callers that run anything use dispatchable(row)."""
     try:
         block = parse_dispatch_block(row)
     except DispatchBlockError:
@@ -310,41 +324,114 @@ def dispatch_mode(row: Mapping[str, Any]) -> str:
 
 # ── forbidden-token rule ─────────────────────────────────────────────────────────────────────────
 
-def _command_fields(row: Mapping[str, Any]) -> list[tuple[str, str]]:
-    sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
-    fields = [("lane_id", row.get("lane_id")),
-              ("scheduler.expression", sched.get("expression")),
-              ("scheduler.match", sched.get("match")),
-              ("command", row.get("command")),
-              ("script", row.get("script"))]
+_ALLOWLIST_CACHE: dict[str, dict[str, str]] = {}
+
+
+def load_run_allowlist_argv(path: Optional[Path] = None) -> dict[str, str]:
+    """lane_id -> the argv the n8n executor would run for that lane (command + dry_run_arg + live_arg, with
+    scripts/market_day_gate.sh prepended when market_gate is set), as one string. Read from
+    config/n8n_run_allowlist.json; a missing or malformed file yields {} (eligibility then rests on the
+    registry fields alone, which are never relaxed by this)."""
+    p = Path(path) if path is not None else DEFAULT_RUN_ALLOWLIST
+    key = str(p)
+    if key in _ALLOWLIST_CACHE:
+        return _ALLOWLIST_CACHE[key]
+    out: dict[str, str] = {}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        doc = {}
+    for entry in (doc.get("lanes") or []) if isinstance(doc, dict) else []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("lane_id"), str):
+            continue
+        argv: list[str] = ["scripts/market_day_gate.sh"] if entry.get("market_gate") else []
+        for k in ("command", "dry_run_arg", "live_arg"):
+            v = entry.get(k)
+            if isinstance(v, list):
+                argv.extend(str(t) for t in v)
+        out[entry["lane_id"]] = " ".join(argv)
+    _ALLOWLIST_CACHE[key] = out
+    return out
+
+
+def _command_fields(row: Mapping[str, Any], allowlist_argv: Optional[Mapping[str, str]] = None
+                    ) -> list[tuple[str, str]]:
+    """Every command-bearing field of the row, lowercased. A string `scheduler` is checked whole; a dict
+    scheduler contributes every string value. exec_start/service (systemd rows), command/script, and the lane's
+    real argv from the run allowlist are included."""
+    sched = row.get("scheduler")
+    fields: list[tuple[str, Any]] = [("lane_id", row.get("lane_id"))]
+    if isinstance(sched, dict):
+        fields.extend((f"scheduler.{k}", v) for k, v in sorted(sched.items()) if isinstance(v, str))
+    elif sched is not None:
+        fields.append(("scheduler", sched))
+    for name in ("exec_start", "service", "command", "script"):
+        v = row.get(name)
+        fields.append((name, " ".join(map(str, v)) if isinstance(v, (list, tuple)) else v))
+    argv_map = load_run_allowlist_argv() if allowlist_argv is None else allowlist_argv
+    lane = row.get("lane_id")
+    if isinstance(lane, str) and lane in argv_map:
+        fields.append(("allowlist.argv", argv_map[lane]))
     return [(name, str(v).lower()) for name, v in fields if v]
 
 
-def forbidden_hits(row: Mapping[str, Any]) -> list[tuple[str, str]]:
-    """Every (token, field) of the forbidden-token rule that this row trips, in a stable order."""
+def forbidden_hits(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None
+                   ) -> list[tuple[str, str]]:
+    """Every (token, field) of the forbidden-token rule that this row trips, in a stable order.
+
+    At least as strict as the gateway: its own matcher (whole tokens + substrings of the '-'/'/'-collapsed
+    text) runs on the raw text AND on the text with every non-alphanumeric removed, so `placeorders`,
+    `positionsync`, `two_factor` and `bash -c '...'` wrappers all match. Substring lists match the raw text and
+    the fully collapsed text."""
     hits: list[tuple[str, str]] = []
-    for field, text in _command_fields(row):
-        tokens = {t for t in _TOKEN_SPLIT.split(text) if t}
-        hits.extend((tok, field) for tok in sorted(tokens & FORBIDDEN_LANE_TOKENS))
-        hits.extend((sub, field) for sub in FORBIDDEN_LANE_SUBSTRINGS if sub.lower() in text)
+    for field, text in _command_fields(row, allowlist_argv):
+        squashed = re.sub(r"[^a-z0-9]+", "", text)
+        for variant in (text, squashed):
+            tok = _gateway_forbidden_token(variant)
+            if tok is not None and (tok, field) not in hits:
+                hits.append((tok, field))
+        for sub in FORBIDDEN_LANE_SUBSTRINGS:
+            s = sub.lower()
+            if (s in text or re.sub(r"[^a-z0-9]+", "", s) in squashed) and (sub, field) not in hits:
+                hits.append((sub, field))
     return hits
 
 
-def dispatch_eligible(row: Mapping[str, Any]) -> tuple[bool, str]:
-    """(eligible, reason). Never eligible: a stay-behind row, or any forbidden token in the lane id or command.
+def _keep_on_cron(row: Mapping[str, Any]) -> bool:
+    rat = row.get("rationalization")
+    return row.get("recommendation") == KEEP_ON_CRON or (
+        isinstance(rat, dict) and rat.get("recommendation") == KEEP_ON_CRON)
 
-    Independent of the dispatch block: a block saying `live` cannot make a forbidden lane eligible."""
+
+def dispatch_eligible(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None
+                      ) -> tuple[bool, str]:
+    """(eligible, reason). Never eligible: a stay_on_cron or KEEP_ON_CRON row (B1 reconcile markers), a
+    stay-behind row, or any forbidden token in the lane id, scheduler, exec_start/service, command/script or
+    the lane's run-allowlist argv.
+
+    Independent of the dispatch block: a block saying `live` cannot make a forbidden lane eligible. Callers
+    that RUN anything use dispatchable(row), which also requires mode != off."""
+    if row.get("stay_on_cron") not in (None, False, {}, ""):
+        return False, "stay_on_cron"
+    if _keep_on_cron(row):
+        return False, "keep_on_cron"
     try:
         watch = parse_watch_block(row)
     except DispatchBlockError as e:
         return False, f"bad_watch_block:{e.detail}"
     if watch.stay_behind:
         return False, "stay_behind"
-    hits = forbidden_hits(row)
+    hits = forbidden_hits(row, allowlist_argv=allowlist_argv)
     if hits:
         tok, field = hits[0]
         return False, f"forbidden_token:{tok}@{field}"
     return True, "eligible"
+
+
+def dispatchable(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None) -> bool:
+    """The one check a dispatcher/executor needs: dispatch mode is not off (block present and well-formed)
+    AND the row is dispatch-eligible."""
+    return dispatch_mode(row) != "off" and dispatch_eligible(row, allowlist_argv=allowlist_argv)[0]
 
 
 # ── validation ───────────────────────────────────────────────────────────────────────────────────

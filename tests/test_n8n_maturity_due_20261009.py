@@ -647,13 +647,6 @@ def test_due_config_feeds_the_module_bounds():
 
 # ── #1595 contract: dispatch_eligible(row) -> (bool, reason) refuses B1 reconcile markers ───────
 
-_NEEDS_1595 = pytest.mark.xfail(
-    strict=False,
-    reason="lane_dispatch.dispatch_eligible learns stay_on_cron / KEEP_ON_CRON in PR #1595 (head de68a240f); "
-           "passes once #1595 lands, n8n_due already routes every lane through dispatch_eligible(row)")
-
-
-@_NEEDS_1595
 @pytest.mark.parametrize("marker", [{"stay_on_cron": True}, {"recommendation": "KEEP_ON_CRON"},
                                     {"rationalization": {"recommendation": "KEEP_ON_CRON"}}])
 def test_stay_on_cron_rows_are_lane_not_dispatched(store, marker):

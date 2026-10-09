@@ -107,6 +107,22 @@ RATE_LIMIT = 30
 RATE_WINDOW_S = 60
 
 
+#: 2026-10-09 (B5.5): executor v2 claim ordering (design 02 §5). Priority 0 = incident/heartbeat/approval, 9 = backfill.
+DEFAULT_RUN_PRIORITY = 5
+PRIORITY_AGE_STEP_S = 300
+PRIORITY_AGE_MAX = 3
+
+
+def aged_priority(priority: int, requested_at: str, now: float) -> int:
+    """``priority - min(floor(wait_s / 300), 3)``; an unparseable requested_at ages nothing. Pure."""
+    try:
+        dt = datetime.fromisoformat(str(requested_at))
+        wait_s = now - (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
+    except ValueError:
+        wait_s = 0.0
+    return int(priority) - min(max(int(wait_s // PRIORITY_AGE_STEP_S), 0), PRIORITY_AGE_MAX)
+
+
 class LedgerError(ValueError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -680,6 +696,86 @@ class LedgerRunStore:
             self._l._conn.execute("ROLLBACK")
             raise
         return self.get(str(row["run_id"]))
+
+    # ── B5.5: executor v2 claim / heartbeat (design 02 §5). claim_next above stays the v1 path. ──
+
+    @_locked
+    def claim_next_v2(self, *, worker_id: str, exclude_classes=(), max_priority: int | None = None, now: float,
+                      default_classes: Mapping[str, str] | None = None,
+                      default_priority: int = DEFAULT_RUN_PRIORITY) -> dict[str, Any] | None:
+        """Best eligible REQUESTED row -> RUNNING (worker_id, heartbeat_at) in one BEGIN IMMEDIATE; None if none.
+
+        Eligible: its lane has NO RUNNING row (at most one RUNNING row per lane), its effective class
+        (``runs.class``, else ``default_classes[lane_id]``, else ``"report"``) is not in ``exclude_classes``, and
+        its raw priority (``runs.priority``, else ``default_priority``) is ``<= max_priority`` when given.
+        Order: aged priority ``priority - min(floor(wait_s / 300), 3)``, then requested_at, then run_id.
+        The returned row carries ``effective_class`` / ``effective_priority`` (not written to the row)."""
+        at = _iso(now)
+        excluded = frozenset(exclude_classes or ())
+        classes = default_classes or {}
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            # No row LIMIT (review #1598): a window over requested_at starved a new P0 behind >= 2000 older rows.
+            # The raw-priority filter runs in SQL; the scan orders by raw priority so the best rows come first.
+            sql = ('SELECT run_id, lane_id, "class", priority, requested_at FROM runs r WHERE r.state = ?'
+                   " AND NOT EXISTS (SELECT 1 FROM runs r2 WHERE r2.lane_id = r.lane_id AND r2.state = ?)")
+            args: list[Any] = [RUN_STATE_REQUESTED, RUN_STATE_RUNNING]
+            if max_priority is not None:
+                sql += " AND COALESCE(r.priority, ?) <= ?"
+                args += [int(default_priority), int(max_priority)]
+            sql += " ORDER BY COALESCE(r.priority, ?) ASC, requested_at ASC, run_id ASC"
+            args.append(int(default_priority))
+            rows = self._l._conn.execute(sql, args).fetchall()
+            best: tuple | None = None
+            for r in rows:
+                prio = int(r["priority"]) if r["priority"] is not None else int(default_priority)
+                if best is not None and prio - PRIORITY_AGE_MAX > best[0][0]:
+                    break                         # raw-priority order: no later row can age past the best
+                klass = r["class"] or classes.get(str(r["lane_id"])) or "report"
+                if klass in excluded:
+                    continue
+                if max_priority is not None and prio > max_priority:
+                    continue
+                key = (aged_priority(prio, str(r["requested_at"]), now), str(r["requested_at"]), str(r["run_id"]))
+                if best is None or key < best[0]:
+                    best = (key, str(r["run_id"]), klass, prio)
+            if best is None:
+                self._l._conn.execute("ROLLBACK")
+                return None
+            self._l._conn.execute(
+                "UPDATE runs SET state = ?, started_at = ?, worker_id = ?, heartbeat_at = ? WHERE run_id = ? AND state = ?",
+                (RUN_STATE_RUNNING, at, worker_id, at, best[1], RUN_STATE_REQUESTED))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+        out = self.get(best[1])
+        assert out is not None
+        out["effective_class"], out["effective_priority"] = best[2], best[3]
+        return out
+
+    @_locked
+    def touch_heartbeat(self, run_id: str, pid: int | None, now: float) -> bool:
+        """Stamp heartbeat_at (and pid when given) on a RUNNING row. False when the row is no longer RUNNING."""
+        return self._write("UPDATE runs SET heartbeat_at = ?, pid = COALESCE(?, pid) WHERE run_id = ? AND state = ?",
+                           (_iso(now), None if pid is None else int(pid), run_id, RUN_STATE_RUNNING)) > 0
+
+    @_locked
+    def list_running(self) -> list[dict[str, Any]]:
+        """Every RUNNING row, oldest start first."""
+        return [self._row_dict(r) for r in self._l._conn.execute(
+            "SELECT * FROM runs WHERE state = ? ORDER BY started_at ASC, run_id ASC", (RUN_STATE_RUNNING,)).fetchall()]
+
+    @_locked
+    def list_breakers(self, *, open_only: bool = True) -> list[dict[str, Any]]:
+        """Breaker rows (+ ``open``), open ones only by default."""
+        out = []
+        for lane in [str(r["lane_id"]) for r in self._l._conn.execute(
+                "SELECT lane_id FROM breakers ORDER BY lane_id").fetchall()]:
+            row = self.breaker(lane)
+            if row is not None and (row["open"] or not open_only):
+                out.append(row)
+        return out
 
     @_locked
     def finish(self, run_id: str, *, state: str, receipt: Mapping[str, Any], now: float | None = None) -> dict[str, Any]:

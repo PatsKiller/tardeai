@@ -152,25 +152,30 @@ def test_a_scheduled_job_with_no_row_fails_the_build(tmp_path):
     depends on host state is not testing the gate.
     """
     reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
-    declared = {r["scheduler"].get("expression") for r in reg["lanes"]}
-    victims = [b for b in reg["undeclared_baseline"]
-               if b.endswith(".timer") and b not in declared]
-    assert victims, "need a baselined timer to remove"
+    # 2026-10-09 (B1): the baseline is retired, so the mutation removes a declared timer's ROW.
+    victims = [r for r in reg["lanes"]
+               if (r.get("scheduler") or {}).get("kind") == "systemd"
+               and str(r["scheduler"].get("expression") or "").endswith(".timer")
+               and not r["scheduler"].get("match")]
+    assert victims, "need a declared timer row to remove"
+    victim = victims[0]
+    unit = victim["scheduler"]["expression"]
+    assert not any(r is not victim and unit in (str((r.get("scheduler") or {}).get("expression") or ""),
+                                                 str((r.get("scheduler") or {}).get("match") or ""))
+                   for r in reg["lanes"]), "victim unit is declared twice"
 
     disco = tmp_path / "discovery.json"
     disco.write_text(json.dumps({
         "cron": [], "cron_commented": [],
-        "systemd": [{"expression": victims[0], "enabled_state": "enabled"}],
+        "systemd": [{"expression": unit, "enabled_state": "enabled"}],
     }), encoding="utf-8")
 
     p = tmp_path / "mutated.json"
-    reg["undeclared_baseline"] = [b for b in reg["undeclared_baseline"]
-                                  if b != victims[0]]
-    p.write_text(json.dumps(reg), encoding="utf-8")
+    mutated = dict(reg, lanes=[r for r in reg["lanes"] if r is not victim])
+    p.write_text(json.dumps(mutated), encoding="utf-8")
     assert _gate(p, discovery=disco) == 1, "removing a declaration must go red"
 
     # ...and restoring it goes green again.
-    reg["undeclared_baseline"].append(victims[0])
     p.write_text(json.dumps(reg), encoding="utf-8")
     assert _gate(p, discovery=disco) == 0
 

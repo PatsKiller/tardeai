@@ -235,10 +235,11 @@ def payload_hash(event: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical(event)).hexdigest()
 
 
-def route_forbidden(route: str) -> str | None:
-    text = (route or "").strip().lower()
-    if not text:
-        return "missing_route"
+def forbidden_route_token(text: str) -> str | None:
+    """The first FORBIDDEN_ROUTE_TOKENS entry in ``text``: a whole token, or a substring of the text with
+    '-' and '/' removed (so `placeorders` and `n8n-activation-grants` match). The matcher route_forbidden
+    uses; scripts/lib/lane_dispatch.py reuses it for lane eligibility. None when clean."""
+    text = (text or "").strip().lower()
     tokens = [tok for tok in re.split(r"[^a-z0-9]+", text) if tok]
     collapsed = text.replace("-", "").replace("/", "")
     for token in tokens:
@@ -247,6 +248,16 @@ def route_forbidden(route: str) -> str | None:
     for token in FORBIDDEN_ROUTE_TOKENS:
         if token in collapsed and token not in {"title"}:
             return token
+    return None
+
+
+def route_forbidden(route: str) -> str | None:
+    text = (route or "").strip().lower()
+    if not text:
+        return "missing_route"
+    hit = forbidden_route_token(text)
+    if hit is not None:
+        return hit
     if text not in ALLOWED_ROUTES:
         return "route_not_allowlisted"
     return None

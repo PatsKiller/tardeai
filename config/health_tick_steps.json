@@ -1,15 +1,19 @@
 {
   "schema": "HealthTickSteps@v1",
-  "as_of": "2026-10-07",
+  "as_of": "2026-10-09",
   "authority": "READ_ONLY_ADVISORY",
   "tick_minutes": 5,
   "tick_budget_s": 280,
+  "tick_deadline_s": 300,
+  "orphan_wait_s": 30,
   "max_parallel": 1,
   "default_timeout_s": 240,
   "note": "Cron consolidation RANK 3 (health tick). One row per absorbed crontab line, read verbatim from `crontab -l` on 2026-10-07 (line numbers in `note`). Schedule fields are cron-equivalent: a step is due at a tick when the tick minute satisfies (minute - minute_offset) % cadence_minutes == 0 for sub-hour cadences, or minute == minute_offset snapped to the tick grid and the hour satisfies `hours` (explicit list) or hour % (cadence_minutes/60) == 0 (null) for hour-and-up cadences. `weekdays` are ISO numbers 1=Mon..7=Sun, identical to cron 1-5 for Mon-Fri. `lock` is the /tmp flock path the cron line used; a lock the cron line did NOT have is named /tmp/health_tick_<step>.lock and marked in the note. `needs_env` is false everywhere because no absorbed line sourced anything: each script loads CURRENT/.env itself (CURRENT/.env is a symlink to the dev-tree .env). `log` is the `>> logs/...` target the cron line appended to; health_tick appends the step's stdout+stderr there so log-freshness monitors (system_health_agent) keep seeing the same files. The three safety nets (portfolio_server_watchdog.sh, process_reaper.py, cleanup_stale_locks.sh), resolve_due_checkpoints.py and the @reboot moomoo line stay in cron on purpose.",
   "steps": [
     {
       "step_id": "system-health-agent",
+      "finding_rc": [3],
+      "finding_note": "2026-10-09: exits 3 (EXIT_FINDING, scripts/lib/monitor_exit_codes.py) when a critical monitored component is not OK (a finding, escalated by the agent itself); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green. rc 1 (Python's uncaught-exception / sys.exit(str) exit) or any traceback in stderr = crashed",
       "command": ["$PY", "scripts/system_health_agent.py", "--apply", "--verbose"],
       "cadence_minutes": 5,
       "minute_offset": 0,
@@ -24,6 +28,8 @@
     },
     {
       "step_id": "moomoo-opend-health",
+      "finding_rc": [3],
+      "finding_note": "2026-10-09: exits 3 (EXIT_FINDING) when the OpenD quote round-trip fails (data plane down; the script alerts on its own streak); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green. rc 1 or any traceback in stderr = crashed",
       "command": ["$PY", "scripts/moomoo/opend_health.py", "--alert"],
       "cadence_minutes": 5,
       "minute_offset": 0,
@@ -49,6 +55,20 @@
       "market_day_gate": false,
       "log": "logs/cio_bridge_watchdog.log",
       "note": "crontab line 1007: */5 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/cio_bridge_watchdog.lock $PY scripts/cio_bridge_watchdog.py --apply >> logs/cio_bridge_watchdog.log 2>&1  # 2026-09-14 bridge wedge: restart after 2 unanswered /health probes, alert on state change (lane cio-bridge-watchdog)"
+    },
+    {
+      "step_id": "pipeline-watchdog",
+      "command": ["$PY", "scripts/pipeline_watchdog.py"],
+      "cadence_minutes": 120,
+      "minute_offset": 0,
+      "hours": null,
+      "weekdays": null,
+      "lock": "/tmp/health_tick_pipeline_watchdog.lock",
+      "timeout_s": 600,
+      "needs_env": false,
+      "market_day_gate": false,
+      "log": "logs/pipeline_watchdog.log",
+      "note": "crontab line 277: 0 */2 * * * cd $PROJ && $PY scripts/pipeline_watchdog.py >> logs/pipeline_watchdog.log 2>&1 | lock added by health_tick (cron line had none); NOTE the script hardcodes PROJECT_ROOT to the dev tree and retries scripts there — pre-existing, not changed here | 2026-10-09: moved ahead of the 15-minute steps. It is due only at :00 of even hours and system_health_agent treats it as CRITICAL (max age 150 min), so a deferral costs 2 hours of a critical lane; deferring health-agent (every 15 min) costs 15 minutes. It leaves fire-and-forget symbol_enrichment.py children, which health_tick now reaps after orphan_wait_s"
     },
     {
       "step_id": "health-agent",
@@ -122,17 +142,17 @@
     },
     {
       "step_id": "portfolio-live-monitor",
-      "command": ["$PY", "scripts/portfolio_live_monitor.py"],
+      "command": ["$PY", "scripts/portfolio_live_monitor.py", "--once"],
       "cadence_minutes": 20,
       "minute_offset": 0,
       "hours": [9, 10, 11, 12, 13, 14, 15, 16],
       "weekdays": [1, 2, 3, 4, 5],
       "lock": "/tmp/portfolio_live_monitor.lock",
-      "timeout_s": 300,
+      "timeout_s": 120,
       "needs_env": false,
       "market_day_gate": false,
       "log": "logs/portfolio_live_monitor.log",
-      "note": "crontab line 403: */20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_live_monitor.lock $PY scripts/portfolio_live_monitor.py >> logs/portfolio_live_monitor.log 2>&1 | declared lane portfolio-live-monitor"
+      "note": "crontab line 403: */20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_live_monitor.lock $PY scripts/portfolio_live_monitor.py >> logs/portfolio_live_monitor.log 2>&1 | declared lane portfolio-live-monitor | 2026-10-09: --once. The script is a market-hours DAEMON (loops with 15-min sleeps until 16:31); cron's flock -n kept the first launch alive all day, but inside the tick it ran into its 300 s timeout on every firing (32 timeouts in 2 days) and pushed every hourly tick past the unit's TimeoutStartSec=330 so the receipt was never written. --once runs one trigger cycle and exits; the morning brief / EOD summary de-duplicate per day on disk"
     },
     {
       "step_id": "freshness-watchdog-heartbeat",
@@ -150,6 +170,8 @@
     },
     {
       "step_id": "pipeline-liveness-report",
+      "finding_rc": [3],
+      "finding_note": "2026-10-09: --fail-on-finding exits 3 (EXIT_FINDING) on a STARVED / NO_ELIGIBLE_INPUT / UNKNOWN lane by design (UNKNOWN = a source it could not read, also nonzero); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green. rc 1 or any traceback in stderr = crashed",
       "command": ["$PY", "scripts/pipeline_liveness_report.py", "--fail-on-finding"],
       "cadence_minutes": 30,
       "minute_offset": 0,
@@ -160,21 +182,7 @@
       "needs_env": false,
       "market_day_gate": false,
       "log": "logs/pipeline_liveness.log",
-      "note": "crontab line 909: */30 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/pipeline_liveness_report.py --fail-on-finding >> logs/pipeline_liveness.log 2>&1 | lock added by health_tick (cron line had none); --fail-on-finding exits 1 on a STARVED lane BY DESIGN, so a finding reads as a failed step in the receipt"
-    },
-    {
-      "step_id": "pipeline-watchdog",
-      "command": ["$PY", "scripts/pipeline_watchdog.py"],
-      "cadence_minutes": 120,
-      "minute_offset": 0,
-      "hours": null,
-      "weekdays": null,
-      "lock": "/tmp/health_tick_pipeline_watchdog.lock",
-      "timeout_s": 600,
-      "needs_env": false,
-      "market_day_gate": false,
-      "log": "logs/pipeline_watchdog.log",
-      "note": "crontab line 277: 0 */2 * * * cd $PROJ && $PY scripts/pipeline_watchdog.py >> logs/pipeline_watchdog.log 2>&1 | lock added by health_tick (cron line had none); NOTE the script hardcodes PROJECT_ROOT to the dev tree and retries scripts there — pre-existing, not changed here"
+      "note": "crontab line 909: */30 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/pipeline_liveness_report.py --fail-on-finding >> logs/pipeline_liveness.log 2>&1 | lock added by health_tick (cron line had none); --fail-on-finding exits nonzero on a STARVED / NO_ELIGIBLE_INPUT / UNKNOWN lane BY DESIGN (3 since 2026-10-09; see finding_rc)"
     },
     {
       "step_id": "pipeline-freshness-monitor",

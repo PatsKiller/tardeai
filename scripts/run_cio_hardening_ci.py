@@ -3540,6 +3540,13 @@ GATES = [
             # pins due-phase arithmetic, lock skip, timeout = failure, receipt
             # shape and that dry-run writes nothing. Timer stays NEVER_SCHEDULED.
             "tests/test_health_tick_20261007.py",
+            # 2026-10-09 n8n maturity B3.1: tick exit = tick health (findings in the
+            # receipt), step timeouts clamped to a tick deadline, leftover children
+            # reaped; portfolio_live_monitor --once; cron_self_heal acts + live $PY.
+            "tests/test_health_tick_outcomes_20261009.py",
+            "tests/test_cron_self_heal_acts_20261009.py",
+            # B3.1 review: monitors report a finding with EXIT_FINDING=3, never 1.
+            "tests/test_monitor_finding_exit_codes_20261009.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
             "tests/test_retention_registry_20261007.py",
@@ -3616,6 +3623,18 @@ GATES = [
             "tests/test_n8n_workflow_drift_20261009.py",
             "tests/test_n8n_activation_grants_20261009.py",
             "tests/test_n8n_agent_identity_parity_20261009.py",
+            # incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)
+            "tests/test_n8n_incident_fanin_governance_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_REGISTRY_DISPATCH
+        # N8N Maturity B5.2 (design 02 §2): lane-registry dispatch/watch block loader + validation
+        # (scripts/lib/lane_dispatch.py) and the forbidden-token eligibility rule. Hermetic synthetic rows;
+        # the live registry is only read (all rows mode off; broker/order/secret rows ineligible).
+        "n8n_maturity_registry_dispatch_20261009",
+        [
+            "tests/test_n8n_maturity_registry_dispatch_20261009.py",
         ],
     ),
     (
@@ -3649,6 +3668,14 @@ GATES = [
         # Hermetic: tmp_path receipts/registries, fake runner and sleeper.
         "n8n_sched_fixes_20261009",
         ["tests/test_n8n_sched_fixes_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_EXECUTOR_V2 — n8n maturity B5.5 (design 02 §5): executor v2 — N workers, per-lane
+        # lock (claim_next_v2), global/class caps, reserved priority worker, stale-RUNNING reaper, verdict/DLQ/
+        # breaker via finalize_outcome, RunReceipt@v2 + ExecutorStatus@v1; workers=1 is the v1 path. Hermetic:
+        # tmp_path ledgers, fake clock, gated fake runners, tiny real subprocesses.
+        "n8n_maturity_executor_v2_20261009",
+        ["tests/test_n8n_maturity_executor_v2_20261009.py"],
     ),
     (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
@@ -3752,6 +3779,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_INCIDENT_NOTIFIER — N8N maturity B2 (2026-10-09): scripts/incident_notifier.py, the human
+        # end of the incident fan-in. P1 at once, P2 one batch per window, recovery on clear, per-incident 24 h
+        # dedupe, daily cap from env, operator acks from the ledger, dry-run sends and records nothing, and the
+        # sender is only the SYSTEM ops module (no family, token or chat; this module is not a SYSTEM caller).
+        # Hermetic: tmp state root, tmp sqlite ledger, stub sender/previewer. Listing it here schedules nothing.
+        "N8N_INCIDENT_NOTIFIER",
+        [
+            "tests/test_incident_notifier_20261009.py",
+        ],
+    ),
+    (
         # 2026-10-08 — n8n model job, live shape (workstream C, Day 0). Pins the bridge's nested
         # `_tradeai` governance envelope, request_id -> provider_cost client_request_id, the
         # server-side PROCESS_TASK_TYPE map (unknown process = process_not_registered before any
@@ -3848,6 +3886,32 @@ GATES = [
         "SYSTEM_TELEGRAM_INTERDICT_SCOPE",
         [
             "tests/test_system_telegram_interdict_scope_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_REGISTRY_RECONCILE — N8N maturity B1 2026-10-09: the lane registry's 476-entry
+        # undeclared_baseline (+113 inherited-tranche lines) is retired. scripts/reconcile_lane_registry.py
+        # derives a row for every live crontab line, user timer and platform service (read-only host or the
+        # committed snapshot); the committed registry is its fixed point, every live line maps to exactly one
+        # row, broker/order/secret lines are KEEP_ON_CRON (FORBIDDEN_COMMAND_TOKENS / FORBIDDEN_ROUTE_TOKENS
+        # cross-check), unproven outputs are flagged UNVERIFIED_OUTPUT. Hermetic: repo files only.
+        "N8N_MATURITY_REGISTRY_RECONCILE",
+        [
+            "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_PLATFORM_MATURITY — 2026-10-09 n8n maturity program C1: scripts/n8n_platform_maturity.py
+        # scores 12 dimensions 0-10 from evidence only (N8nPlatformMaturity@v1); the probe refuses any
+        # non-read-only command; missing evidence scores 0 (UNVERIFIED). Hermetic: tmp state/proj roots,
+        # fake command runner, fixed clock. Listing them here schedules nothing.
+        "N8N_PLATFORM_MATURITY",
+        [
+            "tests/test_n8n_platform_maturity_core_20261009.py",
+            "tests/test_n8n_platform_maturity_scheduling_20261009.py",
+            "tests/test_n8n_platform_maturity_signal_20261009.py",
+            "tests/test_n8n_platform_maturity_healing_20261009.py",
+            "tests/test_n8n_platform_maturity_governance_20261009.py",
         ],
     ),
 ]

@@ -318,9 +318,9 @@ def test_main_dry_run_write_and_exit_codes(tmp_path, monkeypatch, capsys):
     assert A.main([*base, "--write"]) == 0
     rec = json.loads((state / A.RECEIPT_REL).read_text(encoding="utf-8"))
     assert rec["schema"] == "N8nActivationAttribution@v1" and rec["verdict"] == A.UNGRANTED_ACTIVATION
-    assert rec["events"] == 4 and rec["fanin_wired"] is False and rec["guard_log"] == "audit.jsonl"
-    ung = [f for f in rec["fanin_findings"] if f["item"].endswith(A.UNGRANTED_ACTIVATION)]
-    assert ung and ung[0]["source"] == "n8n_activation_grants" and ung[0]["severity"] == "P2"
+    assert rec["events"] == 4 and rec["fanin_wired"] is True and rec["guard_log"] == "audit.jsonl"
+    ung = [f for f in rec["fanin_findings"] if ":UNGRANTED_ACTIVATION:" in f["item"]]
+    assert ung and ung[0]["source"] == "n8n_activation_grants" and ung[0]["severity"] == "P1"  # active
     assert A.main([*base, "--fail-on-ungranted"]) == 1
     assert A.main(["--evidence-json", str(ev), "--guard-log", str(tmp_path / "absent.jsonl")]) == 2
     assert A.main([*base[:4], "--since", "not-a-time"]) == 2
@@ -331,3 +331,55 @@ def test_default_guard_log_follows_the_guard_lib_env(monkeypatch, tmp_path):
     assert A.default_guard_log() == tmp_path / "x.jsonl"
     monkeypatch.delenv("GUARD_AUDIT_LOG")
     assert A.default_guard_log() == Path.home() / "logs" / "cursor-agent-audit.jsonl"
+
+
+def test_a_later_reactivation_under_a_grant_naming_the_id_regularises_the_version(tmp_path):
+    """Agent A review of #1608: a version activated without a grant, live for hours, then re-activated under a
+    cron grant naming its id is NOT laundered to GRANTED. The latest activation is granted, so it is not a P1,
+    but the ungranted window stays reported (UNGRANTED_ACTIVATION_REGULARISED, P3) with its start and end."""
+    ev = json.loads(json.dumps(EVIDENCE))
+    ev["publish_history"].append(
+        {"workflow_id": "f4553ff360e21a9f", "version_id": "v-pre", "event": "activated", "at": "2026-10-09 16:00:00+00"}
+    )
+    regularise = [
+        {
+            "event": "grant-issued",
+            "tier": "cron",
+            "seconds": 1800,
+            "ts": "2026-10-09T11:55:00-04:00",
+            "reason": "regularise n8n activations: re-activate f4553ff360e21a9f under this grant",
+        }
+    ]
+    grants = A.load_grants(_guard_log(tmp_path, regularise))
+    rows = A.reconcile(A.activation_events(ev, since=SINCE), grants)
+    (row,) = [r for r in rows if r["workflow_id"] == "f4553ff360e21a9f"]
+    assert row["status"] == A.UNGRANTED_ACTIVATION_REGULARISED
+    assert row["activated_at"].startswith("2026-10-09T12:39:45") and row["last_activated_at"].startswith("2026-10-09T16:00")
+    assert [v["status"] for v in row["activation_verdicts"]] == [A.UNGRANTED_ACTIVATION, A.GRANTED]
+    assert row["ungranted_window"]["start"].startswith("2026-10-09T12:39:45")
+    assert row["ungranted_window"]["end"].startswith("2026-10-09T16:00")
+    assert A.fanin_severity(row) == "P3"
+    rec = A.build_receipt(rows, since=SINCE, source="fixture", guard_log=Path("g"), tiers=A.DEFAULT_TIERS)
+    assert rec["counts"][A.UNGRANTED_ACTIVATION_REGULARISED] == 1
+    assert "f4553ff360e21a9f:UNGRANTED_ACTIVATION_REGULARISED:P3" in {f["item"] for f in rec["fanin_findings"]}
+
+
+def test_a_granted_version_reactivated_later_without_a_grant_is_a_live_p1(tmp_path):
+    """P1 is decided by the LATEST activation: granted first, ungranted re-activation later -> UNGRANTED."""
+    ev = json.loads(json.dumps(EVIDENCE))
+    ev["publish_history"].append(
+        {"workflow_id": "e18d7849b4142927", "version_id": "v-mat", "event": "activated", "at": "2026-10-09 20:00:00+00"}
+    )
+    grants = A.load_grants(_guard_log(tmp_path, [dict(GRANTS[0], tier="cron")]))
+    (row,) = [r for r in A.reconcile(A.activation_events(ev, since=SINCE), grants) if r["workflow_id"] == "e18d7849b4142927"]
+    assert [v["status"] for v in row["activation_verdicts"]] == [A.GRANTED, A.UNGRANTED_ACTIVATION]
+    assert row["status"] == A.UNGRANTED_ACTIVATION and row["ungranted_window"] is None
+    assert A.fanin_severity(row) == "P1"
+
+
+def test_fanin_severity_is_p1_only_for_a_live_ungranted_activation():
+    assert A.fanin_severity({"status": A.UNGRANTED_ACTIVATION, "currently_active": True}) == "P1"
+    assert A.fanin_severity({"status": A.UNGRANTED_ACTIVATION, "currently_active": False}) == "P3"
+    assert A.fanin_severity({"status": A.NAME_ONLY_GRANT, "currently_active": True}) == "P3"
+    assert A.fanin_severity({"status": A.NAMED_IN_OTHER_TIER, "currently_active": True}) == "P3"
+    assert A.fanin_severity({"status": A.UNGRANTED_ACTIVATION_REGULARISED, "currently_active": True}) == "P3"

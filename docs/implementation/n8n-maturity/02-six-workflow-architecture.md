@@ -253,9 +253,9 @@ One workflow serves all scheduled lanes. Its nodes:
 
 | Control | Rule | Where enforced |
 |---|---|---|
-| Workers | `N = TRADEAI_N8N_EXECUTOR_WORKERS`, default 3 (the host is loaded), maximum 8 | executor |
+| Workers | `N = TRADEAI_N8N_EXECUTOR_WORKERS`, default 1 (the v1 serial drain; v2 is opt-in with `N >= 2`, an invalid value is 1 with a logged warning), maximum 8. Intervals and limits: `config/n8n_executor.json`. | executor |
 | Per-lane lock | `claim_next` claims only lanes with no RUNNING row (`NOT EXISTS (SELECT 1 FROM runs r2 WHERE r2.lane_id = runs.lane_id AND r2.state='RUNNING')`) inside `BEGIN IMMEDIATE`. The lane's own flock/safe_flock stays as the cross-scheduler guard against cron. | ledger + lane lock |
-| Global cap | `N` RUNNING rows | executor |
+| Global cap | `min(N, class_caps.global)` RUNNING rows in the ledger | executor |
 | Class caps | `heavy` 1, `llm` 1, `ingest` 1, `send` 1, `pipeline` 2, `learn` 1; `monitor`/`report`/`hygiene` share the global cap. Read from `config/n8n_retry_policies.json#class_caps`. | `claim_next(exclude_classes=full)` |
 | Priority | `ORDER BY (priority - min(floor(wait_s/300), 3)), requested_at`. Priority 0 = incident/heartbeat/approval, 9 = backfill. The aging term stops starvation. | ledger |
 | Reserved slot | one worker is reserved for priority ≤ 1, so a heavy lane never blocks the incident/heartbeat lanes | executor |
