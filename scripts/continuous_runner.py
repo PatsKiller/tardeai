@@ -203,11 +203,14 @@ class CycleState:
         self.sonnet_last:    Dict[str, datetime] = {}
         self.sonnet_plans:   Set[str]         = set()   # tickers with plans today
         self.cat_fingerprints: Dict[str, Set[str]] = {}
+        # Per-trigger send attempts today ("TYPE:SYM" -> {"n": failed sends, "next_at": ISO-8601 UTC}); the
+        # live-alert retry cap/backoff (_deliver_live_alert, config/trade_ai_scalp_lane.yaml alert_delivery).
+        self.alert_attempts: Dict[str, Dict[str, Any]] = {}
 
     # Persistence (2026-10-09): the 5-minute scalp lane is one process per run, so the "what was already GO /
     # already alerted" memory must survive between runs or every GO would re-alert every 5 minutes.
     _SETS = ("prev_go", "halted_seen", "rvol5x_seen", "rvol8x_seen", "sonnet_plans")
-    _DICTS = ("prev_rvol", "prev_score")
+    _DICTS = ("prev_rvol", "prev_score", "alert_attempts")
     _TIMES = ("haiku_last", "sonnet_last")
 
     def to_dict(self) -> dict:
@@ -501,16 +504,121 @@ def _save_state_quietly(state_saver, state: "CycleState", cs: Dict, where: str) 
         cs.setdefault("errors", []).append(f"state_save_{where}: {type(_e).__name__}: {_e}"[:200])
 
 
+ALERT_POLICY_CONFIG = Path(__file__).resolve().parent.parent / "config" / "trade_ai_scalp_lane.yaml"
+# Fail-safe when the policy cannot be read: one send per trigger per day, never a retry loop (not a tuned value).
+_ALERT_POLICY_FAILSAFE = {"max_attempts_per_trigger_per_day": 1, "retry_backoff_base_s": 0.0,
+                          "retry_backoff_multiplier": 1.0}
+
+
+def load_alert_retry_policy(path: Optional[Path] = None) -> Dict[str, Any]:
+    """The live-alert retry policy (config/trade_ai_scalp_lane.yaml ``alert_delivery``).
+
+    Loud on a missing/invalid section: prints the reason and returns the fail-safe (one attempt, no retry), so a
+    broken config can never turn into the 5-minute re-send loop the policy exists to stop."""
+    cfg_path = Path(path) if path else ALERT_POLICY_CONFIG
+    try:
+        import yaml
+
+        raw = (yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}).get("alert_delivery") or {}
+        pol = {"max_attempts_per_trigger_per_day": int(raw["max_attempts_per_trigger_per_day"]),
+               "retry_backoff_base_s": float(raw["retry_backoff_base_s"]),
+               "retry_backoff_multiplier": float(raw["retry_backoff_multiplier"])}
+        if pol["max_attempts_per_trigger_per_day"] < 1 or pol["retry_backoff_base_s"] < 0 \
+                or pol["retry_backoff_multiplier"] < 1:
+            raise ValueError(f"out of range: {pol}")
+        return pol
+    except Exception as _e:  # noqa: BLE001 — loud, then the fail-safe
+        print(f"  [live] alert_delivery policy unreadable ({cfg_path}): {type(_e).__name__}: {_e} "
+              f"-- using fail-safe {_ALERT_POLICY_FAILSAFE}")
+        return dict(_ALERT_POLICY_FAILSAFE)
+
+
+def _trigger_key(t: Dict) -> str:
+    return f"{t.get('type')}:{t.get('symbol')}"
+
+
+def _telegram_modules() -> List[Any]:
+    """Every loaded instance of the Telegram chokepoint module. ``telegram_alert`` and ``scripts.telegram_alert``
+    can both be loaded (the comms gateway imports the package path), each with its own last-message-id list."""
+    mods = []
+    for name in ("telegram_alert", "scripts.telegram_alert"):
+        m = sys.modules.get(name)
+        if m is not None and m not in mods:
+            mods.append(m)
+    return mods
+
+
+def _reset_telegram_message_ids() -> None:
+    for m in _telegram_modules():
+        try:
+            m.reset_last_message_ids()
+        except Exception:  # noqa: BLE001 — best effort; absent ids only make a partial send look failed
+            pass
+
+
+def _telegram_delivered_ids() -> List[str]:
+    """Provider message ids recorded by the send just made (any loaded chokepoint instance)."""
+    ids: List[str] = []
+    for m in _telegram_modules():
+        try:
+            ids.extend(str(x) for x in (m.last_message_ids() or []) if str(x).strip())
+        except Exception:  # noqa: BLE001
+            pass
+    return ids
+
+
+def _telegram_disabled() -> bool:
+    """True when Telegram is switched off (ENABLE_TELEGRAM): send_telegram returns False before doing anything,
+    and retrying cannot change that, so the alert is final (n8n maturity B4 review, 2026-10-09)."""
+    for m in _telegram_modules():
+        try:
+            if not m._enabled():  # noqa: SLF001 — the chokepoint's own switch, read not re-implemented
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+    return False
+
+
+def _attempt_due(rec: Optional[Dict[str, Any]], now: datetime) -> bool:
+    if not rec or not rec.get("next_at"):
+        return True
+    try:
+        return datetime.fromisoformat(str(rec["next_at"])) <= now
+    except (TypeError, ValueError):
+        return True
+
+
 def _deliver_live_alert(state: "CycleState", triggers: List[Dict], time_str: str, market: Dict,
-                        cs: Dict, state_saver=None) -> int:
+                        cs: Dict, state_saver=None, policy: Optional[Dict[str, Any]] = None,
+                        now: Optional[datetime] = None) -> int:
     """Build and send one live alert; returns the number of triggers delivered (accepted).
 
     Ordering (n8n maturity B4 follow-up, 2026-10-09): triggers arrive UN-marked (persisted that way before the
     build). Only triggers whose lines built are marked and saved immediately before the send — so a cycle
-    killed mid-send does not re-alert (at-most-once) while a cycle killed mid-build retries next cycle. A send
-    that is not accepted rolls the marks back and saves again."""
+    killed mid-send does not re-alert (at-most-once) while a cycle killed mid-build retries next cycle.
+
+    Outcome of the send (B4 review, 2026-10-09):
+      * accepted, or rejected but at least one chat got a message id (partial) -> delivered, marks kept;
+      * Telegram disabled (ENABLE_TELEGRAM off) -> final: marks kept, no retry;
+      * otherwise failed -> the trigger's failed-send count goes up; below the per-day cap the marks roll back and
+        the trigger is retried only after the backoff; at the cap the marks are kept (gave up, logged).
+    A trigger still inside its backoff window is not sent this cycle and stays un-alerted."""
+    pol = policy if policy is not None else load_alert_retry_policy()
+    now = now or datetime.now().astimezone()
     cs["alert_sent"] = False
     cs["alerts_delivered"] = 0
+    cs.setdefault("alert_outcome", None)
+    attempts = getattr(state, "alert_attempts", None)
+    if attempts is None:
+        attempts = state.alert_attempts = {}
+    deferred = [t for t in triggers if not _attempt_due(attempts.get(_trigger_key(t)), now)]
+    if deferred:
+        cs["alerts_deferred"] = len(deferred)
+        print(f"  [live] {len(deferred)} trigger(s) in send backoff: {[_trigger_key(t) for t in deferred]}")
+    triggers = [t for t in triggers if not any(t is d for d in deferred)]
+    if not triggers:
+        cs["alert_outcome"] = "deferred" if deferred else None
+        return 0
     failed: List[Dict] = []
     try:
         msg = _build_live_alert(triggers, time_str, market, failed=failed)
@@ -530,18 +638,47 @@ def _deliver_live_alert(state: "CycleState", triggers: List[Dict], time_str: str
     except Exception:
         pass
     accepted = False
+    _reset_telegram_message_ids()
     try:
         from telegram_alert import send_telegram
         accepted = bool(send_telegram(msg))
     except Exception as _e:
         cs.setdefault("errors", []).append(f"alert: {type(_e).__name__}: {_e}"[:200])
-    cs["alert_sent"] = accepted
-    if not accepted:
-        _set_trigger_marks(state, good, alerted=False)
-        _save_state_quietly(state_saver, state, cs, "rollback")
+    if not accepted and _telegram_delivered_ids():
+        # One chat of several failed: the gateway/legacy transport report the whole send as failed, but the
+        # operator has the alert — a retry would only duplicate it to the chats that already got it.
+        cs["alert_outcome"] = "partial"
+        cs.setdefault("errors", []).append("alert: partial delivery (>=1 chat delivered) counted as delivered")
+        accepted = True
+    if accepted:
+        cs["alert_outcome"] = cs.get("alert_outcome") or "delivered"
+        for t in good:
+            attempts.pop(_trigger_key(t), None)
+        _save_state_quietly(state_saver, state, cs, "delivered")
+        cs["alert_sent"] = True
+        cs["alerts_delivered"] = len(good)
+        return len(good)
+    if _telegram_disabled():
+        cs["alert_outcome"] = "disabled"
+        cs.setdefault("errors", []).append("alert: Telegram disabled (ENABLE_TELEGRAM) -- final, not retried")
         return 0
-    cs["alerts_delivered"] = len(good)
-    return len(good)
+    cap = int(pol["max_attempts_per_trigger_per_day"])
+    retry: List[Dict] = []
+    gave_up: List[Dict] = []
+    for t in good:
+        rec = attempts.setdefault(_trigger_key(t), {"n": 0})
+        rec["n"] = int(rec.get("n") or 0) + 1
+        wait_s = float(pol["retry_backoff_base_s"]) * float(pol["retry_backoff_multiplier"]) ** (rec["n"] - 1)
+        rec["next_at"] = (now + timedelta(seconds=wait_s)).isoformat()
+        (gave_up if rec["n"] >= cap else retry).append(t)
+    if gave_up:
+        cs.setdefault("errors", []).append(
+            f"alert: send failed {cap}x, giving up for today: {[_trigger_key(t) for t in gave_up]}"[:200])
+    if retry:
+        _set_trigger_marks(state, retry, alerted=False)
+    cs["alert_outcome"] = "failed_retry" if retry else "failed_final"
+    _save_state_quietly(state_saver, state, cs, "rollback")
+    return 0
 
 
 # "   "    Live cycle "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
@@ -911,7 +1048,8 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     _cs["alert_sent"] = False
     if triggers:
         print(f"  [live] {len(triggers)} trigger(s): {[t['type'] for t in triggers]}")
-        _deliver_live_alert(state, triggers, time_str, market, _cs, state_saver)
+        _deliver_live_alert(state, triggers, time_str, market, _cs, state_saver,
+                            policy=load_alert_retry_policy(root / "config" / "trade_ai_scalp_lane.yaml"))
     else:
         print("  [live] no changes  -- alerts suppressed")
     _enter("done")
