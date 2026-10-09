@@ -3858,6 +3858,18 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_REGISTRY_RECONCILE — N8N maturity B1 2026-10-09: the lane registry's 476-entry
+        # undeclared_baseline (+113 inherited-tranche lines) is retired. scripts/reconcile_lane_registry.py
+        # derives a row for every live crontab line, user timer and platform service (read-only host or the
+        # committed snapshot); the committed registry is its fixed point, every live line maps to exactly one
+        # row, broker/order/secret lines are KEEP_ON_CRON (FORBIDDEN_COMMAND_TOKENS / FORBIDDEN_ROUTE_TOKENS
+        # cross-check), unproven outputs are flagged UNVERIFIED_OUTPUT. Hermetic: repo files only.
+        "N8N_MATURITY_REGISTRY_RECONCILE",
+        [
+            "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_PLATFORM_MATURITY — 2026-10-09 n8n maturity program C1: scripts/n8n_platform_maturity.py
         # scores 12 dimensions 0-10 from evidence only (N8nPlatformMaturity@v1); the probe refuses any
         # non-read-only command; missing evidence scores 0 (UNVERIFIED). Hermetic: tmp state/proj roots,

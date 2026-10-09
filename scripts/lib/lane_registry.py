@@ -283,7 +283,9 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
     kind = str((sig or {}).get("kind") or "none")
     try:
         if kind == "file_mtime":
-            p = Path(str(sig.get("path") or ""))
+            # `~/…` paths (2026-10-09, B1 reconciliation): a lane writing outside the state root is
+            # declared host-neutrally instead of with an absolute home path.
+            p = Path(str(sig.get("path") or "")).expanduser()
             if not p.is_absolute():
                 p = root / p
             ts = _mtime_utc(p)
@@ -316,7 +318,7 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
                 ts = None
             return {"last_output_at": ts, "readable": bool(ts), "detail": f"{unit} success at {raw or 'unknown'}"}
         if kind == "json_key":
-            p = Path(str(sig.get("path") or ""))
+            p = Path(str(sig.get("path") or "")).expanduser()
             if not p.is_absolute():
                 p = root / p
             if not p.exists():
@@ -462,6 +464,39 @@ def discover_systemd() -> list[dict[str, Any]]:
     return out
 
 
+#: Where operator-installed user units live. A long-running service there is a lane like a timer
+#: (it produces, or it is silent); services shipped by the OS under /usr or /etc are not.
+USER_UNIT_DIR_MARKER = "/.config/systemd/user/"
+
+
+def discover_systemd_services() -> list[dict[str, Any]]:
+    """Enabled long-running user services installed by the operator (~/.config/systemd/user).
+
+    Added 2026-10-09 (N8N maturity B1): 18 platform daemons — the API, the bridge, the n8n relay and
+    executor, the Telegram pollers — ran with no registry row because discovery only listed timers.
+    Read-only: one list-unit-files call and one batched ``systemctl show``.
+    """
+    out: list[dict[str, Any]] = []
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "list-unit-files", "--type=service", "--state=enabled", "--no-legend"],
+            capture_output=True, text=True, timeout=30)
+        names = [ln.split()[0] for ln in r.stdout.splitlines()
+                 if ln.split() and ln.split()[0].endswith(".service") and "@" not in ln.split()[0]]
+        if not names:
+            return out
+        cmd = ["systemctl", "--user", "show", *names, "-p", "Id", "-p", "FragmentPath", "-p", "UnitFileState"]
+        shown = subprocess.run(cmd, capture_output=True, text=True, timeout=60).stdout
+    except Exception:
+        return out
+    for block in shown.split("\n\n"):
+        props = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
+        if USER_UNIT_DIR_MARKER in props.get("FragmentPath", "") and props.get("Id", "").endswith(".service"):
+            out.append({"kind": "systemd_service", "expression": props["Id"],
+                        "enabled_state": props.get("UnitFileState", "")})
+    return sorted(out, key=lambda u: u["expression"])
+
+
 def discover_all(*, cron_text: Optional[str] = None,
                  include_systemd: bool = True,
                  include_n8n: Optional[bool] = None) -> dict[str, Any]:
@@ -469,6 +504,7 @@ def discover_all(*, cron_text: Optional[str] = None,
         "cron": discover_cron(cron_text),
         "cron_commented": discover_commented_cron(cron_text),
         "systemd": discover_systemd() if include_systemd else [],
+        "systemd_services": discover_systemd_services() if include_systemd else [],
     }
     if include_n8n is None:
         include_n8n = os.environ.get(N8N_DISCOVERY_ENV, "") == "1"
@@ -690,7 +726,8 @@ def _scheduler_present(row: dict[str, Any], found: dict[str, Any], *,
         now = now or datetime.now(timezone.utc)
         return (now - ts) <= timedelta(hours=cadence_h)
     if kind == "systemd":
-        return any(u["expression"] == expr for u in found.get("systemd") or [])
+        return any(u["expression"] == expr
+                   for u in (found.get("systemd") or []) + (found.get("systemd_services") or []))
     if kind == "cron":
         marker = str(sched.get("match") or expr)
         return any(marker in c["expression"] for c in found.get("cron") or [])
@@ -832,16 +869,25 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
     None). The inherited baseline does NOT apply to n8n — there is no n8n debt.
     """
     declared: set[str] = set()
+    # A systemd row declares a UNIT, never a crontab line (2026-10-09, B1): a cron line that merely
+    # mentions a service name (`systemctl --user is-active x.service`) must not be counted as declared
+    # by that service's row. Measured before the change: no live line relied on a systemd row.
+    declared_cron: set[str] = set()
     for row in reg.get("lanes") or []:
         sched = row.get("scheduler") or {}
+        is_unit_row = sched.get("kind") == "systemd"
         expr = str(sched.get("expression") or "")
         # Live-proof 2026-09-28 (LP-DEF-19): a bare cron schedule ("5 * * * *") is not a pattern — as a
         # substring it declared every line that happened to share the minute field and hid five
         # unregistered crons. A lane whose expression is only a schedule must name its script in `match`.
         if expr and not _BARE_CRON_SCHEDULE.match(expr):
             declared.add(expr)
+            if not is_unit_row:
+                declared_cron.add(expr)
         if sched.get("match"):
             declared.add(str(sched["match"]))
+            if not is_unit_row:
+                declared_cron.add(str(sched["match"]))
     baseline = set(reg.get("undeclared_baseline") or [])
     # Dated inherited tranches (2026-09-28): lines installed on the host by other work with no
     # lane row, recorded WITH provenance instead of growing the original baseline. Same contract:
@@ -856,9 +902,17 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any], *,
             continue
         out.append({"kind": "systemd", "expression": expr,
                     "enabled_state": unit.get("enabled_state")})
+    # Platform services (2026-10-09): declared by a row whose expression or match names the unit.
+    # No baseline applies — there was never service debt to inherit.
+    for unit in found.get("systemd_services") or []:
+        expr = unit["expression"]
+        if expr in declared:
+            continue
+        out.append({"kind": "systemd_service", "expression": expr,
+                    "enabled_state": unit.get("enabled_state")})
     for job in found.get("cron") or []:
         expr = job["expression"]
-        if expr in baseline or any(d in expr for d in declared if d):
+        if expr in baseline or any(d in expr for d in declared_cron if d):
             continue
         out.append({"kind": "cron", "expression": expr})
     n8n_rows = found.get("n8n") or []

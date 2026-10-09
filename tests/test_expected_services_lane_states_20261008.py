@@ -58,4 +58,19 @@ def test_the_live_registry_retires_due_checkpoints():
     import json
     m = ces.lane_states_for_units(json.loads((ROOT / "config" / "lane_registry.json").read_text()))
     assert m.get("tradeai-due-checkpoints.timer", ("", ""))[1] == "RETIRED"
-    assert "tradeai-iris-taxonomy.timer" not in m, "iris-taxonomy now has a lane row: update this test and the PR note"
+    # 2026-10-09 (PR #1597 review): iris-taxonomy now has a lane row (B1 reconciliation), but retiring it is
+    # operator decision O-4, still open. The row records the disabled unit WITHOUT ruling: state ACTIVE,
+    # status DISABLED_UNRULED, operator_decision_pending — so the disabled timer stays a finding, never
+    # "expected off". Same for every unit the generator found disabled.
+    reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
+    lane = m.get("tradeai-iris-taxonomy.timer")
+    assert lane and lane[1] not in ces.OFF_BY_DECISION, lane
+    rows = ces.apply_lane_states([_row("tradeai-iris-taxonomy.timer", "DISABLED")], m)
+    assert rows[0]["status"] == "DISABLED", rows[0]
+    unruled = [r for r in reg["lanes"] if r.get("status") == "DISABLED_UNRULED"]
+    assert {r["lane_id"] for r in unruled} >= {
+        "tradeai-iris-taxonomy", "db-retention-timer", "systemd-tmpfiles-clean", "tradeai-agent-runtime-atlas",
+        "tradeai-agent-runtime-concierge", "tradeai-agent-runtime-hermes", "tradeai-agent-runtime-pulse"}
+    for r in unruled:
+        assert r["state"] not in ces.OFF_BY_DECISION and r["operator_decision_pending"] is True, r["lane_id"]
+        assert (r.get("proposed_state") or {}).get("ruled", False) is False, r["lane_id"]
