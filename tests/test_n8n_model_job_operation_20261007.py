@@ -162,9 +162,10 @@ def test_ops_summary_process_derives_its_own_task_type_and_a_foreign_process_is_
 
 
 def test_bridge_call_sends_the_derived_task_type_and_the_named_routing_policy_as_headers(monkeypatch):
-    """The routing policy is a NAME carried as X-TradeAI-Routing-Policy (the bridge ignores it today); the task type
-    header is the one run_model_job derived; the body carries the job's correlation id as request_id and the fixed
-    governed model name. No socket: urlopen is stubbed and the Request is captured."""
+    """The routing policy is a NAME carried as X-TradeAI-Routing-Policy (the bridge reads it; an unknown name
+    refuses before a provider call). The task type header is the one run_model_job derived; the body carries the
+    job's correlation id as request_id and the fixed governed model name. No socket: urlopen is stubbed and the
+    Request is captured."""
     import io
     import urllib.request
     captured = {}
