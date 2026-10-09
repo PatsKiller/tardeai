@@ -3628,6 +3628,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_REGISTRY_DISPATCH
+        # N8N Maturity B5.2 (design 02 §2): lane-registry dispatch/watch block loader + validation
+        # (scripts/lib/lane_dispatch.py) and the forbidden-token eligibility rule. Hermetic synthetic rows;
+        # the live registry is only read (all rows mode off; broker/order/secret rows ineligible).
+        "n8n_maturity_registry_dispatch_20261009",
+        [
+            "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_OPS_LANES — 2026-10-09 operator "add the lanes": storage-watch, backup-verify (dump dir
         # config-driven), monthly trade-ai-restore-drill (throwaway DB only; drop guard pinned), N7 shadow
         # workflows. Hermetic: tmp_path dumps/stamps, fake runners, fake DB connections that record SQL.
