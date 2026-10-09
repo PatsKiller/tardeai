@@ -94,3 +94,40 @@ Additions made during the build:
 - **Click-any-ticker** across the remaining pages.
 - **Optional n8n coordination:** brief-refresh events, nightly fan-out, and curator staleness raised as a
   Communications event.
+
+## Company, catalysts and news in the modal (2026-10-08, later)
+
+Your feedback: "nothing here on what company does or latest news, catalyst".
+
+**What the modal now shows:**
+- **About:** the `symbol_profiles` business description (3,332 of 3,334 symbols have one) and the next earnings date.
+- **Catalysts:** typed `catalyst_events` from the last 90 days, newest first. Untyped `other` rows are excluded.
+  Each row shows its type, headline, date and a low-confidence flag. A scheduled earnings date appears as an
+  upcoming catalyst.
+- **Latest news:** `news_articles` from the last 45 days. Same-headline duplicates across feeds collapse to one, and
+  headlines already shown as a catalyst are left out.
+
+The readers are `catalyst_record.get_symbol_news`, `get_symbol_catalysts` and `title_key`. Windows and limits are
+set under `modal:` in `config/opportunity_conviction.yaml`.
+
+**Why the top names had no news:** the weekday `news_ingestion.py --priority` run is capped at 60 symbols. That cap
+fills with proposals, holdings and the watchlist, so the CIO's ranked names never got fetched. AOSL, rank #1, had zero
+articles in 90 days.
+
+**The fix:** `news_lane.top_n`, 25 by default, adds the top-ranked names from the CIO projection as an extra lane on
+top of the cap. It uses free RSS providers only and runs twice a day (12:30 and 00:30 ET). To roll back, set
+`news_lane.enabled: false`.
+
+**Why some About texts were one-liners ("Ceva Inc — Semiconductors."):** 1,074 profiles held a stub that
+Finviz synthesizes when the yfinance lookup comes back empty. A stub counted as fresh for 30 days, so it was never
+retried, and ranked names were not in the profile job's universe at all.
+
+**The fix:** `profile_lane` in the same config. `build_symbol_profiles.py` now also covers the CIO's top 150 ranked
+names. A stub is retried after 7 days, at most 150 per run, best-ranked first. The existing weekday 06:45 and Sunday
+19:00 runs pick this up, so no crontab change is needed. The dry run selected 202 symbols, including the stubs GDS,
+DNA and QTEX; nothing was written.
+
+**Also fixed in the modal:**
+- The CIO summary no longer cuts off mid-word, and has a "more" toggle.
+- A "none" consensus now shows "—".
+- Earnings dates now show the correct day in ET.
