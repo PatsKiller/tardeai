@@ -25,3 +25,13 @@ catalysts:
   finviz_per_symbol: 10
   finviz_timezone: America/New_York
   per_ticker_fallback_max: 8
+# Live-alert retry policy (scripts/continuous_runner.py _deliver_live_alert; n8n maturity B4 review, 2026-10-09).
+# A GO/HALT/RVOL alert whose send is not accepted is rolled back to un-alerted and retried on a later cycle, at most
+# max_attempts_per_trigger_per_day sends per trigger (type:symbol) per ET day, waiting retry_backoff_base_s *
+# retry_backoff_multiplier^(n-1) after the n-th failed send. When the cap is reached the trigger stays marked
+# (gave up, logged in the cycle errors) instead of re-sending every 5 minutes. Telegram disabled (ENABLE_TELEGRAM
+# off) is final on the first attempt; a send that reached at least one chat counts as delivered.
+alert_delivery:
+  max_attempts_per_trigger_per_day: 3
+  retry_backoff_base_s: 600
+  retry_backoff_multiplier: 2

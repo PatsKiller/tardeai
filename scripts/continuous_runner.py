@@ -203,11 +203,14 @@ class CycleState:
         self.sonnet_last:    Dict[str, datetime] = {}
         self.sonnet_plans:   Set[str]         = set()   # tickers with plans today
         self.cat_fingerprints: Dict[str, Set[str]] = {}
+        # Per-trigger send attempts today ("TYPE:SYM" -> {"n": failed sends, "next_at": ISO-8601 UTC}); the
+        # live-alert retry cap/backoff (_deliver_live_alert, config/trade_ai_scalp_lane.yaml alert_delivery).
+        self.alert_attempts: Dict[str, Dict[str, Any]] = {}
 
     # Persistence (2026-10-09): the 5-minute scalp lane is one process per run, so the "what was already GO /
     # already alerted" memory must survive between runs or every GO would re-alert every 5 minutes.
     _SETS = ("prev_go", "halted_seen", "rvol5x_seen", "rvol8x_seen", "sonnet_plans")
-    _DICTS = ("prev_rvol", "prev_score")
+    _DICTS = ("prev_rvol", "prev_score", "alert_attempts")
     _TIMES = ("haiku_last", "sonnet_last")
 
     def to_dict(self) -> dict:
@@ -347,106 +350,335 @@ def _scalp_meta_line(trigger: Dict) -> str:
         return ""
 
 
-def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
-    spy = market.get("indices",{}).get("SPY",{}).get("change_percent",0)
-    vix = market.get("vix",{}).get("price",0)
-    b   = market.get("breadth_label","?")
-    lines = [f"\u26a1 *Trade AI LIVE [{time_str}]*", f"SPY {spy:+.2f}%  VIX {vix:.1f}  {b}", ""]
+def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict,
+                     failed: Optional[List[Dict]] = None) -> str:
+    """Build the live alert text. Each trigger is built in isolation (n8n maturity B4 follow-up, 2026-10-09):
+    a trigger that raises is left out of the message and appended to ``failed`` (when given) so the caller can
+    leave it un-alerted for the next cycle, instead of one bad GO killing the whole cycle's alert."""
+    try:
+        spy = market.get("indices",{}).get("SPY",{}).get("change_percent",0)
+        vix = market.get("vix",{}).get("price",0)
+        b   = market.get("breadth_label","?")
+        _mkt = f"SPY {spy:+.2f}%  VIX {vix:.1f}  {b}"
+    except Exception:  # noqa: BLE001 — a malformed market snapshot must not drop the alert
+        _mkt = "SPY ?  VIX ?  ?"
+    lines = [f"\u26a1 *Trade AI LIVE [{time_str}]*", _mkt, ""]
     for t in triggers:
-        if t["type"] == "NEW_GO":
-            sym = t["symbol"]
-            _cat = t.get("cat", "")
-            _sc = t["score"]; _rv = t.get("rvol",0)
-
-            # Inline Scalp Critic check
-            critic_line = ""
-            _verdict = ""
-            try:
-                from scalp_critic_agent import check_danger_flags, validate_catalyst, llm_critique, industry_fallback
-                _ticker = {"symbol": sym, "catalyst": _cat, "decision": "GO",
-                           "price": 0, "relative_volume": _rv, "float_m": 0}
-                _flags = check_danger_flags(sym, _ticker)
-                _cv, _cs, _ = validate_catalyst(sym, sym, _cat)
-                _ind = industry_fallback(sym) or ""
-                _crit = llm_critique(_ticker, _flags, _cv, _cs, _ind)
-                _verdict = _crit.get("verdict", "?")
-                _reasoning = _crit.get("reasoning", "")[:60]
-                if _verdict == "BLOCK":
-                    critic_line = f"\n  \U0001f6ab Critic: *BLOCK* — _{_reasoning}_"
-                elif _verdict == "DOWNGRADE":
-                    critic_line = f"\n  \u26a0\ufe0f Critic: *DOWNGRADE* — _{_reasoning}_"
-                elif _verdict == "CONFIRM":
-                    critic_line = "\n  \u2705 Critic: CONFIRM"
-            except Exception:
-                pass
-
-            # Quick social sentiment
-            social_line = ""
-            try:
-                from social_scalp_scanner import get_social_sentiment
-                _sent = get_social_sentiment(sym)
-                if _sent and _sent.get("label"):
-                    social_line = f"\n  \U0001f4ca Social: {_sent['label']}"
-            except Exception:
-                pass
-
-            # Ollama one-liner
-            ai_line = ""
-            try:
-                import sys as _sys, re as _re
-                from scoring import _ollama_serialized
-                _p = f"/no_think\nOne sentence why {sym} is a scalp GO. Score={_sc} RVOL={_rv:.1f}x. Max 12 words."
-                _r = _ollama_serialized(_p, num_predict=50, timeout=20)
-                _r = _re.sub(r"<think>.*?</think>", "", _r, flags=_re.DOTALL).strip()
-                if _r: ai_line = "\n  \U0001f916 _" + _r[:80] + "_"
-            except Exception: pass
-
-            _meta = _scalp_meta_line(t)
-            _meta_line = f"\n  {_meta}" if _meta else ""
-            lines.append(
-                f"\U0001f3af *NEW GO* \u2014 *{sym}* score={_sc} RVOL {_rv:.1f}x"
-                + _meta_line
-                + f"\n  _{_cat}_" + critic_line + social_line + ai_line
-            )
-
-            # Live WS broadcast — non-fatal
-            try:
-                from scalp_ws_client import broadcast_scalp_update
-                broadcast_scalp_update({
-                    "symbol": sym,
-                    "grade": t.get("grade", ""),
-                    "score": _sc,
-                    "decision": "GO",
-                    "change_percent": str(t.get("change_pct", "")),
-                    "rvol": _rv,
-                    "critic_verdict": _verdict,
-                    "catalyst_verified": True,
-                    "source": "continuous",
-                })
-            except Exception:
-                pass
-
-        elif t["type"] == "HALT":
-            lines.append(f"\U0001f6a8 *HALT* \u2014 *{t['symbol']}*  {t.get('reason','')}")
-        elif t["type"] == "RESUMED":
-            lines.append(f"\u2705 *RESUMED* \u2014 *{t['symbol']}*")
-        elif t["type"] == "RVOL_8X":
-            _rl = f"\U0001f680 *RVOL 8x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
-            if t.get("decision"): _rl += f"  [{t['decision']}]"
-            _meta = _scalp_meta_line(t)
-            if _meta: _rl += f"\n  {_meta}"
-            if t.get("cat"): _rl += f"\n  _{t['cat']}_"
-            lines.append(_rl)
-        elif t["type"] == "RVOL_5X":
-            _rl = f"\U0001f680 *RVOL 5x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
-            if t.get("decision"): _rl += f"  [{t['decision']}]"
-            _meta = _scalp_meta_line(t)
-            if _meta: _rl += f"\n  {_meta}"
-            if t.get("cat"): _rl += f"\n  _{t['cat']}_"
-            lines.append(_rl)
-        elif t["type"] == "SCORE_JUMP":
-            lines.append(f"\U0001f4c8 *+{t['delta']}pts* \u2014 *{t['symbol']}*  {t['prev']}\u2192{t['score']} ({t['decision']})")
+        _n = len(lines)
+        try:
+            _append_trigger_lines(lines, t)
+        except Exception as _e:  # noqa: BLE001 — isolate one bad trigger; the caller rolls its mark back
+            del lines[_n:]
+            print(f"  [live] alert build skipped {t.get('type')} {t.get('symbol')}: {type(_e).__name__}: {_e}")
+            if failed is not None:
+                failed.append(t)
     return "\n".join(lines)
+
+
+def _append_trigger_lines(lines: List[str], t: Dict) -> None:
+    if t["type"] == "NEW_GO":
+        sym = t["symbol"]
+        _cat = t.get("cat", "")
+        _sc = t["score"]; _rv = t.get("rvol",0)
+
+        # Inline Scalp Critic check
+        critic_line = ""
+        _verdict = ""
+        try:
+            from scalp_critic_agent import check_danger_flags, validate_catalyst, llm_critique, industry_fallback
+            _ticker = {"symbol": sym, "catalyst": _cat, "decision": "GO",
+                       "price": 0, "relative_volume": _rv, "float_m": 0}
+            _flags = check_danger_flags(sym, _ticker)
+            _cv, _cs, _ = validate_catalyst(sym, sym, _cat)
+            _ind = industry_fallback(sym) or ""
+            _crit = llm_critique(_ticker, _flags, _cv, _cs, _ind)
+            _verdict = _crit.get("verdict", "?")
+            _reasoning = _crit.get("reasoning", "")[:60]
+            if _verdict == "BLOCK":
+                critic_line = f"\n  \U0001f6ab Critic: *BLOCK* — _{_reasoning}_"
+            elif _verdict == "DOWNGRADE":
+                critic_line = f"\n  \u26a0\ufe0f Critic: *DOWNGRADE* — _{_reasoning}_"
+            elif _verdict == "CONFIRM":
+                critic_line = "\n  \u2705 Critic: CONFIRM"
+        except Exception:
+            pass
+
+        # Quick social sentiment
+        social_line = ""
+        try:
+            from social_scalp_scanner import get_social_sentiment
+            _sent = get_social_sentiment(sym)
+            if _sent and _sent.get("label"):
+                social_line = f"\n  \U0001f4ca Social: {_sent['label']}"
+        except Exception:
+            pass
+
+        # Ollama one-liner
+        ai_line = ""
+        try:
+            import sys as _sys, re as _re
+            from scoring import _ollama_serialized
+            _p = f"/no_think\nOne sentence why {sym} is a scalp GO. Score={_sc} RVOL={_rv:.1f}x. Max 12 words."
+            _r = _ollama_serialized(_p, num_predict=50, timeout=20)
+            _r = _re.sub(r"<think>.*?</think>", "", _r, flags=_re.DOTALL).strip()
+            if _r: ai_line = "\n  \U0001f916 _" + _r[:80] + "_"
+        except Exception: pass
+
+        _meta = _scalp_meta_line(t)
+        _meta_line = f"\n  {_meta}" if _meta else ""
+        lines.append(
+            f"\U0001f3af *NEW GO* \u2014 *{sym}* score={_sc} RVOL {_rv:.1f}x"
+            + _meta_line
+            + f"\n  _{_cat}_" + critic_line + social_line + ai_line
+        )
+
+        # Live WS broadcast — non-fatal
+        try:
+            from scalp_ws_client import broadcast_scalp_update
+            broadcast_scalp_update({
+                "symbol": sym,
+                "grade": t.get("grade", ""),
+                "score": _sc,
+                "decision": "GO",
+                "change_percent": str(t.get("change_pct", "")),
+                "rvol": _rv,
+                "critic_verdict": _verdict,
+                "catalyst_verified": True,
+                "source": "continuous",
+            })
+        except Exception:
+            pass
+
+    elif t["type"] == "HALT":
+        lines.append(f"\U0001f6a8 *HALT* \u2014 *{t['symbol']}*  {t.get('reason','')}")
+    elif t["type"] == "RESUMED":
+        lines.append(f"\u2705 *RESUMED* \u2014 *{t['symbol']}*")
+    elif t["type"] == "RVOL_8X":
+        _rl = f"\U0001f680 *RVOL 8x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
+        if t.get("decision"): _rl += f"  [{t['decision']}]"
+        _meta = _scalp_meta_line(t)
+        if _meta: _rl += f"\n  {_meta}"
+        if t.get("cat"): _rl += f"\n  _{t['cat']}_"
+        lines.append(_rl)
+    elif t["type"] == "RVOL_5X":
+        _rl = f"\U0001f680 *RVOL 5x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
+        if t.get("decision"): _rl += f"  [{t['decision']}]"
+        _meta = _scalp_meta_line(t)
+        if _meta: _rl += f"\n  {_meta}"
+        if t.get("cat"): _rl += f"\n  _{t['cat']}_"
+        lines.append(_rl)
+    elif t["type"] == "SCORE_JUMP":
+        lines.append(f"\U0001f4c8 *+{t['delta']}pts* \u2014 *{t['symbol']}*  {t['prev']}\u2192{t['score']} ({t['decision']})")
+
+
+def _set_trigger_marks(state: "CycleState", triggers: List[Dict], alerted: bool) -> None:
+    """Apply (alerted=True) or roll back (alerted=False) the "already alerted" memory for ``triggers``.
+
+    detect_triggers()/update() mark every trigger as alerted in memory. A trigger whose alert was not built or
+    not accepted must stay un-alerted, or the GO is suppressed for the rest of the day (n8n maturity B4
+    follow-up, 2026-10-09)."""
+    for t in triggers:
+        sym, kind = t.get("symbol"), t.get("type")
+        if not sym:
+            continue
+        if kind == "NEW_GO":
+            (state.prev_go.add if alerted else state.prev_go.discard)(sym)
+        elif kind == "HALT":
+            (state.halted_seen.add if alerted else state.halted_seen.discard)(sym)
+        elif kind == "RESUMED":
+            (state.halted_seen.discard if alerted else state.halted_seen.add)(sym)
+        elif kind == "RVOL_8X":
+            (state.rvol8x_seen.add if alerted else state.rvol8x_seen.discard)(sym)
+        elif kind == "RVOL_5X":
+            (state.rvol5x_seen.add if alerted else state.rvol5x_seen.discard)(sym)
+        elif kind == "SCORE_JUMP" and t.get("score") is not None and t.get("prev") is not None:
+            state.prev_score[sym] = t["score"] if alerted else t["prev"]
+
+
+def _save_state_quietly(state_saver, state: "CycleState", cs: Dict, where: str) -> None:
+    if state_saver is None:
+        return
+    try:
+        state_saver(state)
+    except Exception as _e:  # noqa: BLE001 — the caller saves again after the cycle
+        cs.setdefault("errors", []).append(f"state_save_{where}: {type(_e).__name__}: {_e}"[:200])
+
+
+ALERT_POLICY_CONFIG = Path(__file__).resolve().parent.parent / "config" / "trade_ai_scalp_lane.yaml"
+# Fail-safe when the policy cannot be read: one send per trigger per day, never a retry loop (not a tuned value).
+_ALERT_POLICY_FAILSAFE = {"max_attempts_per_trigger_per_day": 1, "retry_backoff_base_s": 0.0,
+                          "retry_backoff_multiplier": 1.0}
+
+
+def load_alert_retry_policy(path: Optional[Path] = None) -> Dict[str, Any]:
+    """The live-alert retry policy (config/trade_ai_scalp_lane.yaml ``alert_delivery``).
+
+    Loud on a missing/invalid section: prints the reason and returns the fail-safe (one attempt, no retry), so a
+    broken config can never turn into the 5-minute re-send loop the policy exists to stop."""
+    cfg_path = Path(path) if path else ALERT_POLICY_CONFIG
+    try:
+        import yaml
+
+        raw = (yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}).get("alert_delivery") or {}
+        pol = {"max_attempts_per_trigger_per_day": int(raw["max_attempts_per_trigger_per_day"]),
+               "retry_backoff_base_s": float(raw["retry_backoff_base_s"]),
+               "retry_backoff_multiplier": float(raw["retry_backoff_multiplier"])}
+        if pol["max_attempts_per_trigger_per_day"] < 1 or pol["retry_backoff_base_s"] < 0 \
+                or pol["retry_backoff_multiplier"] < 1:
+            raise ValueError(f"out of range: {pol}")
+        return pol
+    except Exception as _e:  # noqa: BLE001 — loud, then the fail-safe
+        print(f"  [live] alert_delivery policy unreadable ({cfg_path}): {type(_e).__name__}: {_e} "
+              f"-- using fail-safe {_ALERT_POLICY_FAILSAFE}")
+        return dict(_ALERT_POLICY_FAILSAFE)
+
+
+def _trigger_key(t: Dict) -> str:
+    return f"{t.get('type')}:{t.get('symbol')}"
+
+
+def _telegram_modules() -> List[Any]:
+    """Every loaded instance of the Telegram chokepoint module. ``telegram_alert`` and ``scripts.telegram_alert``
+    can both be loaded (the comms gateway imports the package path), each with its own last-message-id list."""
+    mods = []
+    for name in ("telegram_alert", "scripts.telegram_alert"):
+        m = sys.modules.get(name)
+        if m is not None and m not in mods:
+            mods.append(m)
+    return mods
+
+
+def _reset_telegram_message_ids() -> None:
+    for m in _telegram_modules():
+        try:
+            m.reset_last_message_ids()
+        except Exception:  # noqa: BLE001 — best effort; absent ids only make a partial send look failed
+            pass
+
+
+def _telegram_delivered_ids() -> List[str]:
+    """Provider message ids recorded by the send just made (any loaded chokepoint instance)."""
+    ids: List[str] = []
+    for m in _telegram_modules():
+        try:
+            ids.extend(str(x) for x in (m.last_message_ids() or []) if str(x).strip())
+        except Exception:  # noqa: BLE001
+            pass
+    return ids
+
+
+def _telegram_disabled() -> bool:
+    """True when Telegram is switched off (ENABLE_TELEGRAM): send_telegram returns False before doing anything,
+    and retrying cannot change that, so the alert is final (n8n maturity B4 review, 2026-10-09)."""
+    for m in _telegram_modules():
+        try:
+            if not m._enabled():  # noqa: SLF001 — the chokepoint's own switch, read not re-implemented
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+    return False
+
+
+def _attempt_due(rec: Optional[Dict[str, Any]], now: datetime) -> bool:
+    if not rec or not rec.get("next_at"):
+        return True
+    try:
+        return datetime.fromisoformat(str(rec["next_at"])) <= now
+    except (TypeError, ValueError):
+        return True
+
+
+def _deliver_live_alert(state: "CycleState", triggers: List[Dict], time_str: str, market: Dict,
+                        cs: Dict, state_saver=None, policy: Optional[Dict[str, Any]] = None,
+                        now: Optional[datetime] = None) -> int:
+    """Build and send one live alert; returns the number of triggers delivered (accepted).
+
+    Ordering (n8n maturity B4 follow-up, 2026-10-09): triggers arrive UN-marked (persisted that way before the
+    build). Only triggers whose lines built are marked and saved immediately before the send — so a cycle
+    killed mid-send does not re-alert (at-most-once) while a cycle killed mid-build retries next cycle.
+
+    Outcome of the send (B4 review, 2026-10-09):
+      * accepted, or rejected but at least one chat got a message id (partial) -> delivered, marks kept;
+      * Telegram disabled (ENABLE_TELEGRAM off) -> final: marks kept, no retry;
+      * otherwise failed -> the trigger's failed-send count goes up; below the per-day cap the marks roll back and
+        the trigger is retried only after the backoff; at the cap the marks are kept (gave up, logged).
+    A trigger still inside its backoff window is not sent this cycle and stays un-alerted."""
+    pol = policy if policy is not None else load_alert_retry_policy()
+    now = now or datetime.now().astimezone()
+    cs["alert_sent"] = False
+    cs["alerts_delivered"] = 0
+    cs.setdefault("alert_outcome", None)
+    attempts = getattr(state, "alert_attempts", None)
+    if attempts is None:
+        attempts = state.alert_attempts = {}
+    deferred = [t for t in triggers if not _attempt_due(attempts.get(_trigger_key(t)), now)]
+    if deferred:
+        cs["alerts_deferred"] = len(deferred)
+        print(f"  [live] {len(deferred)} trigger(s) in send backoff: {[_trigger_key(t) for t in deferred]}")
+    triggers = [t for t in triggers if not any(t is d for d in deferred)]
+    if not triggers:
+        cs["alert_outcome"] = "deferred" if deferred else None
+        return 0
+    failed: List[Dict] = []
+    try:
+        msg = _build_live_alert(triggers, time_str, market, failed=failed)
+    except Exception as _e:  # noqa: BLE001 — defensive: nothing is marked, every trigger retries next cycle
+        cs.setdefault("errors", []).append(f"alert_build: {type(_e).__name__}: {_e}"[:200])
+        return 0
+    for t in failed:
+        cs.setdefault("errors", []).append(f"alert_build: {t.get('type')} {t.get('symbol')} skipped"[:200])
+    good = [t for t in triggers if not any(t is f for f in failed)]
+    if not good:
+        return 0
+    _set_trigger_marks(state, good, alerted=True)
+    _save_state_quietly(state_saver, state, cs, "pre_send")
+    try:
+        from alerting import send_whatsapp, send_slack
+        send_whatsapp(msg); send_slack(msg)
+    except Exception:
+        pass
+    accepted = False
+    _reset_telegram_message_ids()
+    try:
+        from telegram_alert import send_telegram
+        accepted = bool(send_telegram(msg))
+    except Exception as _e:
+        cs.setdefault("errors", []).append(f"alert: {type(_e).__name__}: {_e}"[:200])
+    if not accepted and _telegram_delivered_ids():
+        # One chat of several failed: the gateway/legacy transport report the whole send as failed, but the
+        # operator has the alert — a retry would only duplicate it to the chats that already got it.
+        cs["alert_outcome"] = "partial"
+        cs.setdefault("errors", []).append("alert: partial delivery (>=1 chat delivered) counted as delivered")
+        accepted = True
+    if accepted:
+        cs["alert_outcome"] = cs.get("alert_outcome") or "delivered"
+        for t in good:
+            attempts.pop(_trigger_key(t), None)
+        _save_state_quietly(state_saver, state, cs, "delivered")
+        cs["alert_sent"] = True
+        cs["alerts_delivered"] = len(good)
+        return len(good)
+    if _telegram_disabled():
+        cs["alert_outcome"] = "disabled"
+        cs.setdefault("errors", []).append("alert: Telegram disabled (ENABLE_TELEGRAM) -- final, not retried")
+        return 0
+    cap = int(pol["max_attempts_per_trigger_per_day"])
+    retry: List[Dict] = []
+    gave_up: List[Dict] = []
+    for t in good:
+        rec = attempts.setdefault(_trigger_key(t), {"n": 0})
+        rec["n"] = int(rec.get("n") or 0) + 1
+        wait_s = float(pol["retry_backoff_base_s"]) * float(pol["retry_backoff_multiplier"]) ** (rec["n"] - 1)
+        rec["next_at"] = (now + timedelta(seconds=wait_s)).isoformat()
+        (gave_up if rec["n"] >= cap else retry).append(t)
+    if gave_up:
+        cs.setdefault("errors", []).append(
+            f"alert: send failed {cap}x, giving up for today: {[_trigger_key(t) for t in gave_up]}"[:200])
+    if retry:
+        _set_trigger_marks(state, retry, alerted=False)
+    cs["alert_outcome"] = "failed_retry" if retry else "failed_final"
+    _save_state_quietly(state_saver, state, cs, "rollback")
+    return 0
 
 
 # "   "    Live cycle "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
@@ -721,13 +953,11 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
 
     triggers = state.detect_triggers(scored, halt_data)
     state.update(scored)
-    if state_saver is not None:
-        # Persist the "already alerted" memory BEFORE the send: a cycle killed after sending but before the
-        # caller's save would otherwise re-alert the same GO next cycle (n8n maturity B4, 2026-10-09).
-        try:
-            state_saver(state)
-        except Exception as _e:  # noqa: BLE001 — the caller saves again after the cycle
-            _cs["errors"].append(f"state_save: {type(_e).__name__}: {_e}"[:200])
+    # Persist this cycle's state with the new triggers still UN-alerted: a cycle killed (or an alert that
+    # fails to build) before the send must retry next cycle, not suppress the GO for the day.
+    # _deliver_live_alert marks + saves again right before the send (n8n maturity B4 follow-up, 2026-10-09).
+    _set_trigger_marks(state, triggers, alerted=False)
+    _save_state_quietly(state_saver, state, _cs, "pre_alert")
     _enter("persist")
     _cs["signals"] = sum(1 for t in scored if t.get("decision") == "GO")
     _cs["triggers"] = len(triggers)
@@ -818,16 +1048,8 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     _cs["alert_sent"] = False
     if triggers:
         print(f"  [live] {len(triggers)} trigger(s): {[t['type'] for t in triggers]}")
-        msg = _build_live_alert(triggers, time_str, market)
-        try:
-            from alerting import send_whatsapp, send_slack
-            send_whatsapp(msg); send_slack(msg)
-        except Exception: pass
-        try:
-            from telegram_alert import send_telegram
-            _cs["alert_sent"] = bool(send_telegram(msg))
-        except Exception as _e:
-            _cs["errors"].append(f"alert: {type(_e).__name__}: {_e}"[:200])
+        _deliver_live_alert(state, triggers, time_str, market, _cs, state_saver,
+                            policy=load_alert_retry_policy(root / "config" / "trade_ai_scalp_lane.yaml"))
     else:
         print("  [live] no changes  -- alerts suppressed")
     _enter("done")
