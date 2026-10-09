@@ -175,3 +175,12 @@ def test_adr_status_line_consistent_and_addendum_present():
     assert "## Addendum — AGENTS.md 3.0.0" in ADR
     add = ADR.split("## Addendum — AGENTS.md 3.0.0", 1)[1]
     assert "§23.10" in add and "bridge token" in add and "MFA is waived" in add
+
+
+def test_when_active_the_ratification_is_recorded():
+    """Ratified 2026-10-09 with APPROVE_AGENTS_POLICY_3_0_0 1547 <sha>: an ACTIVE 3.0.0 carries a real date and the token."""
+    if _version() == (3, 0, 0) and _control("Status") == "ACTIVE":
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date"))
+        row = re.search(r"^\| 3\.0\.0 \| 2026-10-09 \| ACTIVE \| MAJOR \|(.*)$", AGENTS, re.M)
+        assert row and "APPROVE_AGENTS_POLICY_3_0_0 1547 " in row.group(1)
+        assert "3.0.0 is PROPOSED" not in AGENTS
