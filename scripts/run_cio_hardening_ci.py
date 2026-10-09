@@ -2093,8 +2093,10 @@ GATES = [
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.
             "tests/test_agents_policy_1_3_0_amendment.py",
-            # AGENTS.md 3.0.0 (PROPOSED 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
+            # AGENTS.md 3.0.0 (ACTIVE 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
             "tests/test_agents_policy_3_0_0_amendment.py",
+            # AGENTS.md 4.1.0 (PROPOSED 2026-10-09): registry dispatch, wave ladder, program push budget, 48 h merge approval.
+            "tests/test_agents_policy_4_1_0_amendment.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3573,6 +3575,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
+        # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
+        # Pure and hermetic: explicit instants only, no clock, no I/O.
+        "n8n_maturity_cron_tz_20261009",
+        [
+            "tests/test_n8n_maturity_cron_tz_20261009.py",
+        ],
+    ),
+    (
         # N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n
         # scheduler-of-record workflow generator and the per-lane cutover checklist. The tests
         # pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set
@@ -3643,6 +3654,13 @@ GATES = [
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
         "n8n_scalp_lane_20261009",
         ["tests/test_n8n_scalp_lane_20261009.py", "tests/test_agents_policy_4_0_0_scalp_lane.py"],
+    ),
+    (
+        # ANCHOR: SCALP_CYCLE_RECEIPT_B4 — n8n maturity B4 2026-10-09: ScalpCycleReceipt@v1 per 5-min cycle
+        # (started/ok/error/killed on SIGTERM), market-hours-aware monitor (P2 2 missed RTH slots, P1 30 min),
+        # fan-in source 3h, state saved before the send, slot guard. Hermetic: tmp state root, fakes, no send.
+        "scalp_cycle_receipt_b4_20261009",
+        ["tests/test_scalp_cycle_receipt_b4_20261009.py"],
     ),
     (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.

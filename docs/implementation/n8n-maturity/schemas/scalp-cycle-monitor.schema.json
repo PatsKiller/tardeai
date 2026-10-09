@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:n8n-maturity/scalp-cycle-monitor.schema.json",
+  "title": "ScalpCycleMonitor@v1 (design 03 §4.2)",
+  "description": "Market-hours-aware verdict over one ET day of ScalpCycleReceipt@v1 (scripts/lib/scalp_cycle_monitor.evaluate; CLI scripts/check_scalp_cycles.py --write -> $STATE_ROOT/data/runtime/scalp_cycle_monitor_last.json). Incidents use the n8n_incident_fanin finding shape.",
+  "type": "object",
+  "required": ["schema", "lane_id", "date", "as_of", "in_rth", "slots_total", "slots_due", "slots_ok", "ok_rate", "missed_tail", "p2_episodes", "max_rth_gap_min", "stale", "incidents", "clean_day", "summary_line"],
+  "properties": {
+    "schema": {"const": "ScalpCycleMonitor@v1"},
+    "lane_id": {"type": "string"},
+    "date": {"type": "string", "format": "date"},
+    "as_of": {"type": "string", "format": "date-time"},
+    "in_rth": {"type": "boolean"},
+    "cadence_min": {"type": "integer"},
+    "deadline_s": {"type": "number"},
+    "slots_total": {"type": "integer", "minimum": 0},
+    "slots_due": {"type": "integer", "minimum": 0},
+    "slots_ok": {"type": "integer", "minimum": 0},
+    "slot_states": {"type": "object", "additionalProperties": {"type": "integer"}},
+    "ok_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "missed_tail": {"type": "integer", "minimum": 0},
+    "p2_episodes": {"type": "integer", "minimum": 0},
+    "max_rth_gap_min": {"type": "number", "minimum": 0},
+    "last_ok_at": {"type": ["string", "null"]},
+    "last_ok_age_min": {"type": ["number", "null"]},
+    "stale": {"type": "boolean"},
+    "median_seconds": {"type": ["number", "null"]},
+    "max_seconds": {"type": ["number", "null"]},
+    "signals": {"type": "integer"},
+    "alerts_sent": {"type": "integer"},
+    "alerts_deduped": {"type": "integer"},
+    "ledger_present": {"type": "boolean"},
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "item", "severity", "detail", "artifact_rel", "store", "detected_at"],
+        "properties": {
+          "source": {"const": "scalp_cycles"},
+          "item": {"enum": ["trade-ai-scalp-live:MISSED_CYCLES", "trade-ai-scalp-live:NO_CYCLES_30M"]},
+          "severity": {"enum": ["P1", "P2"]}
+        }
+      }
+    },
+    "clean_day": {"type": ["boolean", "null"]},
+    "summary_line": {"type": "string"}
+  }
+}
