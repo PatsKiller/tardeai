@@ -132,7 +132,8 @@ def test_scalp_lane_runs_one_quiet_cycle(monkeypatch, tmp_path):
     seen = {}
     monkeypatch.setattr(cr, "run_live_cycle", lambda root, label, day, st, t, **k: seen.update(label=label, **k))
     assert r.main(["--force"]) == 0
-    assert seen == {"label": "scalp", "publish_dashboard": False, "enrich_budget_s": 150.0}
+    assert seen["label"] == "scalp" and seen["publish_dashboard"] is False and seen["enrich_budget_s"] == 150.0
+    assert seen["bulk_catalysts"]["bulk_enabled"] is True
 
 
 def test_live_cycle_publish_flag_guards_dashboard_and_live_state():

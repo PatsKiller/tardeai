@@ -1174,6 +1174,12 @@ GATES = [
         "trade_ai_scalp_5min_20261009",
         ["tests/test_trade_ai_scalp_5min_20261009.py"],
     ),
+    # Scalp lane bulk catalyst read (operator 2026-10-09: "build the finviz API fix"): data-broker news plus the
+    # Finviz Elite news export in batches instead of ~2 throttled Finviz page requests per ticker.
+    (
+        "scalp_catalyst_bulk_20261009",
+        ["tests/test_scalp_catalyst_bulk_20261009.py"],
+    ),
     # Opportunity modal news (operator 2026-10-08: "nothing here on what company does or latest news, catalyst"):
     # profile description, typed catalysts, latest news without catalyst repeats, and the news-ingestion opportunity
     # lane that gives the CIO's top-ranked names news beyond the 60-symbol cap.
