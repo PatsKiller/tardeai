@@ -558,10 +558,11 @@ def run(
         # house thesis) go first, 2026-09-27.
         try:
             try:
-                from lib.symbol_thesis_priority import open_requests
+                from lib.symbol_thesis_priority import open_requests_ranked
             except ImportError:  # pragma: no cover
-                from scripts.lib.symbol_thesis_priority import open_requests  # type: ignore
-            pri = [s for s in open_requests(root) if not canary]
+                from scripts.lib.symbol_thesis_priority import open_requests_ranked  # type: ignore
+            # operator flags, then CIO top-ranked names, then the rest (SOURCE_ORDER, 2026-10-09)
+            pri = [s for s in open_requests_ranked(root) if not canary]
         except Exception:  # noqa: BLE001
             pri = []
         rest = [r for r in queue if str(r.get("symbol") or "").upper() not in set(pri)]

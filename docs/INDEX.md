@@ -620,7 +620,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
-| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `1483767a78a3` |
+| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `80d5c4a8a4c7` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
@@ -1823,7 +1823,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HERMES_TICKER_INTELLIGENCE_WIRING_CLOSEOUT_2026-08-23.md` | Hermes Ticker Intelligence Wiring Closeout | review_required | OK | `d7e283f4cd5a` |
 | `docs/ops/HOLDINGS_STATE_RECONCILIATION_2026-09-01.md` | Holdings state — per-file reconciliation plan | review_required | OK | `8f08e31c9da8` |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 | review_required | OK | `613aea387bc6` |
-| `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) | review_required | MISSING HEADER | `ac7ddd15c21f` |
+| `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) | review_required | MISSING HEADER | `2a79bb98f9da` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
@@ -2149,7 +2149,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `0d6146c1d769` |
 | `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | OK | `fdbc12f84836` |
 | `docs/project/RECOMMENDATION_INTELLIGENCE.md` | Recommendation Intelligence Engine | current_phase_keep | OK | `86fc73d96ca3` |
-| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `864e3422c820` |
+| `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `41d552a6db79` |
 | `docs/project/REPORTS_ACTION_TARGET_CONTRACT_2026-06-21.md` | Reports Action Target Contract + 3-Column Briefing (2026-06-21) | current_phase_keep | OK | `14d5ea7ac651` |
 | `docs/project/REPORTS_COMMAND_PORTAL_PHASE2_UX_HARDENING_2026-06-21.md` | Reports Command Portal — Phase 2 UX Hardening (2026-06-21) | current_phase_keep | OK | `fd2e6de7b2be` |
 | `docs/project/REPORTS_COMMAND_PORTAL_REDESIGN_2026-06-19.md` | Reports Command Portal — Redesign (2026-06-19) | current_phase_keep | OK | `d7d3f916e021` |
