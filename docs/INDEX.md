@@ -132,9 +132,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261008T215341Z/11-n2-dependency-design.md` | N2 receipt dependency review — source only, NO_GO | review_required | MISSING HEADER | `a1279aa228b2` |
 | `docs/_evidence/runtime-convergence/20261008T215341Z/12-consolidation-review.md` | Cron consolidation re-measurement | review_required | MISSING HEADER | `5d6b1fe72112` |
 | `docs/_evidence/runtime-convergence/20261008T215341Z/18-19-model-and-vector-review.md` | Model routing and embedding load — separate governed decisions | review_required | MISSING HEADER | `13da3fbb8461` |
-| `docs/_evidence/runtime-convergence/20261008T215341Z/20-final-report.md` | TradeAI runtime convergence due diligence — 2026-10-08 | review_required | MISSING HEADER | `207979eecb30` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/20-final-report.md` | TradeAI runtime convergence due diligence — 2026-10-08 | review_required | MISSING HEADER | `626eebbbe301` |
 | `docs/_evidence/runtime-convergence/20261008T215341Z/20-operator-change-packet.md` | Operator-only runtime packet — prepared, NOT APPLIED | review_required | MISSING HEADER | `85cb1ab42d5a` |
-| `docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md` | Source validation — 2026-10-08 | review_required | MISSING HEADER | `1b599a16e1b1` |
+| `docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md` | Source validation — 2026-10-08 | review_required | MISSING HEADER | `746c0fb2e84e` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |

@@ -95,6 +95,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -104,7 +106,7 @@
       "scheduler_type": "n8n",
       "declared_state": "ACTIVE",
       "runtime_state": "NOT_MEASURED",
-      "schedule": "*/5 * * * *",
+      "schedule": null,
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -151,6 +153,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -160,7 +164,7 @@
       "scheduler_type": "n8n",
       "declared_state": "ACTIVE",
       "runtime_state": "NOT_MEASURED",
-      "schedule": "*/5 * * * *",
+      "schedule": null,
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -207,6 +211,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -266,6 +272,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:55:03.483126Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -324,6 +332,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -382,6 +392,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -443,6 +455,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -502,6 +516,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -561,6 +577,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -620,6 +638,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -678,6 +698,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -737,6 +759,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 86400.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -796,6 +820,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T11:00:02.087888Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -855,6 +881,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T09:40:01.455939Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -914,6 +942,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:00:02.010231Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -973,6 +1003,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:20:02.212558Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1034,6 +1066,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 115200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1091,8 +1125,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": null,
+      "output_at": "2026-10-08T23:45:02.863919Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1154,6 +1190,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 86400.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1212,6 +1250,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1270,6 +1310,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1328,6 +1370,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1386,6 +1430,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1444,6 +1490,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1494,6 +1542,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T05:15:06.366982Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1578,8 +1628,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:03:26.848492Z",
+      "output_at": "2026-10-09T00:03:39.128543Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1664,8 +1716,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:19.767441Z",
+      "output_at": "2026-10-09T00:13:41.140514Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1687,8 +1741,8 @@
         "kind": "file_mtime",
         "path": "data/cio/wake_turn_effects.jsonl"
       },
-      "output_age": 135.11,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -1750,8 +1804,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:56:06.789255Z",
+      "output_at": "2026-10-08T23:34:20.011238Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1803,6 +1859,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -1853,6 +1911,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1903,6 +1963,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T06:56:34.250520Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -1953,6 +2015,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2039,6 +2103,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2125,6 +2191,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2211,6 +2279,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2297,6 +2367,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2383,6 +2455,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2469,6 +2543,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2555,6 +2631,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2641,6 +2719,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2727,6 +2807,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2813,6 +2895,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2899,6 +2983,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -2985,6 +3071,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3071,6 +3159,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3157,6 +3247,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3243,6 +3335,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3329,6 +3423,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3396,6 +3492,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3463,6 +3561,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3513,6 +3613,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3563,6 +3665,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3613,6 +3717,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3663,6 +3769,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3713,6 +3821,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3772,6 +3882,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-07T23:20:01.495769Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3822,6 +3934,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3880,8 +3994,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:10:12Z",
+      "output_at": "2026-10-09T00:10:12Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3930,8 +4046,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:00.838092Z",
+      "output_at": "2026-10-09T00:10:01.778429Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -3982,6 +4100,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4031,6 +4151,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -4115,8 +4237,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:00:51.622387Z",
+      "output_at": "2026-10-08T23:33:05.360931Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4203,6 +4327,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T04:09:49.908632Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4224,8 +4350,8 @@
         "kind": "file_mtime",
         "path": "data/audit/cio_defer_revisit_last.json"
       },
-      "output_age": 1848.23,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -4287,8 +4413,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:27:33.669256Z",
+      "output_at": "2026-10-08T23:27:33.882566Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4373,8 +4501,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:39.381531Z",
+      "output_at": "2026-10-09T00:13:00.431976Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4461,6 +4591,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T22:00:05.126760Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4547,6 +4679,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T06:56:34.250520Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4633,6 +4767,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T11:39:03.387117Z",
       "freshness_sla_s": 345600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4719,6 +4855,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-05T00:41:28.114125Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4805,6 +4943,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-01T12:20:25.762623Z",
       "freshness_sla_s": 5356800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4891,6 +5031,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-04T10:30:48.510275Z",
       "freshness_sla_s": 5356800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -4977,6 +5119,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T11:40:03.771404Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5063,6 +5207,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T01:50:02.232259Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5149,6 +5295,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:25:00.524740Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5233,8 +5381,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:02:10.254904Z",
+      "output_at": "2026-10-08T23:18:36.268356Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5321,6 +5471,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:55:21.470757Z",
       "freshness_sla_s": 28800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5407,6 +5559,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:45:05.823564Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5493,6 +5647,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:40:00.300881Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5514,8 +5670,8 @@
         "kind": "file_mtime",
         "path": "data/cio/free_first_last_run.json"
       },
-      "output_age": 1248.34,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -5577,8 +5733,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:37:33.557146Z",
+      "output_at": "2026-10-08T23:37:15.925460Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5665,6 +5823,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T17:30:00.766652Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5751,6 +5911,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-05T07:00:51.138053Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5837,6 +5999,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-05T00:39:05.559725Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5921,8 +6085,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:31.078317Z",
+      "output_at": "2026-10-09T00:12:52.315554Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -5989,6 +6155,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -6055,6 +6223,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -6076,8 +6246,8 @@
         "kind": "file_mtime",
         "path": "data/cio/agent_tool_traces.jsonl"
       },
-      "output_age": 83601.75,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -6139,8 +6309,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-07T23:45:00.146529Z",
+      "output_at": "2026-10-08T23:45:01.998871Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6225,8 +6397,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:03:45.796222Z",
+      "output_at": "2026-10-09T00:14:41.435209Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6281,6 +6455,8 @@
       "performance_note": "component events; no unique run identity or expected-fire coverage",
       "output_at": "2026-10-08T21:00:13Z",
       "freshness_sla_s": 28800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6331,6 +6507,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-05T00:39:05.559725Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6388,8 +6566,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:08:06.299778Z",
+      "output_at": "2026-10-09T00:08:07.099790Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6460,6 +6640,8 @@
       "performance_note": "component events; no unique run identity or expected-fire coverage",
       "output_at": "2026-10-08T20:52:14.937367Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6522,6 +6704,8 @@
       "performance_note": "component events; no unique run identity or expected-fire coverage",
       "output_at": "2026-10-08T11:16:44.296399Z",
       "freshness_sla_s": 518400.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6581,6 +6765,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:27:15.061273Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6648,6 +6834,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:18:02.394123Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6705,8 +6893,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:08:42.942686Z",
+      "output_at": "2026-10-09T00:08:35.823896Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6767,6 +6957,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -6824,8 +7016,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:00:35.262221Z",
+      "output_at": "2026-10-09T00:01:00.582956Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6848,8 +7042,8 @@
         "path": "/home/johnclaw/trade-ai-state/persistent_wake/research_producer_health.json",
         "key": "as_of"
       },
-      "output_age": 800.62,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -6884,8 +7078,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:45:01.282855Z",
+      "output_at": "2026-10-08T23:45:01.181184Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -6907,8 +7103,8 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/persistent_wake/selection_feed/material_changes.jsonl"
       },
-      "output_age": 200.78,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -6943,8 +7139,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:55:01.116402Z",
+      "output_at": "2026-10-08T23:55:01.718781Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7002,8 +7200,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:00:03.079927Z",
+      "output_at": "2026-10-09T00:00:02.514832Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7062,8 +7262,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:00:02.241496Z",
+      "output_at": "2026-10-09T00:00:01.977979Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7121,8 +7323,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:07:31.244874Z",
+      "output_at": "2026-10-09T00:07:33.494882Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7190,6 +7394,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-07T20:05:57.957545Z",
       "freshness_sla_s": 518400.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7241,6 +7447,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7301,6 +7509,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 90000.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7361,6 +7571,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7410,6 +7622,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7459,6 +7673,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7517,6 +7733,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 14400.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7575,6 +7793,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 90000.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7660,6 +7880,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7745,6 +7967,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "NOT_MEASURED"
     },
     {
@@ -7829,8 +8053,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:31.377095Z",
+      "output_at": "2026-10-09T00:12:52.221162Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7890,6 +8116,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T11:30:03.025751Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7940,6 +8168,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -7990,6 +8220,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8049,6 +8281,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:45:01.381750Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8135,6 +8369,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:21:45.537909Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8221,6 +8457,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T11:46:17.216366Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8307,6 +8545,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:18:14.927075Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8393,6 +8633,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:05:06.842652Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8414,8 +8656,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/served_copy_split_last_run.json"
       },
-      "output_age": 961.53,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -8477,8 +8719,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:42:20.364534Z",
+      "output_at": "2026-10-08T23:42:38.731746Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8500,8 +8744,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/data_source_health_last_run.json"
       },
-      "output_age": 1850.09,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -8563,8 +8807,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:27:31.813215Z",
+      "output_at": "2026-10-08T23:28:00.061557Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8649,8 +8895,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:07:03.902346Z",
+      "output_at": "2026-10-09T00:07:06.592734Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8672,8 +8920,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/operator_answer_quality_last_run.json"
       },
-      "output_age": 380.68,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -8735,8 +8983,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:52:01.220165Z",
+      "output_at": "2026-10-08T23:52:36.738886Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8796,6 +9046,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:45:37.548311Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8855,6 +9107,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T11:05:05.324672Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8914,6 +9168,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-05T11:10:06.080063Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -8973,6 +9229,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-01T11:15:06.261684Z",
       "freshness_sla_s": 5356800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9032,6 +9290,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:03:44.872578Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9091,6 +9351,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:03:44.872578Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9150,6 +9412,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:03:44.872578Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9209,6 +9473,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:03:44.872578Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9258,8 +9524,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:10:05.769995Z",
+      "output_at": "2026-10-09T00:10:05.309159Z",
       "freshness_sla_s": 599.76,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9310,6 +9578,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 223200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9331,8 +9601,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/deepseek_balance_history.jsonl"
       },
-      "output_age": 499.65,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -9367,8 +9637,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:50:02.250097Z",
+      "output_at": "2026-10-08T23:50:01.931179Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9429,6 +9701,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:20:01.988825Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9489,6 +9763,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:40:01.787791Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9549,6 +9825,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:50:02.283969Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9608,6 +9886,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:10:02.178865Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9629,8 +9909,8 @@
         "kind": "file_mtime",
         "path": "data/cio/goal_loop_baseline.jsonl"
       },
-      "output_age": 2299.26,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -9665,8 +9945,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:20:02.634811Z",
+      "output_at": "2026-10-08T23:20:03.374356Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9688,8 +9970,8 @@
         "kind": "file_mtime",
         "path": "data/cio/agent_gate_measurements.json"
       },
-      "output_age": 1398.35,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -9724,8 +10006,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:35:03.551542Z",
+      "output_at": "2026-10-08T23:35:03.207852Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9747,8 +10031,8 @@
         "kind": "file_mtime",
         "path": "data/cio/goal_pilot_material_change.jsonl"
       },
-      "output_age": 1100.49,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -9783,8 +10067,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:40:01.405264Z",
+      "output_at": "2026-10-08T23:40:01.291497Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9806,8 +10092,8 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/logs/dormant_lane_consumers.log"
       },
-      "output_age": 496.28,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -9842,8 +10128,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:50:05.622337Z",
+      "output_at": "2026-10-08T23:50:03.748308Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9928,8 +10216,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:00:00.414737Z",
+      "output_at": "2026-10-09T00:00:00.713704Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -9951,8 +10241,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/llm_provider_health.json"
       },
-      "output_age": 2293.51,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -9978,8 +10268,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:20:08.385231Z",
+      "output_at": "2026-10-08T23:20:10.229894Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10064,8 +10356,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:30.860229Z",
+      "output_at": "2026-10-09T00:12:52.276556Z",
       "freshness_sla_s": 599.76,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10152,6 +10446,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-04T10:30:33.963244Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10211,6 +10507,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T23:10:21.343632Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10297,6 +10595,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T13:05:08.671071Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10364,6 +10664,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T13:05:08.671071Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10416,8 +10718,10 @@
       "observed_lock_skip_ratio": 0.0,
       "performance_evidence_class": "OBSERVED_HOST",
       "performance_note": "component events; no unique run identity or expected-fire coverage",
-      "output_at": "2026-10-08T23:05:51Z",
+      "output_at": "2026-10-09T00:05:52Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10502,8 +10806,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:59:59.467669Z",
+      "output_at": "2026-10-09T00:00:42.643682Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10590,6 +10896,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T08:42:12.460559Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10611,8 +10919,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/slo_burn_rate_last.json"
       },
-      "output_age": 1852.11,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -10674,8 +10982,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:27:29.784673Z",
+      "output_at": "2026-10-08T23:27:57.102821Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10735,6 +11045,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T17:20:02.692575Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10785,6 +11097,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10844,6 +11158,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T10:40:02.485845Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10930,6 +11246,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T22:34:54.148361Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -10951,8 +11269,8 @@
         "kind": "file_mtime",
         "path": "logs/advisory_lessons.log"
       },
-      "output_age": 83826.68,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -11014,8 +11332,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-07T23:41:15.218513Z",
+      "output_at": "2026-10-08T23:41:22.080239Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11075,6 +11395,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-02T22:20:02.023427Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11135,6 +11457,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T22:50:01Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11183,8 +11507,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:07:02.090796Z",
+      "output_at": "2026-10-09T00:07:02.219657Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11244,6 +11570,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:47:01.666910Z",
       "freshness_sla_s": 2448.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11303,6 +11631,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T14:45:03.437449Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11362,6 +11692,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-04T13:00:02.163742Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11421,6 +11753,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-04T13:45:03.536440Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11480,6 +11814,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-04T13:50:01.672586Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11528,8 +11864,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:07:02.260808Z",
+      "output_at": "2026-10-09T00:07:02.492677Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11551,8 +11889,8 @@
         "kind": "file_mtime",
         "path": "logs/options_runtime_export.log"
       },
-      "output_age": 378.62,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -11578,8 +11916,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:52:03.281724Z",
+      "output_at": "2026-10-08T23:52:03.192791Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11928,8 +12268,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:00:03.781977Z",
+      "output_at": "2026-10-09T00:00:07.173163Z",
       "freshness_sla_s": 2448.0,
+      "run_age": 1099.182305,
+      "run_freshness": "FRESH",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -11989,6 +12331,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T19:00:03.742365Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12010,8 +12354,8 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/symbol_news_curation_sla.json"
       },
-      "output_age": 1962.98,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -12037,8 +12381,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:25:38.919844Z",
+      "output_at": "2026-10-08T23:25:28.965338Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12098,6 +12444,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T01:33:13.633590Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12148,6 +12496,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T05:15:04.835524Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12232,8 +12582,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:36.578126Z",
+      "output_at": "2026-10-09T00:13:36.073628Z",
       "freshness_sla_s": 360.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12255,8 +12607,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/gir_projector_state.json"
       },
-      "output_age": 1897.5,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -12318,8 +12670,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:26:44.396749Z",
+      "output_at": "2026-10-08T23:26:46.431325Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12377,8 +12731,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:01.208738Z",
+      "output_at": "2026-10-09T00:12:01.508945Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12463,8 +12819,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:31.115743Z",
+      "output_at": "2026-10-09T00:12:52.551660Z",
       "freshness_sla_s": 599.76,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12524,6 +12882,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:20:48.071910Z",
       "freshness_sla_s": 43200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12545,8 +12905,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/contradiction_adjudicator_latest.json"
       },
-      "output_age": 84441.22,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -12608,8 +12968,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-07T23:31:00.675967Z",
+      "output_at": "2026-10-08T23:31:06.996593Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12669,6 +13031,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-05T10:40:02.711911Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12728,6 +13092,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T15:45:22.639525Z",
       "freshness_sla_s": 604.8000000000001,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12787,6 +13153,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T22:40:01.719747Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12837,6 +13205,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12896,6 +13266,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T15:50:02.250325Z",
       "freshness_sla_s": 1224.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -12955,6 +13327,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T13:25:04.372917Z",
       "freshness_sla_s": 604.8000000000001,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13014,6 +13388,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T15:58:02.697202Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13073,6 +13449,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T15:58:02.697202Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13132,6 +13510,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T16:10:01.909558Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13191,6 +13571,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T19:45:09.021976Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13258,6 +13640,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:10:05.689876Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13325,6 +13709,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:10:05.689876Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13384,6 +13770,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T00:30:03.179383Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13443,6 +13831,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:20:01.955074Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13502,6 +13892,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:20:01.953074Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13561,6 +13953,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:25:01.866405Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13618,8 +14012,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:01.208927Z",
+      "output_at": "2026-10-09T00:12:01.509238Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -13971,8 +14367,10 @@
       "observed_lock_skip_ratio": 0.0,
       "performance_evidence_class": "OBSERVED_HOST",
       "performance_note": "component events; no unique run identity or expected-fire coverage",
-      "output_at": "2026-10-08T23:00:01.987104Z",
+      "output_at": "2026-10-09T00:00:01.787375Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14324,8 +14722,10 @@
       "observed_lock_skip_ratio": 0.0,
       "performance_evidence_class": "OBSERVED_HOST",
       "performance_note": "component events; no unique run identity or expected-fire coverage",
-      "output_at": "2026-10-08T23:10:02.425729Z",
+      "output_at": "2026-10-09T00:10:02.401067Z",
       "freshness_sla_s": 720.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14376,6 +14776,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T05:15:06.862929Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14426,6 +14828,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-07T14:40:20.249751Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14464,7 +14868,7 @@
       "declared_in_registry": true,
       "timeline": [],
       "run_proven": false,
-      "health_reason": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/health_tick_last.json#as_of='2026-10-08T23:10:05+00:00'",
+      "health_reason": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/health_tick_last.json#as_of='2026-10-09T00:10:05+00:00'",
       "slo_verdict": "NOT_MEASURED",
       "requested_fires_24h": null,
       "completed_fires_24h": null,
@@ -14475,8 +14879,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:10:05Z",
+      "output_at": "2026-10-09T00:10:05Z",
       "freshness_sla_s": 599.76,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14816,8 +15222,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:31.475751Z",
+      "output_at": "2026-10-09T00:12:52.969777Z",
       "freshness_sla_s": 720.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14868,6 +15276,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T05:15:19.748755Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14916,8 +15326,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:12:29.569138Z",
+      "output_at": "2026-10-09T00:14:32.344673Z",
       "freshness_sla_s": 360.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -14977,6 +15389,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:44:21.015393Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15044,6 +15458,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:35:13.369569Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15103,6 +15519,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:30:05.180968Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15153,6 +15571,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15212,6 +15632,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T22:00:05.126760Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15262,6 +15684,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15312,6 +15736,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-07T17:02:02.081548Z",
       "freshness_sla_s": 360.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15371,6 +15797,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:05:01.838616Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15430,6 +15858,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:25:02.089445Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15489,6 +15919,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:35:02.123840Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15548,6 +15980,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T09:45:02.812960Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15607,6 +16041,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T14:50:04.128765Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15666,6 +16102,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:00:01.807842Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15725,6 +16163,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T06:20:02.248954Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15784,6 +16224,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T03:13:01.737733Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15841,8 +16283,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:07:02.278933Z",
+      "output_at": "2026-10-09T00:07:02.533982Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15910,6 +16354,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:36:42.248934Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -15968,8 +16414,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:05:52Z",
+      "output_at": "2026-10-09T00:05:52Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16028,8 +16476,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T23:00:01.658351Z",
+      "output_at": "2026-10-09T00:00:01.295658Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16080,6 +16530,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T05:15:19.966948Z",
       "freshness_sla_s": 172800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16130,6 +16582,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16180,6 +16634,8 @@
       "duplicate_runs_24h": null,
       "output_at": null,
       "freshness_sla_s": 5356800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16531,8 +16987,10 @@
       "observed_lock_skip_ratio": 0.0,
       "performance_evidence_class": "OBSERVED_HOST",
       "performance_note": "component events; no unique run identity or expected-fire coverage",
-      "output_at": "2026-10-08T23:00:01.754833Z",
+      "output_at": "2026-10-09T00:00:01.619555Z",
       "freshness_sla_s": 1800.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16583,6 +17041,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T01:50:14.098837Z",
       "freshness_sla_s": 1209600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16604,8 +17064,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/comms_lifecycle_latest.json"
       },
-      "output_age": 2480.43,
-      "freshness": "FRESH",
+      "output_age": null,
+      "freshness": "ABSENT",
       "lock_skips_24h": null,
       "failures_24h": null,
       "duplicate_scheduler": false,
@@ -16640,8 +17100,10 @@
       "completion_ratio": null,
       "missed_fires_24h": null,
       "duplicate_runs_24h": null,
-      "output_at": "2026-10-08T22:17:01.473503Z",
+      "output_at": "2026-10-08T23:17:02.190692Z",
       "freshness_sla_s": 7200.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16701,6 +17163,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T20:30:10.758369Z",
       "freshness_sla_s": 3600.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -16760,6 +17224,8 @@
       "duplicate_runs_24h": null,
       "output_at": "2026-10-08T21:00:13.445962Z",
       "freshness_sla_s": 50400.0,
+      "run_age": null,
+      "run_freshness": "NOT_MEASURED",
       "output_evidence_class": "OBSERVED_HOST"
     },
     {
@@ -33588,7 +34054,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '*/5 * * * *', 'field': 'cronExpression'}]}]",
+      "schedule": "*/5 * * * *",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33640,7 +34106,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '*/15 * * * *', 'field': 'cronExpression'}]}]",
+      "schedule": "*/15 * * * *",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33692,7 +34158,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '40 6 * * 1', 'field': 'cronExpression'}]}]",
+      "schedule": "40 6 * * 1",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33744,7 +34210,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '*/15 * * * *', 'field': 'cronExpression'}]}]",
+      "schedule": "*/15 * * * *",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33796,7 +34262,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '*/5 * * * *', 'field': 'cronExpression'}]}]",
+      "schedule": "*/5 * * * *",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33848,7 +34314,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "EXPECTED_SILENT",
-      "schedule": "None",
+      "schedule": null,
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33891,7 +34357,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "EXPECTED_SILENT",
-      "schedule": "None",
+      "schedule": null,
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33934,7 +34400,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '*/20 * * * *', 'field': 'cronExpression'}]}]",
+      "schedule": "*/20 * * * *",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -33986,7 +34452,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '20 6 * * 1', 'field': 'cronExpression'}]}]",
+      "schedule": "20 6 * * 1",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34038,7 +34504,7 @@
       "scheduler_type": "n8n",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "[{'interval': [{'expression': '*/20 * * * *', 'field': 'cronExpression'}]}]",
+      "schedule": "*/20 * * * *",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34090,7 +34556,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'cron', 'expr': '0 20 * * 1-5', 'tz': 'America/New_York'}",
+      "schedule": "0 20 * * 1-5 (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34137,7 +34603,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "EXPECTED_SILENT",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 * * 0', 'tz': 'America/New_York'}",
+      "schedule": "0 9 * * 0 (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34184,7 +34650,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "EXPECTED_SILENT",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 1 * *', 'tz': 'America/New_York'}",
+      "schedule": "0 9 1 * * (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34231,7 +34697,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 24 * *', 'tz': 'America/New_York'}",
+      "schedule": "0 9 24 * * (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34278,7 +34744,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 L * *', 'tz': 'America/New_York'}",
+      "schedule": "0 9 L * * (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34325,7 +34791,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "EXPECTED_SILENT",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 * * 1', 'tz': 'America/New_York'}",
+      "schedule": "0 9 * * 1 (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34372,7 +34838,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'at', 'at': '2026-10-20T14:00:00.000Z'}",
+      "schedule": "Once 2026-10-20T14:00:00.000Z",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34418,7 +34884,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 1 * *', 'tz': 'America/New_York'}",
+      "schedule": "0 9 1 * * (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34465,7 +34931,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 * * 0', 'tz': 'America/New_York'}",
+      "schedule": "0 9 * * 0 (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34512,7 +34978,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'at', 'at': '2026-12-07T13:00:00.000Z'}",
+      "schedule": "Once 2026-12-07T13:00:00.000Z",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34558,7 +35024,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'cron', 'expr': '5 16 * * 1-5', 'tz': 'America/New_York'}",
+      "schedule": "5 16 * * 1-5 (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34605,7 +35071,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "EXPECTED_SILENT",
-      "schedule": "{'kind': 'at', 'at': '2026-10-05T18:20:00.000Z'}",
+      "schedule": "Once 2026-10-05T18:20:00.000Z",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
@@ -34651,7 +35117,7 @@
       "scheduler_type": "openclaw",
       "declared_state": "UNDECLARED",
       "runtime_state": "ORPHANED",
-      "schedule": "{'kind': 'cron', 'expr': '0 9 * * *', 'tz': 'America/New_York'}",
+      "schedule": "0 9 * * * (America/New_York)",
       "next_due": null,
       "last_requested": null,
       "last_started": null,
