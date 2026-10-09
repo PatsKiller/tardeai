@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PROJECT_ROOT="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="$PROJECT_ROOT/logs"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 LOG_FILE="$LOG_DIR/run_portfolio-$STAMP.log"
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_ROOT"
-source .venv/bin/activate
+# Releases ship code without a venv; retain the deliberate shared interpreter.
+if [ -f "$PROJECT_ROOT/.venv/bin/activate" ]; then
+  source "$PROJECT_ROOT/.venv/bin/activate"
+else
+  source "${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate"
+fi
 
 # Pre-flight: load Gmail keyring credential for unattended gog send (non-blocking)
 GOG_KR="$HOME/.openclaw/credentials/gog_keyring_password"

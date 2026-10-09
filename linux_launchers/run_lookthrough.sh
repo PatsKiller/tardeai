@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="${1:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
+PROJECT_ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 LOG_DIR="$PROJECT_ROOT/logs/phase3"
 TS="$(date +%Y%m%d-%H%M%S)"
 
@@ -26,7 +26,12 @@ if [ "$COUNT" = "0" ] || [ "$TOTAL" = "0" ]; then
 fi
 
 cd "$PROJECT_ROOT"
-source .venv/bin/activate
+# Releases ship code without a venv; retain the deliberate shared interpreter.
+if [ -f "$PROJECT_ROOT/.venv/bin/activate" ]; then
+  source "$PROJECT_ROOT/.venv/bin/activate"
+else
+  source "${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate"
+fi
 
 echo "[lookthrough] Step 1: Fetching fund/ETF data..." | tee -a "$LOG"
 python3 scripts/phase3_lookthrough_fetcher.py --project-root . 2>&1 | tee -a "$LOG"

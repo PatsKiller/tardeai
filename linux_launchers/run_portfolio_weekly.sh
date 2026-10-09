@@ -3,7 +3,7 @@ set -euo pipefail
 # P2 audit remediation (2026-09-26): overridable for tests; the report step now
 # FAILS the launcher (exit code) instead of printing "skipped (non-fatal)" while the
 # cadence pipeline recorded status=ok — both reports had been failing silently for months.
-PROJECT_ROOT="${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPORT_RC=0
 LOG_DIR="$PROJECT_ROOT/logs"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
@@ -11,7 +11,12 @@ LOG_FILE="$LOG_DIR/run_portfolio_weekly-$STAMP.log"
 ENABLE_YAML_ADVISOR="${ENABLE_YAML_ADVISOR:-0}"
 mkdir -p "$LOG_DIR"
 cd "$PROJECT_ROOT"
-source .venv/bin/activate
+# Releases ship code without a venv; retain the deliberate shared interpreter.
+if [ -f "$PROJECT_ROOT/.venv/bin/activate" ]; then
+  source "$PROJECT_ROOT/.venv/bin/activate"
+else
+  source "${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/activate"
+fi
 {
   echo "[WEEKLY] Starting full portfolio weekly run..."
   python scripts/portfolio_orchestrator.py --project-root . --run-label weekly --run-type daily

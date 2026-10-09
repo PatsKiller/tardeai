@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKUP_DIR="/home/johnclaw/db_backups"
 ENV_FILE="$PROJECT_ROOT/.env"
 TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
@@ -48,7 +48,12 @@ PARTIAL_MIN_BYTES=$((1500 * 1024 * 1024))  # full dumps ~2–2.5G; <1.5GB = inco
 # Interval 20h so daily cadence @02:30 is the only writer; health-agent cannot storm.
 MIN_BACKUP_INTERVAL_MINUTES=1200
 MAX_RETAIN_COUNT=1
-PY="${PROJECT_ROOT}/.venv/bin/python"
+# Shared interpreter, with backup enforcer code still resolved from this release.
+if [ -x "${PROJECT_ROOT}/.venv/bin/python" ]; then
+  PY="${PROJECT_ROOT}/.venv/bin/python"
+else
+  PY="${TRADEAI_VENV_PYTHON:-${PY:-${TRADEAI_VENV:-${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv}/bin/python}}"
+fi
 ENFORCER="${PROJECT_ROOT}/scripts/backup_enforcer.py"
 
 # ── Dedup: skip if a recent-enough full dump already exists ──
