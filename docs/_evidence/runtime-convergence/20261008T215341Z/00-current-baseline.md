@@ -1,0 +1,214 @@
+# Current runtime baseline
+
+Status: OBSERVED_CURRENT / OBSERVED_HOST
+Owner: platform
+as_of: 2026-10-08T22:35:26.973708Z
+Measured at: /home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008
+
+HOST_RUNTIME_ACCESS=AVAILABLE
+
+Read-only measurement. No scheduler edits, restart, deploy, credential read, broker call or policy ratification.
+
+## as_of
+
+```json
+"2026-10-08T22:35:26.973708Z"
+```
+
+## evidence_class
+
+```json
+"OBSERVED_CURRENT"
+```
+
+## origin_main
+
+```json
+{
+  "command": [
+    "git",
+    "-C",
+    "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+    "rev-parse",
+    "origin/main"
+  ],
+  "exit": 0,
+  "stdout": "eec946b2cebaa1378dab285c506c789f6dff1fb4\n",
+  "stderr": "",
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## HEAD
+
+```json
+{
+  "command": [
+    "git",
+    "-C",
+    "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+    "rev-parse",
+    "HEAD"
+  ],
+  "exit": 0,
+  "stdout": "eec946b2cebaa1378dab285c506c789f6dff1fb4\n",
+  "stderr": "",
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## merge_base
+
+```json
+{
+  "command": [
+    "git",
+    "-C",
+    "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+    "merge-base",
+    "HEAD",
+    "origin/main"
+  ],
+  "exit": 0,
+  "stdout": "eec946b2cebaa1378dab285c506c789f6dff1fb4\n",
+  "stderr": "",
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## worktree
+
+```json
+{
+  "command": [
+    "git",
+    "-C",
+    "/home/johnclaw/tradeai-wt-runtime-n8n-convergence-20261008",
+    "status",
+    "--porcelain=v1"
+  ],
+  "exit": 0,
+  "stdout": " M .github/workflows/cc-surface-agreement-ci.yml\n M apps/command-center-v3/src/pages/CoordinationPage.tsx\n M config/systemd/user/tradeai-n8n-run-executor.service\n M config/systemd/user/tradeai-n8n-run-relay.service\n M scripts/api_v2.py\n M scripts/cio_phase2_exact_main_deploy.sh\n M scripts/run_cio_hardening_ci.py\n?? apps/command-center-v3/e2e/scheduler-operations.spec.ts\n?? apps/command-center-v3/src/lib/schedulerOperations.ts\n?? apps/command-center-v3/src/pages/SchedulerOperations.tsx\n?? docs/_evidence/runtime-convergence/\n?? scripts/lib/scheduler_operations.py\n?? tests/test_n8n_release_rebind.py\n?? tests/test_scheduler_operations.py\n",
+  "stderr": "",
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## primary_worktree
+
+```json
+{
+  "command": [
+    "git",
+    "-C",
+    "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+    "status",
+    "--porcelain=v1"
+  ],
+  "exit": 0,
+  "stdout": "",
+  "stderr": "",
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## CURRENT_release
+
+```json
+"/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420"
+```
+
+## CURRENT_SHA
+
+```json
+{
+  "command": [
+    "git",
+    "-C",
+    "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+    "rev-parse",
+    "HEAD"
+  ],
+  "exit": 0,
+  "stdout": "eec946b2cebaa1378dab285c506c789f6dff1fb4\n",
+  "stderr": "",
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## portfolio_server
+
+```json
+{
+  "pid": "302872",
+  "cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+  "unit": {
+    "command": [
+      "systemctl",
+      "--user",
+      "show",
+      "portfolio-server.service",
+      "--property=ActiveState,SubState,FragmentPath,WorkingDirectory,ExecStart,ActiveEnterTimestamp"
+    ],
+    "exit": 0,
+    "stdout": "ActiveState=active\nSubState=running\nFragmentPath=/home/johnclaw/.config/systemd/user/portfolio-server.service\nActiveEnterTimestamp=Thu 2026-10-08 16:55:15 EDT\nExecStart={ path=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ; argv[]=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420/scripts/portfolio_server.py ; ignore_errors=no ; start_time=[Thu 2026-10-08 16:55:15 EDT] ; stop_time=[n/a] ; pid=302872 ; code=(null) ; status=0/0 }\nWorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420\n",
+    "stderr": "",
+    "as_of": "2026-10-08T22:35:26.973708Z"
+  }
+}
+```
+
+## api_health
+
+```json
+{
+  "url": "http://127.0.0.1:7777/api/health",
+  "status": 200,
+  "data": {
+    "ok": true,
+    "version": "2.0",
+    "port": 7777,
+    "holdings_exists": true
+  },
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## command_center_build
+
+```json
+{
+  "url": "http://127.0.0.1:7777/v3/build-meta.json",
+  "status": 200,
+  "data": {
+    "ui_version": "3.14+mv00mcmo",
+    "base_version": "3.14",
+    "built_at": "2026-10-08T20:55:11.633Z",
+    "release_notes": "cc-header-truth-v2: source-explicit header provenance, setup-run population, per-field freshness, served build identity",
+    "git_sha": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+    "build_sha": "eec946b2ceba",
+    "source_sha": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+    "source_commit": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+    "branch": "main",
+    "release_label": "main-exact-phase2"
+  },
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+## n8n_health
+
+```json
+{
+  "url": "http://127.0.0.1:5678/healthz",
+  "status": 200,
+  "data": {
+    "status": "ok"
+  },
+  "as_of": "2026-10-08T22:35:26.973708Z"
+}
+```
+
+Host command outputs: `00-host.json`. Installed unit properties: `04-systemd-units.json`. Selected Docker metadata: `06-n8n-container.json`. OpenClaw scheduling metadata (payloads/destinations omitted): `05-openclaw.json`.
+
+Policies contain contradictory ACTIVE/PROPOSED n8n authority assertions; no authority inferred. Prior cron counts and workflow exports are STALE_HISTORICAL until re-measured.

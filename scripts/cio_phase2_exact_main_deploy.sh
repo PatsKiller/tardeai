@@ -765,13 +765,14 @@ write_expected_release_pin() {
 # activeness is the one signal that cannot detect this.
 restart_root_frozen_units() {
   local dir="$1"
-  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service}"
-  local u pid cwd
+  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service tradeai-n8n-run-relay.service tradeai-n8n-run-executor.service}"
+  local u pid cwd failures=0
   for u in $units; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
     systemctl --user is-active --quiet "$u" || { log "  skip $u (not running)"; continue; }
     if ! systemctl --user restart "$u" 2>/dev/null; then
-      log "  WARN $u restart failed — it may still serve the PREVIOUS release"
+      log "  FAIL $u restart failed — it may still serve the PREVIOUS release"
+      failures=$((failures + 1))
       continue
     fi
     sleep 3
@@ -781,9 +782,11 @@ restart_root_frozen_units() {
     if [[ "$cwd" == "$dir" ]]; then
       log "  $u re-resolved → $dir"
     else
-      log "  WARN $u cwd='$cwd' != '$dir' — still on a stale release"
+      log "  FAIL $u cwd='$cwd' != '$dir' — still on a stale release"
+      failures=$((failures + 1))
     fi
   done
+  [[ "$failures" == "0" ]]
 }
 
 cmd_rollback() {

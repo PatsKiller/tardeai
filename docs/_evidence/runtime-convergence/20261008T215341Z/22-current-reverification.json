@@ -1,0 +1,31 @@
+{
+  "as_of": "2026-10-08T23:39:07.896225+00:00",
+  "evidence_class": "OBSERVED_CURRENT",
+  "origin_main": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+  "source_head_before_evidence_commit": "8f05d4654fd807a0786840a9597d5f4f623b5fc8",
+  "merge_base": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+  "CURRENT_release": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+  "CURRENT_SHA": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+  "portfolio_server_pid": "302872",
+  "portfolio_server_cwd": "/home/johnclaw/trade-ai-releases/portfolio-server/eec946b2c-main-exact-phase2-20261008-165420",
+  "api_health": {
+    "ok": true,
+    "version": "2.0",
+    "port": 7777,
+    "holdings_exists": true
+  },
+  "served_build": {
+    "ui_version": "3.14+mv00mcmo",
+    "base_version": "3.14",
+    "built_at": "2026-10-08T20:55:11.633Z",
+    "release_notes": "cc-header-truth-v2: source-explicit header provenance, setup-run population, per-field freshness, served build identity",
+    "git_sha": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+    "build_sha": "eec946b2ceba",
+    "source_sha": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+    "source_commit": "eec946b2cebaa1378dab285c506c789f6dff1fb4",
+    "branch": "main",
+    "release_label": "main-exact-phase2"
+  },
+  "worktree_before_evidence_commit": "M  docs/INDEX.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/00-current-baseline.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/00-governance-source-manifest.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/00-host.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/00-identity.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/01-live-scheduler-observations.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/01-scheduler-lane-inventory.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/02-duplicates-conflicts.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/03-cron-remeasurement.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/03-high-frequency-lane-matrix.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/03-runtime-distributions.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/04-dev-tree-leakage-matrix.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/04-ollama-retired-host.txt\nA  docs/_evidence/runtime-convergence/20261008T215341Z/04-process-roots.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/04-reviewed-path-findings.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/04-systemd-units.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/04-unit-links.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/05-openclaw.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/06-backup-metadata.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/06-backups-current.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/06-n8n-container.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/06-n8n-db.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/06-n8n-final-endpoints.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/07-n8n-security-audit.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/07-network-probes.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/08-fixture-bursts.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/08-host-run-ledger.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/09-10-n1-acceptance-matrix.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/11-dag-negative-review.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/11-n2-dependency-design.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/12-consolidation-review.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/13-registry-proof-gaps.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/14-scheduler-operations-snapshot.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/15-frontend-build.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/15-playwright-final.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/15-playwright-fixture.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/16-slo-baseline.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/17-19-database-load.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/17-19-final-metadata.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/17-queue-worker-matrix.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/18-19-model-and-vector-review.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/20-final-report.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/20-operator-change-packet.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/20-remediation-classification.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/21-canonical-acceptance.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/21-cio-hardening.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/21-negative-before-fixes.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/21-targeted-regression.log\nA  docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md\nA  docs/_evidence/runtime-convergence/20261008T215341Z/22-current-reverification.json\nA  docs/_evidence/runtime-convergence/20261008T215341Z/build_review_artifacts.py\nA  docs/_evidence/runtime-convergence/20261008T215341Z/collect_baseline.py\nA  docs/_evidence/runtime-convergence/20261008T215341Z/collect_census.py\nA  docs/_evidence/runtime-convergence/20261008T215341Z/collect_final_metadata.py\nA  docs/_evidence/runtime-convergence/20261008T215341Z/collect_supplement.py\nA  docs/_evidence/runtime-convergence/20261008T215341Z/reverify_identity.py\n?? docs/_evidence/runtime-convergence/20261008T215341Z/21-formatting-proof.json",
+  "note": "Final PR head is supplied in PR/final response; this identity refresh precedes the evidence commit. Initial Phase 0 baseline remains separate."
+}

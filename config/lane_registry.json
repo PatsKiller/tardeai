@@ -120,6 +120,27 @@
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job a9c337e0-7a4d-4a83-8089-5aa3bf5f5059 enabled. Generated INDEX.json alias openclaw-sentinelone-earnings-reminder, id d28ad5e4adcb021a; canonical packet/tranche lane openclaw-reminder-sentinelone-earnings differs from generated request lane and must be aligned before import. legacy at 2026-12-07T13:00:00Z; generated annual cron needs an explicit one-shot/deactivation guard. Legacy job has not been disabled; registration is not a cutover or a delivery receipt."
     },
     {
+      "lane_id": "ollama-retired-host-runtime",
+      "business_domain": "model-runtime",
+      "owner": "platform",
+      "state": "RETIRED",
+      "state_since": "2026-10-08",
+      "state_reason": "Operator instruction in this runtime-convergence task: Ollama is retired. Source records retirement intent; it does not stop or disable the observed active host service.",
+      "scheduler": {
+        "kind": "systemd",
+        "scope": "system",
+        "expression": "ollama.service"
+      },
+      "expected_cadence_hours": 24.0,
+      "output_signal": {
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: retired runtime; no business output or freshness is expected"
+      },
+      "consumer": "none (retired)",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator statement 2026-10-08; OBSERVED_HOST systemctl list-units in runtime-convergence/20261008T215341Z/00-host.json still reports active/running; stop/disable needs operator grant."
+    },
+    {
       "lane_id": "n8n-monitor-trade-ai",
       "owner": "platform",
       "scheduler": {
@@ -131,7 +152,8 @@
       "expected_cadence_hours": 0.08333333333333333,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id s57KBllvqf6Jb5xF, Schedule Every 5 minutes -> GET build-meta. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10e7c19321c906a is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
       "state_since": "2026-10-08"
@@ -148,7 +170,8 @@
       "expected_cadence_hours": 0.08333333333333333,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: legacy HTTP monitor has no durable host receipt or consumer output; n8n execution status is process evidence only"
       },
       "note": "Observed exported workflow workflows/INDEX.json as_of 2026-10-07T14:38:57.293322+00:00: active legacy id GXwhbRkwsGcYZxgn, Schedule Every 5 minutes -> GET run-scope. NO_SIGNAL: no host consumer receipt; an n8n green execution is not proof. Generated replacement e10087387b964e87 is not installed by this PR. Operator must deactivate (not delete) the legacy workflow before import, then update expression only after a canary receipt. Board addendum 2026-10-08 N1 packet.",
       "state_since": "2026-10-08"

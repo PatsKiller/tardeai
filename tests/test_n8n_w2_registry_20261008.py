@@ -28,6 +28,7 @@ REMINDERS = {
 }
 DOF = {"dof-run-pipeline": "0 20 * * 6", "dof-rescan-tickets": "0 18 * * *"}
 N6 = sorted(set(REMINDERS) | set(DOF))
+N6_REQUEST_IDS = sorted(set(N6) | set(REMINDERS.values()))
 ALLOWLIST_PATH = ROOT / "config/n8n_run_allowlist.json"
 
 
@@ -101,7 +102,8 @@ def test_pending_foreign_commands_are_not_loaded_as_executable_allowlist_entries
     doc = json.loads(path.read_text())
     n6 = set(REMINDERS) | set(DOF)
     assert set(doc["pending_tranches"]["N6"]) == n6
-    assert not n6 & load_allowlist(path).keys()
+    assert not set(N6_REQUEST_IDS) & load_allowlist(path).keys()
+    assert not set(N6_REQUEST_IDS) & SERVER.load_run_allowlist(path)
     assert all(doc["blocked_reasons"].get(lane) for lane in n6)
     for lane, cadence in DOF.items():
         proposal = doc["proposed_external_contracts"][lane]
@@ -113,7 +115,7 @@ def test_pending_foreign_commands_are_not_loaded_as_executable_allowlist_entries
         assert "23.3" in doc["blocked_reasons"][lane]
 
 
-@pytest.mark.parametrize("lane_id", N6)
+@pytest.mark.parametrize("lane_id", N6_REQUEST_IDS)
 @pytest.mark.parametrize("mode", ["dry_run", "live"])
 def test_gateway_refuses_each_n6_lane_without_recording_a_run(tmp_path, lane_id, mode):
     """A signed request cannot promote documentation-only proposals into executable lanes."""
@@ -158,7 +160,7 @@ def test_gateway_refuses_each_n6_lane_without_recording_a_run(tmp_path, lane_id,
         ledger.close()
 
 
-@pytest.mark.parametrize("lane_id", N6)
+@pytest.mark.parametrize("lane_id", N6_REQUEST_IDS)
 @pytest.mark.parametrize("mode", ["dry_run", "live"])
 def test_relay_and_executor_refuse_n6_without_transport_or_spawn(tmp_path, lane_id, mode):
     """Neither live-canary flags nor an existing queued row widen the executable set."""
@@ -171,7 +173,7 @@ def test_relay_and_executor_refuse_n6_without_transport_or_spawn(tmp_path, lane_
         environ={
             RELAY.BEARER_ENV: bearer,
             RELAY.N8N_KEY_ENV: "w2-fixture-signing-key-" + "x" * 32,
-            RELAY.LIVE_LANES_ENV: " ".join(N6),
+            RELAY.LIVE_LANES_ENV: " ".join(N6_REQUEST_IDS),
             "TRADEAI_STATE_ROOT": str(tmp_path / "state"),
         },
         allowlist=SERVER.load_run_allowlist(ALLOWLIST_PATH),
