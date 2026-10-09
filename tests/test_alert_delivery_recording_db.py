@@ -56,6 +56,11 @@ def cur():
     conn = _connect()
     conn.autocommit = True
     with conn.cursor() as c:
+        # The 07-29 view fix adds columns to alert_notification_events; re-applying the 07-28
+        # migration's CREATE OR REPLACE VIEW over it would drop them ("cannot drop columns from
+        # view"), so every test after the first errored on a real database (first seen when the
+        # Postgres CI shard ran this file, 2026-10-09). Drop the derived view, then re-apply both.
+        c.execute("DROP VIEW IF EXISTS alert_notification_events CASCADE")
         c.execute(MIGRATION.read_text())
         c.execute(VIEW_FIX.read_text())
         c.execute("TRUNCATE alert_notification_deliveries, alert_occurrences, alert_incidents CASCADE")

@@ -346,12 +346,17 @@
    "window_days": 90,
    "archive": false,
    "owner": "platform",
-   "reason": "librarian enforces 90 d; fused_signal/social_post rows 30 d via source_windows",
+   "reason": "librarian enforces 90 d; source_windows (fused_signal/social_post 30 d) enforced by db_retention.py as ARCHIVE_THEN_DELETE in verified batches (operator decision 2026-10-09)",
    "since": "2026-10-07",
    "source_windows": {
     "fused_signal": 30,
     "social_post": 30
-   }
+   },
+   "source_column": "source_type",
+   "source_windows_class": "ARCHIVE_THEN_DELETE",
+   "source_windows_batch_rows": 20000,
+   "source_windows_max_rows_per_run": 100000,
+   "source_windows_since": "2026-10-09"
   },
   {
    "table": "content_entity_links",
