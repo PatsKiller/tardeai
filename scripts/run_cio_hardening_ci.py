@@ -3756,6 +3756,13 @@ GATES = [
             "tests/test_retention_source_windows_junk_20261009.py",
         ],
     ),
+    (
+        # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
+        # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
+        # in 503 errors, alert-quality registry row matches the host.
+        "cron_crash_fixes_20261009",
+        ["tests/test_cron_crash_fixes_20261009.py"],
+    ),
 ]
 
 
