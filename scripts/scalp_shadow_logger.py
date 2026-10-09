@@ -302,6 +302,72 @@ def classify_universe(rows, u: dict) -> tuple[list[str], dict]:
     return kept, excluded
 
 
+def scalp_projection_rows(sf: dict) -> list[tuple]:
+    """Trade-AI's 5-minute RTH scalp universe (run_trade_ai_scalp_live → scalp_universe_latest.json): every symbol
+    its Finviz scalp screeners returned this cycle, with float/price. Used only while fresh."""
+    path = sf.get("scalp_projection_path")
+    if not path:
+        return []
+    import json as _json
+    from datetime import datetime as _dt, timezone as _tz
+
+    p = Path(os.path.expanduser(str(path)))
+    try:
+        d = _json.loads(p.read_text(encoding="utf-8"))
+        age_min = (_dt.now(_tz.utc) - _dt.fromisoformat(str(d["as_of"]))).total_seconds() / 60
+    except Exception:  # noqa: BLE001 — absent/unreadable projection adds nothing
+        return []
+    if age_min > float(sf.get("scalp_projection_max_age_min") or 15):
+        return []
+    skip = set(sf.get("trade_ai_exclude_setup_classes") or [])
+    return [(r["symbol"], r.get("float_m"), r.get("price"), "shared:trade_ai_scalp", False)
+            for r in d.get("rows") or [] if r.get("symbol") and r.get("setup_class") not in skip]
+
+
+def shared_feed_rows(cur, u: dict, have: set) -> list[tuple]:
+    """One feed for both engines (operator 2026-10-09: "same should be feeding both tradeai and also active
+    trader"). Adds, to the scalp universe, (a) symbols PRESENT in the live Finviz screener snapshot that
+    run_finviz_momentum_scalp_scan refreshes every 5 min (screener_symbol_membership — the same prime_setups /
+    watchlist_setups screeners Trade-AI scans), and (b) today's Trade-AI GO / WAIT / MANUAL_REVIEW names.
+    Screener rows carry no float/price (the float lookup fills float); Trade-AI rows carry its float_m/price.
+    classify_universe below then fails them closed exactly like scanner rows. Never raises — a missing table just adds nothing."""
+    sf = u.get("shared_feeds") or {}
+    if not sf.get("enabled"):
+        return []
+    out: list[tuple] = []
+    try:
+        ids = list(sf.get("screener_ids") or [])
+        if ids:
+            cur.execute("""SELECT DISTINCT upper(symbol) FROM screener_symbol_membership
+                            WHERE screener_id = ANY(%s) AND present_this_run
+                              AND last_seen_in_screener_at > now() - make_interval(mins => %s)""",
+                        (ids, int(sf.get("screener_max_age_min") or 30)))
+            out += [(r[0], None, None, "shared:finviz_screener", False) for r in cur.fetchall()]
+        out += scalp_projection_rows(sf)
+        decs = list(sf.get("trade_ai_decisions") or [])
+        if decs:
+            cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), float_m, price FROM trade_ai_scans
+                            WHERE run_date = current_date AND decision = ANY(%s)
+                              AND COALESCE(setup_class, '') <> ALL(%s)
+                            ORDER BY upper(symbol), scanned_at DESC""",
+                        (decs, list(sf.get("trade_ai_exclude_setup_classes") or [])))
+            out += [(r[0], r[1], r[2], "shared:trade_ai", False) for r in cur.fetchall()]
+    except Exception as e:  # noqa: BLE001
+        print(f"  [universe] shared feeds skipped: {type(e).__name__}: {e}")
+        try:
+            cur.connection.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return []
+    seen: set = set(have)
+    uniq = []
+    for row in out:
+        if row[0] and row[0] not in seen:
+            seen.add(row[0])
+            uniq.append(row)
+    return uniq
+
+
 def resolve_universe_detail(conn, cfg: dict, *, float_lookup=None) -> tuple[list[str], dict]:
     """Universe for ONE strategy profile: every key it reads lives under cfg["universe"], so another
     profile (e.g. a future swing universe) is a separate config block, not a code branch."""
@@ -321,6 +387,7 @@ def resolve_universe_detail(conn, cfg: dict, *, float_lookup=None) -> tuple[list
                        {latest('route')}, {latest('disqualified')}
                 FROM seen ORDER BY 1""")
         rows = cur.fetchall()
+        rows = rows + shared_feed_rows(cur, u, {str(r[0]).upper() for r in rows})
     # Look up floats the scanner never recorded before failing them closed (bounded, cached).
     excluded_routes = {str(r) for r in (u["excluded_routes"] or [])}
     missing = [r[0] for r in rows if r[1] is None and not r[4]

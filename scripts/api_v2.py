@@ -15584,6 +15584,11 @@ def _compute_trade_ai():
             _current_run_tickers = [t for t in _dated_rows if t.get("scan_run_date") == _current_run_date]
         else:
             _current_run_tickers = _label_rows
+        # 2026-10-09 ("PARTIAL · run 55/40"): live cycles upsert into the same run_label, so the label held 55
+        # symbols against the full run's 41 and the two "scanned" contracts disagreed. The run is its FULL rows.
+        _full_rows = [t for t in _current_run_tickers if str(t.get("run_type") or "").lower() == "full"]
+        if _full_rows:
+            _current_run_tickers = _full_rows
     else:
         _current_run_tickers = tickers
     current_run_go = sum(1 for t in _current_run_tickers if t.get("decision") == "GO")
