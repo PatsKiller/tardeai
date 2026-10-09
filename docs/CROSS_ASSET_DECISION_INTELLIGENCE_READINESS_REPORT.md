@@ -106,3 +106,61 @@ We **cannot** yet prove EV superiority across shares vs options with chain econo
 | Code | `scripts/lib/cross_asset/*`, `scripts/ops/run_cross_asset_*.py` |
 | Tests | `tests/test_cross_asset_symbol_decision_object_20260929.py` |
 | Commits | `bc9b38c1d` + `1a406daa5` on `wt/cross-asset-decision-intel` |
+
+---
+
+## 2026-10-09 supplement — offline replay repaired; production NOT_READY
+
+Status: SOURCE_ONLY implementation / TEST_ONLY validation; production **NOT_READY**
+
+Source checkpoint: `e9c0b5d5c6fc0ecbdd8e27b5bf66eed1ce948817`, branch
+`wt/cadi-archive-replay-20261009`, based on main
+`bbff99766cd80ea630543abfaa639eb41eae5eb9`. The September 29 measurements above
+are preserved as historical evidence. Their zero/null 30/60/90 results are
+**STALE_HISTORICAL**, not a fresh October 9 production replay.
+
+The offline CLI now reads timestamped archived events, confirmed identities,
+actual spot-price snapshots and optional per-structure evaluator facts. It
+uses the existing pure advisory evaluator, reports price coverage and skipped
+inputs, excludes facts known after the signal, and refuses malformed or
+conflicting input. The adapter and its limits are defined in the
+[offline archive contract](implementation/CADI_OFFLINE_HISTORICAL_REPLAY_ARCHIVE_CONTRACT.md).
+Supplied scores support `SCORING_COMPARISON_ONLY`; they do not establish
+realized options superiority, actual fills or a new analytical model.
+`options_would_be_superior` and `options_superior_rate` remain null.
+
+Validation: **46 TEST_ONLY tests passed** across replay/core,
+SymbolDecisionObject and shared-spine hook families. The prior-defect test
+proved that a valid archive formerly produced `signals_evaluated=0`; 17 new
+cases failed on the original stub. A separate negative proved equal-time
+conflicting facts must be compared as instants across UTC offsets. Evidence:
+`/tmp/tradeai-cadi-replay-negative-prior-20261009.log`,
+`/tmp/tradeai-cadi-replay-offset-negative-20261009.log`,
+`/tmp/tradeai-cadi-replay-regression-final-20261009.log`, and the source/log hash
+manifest `/tmp/tradeai-cadi-replay-source-handoff-20261009.json`.
+
+The independent live audit, measured October 9 at 13:45:32 UTC against CURRENT
+`a9fa8b89b616f685145d27d6d2d62da3a1fab970`, found:
+
+| Evidence class | Observation | Readiness implication |
+|---|---|---|
+| OBSERVED_HOST | Canonical `symbol_decisions` and `expression_missed_opportunities` ledgers absent at their declared paths; no dedicated current decision RunReceipt found | Continuous expression decisions and their durable proof remain unproven |
+| OBSERVED_HOST | Shared research spine has 775 rows, latest 13:31:17 UTC | Fresh research memory is not an expression-decision ledger or counterfactual proof |
+| OBSERVED_DB | 48,419 option-chain snapshots are summary-only; zero full contract/expiration arrays or embedded quote timestamps | These records cannot establish historical per-contract option economics |
+| OBSERVED_DB / SOURCE_ONLY producer semantics | Historical action signals use `UPSERT(signal_date,symbol)`; bars can arrive later and be updated for the same market time | Mutable latest rows and late ingestion do not prove what was available at a historical signal instant |
+| NOT_MEASURED | No fresh actual-archive 30/60/90 replay result | Fixture success cannot close the production historical-validation requirement |
+
+Audit artifacts: `/tmp/crossasset-live-gap-assessment-20261009T134300Z.json`,
+`/tmp/crossasset-live-gap-audit-20261009T133138Z.json`, and
+`/tmp/crossasset-archive-asof-audit-20261009T134145Z.json`. The latter cites the
+summary writer (`scripts/options_desk_enterprise.py:1851`), signal upsert
+(`scripts/db_adapter.py:587`) and bar upsert
+(`scripts/market_data_snapshot_loader.py:100`). These are dated read-only
+observations; this supplement does not claim a later deployment or live replay.
+
+Remaining prerequisites are immutable canonical event/decision lineage,
+market-time **and availability-time** proof, full historical option economics,
+actual 30/60/90 archive coverage, and the production producer → receipt → output
+→ consumer chain. No model/provider was selected or called, no production
+archive exporter was added, and no scheduler or financial authority changed.
+The end-to-end program and expression-EV recommendation remain **NOT_READY**.
