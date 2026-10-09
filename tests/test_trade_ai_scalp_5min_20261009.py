@@ -132,7 +132,7 @@ def test_scalp_lane_runs_one_quiet_cycle(monkeypatch, tmp_path):
     seen = {}
     monkeypatch.setattr(cr, "run_live_cycle", lambda root, label, day, st, t, **k: seen.update(label=label, **k))
     assert r.main(["--force"]) == 0
-    assert seen == {"label": "scalp", "publish_dashboard": False}
+    assert seen == {"label": "scalp", "publish_dashboard": False, "enrich_budget_s": 150.0}
 
 
 def test_live_cycle_publish_flag_guards_dashboard_and_live_state():
@@ -188,3 +188,16 @@ def test_live_cycle_writes_catalyst_cache_through_per_symbol():
     i = src.index("fresh[sym] = enrich_ticker(sym")
     assert "set_bulk({sym: fresh[sym]}, str(root), date_str)" in src[i:i + 900]
     assert "if fresh: set_bulk(fresh, str(root), date_str)" not in src
+
+
+def test_enrichment_budget_defers_to_stale_cache(monkeypatch, tmp_path):
+    """Past the budget the cycle stops looking up catalysts and scores on today's last cached lookup, so the
+    5-min lane always finishes inside its 295 s timeout (2026-10-09 stall: every run killed mid-enrichment)."""
+    src = (ROOT / "scripts/continuous_runner.py").read_text(encoding="utf-8")
+    assert "enrich_budget_s: Optional[float] = None" in src
+    assert "time.monotonic() - _enrich_t0 >= enrich_budget_s" in src
+    assert "stale, _ = get_bulk(deferred, str(root), date_str, 24 * 60)" in src
+    import yaml
+
+    cfg = yaml.safe_load((ROOT / "config/trade_ai_scalp_lane.yaml").read_text(encoding="utf-8"))
+    assert 0 < cfg["enrich_budget_s"] < 295
