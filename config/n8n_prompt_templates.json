@@ -1,7 +1,7 @@
 {
  "schema": "N8nPromptTemplateSet@v1",
- "as_of": "2026-10-08",
- "note": "Prompt templates for governed n8n model jobs, rendered SERVER-SIDE by scripts/lib/n8n_model_job.build_messages from a template_id the caller names. The caller never supplies prompt text; placeholders are filled from the job's resolved artifact and the named output contract only. Placeholders: {{schema_id}}, {{schema_keys}}, {{schema_required}}, {{correlation_id}}, {{artifact_sha256}}, {{artifact}} (one-pass substitution; inserted text is never re-scanned). Each template is bound to one registered n8n_* process (PROCESS_TASK_TYPE); a template named for another process is a typed refusal (template_mismatch). max_artifact_bytes caps the serialised artifact placed in the prompt. The two v1 templates reproduce the inline 2026-10-07 prompt byte for byte (pinned by tests/test_n8n_model_job_20261007.py).",
+ "as_of": "2026-10-09",
+ "note": "Prompt templates for governed n8n model jobs, rendered SERVER-SIDE by scripts/lib/n8n_model_job.build_messages from a template_id the caller names. The caller never supplies prompt text; placeholders are filled from the job's resolved artifact and the named output contract only. Placeholders: {{schema_id}}, {{schema_keys}}, {{schema_required}}, {{correlation_id}}, {{artifact_sha256}}, {{artifact}} (one-pass substitution; inserted text is never re-scanned). Each template is bound to one registered n8n_* process (PROCESS_TASK_TYPE); a template named for another process is a typed refusal (template_mismatch). max_artifact_bytes caps the serialised artifact placed in the prompt. The two v1 templates reproduce the inline 2026-10-07 prompt byte for byte (pinned by tests/test_n8n_model_job_20261007.py). n8n_lane_failure_explainer@v1 is PROPOSED in config/n8n_agent_processes.proposed.json and is not in PROCESS_TASK_TYPE, so the model-job path still refuses to run it.",
  "templates": [
   {
    "schema": "N8nPromptTemplate@v1",
@@ -18,6 +18,15 @@
    "version": 1,
    "process_id": "n8n_ops_summary_draft",
    "system": "You draft a {{schema_id}} for a human reviewer. Use ONLY the supplied artifact. Cite each source id you use. Return one JSON object with exactly these keys: {{schema_keys}}. Required: {{schema_required}}. Never recommend an action; if a recommendation key exists it must be \"NONE\". If the artifact does not support a claim, say so in confidence_note.",
+   "user_template": "correlation_id={{correlation_id}}\nartifact sha256={{artifact_sha256}}\n{{artifact}}",
+   "max_artifact_bytes": 60000
+  },
+  {
+   "schema": "N8nPromptTemplate@v1",
+   "id": "n8n_lane_failure_explainer@v1",
+   "version": 1,
+   "process_id": "n8n_lane_failure_explainer",
+   "system": "You explain why one lane failed. You are read-only and advisory. Use ONLY the supplied artifact and its receipt fields. Return one JSON object with exactly these keys: {{schema_keys}}. Required: {{schema_required}}. recommendation must be \"NONE\". authority must be \"READ_ONLY_ADVISORY\". Schema: {{schema_id}}.",
    "user_template": "correlation_id={{correlation_id}}\nartifact sha256={{artifact_sha256}}\n{{artifact}}",
    "max_artifact_bytes": 60000
   }

@@ -1,6 +1,6 @@
 {
  "schema": "N8nModelJobOutputSchemas@v1",
- "as_of": "2026-10-07",
+ "as_of": "2026-10-09",
  "note": "Output contracts for governed model jobs coordinated through n8n. Validated by scripts/lib/n8n_model_job.py with a built-in structural check (required keys, types, enums, max lengths); no jsonschema dependency on this host. A model answer that fails validation is a typed refusal, never a fallback.",
  "schemas": {
   "material_change_digest_draft/v1": {
@@ -149,6 +149,82 @@
     "order",
     "price_target",
     "position"
+   ]
+  },
+  "lane_failure_explainer/v1": {
+   "description": "Read-only explanation of why one lane failed. evidence cites receipt fields. recommendation is always NONE. authority is always READ_ONLY_ADVISORY.",
+   "required": [
+    "lane_id",
+    "likely_cause",
+    "evidence",
+    "next_check",
+    "confidence",
+    "recommendation",
+    "authority"
+   ],
+   "properties": {
+    "lane_id": {
+     "type": "string",
+     "max_length": 80
+    },
+    "likely_cause": {
+     "type": "string",
+     "max_length": 600
+    },
+    "evidence": {
+     "type": "array",
+     "max_items": 10,
+     "items": {
+      "required": [
+       "receipt_field"
+      ],
+      "properties": {
+       "receipt_field": {
+        "type": "string",
+        "enum": [
+         "state",
+         "exit_code",
+         "duration_s",
+         "stderr_tail",
+         "output_signal_age_s"
+        ]
+       },
+       "detail": {
+        "type": "string",
+        "max_length": 400
+       }
+      }
+     }
+    },
+    "next_check": {
+     "type": "string",
+     "max_length": 300
+    },
+    "confidence": {
+     "type": "string",
+     "max_length": 32
+    },
+    "recommendation": {
+     "type": "string",
+     "enum": [
+      "NONE"
+     ]
+    },
+    "authority": {
+     "type": "string",
+     "enum": [
+      "READ_ONLY_ADVISORY"
+     ]
+    }
+   },
+   "forbidden_keys": [
+    "size",
+    "qty",
+    "order",
+    "stop",
+    "limit",
+    "weight",
+    "trade"
    ]
   }
  }

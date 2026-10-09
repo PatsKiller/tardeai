@@ -1,0 +1,61 @@
+{
+  "schema": "N8nAgentProcessProposals@v1",
+  "status": "PROPOSED",
+  "as_of": "2026-10-09",
+  "note": "Staging rows for n8n Agent processes. Not merged into config/llm_process_registry.json. Agent A merges a row after review. Nothing in this file is activated, and the model-job path still refuses a process that is not in PROCESS_TASK_TYPE.",
+  "processes": [
+    {
+      "id": "n8n_lane_failure_explainer",
+      "status": "PROPOSED",
+      "name": "n8n Agent: explain why a lane failed",
+      "category": "N8nCoordination",
+      "advisory_only": true,
+      "free_text_allowed": false,
+      "template_id": "n8n_lane_failure_explainer@v1",
+      "output_schema_id": "lane_failure_explainer/v1",
+      "tools_allowed": [
+        "read_runs_last",
+        "read_runs_recent",
+        "read_lane_row"
+      ],
+      "tools": [
+        {
+          "id": "read_runs_last",
+          "method": "GET",
+          "path": "/runs/<lane>/last"
+        },
+        {
+          "id": "read_runs_recent",
+          "method": "GET",
+          "path": "/runs/<lane>/recent",
+          "max_n": 10
+        },
+        {
+          "id": "read_lane_row",
+          "method": "GET",
+          "path": "/lanes/<lane>"
+        }
+      ],
+      "turn_cap": 4,
+      "max_input_tokens": 6000,
+      "max_output_tokens": 800,
+      "daily_cost_cap_usd": 0.05,
+      "cost_ceiling_usd": 0.02,
+      "routing": {
+        "primary": {
+          "provider": "grok"
+        },
+        "secondary": {
+          "provider": "chatgpt"
+        },
+        "fallback": {
+          "provider": "deepseek"
+        }
+      },
+      "authority": "READ_ONLY_ADVISORY",
+      "recommendation": "NONE",
+      "registered_by": "agent-3-explainer",
+      "registered_at": "2026-10-09T15:00:00Z"
+    }
+  ]
+}

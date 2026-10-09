@@ -172,7 +172,7 @@ def test_build_messages_without_a_template_is_byte_identical_to_the_2026_10_07_p
 def test_templates_render_server_side_and_reproduce_the_inline_prompt_for_both_processes():
     templates = M.load_templates()
     assert "_invalid" not in templates, templates.get("_invalid")
-    assert sorted(templates) == ["material_digest_draft.v1", "ops_summary_draft.v1"]
+    assert sorted(templates) == ["material_digest_draft.v1", "n8n_lane_failure_explainer@v1", "ops_summary_draft.v1"]
     for t in templates.values():
         assert t["schema"] == M.TEMPLATE_SCHEMA and t["version"] == 1 and t["max_artifact_bytes"] == 60_000
         assert "{{artifact}}" in t["user_template"] and "{{schema_keys}}" in t["system"]

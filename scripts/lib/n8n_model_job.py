@@ -27,6 +27,7 @@ ALLOWED_STORES = frozenset({"data/runtime", "data/cio"})
 MAX_ARTIFACT_BYTES = 256_000
 DEFAULT_SCHEMAS_PATH = Path(__file__).resolve().parents[2] / "config" / "schemas" / "n8n_model_job_outputs.json"
 DEFAULT_TEMPLATES_PATH = Path(__file__).resolve().parents[2] / "config" / "n8n_prompt_templates.json"
+PROPOSED_AGENT_PROCESSES = Path(__file__).resolve().parents[2] / "config" / "n8n_agent_processes.proposed.json"
 REFUSALS = frozenset({
     "deadline_passed", "deadline_invalid", "artifact_store_refused", "artifact_unresolved", "artifact_hash_mismatch",
     "artifact_too_large", "unknown_output_schema", "governance_refused", "provider_outage", "over_cap",
@@ -100,6 +101,19 @@ def load_templates(path: Optional[Path] = None) -> dict[str, dict[str, Any]]:
     return out
 
 
+def proposed_process_ids(path: Optional[Path] = None) -> frozenset[str]:
+    """Ids staged as PROPOSED. They do not enter PROCESS_TASK_TYPE and cannot run a model job."""
+    try:
+        doc = json.loads(Path(path or PROPOSED_AGENT_PROCESSES).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return frozenset()
+    ids = []
+    for row in doc.get("processes") or []:
+        if isinstance(row, dict) and row.get("status") == "PROPOSED" and isinstance(row.get("id"), str):
+            ids.append(row["id"])
+    return frozenset(ids)
+
+
 def _template_problem(row: Any) -> Optional[str]:
     if not isinstance(row, Mapping):
         return "not an object"
@@ -113,7 +127,7 @@ def _template_problem(row: Any) -> Optional[str]:
     cap = row.get("max_artifact_bytes")
     if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1 or cap > MAX_ARTIFACT_BYTES:
         return f"max_artifact_bytes must be 1..{MAX_ARTIFACT_BYTES}"
-    if row.get("process_id") not in PROCESS_TASK_TYPE:
+    if row.get("process_id") not in PROCESS_TASK_TYPE and row.get("process_id") not in proposed_process_ids():
         return f"process_id {row.get('process_id')!r} not in PROCESS_TASK_TYPE"
     unknown = {m for m in _PLACEHOLDER_RE.findall(row["system"] + row["user_template"])} - TEMPLATE_PLACEHOLDERS
     if unknown:

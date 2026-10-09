@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.lib.n8n_agent_reads import CLAIM_HEADER, SIGNATURE_HEADER, dispatch_agent_read  # noqa: E402
 from scripts.lib.n8n_coordination_gateway import PILOT_LANES, build_caller_keys, handle_request  # noqa: E402
 from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
     CoordinationLedger,
@@ -178,8 +179,16 @@ def dispatch_http(
     caller_keys: dict | None = None,
     run_store: Any = None,
     run_allowlist: frozenset[str] | None = None,
+    registry_path: Path | None = None,
 ) -> tuple[int, dict]:
     """One HTTP decision. Proxy headers are not copied into the claim check."""
+    # Agent reads authenticate the HMAC claim. Proxy headers are not that claim.
+    read = dispatch_agent_read(
+        method, target, headers, key=key, now=now or datetime.now(timezone.utc), nonce_store=nonce_store,
+        previous_key=previous_key, caller_keys=caller_keys, ledger_path=ledger_path, registry_path=registry_path,
+    )
+    if read is not None:
+        return read
     del headers  # identity is the HMAC claim; forwarded headers are not read
     path = canonical_path(target)
     if path is None:
@@ -231,7 +240,7 @@ def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | Non
                  ledger: CoordinationLedger | None = None, ledger_path: Path | None = None,
                  lane_allowlist: frozenset[str] | None = None, n8n_key: bytes | None = None,
                  run_allowlist: frozenset[str] | None = None,
-                 n8n_previous_key: bytes | None = None):
+                 n8n_previous_key: bytes | None = None, registry_path: Path | None = None):
     nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
     idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
     # runs are durable or nothing: memory-only mode has no executor to drain it, so no run store
@@ -270,10 +279,11 @@ def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | Non
             return
 
         def _dispatch(self, method: str, body: bytes) -> None:
+            forwarded = {name: self.headers.get(name) for name in (*PROXY_HEADERS, CLAIM_HEADER, SIGNATURE_HEADER)}
             status, payload = dispatch_http(
                 method,
                 self.path,
-                {key: self.headers.get(key) for key in PROXY_HEADERS},
+                forwarded,
                 body,
                 key=key,
                 expected_origin_sha=expected_origin_sha,
@@ -285,6 +295,7 @@ def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | Non
                 caller_keys=caller_keys,
                 run_store=run_store,
                 run_allowlist=run_allowlist,
+                registry_path=registry_path,
             )
             self._send(status, payload)
 
@@ -311,6 +322,7 @@ def serve(
     n8n_key: bytes | None = None,
     n8n_previous_key: bytes | None = None,
     run_allowlist_path: Path | None = None,
+    registry_path: Path | None = None,
 ) -> ThreadingHTTPServer:
     guard_bind(host, port)
     if len(key) < MIN_KEY_BYTES:
@@ -325,7 +337,7 @@ def serve(
     run_allow = load_run_allowlist(run_allowlist_path)
     httpd = GatewayServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path,
                                                      lane_allowlist=allow, n8n_key=n8n_key, run_allowlist=run_allow,
-                                                     n8n_previous_key=n8n_previous_key))
+                                                     n8n_previous_key=n8n_previous_key, registry_path=registry_path))
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
     httpd.run_allowlist = run_allow  # type: ignore[attr-defined]
     return httpd

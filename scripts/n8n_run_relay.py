@@ -29,7 +29,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.lib.n8n_coordination_gateway import RUN_ID_RE, SCOPE_RUN, RELAY_CALLER, sign_claim
+from scripts.lib.n8n_agent_reads import classify_read
+from scripts.lib.n8n_coordination_gateway import (
+    RELAY_CALLER,
+    RUN_ID_RE,
+    SCOPE_READ,
+    SCOPE_RUN,
+    canonical,
+    sign_claim,
+)
 from scripts.lib.n8n_coordination_projection import ledger_path, project_runs
 from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
 
@@ -64,6 +72,9 @@ REFUSALS = frozenset(
         "relay_gateway_http_error",
         "relay_missing_secret",
         "relay_bad_bind",
+        "read_method_refused",
+        "read_bad_n",
+        "relay_forbidden_route",
     }
 )
 
@@ -190,6 +201,7 @@ class Relay:
         environ: dict[str, str] | None = None,
         allowlist: frozenset[str] | None = None,
         transport: Callable[[str, dict[str, Any]], tuple[int, dict[str, Any]]] | None = None,
+        read_transport: Callable[[str, dict[str, Any], str], tuple[int, dict[str, Any]]] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.environ = dict(environ or os.environ)
@@ -201,6 +213,7 @@ class Relay:
         self.gateway_url = self.environ.get("TRADEAI_N8N_GATEWAY_URL", DEFAULT_GATEWAY).rstrip("/")
         self.clock = clock
         self.transport = transport or self._transport
+        self.read_transport = read_transport or self._read_transport
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.counts = {"requested": 0, "refused": 0, "auth_failures": 0, "gateway_unreachable": 0}
         self.last: dict[str, Any] | None = None
@@ -337,6 +350,71 @@ class Relay:
         reply["gateway_http_status"] = gateway_status
         return status, reply
 
+    def _read_transport(self, url: str, claim: dict[str, Any], signature: str) -> tuple[int, dict[str, Any]]:
+        request = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                "X-TradeAI-Claim": canonical(claim).decode("ascii"),
+                "X-TradeAI-Signature": signature,
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return response.status, json.loads(response.read().decode())
+        except urllib.error.HTTPError as exc:
+            try:
+                payload = json.loads(exc.read().decode())
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {"state": "REFUSED", "reason": "relay_gateway_http_error"}
+            if not isinstance(payload, dict):
+                payload = {"state": "REFUSED", "reason": "relay_gateway_http_error"}
+            return exc.code, payload
+
+    def serve_read(
+        self,
+        authorization: str | None,
+        decision: str,
+        target: Any,
+        token: str | None,
+    ) -> tuple[int, dict[str, Any]]:
+        """Relay door for the three agent reads. /runs/<lane>/last stays local."""
+        if decision == "read_method_refused":
+            return self._refuse("read_method_refused", 405)
+        if decision == "read_bad_n":
+            return self._refuse("read_bad_n", 400)
+        if decision == "forbidden_route":
+            return self._refuse("relay_forbidden_route", 403, token=token)
+        if decision != "ok" or target is None:
+            return self._refuse("relay_bad_path", 404)
+        if target.kind == "last":
+            return self.last_run(authorization, target.lane_id)
+        return self._proxy_read(authorization, target)
+
+    def _proxy_read(self, authorization: str | None, target: Any) -> tuple[int, dict[str, Any]]:
+        if not self._auth(authorization):
+            self.counts["auth_failures"] += 1
+            return self._refuse("relay_bad_bearer", 401)
+        now = int(self.clock())
+        claim = {
+            "v": 1,
+            "caller_id": RELAY_CALLER,
+            "project": "trade-ai",
+            "iat": now,
+            "exp": now + 120,
+            "nonce": secrets.token_urlsafe(12),
+            "scope": SCOPE_READ,
+        }
+        path = f"/runs/{target.lane_id}/recent?n={target.n}" if target.kind == "recent" else f"/lanes/{target.lane_id}"
+        try:
+            status, reply = self.read_transport(self.gateway_url + path, claim, sign_claim(claim, self.key))
+        except (OSError, urllib.error.URLError, TimeoutError):
+            self.counts["gateway_unreachable"] += 1
+            return self._refuse("relay_gateway_unreachable", 502)
+        if not isinstance(reply, dict):
+            return self._refuse("relay_gateway_http_error", 502)
+        return status, reply
+
     def last_run(self, authorization: str | None, lane_id: str) -> tuple[int, dict[str, Any]]:
         """Read-only newest runs row for one lane. Never calls the gateway and never runs a command."""
         if not self._auth(authorization):
@@ -364,17 +442,23 @@ def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
             return
 
         def do_GET(self) -> None:  # noqa: N802
-            lane_id = parse_last_path(self.path)
             if self.path == "/status":
                 status, payload = relay.status(self.headers.get("Authorization"))
-            elif lane_id is not None:
-                status, payload = relay.last_run(self.headers.get("Authorization"), lane_id)
-            else:
+                _json_response(self, status, payload)
+                return
+            decision, target, token = classify_read(self.path, method="GET")
+            if decision == "not_read_surface":
                 _json_response(self, 404, {"state": "REFUSED", "reason": "relay_bad_path"})
                 return
+            status, payload = relay.serve_read(self.headers.get("Authorization"), decision, target, token)
             _json_response(self, status, payload)
 
         def do_POST(self) -> None:  # noqa: N802
+            decision, target, token = classify_read(self.path, method="POST")
+            if decision != "not_read_surface":
+                status, payload = relay.serve_read(self.headers.get("Authorization"), decision, target, token)
+                _json_response(self, status, payload)
+                return
             if self.path != "/run":
                 _json_response(self, 404, {"state": "REFUSED", "reason": "relay_bad_path"})
                 return
@@ -389,7 +473,12 @@ def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
             _json_response(self, status, payload)
 
         def do_PUT(self) -> None:  # noqa: N802
-            _json_response(self, 405, {"state": "REFUSED", "reason": "relay_bad_path"})
+            decision, target, token = classify_read(self.path, method=self.command)
+            if decision == "not_read_surface":
+                _json_response(self, 405, {"state": "REFUSED", "reason": "relay_bad_path"})
+                return
+            status, payload = relay.serve_read(self.headers.get("Authorization"), decision, target, token)
+            _json_response(self, status, payload)
 
         do_DELETE = do_PUT
         do_PATCH = do_PUT

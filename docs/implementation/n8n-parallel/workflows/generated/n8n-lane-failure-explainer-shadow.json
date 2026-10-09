@@ -1,0 +1,248 @@
+{
+  "active": false,
+  "connections": {
+    "Bridge Agent endpoint": {
+      "ai_languageModel": [
+        [
+          {
+            "index": 0,
+            "node": "Explain lane failure",
+            "type": "ai_languageModel"
+          }
+        ]
+      ]
+    },
+    "GET lane row": {
+      "ai_tool": [
+        [
+          {
+            "index": 0,
+            "node": "Explain lane failure",
+            "type": "ai_tool"
+          }
+        ]
+      ]
+    },
+    "GET runs last": {
+      "ai_tool": [
+        [
+          {
+            "index": 0,
+            "node": "Explain lane failure",
+            "type": "ai_tool"
+          }
+        ]
+      ]
+    },
+    "GET runs recent": {
+      "ai_tool": [
+        [
+          {
+            "index": 0,
+            "node": "Explain lane failure",
+            "type": "ai_tool"
+          }
+        ]
+      ]
+    },
+    "Manual shadow": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay constants",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Relay constants": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Explain lane failure",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "7f9f09c9a6800a71",
+  "meta": {
+    "activated": false,
+    "authority": "READ_ONLY_ADVISORY",
+    "generator": "scripts/n8n_lane_failure_explainer_workflow.py",
+    "imported": false,
+    "mode": "dry_run",
+    "model_endpoint_placeholder": "http://BRIDGE_AGENT_HOST:8766/v1/agent",
+    "process_id": "n8n_lane_failure_explainer",
+    "shadow": true,
+    "template_id": "n8n_lane_failure_explainer@v1"
+  },
+  "name": "n8n-lane-failure-explainer-shadow",
+  "nodes": [
+    {
+      "id": "914e730d-4fc4-5f14-8f23-537684883bd2",
+      "name": "Manual shadow",
+      "parameters": {},
+      "position": [
+        240,
+        300
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "id": "b02e5ff8-8c50-5237-9868-6e4b5c29cd3a",
+      "name": "Relay constants",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1c2e65b-de9e-5e08-b709-6f5a3ab381dd",
+              "name": "TRADEAI_N8N_RUN_URL",
+              "type": "string",
+              "value": "http://RELAY_HOST:18092"
+            },
+            {
+              "id": "7d89d052-7b93-5387-b7b2-f82da09d0f40",
+              "name": "lane_id",
+              "type": "string",
+              "value": "LANE_ID"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "position": [
+        480,
+        300
+      ],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "1cd11f43-c04d-5889-ace0-4066f963678f",
+      "name": "Explain lane failure",
+      "parameters": {
+        "options": {
+          "maxIterations": 4
+        },
+        "promptType": "define",
+        "text": "=n8n_lane_failure_explainer@v1 lane_id={{ $('Relay constants').item.json.lane_id }}"
+      },
+      "position": [
+        760,
+        300
+      ],
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1
+    },
+    {
+      "id": "89221e44-1ac8-5609-b4a3-94131bf0bb9c",
+      "name": "Bridge Agent endpoint",
+      "notes": "Placeholder for the governed bridge Agent endpoint. No provider credential.",
+      "parameters": {
+        "model": "bridge-agent-placeholder",
+        "options": {
+          "baseURL": "http://BRIDGE_AGENT_HOST:8766/v1/agent",
+          "maxTokens": 800,
+          "timeout": 30000
+        }
+      },
+      "position": [
+        760,
+        520
+      ],
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "d154085f-daf0-5436-bad2-6ad28427b12b",
+      "name": "GET runs last",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "timeout": 10000
+        },
+        "toolDescription": "Read the newest run receipt for this lane.",
+        "url": "={{ $('Relay constants').item.json.TRADEAI_N8N_RUN_URL }}/runs/{{ $('Relay constants').item.json.lane_id }}/last"
+      },
+      "position": [
+        980,
+        120
+      ],
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "39d5221b-057d-5521-ad7e-fc7d5ae08aae",
+      "name": "GET runs recent",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "timeout": 10000
+        },
+        "toolDescription": "Read up to 10 recent run receipts for this lane.",
+        "url": "={{ $('Relay constants').item.json.TRADEAI_N8N_RUN_URL }}/runs/{{ $('Relay constants').item.json.lane_id }}/recent?n=10"
+      },
+      "position": [
+        980,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "db017c5b-36ae-5dfb-b44a-ffaa31aa4d70",
+      "name": "GET lane row",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "timeout": 10000
+        },
+        "toolDescription": "Read the lane registry row: owner, cadence, output signal, and scheduler kind.",
+        "url": "={{ $('Relay constants').item.json.TRADEAI_N8N_RUN_URL }}/lanes/{{ $('Relay constants').item.json.lane_id }}"
+      },
+      "position": [
+        980,
+        480
+      ],
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": false,
+    "shadow": true,
+    "timezone": "America/New_York"
+  },
+  "shadow": true
+}
