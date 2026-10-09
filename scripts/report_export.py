@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-REPORT_OUT = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+REPORT_OUT = _portfolio_reports_root() / "analyst"
 
 
 def _resolve_chart_path(chart_path: str | Path | None) -> Path | None:
@@ -21,14 +25,13 @@ def _resolve_chart_path(chart_path: str | Path | None) -> Path | None:
         return p
     s = str(chart_path).lstrip("/")
     if s.startswith("data/"):
-        candidate = PROJECT_ROOT / s
+        candidate = _resolve_served_path(s, PROJECT_ROOT)
         if candidate.exists():
             return candidate
     name = p.name
     if name:
         for base in (
             REPORT_OUT / "charts",
-            PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst" / "charts",
         ):
             candidate = base / name
             if candidate.exists():
@@ -47,11 +50,7 @@ def _rl(text: Any, *, br: bool = False) -> str:
 
 
 def _rel_url(path: Path) -> str:
-    try:
-        rel = path.relative_to(PROJECT_ROOT)
-        return "/" + str(rel).replace("\\", "/")
-    except ValueError:
-        return str(path)
+    return _served_url(path, PROJECT_ROOT)
 
 
 _COVER_KPI_KEYS = (

@@ -27,9 +27,9 @@ source .venv/bin/activate
   else
     echo "[MONTHLY] YAML advisor skipped"
   fi
-  if [ -f data/portfolios/reports/portfolio_live.html ]; then
-    cp data/portfolios/reports/portfolio_live.html reports/portfolio_live.html
-  fi
+  # portfolio_orchestrator.py already copies the fresh dashboard to reports/portfolio_live.html.
+  # The cp that stood here read the release-local data/portfolios/reports, which no longer
+  # receives writes (lib/portfolio_reports_root.py), and would overwrite it with a stale copy.
   if [ "$REPORT_RC" != "0" ]; then
     echo "[MONTHLY] REPORT_FAILED rc=$REPORT_RC — launcher exits non-zero so the cadence pipeline records FAILED, not ok"
   fi

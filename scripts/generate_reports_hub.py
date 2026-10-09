@@ -8,10 +8,18 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import (
+        glob_reports, is_report_relpath, portfolio_reports_root, resolve_served_path, served_url)
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import (
+        glob_reports, is_report_relpath, portfolio_reports_root, resolve_served_path, served_url)
+
 # ── Reports Desk v1 (WS-A): the report-type registry ─────────────────────────
 # One entry per report family the system actually produces. Globs are relative to
-# project root; latest file per glob family wins. Types whose dirs are empty appear
-# as never-generated rows — honest, not hidden. EXTENDS this indexer (the prompt's
+# project root (data/portfolios/reports/* resolves to the persistent reports root);
+# latest file per glob family wins. Types whose dirs are empty appear as
+# never-generated rows — honest, not hidden. EXTENDS this indexer (the prompt's
 # rule: no parallel indexer).
 REPORT_TYPES = [
     {"key": "system_digest", "title": "Daily System Digest (what the system did today)", "cadence": "daily",
@@ -69,7 +77,7 @@ def build_report_catalog(project_root: str = ".") -> dict:
         newest_ts = None
         if t.get("registry"):
             try:
-                reg = json.loads((root / t["registry"]).read_text())
+                reg = json.loads(resolve_served_path(t["registry"], root).read_text())
                 reps = reg.get("reports") or []
                 gen_ts = sorted((r.get("generated_at") or "" for r in reps), reverse=True)
                 row["artifacts"] = {"registry": "/" + t["registry"]}
@@ -87,18 +95,19 @@ def build_report_catalog(project_root: str = ".") -> dict:
         else:
             hist: dict = {}
             for kind, pattern in (t.get("globs") or {}).items():
-                files = sorted(root.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+                files = sorted((glob_reports(pattern) if is_report_relpath(pattern)
+                           else root.glob(pattern)), key=lambda p: p.stat().st_mtime, reverse=True)
                 if not files:
                     continue
                 f = files[0]
                 mt = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
-                row["artifacts"][kind] = "/" + str(f.relative_to(root))
+                row["artifacts"][kind] = served_url(f, root)
                 if newest_ts is None or mt > newest_ts:
                     newest_ts = mt
                 for h in files[:8]:
                     hist.setdefault(h.stem, {"name": h.name, "mtime": datetime.fromtimestamp(
                         h.stat().st_mtime, tz=timezone.utc).isoformat(), "paths": {}})
-                    hist[h.stem]["paths"][kind] = "/" + str(h.relative_to(root))
+                    hist[h.stem]["paths"][kind] = served_url(h, root)
             row["history"] = sorted(hist.values(), key=lambda x: x["mtime"], reverse=True)[:8]
         if newest_ts is not None:
             row["last_generated_at"] = row["last_generated_at"] or newest_ts.isoformat()
@@ -119,7 +128,7 @@ def build_report_catalog(project_root: str = ".") -> dict:
 
 def generate_reports_hub(project_root: str = ".") -> Path:
     root = Path(project_root)
-    reports_dir = root / "data" / "portfolios" / "reports"
+    reports_dir = portfolio_reports_root()
     weekly_dir = reports_dir / "weekly"
     monthly_dir = reports_dir / "monthly"
     daily_dir = reports_dir  # daily DOCX are in reports/
@@ -164,7 +173,7 @@ def generate_reports_hub(project_root: str = ".") -> Path:
 
     # Gather daily DOCX briefs
     daily_briefs = []
-    for f in sorted((root / "data" / "portfolios" / "reports").glob("portfolio_brief_*.docx"), reverse=True)[:14]:
+    for f in sorted(reports_dir.glob("portfolio_brief_*.docx"), reverse=True)[:14]:
         daily_briefs.append({
             "name": f.stem.replace("portfolio_brief_", ""),
             "url": f"/data/portfolios/reports/{f.name}",

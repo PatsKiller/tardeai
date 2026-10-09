@@ -28,6 +28,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.system_rollup_payload import (  # noqa: E402
@@ -42,7 +46,7 @@ RECEIPTS_ENV = "TRADEAI_SYSTEM_ROLLUP_RECEIPTS"
 EXIT_OK = 0
 EXIT_STEP_FAILED = 1
 EXIT_PAYLOAD_REFUSED = 3
-REPORTS_DIR = ROOT / "data" / "portfolios" / "reports"
+REPORTS_DIR = _portfolio_reports_root()
 
 
 def _headlines(panels: dict) -> dict:

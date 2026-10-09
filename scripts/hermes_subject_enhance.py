@@ -16,6 +16,10 @@ import argparse, json, subprocess, sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 FRESH_HOURS = 12
 SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Healthcare": "XLV",
@@ -124,11 +128,11 @@ def gather_report(conn, limit):
     which became the `weekly/` directory and silently failed read_text(), zeroing the lane."""
     import glob, os
     patterns = [
-        str(PROJECT_ROOT / "data" / "portfolios" / "reports" / "*aegis_morning_brief*.md"),
+        str(_portfolio_reports_root() / "*aegis_morning_brief*.md"),
         str(PROJECT_ROOT / "data" / "reports" / "*daily*.md"),
         str(PROJECT_ROOT / "data" / "reports" / "*daily*.txt"),
-        str(PROJECT_ROOT / "data" / "portfolios" / "reports" / "*daily*.md"),
-        str(PROJECT_ROOT / "data" / "portfolios" / "reports" / "*.md"),
+        str(_portfolio_reports_root() / "*daily*.md"),
+        str(_portfolio_reports_root() / "*.md"),
     ]
     cands = []
     for pat in patterns:

@@ -55,10 +55,11 @@ save_state(portfolio, str(root))
 state_dir = root / 'data' / 'portfolios' / 'state'
 portfolio = reprice_portfolio(portfolio, state_dir)
 save_state(portfolio, str(root))
-# Source moves with the data; destination stays in PROJECT_ROOT so existing
+# Source is the persistent reports root; destination stays in PROJECT_ROOT so existing
 # consumers of $PROJECT_ROOT/reports keep working, and a promote cannot
 # overwrite it.
-src = root / 'data' / 'portfolios' / 'reports' / 'portfolio_live.html'
+from lib.portfolio_reports_root import portfolio_reports_root
+src = portfolio_reports_root() / 'portfolio_live.html'  # persistent-state, not the release dir
 dst = project_root / 'reports' / 'portfolio_live.html'
 if src.exists():
     dst.parent.mkdir(parents=True, exist_ok=True)

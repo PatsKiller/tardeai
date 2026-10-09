@@ -3947,6 +3947,13 @@ GATES = [
             "tests/test_n8n_platform_maturity_governance_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: PORTFOLIO_REPORTS_STATE_ROOT — 2026-10-09 n8n maturity: report writers/readers resolve
+        # data/portfolios/reports via lib.portfolio_reports_root (persistent-state), not the release dir;
+        # one-shot copy-only migration (dry-run default, never moves/deletes/overwrites). Hermetic: tmp roots.
+        "portfolio_reports_state_root_20261009",
+        ["tests/test_portfolio_reports_state_root_20261009.py"],
+    ),
 ]
 
 

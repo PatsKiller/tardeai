@@ -20,9 +20,9 @@ fi
 {
   echo "[DAILY] Starting Portfolio Intelligence daily run..."
   python scripts/portfolio_orchestrator.py --project-root . --run-label morning --run-type daily
-  if [ -f data/portfolios/reports/portfolio_live.html ]; then
-    cp data/portfolios/reports/portfolio_live.html reports/portfolio_live.html
-  fi
+  # portfolio_orchestrator.py already copies the fresh dashboard to reports/portfolio_live.html.
+  # The cp that stood here read the release-local data/portfolios/reports, which no longer
+  # receives writes (lib/portfolio_reports_root.py), and would overwrite it with a stale copy.
   # Backfill per-account period returns after pipeline
   echo "[DAILY] Updating per-account period returns..."
   python backfill_acct_periods_v3.py || echo "[DAILY] backfill skipped (non-fatal)"

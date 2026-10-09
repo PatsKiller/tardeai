@@ -16,9 +16,13 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
 TEMPLATES = PROJECT_ROOT / "templates"
 ASSETS = PROJECT_ROOT / "assets"
-REPORT_OUT = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+REPORT_OUT = _portfolio_reports_root() / "analyst"
 
 # Sections that earn a compact KPI table beneath their prose (prose-first; no blanket dumps).
 _KPI_TABLE_SECTIONS = {
@@ -77,10 +81,7 @@ def _fmt(key: str, val: Any) -> str:
 
 
 def _rel_url_safe(path: Path) -> str:
-    try:
-        return "/" + str(Path(path).resolve().relative_to(PROJECT_ROOT)).replace("\\", "/")
-    except ValueError:
-        return str(path)
+    return _served_url(path, PROJECT_ROOT)
 
 
 def _resolve_png(chart_path: str | None) -> Path | None:
@@ -90,7 +91,7 @@ def _resolve_png(chart_path: str | None) -> Path | None:
     if p.exists():
         return p
     s = str(chart_path).lstrip("/")
-    cand = PROJECT_ROOT / s
+    cand = _resolve_served_path(s, PROJECT_ROOT)
     if cand.exists():
         return cand
     for base in (REPORT_OUT / "charts",):

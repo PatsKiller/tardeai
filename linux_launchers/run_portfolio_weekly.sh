@@ -15,9 +15,9 @@ source .venv/bin/activate
 {
   echo "[WEEKLY] Starting full portfolio weekly run..."
   python scripts/portfolio_orchestrator.py --project-root . --run-label weekly --run-type daily
-  if [ -f data/portfolios/reports/portfolio_live.html ]; then
-    cp data/portfolios/reports/portfolio_live.html reports/portfolio_live.html
-  fi
+  # portfolio_orchestrator.py already copies the fresh dashboard to reports/portfolio_live.html.
+  # The cp that stood here read the release-local data/portfolios/reports, which no longer
+  # receives writes (lib/portfolio_reports_root.py), and would overwrite it with a stale copy.
   echo "[WEEKLY] Updating per-account period returns..."
   python backfill_acct_periods_v3.py || echo "[WEEKLY] backfill skipped (non-fatal)"
   echo "[WEEKLY] Generating weekly narrative report (OAuth LLM + grounded action validation)..."
