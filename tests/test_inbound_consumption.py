@@ -197,13 +197,6 @@ _NORMALIZER_REL = "scripts/lib/inbound_event_normalizer.py"
 def _git_show(commit: str, rel: str) -> str:
     import subprocess
 
-    # The PR run of cio-hardening checks out shallow (2026-10-09); the push/main run, which
-    # promote requires, has full history and always reaches the assertions below.
-    if (
-        subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], cwd=str(ROOT), capture_output=True).returncode
-        != 0
-    ):
-        pytest.skip(f"shallow clone: {commit[:9]} is not in this checkout's history")
     return subprocess.check_output(
         ["git", "show", f"{commit}:{rel}"],
         cwd=str(ROOT),

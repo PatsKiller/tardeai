@@ -48,25 +48,13 @@ jobs:
       ENABLE_TELEGRAM: "0"
       ALPACA_MODE: paper
     steps:
-      # PR: shallow (the merge commit and its two parents) plus the base branch below --
-      # the selector and the line-ending guard need only the merge-base. ~13 s -> ~5 s.
-      # push/dispatch: full history (registered tests read old commits by SHA).
+      # Full history stays (2026-10-09): a shallow PR checkout (depth 2 + base fetch) was
+      # measured and REJECTED -- release_manifest, a smoke gate on every PR, pins historical
+      # commits (e.g. 7986e923) and fails 3 tests without them; skipping those on PRs would
+      # weaken a smoke gate to save ~8 s. The pip cache below keeps the setup saving.
       - uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
-
-      - name: Fetch PR base for the selector merge-base
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags --depth=200 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          if ! git merge-base "origin/${BASE_REF}" HEAD >/dev/null; then
-            echo "merge-base not within the shallow window -- unshallowing"
-            git fetch --no-tags --unshallow origin
-          fi
-          echo "merge_base=$(git merge-base "origin/${BASE_REF}" HEAD)"
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5

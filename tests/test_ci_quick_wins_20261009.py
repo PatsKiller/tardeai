@@ -85,23 +85,15 @@ def test_q5_pdf_and_docx_smokes_run_nightly_not_in_the_required_job():
             assert s.get("continue-on-error") is True and s.get("if") == "${{ !cancelled() }}"
 
 
-def test_q6_shallow_pr_checkout_with_base_fetch_and_pip_cache():
+def test_q6_full_history_checkout_and_pip_cache():
     doc = _wf("cio-production-hardening-ci.yml")
     steps = _steps(doc, "cio-hardening")
     checkout = next(s for s in steps if str(s.get("uses", "")).startswith("actions/checkout"))
-    assert checkout["with"]["fetch-depth"] == "${{ github.event_name == 'pull_request' && 2 || 0 }}"
-    base = next(s for s in steps if s.get("name") == "Fetch PR base for the selector merge-base")
-    assert base["if"] == "github.event_name == 'pull_request'"
-    assert "--unshallow" in base["run"] and "git merge-base" in base["run"]
+    # Shallow was measured and rejected: release_manifest (a PR smoke gate) needs history.
+    assert checkout["with"]["fetch-depth"] == 0
     py = next(s for s in steps if s.get("name") == "Set up Python")
     assert py["with"]["cache"] == "pip"
-    names = [s.get("name", "") for s in steps]
-    assert names.index("Fetch PR base for the selector merge-base") < names.index(
-        "CIO hardening gates (unit + manifest)"
-    )
-    # the nightly isolation run keeps full history
-    full = next(s for s in _steps(doc, "cio-hardening-full") if str(s.get("uses", "")).startswith("actions/checkout"))
-    assert full["with"]["fetch-depth"] == 0
+    assert py["with"]["cache-dependency-path"] == ".github/workflows/cio-production-hardening-ci.yml"
 
 
 # ── Q11: secrets scan of the pushed range, in CI and pre-push ─────────────────────
