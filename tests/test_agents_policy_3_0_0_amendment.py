@@ -164,7 +164,7 @@ def test_section_17_names_agent_activation_and_bridge_token():
 
 def test_section_23_7_lists_what_3_0_0_replaced():
     s = _subsection("23.7")
-    assert "3.0.0 (PROPOSED" in s
+    assert "3.0.0 (PROPOSED" in s or "3.0.0 (ACTIVE " in s
     for frag in ("§23.3 first bullet", "§23.4", "§23.5", "§17 gains", "ADR_COORDINATION_SECRETS"):
         assert frag in s, frag
 
