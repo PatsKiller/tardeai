@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from scripts import health_tick as ht
+from scripts.lib.monitor_exit_codes import EXIT_FINDING
 
 REPO = Path(__file__).resolve().parents[1]
 LIVE_TABLE = REPO / "config" / "health_tick_steps.json"
@@ -64,14 +65,15 @@ def _rows(receipt: dict) -> dict:
 
 
 PY = sys.executable
-CLEAN_FINDING = [PY, "-c", "import sys; print('critical component down', file=sys.stderr); sys.exit(1)"]
+CLEAN_FINDING = [PY, "-c", "import sys; print('critical component down', file=sys.stderr); sys.exit(3)"]
 CRASH = [PY, "-c", "import sys; sys.stderr.write('log line\\n'); raise RuntimeError('boom')"]
+FRC = [EXIT_FINDING]   # 3, scripts/lib/monitor_exit_codes.py
 
 
 # ── 1. finding vs broken ────────────────────────────────────────────────────
 
 def test_declared_finding_is_reported_but_keeps_the_tick_green(tmp_path):
-    table = _table(tmp_path, [_step("monitor", CLEAN_FINDING, tmp_path, finding_rc=[1]),
+    table = _table(tmp_path, [_step("monitor", CLEAN_FINDING, tmp_path, finding_rc=FRC),
                               _step("ok", ["true"], tmp_path)])
     rc, receipt = _run(tmp_path, table)
     assert rc == ht.EXIT_OK
@@ -84,7 +86,7 @@ def test_declared_finding_is_reported_but_keeps_the_tick_green(tmp_path):
 
 
 def test_uncaught_traceback_is_a_crash_even_with_a_finding_rc(tmp_path):
-    table = _table(tmp_path, [_step("monitor", CRASH, tmp_path, finding_rc=[1])])
+    table = _table(tmp_path, [_step("monitor", CRASH, tmp_path, finding_rc=FRC)])
     rc, receipt = _run(tmp_path, table)
     assert rc == ht.EXIT_TICK_BROKEN
     assert receipt["status"] == "broken" and receipt["broken"] == ["monitor"]
@@ -98,7 +100,7 @@ def test_undeclared_nonzero_rc_is_still_broken(tmp_path):
 
 
 def test_finding_and_breakage_together_exit_broken(tmp_path):
-    table = _table(tmp_path, [_step("monitor", CLEAN_FINDING, tmp_path, finding_rc=[1]),
+    table = _table(tmp_path, [_step("monitor", CLEAN_FINDING, tmp_path, finding_rc=FRC),
                               _step("bad", ["false"], tmp_path)])
     rc, receipt = _run(tmp_path, table)
     assert rc == ht.EXIT_TICK_BROKEN
@@ -114,17 +116,70 @@ def test_all_green_is_healthy(tmp_path):
     (b"Traceback (most recent call last):\n  File \"x\", line 1\nValueError: nope\n", True),
     (b"Traceback (most recent call last):\n  File \"x\"\nmod.CustomError: x\n\n", True),
     (b"WARNING handled:\nTraceback (most recent call last):\n  File \"x\"\nKeyError: 'k'\n"
-     b"2026-10-09 [agent] carried on after logging it\n", False),
+     b"2026-10-09 [agent] carried on after logging it\n", True),
+    (b"Traceback (most recent call last):\n  File \"x\"\npsycopg2.OperationalError: connection "
+     b"to server failed: Connection refused\n\tIs the server running on that host?\n", True),
+    (b"Traceback (most recent call last):\n  File \"x\"\nStopIteration\n", True),
     (b"plain failure line\n", False),
     (b"", False),
 ])
-def test_ends_in_traceback(stderr, expected):
-    assert ht.ends_in_traceback(stderr) is expected
+def test_has_traceback(stderr, expected):
+    assert ht.has_traceback(stderr) is expected
 
 
-def test_table_rejects_bad_finding_rc(tmp_path):
-    bad = _table(tmp_path, [_step("a", ["true"], tmp_path, finding_rc=[0])])
+@pytest.mark.parametrize("frc", [[0], [1], [1, 3]])
+def test_table_rejects_bad_finding_rc(tmp_path, frc):
+    """0 is success and 1 is Python's uncaught-exception exit: neither can mean "finding"."""
+    bad = _table(tmp_path, [_step("a", ["true"], tmp_path, finding_rc=frc)])
     assert ht.main(["--dry-run", "--table", str(bad)]) == ht.EXIT_CANNOT_RUN
+
+
+# Each of these crashed a finding_rc step in a way the old last-stderr-line parse
+# recorded as `finding` (review of PR #1600, 2026-10-09). With finding_rc [3] they
+# are all `crashed`, and the tick is broken.
+_OPERATIONAL = ("import sys\nclass OperationalError(Exception): pass\n"
+                "raise OperationalError('connection to server at \"127.0.0.1\", port 5432 failed: "
+                "Connection refused\\n\\tIs the server running on that host and accepting TCP/IP connections?')")
+_READ_TIMEOUT = "class ReadTimeout(OSError): pass\nraise ReadTimeout('read timed out')"
+_STOP = "raise StopIteration"
+_TB_THEN_MORE = ("import atexit, sys\natexit.register(lambda: sys.stderr.write('[cleanup] closing pool\\n'))\n"
+                 "raise KeyError('k')")
+_SYS_EXIT_STR = "import sys; sys.exit('fatal: DB_HOST not set')"
+_ZERO_WITH_TB = ("import sys, traceback\ntry:\n    1/0\nexcept Exception:\n    traceback.print_exc()\n"
+                 "sys.exit(0)")
+_FINDING_WITH_TB = ("import sys, traceback\ntry:\n    1/0\nexcept Exception:\n    traceback.print_exc()\n"
+                    "sys.exit(3)")
+
+
+@pytest.mark.parametrize("name,code", [
+    ("multiline_operational_error", _OPERATIONAL),
+    ("read_timeout", _READ_TIMEOUT),
+    ("stop_iteration", _STOP),
+    ("traceback_then_more_stderr", _TB_THEN_MORE),
+    ("sys_exit_string", _SYS_EXIT_STR),
+    ("rc0_with_traceback", _ZERO_WITH_TB),
+    ("finding_rc_with_traceback", _FINDING_WITH_TB),
+])
+def test_crash_shapes_on_a_finding_step_are_crashes(tmp_path, name, code):
+    table = _table(tmp_path, [_step("monitor", [PY, "-c", code], tmp_path, finding_rc=FRC)])
+    rc, receipt = _run(tmp_path, table)
+    row = _rows(receipt)["monitor"]
+    assert row["outcome"] == "crashed", (name, row)
+    assert rc == ht.EXIT_TICK_BROKEN and receipt["broken"] == ["monitor"], name
+
+
+def test_rc1_is_a_crash_even_without_any_stderr(tmp_path):
+    table = _table(tmp_path, [_step("monitor", [PY, "-c", "import sys; sys.exit(1)"], tmp_path,
+                                    finding_rc=FRC)])
+    rc, receipt = _run(tmp_path, table)
+    assert _rows(receipt)["monitor"]["outcome"] == "crashed" and rc == ht.EXIT_TICK_BROKEN
+
+
+def test_classify_never_reads_rc1_as_a_finding():
+    row = {"ran": True, "rc": 1}
+    assert ht.classify(row, [1, 3], crashed=False) == "crashed"
+    assert ht.classify({"ran": True, "rc": 3}, [3], crashed=False) == "finding"
+    assert ht.classify({"ran": True, "rc": 0}, [3], crashed=True) == "crashed"
 
 
 # ── 2. deadline clamp ───────────────────────────────────────────────────────
@@ -177,7 +232,7 @@ def test_live_table_declares_findings_deadline_and_once():
     table = ht.load_table(LIVE_TABLE)
     steps = {s["step_id"]: s for s in table["steps"]}
     for sid in ("system-health-agent", "moomoo-opend-health", "pipeline-liveness-report"):
-        assert steps[sid]["finding_rc"] == [1], sid
+        assert steps[sid]["finding_rc"] == [EXIT_FINDING], sid
     assert table["tick_budget_s"] <= table["tick_deadline_s"] < 330   # unit TimeoutStartSec
     plm = steps["portfolio-live-monitor"]
     assert "--once" in plm["command"] and plm["timeout_s"] < table["tick_budget_s"]

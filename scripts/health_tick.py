@@ -33,19 +33,27 @@ Exit codes (decided 2026-10-09, n8n maturity B3.1)
      receipt (`status: "unhealthy"`, `findings: [...]`, each row's `outcome:
      "finding"`) and by the monitors' own alerts — not by failing this unit.
   1  the tick itself is broken: a due step crashed (rc outside its declared
-     `finding_rc`, or rc in it but stderr ends in an uncaught Python traceback),
-     timed out, could not spawn, was deferred past the budget/deadline, or the
-     receipt could not be written (`status: "broken"`, `broken: [...]`).
+     `finding_rc`, or ANY rc -- 0 and finding codes included -- with a Python
+     `Traceback (most recent call last):` header anywhere in its stderr), timed
+     out, could not spawn, was deferred past the budget/deadline, or the receipt
+     could not be written (`status: "broken"`, `broken: [...]`).
   2  the tick cannot run at all (table unreadable, bad arguments).
   Why: under the first two days of the timer, `system_health_agent.py` exited 1
   every 5 minutes because it (correctly) saw a critical component down, and the
   unit was "failed" ~265 times — so `systemctl --failed` / health_agent's
   `systemd_unit_failed` finding could no longer tell a broken scheduler from a
   working monitor reporting a real problem. A step declares which of its exit
-  codes mean "I ran and found something" with `finding_rc` in the table
-  (system_health_agent's critical-down 1, opend_health's data-plane-down 1,
-  pipeline_liveness_report's --fail-on-finding 1). Python's uncaught-exception
-  exit is also 1, so a finding rc whose stderr ENDS in a traceback is a crash.
+  codes mean "I ran and found something" with `finding_rc` in the table.
+  `finding_rc` may NOT contain 1: CPython exits 1 for an uncaught exception and
+  for `sys.exit("fatal ...")`, and a crash cannot be told from a finding by
+  parsing stderr (a psycopg2 OperationalError ends in a second message line, a
+  bare `StopIteration` has no message, a traceback may be followed by more
+  output). So the three monitors that report findings by exit code use
+  EXIT_FINDING = 3 (scripts/lib/monitor_exit_codes.py): system_health_agent's
+  critical-down, opend_health's data-plane-down and pipeline_liveness_report
+  --fail-on-finding (STARVED / NO_ELIGIBLE_INPUT / UNKNOWN). rc 1 from any step
+  is a crash. A Python traceback header in stderr is a crash whatever the rc
+  (none of the absorbed scripts prints a handled traceback to stderr).
 
 A wedged step cannot block the next tick: its lock makes the next tick skip it
 (recorded, not hidden), its timeout kills it, and `tick_budget_s` bounds when
@@ -121,8 +129,9 @@ MIN_STEP_WINDOW_S = 5.0
 EXIT_SEMANTICS = ("0=tick completed (findings, if any, in `findings`/status=unhealthy); "
                   "1=tick broken (a step crashed, timed out, could not spawn or was deferred; "
                   "or the receipt failed); 2=cannot run")
-# The last non-empty stderr line of an uncaught Python exception: `SomeError: msg` / `SomeError`.
-_EXC_LINE_RE = re.compile(r"^[A-Za-z_][\w.]*(Error|Exception|Interrupt|Exit|Warning)\b")
+# CPython's status for an uncaught exception or sys.exit("<str>"): never a finding.
+PYTHON_CRASH_RC = 1
+TRACEBACK_HEADER = b"Traceback (most recent call last):"
 
 
 # ── table ───────────────────────────────────────────────────────────────────
@@ -151,6 +160,9 @@ def load_table(path: Path) -> dict[str, Any]:
         frc = s.get("finding_rc", [])
         if not isinstance(frc, list) or not all(isinstance(x, int) and x != 0 for x in frc):
             raise ValueError(f"{path}: {sid}: finding_rc must be a list of non-zero ints")
+        if PYTHON_CRASH_RC in frc:
+            raise ValueError(f"{path}: {sid}: finding_rc may not contain {PYTHON_CRASH_RC} "
+                             "(Python's uncaught-exception exit); use EXIT_FINDING=3")
     return data
 
 
@@ -241,19 +253,13 @@ def _first_stderr_line(stderr: bytes) -> Optional[str]:
     return None
 
 
-def ends_in_traceback(stderr: bytes) -> bool:
-    """True when stderr ends the way an uncaught Python exception ends: a
-    `Traceback (most recent call last):` header followed, as the last non-empty
-    line, by `SomeError: ...`. A traceback a script logged and then carried on
-    from is followed by more output and does not count."""
-    text = (stderr or b"")[-16384:].decode("utf-8", errors="replace")
-    if "Traceback (most recent call last):" not in text:
-        return False
-    lines = [ln for ln in text.splitlines() if ln.strip()]
-    if not lines:
-        return False
-    tail = text[text.rfind("Traceback (most recent call last):"):]
-    return bool(_EXC_LINE_RE.match(lines[-1].strip())) and lines[-1] in tail
+def has_traceback(stderr: bytes) -> bool:
+    """True when stderr carries a Python `Traceback (most recent call last):`
+    header anywhere. Deliberately not a parse of the LAST line: a multi-line
+    psycopg2 OperationalError, a message-less StopIteration, a traceback followed
+    by more output and a chained exception all end differently, and each of them
+    was being recorded as a finding (2026-10-09 review of PR #1600)."""
+    return TRACEBACK_HEADER in (stderr or b"")
 
 
 def classify(row: dict[str, Any], finding_rc: list[int], *, crashed: bool) -> str:
@@ -267,10 +273,12 @@ def classify(row: dict[str, Any], finding_rc: list[int], *, crashed: bool) -> st
         return "spawn_failed" if row.get("rc") == 127 else "not_run"
     if row.get("timeout"):
         return "timeout"
+    if crashed:
+        return "crashed"
     rc = row.get("rc")
     if rc == 0:
         return "ok"
-    if rc in set(finding_rc or []) and not crashed:
+    if rc in set(finding_rc or []) and rc != PYTHON_CRASH_RC:
         return "finding"
     return "crashed"
 
@@ -405,7 +413,7 @@ def run_step(step: dict[str, Any], *, py: str, project_root: Path, default_timeo
             finally:
                 os.close(lock_fd)
     row["stderr_first_line"] = _first_stderr_line(err)
-    row["outcome"] = classify(row, finding_rc, crashed=ends_in_traceback(err))
+    row["outcome"] = classify(row, finding_rc, crashed=has_traceback(err))
     if log_path is not None:
         try:
             log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -431,6 +439,8 @@ def step_ok(row: dict[str, Any]) -> bool:
         return True          # information, not failure: cron's flock -n was silent here
     if not row.get("ran"):
         return False         # deferred / spawn failed
+    if row.get("outcome") == "crashed":
+        return False         # rc 0 with a traceback in stderr is a crash too
     return (not row.get("timeout")) and row.get("rc") == 0
 
 

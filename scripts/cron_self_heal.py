@@ -165,6 +165,9 @@ def _registry_scheduler(match: str, registry_path: Path | None = None) -> tuple[
             return ("retired", f"{row.get('lane_id')} RETIRED")
         if kind and kind != "cron":
             return ("elsewhere", f"{row.get('lane_id')} scheduled by {kind}")
+        if state == "ACTIVE":
+            return None      # an ACTIVE cron row: crontab is truth; stop scanning (a later
+                             # RETIRED row sharing the match must not override it)
     return None
 
 

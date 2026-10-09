@@ -19,10 +19,16 @@ The unit's exit code reports the health of the **tick**, not of the system the m
 | 1 | the tick is broken: a due step crashed, timed out, could not spawn, was deferred, or the receipt failed | `status: broken`; `broken: [step…]` |
 | 2 | cannot run (table unreadable, bad arguments) | none |
 
-A step declares which exit codes mean "I ran and found something" with `finding_rc` (today `[1]` for
-system-health-agent, moomoo-opend-health and pipeline-liveness-report). A finding rc whose stderr ENDS in
-an uncaught Python traceback is a crash (Python's uncaught-exception exit is also 1). `ok`/`failed` keep
-their old meaning ("everything green") for back-compat; `tick_ok`/`broken`/`findings`/`status` are new.
+A step declares which exit codes mean "I ran and found something" with `finding_rc` (today `[3]` for
+system-health-agent, moomoo-opend-health and pipeline-liveness-report). `finding_rc` may not contain 1:
+CPython exits 1 for an uncaught exception and for `sys.exit("fatal ...")`, and a crash cannot be told from
+a finding by parsing the last stderr line (a psycopg2 `OperationalError` ends in a second message line, a
+bare `StopIteration` has no message, a traceback can be followed by more output). So those three monitors
+now exit `EXIT_FINDING = 3` (`scripts/lib/monitor_exit_codes.py`) for a finding, rc 1 from any step is a
+crash, and any `Traceback (most recent call last):` header in a step's stderr is a crash whatever its rc.
+No other caller depended on their rc 1 (crontab, systemd units, n8n and CI were grepped on 2026-10-09;
+under cron the exit went only to a log). `ok`/`failed` keep their old meaning ("everything green") for
+back-compat; `tick_ok`/`broken`/`findings`/`status` are new.
 
 Why: from 2026-10-07 to 10-09 the unit failed ~265 times. 225 of those were system_health_agent
 correctly reporting a critical component (Pipeline Watchdog) stale — and that component was stale
@@ -109,9 +115,10 @@ pipeline-freshness-monitor 42; pipeline-freshness-slo 30; system-health-alerts 1
    the watcher of the tick; `cleanup_stale_locks.sh`, `process_reaper.py` stay outside it.
 3. **`:27 → :25`** for symbol-news-curation-monitor (hourly, bounded LLM calls; the 2 minutes do not
    change its SLA window).
-4. **`pipeline_liveness_report.py --fail-on-finding`** exits 1 on a STARVED lane by design. Under cron that
-   exit went to a log. Since 2026-10-09 the step declares `finding_rc: [1]`, so the finding lands in the
-   receipt (`findings`, `status: unhealthy`) and the unit stays green; a crash still fails it.
+4. **`pipeline_liveness_report.py --fail-on-finding`** exits nonzero on any finding by design: STARVED,
+   NO_ELIGIBLE_INPUT and also UNKNOWN (a lane source it could not read). Under cron that exit went to a
+   log. Since 2026-10-09 it exits 3 and the step declares `finding_rc: [3]`, so the finding lands in the
+   receipt (`findings`, `status: unhealthy`) and the unit stays green; a crash (rc 1) still fails it.
 5. **Lock skip is not a failure.** `flock -n` under cron exited 1 silently; the tick records
    `lock_skipped: true` and keeps `ok`. Three consecutive lock skips on one step mean a wedge that the
    step's own timeout did not catch (another process holds the lock) — visible in `health_tick_history.jsonl`.

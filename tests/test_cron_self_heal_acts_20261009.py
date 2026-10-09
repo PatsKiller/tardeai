@@ -132,6 +132,17 @@ def test_superseded_and_retired_rows(tmp_path):
     assert csh._registry_scheduler("unknown.py", reg) is None
 
 
+def test_an_active_cron_row_stops_the_scan(tmp_path):
+    """Per the docstring an ACTIVE cron row means "crontab is truth": a later RETIRED
+    row that shares the match (an old lane id for the same script) must not win."""
+    reg = tmp_path / "r.json"
+    reg.write_text(json.dumps({"lanes": [
+        {"lane_id": "now", "state": "ACTIVE", "scheduler": {"kind": "cron", "match": "same.py"}},
+        {"lane_id": "old", "state": "RETIRED", "scheduler": {"kind": "cron", "match": "same.py"}},
+    ]}))
+    assert csh._registry_scheduler("same.py", reg) is None
+
+
 def test_python_falls_back_to_a_real_interpreter(monkeypatch, tmp_path):
     monkeypatch.setattr(csh, "PROJECT_ROOT", tmp_path)
     monkeypatch.delenv("TRADEAI_PY", raising=False)

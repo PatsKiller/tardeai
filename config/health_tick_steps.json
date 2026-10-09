@@ -12,8 +12,8 @@
   "steps": [
     {
       "step_id": "system-health-agent",
-      "finding_rc": [1],
-      "finding_note": "2026-10-09: exits 1 when a critical monitored component is not OK (a finding, escalated by the agent itself); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green unless stderr ends in a traceback",
+      "finding_rc": [3],
+      "finding_note": "2026-10-09: exits 3 (EXIT_FINDING, scripts/lib/monitor_exit_codes.py) when a critical monitored component is not OK (a finding, escalated by the agent itself); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green. rc 1 (Python's uncaught-exception / sys.exit(str) exit) or any traceback in stderr = crashed",
       "command": ["$PY", "scripts/system_health_agent.py", "--apply", "--verbose"],
       "cadence_minutes": 5,
       "minute_offset": 0,
@@ -28,8 +28,8 @@
     },
     {
       "step_id": "moomoo-opend-health",
-      "finding_rc": [1],
-      "finding_note": "2026-10-09: exits 1 when the OpenD quote round-trip fails (data plane down; the script alerts on its own streak); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green unless stderr ends in a traceback",
+      "finding_rc": [3],
+      "finding_note": "2026-10-09: exits 3 (EXIT_FINDING) when the OpenD quote round-trip fails (data plane down; the script alerts on its own streak); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green. rc 1 or any traceback in stderr = crashed",
       "command": ["$PY", "scripts/moomoo/opend_health.py", "--alert"],
       "cadence_minutes": 5,
       "minute_offset": 0,
@@ -170,8 +170,8 @@
     },
     {
       "step_id": "pipeline-liveness-report",
-      "finding_rc": [1],
-      "finding_note": "2026-10-09: --fail-on-finding exits 1 on a STARVED / NO_ELIGIBLE_INPUT lane by design; health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green unless stderr ends in a traceback",
+      "finding_rc": [3],
+      "finding_note": "2026-10-09: --fail-on-finding exits 3 (EXIT_FINDING) on a STARVED / NO_ELIGIBLE_INPUT / UNKNOWN lane by design (UNKNOWN = a source it could not read, also nonzero); health_tick records it as outcome=finding (receipt status=unhealthy) and keeps the tick green. rc 1 or any traceback in stderr = crashed",
       "command": ["$PY", "scripts/pipeline_liveness_report.py", "--fail-on-finding"],
       "cadence_minutes": 30,
       "minute_offset": 0,
@@ -182,7 +182,7 @@
       "needs_env": false,
       "market_day_gate": false,
       "log": "logs/pipeline_liveness.log",
-      "note": "crontab line 909: */30 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/pipeline_liveness_report.py --fail-on-finding >> logs/pipeline_liveness.log 2>&1 | lock added by health_tick (cron line had none); --fail-on-finding exits 1 on a STARVED lane BY DESIGN, so a finding reads as a failed step in the receipt"
+      "note": "crontab line 909: */30 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/pipeline_liveness_report.py --fail-on-finding >> logs/pipeline_liveness.log 2>&1 | lock added by health_tick (cron line had none); --fail-on-finding exits nonzero on a STARVED / NO_ELIGIBLE_INPUT / UNKNOWN lane BY DESIGN (3 since 2026-10-09; see finding_rc)"
     },
     {
       "step_id": "pipeline-freshness-monitor",
