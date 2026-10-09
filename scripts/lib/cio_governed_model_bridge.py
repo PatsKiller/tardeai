@@ -605,6 +605,23 @@ def _lane_policy_name(spec: dict[str, Any]) -> str:
     return name
 
 
+def _on_health_unknown(block: dict[str, Any], row: dict[str, Any]) -> str:
+    """route, refuse, or empty when the configured value is neither.
+
+    A missing field keeps today's route. A process row overrides the policy.
+    """
+    if "on_health_unknown" in row:
+        raw = row.get("on_health_unknown")
+    elif "on_health_unknown" in block:
+        raw = block.get("on_health_unknown")
+    else:
+        return "route"
+    text = str(raw or "").strip().lower()
+    if text in ("route", "refuse"):
+        return text
+    return ""
+
+
 def select_governed_lane(process_id: str, routing_policy: str | None = None) -> dict[str, Any]:
     """Pick a lane, or a typed refusal that must be returned before reservation and before any provider call."""
     policy_id = normalize_routing_policy_header(routing_policy)
@@ -632,9 +649,35 @@ def select_governed_lane(process_id: str, routing_policy: str | None = None) -> 
         chosen = "primary"
         reason = "health_gate_off"
     elif primary is not None and lanes.get(str(primary.get("provider") or "")) != "unhealthy":
-        chosen = "primary"
         primary_status = lanes.get(str(primary.get("provider") or ""))
-        reason = "primary_healthy" if primary_status == "healthy" else "health_unknown_routed"
+        if primary_status == "healthy":
+            chosen = "primary"
+            reason = "primary_healthy"
+        else:
+            choice = _on_health_unknown(block, row)
+            if choice == "refuse":
+                decision = _routing_decision(policy_id, None, "health_unknown_refused", snapshot)
+                return {
+                    "refused": "health_unknown",
+                    "refused_status": 503,
+                    "refused_message": (
+                        f"Provider health for process {process_id} is not measured "
+                        "and policy on_health_unknown is refuse"
+                    ),
+                    "routing_decision": decision,
+                }
+            if choice != "route":
+                decision = _routing_decision(policy_id, None, "unknown_health_policy", snapshot)
+                return {
+                    "refused": "unknown_health_policy",
+                    "refused_status": 400,
+                    "refused_message": (
+                        f"Routing policy {policy_id!r} on_health_unknown must be route or refuse"
+                    ),
+                    "routing_decision": decision,
+                }
+            chosen = "primary"
+            reason = "health_unknown_routed"
     else:
         for lane_name in ("secondary", "fallback"):
             spec = row.get(lane_name)

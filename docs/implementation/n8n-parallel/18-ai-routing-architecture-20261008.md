@@ -25,16 +25,20 @@ The policy has one row for every id in `config/llm_process_registry.json` `proce
 | `scripts/check_llm_provider_health.py` | `data/runtime/llm_provider_health.json` | the routing decision |
 | balance snapshot | `data/runtime/deepseek_balance_history.jsonl` | a live balance HTTP call from the bridge |
 
-The bridge reads those two receipts from disk. It does not call the health script, the balance URL, or a provider to decide health. A missing or unreadable receipt is `unknown`, not healthy and not a refusal by itself.
+The bridge reads those two receipts from disk. It does not call the health script, the balance URL, or a provider to decide health. A missing or unreadable receipt is `unknown`. It is not healthy. The policy field `on_health_unknown` chooses whether that unknown state routes or refuses.
 
 ## Routing framework
 
 `select_governed_lane` walks the row:
 
 1. `health_gate` false: choose `primary` (`reason = health_gate_off`).
-2. Primary exists and its provider is not `unhealthy`: choose `primary`. `primary_healthy` when the receipt says healthy, `health_unknown_routed` when the receipt is missing or does not indict the provider. The lane still routes. The reason records that the choice was not a measured healthy receipt.
-3. Otherwise secondary, then fallback, only when that lane's provider is explicitly `healthy` (`failover_secondary`, `failover_fallback`).
-4. Otherwise refuse `lane_unhealthy` (HTTP 503) before the cost cap, the reservation, and `provider.generate`.
+2. Primary exists and its provider is `healthy`: choose `primary` (`reason = primary_healthy`).
+3. Primary exists and its provider is not `unhealthy` and not `healthy` (the receipt is missing or does not indict the provider). The policy field `on_health_unknown` chooses, and a process row's `on_health_unknown` overrides the policy:
+   - `route` (the shipped default): choose `primary` (`reason = health_unknown_routed`). The lane routes. The reason records that the choice was not a measured healthy receipt.
+   - `refuse`: return `health_unknown` (HTTP 503, `reason = health_unknown_refused`) before the cost cap, the reservation, and `provider.generate`.
+   - any other value: return `unknown_health_policy` (HTTP 400) before a provider call.
+4. Otherwise secondary, then fallback, only when that lane's provider is explicitly `healthy` (`failover_secondary`, `failover_fallback`).
+5. Otherwise refuse `lane_unhealthy` (HTTP 503) before the cost cap, the reservation, and `provider.generate`.
 
 A provider is `unhealthy` when the health file is present and an unrecovered finding names that provider (lane string contains the provider name) with severity `CRITICAL` or kind `BILLING` or `AUTH`, or, for DeepSeek, the last balance row has `is_available` false or `total_balance` <= 0. Explicit `healthy` requires the health file to be present, `worst_severity` in `OK` / `WARN` / `CRITICAL`, and no such indictment.
 
@@ -64,7 +68,7 @@ Model-job JSON is checked against `config/schemas/n8n_model_job_outputs.json` (`
 
 `primary` → `secondary` → `fallback` → `lane_unhealthy`.
 
-Failover moves only to a lane whose provider is explicitly healthy. Unknown health stays on the primary. It is not a failover and it is not a refusal. Every gated lane unhealthy, or no usable lane, is `lane_unhealthy` and the provider is not called.
+Failover moves only to a lane whose provider is explicitly healthy. Unknown health is not a failover. `on_health_unknown: route` keeps the primary and records `health_unknown_routed`. `on_health_unknown: refuse` stops with `health_unknown_refused` and does not call a provider. Every gated lane unhealthy, or no usable lane, is `lane_unhealthy` and the provider is not called.
 
 ## Cost and latency controls
 

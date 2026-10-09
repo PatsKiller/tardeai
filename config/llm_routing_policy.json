@@ -9,6 +9,7 @@
         "grok": 2,
         "chatgpt": 2
       },
+      "on_health_unknown": "route",
       "processes": {
         "advisory_desk_opinion": {
           "primary": {
