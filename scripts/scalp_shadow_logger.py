@@ -314,14 +314,28 @@ def scalp_projection_rows(sf: dict) -> list[tuple]:
     p = Path(os.path.expanduser(str(path)))
     try:
         d = _json.loads(p.read_text(encoding="utf-8"))
-        age_min = (_dt.now(_tz.utc) - _dt.fromisoformat(str(d["as_of"]))).total_seconds() / 60
-    except Exception:  # noqa: BLE001 — absent/unreadable projection adds nothing
-        return []
-    if age_min > float(sf.get("scalp_projection_max_age_min") or 15):
+        if not isinstance(d, dict) or d.get("schema") != "TradeAIScalpUniverse@v1":
+            return []
+        rows = d.get("rows")
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            return []
+        observed_at = _dt.fromisoformat(str(d["as_of"]))
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            return []
+        age_min = (_dt.now(_tz.utc) - observed_at).total_seconds() / 60
+        max_age = sf.get("scalp_projection_max_age_min", 15)
+        if max_age is None:
+            max_age = 15
+        if isinstance(max_age, bool):
+            return []
+        max_age = float(max_age)
+        if not math.isfinite(max_age) or max_age <= 0 or not 0 <= age_min <= max_age:
+            return []
+    except Exception:  # noqa: BLE001 — absent/unreadable/unproven projection adds nothing
         return []
     skip = set(sf.get("trade_ai_exclude_setup_classes") or [])
     return [(r["symbol"], r.get("float_m"), r.get("price"), "shared:trade_ai_scalp", False)
-            for r in d.get("rows") or [] if r.get("symbol") and r.get("setup_class") not in skip]
+            for r in rows if r.get("symbol") and r.get("setup_class") not in skip]
 
 
 def shared_feed_rows(cur, u: dict, have: set) -> list[tuple]:
