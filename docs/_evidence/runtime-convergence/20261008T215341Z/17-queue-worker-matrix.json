@@ -1,0 +1,1258 @@
+{
+  "as_of": "2026-10-08T22:58:21.899126+00:00",
+  "rows": [
+    {
+      "table": "public.action_queue",
+      "observed_states": [
+        {
+          "status": "approved",
+          "n": 3,
+          "oldest": "2026-04-21 17:21:02.352810-04:00",
+          "newest": "2026-07-18 14:56:01.082450-04:00"
+        },
+        {
+          "status": "rejected",
+          "n": 3,
+          "oldest": "2026-04-29 07:07:05.392184-04:00",
+          "newest": "2026-07-18 15:29:42.234687-04:00"
+        },
+        {
+          "status": "pending",
+          "n": 1,
+          "oldest": "2026-06-12 07:24:27.481920-04:00",
+          "newest": "2026-06-12 07:24:27.481920-04:00"
+        },
+        {
+          "status": "deferred",
+          "n": 1,
+          "oldest": "2026-05-01 07:11:49.381971-04:00",
+          "newest": "2026-05-01 07:11:49.381971-04:00"
+        },
+        {
+          "status": "resolved",
+          "n": 5,
+          "oldest": "2026-04-22 07:08:05.379921-04:00",
+          "newest": "2026-04-27 07:06:04.973840-04:00"
+        },
+        {
+          "status": "expired",
+          "n": 2,
+          "oldest": "2026-05-03 20:11:27.021749-04:00",
+          "newest": "2026-05-19 07:12:38.913986-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"action_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.aegis_improvement_proposals",
+      "observed_states": [
+        {
+          "status": "drafted",
+          "n": 3,
+          "oldest": "2026-04-23 19:28:06.759471-04:00",
+          "newest": "2026-04-23 19:38:33.180488-04:00"
+        },
+        {
+          "status": "john_approved",
+          "n": 1,
+          "oldest": "2026-04-23 15:03:01.054808-04:00",
+          "newest": "2026-04-23 15:03:01.054808-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"aegis_improvement_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.agent_event_queue",
+      "observed_states": [
+        {
+          "status": "processing",
+          "n": 4,
+          "oldest": "2026-09-16 09:47:27.488661-04:00",
+          "newest": "2026-10-06 12:00:03.672392-04:00"
+        },
+        {
+          "status": "done",
+          "n": 394,
+          "oldest": "2026-09-08 07:00:02.264286-04:00",
+          "newest": "2026-10-08 16:57:05.891108-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"agent_event_queue\" GROUP BY \"status\"",
+      "producer": "CIO producers",
+      "consumer": "CIO event/reactive workers",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "stale processing rows require exact producer/consumer attribution",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "SOURCE_ONLY",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.agent_weight_shadow_proposals",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"agent_weight_shadow_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.auto_proposal_runs",
+      "observed_states": [
+        {
+          "status": "RUNNING",
+          "n": 30,
+          "oldest": "2026-06-09 12:30:01.928820-04:00",
+          "newest": "2026-06-30 09:00:06.521736-04:00"
+        },
+        {
+          "status": "COMPLETED",
+          "n": 11173,
+          "oldest": "2026-05-06 18:20:07.296195-04:00",
+          "newest": "2026-10-08 17:36:40.662378-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"auto_proposal_runs\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.communication_outbox",
+      "observed_states": [
+        {
+          "status": "sent",
+          "n": 398,
+          "oldest": "2026-10-01 10:00:28.328433-04:00",
+          "newest": "2026-10-08 17:55:03.194994-04:00"
+        },
+        {
+          "status": "unknown",
+          "n": 109,
+          "oldest": "2026-10-04 19:00:01.198827-04:00",
+          "newest": "2026-10-08 18:23:15.468044-04:00"
+        },
+        {
+          "status": "recorded",
+          "n": 213,
+          "oldest": "2026-09-30 18:18:31.770699-04:00",
+          "newest": "2026-10-08 17:53:39.179764-04:00"
+        },
+        {
+          "status": "suppressed",
+          "n": 5730,
+          "oldest": "2026-10-01 09:35:04.882436-04:00",
+          "newest": "2026-10-08 18:57:27.993575-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"communication_outbox\" GROUP BY \"status\"",
+      "producer": "scripts/lib/comms",
+      "consumer": "host communication dispatcher",
+      "claim": "delivery claim contract not measured in this audit",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "UNKNOWN sends are not proven SENT; no live sends performed",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "SOURCE_ONLY",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.config_change_proposals",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"config_change_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.deep_overnight_llm_queue",
+      "observed_states": [
+        {
+          "status": "failed",
+          "n": 268,
+          "oldest": "2026-05-13 16:08:07.632699-04:00",
+          "newest": "2026-05-30 23:00:02.217127-04:00"
+        },
+        {
+          "status": "pending",
+          "n": 1928,
+          "oldest": "2026-05-12 22:32:00.504232-04:00",
+          "newest": "2026-05-31 23:00:01.507820-04:00"
+        },
+        {
+          "status": "done",
+          "n": 1588,
+          "oldest": "2026-05-12 20:53:39.970682-04:00",
+          "newest": "2026-05-23 23:00:02.046977-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"deep_overnight_llm_queue\" GROUP BY \"status\"",
+      "producer": "scripts/build_deep_overnight_llm_queue.py",
+      "consumer": "scripts/run_deep_overnight_llm_queue.py",
+      "claim": "SELECT pending then UPDATE by id; needs scheduler/lock exclusivity",
+      "reclaimer": "30m source running reaper",
+      "retry": "pending backlog retained; do not replay under this audit",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "SOURCE_ONLY",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.dof_enrichment_queue",
+      "observed_states": [
+        {
+          "status": "pending",
+          "n": 244
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n FROM \"public\".\"dof_enrichment_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.dof_jobs",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"dof_jobs\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.escalation_queue",
+      "observed_states": [
+        {
+          "status": "expired",
+          "n": 18,
+          "oldest": "2026-09-08 07:41:20.736738-04:00",
+          "newest": "2026-09-29 07:45:01.906692-04:00"
+        },
+        {
+          "status": "pending",
+          "n": 20,
+          "oldest": "2026-09-26 18:59:01.270546-04:00",
+          "newest": "2026-10-08 07:45:01.661869-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"escalation_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.hermes_v_proposal_context",
+      "observed_states": [
+        {
+          "status": "APPROVED_FOR_PAPER_TEST",
+          "n": 17,
+          "oldest": "2026-10-05 10:35:04.566687-04:00",
+          "newest": "2026-10-08 15:35:04.862127-04:00"
+        },
+        {
+          "status": "CANCELLED",
+          "n": 1,
+          "oldest": "2026-07-18 09:59:00.243692-04:00",
+          "newest": "2026-07-18 09:59:00.243692-04:00"
+        },
+        {
+          "status": "RISK_BLOCKED",
+          "n": 476,
+          "oldest": "2026-05-08 10:03:57.641655-04:00",
+          "newest": "2026-10-07 14:31:57.177870-04:00"
+        },
+        {
+          "status": "REJECTED",
+          "n": 2646,
+          "oldest": "2026-05-06 08:38:44.899395-04:00",
+          "newest": "2026-10-08 16:40:21.977333-04:00"
+        },
+        {
+          "status": "APPROVED",
+          "n": 117,
+          "oldest": "2026-06-30 10:35:07.704229-04:00",
+          "newest": "2026-10-05 09:35:05.113746-04:00"
+        },
+        {
+          "status": "PENDING",
+          "n": 4,
+          "oldest": "2026-10-08 17:50:02.255967-04:00",
+          "newest": "2026-10-08 17:50:02.327179-04:00"
+        },
+        {
+          "status": "EXPIRED",
+          "n": 8252,
+          "oldest": "2026-05-07 08:57:35.160147-04:00",
+          "newest": "2026-10-08 17:50:02.327179-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"hermes_v_proposal_context\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.high_llm_job_queue",
+      "observed_states": [
+        {
+          "status": "queued_for_review",
+          "n": 12,
+          "oldest": "2026-06-01 11:11:47.105480-04:00",
+          "newest": "2026-06-01 11:13:23.753495-04:00"
+        },
+        {
+          "status": "completed",
+          "n": 2,
+          "oldest": "2026-06-01 11:10:48.086890-04:00",
+          "newest": "2026-06-01 11:12:43.596162-04:00"
+        },
+        {
+          "status": "dry_run_candidate",
+          "n": 4,
+          "oldest": "2026-06-01 11:10:48.086890-04:00",
+          "newest": "2026-06-01 11:10:48.086890-04:00"
+        },
+        {
+          "status": "failed",
+          "n": 4,
+          "oldest": "2026-06-01 11:10:48.086890-04:00",
+          "newest": "2026-06-01 11:12:43.596162-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"high_llm_job_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.inference_ensemble_jobs",
+      "observed_states": [
+        {
+          "status": "done",
+          "n": 830,
+          "oldest": "2026-09-23 12:00:52.124302-04:00",
+          "newest": "2026-10-08 16:33:24.603306-04:00"
+        },
+        {
+          "status": "running",
+          "n": 2,
+          "oldest": "2026-10-01 16:06:59.317918-04:00",
+          "newest": "2026-10-01 16:06:59.317918-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"requested_at\") AS oldest,max(\"requested_at\") AS newest FROM \"public\".\"inference_ensemble_jobs\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.iris_taxonomy_proposals",
+      "observed_states": [
+        {
+          "status": "approved",
+          "n": 12,
+          "oldest": "2026-05-31 10:00:06.215387-04:00",
+          "newest": "2026-09-02 07:00:23.657208-04:00"
+        },
+        {
+          "status": "pending",
+          "n": 5843,
+          "oldest": "2026-05-01 12:44:41.203386-04:00",
+          "newest": "2026-10-08 07:30:52.016472-04:00"
+        },
+        {
+          "status": "expired",
+          "n": 9459,
+          "oldest": "2026-05-05 10:34:53.332933-04:00",
+          "newest": "2026-09-24 06:53:41.394539-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"iris_taxonomy_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.john_decision_queue",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"john_decision_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.journal_projection_outbox",
+      "observed_states": [],
+      "query": "SELECT \"state\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"journal_projection_outbox\" GROUP BY \"state\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.operator_review_queue",
+      "observed_states": [
+        {
+          "status": "open",
+          "n": 2,
+          "oldest": "2026-10-07 12:00:02.796025-04:00",
+          "newest": "2026-10-08 12:00:02.247831-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"operator_review_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.options_approval_queue",
+      "observed_states": [
+        {
+          "status": "approved",
+          "n": 1,
+          "oldest": "2026-07-20 10:52:21.472776-04:00",
+          "newest": "2026-07-20 10:52:21.472776-04:00"
+        },
+        {
+          "status": "ALPACA_PAPER_REJECTED",
+          "n": 1,
+          "oldest": "2026-07-05 13:54:20.270573-04:00",
+          "newest": "2026-07-05 13:54:20.270573-04:00"
+        },
+        {
+          "status": "rejected",
+          "n": 64,
+          "oldest": "2026-06-25 22:54:31.387210-04:00",
+          "newest": "2026-10-05 12:32:26.965796-04:00"
+        },
+        {
+          "status": "OUTCOME_RECORDED",
+          "n": 1,
+          "oldest": "2026-07-20 10:32:14.344055-04:00",
+          "newest": "2026-07-20 10:32:14.344055-04:00"
+        },
+        {
+          "status": "blocked",
+          "n": 2952,
+          "oldest": "2026-06-26 08:43:16.951717-04:00",
+          "newest": "2026-10-08 16:05:23.936914-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"options_approval_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.paper_order_modification_proposals",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"paper_order_modification_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.paper_protection_adjustment_proposals",
+      "observed_states": [
+        {
+          "status": "APPLIED",
+          "n": 183,
+          "oldest": "2026-07-14 14:00:18.554663-04:00",
+          "newest": "2026-10-07 15:30:06.102677-04:00"
+        },
+        {
+          "status": "PROPOSED",
+          "n": 457,
+          "oldest": "2026-10-08 16:30:06.532693-04:00",
+          "newest": "2026-10-08 16:30:06.532693-04:00"
+        },
+        {
+          "status": "SUPERSEDED",
+          "n": 139372,
+          "oldest": "2026-09-08 16:30:16.731995-04:00",
+          "newest": "2026-10-08 16:00:14.532366-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"paper_protection_adjustment_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.paper_time_exit_proposals",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"paper_time_exit_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.paper_trade_proposals",
+      "observed_states": [
+        {
+          "status": "APPROVED_FOR_PAPER_TEST",
+          "n": 17,
+          "oldest": "2026-10-05 10:35:04.566687-04:00",
+          "newest": "2026-10-08 15:35:04.862127-04:00"
+        },
+        {
+          "status": "CANCELLED",
+          "n": 1,
+          "oldest": "2026-07-18 09:59:00.243692-04:00",
+          "newest": "2026-07-18 09:59:00.243692-04:00"
+        },
+        {
+          "status": "RISK_BLOCKED",
+          "n": 476,
+          "oldest": "2026-05-08 10:03:57.641655-04:00",
+          "newest": "2026-10-07 14:31:57.177870-04:00"
+        },
+        {
+          "status": "REJECTED",
+          "n": 2646,
+          "oldest": "2026-05-06 08:38:44.899395-04:00",
+          "newest": "2026-10-08 16:40:21.977333-04:00"
+        },
+        {
+          "status": "APPROVED",
+          "n": 117,
+          "oldest": "2026-06-30 10:35:07.704229-04:00",
+          "newest": "2026-10-05 09:35:05.113746-04:00"
+        },
+        {
+          "status": "PENDING",
+          "n": 4,
+          "oldest": "2026-10-08 17:50:02.255967-04:00",
+          "newest": "2026-10-08 17:50:02.327179-04:00"
+        },
+        {
+          "status": "EXPIRED",
+          "n": 8252,
+          "oldest": "2026-05-07 08:57:35.160147-04:00",
+          "newest": "2026-10-08 17:50:02.327179-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"paper_trade_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.persistent_agent_wakes",
+      "observed_states": [
+        {
+          "status": "COMPLETE",
+          "n": 23,
+          "oldest": "2026-09-07 10:42:30.249181-04:00",
+          "newest": "2026-09-07 12:29:22.701266-04:00"
+        },
+        {
+          "status": "OPEN",
+          "n": 1,
+          "oldest": "2026-09-07 10:41:40.163699-04:00",
+          "newest": "2026-09-07 10:41:40.163699-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"persistent_agent_wakes\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.proposal_agent_reviews",
+      "observed_states": [
+        {
+          "status": "pending",
+          "n": 9829,
+          "oldest": "2026-05-07 10:32:19.028546-04:00",
+          "newest": "2026-10-08 18:00:26.833306-04:00"
+        },
+        {
+          "status": "reviewed",
+          "n": 5342,
+          "oldest": "2026-05-06 15:01:51.889679-04:00",
+          "newest": "2026-10-08 18:00:26.833306-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"proposal_agent_reviews\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.proposal_enrichment_events",
+      "observed_states": [
+        {
+          "status": "PARTIAL",
+          "n": 1545,
+          "oldest": "2026-05-08 13:09:22.132189-04:00",
+          "newest": "2026-10-08 17:00:23.688407-04:00"
+        },
+        {
+          "status": "ENRICHING",
+          "n": 448,
+          "oldest": "2026-05-08 13:09:15.877102-04:00",
+          "newest": "2026-10-08 16:50:24.398301-04:00"
+        },
+        {
+          "status": "BLOCKED",
+          "n": 1741,
+          "oldest": "2026-06-12 14:10:06.554780-04:00",
+          "newest": "2026-10-08 18:50:14.340079-04:00"
+        },
+        {
+          "status": "MISSING_DATA",
+          "n": 30575,
+          "oldest": "2026-05-08 13:05:38.166954-04:00",
+          "newest": "2026-10-08 18:50:10.770584-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"proposal_enrichment_events\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.proposal_setup_advisory",
+      "observed_states": [
+        {
+          "status": "REJECTED",
+          "n": 13
+        },
+        {
+          "status": "EXPIRED",
+          "n": 5
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n FROM \"public\".\"proposal_setup_advisory\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.ri_research_queue",
+      "observed_states": [
+        {
+          "status": "failed",
+          "n": 95,
+          "oldest": "2026-07-16 10:50:37.206387-04:00",
+          "newest": "2026-08-01 08:15:03.529157-04:00"
+        },
+        {
+          "status": "done",
+          "n": 324,
+          "oldest": "2026-08-01 08:15:02.424034-04:00",
+          "newest": "2026-10-07 22:12:12.256920-04:00"
+        },
+        {
+          "status": "running",
+          "n": 1,
+          "oldest": "2026-08-01 08:15:02.918432-04:00",
+          "newest": "2026-08-01 08:15:02.918432-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"requested_at\") AS oldest,max(\"requested_at\") AS newest FROM \"public\".\"ri_research_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.tuning_proposals",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"tuning_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.unified_trade_queue",
+      "observed_states": [
+        {
+          "status": "APPROVED_FOR_PAPER_TEST",
+          "n": 17,
+          "oldest": "2026-10-05 10:35:04.566687-04:00",
+          "newest": "2026-10-08 15:35:04.862127-04:00"
+        },
+        {
+          "status": "CANCELLED",
+          "n": 1,
+          "oldest": "2026-07-18 09:59:00.243692-04:00",
+          "newest": "2026-07-18 09:59:00.243692-04:00"
+        },
+        {
+          "status": "RISK_BLOCKED",
+          "n": 476,
+          "oldest": "2026-05-08 10:03:57.641655-04:00",
+          "newest": "2026-10-07 14:31:57.177870-04:00"
+        },
+        {
+          "status": "REJECTED",
+          "n": 2646,
+          "oldest": "2026-05-06 08:38:44.899395-04:00",
+          "newest": "2026-10-08 16:40:21.977333-04:00"
+        },
+        {
+          "status": "APPROVED",
+          "n": 117,
+          "oldest": "2026-06-30 10:35:07.704229-04:00",
+          "newest": "2026-10-05 09:35:05.113746-04:00"
+        },
+        {
+          "status": "PENDING",
+          "n": 4,
+          "oldest": "2026-10-08 17:50:02.255967-04:00",
+          "newest": "2026-10-08 17:50:02.327179-04:00"
+        },
+        {
+          "status": "EXPIRED",
+          "n": 8252,
+          "oldest": "2026-05-07 08:57:35.160147-04:00",
+          "newest": "2026-10-08 17:50:02.327179-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"unified_trade_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.watch_decision_refresh_jobs",
+      "observed_states": [
+        {
+          "status": "COMPLETE",
+          "n": 5421,
+          "oldest": "2026-09-08 07:00:08.427204-04:00",
+          "newest": "2026-10-05 11:00:10.287389-04:00"
+        },
+        {
+          "status": "RUNNING",
+          "n": 4,
+          "oldest": "2026-10-05 11:00:10.287389-04:00",
+          "newest": "2026-10-05 11:00:10.287389-04:00"
+        },
+        {
+          "status": "FAILED",
+          "n": 1289,
+          "oldest": "2026-09-09 15:45:07.156847-04:00",
+          "newest": "2026-10-05 10:15:06.510321-04:00"
+        },
+        {
+          "status": "QUEUED",
+          "n": 925,
+          "oldest": "2026-10-05 11:00:10.287389-04:00",
+          "newest": "2026-10-08 15:45:34.110657-04:00"
+        },
+        {
+          "status": "SKIPPED_LOCKED",
+          "n": 1052,
+          "oldest": "2026-09-08 07:15:07.040436-04:00",
+          "newest": "2026-10-07 11:00:21.012883-04:00"
+        },
+        {
+          "status": "SKIPPED_CURRENT",
+          "n": 5021,
+          "oldest": "2026-09-08 07:15:07.040436-04:00",
+          "newest": "2026-09-13 00:35:37.844012-04:00"
+        }
+      ],
+      "query": "SELECT \"state\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"watch_decision_refresh_jobs\" GROUP BY \"state\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.watchlist_agent_jobs",
+      "observed_states": [
+        {
+          "status": "superseded",
+          "n": 709,
+          "oldest": "2026-09-08 06:30:02.430832-04:00",
+          "newest": "2026-09-25 09:00:29.020864-04:00"
+        },
+        {
+          "status": "failed",
+          "n": 1580,
+          "oldest": "2026-09-08 04:00:17.685043-04:00",
+          "newest": "2026-10-08 18:00:26.833306-04:00"
+        },
+        {
+          "status": "completed",
+          "n": 4575,
+          "oldest": "2026-09-08 04:00:29.222280-04:00",
+          "newest": "2026-10-08 18:00:26.833306-04:00"
+        },
+        {
+          "status": "deferred",
+          "n": 144,
+          "oldest": "2026-09-08 06:30:35.912334-04:00",
+          "newest": "2026-09-14 16:51:14.596982-04:00"
+        },
+        {
+          "status": "expired",
+          "n": 61,
+          "oldest": "2026-09-08 10:00:04.834431-04:00",
+          "newest": "2026-10-08 16:30:07.498819-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"watchlist_agent_jobs\" GROUP BY \"status\"",
+      "producer": "scripts/lib/agent_job_queue.py",
+      "consumer": "scripts/process_watchlist_agent_jobs.py",
+      "claim": "SELECT queued then UPDATE processing; external family locking required; not atomic SKIP LOCKED",
+      "reclaimer": "20m source reaper; separate reset_stuck_agent_jobs.py 30m",
+      "retry": "bounded model governance; retry queue exists",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "SOURCE_ONLY",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.watchlist_proposals",
+      "observed_states": [
+        {
+          "status": "expired",
+          "n": 121,
+          "oldest": "2026-04-29 15:56:23.835352-04:00",
+          "newest": "2026-05-08 19:00:02.012528-04:00"
+        },
+        {
+          "status": "rejected",
+          "n": 5,
+          "oldest": "2026-05-01 19:00:01.474464-04:00",
+          "newest": "2026-05-01 19:00:01.474464-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"watchlist_proposals\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.watchlist_research_queue",
+      "observed_states": [],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"watchlist_research_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.youtube_backfill_queue",
+      "observed_states": [
+        {
+          "status": "pending",
+          "n": 17,
+          "oldest": "2026-05-29 08:09:08.746397-04:00",
+          "newest": "2026-10-07 17:38:00.759942-04:00"
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n,min(\"created_at\") AS oldest,max(\"created_at\") AS newest FROM \"public\".\"youtube_backfill_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "public.youtube_ingest_queue",
+      "observed_states": [
+        {
+          "status": "pending",
+          "n": 7
+        }
+      ],
+      "query": "SELECT \"status\" AS status,count(*) AS n FROM \"public\".\"youtube_ingest_queue\" GROUP BY \"status\"",
+      "producer": "NOT_MEASURED",
+      "consumer": "NOT_MEASURED",
+      "claim": "NOT_MEASURED",
+      "reclaimer": "NOT_MEASURED",
+      "retry": "NOT_MEASURED",
+      "dead_letter": null,
+      "parallelism": null,
+      "lock": null,
+      "scheduler": null,
+      "output_receipt": null,
+      "evidence_class": "OBSERVED_DB",
+      "contract_evidence_class": "NOT_MEASURED",
+      "growth_rate": "NOT_MEASURED: one census cannot establish inflow/outflow slope"
+    },
+    {
+      "table": "n8n runs SQLite",
+      "producer": "coordination gateway",
+      "consumer": "n8n_run_executor.py",
+      "observed_nonterminal": [],
+      "claim": "BEGIN IMMEDIATE; conditional REQUESTED -> RUNNING",
+      "reclaimer": "crash recovery contract requires observation; source tests cover durable claiming",
+      "output_receipt": "RunReceipt@v1",
+      "evidence_class": "OBSERVED_DB"
+    },
+    {
+      "table": "Hermes research JSONL",
+      "producer": "scripts/lib/hermes_research_queue.py",
+      "consumer": "scripts/hermes_coordinator.py",
+      "claim": "fingerprint dedupe source; current worker lease proof not measured",
+      "reclaimer": "NOT_MEASURED",
+      "evidence_class": "SOURCE_ONLY"
+    },
+    {
+      "table": "CIO handoff JSONL",
+      "producer": "scripts/lib/cio_agent_handoff_queue.py",
+      "consumer": "CIO worker",
+      "claim": "hash-chain/flock/claim token/lease source",
+      "retry": "1/5/15/60m source backoff",
+      "queue_length": null,
+      "evidence_class": "SOURCE_ONLY"
+    },
+    {
+      "table": "Hermes challenge JSONL",
+      "producer": "scripts/lib/cio_hermes_challenge_queue.py",
+      "consumer": "Hermes challenger",
+      "claim": "claim TTL with flock/fsync event log source; race across read/append requires separate concurrency review",
+      "queue_length": null,
+      "evidence_class": "SOURCE_ONLY"
+    },
+    {
+      "table": "approval queue",
+      "producer": "proposal lifecycle",
+      "consumer": "operator authority",
+      "claim": "never auto approve or drain",
+      "queue_length": null,
+      "evidence_class": "NOT_MEASURED"
+    },
+    {
+      "table": "CIO wake",
+      "producer": "persistent_agent_wake",
+      "consumer": "CIO event loop",
+      "claim": "live backlog/lease throughput not measured",
+      "queue_length": null,
+      "evidence_class": "NOT_MEASURED"
+    }
+  ],
+  "live_mutations_performed": false
+}

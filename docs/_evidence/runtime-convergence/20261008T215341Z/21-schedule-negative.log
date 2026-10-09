@@ -1,0 +1,20 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____ test_n8n_and_openclaw_schedule_objects_render_as_operator_expressions _____
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-110199/test_n8n_and_openclaw_schedule0')
+
+    def test_n8n_and_openclaw_schedule_objects_render_as_operator_expressions(tmp_path):
+        obs=observations('',[{'id':'wf-new','active':True,'schedules':[{'interval':[{'field':'cronExpression','expression':'*/5 * * * *'}]}]}])
+        obs['openclaw']={'measured':True,'jobs':[{'id':'job-new','enabled':True,'schedule':{'kind':'cron','expr':'0 9 * * 1-5','tz':'America/New_York'}}]}
+        rows=project(tmp_path,[],obs)['rows']
+>       assert next(r for r in rows if r['scheduler_type']=='n8n')['schedule']=='*/5 * * * *'
+E       assert "[{'interval'... * * * *'}]}]" == '*/5 * * * *'
+E
+E         - */5 * * * *
+E         + [{'interval': [{'field': 'cronExpression', 'expression': '*/5 * * * *'}]}]
+
+tests/test_scheduler_operations.py:542: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_scheduler_operations.py::test_n8n_and_openclaw_schedule_objects_render_as_operator_expressions
+1 failed in 0.35s
