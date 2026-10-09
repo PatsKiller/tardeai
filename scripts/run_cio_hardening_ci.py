@@ -3639,6 +3639,16 @@ GATES = [
             "tests/test_bridge_executor_hardening_20261009.py",
         ],
     ),
+    (
+        # ANCHOR: BACKUP_COVERAGE_GATE_20261009 — operator question 2026-10-09: every repo-declared asset
+        # (authority store, persistent tree, unit, secret name, migration table, fixed infra) resolves to a
+        # backup class in config/backup_coverage_manifest.json; a new unmapped asset or a new gap fails,
+        # baselined gaps are reported (ratchet). Runs scripts/check_backup_coverage.py on the real repo.
+        "backup_coverage_gate_20261009",
+        [
+            "tests/test_backup_coverage_gate_20261009.py",
+        ],
+    ),
 ]
 
 
