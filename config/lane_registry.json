@@ -4367,7 +4367,7 @@
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-09",
-      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P18, audit C G9): scripts/check_n8n_workflow_drift.py compares every ACTIVE n8n workflow with its generated git copy (relay URL placeholder substituted) and writes data/runtime/n8n_workflow_drift_last.json with --write. Registry row first (§9.3): the allowlist entry exists (--dry-run / --write) but no workflow is generated or imported and nothing schedules it. Activation = generated workflow + operator import under a grant naming the workflow id, then shadow -> canary -> live, then this row flips to kind n8n ACTIVE.",
+      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P18, audit C G9): scripts/check_n8n_workflow_drift.py compares every ACTIVE n8n workflow with its generated git copy (relay URL placeholder substituted) and writes data/runtime/n8n_workflow_drift_last.json with --write. Registry row first (§9.3): the allowlist entry exists (--dry-run / --write); since 2026-10-09 the generated workflows n8n-workflow-drift-check-shadow / n8n-workflow-drift-check exist (tranche N7, proposed 20 6 * * *) but nothing is imported and nothing schedules it. Activation = generated workflow + operator import under a grant naming the workflow id, then shadow -> canary -> live, then this row flips to kind n8n ACTIVE.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_workflow_drift_last.json"
@@ -4401,6 +4401,78 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md; tests/test_trade_ai_scalp_5min_20261009.py; dry run 2026-10-09 (writes/sends stubbed): 104 scored, 13 rows, 0 alerts, 470 s cold / 204 s warm"
+    },
+    {
+      "lane_id": "storage-watch",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (operator 2026-10-09 \"add the lanes\"; AGENTS.md 3.0.0 §9.3/§23.2): scripts/storage_watch.py, proposed cadence daily 06:10 ET (10 6 * * *). Registry row first: allowlist entry (--dry-run / --write) and generated workflows storage-watch-shadow / storage-watch exist; nothing is imported, activated or installed. Shadow -> canary -> live under a grant naming the workflow id, then this row flips to kind n8n ACTIVE.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/storage_watch_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Read-only: df + inodes, niced du of a fixed heavy-root list (config/ops_lanes.json), trade_ai size + top relations (catalog SELECTs, read-only session), leftover M2 test DB count (docker exec catalog SELECT), Postgres log dir size, worktree count. WARN 80% / CRIT 90% (P1) from config. Findings in the receipt (fan-in shape, unwired); no send."
+    },
+    {
+      "lane_id": "backup-verify",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (operator 2026-10-09): scripts/backup_verify.py --write, proposed cadence daily 06:40 ET (40 6 * * *). The same script's no-flag form stays the platform-maintenance-monthly step (legacy report + alert); the lane modes never send. Allowlist entry reuses the monthly step's lock /tmp/backup_verify.lock so the two cannot overlap. Not imported/activated.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/backup_verify_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Verifies the latest trade_ai dump (age < 26 h, size within +/-30% of the 7-day median, readable end to end with table count >= floor), the latest n8n lab dump and the weekly Drive family stamps. Missing/failed dump = P1 finding. Dump dir is config-driven (~/db_backups), fixing the old <code root>/backups/db lookup."
+    },
+    {
+      "lane_id": "trade-ai-restore-drill",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 840.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (operator 2026-10-09): scripts/trade_ai_restore_drill.py, proposed cadence first Sunday 03:30 ET (n8n cron 30 3 * * 0 with --first-week-only, a no-op on later Sundays; 30 3 1-7 * 0 would OR day-of-month with day-of-week). Not imported/activated. Drill needs a CREATEDB role (operator decision; the trade_ai role has none, so --write refuses today).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/trade_ai_restore_drill_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Restores the latest dump into a THROWAWAY database restore_drill_<YYYYMMDD> (regex-guarded) behind a disk-floor guard (free > 2 x estimate x 1.15), compares top-20 table row counts with live estimates, then drops ONLY that database (name regex + created-by-this-run + run-id COMMENT marker). Never touches live data. Operator review point in the PR."
+    },
+    {
+      "lane_id": "n8n-activation-grants",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-09",
+      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P16, merged #1554): scripts/check_n8n_activation_grants.py --write writes the receipt. NOT in config/n8n_run_allowlist.json: its command, receipt and natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant', which the allowlist test refuses by design (blocked_reasons entry). Needs an operator decision (rename the entrypoint or an explicit exemption) before an allowlist entry or workflow; until then it runs by hand only.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/n8n_activation_grants_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
+      "note": "Read-only: SELECTs on the n8n DB + guard audit log; GRANTED / NAMED_IN_OTHER_TIER / NAME_ONLY_GRANT / UNGRANTED_ACTIVATION verdicts; fan-in-shaped findings, unwired; no send."
     }
   ],
   "undeclared_baseline": [
