@@ -15584,6 +15584,11 @@ def _compute_trade_ai():
             _current_run_tickers = [t for t in _dated_rows if t.get("scan_run_date") == _current_run_date]
         else:
             _current_run_tickers = _label_rows
+        # 2026-10-09 ("PARTIAL · run 55/40"): live cycles upsert into the same run_label, so the label held 55
+        # symbols against the full run's 41 and the two "scanned" contracts disagreed. The run is its FULL rows.
+        _full_rows = [t for t in _current_run_tickers if str(t.get("run_type") or "").lower() == "full"]
+        if _full_rows:
+            _current_run_tickers = _full_rows
     else:
         _current_run_tickers = tickers
     current_run_go = sum(1 for t in _current_run_tickers if t.get("decision") == "GO")
@@ -28709,6 +28714,23 @@ def _reports_catalog_route(query=None):
 _SYSTEM_ROLLUP_MEMO = {"ts": 0.0, "window": None, "data": None}
 
 
+def _system_rollup_trends() -> dict:
+    """Trends panel: compact per-day headline summaries ONLY (storage audit 2026-10-09 #5).
+
+    Selecting whole payloads here made every stored day nest the previous 14 days' payloads,
+    doubling nightly until the INSERT exceeded the 256 MB jsonb limit (silent since
+    2026-08-01). Only payload->'headlines' is read, and compact_trend_rows keeps scalars only.
+    """
+    from lib.system_rollup_payload import compact_trend_rows
+
+    rows = (
+        _db_query("""SELECT day, payload->'headlines' AS headlines FROM system_rollup_daily
+                        ORDER BY day DESC LIMIT 14""")
+        or []
+    )
+    return compact_trend_rows(rows)
+
+
 def _system_rollup(window: str = "24h") -> dict:
     """Reports v3 WS-B: the whole-system activity rollup — one dict, every panel corpus-tagged.
     Reuses existing aggregates (consumption overview, health snapshot, data-source health) and
@@ -28879,15 +28901,7 @@ def _system_rollup(window: str = "24h") -> dict:
 
     _panel("health", "health snapshot + data-source health + consumption (reused)", _health_strip)
 
-    def _trends():
-        rows = (
-            _db_query("""SELECT day, payload FROM system_rollup_daily
-                            ORDER BY day DESC LIMIT 14""")
-            or []
-        )
-        return {"days": len(rows), "rows": [{"day": str(r["day"]), "payload": _json_clean(r["payload"])} for r in rows]}
-
-    _panel("trends", "system_rollup_daily snapshots", _trends)
+    _panel("trends", "system_rollup_daily snapshots", _system_rollup_trends)
 
     try:
         from datetime import datetime as _dtn, timezone as _tzn
@@ -53464,6 +53478,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if len(parts) == 2 and parts[1].lower() == "reviews":
                 return 200, _wli.get_reviews(parts[0].upper())
             return 404, {"ok": False, "error": "not_found"}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # Investment Command Center (operator 2026-10-09): flag a symbol for a CIO review (symbol-thesis priority queue)
+    if (
+        method == "POST"
+        and base_path.startswith("/api/v3/opportunities/")
+        and base_path.rstrip("/").endswith("/review-request")
+    ):
+        try:
+            import api_v3_opportunities as _opp
+
+            sym = base_path[len("/api/v3/opportunities/") :].strip("/").split("/")[0]
+            return _opp.request_review(sym, body or {})
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 

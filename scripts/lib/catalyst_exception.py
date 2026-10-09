@@ -2,6 +2,10 @@
 
 For squeeze / high-RVOL / micro-float / momentum runners: catalyst is optional,
 grade capped at B, ceiling MANUAL_REVIEW (never auto-GO).
+
+Exception to the ceiling (operator 2026-10-09: "allow GO for 40+ with catalyst"): a runner that scores at or
+above the GO threshold AND has a verified catalyst is promoted to GO by promote_catalyst_go. Reverse-split
+squeezes, micro-float runners and unenriched injects keep the MANUAL_REVIEW ceiling.
 """
 from __future__ import annotations
 
@@ -93,7 +97,7 @@ def apply_catalyst_exception_fields(row: dict) -> dict:
         row["operator_pill"] = row.get("operator_pill") or f"RUNNER · {rvol_s}"
         row["operator_subtitle"] = (
             row.get("operator_subtitle")
-            or f"Momentum runner (catalyst optional) — manual review only"
+            or "Momentum runner (catalyst optional) — manual review only"
         )
         row["soft_flag_reason"] = row.get("soft_flag_reason") or (
             f"MOMENTUM_RUNNER: RVOL {rvol_s}, gap {gap:.0f}%, chg {chg:.0f}% — catalyst optional"
@@ -128,3 +132,43 @@ def attach_catalyst_exception_tags(tickers: list[dict]) -> int:
         apply_catalyst_exception_fields(row)
         n += 1
     return n
+
+
+# Never promoted, whatever the score (operator 2026-10-09 kept these ceilings): reverse-split squeezes and
+# micro-float runners. Unenriched injects have no RVOL/gap/float, so their score is not a measurement.
+_GO_CEILING_CLASSES = frozenset({"squeeze", "micro_float_runner", "unenriched_inject"})
+
+
+def qualifies_catalyst_go(row: dict, go_min: float) -> bool:
+    if not row or row.get("disqualified"):
+        return False
+    if (row.get("decision") or "").upper() != "MANUAL_REVIEW":
+        return False
+    if row.get("catalyst_verified") is not True:
+        return False
+    if _num(row, "score") < go_min:
+        return False
+    if (row.get("setup_class") or "") in _GO_CEILING_CLASSES:
+        return False
+    if row.get("reverse_split") or "REVERSE_SPLIT" in str(row.get("soft_flag_reason") or "").upper():
+        return False
+    return True
+
+
+def promote_catalyst_go(tickers: list[dict], go_min: float) -> int:
+    """Promote eligible MANUAL_REVIEW runners to GO (see module docstring). Returns the count promoted.
+    The scalp critic still reviews every GO afterwards and may BLOCK or DOWNGRADE it."""
+    n = 0
+    for row in tickers:
+        if not qualifies_catalyst_go(row, go_min):
+            continue
+        row["decision"] = "GO"
+        row["route_actionability"] = "GO"
+        row["manual_review_required"] = False
+        row["not_tradeable"] = False
+        row["catalyst_go_promoted"] = True
+        row["operator_subtitle"] = (f"Runner promoted to GO: score {_num(row, 'score'):.0f} ≥ {go_min:.0f} "
+                                    "with a verified catalyst")
+        n += 1
+    return n
+

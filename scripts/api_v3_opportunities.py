@@ -8,6 +8,11 @@ Detail: the curated assessment + a LIVE overlay (quote, price stats, levels, ana
 request time from the data broker (AGENTS §7A: price is the broker quote at read time) + daily candles + the CIO
 symbol thesis + the assessment's version history. A symbol not yet curated is assessed on demand (curated=false).
 Read-only, zero provider calls, zero LLM.
+
+POST /api/v3/opportunities/{SYMBOL}/review-request (operator 2026-10-09: "why no CIO review … no way to flag"): files a
+SymbolThesisPriorityRequest in the CIO's existing symbol-thesis priority queue (lib/symbol_thesis_priority — served first
+by the governed acquisition run, weekdays 17:17 ET). Advisory memory only: no order, no size, no broker. Adding to the
+watchlist uses the existing operator path POST /api/v2/watch/directives (kind=ticker).
 """
 from __future__ import annotations
 
@@ -22,6 +27,59 @@ def _db_query(sql, params=None, fetch="all"):
     from db_adapter import _execute
 
     return _execute(sql, params, fetch=fetch)
+
+
+REVIEW_SOURCE = "operator_opportunity_view"
+REVIEW_RUN = "weekdays 17:17 ET (governed symbol-thesis acquisition; open requests first)"
+
+
+def _priority():
+    try:
+        from scripts.lib import symbol_thesis_priority as stp
+    except ImportError:  # pragma: no cover
+        from lib import symbol_thesis_priority as stp  # type: ignore
+    return stp
+
+
+def review_state(sym: str) -> dict[str, Any]:
+    """Is a CIO review open for sym, and where is it in the queue (oldest request first)."""
+    try:
+        stp = _priority()
+        q = stp.open_requests_ranked()
+        reqs = [r for r in stp._rows(stp._root(None).joinpath(*stp.RELPATH)) if str(r.get("symbol") or "").upper() == sym]
+        last = max(reqs, key=lambda r: str(r.get("requested_at") or "")) if reqs else None
+        return {"open": sym in q, "queue_position": (q.index(sym) + 1) if sym in q else None, "queue_length": len(q),
+                "requested_at": (last or {}).get("requested_at"), "requested_by": (last or {}).get("source"),
+                "next_run": REVIEW_RUN}
+    except Exception as e:  # noqa: BLE001
+        return {"open": False, "error": type(e).__name__}
+
+
+def request_review(symbol: str, body: dict | None = None) -> tuple[int, dict[str, Any]]:
+    """POST …/review-request — queue a CIO symbol-thesis review; an already-open request is not duplicated."""
+    sym = (symbol or "").upper().strip()
+    if not sym or not sym.replace(".", "").isalnum() or len(sym) > 10:
+        return 400, {"ok": False, "error": "bad_symbol"}
+    state = review_state(sym)
+    if state.get("open"):
+        return 200, {"ok": True, "already_open": True, "symbol": sym, "review": state}
+    note = str((body or {}).get("note") or "").strip()[:240]
+    _priority().request(sym, reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
+                        source=REVIEW_SOURCE)
+    return 200, {"ok": True, "already_open": False, "symbol": sym, "review": review_state(sym),
+                 "authority": "READ_ONLY_ADVISORY"}
+
+
+def watch_state(sym: str) -> dict[str, Any]:
+    """On the watchlist? (watchlist_items, any status but removed) — drives the modal's Add-to-watchlist button."""
+    try:
+        r = _db_query("""SELECT status, in_directive_watch FROM watchlist_items
+                          WHERE upper(symbol) = %s AND status <> 'removed'
+                          ORDER BY (status = 'active') DESC LIMIT 1""", (sym,), fetch="one")
+        return {"on_watchlist": bool(r), "status": (r or {}).get("status"),
+                "directive": bool((r or {}).get("in_directive_watch"))}
+    except Exception as e:  # noqa: BLE001
+        return {"on_watchlist": None, "error": type(e).__name__}
 
 
 def _store():
@@ -192,6 +250,8 @@ def get_detail(symbol: str) -> dict[str, Any]:
         "thesis": _thesis(sym),
         "history": store.history(sym),
         "brief": (_thesis(sym) or {}).get("investment_brief"),
+        "cio_review": review_state(sym),
+        "watchlist": watch_state(sym),
         "provider_calls": 0,
         "authority": "READ_ONLY_ADVISORY",
     }

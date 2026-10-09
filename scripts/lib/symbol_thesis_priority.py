@@ -75,3 +75,26 @@ def open_requests(root: Any = None, *, now: Optional[datetime] = None, ttl_days:
         if sym in first and r.get("status") in DONE:
             done_at[sym] = max(done_at.get(sym, ""), str(r.get("as_of") or ""))
     return [s for s, at in sorted(first.items(), key=lambda kv: kv[1]) if done_at.get(s, "") < at]
+
+
+# Who asked, in serving order (operator 2026-10-09): a name the operator flags from the opportunity view first, then
+# the CIO's top-ranked opportunities with no thesis (cio_opportunity_curator), then every other source. Oldest first
+# within a source. Without this a new flag waited behind ~27 open requests at ~3 LLM syntheses per run.
+SOURCE_ORDER = ("operator_opportunity_view", "cio_opportunity_curator")
+
+
+def open_requests_ranked(root: Any = None, *, now: Optional[datetime] = None, ttl_days: float = TTL_DAYS) -> list[str]:
+    """open_requests(), reordered by SOURCE_ORDER (best source any open request for the symbol came from)."""
+    syms = open_requests(root, now=now, ttl_days=ttl_days)
+    if not syms:
+        return []
+    best: dict[str, int] = {}
+    for r in _rows(_root(root).joinpath(*RELPATH)):
+        sym = str(r.get("symbol") or "").upper()
+        if sym in syms:
+            src = str(r.get("source") or "")
+            rank = SOURCE_ORDER.index(src) if src in SOURCE_ORDER else len(SOURCE_ORDER)
+            best[sym] = min(best.get(sym, rank), rank)
+    pos = {s: i for i, s in enumerate(syms)}
+    return sorted(syms, key=lambda s: (best.get(s, len(SOURCE_ORDER)), pos[s]))
+

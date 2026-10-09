@@ -1049,6 +1049,12 @@ GATES = [
         "active_trader_momentum_alerts_20261004",
         ["tests/test_active_trader_momentum_alerts_20261004.py"],
     ),
+    # Active Trader ARMED quality + stand-down + Trade-AI verdict + recorder reconnect (operator 2026-10-09:
+    # 18 of 19 ARMED alerts never fired; ARMED printed last price as entry; dedupe keyed on price).
+    (
+        "active_trader_armed_quality_20261009",
+        ["tests/test_active_trader_armed_quality_20261009.py"],
+    ),
     # Active Trader alerts live: comms-editor exemption (missing-CIO hold only), Telegram path, feed API.
     (
         "active_trader_live_alerts_20261004",
@@ -1149,6 +1155,24 @@ GATES = [
     (
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
+    ),
+    # Symbol-thesis job repair (operator 2026-10-09 "fix the thesis job"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop
+    # backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies.
+    (
+        "thesis_job_fix_20261009",
+        ["tests/test_thesis_job_fix_20261009.py"],
+    ),
+    # Opportunity actions (operator 2026-10-09): Request CIO review (symbol-thesis priority queue; operator flags and the
+    # CIO's top-ranked names served first), Add to watchlist, CIO-memory fallback, quote-page news filter.
+    (
+        "opportunity_actions_20261009",
+        ["tests/test_opportunity_actions_20261009.py"],
+    ),
+    # Trade-AI scalp scan every 5 min + one feed for Trade-AI and Active Trader + runner GO with catalyst
+    # (operator 2026-10-09).
+    (
+        "trade_ai_scalp_5min_20261009",
+        ["tests/test_trade_ai_scalp_5min_20261009.py"],
     ),
     # Opportunity modal news (operator 2026-10-08: "nothing here on what company does or latest news, catalyst"):
     # profile description, typed catalysts, latest news without catalyst repeats, and the news-ingestion opportunity
@@ -2931,6 +2955,9 @@ GATES = [
             "tests/test_check_test_host_paths_20260925.py",
             "tests/test_cio_ci_profiles_20260925.py",
             "tests/test_ci_pr_selection_20260925.py",
+            # 2026-10-09 -- sharded full suite (plan complete/disjoint/balanced, ci-gate
+            # completeness) + tree-attested promote with a fake gh/git layer (flag off by default).
+            "tests/test_ci_shards_tree_attest_20261009.py",
         ],
     ),
     (
@@ -3546,6 +3573,20 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_AGENT_GATE_GOVERNANCE — 2026-10-09 AGENTS.md 3.0.0 §23.10 preconditions before any n8n
+        # Agent node: P16 activation attribution (n8n publish evidence vs guard grants naming the workflow id),
+        # P17 registry-first (active n8n workflows are a lane-registry discovery source; UNDECLARED_N8N_WORKFLOW
+        # fails --fail-on-new), P18 git-vs-live workflow drift, P20 n8n identity rows + gateway denylist parity
+        # with agent_runtime_mvl global_denied_tools. Hermetic: fixtures under tmp_path, fake psql runner.
+        "n8n_agent_gate_governance_20261009",
+        [
+            "tests/test_n8n_registry_first_20261009.py",
+            "tests/test_n8n_workflow_drift_20261009.py",
+            "tests/test_n8n_activation_grants_20261009.py",
+            "tests/test_n8n_agent_identity_parity_20261009.py",
+        ],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py"],
@@ -3643,6 +3684,30 @@ GATES = [
         "bridge_executor_hardening_20261009",
         [
             "tests/test_bridge_executor_hardening_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_AGENT_GATE_BRIDGE — AGENTS.md 3.0.0 §23.10 bridge preconditions (2026-10-09):
+        # P4 sanitise_for_external on every governed call (TRADEAI_EGRESS_SANITISER report default, enforce
+        # redacts); P5 per-process tool allowlist (typed 400 before reservation, tool_calls refused typed);
+        # P6 n8n_* output schema + behaviour scan; P21 cost_ceiling_usd / latency_budget_ms / advisory_only;
+        # n8n routing Grok -> ChatGPT -> DeepSeek with transport failover.
+        "n8n_agent_gate_bridge_20261009",
+        [
+            "tests/test_bridge_agent_preconditions_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: ROLLUP_RECURSION_AND_FUSED_EMBEDDINGS — storage audit 2026-10-09 (#1, #5) + operator decision:
+        # system_rollup_daily payload bounded (trends = compact headlines only, no stored trends panel, byte cap
+        # -> typed ROLLUP_PAYLOAD_TOO_LARGE, receipt, non-zero exit); rag_indexer fused_signal text carries real
+        # fields, empty signals skipped + counted; content_embeddings source_windows (30 d) enforced as verified
+        # ARCHIVE_THEN_DELETE batches; one-time junk fused_signal purge is dry-run by default.
+        "rollup_recursion_and_fused_embeddings_20261009",
+        [
+            "tests/test_system_rollup_bounded_20261009.py",
+            "tests/test_rag_fused_signal_text_20261009.py",
+            "tests/test_retention_source_windows_junk_20261009.py",
         ],
     ),
 ]
@@ -3986,6 +4051,266 @@ def write_duration_hints(*, jobs: int) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Sharded full suite (operator-approved 2026-10-09; .github/workflows/cio-full-suite-sharded.yml)
+#
+# `--shard I/N` runs shard I of N (or `serial/N`, `pg/N`) of EVERY registered file -- nothing
+# deferred -- and writes a CiShardManifest@v1 naming each file it ran, its unit results and
+# measured per-file seconds. `--verify-shards DIR --shards N` (the `ci-gate` job) recomputes the
+# registered list from GATES and fails unless the shards' reported files are exactly that list,
+# each once, all passed, on the same tree and plan. Planning: scripts/lib/ci_shards.py.
+# ---------------------------------------------------------------------------
+
+#: Per-file seconds measured by the sharded run (overlays DURATION_HINTS_PATH for balancing).
+SHARD_HINTS_PATH = REPO / "config" / "ci_shard_duration_hints.json"
+
+
+def shard_hints() -> dict[str, float]:
+    hints = load_duration_hints()
+    hints.update(load_duration_hints(SHARD_HINTS_PATH))
+    return hints
+
+
+def file_needs_db(path: str) -> bool:
+    from scripts.lib import ci_shards
+
+    try:
+        return ci_shards.source_needs_db((REPO / path).read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return False
+
+
+def shard_plan(n: int) -> dict:
+    sys.path.insert(0, str(REPO))
+    from scripts.lib import ci_shards
+
+    hints = shard_hints()
+    return ci_shards.plan_shards(
+        GATES,
+        n=n,
+        weight=lambda p: hints.get(p, DEFAULT_FILE_SECONDS),
+        needs_serial=file_needs_serial,
+        needs_db=file_needs_db,
+        exists=lambda p: (REPO / p).is_file(),
+    )
+
+
+def _git_value(*args: str) -> str:
+    r = subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True)
+    out = (r.stdout or "").strip()
+    if r.returncode != 0 or not out:
+        raise RuntimeError("git " + " ".join(args) + " failed")
+    return out
+
+
+def _run_unit_junit(job):
+    """One pytest process for a unit, with a junit report for per-file timings."""
+    import xml.etree.ElementTree as ET
+
+    from scripts.lib import ci_shards
+
+    (name, files), xml_path = job[0], job[1]
+    env = job[2] if len(job) > 2 else None
+    t0 = time.monotonic()
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "--tb=line", "-p", "no:cacheprovider",
+         f"--junitxml={xml_path}", "-o", "junit_family=xunit1", *files],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    secs = time.monotonic() - t0
+    out = (r.stdout or "") + (r.stderr or "")
+    try:
+        xml_text = Path(xml_path).read_text(encoding="utf-8")
+    except OSError:
+        xml_text = ""
+    skipped = 0
+    try:
+        skipped = sum(1 for _ in ET.fromstring(xml_text).iter("skipped")) if xml_text else 0
+    except ET.ParseError:
+        pass
+    return {
+        "gate": name,
+        "files": list(files),
+        "rc": r.returncode,
+        # A registered file with no test functions (e.g. a script-style check) collects nothing:
+        # pytest exit 5 "no tests ran". In the fast/full profiles it shares an invocation with
+        # its gate's other files and is accepted there; a shard may run it alone, so accept it
+        # the same way and record it. Collection errors (exit 2) still fail.
+        "passed": _unit_passed(r.returncode, out) or (r.returncode == 5 and "no tests ran" in out),
+        "no_tests": r.returncode == 5 and "no tests ran" in out,
+        "seconds": round(secs, 1),
+        "skipped": skipped,
+        "tail": (out.strip().splitlines() or [""])[-1][-200:],
+        "output": out,
+        "file_seconds": ci_shards.file_seconds_from_junit(xml_text, files, secs),
+    }
+
+
+#: DSN env vars whose database each pg-shard file gets fresh (``<database>_f<i>``).
+PER_FILE_DB_ENV = ("ALERT_TEST_DSN",)
+
+
+def _per_file_db_env(path: str, index: int) -> dict | None:
+    """Environment for one pg-shard file: each PER_FILE_DB_ENV DSN re-pointed at a new database.
+
+    The database is created by scripts/ensure_m2_test_database.py, which refuses any name that
+    is not ``m2_shadow_test[_suffix]`` -- so this can never point a test at a live database.
+    A DSN whose database does not fit that pattern is left unchanged.
+    """
+    sys.path.insert(0, str(REPO))
+    from scripts.lib.m2_live_shadow_guard import TEST_DATABASE_RE, dsn_database, with_database
+
+    env = dict(os.environ)
+    changed = False
+    for var in PER_FILE_DB_ENV:
+        dsn = env.get(var, "").strip()
+        base = dsn_database(dsn) if dsn else ""
+        if not base or not TEST_DATABASE_RE.match(f"{base}_f{index}"):
+            continue
+        name = f"{base}_f{index}"
+        r = subprocess.run([sys.executable, "scripts/ensure_m2_test_database.py", "--name", name],
+                           cwd=str(REPO), capture_output=True, text=True)
+        print(f"[shard] {path}: {var} -> database {name} (ensure rc={r.returncode})", flush=True)
+        if r.returncode == 0:
+            env[var] = with_database(dsn, name)
+            changed = True
+    return env if changed else None
+
+
+def run_shard(shard_arg: str, *, jobs: int, out: Path | None) -> int:
+    import json
+    import tempfile
+
+    sys.path.insert(0, str(REPO))
+    from scripts.lib import ci_shards
+
+    sid, n = ci_shards.parse_shard_arg(shard_arg)
+    plan = shard_plan(n)
+    files = plan["shards"][sid]
+    parallel, serial = plan_units(ci_shards.gates_for_files(GATES, files), hints=shard_hints())
+    one_at_a_time = sid in (ci_shards.SERIAL_SHARD, ci_shards.PG_SHARD) or jobs <= 1
+    print(
+        f"[shard] {sid}/{n} files={len(files)} est={plan['loads'][sid]}s parallel_units={len(parallel)} "
+        f"serial_units={len(serial)} jobs={1 if one_at_a_time else jobs} plan={plan['digest'][:12]}",
+        flush=True,
+    )
+    t0 = time.monotonic()
+    results = []
+
+    def record(res):
+        results.append(res)
+        status = "PASS" if res["passed"] else "FAIL"
+        print(f"[{status}] {res['gate']} ({len(res['files'])} files, {res['seconds']:.1f}s, "
+              f"skipped={res['skipped']}) {res['tail'][-100:]}", flush=True)
+        if not res["passed"]:
+            print(res["output"][-6000:], flush=True)
+
+    with tempfile.TemporaryDirectory(prefix=f"cio-shard-{sid}-") as tmp:
+        jobs_list = [(u, str(Path(tmp) / f"u{i}.xml")) for i, u in enumerate(parallel + serial)]
+        par_jobs, ser_jobs = jobs_list[: len(parallel)], jobs_list[len(parallel):]
+        if one_at_a_time:
+            # serial/pg: one pytest process PER FILE (a gate unit may hold several files that
+            # share state), and in the pg shard each file gets its own fresh database for the
+            # per-file DSN env vars (two alert-DB files sharing one database failed in CI run
+            # 37957892733: "cannot drop columns from view").
+            singles = [(name, [f]) for name, fs in parallel + serial for f in fs]
+            for i, u in enumerate(singles):
+                env = _per_file_db_env(u[1][0], i) if sid == ci_shards.PG_SHARD else None
+                record(_run_unit_junit((u, str(Path(tmp) / f"f{i}.xml"), env)))
+        else:
+            with ThreadPoolExecutor(max_workers=jobs) as pool:
+                for res in pool.map(_run_unit_junit, par_jobs):
+                    record(res)
+            for j in ser_jobs:
+                record(_run_unit_junit(j))
+    wall = time.monotonic() - t0
+    for res in results:
+        res.pop("output", None)
+    manifest = ci_shards.build_manifest(
+        shard=sid, n=n, sha=_git_value("rev-parse", "HEAD"), tree=_git_value("rev-parse", "HEAD^{tree}"),
+        digest=plan["digest"], files=files, units=results, wall=wall,
+    )
+    out = out or Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()) / f"cio_shard_{sid}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+    failed = sorted({r["gate"] for r in results if not r["passed"]})
+    print(f"[timing] shard={sid}/{n} files={len(manifest['files'])} wall={wall:.0f}s manifest={out}", flush=True)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        try:
+            with open(summary, "a", encoding="utf-8") as fh:
+                fh.write(f"## shard {sid}/{n}\n- files: {len(manifest['files'])}; wall {wall:.0f} s; "
+                         f"skipped tests: {sum(r['skipped'] for r in results)}; failed gates: {failed or 'none'}\n")
+        except OSError:
+            pass
+    if failed:
+        print(f"\nCIO SHARD {sid}/{n} FAILED: {failed}")
+        return 1
+    print(f"\nCIO SHARD {sid}/{n}: ALL UNITS PASS")
+    return 0
+
+
+def verify_shards(
+    manifest_dir: Path, *, n: int, timings_out: Path | None = None, attestation_out: Path | None = None
+) -> int:
+    """The `ci-gate` aggregate: completeness + success across every shard, then the attestation."""
+    import json
+
+    sys.path.insert(0, str(REPO))
+    from scripts.lib import ci_shards, tree_attested_promote
+
+    manifests = []
+    for p in sorted(Path(manifest_dir).rglob("cio_shard_*.json")):
+        try:
+            manifests.append(json.loads(p.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            manifests.append({"schema": "unreadable", "shard": p.name})
+    expected = ci_shards.registered_files(GATES, lambda p: (REPO / p).is_file())
+    needs = json.loads(os.environ.get("CI_GATE_NEEDS") or "null")
+    res = ci_shards.verify_manifests(
+        manifests,
+        expected_files=expected,
+        n=n,
+        expected_tree=_git_value("rev-parse", "HEAD^{tree}"),
+        expected_digest=shard_plan(n)["digest"],
+        needs=needs if isinstance(needs, dict) else None,
+    )
+    print(json.dumps({k: v for k, v in res.items() if k not in ("missing_files", "extra_files")}, sort_keys=True))
+    for f in res["missing_files"][:50]:
+        print(f"[ci-gate] MISSING (registered, not run by any shard): {f}")
+    for f in res["extra_files"][:50]:
+        print(f"[ci-gate] UNREGISTERED (run but not in GATES): {f}")
+    for m in manifests:
+        for u in m.get("units") or []:
+            if u.get("no_tests"):
+                print(f"[ci-gate] NOTE no test functions collected (accepted, as in the fast profile): {u.get('files')}")
+    if timings_out:
+        timings_out.parent.mkdir(parents=True, exist_ok=True)
+        timings_out.write_text(json.dumps(ci_shards.merge_timings(manifests), indent=1, sort_keys=True) + "\n",
+                               encoding="utf-8")
+    if attestation_out:
+        att = tree_attested_promote.build_attestation(
+            _git_value, ok=res["ok"], run_id=os.environ.get("GITHUB_RUN_ID"),
+            run_attempt=os.environ.get("GITHUB_RUN_ATTEMPT"), summary=res,
+        )
+        attestation_out.parent.mkdir(parents=True, exist_ok=True)
+        attestation_out.write_text(json.dumps(att, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        try:
+            with open(summary, "a", encoding="utf-8") as fh:
+                fh.write(f"## ci-gate\n- {'PASS' if res['ok'] else 'FAIL'}: {res['ran_files']} of "
+                         f"{res['expected_files']} registered files ran across {n}+2 shards\n"
+                         f"- errors: {res['errors'] or 'none'}\n- shard walls (s): {res['shard_walls']}\n")
+        except OSError:
+            pass
+    print("\nCI-GATE: " + ("PASS" if res["ok"] else "FAIL " + ", ".join(res["errors"])))
+    return 0 if res["ok"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--profile", choices=("pr", "fast", "full"), default=_profile_from_env())
@@ -4006,6 +4331,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="time every parallel-safe registered file (one pytest per file) and rewrite the hints file",
     )
+    ap.add_argument("--shard", default=None, help="run shard I/N (or serial/N, pg/N) of every registered file")
+    ap.add_argument("--shard-out", type=Path, default=None, help="--shard: manifest path")
+    ap.add_argument("--print-shard-plan", type=int, default=None, metavar="N", help="print the N-shard plan")
+    ap.add_argument("--verify-shards", type=Path, default=None, metavar="DIR", help="ci-gate: verify manifests")
+    ap.add_argument("--shards", type=int, default=8, help="--verify-shards: shard count N")
+    ap.add_argument("--timings-out", type=Path, default=None, help="--verify-shards: merged timing hints")
+    ap.add_argument("--attestation-out", type=Path, default=None, help="--verify-shards: CiGateAttestation@v1")
     args = ap.parse_args(argv)
 
     os.chdir(REPO)
@@ -4016,6 +4348,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.write_duration_hints:
         return write_duration_hints(jobs=args.jobs)
+    if args.shard:
+        return run_shard(args.shard, jobs=args.jobs, out=args.shard_out)
+    if args.verify_shards:
+        return verify_shards(
+            args.verify_shards, n=args.shards, timings_out=args.timings_out, attestation_out=args.attestation_out
+        )
+    if args.print_shard_plan:
+        import json
+
+        plan = shard_plan(args.print_shard_plan)
+        print(json.dumps({"n": plan["n"], "digest": plan["digest"], "loads": plan["loads"],
+                          "counts": {k: len(v) for k, v in plan["shards"].items()}}, sort_keys=True))
+        return 0
 
     if args.list_plan:
         parallel, serial = plan_units(GATES)

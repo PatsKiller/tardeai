@@ -295,12 +295,29 @@ def _normalize_synthesis_result(
     }
 
 
+def _release(evidence_hash) -> None:
+    """Forget a provider completion the thesis consumer could not use (see agent_flash_governance.release_completed)."""
+    if not evidence_hash:
+        return
+    try:
+        from scripts.lib.agent_flash_governance import release_completed
+    except Exception:  # pragma: no cover
+        try:
+            from lib.agent_flash_governance import release_completed  # type: ignore
+        except Exception:
+            return
+    try:
+        release_completed(str(evidence_hash))
+    except Exception:
+        pass
+
+
 def synthesize_thesis_via_flash(
     symbol: str,
     packet: dict[str, Any],
     *,
     task_type: str = "cio_synthesis",
-    max_tokens: int = 1600,
+    max_tokens: int = 3200,
     timeout: float = 90.0,
     call_llm: bool = True,
 ) -> dict[str, Any]:
@@ -341,16 +358,25 @@ def synthesize_thesis_via_flash(
             "authority": AUTHORITY,
         }
 
-    flash = governed_flash_call(
-        prompt,
-        task_type=task_type,
-        max_tokens=max_tokens,
-        timeout=timeout,
-        metadata={"task_kind": "thesis_synthesis", "symbol": symbol.upper()},
-        job_key=f"symbol_thesis:{symbol.upper()}:{(packet or {}).get('packet_id')}",
-        prompt_version="thesis_v1",
-        response_json=True,
-    )
+    def _call():
+        return governed_flash_call(
+            prompt,
+            task_type=task_type,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            metadata={"task_kind": "thesis_synthesis", "symbol": symbol.upper()},
+            job_key=f"symbol_thesis:{symbol.upper()}:{(packet or {}).get('packet_id')}",
+            prompt_version="thesis_v1",
+            response_json=True,
+        )
+
+    flash = _call()
+    # DEDUPE_SKIP hands back an EMPTY answer: the provider answered this exact evidence before (an off-peak drain or a
+    # truncated reply) and nothing kept it. The thesis consumer never used that answer, so forget it and ask once more
+    # (same remedy as options_cio_review, 2026-09-27). 43 thesis runs failed this way 2026-10-04..09.
+    if not flash.get("success") and str(flash.get("error") or "").startswith("DEDUPE_SKIP") and flash.get("evidence_hash"):
+        _release(flash.get("evidence_hash"))
+        flash = _call()
     if not flash.get("success"):
         return {
             "ok": False,
@@ -363,6 +389,8 @@ def synthesize_thesis_via_flash(
     raw = str(flash.get("response") or "")
     obj = _extract_json_object(raw)
     if obj is None:
+        # an unusable answer must not poison the evidence key for the next attempt
+        _release(flash.get("evidence_hash"))
         return {
             "ok": False,
             "error": "parse:no_json_object",

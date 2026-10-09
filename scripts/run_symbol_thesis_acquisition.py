@@ -23,7 +23,7 @@ import hashlib
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -175,6 +175,51 @@ def _append_ledger(root: Path, rec: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
+
+
+# Blocked-loop backoff (operator 2026-10-09 "fix the thesis job"): the hourly curation monitor re-ran every open request
+# and a symbol whose evidence never changed was BLOCKED again each hour (AA 58x, AAP 55x in 5 days), taking the slots.
+# A symbol whose last BLOCKED_REPEAT_LIMIT ledger rows inside BLOCKED_BACKOFF_HOURS are all BLOCKED with the same
+# evidence counts is skipped (not ledgered) until new evidence changes the counts or the window passes.
+BLOCKED_REPEAT_LIMIT = 3
+BLOCKED_BACKOFF_HOURS = 24
+
+
+def blocked_backoff(ledger: list[dict[str, Any]], sym: str, *, now: Optional[datetime] = None) -> Optional[str]:
+    """Reason to skip sym this run, or None."""
+    now = now or datetime.now(timezone.utc)
+    cut = (now - timedelta(hours=BLOCKED_BACKOFF_HOURS)).isoformat()
+    mine = [r for r in ledger if str(r.get("symbol") or "").upper() == sym.upper() and str(r.get("as_of") or "") >= cut]
+    tail = mine[-BLOCKED_REPEAT_LIMIT:]
+    if len(tail) < BLOCKED_REPEAT_LIMIT or any(r.get("status") != "BLOCKED" for r in tail):
+        return None
+    if len({json.dumps(r.get("catalog") or {}, sort_keys=True) for r in tail}) != 1:
+        return None
+    return (f"BACKOFF_BLOCKED: {BLOCKED_REPEAT_LIMIT} BLOCKED runs since {tail[0].get('as_of')} on unchanged evidence "
+            f"{json.dumps(tail[-1].get('catalog') or {}, sort_keys=True)}")
+
+
+def offpeak_wait(task_type: str = "cio_synthesis") -> Optional[str]:
+    """Why synthesis must wait for the off-peak window, or None to call now.
+
+    The off-peak deferral queue re-runs a deferred prompt but keeps no answer for this caller, and the provider's
+    dedupe then refuses the same evidence on every later attempt (DEDUPE_SKIP) — so a deferred thesis was lost and
+    the symbol poisoned (48 DEFERRED + 43 DEDUPE_SKIP failures, 2026-10-04..09). Outside the window the run now leaves
+    the request open (no Flash call, no budget spent, nothing queued) and the next in-window run synthesizes it."""
+    try:
+        try:
+            from lib.llm_deferral import evaluate
+            from lib.agent_flash_governance import process_for_task
+        except ImportError:  # pragma: no cover
+            from scripts.lib.llm_deferral import evaluate  # type: ignore
+            from scripts.lib.agent_flash_governance import process_for_task  # type: ignore
+        d = evaluate(process_for_task(task_type))
+    except Exception:  # noqa: BLE001 — a deferral check that cannot run must not block synthesis
+        return None
+    if not d.defer:
+        return None
+    when = d.run_after.isoformat() if getattr(d, "run_after", None) is not None else "next window"
+    return f"{d.reason}: synthesis waits for the off-peak window ({when}); request stays open"
 
 
 GAP_RETRY_LIMIT = 2  # a gap asked this many times with no stance emerging is retired
@@ -450,6 +495,12 @@ def _run_one_impl(
         out["note"] = "dry: would call Flash + reconcile + publish"
         return out
 
+    wait = offpeak_wait()
+    if wait:
+        out["status"] = "WAITING_FOR_OFFPEAK"
+        out["note"] = wait
+        return out
+
     synth = synthesize_thesis_via_flash(sym, packet, call_llm=True)
     out["flash"] = {
         "success": synth.get("ok"),
@@ -507,10 +558,11 @@ def run(
         # house thesis) go first, 2026-09-27.
         try:
             try:
-                from lib.symbol_thesis_priority import open_requests
+                from lib.symbol_thesis_priority import open_requests_ranked
             except ImportError:  # pragma: no cover
-                from scripts.lib.symbol_thesis_priority import open_requests  # type: ignore
-            pri = [s for s in open_requests(root) if not canary]
+                from scripts.lib.symbol_thesis_priority import open_requests_ranked  # type: ignore
+            # operator flags, then CIO top-ranked names, then the rest (SOURCE_ORDER, 2026-10-09)
+            pri = [s for s in open_requests_ranked(root) if not canary]
         except Exception:  # noqa: BLE001
             pri = []
         rest = [r for r in queue if str(r.get("symbol") or "").upper() not in set(pri)]
@@ -518,8 +570,13 @@ def run(
 
     llm_budget = [max(0, int(max_llm))]
     results: list[dict[str, Any]] = []
+    ledger = _load_ledger(root)
     for row in queue:
         sym = str(row.get("symbol") or "").upper()
+        skip = blocked_backoff(ledger, sym)
+        if skip:
+            results.append({"symbol": sym, "status": "BACKOFF_BLOCKED", "note": skip, "authority": AUTHORITY})
+            continue
         rec = run_one(
             sym,
             root=root,
