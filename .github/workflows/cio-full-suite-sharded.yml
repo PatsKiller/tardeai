@@ -1,0 +1,284 @@
+name: cio-full-suite-sharded
+
+# Operator-approved 2026-10-09 (docs/architecture/ci/cio-hardening-design-audit-20261009.md,
+# "Medium-term" items 1 and 3, "Proposed optimized workflow" Stage 2).
+#
+# EVERY registered test file (GATES in scripts/run_cio_hardening_ci.py) runs on every PR --
+# nothing is deferred -- split across 8 duration-balanced shards x 4 workers, a serial shard
+# (shared-state files, one at a time) and a Postgres shard (the m2_conn/psycopg2/alert-DSN files
+# that SKIP on a runner without a database). The `integrity` job carries the rails the
+# `cio-hardening` job runs after its gates. `ci-gate` is the ONE aggregate: it fails if any job
+# failed or was skipped, or if the files the shards report running are not exactly the
+# registered list (each file once, same tree, same plan). See scripts/lib/ci_shards.py.
+#
+# ROLLOUT: advisory alongside the required `cio-hardening` context. Branch protection is NOT
+# changed here; after 3-5 PRs show parity the operator switches the required context to
+# `ci-gate`. The ci-gate attestation artifact is the evidence a tree-attested promote reads
+# (scripts/lib/tree_attested_promote.py, flag TRADEAI_TREE_ATTESTED_PROMOTE, default off).
+#
+# READ_ONLY_ADVISORY: no broker writes, no live Telegram (pytest interdict).
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cio-full-suite-sharded-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TRADE_AI_CI: "1"
+  CIO_TELEGRAM_INTERDICT: "1"
+  ENABLE_TELEGRAM: "0"
+  ALPACA_MODE: paper
+  # The shard count. The matrix below lists 0..CIO_SHARDS-1; ci-gate verifies all of them.
+  CIO_SHARDS: "8"
+  # Test the PR HEAD commit itself (not the synthetic refs/pull/N/merge): the promote compares
+  # this exact tree with the merge commit's tree.
+  TEST_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  shard:
+    name: shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-full-suite-sharded.yml
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests "ruff==0.16.2"
+          pip install python-docx || true
+      - name: Shard ${{ matrix.shard }} of ${{ env.CIO_SHARDS }}
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/run_cio_hardening_ci.py --jobs 4 \
+            --shard "$SHARD/$CIO_SHARDS" --shard-out "$RUNNER_TEMP/shard/cio_shard_$SHARD.json"
+      - name: Upload shard manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard/
+          if-no-files-found: ignore
+
+  serial:
+    name: shard serial
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-full-suite-sharded.yml
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests "ruff==0.16.2"
+          pip install python-docx || true
+      - name: Serial shard (shared-state files, one at a time)
+        run: |
+          python3 scripts/run_cio_hardening_ci.py \
+            --shard "serial/$CIO_SHARDS" --shard-out "$RUNNER_TEMP/shard/cio_shard_serial.json"
+      - name: Upload shard manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-shard-serial
+          path: ${{ runner.temp }}/shard/
+          if-no-files-found: ignore
+
+  pg:
+    name: shard pg
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      # The isolated M2 test cluster the m2_conn tests expect (scripts/lib/m2_live_shadow_guard.py:
+      # 127.0.0.1:55432, owner m2). These are the repository's public throwaway test-cluster
+      # values, not credentials of any live system. Only the test database is created; the live
+      # name m2_shadow does not exist here and the guard refuses it under pytest anyway.
+      m2:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: m2
+          POSTGRES_PASSWORD: m2shadow
+          POSTGRES_DB: m2_shadow_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U m2 -d m2_shadow_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      M2_TEST_DATABASE: m2_shadow_test
+      ALERT_TEST_DSN: postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow_test_alerts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-full-suite-sharded.yml
+      - name: Install test deps (+ psycopg2)
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests "ruff==0.16.2" psycopg2-binary
+      - name: Create the test databases (fail closed if the service is unreachable)
+        run: |
+          python3 scripts/ensure_m2_test_database.py --name "$M2_TEST_DATABASE"
+          python3 scripts/ensure_m2_test_database.py --name m2_shadow_test_alerts
+      - name: Postgres shard (one file at a time)
+        run: |
+          python3 scripts/run_cio_hardening_ci.py \
+            --shard "pg/$CIO_SHARDS" --shard-out "$RUNNER_TEMP/shard/cio_shard_pg.json"
+      - name: Upload shard manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-shard-pg
+          path: ${{ runner.temp }}/shard/
+          if-no-files-found: ignore
+
+  # The rails `cio-hardening` runs after its gates, so `ci-gate` can replace it without
+  # dropping one (audit table "Where each moved or removed check keeps its guarantee").
+  integrity:
+    name: integrity rails
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_SHA }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-full-suite-sharded.yml
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests "ruff==0.16.2"
+      - name: Phase 11 adversarial suite
+        run: python3 scripts/run_cio_adversarial_suite.py
+      - name: Dark contract guard
+        run: python3 scripts/check_dark_contracts.py --fail-on-new
+      - name: Retention policy registry gate
+        run: python3 scripts/check_retention_policy.py --fail-on-new
+      - name: Line-ending churn guard
+        run: python3 scripts/check_line_endings.py --range origin/main...HEAD
+      - name: Test coverage guard
+        run: python3 scripts/check_test_coverage.py --fail-on-new
+      - name: Test host-path guard
+        run: python3 scripts/check_test_host_paths.py --fail-on-new
+      - name: Docs index drift
+        run: python3 scripts/report_docs_inventory.py --check-index
+      - name: Committed release manifest integrity
+        run: python3 scripts/cio_release_manifest.py check-committed
+      - name: Candidate release manifest
+        run: python3 scripts/cio_release_manifest.py candidate --out-dir "$RUNNER_TEMP/cio_manifest_candidate"
+      - name: Report HTML export smoke
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats
+          model = build_report_v2(
+              part_b_ctx={
+                  "portfolio": {"total_value": 100000.0, "cash_value": 20000.0, "cash_pct": 20.0},
+                  "allocation": {"Cash & Equivalents": 20000.0, "Equities": 80000.0},
+                  "performance": {"ytd_return": 1.0, "port_cagr": 5.0},
+              },
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 100000.0, "cash_total_usd": 20000.0,
+                  "cash_reserved_usd": 20000.0, "cash_investable_usd": 0.0,
+                  "net_recommended_deploy_usd": 0.0, "net_recommended_raise_usd": 0.0,
+                  "post_plan_cash_usd": 20000.0, "position_decisions": [],
+              }},
+              source_sha="ci",
+              now=datetime.now(timezone.utc),
+          )
+          out = Path("exports/ci_smoke")
+          res = export_report_formats(model, out, basename="ci_smoke", formats=["html"])
+          assert res.get("paths", {}).get("html"), res
+          html = Path(res["paths"]["html"]).read_text()
+          assert "578107.50%" not in html
+          assert "READ_ONLY_ADVISORY" in html
+          print("HTML smoke OK", res["paths"]["html"])
+          PY
+
+  ci-gate:
+    # The aggregate (candidate required context). Runs even when a dependency failed, and fails
+    # unless every dependency succeeded AND the shard manifests prove completeness.
+    name: ci-gate
+    needs: [shard, serial, pg, integrity]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_SHA }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install deps
+        run: python3 -m pip install pyyaml
+      - name: Download shard manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cio-shard-*
+          path: ${{ runner.temp }}/manifests
+          merge-multiple: true
+      - name: Verify every job passed and the shards ran exactly the registered files
+        env:
+          CI_GATE_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 scripts/run_cio_hardening_ci.py --shards "$CIO_SHARDS" \
+            --verify-shards "$RUNNER_TEMP/manifests" \
+            --timings-out "$RUNNER_TEMP/timings/ci_shard_duration_hints.json" \
+            --attestation-out "$RUNNER_TEMP/attestation/ci_gate_attestation.json"
+      - name: Upload per-shard timings (duration-hint refresh)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-shard-timings
+          path: |
+            ${{ runner.temp }}/timings/
+            ${{ runner.temp }}/manifests/
+          if-no-files-found: ignore
+      - name: Upload ci-gate attestation (read by the tree-attested promote)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-gate-attestation
+          path: ${{ runner.temp }}/attestation/
+          if-no-files-found: ignore
