@@ -49,9 +49,14 @@ def consume_release_grant(*, tier: str = "release-write", runner=None) -> dict:
 
 
 # Always-on post-merge workflows. PR runs do not execute the same test profile.
+# release-readiness (broker-write fences: run_release_ci_equivalent --source-only,
+# validate_schwab_write_policy --source-only, test_no_broker_write_bypass) became a
+# required merge check on 2026-10-09 (operator); promote now waits for its exact-SHA
+# push run too, so a red fence can neither merge nor go live (CI design audit S2).
 REQUIRED_PUSH_WORKFLOWS = frozenset({
     ".github/workflows/cio-production-hardening-ci.yml",
     ".github/workflows/agent-governance.yml",
+    ".github/workflows/release-readiness.yml",
 })
 
 

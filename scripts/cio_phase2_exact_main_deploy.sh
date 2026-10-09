@@ -439,13 +439,13 @@ build_frontend() {
     if [[ ! -d node_modules ]]; then
       npm ci --ignore-scripts
     fi
-    # Full package.json build is token+tsc+vite. Fall back to vite-only if tsc is noisy.
-    if npm run build; then
-      log "npm run build OK"
-    else
-      log "npm run build failed — vite build only"
-      npx vite build
-    fi
+    # Full package.json build = design-token / ui-standards / contrast guards + node unit
+    # tests + tsc + vite. FAIL CLOSED (2026-10-09, CI design audit S3/Q10): this used to
+    # fall back to a bare `npx vite build`, shipping past the guards and the type check
+    # while prepare reported success. The runbook already called a fallback "a defect to
+    # fix before promote, not a signal to proceed"; now the script enforces it.
+    npm run build || die "npm run build failed (design guards / tsc / vite) — refusing a release without them; fix the build, then prepare again"
+    log "npm run build OK"
   )
   mkdir -p "${dest}/apps/command-center-v3/dist"
   rsync -a --delete "${cc}/dist/" "${dest}/apps/command-center-v3/dist/"
@@ -645,6 +645,18 @@ cmd_promote() {
   PREV_RELEASE="$(current_release)"
   NEW_RELEASE="$dir"
   CONTENT_SHA="$sha"
+  # Exact-SHA CI FIRST, before the grant (2026-10-09, CI design audit R6/Q9): the grant
+  # preflight consumes a release-write use, so a promote attempted while the push/main
+  # runs were still in flight (the common case: merge -> green is ~951 s median) burned
+  # a use and then refused. Required: scripts/release_grant_preflight.py
+  # REQUIRED_PUSH_WORKFLOWS (cio-hardening, agent-governance, release-readiness). The
+  # emergency path keeps its own proof below; nothing here is waived.
+  if [[ -z "$EMERGENCY_SHA" || "$EMERGENCY_SHA" != "$sha" ]]; then
+    if ! "$VENV_PYTHON" "${ROOT}/scripts/release_grant_preflight.py" --ci-only --sha "$sha" --ci-receipt "$CI_RECEIPT_FILE"; then
+      write_deploy_receipt false promote blocked false "post_merge_ci_refused"
+      die "exact-SHA push-to-main checks are not completed successfully; activation refused (no release grant use consumed)"
+    fi
+  fi
   release_grant_preflight promote "$sha"
   conformance_gate "$sha"
   # Re-query immediately before activation. Pending, missing, failed or unavailable

@@ -2931,6 +2931,7 @@ GATES = [
             "tests/test_check_test_host_paths_20260925.py",
             "tests/test_cio_ci_profiles_20260925.py",
             "tests/test_ci_pr_selection_20260925.py",
+            "tests/test_ci_quick_wins_20261009.py",
         ],
     ),
     (
@@ -3685,21 +3686,33 @@ UNIT_TARGET_SECONDS = float(os.environ.get("CIO_CI_UNIT_SECONDS", "25"))
 DURATION_HINTS_PATH = REPO / "config" / "ci_test_duration_hints.json"
 DEFAULT_FILE_SECONDS = 1.0
 
-#: A FILE runs in the serial tail if it matches one of these. They mark tests that
-#: touch state other workers can see: the committed docs index, git operations, a
-#: Postgres test database, or a probe file planted in scripts/. (Per file, not per gate: the rest of a gate still runs in
-#: parallel.) Conservative on purpose -- a false positive only costs a few seconds.
-SHARED_STATE_PATTERNS = (
-    r"docs/INDEX\.md",
-    r"\bm2_conn\b",
-    r"psycopg2\.connect",
-    r"M2_TEST_DATABASE",
-    r"\bgit\b[\"', ]+(?:stash|checkout|reset|commit|worktree|merge)\b",
-    # plants a probe file INTO scripts/ (ROOT / "scripts" / "_pytest_..._probe.py") to
-    # prove a tree-wide ratchet fires; any concurrent tree scan would see it too
-    r"[\"']scripts[\"']\s*/\s*f?[\"']_",
-)
-_SHARED_STATE_RE = re.compile("|".join(SHARED_STATE_PATTERNS))
+#: A FILE runs in the serial tail only if it is named here. (Per file, not per gate:
+#: the rest of a gate still runs in parallel.) Until 2026-10-09 this was a regex over
+#: test SOURCE TEXT ("docs/INDEX.md", "git commit", "m2_conn", ...): 26 files matched,
+#: and at least 14 were false positives -- a string in an assert, a skipif reason, a
+#: docstring, git run inside a tmp_path repo, a probe planted under tmp_path -- which
+#: added ~144 s of strictly serial wall to every push run (CI design audit 2026-10-09,
+#: P2). Each entry below was verified by reading the test: it writes outside tmp_path
+#: into the shared checkout, or into the one shared Postgres test database, where a
+#: concurrent worker would see it. The value is the evidence substring that must still
+#: be in the file (tests/test_cio_ci_profiles_20260925.py enforces it), so a test made
+#: hermetic forces this list to shrink rather than silently stay serial.
+SERIAL_FILES: dict[str, str] = {
+    # rewrites the committed docs/INDEX.md to prove the drift gate goes red
+    "tests/test_overnight_g3_docs_index.py": 'INDEX = ROOT / "docs" / "INDEX.md"',
+    # plant a probe .py INTO the real scripts/ so a tree-wide ratchet fires; every
+    # concurrent tree scan of scripts/ would see (and fail on) the probe too
+    "tests/test_goal_work_minter_ratchet.py": 'planted = ROOT / "scripts" / "_pytest_goal_minter_probe.py"',
+    "tests/test_provider_chokepoint_ratchet.py": 'probe = ROOT / "scripts" / "_probe_provider_chokepoint_should_fail.py"',
+    "tests/test_scripts_lib_bootstrap.py": 'probe = ROOT / "scripts" / f"_pytest_probe_{tmp_path.name}.py"',
+    "tests/test_overnight_g2_import_normalise.py": 'probe = ROOT / "scripts" / f"_pytest_g2_probe_{tmp_path.name}.py"',
+    # plants a gitignored probe under the real docs/_design/ (docs inventory scans)
+    "tests/test_detectors_distinguish_states.py": 'junk_dir = docs / "_design" / "__pytest_probe__" / "__pycache__"',
+    # apply/drop schema objects in the ONE shared M2 test database that
+    # ai_local_acceptance.sh provisions (skipped in GitHub CI: no psycopg2)
+    "tests/test_bitemporal_correctness.py": "verify = apply_bitemporal_schema_v2(conn)",
+    "tests/test_memory_prod_cutover_20260924.py": "cur.execute('DROP EXTENSION IF EXISTS \"uuid-ossp\"')",
+}
 
 #: pytest exit 5 = "no tests collected": a unit whose every module skips at import
 #: (e.g. the Postgres-only files split out of a gate when psycopg2 is absent). The
@@ -3711,10 +3724,6 @@ PASS_CODES = frozenset({0, 5})
 
 def _unit_passed(rc: int, out: str) -> bool:
     return rc == 0 or (rc == 5 and " skipped" in out)
-
-
-#: Files proven to need the serial tail even though no pattern marks them.
-SERIAL_FILES: frozenset[str] = frozenset()
 
 
 def _profile_from_env() -> str:
@@ -3738,12 +3747,7 @@ def load_duration_hints(path: Path = DURATION_HINTS_PATH) -> dict[str, float]:
 
 
 def file_needs_serial(path: str) -> bool:
-    if path in SERIAL_FILES:
-        return True
-    try:
-        return bool(_SHARED_STATE_RE.search((REPO / path).read_text(encoding="utf-8", errors="replace")))
-    except OSError:
-        return False
+    return path in SERIAL_FILES
 
 
 def gate_needs_serial(name: str, paths: list[str]) -> bool:
@@ -3751,10 +3755,37 @@ def gate_needs_serial(name: str, paths: list[str]) -> bool:
     return any(file_needs_serial(p) for p in paths)
 
 
+def dedupe_gates(gates):
+    """Return (gates, also_in): each existing file kept in its FIRST registering gate only.
+
+    25 files are registered in two to four gates (28 extra pytest runs per push, ~40 s
+    of wall; CI design audit 2026-10-09, P5). A file runs once per invocation;
+    ``also_in[gate]`` lists ``(file, owner_gate)`` for every registration that was
+    folded into an earlier gate, so the later gate still reports, and reports the
+    owner's result for that file. Missing files are dropped (as before).
+    """
+    seen: dict[str, str] = {}
+    out, also_in = [], {}
+    for name, paths in gates:
+        kept = []
+        for p in paths:
+            if not (REPO / p).is_file():
+                continue
+            if p in seen:
+                if seen[p] != name:
+                    also_in.setdefault(name, []).append((p, seen[p]))
+                continue
+            seen[p] = name
+            kept.append(p)
+        out.append((name, kept))
+    return out, also_in
+
+
 def plan_units(gates, *, unit_seconds: float = UNIT_TARGET_SECONDS, hints: dict[str, float] | None = None):
     """Return (parallel_units, serial_units); a unit is (gate_name, [files]).
 
-    Every existing registered file appears in exactly one unit per registration.
+    Every existing registered file appears in exactly one unit, under the first gate
+    that registers it (see dedupe_gates for how the other gates still report).
     """
     hints = load_duration_hints() if hints is None else hints
 
@@ -3762,8 +3793,7 @@ def plan_units(gates, *, unit_seconds: float = UNIT_TARGET_SECONDS, hints: dict[
         return hints.get(p, DEFAULT_FILE_SECONDS)
 
     parallel, serial = [], []
-    for name, paths in gates:
-        existing = [p for p in paths if (REPO / p).is_file()]
+    for name, existing in dedupe_gates(gates)[0]:
         if not existing:
             continue
         shared = [p for p in existing if file_needs_serial(p)]
@@ -3834,9 +3864,22 @@ def run_gates(gates, *, profile: str, jobs: int) -> list[str]:
     for unit in serial:
         record(_run_unit(unit))
 
+    _, also_in = dedupe_gates(gates)
+    failed_files = {f for rs in results.values() for r in rs if not _unit_passed(r[2], r[3]) for f in r[1]}
+    for name, shared in sorted(also_in.items()):
+        bad = [f for f, _owner in shared if f in failed_files]
+        owners = sorted({owner for _f, owner in shared})
+        print(
+            f"[{'FAIL' if bad else 'PASS'}] {name} (also {len(shared)} files run once under {', '.join(owners)})",
+            flush=True,
+        )
     declared = [n for n, _ in gates]
     for name in declared:
-        if any(not _unit_passed(r[2], r[3]) for r in results.get(name, [])) and name not in failed:
+        own_failed = any(not _unit_passed(r[2], r[3]) for r in results.get(name, []))
+        # A shared file ran once, in its owner's unit; a failed unit fails every gate that
+        # registers one of its files (conservative: the unit's other files may be the cause).
+        shared_failed = any(f in failed_files for f, _owner in also_in.get(name, []))
+        if (own_failed or shared_failed) and name not in failed:
             failed.append(name)
     return failed
 
@@ -3949,7 +3992,48 @@ def select_pr_gates(
     return sel["gates"], "fast"
 
 
-def write_duration_hints(*, jobs: int) -> int:
+def duration_hints_doc(measured: dict[str, float], *, jobs: int, scale: float = 1.0, receipt: dict | None = None) -> dict:
+    """The hints document for per-file seconds ``measured`` (x ``scale``), with its receipt.
+
+    ``scale`` maps host seconds onto CI seconds: a loaded host runs the same file several
+    times slower than a GitHub runner, and the PR selector reads hints as its budget. Use
+    the ratio (CI median unit-seconds over the last push runs' ``[PASS] gate (k files, Xs)``
+    lines) / (this measurement summed over the same gates); 1.0 when measured on an idle
+    4-vCPU host. Recorded in the receipt either way.
+    """
+    import importlib.util
+    import platform
+    from datetime import datetime, timezone
+
+    files = {k: round(v * scale, 1) for k, v in sorted(measured.items()) if v * scale >= 2.0}
+    return {
+        "schema": "CiTestDurationHints@v1",
+        "note": (
+            "Per-file wall seconds (one pytest process per file). Used ONLY to order and pack work in "
+            "run_cio_hardening_ci.py --profile fast, and as the PR selector's budget estimate; never "
+            "decides which tests a full run executes. Files below 2 s are omitted (default weight 1 s). "
+            "REFRESH WEEKLY (and after a large test batch lands): with the CI dependency set "
+            "(pytest pyyaml requests python-docx ruff; no psycopg2) run "
+            "`scripts/run_cio_hardening_ci.py --write-duration-hints --jobs 4 --hints-scale <CI/host>` "
+            "and commit the result with its receipt (scale: see duration_hints_doc). Stale hints "
+            "mis-pack work (CI design audit 2026-10-09, P3)."
+        ),
+        "receipt": {
+            "measured_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "jobs": jobs,
+            "files_measured": len(measured),
+            "files_hinted": len(files),
+            "scale_to_ci": scale,
+            "python": platform.python_version(),
+            "psycopg2_present": importlib.util.find_spec("psycopg2") is not None,
+            "refresh": "weekly; next due 7 days after measured_at",
+            **(receipt or {}),
+        },
+        "files": files,
+    }
+
+
+def write_duration_hints(*, jobs: int, scale: float = 1.0) -> int:
     """Measure per-file wall time and rewrite config/ci_test_duration_hints.json."""
     import json
 
@@ -3964,17 +4048,12 @@ def write_duration_hints(*, jobs: int) -> int:
         )
         return path, round(time.monotonic() - t0, 1)
 
+    t0 = time.monotonic()
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         measured = dict(pool.map(one, files))
-    doc = {
-        "schema": "CiTestDurationHints@v1",
-        "note": (
-            "Per-file wall seconds (one pytest process per file). Used ONLY to order and pack work in "
-            "run_cio_hardening_ci.py --profile fast; never decides which tests run. Files below 2 s are "
-            "omitted (default weight 1 s). Refresh with scripts/run_cio_hardening_ci.py --write-duration-hints."
-        ),
-        "files": {k: v for k, v in sorted(measured.items()) if v >= 2.0},
-    }
+    doc = duration_hints_doc(
+        measured, jobs=jobs, scale=scale, receipt={"measure_wall_seconds": round(time.monotonic() - t0)}
+    )
     DURATION_HINTS_PATH.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     print(f"wrote {DURATION_HINTS_PATH.relative_to(REPO)} ({len(doc['files'])} files >= 2 s of {len(files)})")
     return 0
@@ -4000,6 +4079,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="time every parallel-safe registered file (one pytest per file) and rewrite the hints file",
     )
+    ap.add_argument(
+        "--hints-scale",
+        type=float,
+        default=1.0,
+        help="--write-duration-hints: multiply host seconds by this CI/host ratio (recorded in the receipt)",
+    )
     args = ap.parse_args(argv)
 
     os.chdir(REPO)
@@ -4009,7 +4094,7 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("PYTEST_ADDOPTS", "")
 
     if args.write_duration_hints:
-        return write_duration_hints(jobs=args.jobs)
+        return write_duration_hints(jobs=args.jobs, scale=args.hints_scale)
 
     if args.list_plan:
         parallel, serial = plan_units(GATES)

@@ -24,8 +24,14 @@ How "can reach" is computed -- static, conservative, no execution:
   the risk tiers do not classify selects nothing beyond the smoke set -- which is
   the honest answer, and the post-merge full run still covers it.
 
-The map is cached under the worktree's git dir (``git rev-parse --git-path``); the cache key is a hash over every scanned file's
-path + size + mtime, so a stale map is detected and rebuilt (~seconds).
+The map is cached under the worktree's git dir (``git rev-parse --git-path``). The cache
+key is a hash over every scanned file's path + CONTENT hash (2026-10-09; it was path +
+size + mtime, and a fresh CI checkout resets every mtime, so CI rebuilt the map on
+35/35 runs, ~19 s each). The cache also keeps each file's parsed references keyed by
+its content hash, so after a change only the changed files are re-parsed; resolution
+(which file a name or path points at) is recomputed over the current file set every
+time, so a reused entry can never resolve stale. CI persists the file with
+actions/cache (cio-production-hardening-ci.yml).
 """
 
 from __future__ import annotations
@@ -56,7 +62,7 @@ def _default_cache_path(root: Path = ROOT) -> Path:
     return root / ".git" / "tradeai-test_impact_map.json"
 
 
-SCHEMA = "TestImpactMap@v1"
+SCHEMA = "TestImpactMap@v2"
 TIERS_PATH = ROOT / "config" / "ci_risk_tiers.json"
 
 _PATH_REF_RE = re.compile(r"""["'/]((?:scripts|config|sql|tests)/[A-Za-z0-9_./-]+\.(?:py|json|yaml|yml|sql|sh))""")
@@ -91,14 +97,23 @@ def _module_names(rel: str) -> list[str]:
     return sorted(n for n in names if n)
 
 
-def _cache_key(root: Path, files: list[Path]) -> str:
-    h = hashlib.sha256()
-    for p in sorted(files):
+def _content_hashes(root: Path, files: list[Path]) -> dict[str, str]:
+    """{rel: sha256 of content}; unreadable files are omitted (they parse to nothing)."""
+    out: dict[str, str] = {}
+    for p in files:
         try:
-            st = p.stat()
+            out[_rel(root, p)] = hashlib.sha256(p.read_bytes()).hexdigest()
         except OSError:
             continue
-        h.update(f"{_rel(root, p)}\t{st.st_size}\t{int(st.st_mtime)}\n".encode())
+    return out
+
+
+def _cache_key(root: Path, files: list[Path], hashes: dict[str, str] | None = None) -> str:
+    """Content key: path + content hash of every scanned file (never mtime)."""
+    hashes = _content_hashes(root, files) if hashes is None else hashes
+    h = hashlib.sha256()
+    for rel in sorted(hashes):
+        h.update(f"{rel}\t{hashes[rel]}\n".encode())
     return h.hexdigest()
 
 
@@ -115,8 +130,28 @@ def _imports(tree: ast.AST) -> set[str]:
     return out
 
 
-def build_map(root: Path = ROOT) -> dict:
+def _features(rel: str, text: str) -> dict:
+    """Pure function of one file's text: the names it imports and the paths it names."""
+    imports: set[str] = set()
+    if rel.endswith(".py"):
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                imports = _imports(ast.parse(text))
+        except SyntaxError:
+            pass
+    return {
+        "imports": sorted(imports),
+        "refs": sorted({m.group(1) for m in _PATH_REF_RE.finditer(text)}),
+        "bare": sorted({m.group(1) for m in _BARE_PY_RE.finditer(text)}),
+    }
+
+
+def build_map(root: Path = ROOT, *, previous: dict | None = None, hashes: dict[str, str] | None = None) -> dict:
+    """Build the reverse-dependency map; reuse ``previous`` features of unchanged content."""
     files = list(_iter_files(root))
+    hashes = _content_hashes(root, files) if hashes is None else hashes
+    old = (previous or {}).get("features") or {}
     name_to_file: dict[str, str] = {}
     by_basename: dict[str, str] = {}
     for p in files:
@@ -126,31 +161,35 @@ def build_map(root: Path = ROOT) -> dict:
         if rel.startswith("scripts/") and rel.count("/") == 1:
             by_basename.setdefault(p.name, rel)
 
+    features: dict[str, dict] = {}
+    reused = parsed = 0
     deps: dict[str, set[str]] = {}
     for p in files:
         rel = _rel(root, p)
-        try:
-            text = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        digest = hashes.get(rel)
+        if digest is None:
             continue
-        d: set[str] = set()
-        if rel.endswith(".py"):
+        f = old.get(digest)
+        if isinstance(f, dict) and {"imports", "refs", "bare"} <= f.keys():
+            reused += 1
+        else:
             try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    tree = ast.parse(text)
-                for imp in _imports(tree):
-                    target = name_to_file.get(imp)
-                    if target and target != rel:
-                        d.add(target)
-            except SyntaxError:
-                pass
-        for m in _PATH_REF_RE.finditer(text):
-            ref = m.group(1)
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            f = _features(rel, text)
+            parsed += 1
+        features[digest] = f
+        d: set[str] = set()
+        for imp in f["imports"]:
+            target = name_to_file.get(imp)
+            if target and target != rel:
+                d.add(target)
+        for ref in f["refs"]:
             if ref != rel and (root / ref).exists():
                 d.add(ref)
-        for m in _BARE_PY_RE.finditer(text):
-            target = by_basename.get(m.group(1))
+        for name in f["bare"]:
+            target = by_basename.get(name)
             if target and target != rel:
                 d.add(target)
         deps[rel] = d
@@ -162,23 +201,35 @@ def build_map(root: Path = ROOT) -> dict:
             rdeps.setdefault(t, []).append(src)
     return {
         "schema": SCHEMA,
-        "key": _cache_key(root, files),
+        "key": _cache_key(root, files, hashes),
         "rdeps": {k: sorted(v) for k, v in sorted(rdeps.items())},
+        "features": features,
+        "reused": reused,
+        "parsed": parsed,
     }
 
 
 def load_map(root: Path = ROOT, cache: Path | None = None, *, use_cache: bool = True) -> tuple[dict, str]:
-    """Return (map, status) where status is 'cache' or 'rebuilt'."""
+    """Return (map, status) where status is 'cache' or 'rebuilt'.
+
+    'rebuilt' re-resolves every edge; ``map["reused"]`` counts files whose parse was
+    taken from the cache by content hash (``map["parsed"]`` were parsed afresh).
+    """
     cache = cache or _default_cache_path(root)
-    key = _cache_key(root, list(_iter_files(root)))
+    files = list(_iter_files(root))
+    hashes = _content_hashes(root, files)
+    key = _cache_key(root, files, hashes)
+    previous = None
     if use_cache and cache.is_file():
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
-            if data.get("schema") == SCHEMA and data.get("key") == key:
-                return data, "cache"
+            if data.get("schema") == SCHEMA:
+                if data.get("key") == key:
+                    return data, "cache"
+                previous = data
         except (OSError, ValueError):
             pass
-    data = build_map(root)
+    data = build_map(root, previous=previous, hashes=hashes)
     try:
         cache.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(json.dumps(data), encoding="utf-8")

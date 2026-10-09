@@ -19,10 +19,15 @@ on:
   schedule:
     - cron: "17 7 * * *"
 
-# A new push to a PR branch supersedes the run in flight; main runs never cancel.
+# A new push supersedes the run in flight, on a PR branch AND on main (2026-10-09, CI
+# design audit Q2). Prepare refuses unless HEAD == the origin/main tip
+# (scripts/cio_phase2_exact_main_deploy.sh require_head_is_origin_main), so only the tip
+# SHA is ever promotable; a queued run for a superseded main commit only delayed the tip
+# run (queue 422-814 s in 4 of 19 merges). The tip run tests the cumulative tree; the
+# nightly full run remains the isolation reference.
 concurrency:
   group: cio-hardening-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   cio-hardening:
@@ -43,20 +48,51 @@ jobs:
       ENABLE_TELEGRAM: "0"
       ALPACA_MODE: paper
     steps:
+      # PR: shallow (the merge commit and its two parents) plus the base branch below --
+      # the selector and the line-ending guard need only the merge-base. ~13 s -> ~5 s.
+      # push/dispatch: full history (registered tests read old commits by SHA).
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+
+      - name: Fetch PR base for the selector merge-base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=200 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          if ! git merge-base "origin/${BASE_REF}" HEAD >/dev/null; then
+            echo "merge-base not within the shallow window -- unshallowing"
+            git fetch --no-tags --unshallow origin
+          fi
+          echo "merge_base=$(git merge-base "origin/${BASE_REF}" HEAD)"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+          # The deps are pinned inline below, so the workflow file is the cache key.
+          cache-dependency-path: .github/workflows/cio-production-hardening-ci.yml
+
+      # The PR selector's import/path map, cached by CONTENT (scripts/lib/test_impact.py):
+      # only files changed since the restored map are re-parsed (~19 s -> ~1-2 s). A
+      # restored map is re-validated against the checkout, so it can never select stale.
+      - name: Restore test-impact map
+        if: github.event_name == 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: .git/tradeai/test_impact_map.json
+          key: test-impact-map-v2-${{ hashFiles('scripts/**/*.py', 'scripts/**/*.sh', 'tests/**/*.py', 'tests/**/*.sh') }}
+          restore-keys: |
+            test-impact-map-v2-
 
       - name: Install test deps
         run: |
           python3 -m pip install --upgrade pip
           pip install pytest pyyaml requests
-          # Optional render smoke deps (fail-soft if unavailable)
+          # Optional render deps (fail-soft if unavailable); some registered tests use them
           pip install python-docx || true
           # agent_governance_sop requires pinned Ruff (quality + toolchain tests).
           # Never optional: missing Ruff must fail closed, not skip.
@@ -151,67 +187,6 @@ jobs:
           print("HTML smoke OK", res["paths"]["html"])
           PY
 
-      - name: DOCX smoke (optional)
-        continue-on-error: true
-        run: |
-          python3 - <<'PY'
-          try:
-              import docx  # noqa: F401
-          except ImportError:
-              print("python-docx not installed — skip DOCX smoke")
-              raise SystemExit(0)
-          from pathlib import Path
-          from datetime import datetime, timezone
-          import sys
-          sys.path.insert(0, ".")
-          sys.path.insert(0, "scripts")
-          from scripts.lib.cio_report_v2 import build_report_v2
-          from scripts.lib.cio_report_render import export_report_formats
-          model = build_report_v2(
-              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
-                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
-              part_a_inputs={"capital_plan": {
-                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
-                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
-                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
-                  "post_plan_cash_usd": 0.5, "position_decisions": [],
-              }},
-              source_sha="ci", now=datetime.now(timezone.utc),
-          )
-          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_docx", formats=["html","docx"])
-          assert res.get("paths", {}).get("docx") or res.get("errors", {}).get("docx")
-          print("DOCX smoke:", res.get("paths", {}).get("docx"), res.get("errors"))
-          PY
-
-      - name: PDF smoke (optional — needs chromium/weasyprint)
-        continue-on-error: true
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from datetime import datetime, timezone
-          import sys
-          sys.path.insert(0, ".")
-          sys.path.insert(0, "scripts")
-          from scripts.lib.cio_report_v2 import build_report_v2
-          from scripts.lib.cio_report_render import export_report_formats, has_pdf_renderer
-          if not has_pdf_renderer():
-              print("No PDF renderer in CI image — skip")
-              raise SystemExit(0)
-          model = build_report_v2(
-              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
-                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
-              part_a_inputs={"capital_plan": {
-                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
-                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
-                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
-                  "post_plan_cash_usd": 0.5, "position_decisions": [],
-              }},
-              source_sha="ci", now=datetime.now(timezone.utc),
-          )
-          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_pdf", formats=["html","pdf"])
-          print("PDF smoke:", res.get("paths", {}).get("pdf"), res.get("errors"))
-          PY
-
       - name: Upload CIO CI evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -250,8 +225,91 @@ jobs:
           pip install pytest pyyaml requests
           pip install python-docx || true
           pip install "ruff==0.16.2"
+      # Saved from main so every PR can restore it (PR caches are not visible to other
+      # PRs); a PR then re-parses only the files it changed.
+      - name: Restore test-impact map
+        uses: actions/cache@v4
+        with:
+          path: .git/tradeai/test_impact_map.json
+          key: test-impact-map-v2-${{ hashFiles('scripts/**/*.py', 'scripts/**/*.sh', 'tests/**/*.py', 'tests/**/*.sh') }}
+          restore-keys: |
+            test-impact-map-v2-
+      - name: Build test-impact map (cache for PR selection)
+        run: python3 -c "from scripts.lib import test_impact as t; m, st = t.load_map(); print('map', st, m.get('parsed'), 'parsed', m.get('reused'), 'reused')"
       - name: CIO hardening gates (full, serial)
         run: python3 scripts/run_cio_hardening_ci.py --profile full
+
+      # Moved from the required job 2026-10-09 (audit Q5): both are continue-on-error, so
+      # they could never fail the check, yet cost the PR path 20 s median / 52 s p90.
+      - name: DOCX smoke (optional)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          try:
+              import docx  # noqa: F401
+          except ImportError:
+              print("python-docx not installed — skip DOCX smoke")
+              raise SystemExit(0)
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats
+          model = build_report_v2(
+              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
+                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
+                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
+                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
+                  "post_plan_cash_usd": 0.5, "position_decisions": [],
+              }},
+              source_sha="ci", now=datetime.now(timezone.utc),
+          )
+          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_docx", formats=["html","docx"])
+          assert res.get("paths", {}).get("docx") or res.get("errors", {}).get("docx")
+          print("DOCX smoke:", res.get("paths", {}).get("docx"), res.get("errors"))
+          PY
+
+      - name: PDF smoke (optional — needs chromium/weasyprint)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats, has_pdf_renderer
+          if not has_pdf_renderer():
+              print("No PDF renderer in CI image — skip")
+              raise SystemExit(0)
+          model = build_report_v2(
+              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
+                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
+                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
+                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
+                  "post_plan_cash_usd": 0.5, "position_decisions": [],
+              }},
+              source_sha="ci", now=datetime.now(timezone.utc),
+          )
+          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_pdf", formats=["html","pdf"])
+          print("PDF smoke:", res.get("paths", {}).get("pdf"), res.get("errors"))
+          PY
+
+      # Whole-tree secrets scan, nightly (runs even when a gate is red): the pre-push hook
+      # and the PR check scan only the commits being pushed or merged; this catches
+      # anything older (audit S1). A failure opens the ci-main-red issue below.
+      - name: Secrets tree scan
+        if: ${{ !cancelled() }}
+        run: python3 scripts/check_no_secrets.py --tree
 
   # A red post-merge or nightly run must be SEEN without blocking every open PR:
   # open (or comment on) one `ci-main-red` issue. The PR check stays fast; main

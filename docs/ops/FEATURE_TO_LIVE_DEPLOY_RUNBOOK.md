@@ -139,11 +139,13 @@ TRADEAI_RELEASE_PR=<n> bash scripts/cio_phase2_exact_main_deploy.sh promote
 ```
 
 `prepare` is the moment the design-guard / pin-check / integrity-hook gates actually fire. A
-`vite build only` fallback (design guard failure) is a **defect to fix before promote**, not a
-signal to proceed. `prepare` checks exact main and grant binding; it does not itself enforce
-post-merge CI. `promote` re-queries CI immediately before changing CURRENT, after the grant and
-conformance checks. A CI refusal records `post_merge_ci_refused` and leaves activation untouched.
-Both release actions consume a grant use; a refused promotion may already have consumed its use.
+failed `npm run build` (design guards, node unit tests, tsc or vite) now fails `prepare` closed;
+there is no `vite build only` fallback any more (2026-10-09). `prepare` checks exact main and
+grant binding; it does not itself enforce post-merge CI. `promote` checks the exact-SHA push/main
+runs of cio-hardening, agent-governance and release-readiness FIRST, before the grant preflight,
+so a promote attempted while CI is still running refuses (`post_merge_ci_refused`) without
+consuming a grant use; it then re-queries CI immediately before changing CURRENT, after the
+grant and conformance checks. Both release actions consume a grant use once they pass CI.
 
 Archive `~/.local/state/cio-phase2-exact-main/post_merge_ci.json` and `deploy_receipt.json`
 with the candidate validation. CI evidence records candidate SHA, workflow path/ID, run ID/attempt,
