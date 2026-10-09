@@ -351,6 +351,9 @@ def test_1597_stay_on_cron_and_keep_on_cron_rows_never_eligible():
     assert len(stay) >= 60 and len(keep) >= 120
     for row in rows:
         live = dict(row, dispatch=copy.deepcopy(GOOD_DISPATCH))
+        assert LD.dispatch_eligible(live, exceptions={})[0] is False, row["lane_id"]
+        if row["lane_id"] in LD.load_policy_exceptions():
+            continue                       # AGENTS 4.0.0 §23.3 exception; pinned in the scalp tests below
         assert LD.dispatch_eligible(live)[0] is False, row["lane_id"]
         assert LD.dispatchable(live) is False, row["lane_id"]
     for lane in NAMED_IN_REVIEW:
@@ -417,16 +420,155 @@ def test_live_rows_naming_broker_order_secret_scripts_are_ineligible():
         if any(t in blob for t in FORBIDDEN_COMMAND_TOKENS) or any(
                 t in blob for t in ("broker", "place_order", "secret", "sm-render", "sm_render")):
             named += 1
-            assert LD.dispatch_eligible(row)[0] is False, row["lane_id"]
+            assert LD.dispatch_eligible(row, exceptions={})[0] is False, row["lane_id"]
+            if row["lane_id"] not in LD.load_policy_exceptions():
+                assert LD.dispatch_eligible(row)[0] is False, row["lane_id"]
     assert named > 0
 
 
-def test_scalp_lane_trips_market_day_gate_token_and_is_not_carved_out():
-    """AGENTS 4.0.0 §23.3: trade-ai-scalp-live is governed through the allowlist. Its registry cron line wraps
-    market_day_gate.sh (a pipeline_manifest excluded token), so this rule marks it ineligible — reported, not
-    silently carved out."""
+def test_scalp_lane_eligible_only_through_the_policy_exception():
+    """AGENTS 4.0.0 §23.3 + operator 2026-10-09 ~18:05 ET: trade-ai-scalp-live wraps market_day_gate.sh (a
+    pipeline_manifest excluded token). The config exception lifts exactly that token; without it the lane is
+    ineligible for exactly that reason. Mode stays off, so it is still not dispatchable."""
     rows = {r["lane_id"]: r for r in _live_rows()}
     if "trade-ai-scalp-live" not in rows:
         pytest.skip("scalp row not present")
-    ok, why = LD.dispatch_eligible(rows["trade-ai-scalp-live"])
-    assert (ok, why) == (False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+    row = rows["trade-ai-scalp-live"]
+    assert LD.dispatch_eligible(row) == (True, "eligible:policy_exception:market_day_gate.sh")
+    assert LD.dispatch_eligible(row, exceptions={}) == (
+        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+    assert LD.dispatch_mode(row) == "off" and LD.dispatchable(row) is False
+
+
+def test_only_the_excepted_lane_changes_eligibility_in_the_live_registry():
+    flipped = [r["lane_id"] for r in _live_rows()
+               if LD.dispatch_eligible(r)[0] != LD.dispatch_eligible(r, exceptions={})[0]]
+    assert flipped in ([], ["trade-ai-scalp-live"])
+
+
+# ── policy exceptions (config/lane_dispatch_policy_exceptions.json) ─────────────────────────────
+
+SCALP_EXPR = ("*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash "
+              "scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1")
+SCALP_EXC = {"trade-ai-scalp-live": frozenset({"market_day_gate.sh"})}
+SCALP_ARGV = {"trade-ai-scalp-live": "scripts/market_day_gate.sh scripts/run_trade_ai_scalp_live.py --dry-run"}
+GATE_MARK = {"class": "pipeline_excluded_gate", "token": "market_day_gate.sh",
+             "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"}
+
+
+def _scalp(**extra):
+    return _row(lane_id="trade-ai-scalp-live", expression=SCALP_EXPR, match="scripts/run_trade_ai_scalp_live.py",
+                **extra)
+
+
+def test_policy_exception_config_lists_only_scalp_live_market_day_gate():
+    doc = json.loads(LD.DEFAULT_POLICY_EXCEPTIONS.read_text(encoding="utf-8"))
+    assert [e["lane_id"] for e in doc["exceptions"]] == ["trade-ai-scalp-live"]
+    assert doc["exceptions"][0]["exempt_tokens"] == ["market_day_gate.sh"]
+    assert "4.0.0" in doc["exceptions"][0]["authority"] and "2026-10-09" in doc["exceptions"][0]["approval"]
+    assert LD.load_policy_exceptions() == SCALP_EXC
+    assert LD.EXEMPTIBLE_TOKENS == frozenset({"market_day_gate.sh"})
+    assert "market_day_gate.sh" in FORBIDDEN_COMMAND_TOKENS
+
+
+def test_scalp_live_eligible_with_exception_including_allowlist_argv():
+    row = _scalp()
+    assert LD.dispatch_eligible(row, allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) == (
+        True, "eligible:policy_exception:market_day_gate.sh")
+    assert LD.dispatch_eligible(row, allowlist_argv=SCALP_ARGV, exceptions={})[0] is False
+    live = _scalp(dispatch=copy.deepcopy(GOOD_DISPATCH))
+    assert LD.dispatchable(live, allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) is True
+    off = _scalp(dispatch=dict(copy.deepcopy(GOOD_DISPATCH), mode="off"))
+    assert LD.dispatchable(off, allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) is False
+    assert LD.dispatchable(_scalp(), allowlist_argv=SCALP_ARGV, exceptions=SCALP_EXC) is False   # no block = off
+
+
+def test_unlisted_lane_with_market_day_gate_stays_ineligible():
+    row = _row(lane_id="gated-report", expression="0 10 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/report.py",
+               match="scripts/report.py", dispatch=copy.deepcopy(GOOD_DISPATCH))
+    assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (
+        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+    assert LD.dispatch_eligible(row) == (False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+
+
+@pytest.mark.parametrize("extra", [
+    " && $PY scripts/broker_stop_reconcile.py",
+    " && $PY scripts/place_order_worker.py",
+    " && $PY scripts/positions_sync.py",
+    " && $PY scripts/digest.py --send",
+    " && bash scripts/sm-render.sh",
+])
+def test_scalp_live_with_any_other_forbidden_token_stays_ineligible(extra):
+    row = _row(lane_id="trade-ai-scalp-live", expression=SCALP_EXPR + extra,
+               match="scripts/run_trade_ai_scalp_live.py", dispatch=copy.deepcopy(GOOD_DISPATCH))
+    ok, why = LD.dispatch_eligible(row, exceptions=SCALP_EXC)
+    assert ok is False and why.startswith("forbidden_token:") and "market_day_gate" not in why
+    assert LD.dispatchable(row, exceptions=SCALP_EXC) is False
+
+
+def test_scalp_live_command_field_broker_token_stays_ineligible():
+    ok, why = LD.dispatch_eligible(_scalp(command="$PY scripts/sync_basis_from_broker.py"), exceptions=SCALP_EXC)
+    assert ok is False and why.startswith("forbidden_token:")
+
+
+def test_exception_lifts_only_the_b1_gate_marker():
+    row = _scalp(stay_on_cron=dict(GATE_MARK), recommendation="KEEP_ON_CRON")
+    assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (True, "eligible:policy_exception:market_day_gate.sh")
+    assert LD.dispatch_eligible(row, exceptions={}) == (False, "stay_on_cron")
+    for mark in ({"class": "broker_order", "token": "market_day_gate.sh"},
+                 {"class": "pipeline_excluded_gate", "token": "other_gate.sh"},
+                 {"class": "secret", "token": "token"}, True):
+        assert LD.dispatch_eligible(_scalp(stay_on_cron=mark), exceptions=SCALP_EXC) == (False, "stay_on_cron")
+    # KEEP_ON_CRON without the gate marker is some other reason: still blocks
+    assert LD.dispatch_eligible(_scalp(recommendation="KEEP_ON_CRON"), exceptions=SCALP_EXC) == (
+        False, "keep_on_cron")
+    # an unlisted lane carrying the gate marker stays blocked
+    other = _row(lane_id="gated-report", stay_on_cron=dict(GATE_MARK))
+    assert LD.dispatch_eligible(other, exceptions=SCALP_EXC) == (False, "stay_on_cron")
+
+
+def test_1597_scalp_row_eligible_only_through_the_exception():
+    rows = {r["lane_id"]: r for r in json.loads(FIXTURE_1597.read_text(encoding="utf-8"))["lanes"]}
+    row = rows["trade-ai-scalp-live"]
+    assert row["stay_on_cron"]["class"] == LD.GATE_STAY_CLASS and row["recommendation"] == "KEEP_ON_CRON"
+    assert LD.dispatch_eligible(row) == (True, "eligible:policy_exception:market_day_gate.sh")
+    assert LD.dispatch_eligible(row, exceptions={}) == (False, "stay_on_cron")
+
+
+def test_stay_behind_still_blocks_excepted_lane():
+    row = _scalp(watch={"factor": 2.0, "severity": "P2", "stay_behind": True})
+    assert LD.dispatch_eligible(row, exceptions=SCALP_EXC) == (False, "stay_behind")
+
+
+@pytest.mark.parametrize("content", [
+    None, "", "not json", "[]", '{"exceptions": "x"}', '{"exceptions": [1, null]}',
+    '{"exceptions": [{"lane_id": "trade-ai-scalp-live"}]}',
+    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": []}]}',
+    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": "market_day_gate.sh"}]}',
+    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh", "broker"]}]}',
+    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["sender"]}]}',
+    '{"exceptions": [{"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]},'
+    ' {"lane_id": "trade-ai-scalp-live", "exempt_tokens": ["market_day_gate.sh"]}]}',
+], ids=lambda c: "missing" if c is None else (c[:40] or "empty"))
+def test_missing_or_malformed_exception_config_fails_closed(tmp_path, content):
+    p = tmp_path / "exc.json"
+    if content is not None:
+        p.write_text(content, encoding="utf-8")
+    table = LD.load_policy_exceptions(p)
+    assert table == {}
+    assert LD.dispatch_eligible(_scalp(), allowlist_argv=SCALP_ARGV, exceptions=table)[0] is False
+
+
+def test_exception_table_cannot_widen_beyond_exemptible_tokens():
+    widened = {"trade-ai-scalp-live": frozenset({"market_day_gate.sh", "broker", "place_order"})}
+    row = _row(lane_id="trade-ai-scalp-live", expression=SCALP_EXPR + " && $PY scripts/place_order_worker.py",
+               match="x")
+    assert LD.dispatch_eligible(row, exceptions=widened)[0] is False
+
+
+def test_sender_lane_listed_in_exceptions_stays_ineligible():
+    exc = {"digest-sender": frozenset({"market_day_gate.sh"})}
+    row = _row(lane_id="digest-sender", expression="0 17 * * 1-5 bash scripts/market_day_gate.sh $PY scripts/digest.py --send",
+               match="scripts/digest.py")
+    ok, why = LD.dispatch_eligible(row, exceptions=exc)
+    assert ok is False and why.startswith("forbidden_token:") and "market_day_gate" not in why

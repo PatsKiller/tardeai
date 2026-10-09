@@ -1,0 +1,16 @@
+{
+  "schema": "LaneDispatchPolicyExceptions@v1",
+  "owner": "platform",
+  "consumer": "scripts/lib/lane_dispatch.py (load_policy_exceptions -> dispatch_eligible)",
+  "note": "Per-lane exemptions from the n8n dispatch forbidden-token rule. Only tokens in lane_dispatch.EXEMPTIBLE_TOKENS (the market_day_gate.sh calendar gate) may ever be listed; an entry naming any other token is dropped whole (fail closed), and a missing or malformed file means no exceptions. An exemption removes only the eligibility block for the listed token (and the matching B1 stay_on_cron pipeline_excluded_gate marker); every other forbidden token, stay-behind and sender rule still applies, and dispatch mode stays off until a registry dispatch block says otherwise.",
+  "exceptions": [
+    {
+      "lane_id": "trade-ai-scalp-live",
+      "exempt_tokens": ["market_day_gate.sh"],
+      "authority": "AGENTS.md 4.0.0 §23.3 (APPROVE_AGENTS_POLICY_4_0_0, operator 2026-10-09 15:25 ET): trade-ai-scalp-live is the sole allowlisted live lane (config/n8n_run_allowlist.json).",
+      "approval": "Operator John 2026-10-09 ~18:05 ET: \"Okay to everything except extending the scout to closing\" (approves the scalp-live dispatch exception).",
+      "approved_on": "2026-10-09",
+      "reason": "The lane's cron line and allowlist argv wrap scripts/market_day_gate.sh, a pipeline_manifest FORBIDDEN_COMMAND_TOKENS entry; the gate is a market-calendar check, not a broker/order/stop authority."
+    }
+  ]
+}
