@@ -351,3 +351,24 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     assert all(native[lane]["scheduler"]["expression"] != native[lane]["scheduler"]["match"] for lane in cutover)
     assert all(native[lane]["state"] == "ACTIVE" for lane in monitors)
     assert all(native[lane]["state"] == "NEVER_SCHEDULED" for lane in reminders)
+
+
+def test_every_n8n_row_cadence_is_one_valid_five_field_cron():
+    """2026-10-09: an unquoted shell loop passed '*/5 * * * *' to cutover_lane.sh --cadence; each bare '*' glob-expanded
+    to the repo's top-level file names and three registry rows shipped a cadence of '*/5 <126 file names>'. A cadence is
+    exactly five fields, each a valid cron field, or absent."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("n8n_wf_gen", ROOT / "scripts" / "n8n_workflow_templates.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    reg = lr.load_registry()
+    bad = {}
+    for row in reg["lanes"]:
+        sched = row.get("scheduler") or {}
+        if sched.get("kind") != "n8n" or not sched.get("cadence"):
+            continue
+        cad = sched["cadence"]
+        if len(cad.split()) != 5 or gen.validate_cron(cad):
+            bad[row["lane_id"]] = cad[:60]
+    assert bad == {}, bad
