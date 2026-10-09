@@ -34,5 +34,11 @@ by this source-registration approval.
 
 Before state: both rows had null `approved_by`/`approved_on`, with two UNAPPROVED_SOURCE findings.
 After state: both rows point here with `approved_by=operator`, `approved_on=2026-10-09` and their
-unchanged single writer and no-production-activation scope. Native authority and full acceptance
-must be rerun; this manifest alone is not a passing test receipt.
+unchanged single writer and no-production-activation scope. This manifest alone is not a passing
+test receipt. Subsequent post-approval validation on `d8431c7eb4a3f3b724e5d8deefe146470bd97e59`:
+seven targeted suites **155 passed / exit 0 / 409.67s**, including native authority clean-gate and
+negative-control assertions. JUnit is retained at
+`~/cadi-evidence/cadi01-approved-20261009-U2sUcP/approved-targeted.xml`, SHA256
+`227f2fc862ba43d0f310f3c575ec4d6c1d9efc92594ce6708f08428110892962`.
+Independent approval review found no blocking issues. Final integrated-tree full acceptance
+remains NOT RUN; it awaits the peer docs-index lease handoff and is not waived by these results.

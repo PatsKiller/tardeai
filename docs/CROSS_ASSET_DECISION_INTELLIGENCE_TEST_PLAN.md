@@ -2,19 +2,40 @@
 
 Status: ACTIVE  
 Owner: Agent A and independent QA; Parfit model owner, Halley independent model-risk reviewer
-as_of: 2026-10-09T11:42:14-04:00
+as_of: 2026-10-09T11:53:24-04:00
 Measured at: isolated CADI-01 clone on base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; fixtures only
-Current ticket: **CADI-01 SOURCE REGISTRATIONS APPROVED; FINAL ACCEPTANCE PENDING**
+Current ticket: **CADI-01 APPROVAL VERIFIED; PEER INDEX HANDOFF / FINAL ACCEPTANCE PENDING**
 Program readiness: **NOT READY**
-Current results: **121 combined PASS; 80 core PASS (overlap); 15 adversarial PASS**; post-approval authority/full acceptance **PENDING**
+Current results: **155 post-approval targeted PASS; native authority PASS**; final full acceptance **NOT RUN**; prior adversarial **15 PASS**
 
 ### Source-approval checkpoint — 2026-10-09
 
 John's explicit approval of both named stores and their sole writer is retained in the
 [approval archive manifest](governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009).
-The native authority gate and full acceptance will rerun after integrating latest main.
+The native authority assertion and negative controls passed in the new 155-test run; full
+acceptance must rerun after integrating latest main and regenerating the docs index.
 Older BLOCKED/exit-1 records below remain the before-state evidence, not current approval status
 and not a passing acceptance receipt. No production activation or data-store mutation occurred.
+
+Post-approval checkpoint tested: `d8431c7eb4a3f3b724e5d8deefe146470bd97e59`, cwd
+`~/tradeai-wt-cadi01-20261009`, existing primary `.venv/bin/python`, source base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`.
+Command: `python -m pytest -q tests/test_cadi01_canonical_v2.py
+tests/test_cross_asset_decision_intelligence.py tests/test_cross_asset_symbol_decision_object_20260929.py
+tests/test_cio_operator_artifacts_20261003.py tests/test_cio_payload_flow_20261002.py
+tests/test_cio_completeness_measurement.py tests/test_data_source_authority_20260913.py
+--junitxml=~/cadi-evidence/cadi01-approved-20261009-U2sUcP/approved-targeted.xml`
+(the actual command used the explicit interpreter and absolute JUnit path).
+Result: **155 passed / 0 failed / exit 0 / 409.67s**. This replaces, rather than adds to, the
+overlapping earlier scoped counts. JUnit SHA256:
+`227f2fc862ba43d0f310f3c575ec4d6c1d9efc92594ce6708f08428110892962`.
+Independent approval review: no blocking findings. Ruff lint/three-new-file format check,
+source-of-truth check (`stale: none`), dark-contract (NEW 0), coverage (NEW unlisted 0), and SOP
+validation (`ok=True`) passed. Tests/policy/baselines/hooks were not weakened.
+
+Final full acceptance is not reported green. Peer `root/runtime-convergence` still holds the
+docs-index lease `29ceb237-16da-42b6-ad59-6e0fc5bea4cf`; no peer file was modified. Main integration
+and index regeneration await Agent A's coordination. Latest fetched main `ac3fddebb` is not
+yet included. No push grant requested, no push/PR/merge/deployment/activation performed.
 
 ## Current validation contract — 2026-10-09
 
@@ -41,8 +62,8 @@ regenerated the authority documentation and INDEX. No production data was writte
 | V2-P3 | Concurrent append and restart | Complete non-interleaved records survive; latest views recover consistently | PASS; 24 concurrent duplicate requests; four processes; reopen (not a power-loss test) |
 | V2-P4 | Rebuild latest projection from history | Equivalent projection; immutable ledger unchanged | PASS; out-of-order/offset/submillisecond ordering tested |
 | V2-P5 | Malformed history row and interrupted/failed write | Visible diagnostics, valid history remains recoverable; no false success or truncation | PASS; forced SQL rollback, corrupt-history rebuild rollback, simulated disk error; hard-kill not run |
-| V2-A1 | New history and every rebuildable projection store | Each registered in DSA with one writer, served/read path and real operator approval | APPROVED REGISTRATION; native authority rerun pending; one writer each, no activation |
-| V2-A2 | New decision/projection/error output schemas | Classification registry covers all; payload-flow/authority guards pass | PASS on prior fixtures; all four classified, three audit record edges verified; post-approval full acceptance pending |
+| V2-A1 | New history and every rebuildable projection store | Each registered in DSA with one writer, served/read path and real operator approval | PASS in 155-test post-approval run; one writer each, no activation |
+| V2-A2 | New decision/projection/error output schemas | Classification registry covers all; payload-flow/authority guards pass | PASS in 155-test post-approval run; all four classified, three audit record edges verified; final full acceptance pending |
 | V2-A3 | Account coverage and unknown quantities | Split accounts cannot fake a 100-share cover; missing cash/shares remains unknown | PASS; aggregate legacy cover reset to unknown; account-aware linking is CADI-02 |
 | V2-A4 | Authority/refusal and dry-run | Advisory-only, no live/broker reach; dry-run cannot reach durable mutation | PASS; no DB created by dry-run; no production caller |
 | V2-G1 | Legacy consumers and fixtures | Both v1 compatibility suites remain green; no unrelated source regression | PASS; 19 compatibility tests in targeted run; broader acceptance separate |

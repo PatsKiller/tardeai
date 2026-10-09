@@ -2,11 +2,11 @@
 
 Status: ACTIVE
 Owner: Agent A (release coordination); John (operator authorization)
-as_of: 2026-10-09T11:42:14-04:00
+as_of: 2026-10-09T11:53:24-04:00
 Measured at: local CADI-01 fixtures on base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; no current release verification
-Current ticket: **CADI-01 SOURCE REGISTRATIONS APPROVED; FINAL ACCEPTANCE PENDING**
+Current ticket: **CADI-01 APPROVAL VERIFIED; PEER INDEX HANDOFF / FINAL ACCEPTANCE PENDING**
 Full cross-asset recommendation: **NOT READY**
-Current test results: **121 combined PASS; 80 core PASS (overlap); 15 adversarial PASS**; full acceptance not green
+Current test results: **155 post-approval targeted PASS; native authority PASS**; final full acceptance not run; prior adversarial **15 PASS**
 
 ### Latest authority checkpoint
 
@@ -15,8 +15,12 @@ John approved the two named CADI-01 registrations with sole writer
 Both DSA rows reference the
 [approval archive manifest](governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009).
 The pending-source descriptions and failed test counts below are retained before-state records.
-Post-approval native authority/full acceptance, an exact-SHA push grant and Agent A review/merge
-remain required. This is neither a release grant nor a READY recommendation.
+Post-approval native authority and seven targeted suites passed: **155 tests / exit 0** on
+`d8431c7eb4a3f3b724e5d8deefe146470bd97e59`; independent approval review found no blocking issues.
+Agent A must coordinate the peer docs-index lease before main integration/regeneration and
+final full acceptance. An exact-SHA push grant and Agent A review/merge remain required.
+No push/PR/merge/deployment/activation occurred. This is neither a release grant nor a READY
+recommendation, and the peer-leased backlog/readiness report was not changed.
 
 ## Current bill and authority boundaries — 2026-10-09
 

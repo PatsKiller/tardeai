@@ -2,11 +2,11 @@
 
 Status: ACTIVE  
 Owner: Agent A (program supervisor); CADI implementation agent (ticket delivery)
-as_of: 2026-10-09T11:42:14-04:00
+as_of: 2026-10-09T11:53:24-04:00
 Measured at: isolated CADI-01 clone, base `3b5c248569908adfad9a60ca895e0fa9b2aa2c49`; fixture evidence, not live behavior
 Program readiness: **NOT READY**
-Current ticket: **CADI-01 SOURCE REGISTRATIONS APPROVED; FINAL ACCEPTANCE PENDING**
-Current tests: **121 combined PASS; 80 core PASS (overlapping); 15 adversarial PASS**; full acceptance not green
+Current ticket: **CADI-01 APPROVAL VERIFIED; PEER INDEX HANDOFF / FINAL ACCEPTANCE PENDING**
+Current tests: **155 post-approval targeted PASS**; full acceptance not green; prior adversarial **15 PASS**
 Authority: approved revised CADI plan and Agent A's four binding additions, recorded in the operator conversation
 Canonical repo path: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
 
@@ -17,8 +17,17 @@ John replied "approved" to the explicit request naming `cross_asset_evaluation_h
 and **no production activation**. Both registry rows now reference
 [`CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md`](governance/CADI01_SOURCE_APPROVAL_ARCHIVE_MANIFEST_20261009.md#cadi01-source-approval-20261009).
 This supersedes the pending-approval states in the earlier local checkpoint retained below;
-it does not relabel that failed acceptance run as green. Latest main is being integrated,
-then native authority and full local acceptance must pass before an exact-SHA push request.
+it does not relabel that failed acceptance run as green. The approval checkpoint is committed as
+`d8431c7eb4a3f3b724e5d8deefe146470bd97e59`. Seven targeted suites passed **155 tests / 0 failures /
+exit 0 / 409.67s**, including the native authority clean-gate assertion and negative controls.
+Independent approval review found no blocking issues; Ruff/format, source-of-truth, dark-contract,
+coverage and SOP checks passed. Full acceptance on the integrated final candidate is **NOT RUN**.
+Latest fetched main is `ac3fddebb`; merging it and final docs-index regeneration are deferred
+because peer `root/runtime-convergence` holds `docs/INDEX.md` lease
+`29ceb237-16da-42b6-ad59-6e0fc5bea4cf` (still active at 11:53 EDT).
+Agent A must arrange a release/handoff; the request is on the shared board. After handoff:
+integrate main, regenerate after explicit staging, rerun full local acceptance with bounded
+concurrency, commit the final candidate, and request its exact-SHA git-push grant.
 Production read activation, production store writes, scheduling and all downstream tickets
 remain off/not started. Agent A owns review, merge and release. Program remains NOT READY.
 Peer leases on the backlog/readiness report and docs index are respected; their earlier status
