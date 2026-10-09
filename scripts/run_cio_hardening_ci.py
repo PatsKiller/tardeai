@@ -3583,6 +3583,12 @@ GATES = [
         ["tests/test_n8n_run_relay_20261008.py"],
     ),
     (
+        # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only
+        # (bind refusal, HMAC/envelope auth, window, replay, rate, <= 2 KB, no secrets in output).
+        "PHONE_STATUS",
+        ["tests/test_phone_status_endpoint_20261009.py"],
+    ),
+    (
         # N8N_AGENT2_W1 — 2026-10-08: observed registry rows, safe routing and durable legacy-job receipts.
         "N8N_AGENT2_W1",
         ["tests/test_n8n_w1_registry_20261008.py"],
