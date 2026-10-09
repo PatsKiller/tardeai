@@ -1,0 +1,56 @@
+..F                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_cadence_validation_preserves_all_import_contracts[lane_registry-import_root2] _
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-113067/test_cadence_validation_preser2')
+module = 'lane_registry'
+import_root = PosixPath('/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib')
+
+    @pytest.mark.parametrize(
+        ("module", "import_root"),
+        [
+            ("scripts.lib.lane_registry", ROOT),
+            ("lib.lane_registry", ROOT / "scripts"),
+            ("lane_registry", ROOT / "scripts" / "lib"),
+        ],
+    )
+    def test_cadence_validation_preserves_all_import_contracts(tmp_path, module, import_root):
+        program = """
+    import importlib, json, sys
+    registry = importlib.import_module(sys.argv[1])
+    row = json.loads(sys.argv[2])
+    assert registry.validate_row(row) == []
+    row["scheduler"]["cadence"] = " ".join(["docs"] * 337)
+    assert any("scheduler.cadence" in error for error in registry.validate_row(row))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", program, module, json.dumps(_row())],
+            cwd=tmp_path,
+            env={**os.environ, "PYTHONPATH": str(import_root)},
+            capture_output=True,
+            text=True,
+        )
+>       assert result.returncode == 0, result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "<string>", line 3, in <module>
+E             registry = importlib.import_module(sys.argv[1])
+E           File "/usr/lib/python3.14/importlib/__init__.py", line 88, in import_module
+E             return _bootstrap._gcd_import(name[level:], package, level)
+E                    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "<frozen importlib._bootstrap>", line 1406, in _gcd_import
+E           File "<frozen importlib._bootstrap>", line 1371, in _find_and_load
+E           File "<frozen importlib._bootstrap>", line 1342, in _find_and_load_unlocked
+E           File "<frozen importlib._bootstrap>", line 938, in _load_unlocked
+E           File "<frozen importlib._bootstrap_external>", line 759, in exec_module
+E           File "<frozen importlib._bootstrap>", line 491, in _call_with_frames_removed
+E           File "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/scripts/lib/lane_registry.py", line 40, in <module>
+E             from .cron_schedule import parse as parse_cron
+E         ImportError: attempted relative import with no known parent package
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/bin/python', '-c', '\nimpor...from .cron_schedule import parse as parse_cron\nImportError: attempted relative import with no known parent package\n').returncode
+
+tests/test_lane_registry_n8n_kind_20261008.py:438: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_lane_registry_n8n_kind_20261008.py::test_cadence_validation_preserves_all_import_contracts[lane_registry-import_root2]
+1 failed, 2 passed, 33 deselected in 0.67s

@@ -409,3 +409,30 @@ def test_n8n_legacy_row_can_omit_scheduler_cadence_when_expected_cadence_is_decl
     row = _row()
     row["scheduler"].pop("cadence")
     assert lr.validate_row(row) == []
+
+
+@pytest.mark.parametrize(
+    ("module", "import_root"),
+    [
+        ("scripts.lib.lane_registry", ROOT),
+        ("lib.lane_registry", ROOT / "scripts"),
+        ("lane_registry", ROOT / "scripts" / "lib"),
+    ],
+)
+def test_cadence_validation_preserves_all_import_contracts(tmp_path, module, import_root):
+    program = """
+import importlib, json, sys
+registry = importlib.import_module(sys.argv[1])
+row = json.loads(sys.argv[2])
+assert registry.validate_row(row) == []
+row["scheduler"]["cadence"] = " ".join(["docs"] * 337)
+assert any("scheduler.cadence" in error for error in registry.validate_row(row))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", program, module, json.dumps(_row())],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(import_root)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

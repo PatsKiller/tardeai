@@ -37,7 +37,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-from .cron_schedule import parse as parse_cron
+if __package__:
+    from .cron_schedule import parse as parse_cron
+else:
+    from cron_schedule import parse as parse_cron
 
 SCHEMA = "LaneRegistry@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
