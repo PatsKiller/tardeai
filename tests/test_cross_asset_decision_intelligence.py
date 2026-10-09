@@ -367,3 +367,44 @@ def test_historical_replay_equal_instant_conflicting_facts_fail_closed_across_of
     assert result["data_quality"] == "INVALID_DATA"
     assert result["signals_evaluated"] == 0
     assert "conflicting_fact_snapshot" in result["refusals"][0]["reason"]
+
+
+@pytest.mark.parametrize("alias_kind", ["hardlink", "input_symlink"])
+@pytest.mark.parametrize("filename", ["signals.jsonl", "prices.jsonl", "expression_facts.jsonl"])
+def test_historical_replay_external_output_alias_preserves_all_input_bytes(tmp_path, alias_kind, filename):
+    from scripts.ops.run_cross_asset_historical_replay import main
+
+    archive, _, _, _, _ = _historical_archive(tmp_path)
+    source = archive / filename
+    output = tmp_path / "external-output.json"
+    if alias_kind == "hardlink":
+        output.hardlink_to(source)
+    else:
+        source.rename(output)
+        source.symlink_to(output)
+    assert source.samefile(output)
+    before = {p.name: p.read_bytes() for p in archive.iterdir()}
+    status = main(["--archive-dir", str(archive), "--out", str(output)])
+    assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
+    assert status == 2
+
+
+def test_historical_replay_derived_score_overflow_returns_typed_invalid_data(tmp_path, capsys):
+    from scripts.ops.run_cross_asset_historical_replay import main, run_window
+
+    archive, clock, _, _, facts = _historical_archive(tmp_path)
+    share_facts = facts["facts_by_structure"]["shares"]
+    share_facts.pop("score")
+    share_facts.update(expected_return=1e308, capital_required=1e-320)
+    (archive / "expression_facts.jsonl").write_text(json.dumps(facts) + "\n", encoding="utf-8")
+    before = {p.name: p.read_bytes() for p in archive.iterdir()}
+    result = run_window(30, archive_dir=archive, as_of=clock.isoformat())
+    assert result["data_quality"] == "INVALID_DATA"
+    assert result["signals_evaluated"] == 0
+    assert result["options_would_be_superior"] is None
+    assert "derived_nonfinite_comparison" in result["refusals"][0]["reason"]
+    out = tmp_path / "metrics.json"
+    assert main(["--archive-dir", str(archive), "--as-of", clock.isoformat(), "--out", str(out)]) == 2
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+    assert json.loads(out.read_text())["windows"][0]["data_quality"] == "INVALID_DATA"
+    assert {p.name: p.read_bytes() for p in archive.iterdir()} == before
