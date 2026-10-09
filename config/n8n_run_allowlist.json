@@ -286,9 +286,68 @@
       ],
       "market_gate": false,
       "output_signal": "data/runtime/n8n_workflow_drift_last.json"
+    },
+    {
+      "lane_id": "storage-watch",
+      "source": "PROPOSED 2026-10-09 (operator \"add the lanes\"; ops-lanes-20261009.md): no cron line, no unit; registry row NEVER_SCHEDULED until shadow. Proposed 10 6 * * *. Read-only: statvfs, niced du of config/ops_lanes.json heavy_roots, catalog SELECTs on a read-only session, one catalog SELECT in the M2 shadow container; --dry-run prints, --write writes the receipt; no send",
+      "command": [
+        "$PY",
+        "scripts/storage_watch.py"
+      ],
+      "lock": "/tmp/tradeai_storage_watch.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 1200,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--write"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/storage_watch_last.json"
+    },
+    {
+      "lane_id": "backup-verify",
+      "source": "PROPOSED 2026-10-09: no cron line of its own; the script's no-flag form is the platform-maintenance-monthly step (lock /tmp/backup_verify.lock, reused here so the two cannot overlap). Proposed 40 6 * * *. Read-only: stat + decompress-and-count of the latest dump, pg_restore --list of the n8n lab dump, stamp mtimes; --dry-run prints, --write writes the receipt; neither lane mode sends",
+      "command": [
+        "$PY",
+        "scripts/backup_verify.py"
+      ],
+      "lock": "/tmp/backup_verify.lock",
+      "lock_kind": "flock",
+      "timeout_s": 2400,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--write"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/backup_verify_last.json"
+    },
+    {
+      "lane_id": "trade-ai-restore-drill",
+      "source": "PROPOSED 2026-10-09: monthly, first Sunday 03:30: n8n cron 30 3 * * 0 and --first-week-only on the live arg (live is a no-op on Sundays 8-31; the shadow plans every Sunday; 30 3 1-7 * 0 would OR the fields). --dry-run prints the plan only (catalog reads). --write creates ONLY a throwaway database restore_drill_<YYYYMMDD> (regex-guarded, disk-floor-guarded), restores the latest dump into it, compares row counts, then drops ONLY that database (name regex + created-by-this-run + run-id marker). Never touches live data. Operator review point",
+      "command": [
+        "$PY",
+        "scripts/trade_ai_restore_drill.py"
+      ],
+      "lock": "/tmp/tradeai_trade_ai_restore_drill.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 16200,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--write",
+        "--first-week-only"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/trade_ai_restore_drill_last.json"
     }
   ],
   "blocked_reasons": {
+    "n8n-activation-grants": "AGENTS 3.0.0 §23.10 P16 read-only checker (scripts/check_n8n_activation_grants.py). Blocked 2026-10-09 by the allowlist's own safety test: the command path, the receipt name n8n_activation_grants_last.json and any natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant'. The check is read-only, but renaming the entrypoint to dodge the token or exempting it is an operator decision, not an agent's. Registry row NEVER_SCHEDULED; no workflow generated.",
     "dof-run-pipeline": "AGENTS 23.3 forbids a DOF SQL path; the six-stage runner contains SQL writers and a model-scoring stage. No foreign cwd/interpreter contract, shared cron lock, nonzero aggregate failure exit, dry-run or stable receipt. Keep outside runnable lanes until supervisor/operator resolves authority and producer contracts.",
     "dof-rescan-tickets": "AGENTS 23.3 forbids a DOF SQL path; the existing runner performs SQL UPDATE/DELETE/INSERT. No foreign cwd/interpreter contract, shared cron lock or dry-run. DOF reader role does not authorize executor writes.",
     "openclaw-reminder-claude-plan-1": "n8n replacement uninstalled; no OpenClaw run receipt; generator lane alias differs from canonical id; OpenClaw agent loops and host senders remain excluded.",
@@ -302,7 +361,7 @@
     "alert-daily-digest": "Default action sends Telegram.",
     "ops-daily-digest": "External OpenClaw script sends Telegram and has no durable receipt; no external source edited.",
     "ops-weekly-learning-report": "External OpenClaw script sends Telegram and has no durable receipt.",
-    "system-rollup-snapshot": "Default action sends Telegram and refreshes reporting catalog.",
+    "system-rollup-snapshot": "Default action sends Telegram and refreshes reporting catalog. 2026-10-09 ops lanes: still blocked — scripts/system_rollup_snapshot.py has no --dry-run and its default run sends Telegram (:114-115), so no allowlist entry can be added without changing its code, which the rollup + embedding fix PR owns. The shadow workflow pair already exists under generated/pending/ (N3); add the entry (dry_run_arg once the script has one; send moved out) in or after that PR.",
     "generate-weekly-docx": "Default action sends Telegram; dated report has no stable per-run receipt.",
     "rotation-rebalance-digest": "Default action seeds research and sends Telegram; no stable receipt.",
     "expected-services-audit": "Live service includes --alert; do not silently remove the sender from the existing lane.",

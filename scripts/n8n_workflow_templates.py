@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""n8n_workflow_templates.py — generate the scheduler-of-record workflows for the N1–N6 lanes.
+"""n8n_workflow_templates.py — generate the scheduler-of-record workflows for the N1–N7 lanes.
 
 One template, two workflows per lane:
 
@@ -73,9 +73,10 @@ HTTP_TIMEOUT_MS = 10_000
 GATE_RETRY_WAIT_S = 60
 # How many of those waits are allowed. The next failure throws. Pinned by the generator test.
 MAX_GATE_RETRIES = 5
-TRANCHES = ("N1", "N2", "N3", "N4", "N5", "N6")
+TRANCHES = ("N1", "N2", "N3", "N4", "N5", "N6", "N7")
 # Tranches committed under generated/ directly; the rest land under generated/pending/.
-COMMITTED_TRANCHES = ("N1",)
+# N7 (ops lanes, 2026-10-09) is committed: every N7 lane has a config/n8n_run_allowlist.json entry.
+COMMITTED_TRANCHES = ("N1", "N7")
 
 # Ungated workflows are exactly these four. Gated workflows may also use IF and Wait.
 UNGATED_NODE_TYPES = frozenset(
@@ -635,6 +636,41 @@ LANES: list[dict] = [
         "fidelity": "ONE_SHOT",
         "source": "OpenClaw at-job a9c337e0 'SentinelOne (S) earnings reminder' at 2026-12-07T13:00:00Z (= 08:00 ET)",
         "note": "One-shot. Deactivate the workflow after it fires or it repeats yearly.",
+    },
+    # ---- N7 ops lanes (operator 2026-10-09 "add the lanes"; lanes/ops-lanes-20261009.md) -------
+    # No scheduler entry exists for any of these; n8n is the first scheduler-of-record. Every one has an
+    # allowlist entry (--dry-run / --write) and a NEVER_SCHEDULED registry row.
+    {
+        "lane_id": "storage-watch",
+        "tranche": "N7",
+        "cron": ["10 6 * * *"],
+        "fidelity": "PROPOSED",
+        "source": "registry row NEVER_SCHEDULED; proposed line '10 6 * * * scripts/storage_watch.py --write'",
+        "note": "New lane: no cron line or unit exists; n8n is the first scheduler. Read-only; receipt data/runtime/storage_watch_last.json.",
+    },
+    {
+        "lane_id": "backup-verify",
+        "tranche": "N7",
+        "cron": ["40 6 * * *"],
+        "fidelity": "PROPOSED",
+        "source": "registry row NEVER_SCHEDULED; proposed line '40 6 * * * scripts/backup_verify.py --write'",
+        "note": "New daily lane. The no-flag form of the same script stays a step of platform-maintenance-monthly; both share /tmp/backup_verify.lock.",
+    },
+    {
+        "lane_id": "trade-ai-restore-drill",
+        "tranche": "N7",
+        "cron": ["30 3 * * 0"],
+        "fidelity": "PROPOSED",
+        "source": "registry row NEVER_SCHEDULED; proposed first Sunday 03:30 = '30 3 * * 0' + --first-week-only on the live arg",
+        "note": "Fires every Sunday: the shadow (dry_run) prints the plan each week; live is a no-op unless the day is 1-7. '30 3 1-7 * 0' would OR the day fields and fire on days 1-7 and every Sunday.",
+    },
+    {
+        "lane_id": "n8n-workflow-drift-check",
+        "tranche": "N7",
+        "cron": ["20 6 * * *"],
+        "fidelity": "PROPOSED",
+        "source": "registry row NEVER_SCHEDULED (AGENTS.md 3.0.0 §23.10 P18, #1554); proposed '20 6 * * * scripts/check_n8n_workflow_drift.py --write'",
+        "note": "Daily cadence per the registry row (expected_cadence_hours 24). Read-only; receipt data/runtime/n8n_workflow_drift_last.json.",
     },
 ]
 

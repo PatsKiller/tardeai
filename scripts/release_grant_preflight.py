@@ -135,6 +135,50 @@ def collect_push_checks(sha: str, *, runner=None) -> dict:
         return evidence
 
 
+def collect_ci_evidence(sha: str, *, env=None, attest=None, push=None) -> dict:
+    """Promote CI evidence: tree-attested PR evidence when flagged on and proven, else push/main.
+
+    TRADEAI_TREE_ATTESTED_PROMOTE=1 (default off) tries scripts/lib/tree_attested_promote.py
+    first; any unproven condition falls back to the exact-SHA push/main rule unchanged, and the
+    fallback reasons are recorded in the receipt.
+    """
+    from scripts.lib import tree_attested_promote as tap
+
+    push = push or collect_push_checks
+    if not tap.flag_enabled(env):
+        return push(sha)
+    attested = (attest or (lambda s: tap.collect(s, root=ROOT)))(sha)
+    if attested.get("ok"):
+        return attested
+    evidence = push(sha)
+    evidence["tree_attested_fallback"] = {"reasons": attested.get("reasons") or [],
+                                          "pr": attested.get("pr"), "head_sha": attested.get("head_sha")}
+    return evidence
+
+
+def _write_json(path: Path, body: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+BACKSTOP_RECEIPT = Path.home() / ".local" / "state" / "cio-phase2-exact-main" / "tree_attested_backstop.json"
+
+
+def backstop_check(sha: str, receipt: Path, *, push=None) -> int:
+    """Async backstop for a tree-attested release: 0 green, 2 pending/unavailable, 3 RED (alarm)."""
+    from scripts.lib import tree_attested_promote as tap
+
+    evidence = (push or collect_push_checks)(sha)
+    status, rc = tap.backstop_status(evidence)
+    body = {"schema": "TreeAttestedBackstop@v1", "candidate_sha": sha, "status": status,
+            "exit_code": rc, "push_evidence": evidence}
+    _write_json(receipt, body)
+    print(json.dumps({"candidate_sha": sha, "status": status, "exit_code": rc}, sort_keys=True))
+    return rc
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ci-only", action="store_true", help="read exact-SHA post-merge checks; no grant consumed")
@@ -143,9 +187,14 @@ def main() -> int:
     ap.add_argument("--sha", required=True)
     ap.add_argument("--pr", type=int, default=None)
     ap.add_argument("--campaign", default=os.environ.get("TRADEAI_RELEASE_CAMPAIGN") or None)
+    ap.add_argument("--backstop-check", action="store_true",
+                    help="read the push/main run of a tree-attested release; exit 3 when it is red")
+    ap.add_argument("--backstop-receipt", type=Path, default=BACKSTOP_RECEIPT)
     args = ap.parse_args()
+    if args.backstop_check:
+        return backstop_check(args.sha, args.backstop_receipt)
     if args.ci_only:
-        evidence = collect_push_checks(args.sha)
+        evidence = collect_ci_evidence(args.sha)
         if args.ci_receipt:
             args.ci_receipt.parent.mkdir(parents=True, exist_ok=True)
             tmp = args.ci_receipt.with_suffix(".tmp")

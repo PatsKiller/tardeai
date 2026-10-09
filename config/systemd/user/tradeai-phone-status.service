@@ -1,0 +1,34 @@
+# Phone status endpoint (docs/ops/PHONE_OPS_20261009.md, 2026-10-09). Committed here;
+# INSTALLED BY THE OPERATOR ONLY, under a config-write grant that names this unit, with
+#   install -m 0644 "$HOME/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-phone-status.service" "$HOME/.config/systemd/user/tradeai-phone-status.service"
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now tradeai-phone-status.service
+# No agent installs or enables it (auto-mode classifier: Expose Local Services).
+#
+# Read-only. Binds ONLY this host's Tailscale IPv4 (--host auto = `tailscale ip -4`; guard_bind refuses
+# 0.0.0.0, loopback, LAN and any other address). Not internet-exposed: reachable only from tailnet peers
+# the operator's Tailscale ACL admits. GET /phone/status only; HMAC/SHA-256-envelope auth, +-60 s window,
+# single-use nonce, rate limits. Key TRADEAI_PHONE_STATUS_HMAC_KEY comes from Bitwarden SM via
+# scripts/secrets/render_env.py -> %t/tradeai/env; it is not in this file.
+
+[Unit]
+Description=Trade AI phone status (read-only, Tailscale IP only, :18093)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-%t/tradeai/env
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/phone_status_endpoint.py --host auto --port 18093
+# Tailscale may come up after the user manager; guard_bind refuses until it does, and systemd retries.
+Restart=always
+RestartSec=30
+Nice=15
+MemoryMax=64M
+CPUQuota=5%
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

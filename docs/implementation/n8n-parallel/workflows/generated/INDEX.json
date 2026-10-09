@@ -1,9 +1,9 @@
 {
-  "code_sha": "60a11fbe1a77",
+  "code_sha": "ef4b6f60d089",
   "credential_name": "tradeai-run-relay",
-  "generated_at": "2026-10-08T19:15:40+00:00",
+  "generated_at": "2026-10-09T17:02:22+00:00",
   "generator": "scripts/n8n_workflow_templates.py",
-  "lane_count": 70,
+  "lane_count": 74,
   "lanes": [
     {
       "committed": true,
@@ -1014,6 +1014,66 @@
       "shadow_file": "pending/openclaw-sentinelone-earnings-reminder-shadow.json",
       "shadow_workflow_id": "940f8c1a4c49549f",
       "tranche": "N6"
+    },
+    {
+      "committed": true,
+      "lane_id": "storage-watch",
+      "live_file": "storage-watch.json",
+      "live_workflow_id": "58c8294eceac0b19",
+      "note": "New lane: no cron line or unit exists; n8n is the first scheduler. Read-only; receipt data/runtime/storage_watch_last.json.",
+      "schedule": [
+        "10 6 * * *"
+      ],
+      "schedule_fidelity": "PROPOSED",
+      "schedule_source": "registry row NEVER_SCHEDULED; proposed line '10 6 * * * scripts/storage_watch.py --write'",
+      "shadow_file": "storage-watch-shadow.json",
+      "shadow_workflow_id": "2c991aed41ac4eff",
+      "tranche": "N7"
+    },
+    {
+      "committed": true,
+      "lane_id": "backup-verify",
+      "live_file": "backup-verify.json",
+      "live_workflow_id": "7b4fc953b442c708",
+      "note": "New daily lane. The no-flag form of the same script stays a step of platform-maintenance-monthly; both share /tmp/backup_verify.lock.",
+      "schedule": [
+        "40 6 * * *"
+      ],
+      "schedule_fidelity": "PROPOSED",
+      "schedule_source": "registry row NEVER_SCHEDULED; proposed line '40 6 * * * scripts/backup_verify.py --write'",
+      "shadow_file": "backup-verify-shadow.json",
+      "shadow_workflow_id": "4b1cc91f7ee2e61d",
+      "tranche": "N7"
+    },
+    {
+      "committed": true,
+      "lane_id": "trade-ai-restore-drill",
+      "live_file": "trade-ai-restore-drill.json",
+      "live_workflow_id": "e0885d491236863c",
+      "note": "Fires every Sunday: the shadow (dry_run) prints the plan each week; live is a no-op unless the day is 1-7. '30 3 1-7 * 0' would OR the day fields and fire on days 1-7 and every Sunday.",
+      "schedule": [
+        "30 3 * * 0"
+      ],
+      "schedule_fidelity": "PROPOSED",
+      "schedule_source": "registry row NEVER_SCHEDULED; proposed first Sunday 03:30 = '30 3 * * 0' + --first-week-only on the live arg",
+      "shadow_file": "trade-ai-restore-drill-shadow.json",
+      "shadow_workflow_id": "a2ac4e8d13975597",
+      "tranche": "N7"
+    },
+    {
+      "committed": true,
+      "lane_id": "n8n-workflow-drift-check",
+      "live_file": "n8n-workflow-drift-check.json",
+      "live_workflow_id": "a7848533f43dd28f",
+      "note": "Daily cadence per the registry row (expected_cadence_hours 24). Read-only; receipt data/runtime/n8n_workflow_drift_last.json.",
+      "schedule": [
+        "20 6 * * *"
+      ],
+      "schedule_fidelity": "PROPOSED",
+      "schedule_source": "registry row NEVER_SCHEDULED (AGENTS.md 3.0.0 §23.10 P18, #1554); proposed '20 6 * * * scripts/check_n8n_workflow_drift.py --write'",
+      "shadow_file": "n8n-workflow-drift-check-shadow.json",
+      "shadow_workflow_id": "80c7607ea0c0cbbe",
+      "tranche": "N7"
     }
   ],
   "lanes_by_tranche": {
@@ -1022,7 +1082,8 @@
     "N3": 12,
     "N4": 20,
     "N5": 6,
-    "N6": 6
+    "N6": 6,
+    "N7": 4
   },
   "node_types": [
     "n8n-nodes-base.code",
