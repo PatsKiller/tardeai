@@ -326,7 +326,7 @@ export default function CommunicationsHub() {
               )}
               <span style={{ fontSize: 10, color: MUTED }}>sort</span>
               <select value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0) }} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, color: TEXT }}>
-                {[['priority_score', 'Priority score'], ['confidence', 'Confidence'], ['risk_score', 'Risk'], ['reward_score', 'Reward'], ['time_sensitivity', 'Time sensitivity'], ['expires_at', 'Expiry'], ['actionable_since', 'Became actionable'], ['created_at', 'Newest']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {[['conviction', 'CIO conviction'], ['priority_score', 'Priority score'], ['confidence', 'Confidence'], ['risk_score', 'Risk'], ['reward_score', 'Reward'], ['time_sensitivity', 'Time sensitivity'], ['expires_at', 'Expiry'], ['actionable_since', 'Became actionable'], ['created_at', 'Newest']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
               <button type="button" onClick={() => setOrder((o) => (o === 'desc' ? 'asc' : 'desc'))} style={{ fontSize: 10, padding: '3px 6px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer' }}>{order === 'desc' ? '↓' : '↑'}</button>
               {eventsLoading && <span style={{ color: MUTED, fontSize: 10 }}>Loading…</span>}

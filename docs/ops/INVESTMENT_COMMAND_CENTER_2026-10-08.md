@@ -131,3 +131,36 @@ DNA and QTEX; nothing was written.
 - The CIO summary no longer cuts off mid-word, and has a "more" toggle.
 - A "none" consensus now shows "—".
 - Earnings dates now show the correct day in ET.
+
+## Advice ranked by CIO conviction (2026-10-08, evening)
+
+Your request: "fix implement", for the two follow-ups left open.
+
+**Problems:**
+- The Highest-reward list was ordered by each message's own reward score.
+- CIO entry alerts fired on names the CIO ranks near the bottom, such as VCIG (conviction 34, rank #1314).
+
+**The floor:** `advice.conviction_floor` in `config/opportunity_conviction.yaml`, set to **55**. That is about the
+bottom third of ranked names (440 of 1,412).
+
+**Communications:**
+- New hub sort `conviction`. It reads the filtered set, orders it in Python by the CIO projection, then pages.
+- The ordering:
+  1. names at or above the floor, by conviction, highest first;
+  2. names the CIO has not scored;
+  3. names below the floor, last.
+- Below-floor items carry `levels.low_conviction` and show a "low conviction" tag on their card.
+- The Highest-reward board panel and the `reward` preset use this ordering.
+- Nothing is deleted or muted.
+
+**Advice digest:**
+- Entry setups and Re-entry are ordered by conviction and show `max_items_per_section`, plus a "+N more" link to the
+  reward view.
+- Below-floor names collapse into one line at the end of the section: "Below CIO conviction 55 (N): $X 54 · …".
+- The CIO section is unchanged: its 8 newest items, plus every held note. Held notes are never capped, because each
+  one is marked delivered after a send.
+
+**Verified:**
+- Live reward list (95 items): QTEX 83, then CSCO, MU and AAON first; VCIG 34 last.
+- Digest dry run: 56 entry setups ranked, 4 collapsed below the floor.
+- Gate: `conviction_ordering_20261008`.

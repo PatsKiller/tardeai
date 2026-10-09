@@ -76,8 +76,11 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
             on one ticker differed) is shown, labelled, on risk cards and when the CIO has no conviction for the name. */}
         {conv != null ? (
           <>
-            <div style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: 'var(--text0)', lineHeight: 1 }} title={`CIO conviction ${Math.round(conv)}/100${e.priority_score != null ? ` · message priority ${Math.round(e.priority_score)}` : ''}`}>{Math.round(conv)}</div>
-            <div style={{ fontSize: 10, color: 'var(--text3)' }}>conviction{e.levels?.rank ? ` #${e.levels.rank}` : ''}</div>
+            <div style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: e.levels?.low_conviction ? 'var(--text3)' : 'var(--text0)', lineHeight: 1 }} title={`CIO conviction ${Math.round(conv)}/100${e.priority_score != null ? ` · message priority ${Math.round(e.priority_score)}` : ''}`}>{Math.round(conv)}</div>
+            <div style={{ fontSize: 10, color: e.levels?.low_conviction ? 'var(--warning-color)' : 'var(--text3)' }}
+              title={e.levels?.low_conviction ? `below the CIO conviction floor ${e.levels.conviction_floor} — ranked last` : undefined}>
+              {e.levels?.low_conviction ? 'low conviction' : 'conviction'}{e.levels?.rank ? ` #${e.levels.rank}` : ''}
+            </div>
           </>
         ) : (
           <>
