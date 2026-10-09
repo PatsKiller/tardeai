@@ -1,0 +1,208 @@
+
+Running 7 tests using 1 worker
+
+
+(node:1411451) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:28:1 › loading alerts have an unknown count until the API is measured
+  1) [chromium] › e2e/active-trader-fires-truth.spec.ts:28:1 › loading alerts have an unknown count until the API is measured
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('at-fires-strip')
+    Expected substring: "Active Trader fired today · —"
+    Received string:    "Active Trader fired today · 0scalp alerts sent · Trade-AI verdict beside eachNo Active Trader alerts sent today."
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" with timeout 5000ms
+      - waiting for getByTestId('at-fires-strip')
+        14 × locator resolved to <div data-testid="at-fires-strip">…</div>
+           - unexpected value "Active Trader fired today · 0scalp alerts sent · Trade-AI verdict beside eachNo Active Trader alerts sent today."
+
+
+      31 |   await fixture(page, async route => { await pending; await response({ decisions: [] })(route) })
+      32 |   const strip = page.getByTestId('at-fires-strip')
+    > 33 |   await expect(strip).toContainText('Active Trader fired today · —')
+         |                       ^
+      34 |   await expect(strip).toContainText('Loading alerts')
+      35 |   await expect(strip).not.toContainText('No Active Trader alerts sent today.')
+      36 |   release()
+        at /home/johnclaw/tradeai-wt-scalp-health-truth-20261009/apps/command-center-v3/e2e/active-trader-fires-truth.spec.ts:33:23
+
+    Error Context: test-results/active-trader-fires-truth--8dbe6-t-until-the-API-is-measured-chromium/error-context.md
+
+
+
+(node:1412451) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[2/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › missing decisions cannot become a confirmed zero
+  2) [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › missing decisions cannot become a confirmed zero
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('at-fires-strip')
+    Expected substring: "Active Trader fired today · —"
+    Received string:    "Active Trader fired today · 0scalp alerts sent · Trade-AI verdict beside eachNo Active Trader alerts sent today."
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" with timeout 5000ms
+      - waiting for getByTestId('at-fires-strip')
+        13 × locator resolved to <div data-testid="at-fires-strip">…</div>
+           - unexpected value "Active Trader fired today · 0scalp alerts sent · Trade-AI verdict beside eachNo Active Trader alerts sent today."
+
+
+      45 |     await fixture(page, response(body))
+      46 |     const strip = page.getByTestId('at-fires-strip')
+    > 47 |     await expect(strip).toContainText('Active Trader fired today · —')
+         |                         ^
+      48 |     await expect(strip).toContainText('Alerts unavailable')
+      49 |     await expect(strip).not.toContainText('No Active Trader alerts sent today.')
+      50 |   })
+        at /home/johnclaw/tradeai-wt-scalp-health-truth-20261009/apps/command-center-v3/e2e/active-trader-fires-truth.spec.ts:47:25
+
+    Error Context: test-results/active-trader-fires-truth--0dadf-not-become-a-confirmed-zero-chromium/error-context.md
+
+
+
+(node:1415240) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[3/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decisions cannot become a confirmed zero
+  3) [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decisions cannot become a confirmed zero
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('at-fires-strip')
+    Expected substring: "Active Trader fired today · —"
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" with timeout 5000ms
+      - waiting for getByTestId('at-fires-strip')
+
+
+      45 |     await fixture(page, response(body))
+      46 |     const strip = page.getByTestId('at-fires-strip')
+    > 47 |     await expect(strip).toContainText('Active Trader fired today · —')
+         |                         ^
+      48 |     await expect(strip).toContainText('Alerts unavailable')
+      49 |     await expect(strip).not.toContainText('No Active Trader alerts sent today.')
+      50 |   })
+        at /home/johnclaw/tradeai-wt-scalp-health-truth-20261009/apps/command-center-v3/e2e/active-trader-fires-truth.spec.ts:47:25
+
+    Error Context: test-results/active-trader-fires-truth--ef97f-not-become-a-confirmed-zero-chromium/error-context.md
+
+
+
+(node:1416163) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[4/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decision row cannot become a confirmed zero
+  4) [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decision row cannot become a confirmed zero
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('at-fires-strip')
+    Expected substring: "Active Trader fired today · —"
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" with timeout 5000ms
+      - waiting for getByTestId('at-fires-strip')
+        - locator resolved to <div data-testid="at-fires-strip">…</div>
+        - unexpected value "Active Trader fired today · 0scalp alerts sent · Trade-AI verdict beside eachNo Active Trader alerts sent today."
+
+
+      45 |     await fixture(page, response(body))
+      46 |     const strip = page.getByTestId('at-fires-strip')
+    > 47 |     await expect(strip).toContainText('Active Trader fired today · —')
+         |                         ^
+      48 |     await expect(strip).toContainText('Alerts unavailable')
+      49 |     await expect(strip).not.toContainText('No Active Trader alerts sent today.')
+      50 |   })
+        at /home/johnclaw/tradeai-wt-scalp-health-truth-20261009/apps/command-center-v3/e2e/active-trader-fires-truth.spec.ts:47:25
+
+    Error Context: test-results/active-trader-fires-truth--819df-not-become-a-confirmed-zero-chromium/error-context.md
+
+
+
+(node:1416513) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[5/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:53:1 › failed alert API is unavailable, not an empty session
+  5) [chromium] › e2e/active-trader-fires-truth.spec.ts:53:1 › failed alert API is unavailable, not an empty session
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('at-fires-strip')
+    Expected substring: "Alerts unavailable"
+    Received string:    "Active Trader fired today · 0scalp alerts sent · Trade-AI verdict beside eachNo Active Trader alerts sent today."
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" with timeout 5000ms
+      - waiting for getByTestId('at-fires-strip')
+        14 × locator resolved to <div data-testid="at-fires-strip">…</div>
+           - unexpected value "Active Trader fired today · 0scalp alerts sent · Trade-AI verdict beside eachNo Active Trader alerts sent today."
+
+
+      54 |   await fixture(page, response({ error: 'fixture failure' }, 500))
+      55 |   const strip = page.getByTestId('at-fires-strip')
+    > 56 |   await expect(strip).toContainText('Alerts unavailable')
+         |                       ^
+      57 |   await expect(strip).toContainText('Active Trader fired today · —')
+      58 |   await expect(strip).not.toContainText('No Active Trader alerts sent today.')
+      59 | })
+        at /home/johnclaw/tradeai-wt-scalp-health-truth-20261009/apps/command-center-v3/e2e/active-trader-fires-truth.spec.ts:56:23
+
+    Error Context: test-results/active-trader-fires-truth--b8448-ilable-not-an-empty-session-chromium/error-context.md
+
+
+
+(node:1417296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[6/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:61:1 › a measured empty alert response can show zero
+[7/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:68:1 › failed refetch labels retained sent alerts as stale
+  6) [chromium] › e2e/active-trader-fires-truth.spec.ts:68:1 › failed refetch labels retained sent alerts as stale
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: getByTestId('at-fires-strip')
+    Expected substring: "Active Trader last observed · 1"
+    Received string:    "Active Trader fired today · 1scalp alerts sent · Trade-AI verdict beside eachWFFTRIGGERED10:00 AMTrade-AI GO"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" with timeout 5000ms
+      - waiting for getByTestId('at-fires-strip')
+        14 × locator resolved to <div data-testid="at-fires-strip">…</div>
+           - unexpected value "Active Trader fired today · 1scalp alerts sent · Trade-AI verdict beside eachWFFTRIGGERED10:00 AMTrade-AI GO"
+
+
+      77 |   await expect(strip).toContainText('WFF')
+      78 |   await page.clock.fastForward(30_001)
+    > 79 |   await expect(strip).toContainText('Active Trader last observed · 1')
+         |                       ^
+      80 |   await expect(strip).toContainText('Stale alerts')
+      81 |   await expect(strip).not.toContainText('Active Trader fired today')
+      82 | })
+        at /home/johnclaw/tradeai-wt-scalp-health-truth-20261009/apps/command-center-v3/e2e/active-trader-fires-truth.spec.ts:79:23
+
+    Error Context: test-results/active-trader-fires-truth--a4479-tained-sent-alerts-as-stale-chromium/error-context.md
+
+
+  6 failed
+    [chromium] › e2e/active-trader-fires-truth.spec.ts:28:1 › loading alerts have an unknown count until the API is measured
+    [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › missing decisions cannot become a confirmed zero
+    [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decisions cannot become a confirmed zero
+    [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decision row cannot become a confirmed zero
+    [chromium] › e2e/active-trader-fires-truth.spec.ts:53:1 › failed alert API is unavailable, not an empty session
+    [chromium] › e2e/active-trader-fires-truth.spec.ts:68:1 › failed refetch labels retained sent alerts as stale
+  1 passed (45.9s)

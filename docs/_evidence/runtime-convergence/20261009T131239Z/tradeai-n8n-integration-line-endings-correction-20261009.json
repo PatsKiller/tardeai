@@ -1,0 +1,15 @@
+{
+  "comparison_base": "d7ec9ac135250102d8997458c0140912746713d0",
+  "restored_incoming_line_endings": 134,
+  "before": {
+    "crlf": 1932,
+    "lone_cr": 0,
+    "lone_lf": 421
+  },
+  "after": {
+    "crlf": 2066,
+    "lone_cr": 0,
+    "lone_lf": 287
+  },
+  "incoming134newlinechurn_fully_reverted": true
+}

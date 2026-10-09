@@ -1,0 +1,894 @@
+....F....F................................................FFF....FFFFFFF [ 79%]
+FFFF............F.F                                                      [100%]
+=================================== FAILURES ===================================
+___________ test_unknown_header_on_loopback_refuses_before_provider ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a928789f680>
+
+    def test_unknown_header_on_loopback_refuses_before_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+        generate = MagicMock(side_effect=AssertionError("provider must not be called"))
+        monkeypatch.setattr(bridge.MockProvider, "generate", generate)
+        monkeypatch.setattr(bridge.RealProvider, "generate", generate)
+>       server = bridge.start_server("127.0.0.1", 0)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_llm_routing_policy_20261008.py:187:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+__________ test_stream_resolves_once_and_streams_the_governed_result ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a928782bbd0>
+
+    def test_stream_resolves_once_and_streams_the_governed_result(monkeypatch: pytest.MonkeyPatch) -> None:
+        """2026-10-09 (audit B, H1): the stream path no longer re-resolves or calls a provider a second time.
+
+        Before, a refusal that appeared only on a second resolve was answered as typed JSON; that second resolve
+        existed only to feed a second, unreserved provider call. Now the policy is resolved once, inside the
+        governed call, and a later lane flip cannot reach the stream at all.
+        """
+        calls = {"n": 0}
+        real = bridge.resolve_model_policy
+
+        def _flip(process_id: str, task_type: str = "", routing_policy: str | None = None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return real(process_id, task_type, routing_policy)
+            return {"refused": "lane_unhealthy", "refused_status": 503, "refused_message": "flipped"}
+
+        monkeypatch.setattr(bridge, "resolve_model_policy", _flip)
+        stream = MagicMock(side_effect=AssertionError("stream cannot call a provider again"))
+        original_generate = bridge.MockProvider.generate
+        generate = MagicMock(side_effect=lambda self, *a, **k: original_generate(self, *a, **k))
+        monkeypatch.setattr(bridge.MockProvider, "generate", lambda self, *a, **k: generate(self, *a, **k))
+        monkeypatch.setattr(bridge.MockProvider, "generate_stream", stream)
+        monkeypatch.setattr(bridge.RealProvider, "generate", MagicMock(side_effect=AssertionError("real provider")))
+>       server = bridge.start_server("127.0.0.1", 0)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_llm_routing_policy_20261008.py:357:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_stream_makes_exactly_one_provider_call_reservation_settlement_and_cost_event[canary] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a928793da20>
+canary = True
+
+    @pytest.mark.parametrize("canary", [True, False], ids=["canary", "mock"])
+    def test_stream_makes_exactly_one_provider_call_reservation_settlement_and_cost_event(monkeypatch, canary):
+        provider, cost_events = _fake_provider(monkeypatch, canary=canary)
+        with _governed(monkeypatch) as ledger:
+>           status, ctype, raw = _post({**BODY, "stream": True}, {"X-TradeAI-Agent": CALLER})
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:207:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_stream_makes_exactly_one_provider_call_reservation_settlement_and_cost_event[mock] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92877cb150>
+canary = False
+
+    @pytest.mark.parametrize("canary", [True, False], ids=["canary", "mock"])
+    def test_stream_makes_exactly_one_provider_call_reservation_settlement_and_cost_event(monkeypatch, canary):
+        provider, cost_events = _fake_provider(monkeypatch, canary=canary)
+        with _governed(monkeypatch) as ledger:
+>           status, ctype, raw = _post({**BODY, "stream": True}, {"X-TradeAI-Agent": CALLER})
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:207:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+____________ test_stream_text_equals_the_non_stream_governed_result ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872fbe00>
+
+    def test_stream_text_equals_the_non_stream_governed_result(monkeypatch):
+        provider, _ = _fake_provider(monkeypatch, canary=True)
+        with _governed(monkeypatch):
+>           _, _, plain = _post(BODY, {"X-TradeAI-Agent": CALLER})
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:229:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_report_mode_serves_unverified_callers_and_records_one_line_per_caller_per_hour[unsigned] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872f98d0>
+hermetic = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_report_mode_serves_unveri0')
+auth = None
+
+    @pytest.mark.parametrize("auth", [None, "Bearer " + "x" * 40], ids=["unsigned", "wrong-key"])
+    def test_report_mode_serves_unverified_callers_and_records_one_line_per_caller_per_hour(
+        monkeypatch, hermetic, auth
+    ):
+        provider, _ = _fake_provider(monkeypatch, canary=True)
+        monkeypatch.setenv(KEY_ENV, KEY)
+        headers = {"X-TradeAI-Agent": CALLER, **({"Authorization": auth} if auth else {})}
+        with _governed(monkeypatch) as ledger:
+            for _ in range(3):
+>               status, _, raw = _post(BODY, headers)
+                                 ^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:302:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_report_mode_serves_unverified_callers_and_records_one_line_per_caller_per_hour[wrong-key] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872fa190>
+hermetic = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_report_mode_serves_unveri1')
+auth = 'Bearer xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+    @pytest.mark.parametrize("auth", [None, "Bearer " + "x" * 40], ids=["unsigned", "wrong-key"])
+    def test_report_mode_serves_unverified_callers_and_records_one_line_per_caller_per_hour(
+        monkeypatch, hermetic, auth
+    ):
+        provider, _ = _fake_provider(monkeypatch, canary=True)
+        monkeypatch.setenv(KEY_ENV, KEY)
+        headers = {"X-TradeAI-Agent": CALLER, **({"Authorization": auth} if auth else {})}
+        with _governed(monkeypatch) as ledger:
+            for _ in range(3):
+>               status, _, raw = _post(BODY, headers)
+                                 ^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:302:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_________ test_report_mode_records_callers_without_any_key_configured __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872fa2e0>
+hermetic = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_report_mode_records_calle0')
+
+    def test_report_mode_records_callers_without_any_key_configured(monkeypatch, hermetic):
+        _fake_provider(monkeypatch, canary=False)
+        with _governed(monkeypatch):
+>           status, _, _ = _post(BODY, {"X-TradeAI-Agent": CALLER})
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:323:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+______________ test_report_mode_does_not_record_a_verified_caller ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872f9fd0>
+hermetic = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_report_mode_does_not_reco0')
+
+    def test_report_mode_does_not_record_a_verified_caller(monkeypatch, hermetic):
+        _fake_provider(monkeypatch, canary=False)
+        monkeypatch.setenv(KEY_ENV, KEY)
+        with _governed(monkeypatch):
+>           status, _, _ = _post(BODY, {"X-TradeAI-Agent": CALLER, "Authorization": f"Bearer {KEY}"})
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:333:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_______________ test_off_mode_checks_nothing_and_records_nothing _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872fbaf0>
+hermetic = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_off_mode_checks_nothing_a0')
+
+    def test_off_mode_checks_nothing_and_records_nothing(monkeypatch, hermetic):
+        _fake_provider(monkeypatch, canary=False)
+        monkeypatch.setenv("TRADEAI_BRIDGE_CALLER_AUTH", "off")
+        monkeypatch.setenv(KEY_ENV, KEY)
+        with _governed(monkeypatch):
+>           status, _, _ = _post(BODY, {"X-TradeAI-Agent": CALLER, "Authorization": "Bearer wrong"})
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:344:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call[no-key-configured] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872fac10>
+key_set = False, auth = None, code = 'CALLER_AUTH_REQUIRED'
+
+    @pytest.mark.parametrize(
+        "key_set,auth,code",
+        [
+            (False, None, "CALLER_AUTH_REQUIRED"),
+            (True, None, "CALLER_AUTH_REQUIRED"),
+            (True, "Bearer " + "x" * 40, "CALLER_AUTH_INVALID"),
+        ],
+        ids=["no-key-configured", "unsigned", "wrong-key"],
+    )
+    def test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call(monkeypatch, key_set, auth, code):
+        provider, cost_events = _fake_provider(monkeypatch, canary=True)
+        monkeypatch.setenv("TRADEAI_BRIDGE_CALLER_AUTH", "enforce")
+        if key_set:
+            monkeypatch.setenv(KEY_ENV, KEY)
+        ring2 = MagicMock(side_effect=AssertionError("ring 2 must not run before caller auth"))
+        for target in ("memory_ring2.check", "scripts.lib.memory_ring2.check", "lib.memory_ring2.check"):
+            try:
+                monkeypatch.setattr(target, ring2)
+            except (AttributeError, ModuleNotFoundError, ImportError):
+                continue
+        headers = {"X-TradeAI-Agent": CALLER, **({"Authorization": auth} if auth else {})}
+        with _governed(monkeypatch) as ledger:
+>           status, ctype, raw = _post({**BODY, "stream": True}, headers)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:372:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call[unsigned] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a92872fbcb0>
+key_set = True, auth = None, code = 'CALLER_AUTH_REQUIRED'
+
+    @pytest.mark.parametrize(
+        "key_set,auth,code",
+        [
+            (False, None, "CALLER_AUTH_REQUIRED"),
+            (True, None, "CALLER_AUTH_REQUIRED"),
+            (True, "Bearer " + "x" * 40, "CALLER_AUTH_INVALID"),
+        ],
+        ids=["no-key-configured", "unsigned", "wrong-key"],
+    )
+    def test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call(monkeypatch, key_set, auth, code):
+        provider, cost_events = _fake_provider(monkeypatch, canary=True)
+        monkeypatch.setenv("TRADEAI_BRIDGE_CALLER_AUTH", "enforce")
+        if key_set:
+            monkeypatch.setenv(KEY_ENV, KEY)
+        ring2 = MagicMock(side_effect=AssertionError("ring 2 must not run before caller auth"))
+        for target in ("memory_ring2.check", "scripts.lib.memory_ring2.check", "lib.memory_ring2.check"):
+            try:
+                monkeypatch.setattr(target, ring2)
+            except (AttributeError, ModuleNotFoundError, ImportError):
+                continue
+        headers = {"X-TradeAI-Agent": CALLER, **({"Authorization": auth} if auth else {})}
+        with _governed(monkeypatch) as ledger:
+>           status, ctype, raw = _post({**BODY, "stream": True}, headers)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:372:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call[wrong-key] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a9289b32970>
+key_set = True, auth = 'Bearer xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+code = 'CALLER_AUTH_INVALID'
+
+    @pytest.mark.parametrize(
+        "key_set,auth,code",
+        [
+            (False, None, "CALLER_AUTH_REQUIRED"),
+            (True, None, "CALLER_AUTH_REQUIRED"),
+            (True, "Bearer " + "x" * 40, "CALLER_AUTH_INVALID"),
+        ],
+        ids=["no-key-configured", "unsigned", "wrong-key"],
+    )
+    def test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call(monkeypatch, key_set, auth, code):
+        provider, cost_events = _fake_provider(monkeypatch, canary=True)
+        monkeypatch.setenv("TRADEAI_BRIDGE_CALLER_AUTH", "enforce")
+        if key_set:
+            monkeypatch.setenv(KEY_ENV, KEY)
+        ring2 = MagicMock(side_effect=AssertionError("ring 2 must not run before caller auth"))
+        for target in ("memory_ring2.check", "scripts.lib.memory_ring2.check", "lib.memory_ring2.check"):
+            try:
+                monkeypatch.setattr(target, ring2)
+            except (AttributeError, ModuleNotFoundError, ImportError):
+                continue
+        headers = {"X-TradeAI-Agent": CALLER, **({"Authorization": auth} if auth else {})}
+        with _governed(monkeypatch) as ledger:
+>           status, ctype, raw = _post({**BODY, "stream": True}, headers)
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:372:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+____________________ test_enforce_serves_a_verified_caller _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a9289b32660>
+
+    def test_enforce_serves_a_verified_caller(monkeypatch):
+        provider, _ = _fake_provider(monkeypatch, canary=True)
+        monkeypatch.setenv("TRADEAI_BRIDGE_CALLER_AUTH", "enforce")
+        monkeypatch.setenv(KEY_ENV, KEY)
+        with _governed(monkeypatch):
+>           status, _, _ = _post(BODY, {"X-TradeAI-Agent": CALLER, "Authorization": f"Bearer {KEY}"})
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:388:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_____________ test_no_key_value_is_ever_logged_returned_or_written _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a9289b30a60>
+hermetic = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_no_key_value_is_ever_logg0')
+caplog = <_pytest.logging.LogCaptureFixture object at 0x7a92876abe00>
+
+    def test_no_key_value_is_ever_logged_returned_or_written(monkeypatch, hermetic, caplog):
+        _fake_provider(monkeypatch, canary=False)
+        monkeypatch.setenv(KEY_ENV, KEY)
+        monkeypatch.setenv(KEY_ENV + "_PREVIOUS", PREVIOUS_KEY)
+        wrong = "w" * 40
+        seen: list[bytes] = []
+        caplog.set_level(logging.DEBUG)
+        with _governed(monkeypatch):
+            for mode in ("report", "enforce"):
+                monkeypatch.setenv("TRADEAI_BRIDGE_CALLER_AUTH", mode)
+                bridge._reset_caller_auth()
+                for auth in (f"Bearer {KEY}", f"Bearer {wrong}", None):
+                    headers = {"X-TradeAI-Agent": CALLER, **({"Authorization": auth} if auth else {})}
+>                   seen.append(_post(BODY, headers)[2])
+                                ^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:405:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests/test_bridge_executor_hardening_20261009.py:164: in _post
+    server = bridge.start_server("127.0.0.1", 0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+______________ test_health_exposes_the_counter_without_key_values ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a9289b31a20>
+
+    def test_health_exposes_the_counter_without_key_values(monkeypatch):
+        monkeypatch.setenv(KEY_ENV, KEY)
+        bridge.record_caller_auth(CALLER, "alex_cio_synthesis", "unsigned", "report")
+>       server = bridge.start_server("127.0.0.1", 0)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_executor_hardening_20261009.py:417:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts/lib/cio_governed_model_bridge.py:2326: in start_server
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.14/socketserver.py:453: in __init__
+    self.socket = socket.socket(self.address_family,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <socket.socket fd=-1, family=0, type=0, proto=0>
+family = <AddressFamily.AF_INET: 2>, type = <SocketKind.SOCK_STREAM: 1>
+proto = 0, fileno = None
+
+    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):
+        # For user code address family and type values are IntEnum members, but
+        # for the underlying _socket.socket they're just integers. The
+        # constructor of _socket.socket converts the given argument to an
+        # integer automatically.
+        if fileno is None:
+            if family == -1:
+                family = AF_INET
+            if type == -1:
+                type = SOCK_STREAM
+            if proto == -1:
+                proto = 0
+>       _socket.socket.__init__(self, family, type, proto, fileno)
+E       PermissionError: [Errno 1] Operation not permitted
+
+/usr/lib/python3.14/socket.py:236: PermissionError
+_ test_a_real_bridge_success_through_execute_governed_call_is_accepted_by_run_model_job _
+
+bridge_plumbing = <module 'scripts.lib.cio_governed_model_bridge' from '/home/johnclaw/tradeai-wt-n8n-main-governance-integration-20261009/scripts/lib/cio_governed_model_bridge.py'>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_a_real_bridge_success_thr0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a9289b30600>
+
+    def test_a_real_bridge_success_through_execute_governed_call_is_accepted_by_run_model_job(bridge_plumbing, tmp_path, monkeypatch):
+        """Defect 1, end to end: the governed call is the bridge's own execute_governed_call (MockProvider, plumbing
+        stubbed); its Step 10 envelope is what run_model_job must parse. Before 2026-10-08 this was
+        `governance_refused: governance_pass false`."""
+        import scripts.lib.n8n_model_job as M
+        B = bridge_plumbing
+        root = _state_root(tmp_path)
+        monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
+        seen = {}
+
+        _schema_valid_mock(monkeypatch, B, OPS_ANSWER)   # mock prose -> schema-valid answer at the provider; envelope untouched
+
+        def governed(messages, *, process_id, response_format, request_id, task_type=None, **named):
+            seen.update(process_id=process_id, request_id=request_id, task_type=task_type)
+            return B.execute_governed_call(messages, process_id=process_id, response_format=response_format, max_tokens=512, request_id=request_id)
+        rec = M.run_model_job(_ops_job(root, "corr-ops-weekly-2026-W41"), governed_call=governed, now=NOW, root=root)
+        assert (rec["state"], rec["reason"]) == ("ARTIFACT_WRITTEN", None), rec
+        assert rec["cost"]["reservation_id"] == 42 and rec["cost"]["mock"] is True and rec["cost"]["bridge_request_id"] == "corr-ops-weekly-2026-W41"
+>       assert rec["cost"]["model_id"].startswith("deepseek") and rec["cost"]["provider"] == "deepseek"
+E       AssertionError: assert (True and 'grok' == 'deepseek'
+E        +  where True = <built-in method startswith of str object at 0x7a9287e01fb0>('deepseek')
+E        +    where <built-in method startswith of str object at 0x7a9287e01fb0> = 'deepseek-flash'.startswith
+E
+E         - deepseek
+E         + grok)
+
+tests/test_ops_summary_model_job_live_wiring_20261008.py:199: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-09 13:16:34  [db_adapter] PostgreSQL connection failed:
+  [db_adapter] Falling back to JSON
+2026-10-09 13:16:34  [db_adapter] PostgreSQL connection failed:
+  [db_adapter] Falling back to JSON
+2026-10-09 13:16:34  [db_adapter] PostgreSQL connection failed:
+  [db_adapter] Falling back to JSON
+_ test_a_canary_call_with_request_id_x_emits_a_cost_event_whose_client_request_id_is_x _
+
+bridge_plumbing = <module 'scripts.lib.cio_governed_model_bridge' from '/home/johnclaw/tradeai-wt-n8n-main-governance-integration-20261009/scripts/lib/cio_governed_model_bridge.py'>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128975/test_a_canary_call_with_reques0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a9289b33380>
+
+    def test_a_canary_call_with_request_id_x_emits_a_cost_event_whose_client_request_id_is_x(bridge_plumbing, tmp_path, monkeypatch):
+        """Defect 2b, end to end: execute_governed_call(request_id=X) -> RealProvider (HTTP stubbed, key stubbed) ->
+        provider_cost event with client_request_id == X, in a scratch log that run_model_job then joins (MEASURED).
+        Never a network call, never the live key store: get_deepseek_api_key is replaced before the provider runs."""
+        import requests
+
+        import lib.llm_model_registry as lmr
+        import scripts.lib.n8n_model_job as M
+        B = bridge_plumbing
+        root = _state_root(tmp_path)
+        log = root / "data" / "runtime" / "provider_cost" / "events.jsonl"
+        monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
+        monkeypatch.setenv("PROVIDER_COST_EVENT_LOG", str(log))
+        monkeypatch.setenv("CIO_PROVIDER_REQUEST_JOURNAL_JSONL", str(tmp_path / "journal.jsonl"))
+        monkeypatch.setattr(lmr, "get_deepseek_api_key", lambda: ("test-key-not-real", "deepseek_tradeai", False))
+        posted = {}
+
+        def fake_post(url, **kw):
+            posted.update(kw)
+            return _Resp(json.dumps({"id": "prov", "model": kw["json"]["model"], "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+                                     "choices": [{"message": {"role": "assistant", "content": json.dumps(OPS_ANSWER)}, "finish_reason": "stop"}]}).encode())
+        monkeypatch.setattr(requests, "post", fake_post)
+        monkeypatch.setattr(B, "BIND_MODE", "canary")
+        B.RealProvider._instance = None
+        X = "corr-ops-weekly-2026-W41"
+        try:
+            out = B.execute_governed_call([{"role": "user", "content": "weekly ops summary"}], process_id=PROC,
+                                          response_format={"type": "json_object"}, max_tokens=512, request_id=X)
+        finally:
+            B.RealProvider._instance = None
+>       assert "error" not in out, out.get("error")
+E       AssertionError: {'code': 'provider_not_configured', 'message': "Live bridge transport is DeepSeek only; this lane's provider is not co...y': {'schema': 'RetryDisposition@v1', 'disposition': 'RETRYABLE_TRANSIENT', 'retryable': True, 'max_attempts': 3, ...}}
+E       assert 'error' not in {'error': {'code': 'provider_not_configured', 'message': "Live bridge transport is DeepSeek only; this lane's provider...x_attempts': 3, ...}}, 'id': 'corr-ops-weekly-2026-W41', 'object': 'chat.completion.error', 'created': 1791566194, ...}
+
+tests/test_ops_summary_model_job_live_wiring_20261008.py:280: AssertionError
+----------------------------- Captured stdout call -----------------------------
+2026-10-09 13:16:34  [db_adapter] PostgreSQL connection failed:
+  [db_adapter] Falling back to JSON
+2026-10-09 13:16:34  [db_adapter] PostgreSQL connection failed:
+  [db_adapter] Falling back to JSON
+=========================== short test summary info ============================
+FAILED tests/test_llm_routing_policy_20261008.py::test_unknown_header_on_loopback_refuses_before_provider
+FAILED tests/test_llm_routing_policy_20261008.py::test_stream_resolves_once_and_streams_the_governed_result
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_stream_makes_exactly_one_provider_call_reservation_settlement_and_cost_event[canary]
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_stream_makes_exactly_one_provider_call_reservation_settlement_and_cost_event[mock]
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_stream_text_equals_the_non_stream_governed_result
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_report_mode_serves_unverified_callers_and_records_one_line_per_caller_per_hour[unsigned]
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_report_mode_serves_unverified_callers_and_records_one_line_per_caller_per_hour[wrong-key]
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_report_mode_records_callers_without_any_key_configured
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_report_mode_does_not_record_a_verified_caller
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_off_mode_checks_nothing_and_records_nothing
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call[no-key-configured]
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call[unsigned]
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_enforce_refuses_with_typed_401_before_any_reservation_or_provider_call[wrong-key]
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_enforce_serves_a_verified_caller
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_no_key_value_is_ever_logged_returned_or_written
+FAILED tests/test_bridge_executor_hardening_20261009.py::test_health_exposes_the_counter_without_key_values
+FAILED tests/test_ops_summary_model_job_live_wiring_20261008.py::test_a_real_bridge_success_through_execute_governed_call_is_accepted_by_run_model_job
+FAILED tests/test_ops_summary_model_job_live_wiring_20261008.py::test_a_canary_call_with_request_id_x_emits_a_cost_event_whose_client_request_id_is_x
+18 failed, 73 passed in 3.83s

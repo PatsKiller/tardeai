@@ -1,0 +1,12 @@
+{
+  "schema": "HistoricalArtifactDisplayExport@v1",
+  "as_of": "2026-10-09T18:34:34.255350+00:00",
+  "evidence_class": "TEST_ONLY",
+  "artifact": "tradeai-root-scalp-fixture-evaluated-alternative-20261009.patch",
+  "exact_raw_archive": "tradeai-root-scalp-fixture-evaluated-alternative-20261009.patch.raw.gz",
+  "raw_sha256": "4df5227b43483b112957cb003a27af9d58691997378596e3c3444f5ac0fd2094",
+  "exported_sha256": "773da3041d16529e895d34b4f81a497e090e6f89b035b1185830ed3cb981177e",
+  "historical_manifest": "40-final-publication-evidence-copy-manifest.json",
+  "transformation": "Whitespace-only display export after copy; contextual empty lines in a unified patch carry one space. Display is NOT an applicable patch; exact original/applicable bytes retained compressed. Original40 copy hash describes the preceding immutable copy window; this supplemental receipt records final exported bytes.",
+  "final_source_uses": "Adopts independently merged cb851 test fixture; this alternate was never committed as source or applied live."
+}

@@ -1,0 +1,45 @@
+{
+  "schema": "FinalIntegratedSourceReview@v1",
+  "as_of": "2026-10-09T18:27:11.765682+00:00",
+  "evidence_class": "SOURCE_ONLY",
+  "head": "8c72ea5e8cff77984670f18f373a5a9817519701",
+  "frozen_main": "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf",
+  "handoff_production_hashes_verified": {
+    "apps/command-center-v3/src/components/tradeai/ActiveTraderFiresStrip.tsx": "a512df8cb581f5f2619f1ca2b1de3ae0c298ccbb2cc3d7e6e9f12f8aadac4723",
+    "config/lane_registry.json": "3709b570cfca6a2651988b7fc35c2b9c3788bc13e3b755b02d4ffdd41fef912b",
+    "linux_launchers/run_lookthrough.sh": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+    "linux_launchers/run_pg_backup.sh": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+    "linux_launchers/run_portfolio.sh": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+    "linux_launchers/run_portfolio_monthly.sh": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+    "linux_launchers/run_portfolio_weekly.sh": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+    "linux_launchers/run_price_cache.sh": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+    "scripts/check_n8n_activation_grants.py": "6c5c0b3bbd2e2ccfba56e60bf775c96879042b916df20cd363fe0195c04c154d",
+    "scripts/lib/bridge_agent_preconditions.py": "f7b22b70a0ea0b44829451c433428e3ad8cc0234bd1433bd0f4b736af8a1f5a8",
+    "scripts/lib/cio_governed_model_bridge.py": "48a9cb2c3d425f07df09863244f88e11ca1b8a137cab37f90d2d25d012c83596",
+    "scripts/lib/governed_research_producer.py": "ef2d61ec5a29bd0d79ea3612e9fb47c5312f1201398acf4a960ddbe5b864459d",
+    "scripts/lib/lane_registry.py": "64ba9dea5584def46132699709c9ad5e7561eda697bbc1dccefe3a50750f5ea4",
+    "scripts/n8n_run_relay.py": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc",
+    "scripts/n8n_workflow_templates.py": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345",
+    "scripts/ops/run_cross_asset_historical_replay.py": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+    "scripts/pipelines/cutover/_cutover.py": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+    "scripts/run_trade_ai_scalp_live.py": "c1dbead1b060a2ba75b40d38f8952da2fcd3ee99b7c0ccb8e3c092698e8b3af3",
+    "scripts/scalp_shadow_logger.py": "ddb871f407b55f3c235c309902dc21fcf782f9c79a677b45475887cd40613e33"
+  },
+  "production_files_changed_vs_frozen_main": 19,
+  "registered_cio_gates": 336,
+  "registered_missing_files": [],
+  "lane_registry": {
+    "declared": 241,
+    "active": 180,
+    "active_by_scheduler": {
+      "cron": 117,
+      "event": 5,
+      "n8n": 2,
+      "systemd": 56
+    }
+  },
+  "frontend_changes_vs_closed_build38_fixture39": [],
+  "all_local_acceptance": "PENDING_NEW_CANONICAL_RUN",
+  "models_or_providers_called": false,
+  "runtime_changes": false
+}

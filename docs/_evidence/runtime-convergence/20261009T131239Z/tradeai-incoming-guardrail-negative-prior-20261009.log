@@ -1,0 +1,335 @@
+FFF......FFFFFF                                                          [100%]
+=================================== FAILURES ===================================
+________ test_n8n_malformed_choices_fail_closed_through_bridge[missing] ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74984ba97ce0>
+shape = 'missing'
+
+    @pytest.mark.parametrize("shape", [
+        "missing", "empty", "null", "mapping", "string", "null_choice", "string_choice",
+        "missing_message", "null_message", "string_message", "mixed_choices", "mapping_tool_calls",
+    ])
+    def test_n8n_malformed_choices_fail_closed_through_bridge(monkeypatch, shape):
+        provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+        generate = provider.generate
+
+        def malformed(messages, model_id, **kwargs):
+            response = generate(messages, model_id, **kwargs)
+            good = response["choices"][0]
+            if shape == "missing":
+                response.pop("choices")
+            else:
+                response["choices"] = {
+                    "empty": [], "null": None, "mapping": {"0": good}, "string": "invalid",
+                    "null_choice": [None], "string_choice": ["invalid"], "missing_message": [{}],
+                    "null_message": [{"message": None}], "string_message": [{"message": "invalid"}],
+                    "mixed_choices": [good, {"message": "invalid"}],
+                    "mapping_tool_calls": [{"message": {"content": json.dumps(VALID_DIGEST), "tool_calls": {}}}],
+                }[shape]
+            return response
+
+        monkeypatch.setattr(provider, "generate", malformed)
+        with _governed(monkeypatch) as ledger:
+            out = bridge.execute_governed_call([{"role": "user", "content": "digest"}], process_id=DIGEST)
+>       assert out["error"]["code"] == "OUTPUT_INVALID_JSON"
+               ^^^^^^^^^^^^
+E       KeyError: 'error'
+
+tests/test_bridge_agent_preconditions_20261009.py:391: KeyError
+_________ test_n8n_malformed_choices_fail_closed_through_bridge[empty] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74984ba97100>
+shape = 'empty'
+
+    @pytest.mark.parametrize("shape", [
+        "missing", "empty", "null", "mapping", "string", "null_choice", "string_choice",
+        "missing_message", "null_message", "string_message", "mixed_choices", "mapping_tool_calls",
+    ])
+    def test_n8n_malformed_choices_fail_closed_through_bridge(monkeypatch, shape):
+        provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+        generate = provider.generate
+
+        def malformed(messages, model_id, **kwargs):
+            response = generate(messages, model_id, **kwargs)
+            good = response["choices"][0]
+            if shape == "missing":
+                response.pop("choices")
+            else:
+                response["choices"] = {
+                    "empty": [], "null": None, "mapping": {"0": good}, "string": "invalid",
+                    "null_choice": [None], "string_choice": ["invalid"], "missing_message": [{}],
+                    "null_message": [{"message": None}], "string_message": [{"message": "invalid"}],
+                    "mixed_choices": [good, {"message": "invalid"}],
+                    "mapping_tool_calls": [{"message": {"content": json.dumps(VALID_DIGEST), "tool_calls": {}}}],
+                }[shape]
+            return response
+
+        monkeypatch.setattr(provider, "generate", malformed)
+        with _governed(monkeypatch) as ledger:
+            out = bridge.execute_governed_call([{"role": "user", "content": "digest"}], process_id=DIGEST)
+>       assert out["error"]["code"] == "OUTPUT_INVALID_JSON"
+               ^^^^^^^^^^^^
+E       KeyError: 'error'
+
+tests/test_bridge_agent_preconditions_20261009.py:391: KeyError
+_________ test_n8n_malformed_choices_fail_closed_through_bridge[null] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74984b6aac30>
+shape = 'null'
+
+    @pytest.mark.parametrize("shape", [
+        "missing", "empty", "null", "mapping", "string", "null_choice", "string_choice",
+        "missing_message", "null_message", "string_message", "mixed_choices", "mapping_tool_calls",
+    ])
+    def test_n8n_malformed_choices_fail_closed_through_bridge(monkeypatch, shape):
+        provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+        generate = provider.generate
+
+        def malformed(messages, model_id, **kwargs):
+            response = generate(messages, model_id, **kwargs)
+            good = response["choices"][0]
+            if shape == "missing":
+                response.pop("choices")
+            else:
+                response["choices"] = {
+                    "empty": [], "null": None, "mapping": {"0": good}, "string": "invalid",
+                    "null_choice": [None], "string_choice": ["invalid"], "missing_message": [{}],
+                    "null_message": [{"message": None}], "string_message": [{"message": "invalid"}],
+                    "mixed_choices": [good, {"message": "invalid"}],
+                    "mapping_tool_calls": [{"message": {"content": json.dumps(VALID_DIGEST), "tool_calls": {}}}],
+                }[shape]
+            return response
+
+        monkeypatch.setattr(provider, "generate", malformed)
+        with _governed(monkeypatch) as ledger:
+            out = bridge.execute_governed_call([{"role": "user", "content": "digest"}], process_id=DIGEST)
+>       assert out["error"]["code"] == "OUTPUT_INVALID_JSON"
+               ^^^^^^^^^^^^
+E       KeyError: 'error'
+
+tests/test_bridge_agent_preconditions_20261009.py:391: KeyError
+____ test_n8n_malformed_choices_fail_closed_through_bridge[string_message] _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74984b590c90>
+shape = 'string_message'
+
+    @pytest.mark.parametrize("shape", [
+        "missing", "empty", "null", "mapping", "string", "null_choice", "string_choice",
+        "missing_message", "null_message", "string_message", "mixed_choices", "mapping_tool_calls",
+    ])
+    def test_n8n_malformed_choices_fail_closed_through_bridge(monkeypatch, shape):
+        provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+        generate = provider.generate
+
+        def malformed(messages, model_id, **kwargs):
+            response = generate(messages, model_id, **kwargs)
+            good = response["choices"][0]
+            if shape == "missing":
+                response.pop("choices")
+            else:
+                response["choices"] = {
+                    "empty": [], "null": None, "mapping": {"0": good}, "string": "invalid",
+                    "null_choice": [None], "string_choice": ["invalid"], "missing_message": [{}],
+                    "null_message": [{"message": None}], "string_message": [{"message": "invalid"}],
+                    "mixed_choices": [good, {"message": "invalid"}],
+                    "mapping_tool_calls": [{"message": {"content": json.dumps(VALID_DIGEST), "tool_calls": {}}}],
+                }[shape]
+            return response
+
+        monkeypatch.setattr(provider, "generate", malformed)
+        with _governed(monkeypatch) as ledger:
+>           out = bridge.execute_governed_call([{"role": "user", "content": "digest"}], process_id=DIGEST)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_agent_preconditions_20261009.py:390:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts/lib/cio_governed_model_bridge.py:1762: in execute_governed_call
+    _out = agent_gate.output_refusal(process_id, response, agent_gate.registry_row(process_id))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/bridge_agent_preconditions.py:203: in output_refusal
+    refused = response_tool_calls_refusal(process_id, response, row)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+process_id = 'n8n_material_digest_draft'
+response = {'id': 'prov', 'object': 'chat.completion', 'created': 1, 'model': 'deepseek-flash', ...}
+row = {'id': 'n8n_material_digest_draft', 'name': 'n8n coordination: material-change digest DRAFT (Flash)', 'category': 'N8nCoordination', 'lane_policy': 'deepseek_only', ...}
+
+    def response_tool_calls_refusal(process_id: str, response: Mapping[str, Any],
+                                    row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        mode, allowed = tool_policy(row)
+        if mode == "passthrough":
+            return None
+        refused = []
+        for choice in response.get("choices") or []:
+            msg = choice.get("message") if isinstance(choice, Mapping) else None
+>           for call in (msg or {}).get("tool_calls") or []:
+                        ^^^^^^^^^^^^^^^
+E           AttributeError: 'str' object has no attribute 'get'
+
+scripts/lib/bridge_agent_preconditions.py:154: AttributeError
+_____ test_n8n_malformed_choices_fail_closed_through_bridge[mixed_choices] _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74984b592eb0>
+shape = 'mixed_choices'
+
+    @pytest.mark.parametrize("shape", [
+        "missing", "empty", "null", "mapping", "string", "null_choice", "string_choice",
+        "missing_message", "null_message", "string_message", "mixed_choices", "mapping_tool_calls",
+    ])
+    def test_n8n_malformed_choices_fail_closed_through_bridge(monkeypatch, shape):
+        provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+        generate = provider.generate
+
+        def malformed(messages, model_id, **kwargs):
+            response = generate(messages, model_id, **kwargs)
+            good = response["choices"][0]
+            if shape == "missing":
+                response.pop("choices")
+            else:
+                response["choices"] = {
+                    "empty": [], "null": None, "mapping": {"0": good}, "string": "invalid",
+                    "null_choice": [None], "string_choice": ["invalid"], "missing_message": [{}],
+                    "null_message": [{"message": None}], "string_message": [{"message": "invalid"}],
+                    "mixed_choices": [good, {"message": "invalid"}],
+                    "mapping_tool_calls": [{"message": {"content": json.dumps(VALID_DIGEST), "tool_calls": {}}}],
+                }[shape]
+            return response
+
+        monkeypatch.setattr(provider, "generate", malformed)
+        with _governed(monkeypatch) as ledger:
+>           out = bridge.execute_governed_call([{"role": "user", "content": "digest"}], process_id=DIGEST)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_bridge_agent_preconditions_20261009.py:390:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts/lib/cio_governed_model_bridge.py:1762: in execute_governed_call
+    _out = agent_gate.output_refusal(process_id, response, agent_gate.registry_row(process_id))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts/lib/bridge_agent_preconditions.py:203: in output_refusal
+    refused = response_tool_calls_refusal(process_id, response, row)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+process_id = 'n8n_material_digest_draft'
+response = {'id': 'prov', 'object': 'chat.completion', 'created': 1, 'model': 'deepseek-flash', ...}
+row = {'id': 'n8n_material_digest_draft', 'name': 'n8n coordination: material-change digest DRAFT (Flash)', 'category': 'N8nCoordination', 'lane_policy': 'deepseek_only', ...}
+
+    def response_tool_calls_refusal(process_id: str, response: Mapping[str, Any],
+                                    row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        mode, allowed = tool_policy(row)
+        if mode == "passthrough":
+            return None
+        refused = []
+        for choice in response.get("choices") or []:
+            msg = choice.get("message") if isinstance(choice, Mapping) else None
+>           for call in (msg or {}).get("tool_calls") or []:
+                        ^^^^^^^^^^^^^^^
+E           AttributeError: 'str' object has no attribute 'get'
+
+scripts/lib/bridge_agent_preconditions.py:154: AttributeError
+__ test_n8n_malformed_choices_fail_closed_through_bridge[mapping_tool_calls] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x74984b7e6410>
+shape = 'mapping_tool_calls'
+
+    @pytest.mark.parametrize("shape", [
+        "missing", "empty", "null", "mapping", "string", "null_choice", "string_choice",
+        "missing_message", "null_message", "string_message", "mixed_choices", "mapping_tool_calls",
+    ])
+    def test_n8n_malformed_choices_fail_closed_through_bridge(monkeypatch, shape):
+        provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+        generate = provider.generate
+
+        def malformed(messages, model_id, **kwargs):
+            response = generate(messages, model_id, **kwargs)
+            good = response["choices"][0]
+            if shape == "missing":
+                response.pop("choices")
+            else:
+                response["choices"] = {
+                    "empty": [], "null": None, "mapping": {"0": good}, "string": "invalid",
+                    "null_choice": [None], "string_choice": ["invalid"], "missing_message": [{}],
+                    "null_message": [{"message": None}], "string_message": [{"message": "invalid"}],
+                    "mixed_choices": [good, {"message": "invalid"}],
+                    "mapping_tool_calls": [{"message": {"content": json.dumps(VALID_DIGEST), "tool_calls": {}}}],
+                }[shape]
+            return response
+
+        monkeypatch.setattr(provider, "generate", malformed)
+        with _governed(monkeypatch) as ledger:
+            out = bridge.execute_governed_call([{"role": "user", "content": "digest"}], process_id=DIGEST)
+>       assert out["error"]["code"] == "OUTPUT_INVALID_JSON"
+               ^^^^^^^^^^^^
+E       KeyError: 'error'
+
+tests/test_bridge_agent_preconditions_20261009.py:391: KeyError
+____________ test_import_grant_does_not_authorize_later_activation _____________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-129646/test_import_grant_does_not_aut0')
+
+    def test_import_grant_does_not_authorize_later_activation(tmp_path):
+        early = [
+            {
+                "event": "grant-issued",
+                "tier": "config-write",
+                "seconds": 1800,
+                "ts": "2026-10-09T07:55:00-04:00",
+                "reason": "import c0d4c7845e5c4fcc",
+            }
+        ]
+        grants = A.load_grants(_guard_log(tmp_path, early))
+        rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
+        row = rows["c0d4c7845e5c4fcc"]
+>       assert row["status"] == A.UNGRANTED_ACTIVATION
+E       AssertionError: assert 'GRANTED' == 'UNGRANTED_ACTIVATION'
+E
+E         - UNGRANTED_ACTIVATION
+E         + GRANTED
+
+tests/test_n8n_activation_grants_20261009.py:213: AssertionError
+________ test_import_and_activation_grants_are_attributed_independently ________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-129646/test_import_and_activation_gra0')
+
+    def test_import_and_activation_grants_are_attributed_independently(tmp_path):
+        grants = A.load_grants(_guard_log(tmp_path, [
+            {"event": "grant-issued", "tier": "config-write", "seconds": 1800,
+             "ts": "2026-10-09T11:55:00Z", "reason": "import c0d4c7845e5c4fcc"},
+            {"event": "grant-issued", "tier": "service", "seconds": 1800,
+             "ts": "2026-10-09T13:25:00Z", "reason": "activate c0d4c7845e5c4fcc"},
+        ]))
+        rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
+        row = rows["c0d4c7845e5c4fcc"]
+>       assert row["status"] == A.GRANTED and row["import_status"] == A.GRANTED
+                                              ^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'import_status'
+
+tests/test_n8n_activation_grants_20261009.py:228: KeyError
+____ test_explicit_activation_window_can_cover_import_and_later_activation _____
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-129646/test_explicit_activation_windo0')
+
+    def test_explicit_activation_window_can_cover_import_and_later_activation(tmp_path):
+        grants = A.load_grants(_guard_log(tmp_path, [
+            {"event": "grant-issued", "tier": "service", "seconds": 7200,
+             "ts": "2026-10-09T11:55:00Z", "reason": "import and activate c0d4c7845e5c4fcc"},
+        ]))
+        rows = {r["workflow_id"]: r for r in A.reconcile(A.activation_events(EVIDENCE, since=SINCE), grants)}
+        row = rows["c0d4c7845e5c4fcc"]
+>       assert row["status"] == A.GRANTED and row["import_status"] == A.GRANTED
+                                              ^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'import_status'
+
+tests/test_n8n_activation_grants_20261009.py:241: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_n8n_malformed_choices_fail_closed_through_bridge[missing]
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_n8n_malformed_choices_fail_closed_through_bridge[empty]
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_n8n_malformed_choices_fail_closed_through_bridge[null]
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_n8n_malformed_choices_fail_closed_through_bridge[string_message]
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_n8n_malformed_choices_fail_closed_through_bridge[mixed_choices]
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_n8n_malformed_choices_fail_closed_through_bridge[mapping_tool_calls]
+FAILED tests/test_n8n_activation_grants_20261009.py::test_import_grant_does_not_authorize_later_activation
+FAILED tests/test_n8n_activation_grants_20261009.py::test_import_and_activation_grants_are_attributed_independently
+FAILED tests/test_n8n_activation_grants_20261009.py::test_explicit_activation_window_can_cover_import_and_later_activation
+9 failed, 6 passed, 50 deselected in 0.93s

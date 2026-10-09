@@ -1,0 +1,4 @@
+EXPECTED_PRIOR_FAIL test_lookup_rescues_a_real_small_cap_and_still_excludes_large_caps
+  [float-lookup] skipped: RuntimeError: provider down
+EXPECTED_PRIOR_FAIL test_lookup_failure_leaves_symbols_excluded
+Two reproducible negative cases; injected projection only; no host projection/network/DB/provider calls

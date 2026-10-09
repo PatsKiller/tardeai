@@ -1,0 +1,518 @@
+unformatted: File would be reformatted
+   --> /tmp/tradeai-incoming-guardrail-prior-20261009/scripts/lib/bridge_agent_preconditions.py:27:1
+    |
+26  | """
+27  +
+28  | from __future__ import annotations
+--------------------------------------------------------------------------------
+73  |
+74  +
+75  | def tool_policy(row: Mapping[str, Any] | None) -> tuple[str, frozenset[str]]:
+--------------------------------------------------------------------------------
+129 |
+    - def request_tools_refusal(process_id: str, tools: Any, tool_choice: Any,
+    -                           row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+130 + def request_tools_refusal(
+131 +     process_id: str, tools: Any, tool_choice: Any, row: Mapping[str, Any] | None
+132 + ) -> dict[str, Any] | None:
+133 |     mode, allowed = tool_policy(row)
+--------------------------------------------------------------------------------
+143 |     code = "TOOL_FORBIDDEN" if any(x["reason"].startswith("forbidden_token") for x in refused) else "TOOL_NOT_ALLOWED"
+    -     return _refusal(code, 400,
+    -                     f"Process '{process_id}' may not use tool(s) {[x['name'] for x in refused][:5]}",
+    -                     tools_refused=refused[:10], tools_policy=mode)
+144 +     return _refusal(
+145 +         code,
+146 +         400,
+147 +         f"Process '{process_id}' may not use tool(s) {[x['name'] for x in refused][:5]}",
+148 +         tools_refused=refused[:10],
+149 +         tools_policy=mode,
+150 +     )
+151 |
+152 |
+    - def response_tool_calls_refusal(process_id: str, response: Mapping[str, Any],
+    -                                 row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+153 + def response_tool_calls_refusal(
+154 +     process_id: str, response: Mapping[str, Any], row: Mapping[str, Any] | None
+155 + ) -> dict[str, Any] | None:
+156 |     mode, allowed = tool_policy(row)
+--------------------------------------------------------------------------------
+169 |         return None
+    -     return _refusal("TOOL_CALL_REFUSED", 422,
+    -                     f"Model named tool(s) process '{process_id}' may not call: {[x['name'] for x in refused][:5]}",
+    -                     tool_calls_refused=refused[:10], tools_policy=mode)
+170 +     return _refusal(
+171 +         "TOOL_CALL_REFUSED",
+172 +         422,
+173 +         f"Model named tool(s) process '{process_id}' may not call: {[x['name'] for x in refused][:5]}",
+174 +         tool_calls_refused=refused[:10],
+175 +         tools_policy=mode,
+176 +     )
+177 |
+178 |
+179 | # ── P6: n8n output schema + behaviour scan ─────────────────────────────────
+180 |
+181 +
+182 | def load_output_schemas(path: Path | None = None) -> dict[str, Any]:
+--------------------------------------------------------------------------------
+212 |
+    - def output_refusal(process_id: str, response: Mapping[str, Any],
+    -                    row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+213 + def output_refusal(
+214 +     process_id: str, response: Mapping[str, Any], row: Mapping[str, Any] | None
+215 + ) -> dict[str, Any] | None:
+216 |     """P5 tool_calls for every process with a declared tool policy; P6 for n8n_* processes only."""
+--------------------------------------------------------------------------------
+221 |     if schema is None:
+    -         return _refusal("OUTPUT_SCHEMA_UNKNOWN", 500, f"No output schema for n8n process '{process_id}'",
+    -                         output_schema_id=schema_id)
+222 +         return _refusal(
+223 +             "OUTPUT_SCHEMA_UNKNOWN", 500, f"No output schema for n8n process '{process_id}'", output_schema_id=schema_id
+224 +         )
+225 |     extra_keys = frozenset(str(k) for k in schema.get("forbidden_keys") or [])
+--------------------------------------------------------------------------------
+230 |         calls = msg.get("tool_calls") or []
+    -         for call in calls:   # an allowlisted tool call's arguments are scanned for behaviour too
+231 +         for call in calls:  # an allowlisted tool call's arguments are scanned for behaviour too
+232 |             fn = call.get("function") if isinstance(call, Mapping) and isinstance(call.get("function"), Mapping) else {}
+233 |             try:
+234 |                 args = json.loads(fn.get("arguments") or "{}")
+235 |             except (TypeError, ValueError):
+    -                 return _refusal("OUTPUT_INVALID_JSON", 422, "tool call arguments are not JSON",
+    -                                 output_schema_id=schema_id)
+236 +                 return _refusal(
+237 +                     "OUTPUT_INVALID_JSON", 422, "tool call arguments are not JSON", output_schema_id=schema_id
+238 +                 )
+239 |             hits = behaviour_hits(args, extra_keys)
+240 |             if hits:
+    -                 return _refusal("OUTPUT_BEHAVIOUR_FIELD", 422, f"tool call arguments carry behaviour fields {hits[:6]}",
+    -                                 output_schema_id=schema_id, behaviour_fields=hits[:10])
+241 +                 return _refusal(
+242 +                     "OUTPUT_BEHAVIOUR_FIELD",
+243 +                     422,
+244 +                     f"tool call arguments carry behaviour fields {hits[:6]}",
+245 +                     output_schema_id=schema_id,
+246 +                     behaviour_fields=hits[:10],
+247 +                 )
+248 |         if calls and not content:
+--------------------------------------------------------------------------------
+254 |         if not isinstance(answer, Mapping):
+    -             return _refusal("OUTPUT_INVALID_JSON", 422, "model output is not a JSON object",
+    -                             output_schema_id=schema_id)
+255 +             return _refusal("OUTPUT_INVALID_JSON", 422, "model output is not a JSON object", output_schema_id=schema_id)
+256 |         hits = behaviour_hits(answer, extra_keys)
+257 |         if hits:
+    -             return _refusal("OUTPUT_BEHAVIOUR_FIELD", 422, f"model output carries behaviour fields {hits[:6]}",
+    -                             output_schema_id=schema_id, behaviour_fields=hits[:10])
+258 +             return _refusal(
+259 +                 "OUTPUT_BEHAVIOUR_FIELD",
+260 +                 422,
+261 +                 f"model output carries behaviour fields {hits[:6]}",
+262 +                 output_schema_id=schema_id,
+263 +                 behaviour_fields=hits[:10],
+264 +             )
+265 |         if "recommendation" in answer and answer.get("recommendation") != "NONE":
+    -             return _refusal("OUTPUT_RECOMMENDATION_FORBIDDEN", 422, "n8n output recommendation must be NONE",
+    -                             output_schema_id=schema_id)
+266 +             return _refusal(
+267 +                 "OUTPUT_RECOMMENDATION_FORBIDDEN",
+268 +                 422,
+269 +                 "n8n output recommendation must be NONE",
+270 +                 output_schema_id=schema_id,
+271 +             )
+272 |         errors = _validate_schema(answer, schema)
+--------------------------------------------------------------------------------
+279 |
+280 +
+281 | def pre_reservation_refusal(process_id: str, tools: Any, tool_choice: Any) -> dict[str, Any] | None:
+282 |     row = registry_row(process_id)
+283 |     if is_n8n_process(process_id):
+284 |         if (row or {}).get("advisory_only") is not True:
+    -             return _refusal("PROCESS_NOT_ADVISORY", 403,
+    -                             f"n8n process '{process_id}' must be advisory_only in llm_process_registry.json")
+285 +             return _refusal(
+286 +                 "PROCESS_NOT_ADVISORY",
+287 +                 403,
+288 +                 f"n8n process '{process_id}' must be advisory_only in llm_process_registry.json",
+289 +             )
+290 |         _schema_id, schema = output_schema_for(row)
+291 |         if schema is None:
+    -             return _refusal("OUTPUT_SCHEMA_UNKNOWN", 500,
+    -                             f"n8n process '{process_id}' declares no known output_schema_id",
+    -                             output_schema_id=_schema_id)
+292 +             return _refusal(
+293 +                 "OUTPUT_SCHEMA_UNKNOWN",
+294 +                 500,
+295 +                 f"n8n process '{process_id}' declares no known output_schema_id",
+296 +                 output_schema_id=_schema_id,
+297 +             )
+298 |     return request_tools_refusal(process_id, tools, tool_choice, row)
+--------------------------------------------------------------------------------
+302 |
+303 +
+304 | def cost_ceiling_refusal(policy: Mapping[str, Any] | None, projected_usd: float) -> dict[str, Any] | None:
+--------------------------------------------------------------------------------
+309 |     if ceiling > 0 and float(projected_usd) > ceiling:
+    -         return _refusal("COST_CEILING_EXCEEDED", 429,
+    -                         f"Projected ${float(projected_usd):.4f} exceeds the routing policy ceiling ${ceiling:.4f}",
+    -                         cost_ceiling_usd=ceiling, projected_usd=round(float(projected_usd), 6))
+310 +         return _refusal(
+311 +             "COST_CEILING_EXCEEDED",
+312 +             429,
+313 +             f"Projected ${float(projected_usd):.4f} exceeds the routing policy ceiling ${ceiling:.4f}",
+314 +             cost_ceiling_usd=ceiling,
+315 +             projected_usd=round(float(projected_usd), 6),
+316 +         )
+317 |     return None
+--------------------------------------------------------------------------------
+329 |
+330 +
+331 | def annotate_response(response: dict[str, Any], process_id: str, egress_verdict: Mapping[str, Any] | None) -> None:
+    |
+
+unformatted: File would be reformatted
+   --> /tmp/tradeai-incoming-guardrail-prior-20261009/tests/test_bridge_agent_preconditions_20261009.py:43:17
+    |
+42  | OPS = "n8n_ops_summary_draft"
+    - VALID_DIGEST = {"headline": "two material changes", "items": [{"symbol": "AMC", "change_guid": "d13460e0",
+    -                 "summary": "8-K filed"}], "sources_cited": ["sec.gov"], "confidence_note": "artifact only",
+    -                 "recommendation": "NONE"}
+43  + VALID_DIGEST = {
+44  +     "headline": "two material changes",
+45  +     "items": [{"symbol": "AMC", "change_guid": "d13460e0", "summary": "8-K filed"}],
+46  +     "sources_cited": ["sec.gov"],
+47  +     "confidence_note": "artifact only",
+48  +     "recommendation": "NONE",
+49  + }
+50  |
+--------------------------------------------------------------------------------
+68  | }
+    - PERMITTED = "NVDA thesis: AI capex cycle intact; last price 182.50, forward P/E 45, sector weight discussed in aggregate."
+69  + PERMITTED = (
+70  +     "NVDA thesis: AI capex cycle intact; last price 182.50, forward P/E 45, sector weight discussed in aggregate."
+71  + )
+72  |
+--------------------------------------------------------------------------------
+102 |     def cfg(pid):
+    -         return {"process_id": pid, "registered": True, "mode": "automated",
+    -                 "deepseek_allowed_policies": ["PRO", "PRO_THINK", "FAST", "FAST_THINK"],
+    -                 "max_input_tokens": 16000, "max_output_tokens": 2048, "daily_soft_cap": 40, "daily_cost_cap_usd": 1.0}
+103 +         return {
+104 +             "process_id": pid,
+105 +             "registered": True,
+106 +             "mode": "automated",
+107 +             "deepseek_allowed_policies": ["PRO", "PRO_THINK", "FAST", "FAST_THINK"],
+108 +             "max_input_tokens": 16000,
+109 +             "max_output_tokens": 2048,
+110 +             "daily_soft_cap": 40,
+111 +             "daily_cost_cap_usd": 1.0,
+112 +         }
+113 +
+114 |     monkeypatch.setattr("lib.llm_consumption.get_process_config", cfg)
+115 |     monkeypatch.setattr("lib.llm_consumption.reserve_projected_cost", ledger["reserve"])
+116 |     monkeypatch.setattr("lib.llm_consumption.settle_reservation", ledger["settle"])
+117 |     monkeypatch.setattr("lib.llm_consumption.check_cost_cap", lambda *a, **k: {"allow": True})
+    -     monkeypatch.setattr("lib.llm_consumption.calibrated_projected_usd",
+    -                         lambda *_a, **_k: {"projected_usd": projected, "basis": "test"})
+118 +     monkeypatch.setattr(
+119 +         "lib.llm_consumption.calibrated_projected_usd", lambda *_a, **_k: {"projected_usd": projected, "basis": "test"}
+120 +     )
+121 |     monkeypatch.setattr("lib.llm_consumption.log_call", ledger["log_call"])
+122 |     monkeypatch.setattr("lib.llm_model_registry.reject_legacy_model_id", lambda *_a, **_k: None)
+    -     monkeypatch.setattr("lib.llm_model_registry.estimate_usd_cost",
+    -                         lambda *_a, **_k: {"estimated_cost_usd": 0.0005, "cost_basis": "test"})
+123 +     monkeypatch.setattr(
+124 +         "lib.llm_model_registry.estimate_usd_cost",
+125 +         lambda *_a, **_k: {"estimated_cost_usd": 0.0005, "cost_basis": "test"},
+126 +     )
+127 |     monkeypatch.setattr("lib.consumption_run_manual.validate_paid_cap_config", lambda *_a, **_k: None)
+--------------------------------------------------------------------------------
+140 |     def generate(self, messages, model_id, **kwargs):
+    -         self.calls.append({"messages": messages, "kwargs": kwargs,
+    -                            "deadline_s": bridge.effective_upstream_deadline_s()})
+141 +         self.calls.append(
+142 +             {"messages": messages, "kwargs": kwargs, "deadline_s": bridge.effective_upstream_deadline_s()}
+143 +         )
+144 |         msg = {"role": "assistant", "content": self.content}
+145 |         if self.tool_calls:
+146 |             msg["tool_calls"] = self.tool_calls
+    -         return {"id": "prov", "object": "chat.completion", "created": 1, "model": model_id,
+    -                 "choices": [{"index": 0, "message": msg, "finish_reason": "stop"}],
+    -                 "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}, "_tradeai": {}}
+147 +         return {
+148 +             "id": "prov",
+149 +             "object": "chat.completion",
+150 +             "created": 1,
+151 +             "model": model_id,
+152 +             "choices": [{"index": 0, "message": msg, "finish_reason": "stop"}],
+153 +             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+154 +             "_tradeai": {},
+155 +         }
+156 |
+--------------------------------------------------------------------------------
+177 |
+178 +
+179 | @pytest.mark.parametrize("category", sorted(SAMPLES))
+--------------------------------------------------------------------------------
+188 | def test_permitted_working_set_passes_untouched_and_input_is_not_mutated():
+    -     msgs = [{"role": "system", "content": PERMITTED}, {"role": "user", "content": [{"type": "text", "text": PERMITTED}]}]
+189 +     msgs = [
+190 +         {"role": "system", "content": PERMITTED},
+191 +         {"role": "user", "content": [{"type": "text", "text": PERMITTED}]},
+192 +     ]
+193 |     before = json.dumps(msgs)
+194 |     out = egress.sanitise_for_external(msgs, "alex_cio_synthesis")
+195 |     assert out["total"] == 0 and out["messages"] == msgs and json.dumps(msgs) == before
+196 |     # token-count prose is not a credential
+    -     assert egress.sanitise_for_external([{"role": "user", "content": "max_tokens: 2048, prompt_tokens=120"}], "p")["total"] == 0
+197 +     assert (
+198 +         egress.sanitise_for_external([{"role": "user", "content": "max_tokens: 2048, prompt_tokens=120"}], "p")["total"]
+199 +         == 0
+200 +     )
+201 |
+202 |
+203 | def test_content_parts_and_tool_call_arguments_are_scanned():
+    -     msgs = [{"role": "user", "content": [{"type": "text", "text": FAKE_EMAIL}]},
+    -             {"role": "assistant", "content": None, "tool_calls": [{"id": "1", "type": "function",
+    -              "function": {"name": "runs_last", "arguments": json.dumps({"note": FAKE_SK})}}]}]
+204 +     msgs = [
+205 +         {"role": "user", "content": [{"type": "text", "text": FAKE_EMAIL}]},
+206 +         {
+207 +             "role": "assistant",
+208 +             "content": None,
+209 +             "tool_calls": [
+210 +                 {
+211 +                     "id": "1",
+212 +                     "type": "function",
+213 +                     "function": {"name": "runs_last", "arguments": json.dumps({"note": FAKE_SK})},
+214 +                 }
+215 +             ],
+216 +         },
+217 +     ]
+218 |     out = egress.sanitise_for_external(msgs, "p")
+--------------------------------------------------------------------------------
+229 |     assert "error" not in out, out.get("error")
+    -     assert provider.calls[0]["messages"] == msgs                     # unchanged
+230 +     assert provider.calls[0]["messages"] == msgs  # unchanged
+231 |     rows = _report(hermetic)
+--------------------------------------------------------------------------------
+238 |     for sample in (s for group in SAMPLES.values() for s in group):
+    -         assert sample not in raw                                     # no matched value
+239 +         assert sample not in raw  # no matched value
+240 |     assert "content" not in row and "messages" not in row
+--------------------------------------------------------------------------------
+248 |     with _governed(monkeypatch):
+    -         out = bridge.execute_governed_call([{"role": "user", "content": _all_samples()}], process_id="maria_research_critique")
+249 +         out = bridge.execute_governed_call(
+250 +             [{"role": "user", "content": _all_samples()}], process_id="maria_research_critique"
+251 +         )
+252 |     assert "error" not in out
+--------------------------------------------------------------------------------
+286 |     assert refused["error"]["code"] == "EGRESS_POLICY_UNAVAILABLE" and refused["error"]["status"] == 503
+    -     assert len(provider.calls) == 1                                   # nothing sent in enforce
+287 +     assert len(provider.calls) == 1  # nothing sent in enforce
+288 |     assert ledger["settle"].call_args.kwargs.get("ok") is False
+--------------------------------------------------------------------------------
+308 |
+309 +
+310 | def _tool(name):
+--------------------------------------------------------------------------------
+320 |     with _governed(monkeypatch) as ledger:
+    -         out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST, tools=[_tool("runs_last")])
+321 +         out = bridge.execute_governed_call(
+322 +             [{"role": "user", "content": "x"}], process_id=DIGEST, tools=[_tool("runs_last")]
+323 +         )
+324 |     assert out["error"]["code"] == "TOOL_NOT_ALLOWED" and out["error"]["status"] == 400
+--------------------------------------------------------------------------------
+329 | def test_allowlist_admits_named_tools_and_refuses_others_and_forbidden(monkeypatch):
+    -     row = {"id": "n8n_agent_x", "tools_allowed": ["runs_last", "ledger_runs_read"], "advisory_only": True,
+    -            "output_schema_id": "material_change_digest_draft/v1"}
+330 +     row = {
+331 +         "id": "n8n_agent_x",
+332 +         "tools_allowed": ["runs_last", "ledger_runs_read"],
+333 +         "advisory_only": True,
+334 +         "output_schema_id": "material_change_digest_draft/v1",
+335 +     }
+336 |     monkeypatch.setattr(gate, "registry_row", lambda pid: row)
+--------------------------------------------------------------------------------
+341 |     assert forb["code"] == "TOOL_FORBIDDEN" and forb["extra"]["tools_refused"][0]["reason"] == "forbidden_token:send"
+    -     choice = gate.request_tools_refusal("p", [_tool("runs_last")], {"type": "function", "function": {"name": "place_order"}}, row)
+342 +     choice = gate.request_tools_refusal(
+343 +         "p", [_tool("runs_last")], {"type": "function", "function": {"name": "place_order"}}, row
+344 +     )
+345 |     assert choice["code"] == "TOOL_FORBIDDEN"
+346 |     # forbidden tokens win even if a row lists the name
+    -     assert gate.request_tools_refusal("p", [_tool("broker_positions")], None, {"tools_allowed": ["broker_positions"]})["code"] == "TOOL_FORBIDDEN"
+347 +     assert (
+348 +         gate.request_tools_refusal("p", [_tool("broker_positions")], None, {"tools_allowed": ["broker_positions"]})[
+349 +             "code"
+350 +         ]
+351 +         == "TOOL_FORBIDDEN"
+352 +     )
+353 |
+354 |
+355 | def test_model_tool_calls_outside_the_allowlist_are_refused_typed_not_dropped(monkeypatch):
+    -     row = {"id": DIGEST, "tools_allowed": ["runs_last"], "advisory_only": True,
+    -            "output_schema_id": "material_change_digest_draft/v1"}
+356 +     row = {
+357 +         "id": DIGEST,
+358 +         "tools_allowed": ["runs_last"],
+359 +         "advisory_only": True,
+360 +         "output_schema_id": "material_change_digest_draft/v1",
+361 +     }
+362 |     monkeypatch.setattr(gate, "registry_row", lambda pid: row)
+363 |     with _governed(monkeypatch) as ledger:
+364 |         _use(monkeypatch, FakeProvider(content=None, tool_calls=_call("postgres_query")))
+    -         out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST, tools=[_tool("runs_last")])
+365 +         out = bridge.execute_governed_call(
+366 +             [{"role": "user", "content": "x"}], process_id=DIGEST, tools=[_tool("runs_last")]
+367 +         )
+368 |         assert out["error"]["code"] == "TOOL_CALL_REFUSED" and out["error"]["status"] == 422
+369 |         assert out["error"]["tool_calls_refused"][0]["name"] == "postgres_query"
+370 |         assert out["error"]["billed_cost_estimate"] == 0.0005 and ledger["settle"].call_count == 1
+371 |         _use(monkeypatch, FakeProvider(content=None, tool_calls=_call("runs_last", {"lane_id": "n8n-pilot-dispatch"})))
+    -         ok = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST, tools=[_tool("runs_last")])
+372 +         ok = bridge.execute_governed_call(
+373 +             [{"role": "user", "content": "x"}], process_id=DIGEST, tools=[_tool("runs_last")]
+374 +         )
+375 |     assert "error" not in ok, ok.get("error")
+--------------------------------------------------------------------------------
+381 |     with _governed(monkeypatch):
+    -         out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id="alex_cio_synthesis",
+    -                                            tools=[_tool("get_financial_data")], tool_choice="auto")
+382 +         out = bridge.execute_governed_call(
+383 +             [{"role": "user", "content": "x"}],
+384 +             process_id="alex_cio_synthesis",
+385 +             tools=[_tool("get_financial_data")],
+386 +             tool_choice="auto",
+387 +         )
+388 |     assert "error" not in out
+--------------------------------------------------------------------------------
+405 |     reg = {p["id"]: p for p in json.loads((ROOT / "config" / "llm_process_registry.json").read_text())["processes"]}
+    -     mapped = set(bridge.CALLER_PROCESS_MAP.values()) | {p for m in bridge.CALLER_TASK_PROCESS_MAP.values() for p in m.values()}
+406 +     mapped = set(bridge.CALLER_PROCESS_MAP.values()) | {
+407 +         p for m in bridge.CALLER_TASK_PROCESS_MAP.values() for p in m.values()
+408 +     }
+409 |     for pid in mapped:
+410 |         mode, _ = gate.tool_policy(reg.get(pid))
+    -         caller_openclaw = pid in {"alex_cio_synthesis", "maria_research_critique", "steph_allocation_review",
+    -                                   "guardian_risk_critique", "ledger_tax_critique", "morgan_wealth_synthesis"}
+411 +         caller_openclaw = pid in {
+412 +             "alex_cio_synthesis",
+413 +             "maria_research_critique",
+414 +             "steph_allocation_review",
+415 +             "guardian_risk_critique",
+416 +             "ledger_tax_critique",
+417 +             "morgan_wealth_synthesis",
+418 +         }
+419 |         assert mode == ("passthrough" if caller_openclaw else "none"), (pid, mode)
+--------------------------------------------------------------------------------
+423 |
+    - @pytest.mark.parametrize("content,code", [
+    -     ("Here is the digest you asked for.", "OUTPUT_INVALID_JSON"),
+    -     (json.dumps(["not", "an", "object"]), "OUTPUT_INVALID_JSON"),
+    -     (json.dumps({k: v for k, v in VALID_DIGEST.items() if k != "headline"}), "OUTPUT_SCHEMA_INVALID"),
+    -     (json.dumps({**VALID_DIGEST, "items": [{**VALID_DIGEST["items"][0], "qty": 100}]}), "OUTPUT_BEHAVIOUR_FIELD"),
+    -     (json.dumps({**VALID_DIGEST, "Stop": 41.2}), "OUTPUT_BEHAVIOUR_FIELD"),
+    -     (json.dumps({**VALID_DIGEST, "buy": True}), "OUTPUT_BEHAVIOUR_FIELD"),
+    -     (json.dumps({**VALID_DIGEST, "recommendation": "BUY"}), "OUTPUT_RECOMMENDATION_FORBIDDEN"),
+    - ])
+424 +
+425 + @pytest.mark.parametrize(
+426 +     "content,code",
+427 +     [
+428 +         ("Here is the digest you asked for.", "OUTPUT_INVALID_JSON"),
+429 +         (json.dumps(["not", "an", "object"]), "OUTPUT_INVALID_JSON"),
+430 +         (json.dumps({k: v for k, v in VALID_DIGEST.items() if k != "headline"}), "OUTPUT_SCHEMA_INVALID"),
+431 +         (json.dumps({**VALID_DIGEST, "items": [{**VALID_DIGEST["items"][0], "qty": 100}]}), "OUTPUT_BEHAVIOUR_FIELD"),
+432 +         (json.dumps({**VALID_DIGEST, "Stop": 41.2}), "OUTPUT_BEHAVIOUR_FIELD"),
+433 +         (json.dumps({**VALID_DIGEST, "buy": True}), "OUTPUT_BEHAVIOUR_FIELD"),
+434 +         (json.dumps({**VALID_DIGEST, "recommendation": "BUY"}), "OUTPUT_RECOMMENDATION_FORBIDDEN"),
+435 +     ],
+436 + )
+437 | def test_n8n_output_is_schema_and_behaviour_checked(monkeypatch, content, code):
+--------------------------------------------------------------------------------
+457 | def test_ops_summary_uses_its_own_schema(monkeypatch):
+    -     ops = {"headline": "ops", "sections": [{"area": "lanes", "summary": "ok"}], "open_items": [],
+    -            "sources_cited": ["x"], "confidence_note": "stub", "recommendation": "NONE"}
+458 +     ops = {
+459 +         "headline": "ops",
+460 +         "sections": [{"area": "lanes", "summary": "ok"}],
+461 +         "open_items": [],
+462 +         "sources_cited": ["x"],
+463 +         "confidence_note": "stub",
+464 +         "recommendation": "NONE",
+465 +     }
+466 |     _use(monkeypatch, FakeProvider(content=json.dumps(ops)))
+467 |     with _governed(monkeypatch):
+468 |         assert "error" not in bridge.execute_governed_call([{"role": "user", "content": "o"}], process_id=OPS)
+469 |         _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+    -         assert bridge.execute_governed_call([{"role": "user", "content": "o"}], process_id=OPS)["error"]["code"] == "OUTPUT_SCHEMA_INVALID"
+470 +         assert (
+471 +             bridge.execute_governed_call([{"role": "user", "content": "o"}], process_id=OPS)["error"]["code"]
+472 +             == "OUTPUT_SCHEMA_INVALID"
+473 +         )
+474 |
+--------------------------------------------------------------------------------
+480 |     assert "error" not in out and "recommendation" not in out["_tradeai"]
+    -     assert out["_tradeai"]["authority"] == "READ_ONLY_ADVISORY"     # registry advisory_only true
+481 +     assert out["_tradeai"]["authority"] == "READ_ONLY_ADVISORY"  # registry advisory_only true
+482 |
+--------------------------------------------------------------------------------
+486 |     with _governed(monkeypatch) as ledger:
+    -         monkeypatch.setattr(gate, "registry_row", lambda pid: {"id": pid, "advisory_only": True, "tools_allowed": False})
+487 +         monkeypatch.setattr(
+488 +             gate, "registry_row", lambda pid: {"id": pid, "advisory_only": True, "tools_allowed": False}
+489 +         )
+490 |         a = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST)
+    -         monkeypatch.setattr(gate, "registry_row", lambda pid: {"id": pid, "advisory_only": False,
+    -                                                                "output_schema_id": "ops_summary_draft/v1"})
+491 +         monkeypatch.setattr(
+492 +             gate,
+493 +             "registry_row",
+494 +             lambda pid: {"id": pid, "advisory_only": False, "output_schema_id": "ops_summary_draft/v1"},
+495 +         )
+496 |         b = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST)
+--------------------------------------------------------------------------------
+502 |     from lib.cio_instrument_record import BEHAVIOR_FIELDS
+503 +
+504 |     assert gate.BEHAVIOR_FIELDS is BEHAVIOR_FIELDS
+--------------------------------------------------------------------------------
+518 |
+519 +
+520 | def test_cost_ceiling_refuses_before_reservation(monkeypatch):
+521 |     provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+    -     with _governed(monkeypatch, projected=0.25) as ledger:                 # n8n ceiling is 0.10
+522 +     with _governed(monkeypatch, projected=0.25) as ledger:  # n8n ceiling is 0.10
+523 |         out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST)
+--------------------------------------------------------------------------------
+547 |             pass
+548 +
+549 |     with pytest.raises(bridge.UpstreamDeadlineExceeded):
+--------------------------------------------------------------------------------
+566 |
+567 +
+568 | def test_only_n8n_rows_route_grok_chatgpt_deepseek_with_transport_failover():
+--------------------------------------------------------------------------------
+586 |     assert [(s["provider"], s["reason"]) for s in decision["skipped_lanes"]] == [
+    -         ("grok", "no_bridge_transport"), ("chatgpt", "no_bridge_transport")]
+587 +         ("grok", "no_bridge_transport"),
+588 +         ("chatgpt", "no_bridge_transport"),
+589 +     ]
+590 |     assert len(provider.calls) == 1
+--------------------------------------------------------------------------------
+601 |     health = hermetic / "health.json"
+    -     health.write_text(json.dumps({"worst_severity": "CRITICAL", "findings": [
+    -         {"lane": "deepseek", "kind": "BILLING", "severity": "CRITICAL"}]}))
+602 +     health.write_text(
+603 +         json.dumps(
+604 +             {
+605 +                 "worst_severity": "CRITICAL",
+606 +                 "findings": [{"lane": "deepseek", "kind": "BILLING", "severity": "CRITICAL"}],
+607 +             }
+608 +         )
+609 +     )
+610 |     monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(health))
+    |
+
+2 files would be reformatted, 2 files already formatted

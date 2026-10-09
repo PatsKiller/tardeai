@@ -1,0 +1,4 @@
+FIXED_PASS test_lookup_rescues_a_real_small_cap_and_still_excludes_large_caps
+  [float-lookup] skipped: RuntimeError: provider down
+FIXED_PASS test_lookup_failure_leaves_symbols_excluded
+Two cases PASS; production shared-feed configuration still enabled; no projection/network/DB/provider calls

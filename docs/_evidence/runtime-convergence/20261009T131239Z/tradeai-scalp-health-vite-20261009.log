@@ -1,0 +1,16 @@
+vite v5.4.21 building for production...
+<script src="/v3/cc-boot.js"> in "/index.html" can't be bundled without type="module" attribute
+transforming...
+✓ 1462 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                               0.64 kB │ gzip:     0.35 kB
+dist/assets/index-B2gHyp23.css               56.42 kB │ gzip:    10.85 kB
+dist/assets/OpportunityModal-BXWWvV88.js     22.30 kB │ gzip:     7.45 kB
+dist/assets/index-C1cbolh4.js             4,874.37 kB │ gzip: 1,317.39 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 15.32s

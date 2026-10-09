@@ -1,0 +1,45 @@
+diff --git a/tests/test_scalp_universe_failclosed_20261005.py b/tests/test_scalp_universe_failclosed_20261005.py
+index bf500cbfc..b05ce6121 100644
+--- a/tests/test_scalp_universe_failclosed_20261005.py
++++ b/tests/test_scalp_universe_failclosed_20261005.py
+@@ -35,6 +35,9 @@ import scalp_float_lookup as sfl  # noqa: E402
+
+ CFG = yaml.safe_load((ROOT / "config" / "scalp_signal_engine.yaml").read_text())
+ U = CFG["universe"]
++# These scanner/float-lookup fixtures exclude the separate shared-feed contract.
++# Keep production configuration intact and never read a host projection here.
++SCANNER_CFG = {**CFG, "universe": {**U, "shared_feeds": {"enabled": False}}}
+
+
+ class _Cur:
+@@ -99,10 +102,9 @@ def test_unknown_float_fails_closed_and_each_exclusion_is_named():
+
+ def test_sql_takes_latest_non_null_float_from_any_scan_and_no_null_admission():
+     conn = _Conn(ROWS)
+-    # the universe SQL itself; the 2026-10-09 shared feeds run after it on the same fake cursor
+-    # (tests/test_trade_ai_scalp_5min_20261009.py covers them)
+-    cfg = {**CFG, "universe": {**CFG["universe"], "shared_feeds": {"enabled": False}}}
+-    ssl.resolve_universe_detail(conn, cfg, float_lookup=lambda syms, u: {})
++    # Verify the scanner query independently of the shared feeds, whose contract
++    # is covered by tests/test_trade_ai_scalp_5min_20261009.py.
++    ssl.resolve_universe_detail(conn, SCANNER_CFG, float_lookup=lambda syms, u: {})
+     sql = conn.cur.sql
+     assert "IS NULL OR" not in sql                              # the leak is gone
+     assert "float_mm IS NOT NULL" in sql and "ORDER BY x.scanned_at DESC LIMIT 1" in sql
+@@ -118,7 +120,7 @@ def test_lookup_rescues_a_real_small_cap_and_still_excludes_large_caps():
+                 "HPE": {"float_mm": 1310.0, "price": 68.0, "source": "finviz"}}
+     rows = [("CRMX", None, None, None, False), ("HPE", None, None, None, False),
+             ("DELL", None, None, None, False), ("RJCT", None, None, "reject", False)]
+-    kept, excluded = ssl.resolve_universe_detail(_Conn(rows), CFG, float_lookup=fake)
++    kept, excluded = ssl.resolve_universe_detail(_Conn(rows), SCANNER_CFG, float_lookup=fake)
+     assert seen == [["CRMX", "HPE", "DELL"]]                    # excluded routes are not looked up
+     assert kept == ["CRMX"]
+     assert excluded == {"HPE": "float_above_max", "DELL": "float_unknown", "RJCT": "route_reject"}
+@@ -127,7 +129,7 @@ def test_lookup_rescues_a_real_small_cap_and_still_excludes_large_caps():
+ def test_lookup_failure_leaves_symbols_excluded():
+     def boom(syms, u):
+         raise RuntimeError("provider down")
+-    kept, excluded = ssl.resolve_universe_detail(_Conn([("ABCD", None, 5.0, None, False)]), CFG,
++    kept, excluded = ssl.resolve_universe_detail(_Conn([("ABCD", None, 5.0, None, False)]), SCANNER_CFG,
+                                                  float_lookup=boom)
+     assert kept == [] and excluded == {"ABCD": "float_unknown"}

@@ -1,0 +1,245 @@
+{
+  "schema": "IncomingMainIntegrationSourceReview@v1",
+  "evidence_class": "SOURCE_ONLY",
+  "measured_at": "2026-10-09T17:11:32.836312+00:00",
+  "base_sha": "377e9b536afc2d9b7a3dde8f5c043066bc5cdfeb",
+  "reviewed_main_sha": "d7ec9ac135250102d8997458c0140912746713d0",
+  "candidate_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
+  "commits": [
+    "d7ec9ac135250102d8997458c0140912746713d0 test(n8n): de-flake gateway concurrency and executor flock tests (#1559)",
+    "a66944ed77e53e01bc7197ed037f942e8b23450c feat(bridge): n8n Agent preconditions P4/P5/P6/P21 + n8n routing Grok->ChatGPT->DeepSeek (#1555)",
+    "861d417d3a6f630eec5dbe4c4d9f0495f38d78bc feat(n8n): Agent-gate governance controls P16 attribution, P17 registry-first, P18 drift, P20 agent registry (#1554)"
+  ],
+  "incoming_files": [
+    "config/agent_clients.yaml",
+    "config/agent_registry.json",
+    "config/cio_surface_classification.json",
+    "config/egress_sanitiser_policy.json",
+    "config/lane_registry.json",
+    "config/llm_process_registry.json",
+    "config/llm_routing_policy.json",
+    "config/n8n_run_allowlist.json",
+    "docs/implementation/n8n-parallel/workflows/active_workflows_snapshot.json",
+    "scripts/check_lane_registry.py",
+    "scripts/check_n8n_activation_grants.py",
+    "scripts/check_n8n_workflow_drift.py",
+    "scripts/lib/bridge_agent_preconditions.py",
+    "scripts/lib/cio_egress_sanitiser.py",
+    "scripts/lib/cio_governed_model_bridge.py",
+    "scripts/lib/lane_registry.py",
+    "scripts/lib/n8n_live_inventory.py",
+    "scripts/run_cio_hardening_ci.py",
+    "tests/test_bridge_agent_preconditions_20261009.py",
+    "tests/test_llm_routing_policy_20261008.py",
+    "tests/test_n8n_activation_grants_20261009.py",
+    "tests/test_n8n_agent_identity_parity_20261009.py",
+    "tests/test_n8n_gateway_concurrency_20261008.py",
+    "tests/test_n8n_registry_first_20261009.py",
+    "tests/test_n8n_run_executor_20261008.py",
+    "tests/test_n8n_workflow_drift_20261009.py",
+    "tests/test_ops_summary_model_job_live_wiring_20261008.py"
+  ],
+  "candidate_intersections": [
+    "config/lane_registry.json",
+    "scripts/lib/cio_governed_model_bridge.py",
+    "scripts/lib/lane_registry.py",
+    "tests/test_llm_routing_policy_20261008.py",
+    "tests/test_n8n_run_executor_20261008.py"
+  ],
+  "source_hashes": {
+    "config/agent_clients.yaml": "cccb2e0eacf8956a2a6b187f5fe7bd1bcce42f68dcc2c67390f9b89b8f785746",
+    "config/agent_registry.json": "7a8b0f982d9a38f150a1425e8dd51720f83adca3238fedc9f6c751312ecf4fb2",
+    "config/cio_surface_classification.json": "451d48fe878d3e76d4579dc106f9468e2c4c7cb7f4a82a9af3ad29e7ec9a1df4",
+    "config/egress_sanitiser_policy.json": "185c0590a4378935694b7697e92383fe40b2df44ccf7ef819bdd894874562376",
+    "config/lane_registry.json": "8ae3c4801f83dd791a2ded59b7fe9b698689a92429e66d72a37cdb250e22202c",
+    "config/llm_process_registry.json": "c35912073770ebb87bc767600a1de856146c646f77f4f2b86889e94ef7bd719c",
+    "config/llm_routing_policy.json": "989acc5f685a90e7a23fd35631eca2266e8fa4c71f77e76511de6f40ab5cfe7c",
+    "config/n8n_run_allowlist.json": "1e43336a73775a3564ef03bf7ab2ea959e092918fe2d94ec6fa833d5d82ed038",
+    "scripts/check_lane_registry.py": "377b62c339982e805821f2d9e5067db230671559a2f4d764029c2054c90e7592",
+    "scripts/check_n8n_activation_grants.py": "b1defeceaea1c1b09195d1024a788a54e7bf8b72bd9351b2baea526d3e087283",
+    "scripts/check_n8n_workflow_drift.py": "2885b051279c5b897a8525d517b596b5b14404116c3163164908ad138b072205",
+    "scripts/lib/bridge_agent_preconditions.py": "6f6cae5d7ced00cd3168bdcd5a6609140b2a0765e4df4c3d76b86cf506072731",
+    "scripts/lib/cio_egress_sanitiser.py": "6a7a3f3274efbc7d9a2a7a585a5975b89e9b51f7b8e52c16a8e8843da996cd24",
+    "scripts/lib/cio_governed_model_bridge.py": "ba88fef9882f3710f63849e4516e8e99232dddc7adc70c5b85f84d84e641da74",
+    "scripts/lib/lane_registry.py": "0ba11238893190093373a5ab54317b0aefb96154e168511bf38c2d5190dd2d20",
+    "scripts/lib/n8n_live_inventory.py": "027a749e3deb866876ada25e5899e730ea946f71fbd2d08a5ea0a046fc7126d3",
+    "scripts/run_cio_hardening_ci.py": "2c62dad031e7af1056ccce1c78f4c1b541d85e6017087125a7265e8e96dd52b0",
+    "tests/test_bridge_agent_preconditions_20261009.py": "f30a7fb2bb8f2dd9f5013649a0571c9e814e7ce245f2677d874c8e5ce8bd7503",
+    "tests/test_llm_routing_policy_20261008.py": "87df8d3473e431c9cc6d63b0a57a7853d18701b73f58d0aac7b3ef01c4c937bf",
+    "tests/test_n8n_activation_grants_20261009.py": "386eb67369574825bfa8bce65aa72d94d0b2e39e3ad3e62bc7e7d0f01b3e937f",
+    "tests/test_n8n_agent_identity_parity_20261009.py": "fe8a2e9375f2d0cc425a387d2c98aedec5a0269f3bd5cf495f81e3efe5b94258",
+    "tests/test_n8n_gateway_concurrency_20261008.py": "77ff7c54d5a5e303f92b5294e9eaf632a983dc27b1e4b19449426785b976ed71",
+    "tests/test_n8n_registry_first_20261009.py": "6a7a84d44394fbfb06fa44f07f437c37abd25c91bbf5e2a9bd6a88925fe2ff56",
+    "tests/test_n8n_run_executor_20261008.py": "1d0e6887ea0b9ead92b3c59a205a802b0db9f48b8ee68bd4cd2c4e2186eb792e",
+    "tests/test_n8n_workflow_drift_20261009.py": "45073b173d0108dc12f0792709e0a29e65254beca1ee1b265b7fb1dbef5db6cf",
+    "tests/test_ops_summary_model_job_live_wiring_20261008.py": "6fcd97737151bf3c0c134907a3ac436c84081826c15cf6bd7c4fb69ad009c37a"
+  },
+  "function_checks": {
+    "governed_result_sse_chunks": {
+      "base": "04fd523b721c6496b3fafbea3ff251177fdb20e6143d62e5049f9d1afb0c95be",
+      "main": "04fd523b721c6496b3fafbea3ff251177fdb20e6143d62e5049f9d1afb0c95be",
+      "root": "9e8877150c03adaab82c0c1f86cf327a8fc774dc76e8888be402ae441ce236d5"
+    },
+    "select_governed_lane": {
+      "base": "e36b970bcdaac57927c50a2303902b323c47d89a3e63e3bae080161afdd81735",
+      "main": "e36b970bcdaac57927c50a2303902b323c47d89a3e63e3bae080161afdd81735",
+      "root": "28094fd293cbc48122717bf56e7d917da7c5765f2d84bf425c95dc7c64ddf211"
+    },
+    "_provider_health_status": {
+      "base": "9c8d8eb1f1febc747ca26f5ac3525f8e5bcfe4737884c39217b42144c4ecd3dd",
+      "main": "9c8d8eb1f1febc747ca26f5ac3525f8e5bcfe4737884c39217b42144c4ecd3dd",
+      "root": "314e9be2dcb1a1e1ee86f8e515bc885fce04fb9d66a2b26d54f57545e03f3f7d"
+    }
+  },
+  "config_changes": {
+    "config/llm_model_registry.json": {
+      "base_sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072",
+      "main_sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072",
+      "root_sha256": "899476d8d39bdb387bf9c7a7c2c7dd4254a03d978614d700ea3d7cd9fa0d2072"
+    },
+    "config/secret_registry.yaml": {
+      "base_sha256": "10a2b9a27c21b215b22e0c1b142715f183bc96a2727fad58fd67de8c870aa9c2",
+      "main_sha256": "10a2b9a27c21b215b22e0c1b142715f183bc96a2727fad58fd67de8c870aa9c2",
+      "root_sha256": "10a2b9a27c21b215b22e0c1b142715f183bc96a2727fad58fd67de8c870aa9c2"
+    },
+    "config/data_source_authority.json": {
+      "base_sha256": "d36e96b16428fe04031f65923c65f00ae6b0098310e47a73e990d5b37308f6fb",
+      "main_sha256": "d36e96b16428fe04031f65923c65f00ae6b0098310e47a73e990d5b37308f6fb",
+      "root_sha256": "d36e96b16428fe04031f65923c65f00ae6b0098310e47a73e990d5b37308f6fb"
+    },
+    "config/expected_services.json": {
+      "base_sha256": "28423c725728c9c507dc2671707404607112ce2afab05efb9d0a965f35f0bdbe",
+      "main_sha256": "28423c725728c9c507dc2671707404607112ce2afab05efb9d0a965f35f0bdbe",
+      "root_sha256": "28423c725728c9c507dc2671707404607112ce2afab05efb9d0a965f35f0bdbe"
+    },
+    "config/n8n_run_allowlist.json": {
+      "base_sha256": "2a237db0d3e8dbce2dc003d6cc7a86f4d63130e6b131c28ae3ef8adbef8d3a87",
+      "main_sha256": "1e43336a73775a3564ef03bf7ab2ea959e092918fe2d94ec6fa833d5d82ed038",
+      "root_sha256": "2a237db0d3e8dbce2dc003d6cc7a86f4d63130e6b131c28ae3ef8adbef8d3a87"
+    },
+    "config/llm_process_registry.json": {
+      "base_sha256": "c7a27e41f21d5494e92b63fbd860fe76e96c606206a86a37a02c88175a381ee9",
+      "main_sha256": "c35912073770ebb87bc767600a1de856146c646f77f4f2b86889e94ef7bd719c",
+      "root_sha256": "c7a27e41f21d5494e92b63fbd860fe76e96c606206a86a37a02c88175a381ee9"
+    },
+    "config/llm_routing_policy.json": {
+      "base_sha256": "d1b527d4de78280ae26f918f85a7c0808867d2adb7ff7a4800c5ff32f7a864b6",
+      "main_sha256": "989acc5f685a90e7a23fd35631eca2266e8fa4c71f77e76511de6f40ab5cfe7c",
+      "root_sha256": "d1b527d4de78280ae26f918f85a7c0808867d2adb7ff7a4800c5ff32f7a864b6"
+    },
+    "config/agent_registry.json": {
+      "base_sha256": "7f0d160df73a194a10c1d4050a05b88367dea1a4b44a319dc0e91b6e9d803b12",
+      "main_sha256": "7a8b0f982d9a38f150a1425e8dd51720f83adca3238fedc9f6c751312ecf4fb2",
+      "root_sha256": "7f0d160df73a194a10c1d4050a05b88367dea1a4b44a319dc0e91b6e9d803b12"
+    },
+    "config/agent_clients.yaml": {
+      "base_sha256": "39176e1475dbe5cfff1c7a70f40c7f20fd21b4860ff6ec8d8339ab608261394f",
+      "main_sha256": "cccb2e0eacf8956a2a6b187f5fe7bd1bcce42f68dcc2c67390f9b89b8f785746",
+      "root_sha256": "39176e1475dbe5cfff1c7a70f40c7f20fd21b4860ff6ec8d8339ab608261394f"
+    },
+    "config/lane_registry.json": {
+      "base_sha256": "e631dfd46a386ad1bd38072850ef00711db262cec080c3d1bd4b814b98abeb9b",
+      "main_sha256": "8ae3c4801f83dd791a2ded59b7fe9b698689a92429e66d72a37cdb250e22202c",
+      "root_sha256": "29e2b1522d425909c73699873790a24d5762f895063a0ed42c541f4ce6e2213c"
+    }
+  },
+  "findings": [
+    {
+      "id": "MAIN_GATE_WEAKENING",
+      "priority": "P1",
+      "class": "SOURCE_ONLY",
+      "file": "tests/test_n8n_gateway_concurrency_20261008.py",
+      "lines": [
+        53,
+        208,
+        240,
+        312
+      ],
+      "finding": "Incoming1559 removes both mean-client0.25s assertions and lock-acquire-release<50us assertion;10s socket/barrier/join limits become60s. Added unique-run-id and handler-count assertions do not replace the removed latency gates.",
+      "resolution": "Keep candidate/MAX_MEAN_LATENCY_S0.25, both latency assertions,50us assertion and10s timeout semantics. Merge additive unique-run-id/handler-count assertions and metrics only. Do not accept report-only performance as unchanged acceptance."
+    },
+    {
+      "id": "TRANSPORT_FAILOVER_BYPASSES_PROCESS_AUTHORITY",
+      "priority": "P1",
+      "class": "SOURCE_ONLY",
+      "file": "scripts/lib/cio_governed_model_bridge.py",
+      "lines": [
+        1304,
+        1310,
+        1320,
+        1467
+      ],
+      "finding": "transport_failover_policy walks secondary/fallback after governance resolve without consulting process.fallback_allowed. Both currentn8n process registry rows retainfallback_allowedfalse. Alternate mayqualify when healthUNKNOWN because onlyunhealthy is skipped. This bypasses candidate select_governed_lane strictfalse/defaultfalse + healthy/current/attributable alternate proof.",
+      "resolution": "Preserve policy rowmetadata if required by operator-ratifiedrouting intent, but failclosed before reservation/provider when process fallback is not explicitlytrue; alternate selection requires existing attributable/current healthy proof. Unknown transport/health returns typedprovider_not_configured or lane_unhealthy, never an implicitDeepSeekpaidcall."
+    },
+    {
+      "id": "OUTPUT_VALIDATION_VACUOUS_SUCCESS",
+      "priority": "P1",
+      "class": "SOURCE_ONLY",
+      "file": "scripts/lib/bridge_agent_preconditions.py",
+      "lines": [
+        211,
+        227,
+        246,
+        299
+      ],
+      "finding": "Missing/emptychoices executezero validation iterations, returnNone and arethenannotatedoutput_validatedtrue. Tool-only allowlisted choice skips requiredcontent schema validation aswell; currentn8n rowsdisallowtools soemptychoiceis currentreachableprovider-shapegap.",
+      "resolution": "Require usable nonemptywell-formedchoices for n8n schema-bound responses and typedrefusemissingoutput. Anytool-onlyschema exception must be explicit contract, never claim schema validation of absentcontent."
+    },
+    {
+      "id": "IMPORT_GRANT_MASKS_LATER_ACTIVATION",
+      "priority": "P1",
+      "class": "SOURCE_ONLY",
+      "file": "scripts/check_n8n_activation_grants.py",
+      "lines": [
+        202,
+        214,
+        217
+      ],
+      "finding": "reconcile covers eitheractivated_at orimported_at and reportsGRANTED. A grantforoldimport canthereforecertifylateractivation outsidegrantwindow; exactmatchingworkflowIDalone doesnotproveactivationauthorization.",
+      "resolution": "Requireactivated_at coverageforGRANTED, or separatelyvalidateexplicitgrant semantic scope allowinglateractivation. Keepimporttimeonlyasseparateddiagnosticproof."
+    },
+    {
+      "id": "AGENTS_RATIFICATION_PROSE_CONTRADICTION",
+      "priority": "P3",
+      "class": "SOURCE_ONLY",
+      "file": "AGENTS.md",
+      "lines": [
+        3875,
+        3878,
+        3879,
+        3880
+      ],
+      "finding": "Currentrootandnewmainretain3.0.0ACTIVEratifiedheadingfollowedbyawaitingAPPROVE_AGENTS_POLICY_3_0_0 and Untilthen2.0.1governs. Ratificationreceipt isrecordedelsewhere; nochildpolicychangeorautomaticratification.",
+      "resolution": "Operator/governanceowner shouldcorrectstalestatusprose withratificationreceipt; source reviewerdoesnotreinterpretactivationgrants."
+    }
+  ],
+  "merge_resolution": [
+    "Merge latestreviewedmainexactd7 asordinarymerge, notreset/rebase/ours-all/theirs-all; preserve coherentcandidatecorrections.",
+    "Bridge:retaincandidatefreshhealth/processfallback, single-settledSSE/fullchoicefields, typedpre-headererrors, journal/reservation/retry/semaphore/errorpaths; acceptincomingpurepreconditions/sanitiser/cost/latency wiringwithfailclosedtransportfix.",
+    "lane_registry:retainprovidedcronvalidation andthreeimportmodes; mergeadditiven8n discoveryfunctions.",
+    "configlane_registry:retainfourparentN1cronNO_GOintentrows andvalidcadences; addincomingdriftcheckasNEVER_SCHEDULED/kindnone only. No activation.",
+    "executorfixture:retainrealparentfcntlLOCK_EX/explicitLOCK_UN/closeddescriptorfixture andallassertions; discardincominggrandchildkillpgholderwaitfixture.",
+    "Gatewaytests:retainoriginalperformanceassertions/timeoutlimits;acceptadditiveuniqueID/handlercountmetrics withoutsubstitution.",
+    "Namedn8npolicytest canassertnewdeclaredgrokprimary; updateinjectedmockproviderfixturesatosourceboundaryforschemavalidoutput, preservingalloldassertions. Declaredprimarydoesnotauthorizefallback."
+  ],
+  "minimal_validation": [
+    "Existingrouting+bridgehardening+incomingbridgepreconditions+opsmodeljob tests; negativefallbackfalse/missing/unknownfuturestalealternate neverreserves/calls, malformedemptychoices typedrefusal.",
+    "ExistingN8N_RUN_ROUTE samefivefiles,samethresholds,candidatefcntlfixture; existingledger/relay/executor regressions.",
+    "Incomingfourgovernancefixturefiles plus lane_registry existingstrictcadence/bareimport tests, agentregistryp arity; no liveDB/subprocessprovider.",
+    "P16 regression: earlierimportgrantdoesnotauthorize lateractivation; immutabletimestampidentityfixtures.",
+    "Ruff/compile/lineendings/rawdiffchecks; incomingcheckerSELECT-only/refusal testswithfakeprocessrunner."
+  ],
+  "authority_assessment": [
+    "No incomingproviderkey,secretregistry,modelregistry,broker/order/stop/riskpolicy,2FA,senderimplementationorlivemodetransport expansionwasfound inexact27-filedelta. Sevenconfigurationidentityclaim cannotbeusedunchanged: process/routing/allowlist/agentregistry/classification metadataDOchange.",
+    "IncomingRealProvider remainsDeepSeek-only; Grok/ChatGPT aredeclaredprimary/secondarymetadatawithtransportfailovertoDeepSeek. No OAuth/keymigrationinton8n isimplementedbythisdelta.",
+    "Newagentidentity isSCHEDULER/READ_ONLY_ADVISORY/notwakeeligible/notmodelcaller/notbroker/notsender. Newdriftlaneallowlistincludes--write receiptbutrowNEVER_SCHEDULED; no activations/schedulerchangebyreview.",
+    "Egresssanitiserdefaultreport sendsmatchedmessagesunchanged; thisisobservabilityonly, notproofP4enforcedegresssafety. No hosttogglemadeorproposedbychild."
+  ],
+  "limits": [
+    "Boundedsource/ASTdiffreviewonly. Notestexecution, provider/model/networkcalls, credentialaccess, runtimeDB/docker/APIreads, source/index/Gitmutations, grantsorpolicychanges.",
+    "Fullcanonical36 isstillparent-ownedonpreintegrationcandidate; notacceptancefornewmain.",
+    "Sourcefindingpathsareexactmainblobs; linenumbers mayshiftincombinedmerge. NoHOST_RUNTIME acceptanceclaim."
+  ],
+  "verdict": "INTEGRATION_BLOCKED_PENDING_SOURCE_CORRECTIONS_AND_UNWEAKENED_VALIDATION"
+}

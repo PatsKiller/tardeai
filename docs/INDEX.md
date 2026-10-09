@@ -151,6 +151,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261009T131239Z/20-all-requested-tasks-audit.md` | Audit of all assigned TradeAI runtime work | review_required | MISSING HEADER | `9be82752ceab` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/22-updated-proposed-grant-packet.md` | Proposed exact-source deployment and selected scheduler recovery packet | review_required | MISSING HEADER | `cdc1cb8f08f5` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/26-current-source-integration-status.md` | Current corrective source integration | review_required | OK | `09c2e72041e4` |
+| `docs/_evidence/runtime-convergence/20261009T131239Z/44-integrated-source-prepublication-report.md` | Runtime convergence source closeout — final publication draft | review_required | OK | `2f85d7ac24f2` |
+| `docs/_evidence/runtime-convergence/20261009T131239Z/45-exact-publication-prerequisites-draft.md` | Exact publication prerequisites — proposed, no request issued | review_required | MISSING HEADER | `bf501302b0bc` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/tradeai-n8n-community-capability-security-review-20261009.md` | n8n Community capability and security documentation review | review_required | OK | `385f692538b6` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/tradeai-runtime-executor-unit-supplement-20261009.md` | Executor unit and policy supplement — proposed only | review_required | MISSING HEADER | `71ad5a42edf1` |
 | `docs/_evidence/runtime-convergence/20261009T131239Z/tradeai-runtime-operator-scheduler-supplement-20261009.md` | Corrected operator-owned scheduler recovery packet | review_required | MISSING HEADER | `77a21032e259` |
@@ -1465,7 +1467,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/14-execution-week-20261008.md` | Execution plan — cron close-out and n8n Phase 2 in one week (2026-10-07 → 2026-10-14) | review_required | MISSING HEADER | `bd4d849645a2` |
 | `docs/implementation/n8n-parallel/15-pgvector-migration-decision-20261008.md` | pgvector migration of `content_embeddings` — decision packet (2026-10-08) | review_required | MISSING HEADER | `aa88f58c8ec5` |
 | `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | review_required | OK | `84e7bcaab5cd` |
-| `docs/implementation/n8n-parallel/18-ai-routing-architecture-20261008.md` | AI routing architecture — governed bridge (n8n program W4, 2026-10-08) | review_required | OK | `f3394b71114f` |
+| `docs/implementation/n8n-parallel/18-ai-routing-architecture-20261008.md` | AI routing architecture — governed bridge (n8n program W4, 2026-10-08) | review_required | OK | `07fb8b3ad106` |
 | `docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md` | 19 — N1 cutover packet (2026-10-08) | review_required | OK | `1c12618061f9` |
 | `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |
 | `docs/implementation/n8n-parallel/21-agent2-w2-n6-20261008.md` | Agent 2 W2 — N6 schedules and explicit activation blockers | review_required | OK | `5fd263547725` |

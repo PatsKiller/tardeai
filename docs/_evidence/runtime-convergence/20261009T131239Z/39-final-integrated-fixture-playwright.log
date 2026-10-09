@@ -1,0 +1,23 @@
+
+Running 11 tests using 2 workers
+
+
+(node:1610865) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/11] [chromium] › e2e/active-trader-fires-truth.spec.ts:28:1 › loading alerts have an unknown count until the API is measured
+
+(node:1610866) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[2/11] [chromium] › e2e/scheduler-operations.spec.ts:34:1 › scheduler rows, problem filter and durable run timeline
+[3/11] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › missing decisions cannot become a confirmed zero
+[4/11] [chromium] › e2e/scheduler-operations.spec.ts:62:1 › expired successful response cannot label a row current LIVE
+[5/11] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decisions cannot become a confirmed zero
+[6/11] [chromium] › e2e/scheduler-operations.spec.ts:69:1 › unavailable endpoint ends loading without inventing counts
+[7/11] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decision row cannot become a confirmed zero
+[8/11] [chromium] › e2e/scheduler-operations.spec.ts:76:1 › 390px keeps wide table scrolling inside its panel
+[9/11] [chromium] › e2e/active-trader-fires-truth.spec.ts:53:1 › failed alert API is unavailable, not an empty session
+[10/11] [chromium] › e2e/active-trader-fires-truth.spec.ts:61:1 › a measured empty alert response can show zero
+[11/11] [chromium] › e2e/active-trader-fires-truth.spec.ts:68:1 › failed refetch labels retained sent alerts as stale
+  11 passed (10.0s)

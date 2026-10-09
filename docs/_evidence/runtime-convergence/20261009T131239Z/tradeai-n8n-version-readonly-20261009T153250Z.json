@@ -1,0 +1,8 @@
+{
+  "as_of": "2026-10-09T15:32:50Z",
+  "evidence_class": "OBSERVED_N8N",
+  "command": "docker exec m8m-n8n n8n --version",
+  "version": "2.43.0",
+  "exit_code": 0,
+  "mutations": false
+}

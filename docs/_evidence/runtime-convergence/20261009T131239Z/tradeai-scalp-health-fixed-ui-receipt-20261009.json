@@ -1,0 +1,16 @@
+{
+  "evidence_class": "TEST_ONLY",
+  "head_sha": "64acef155a80ddecd1a2449db9f6e857244b4d77",
+  "base_sha": "e6ac1863a3556bf9ba4ae3d74197700c696bb4e1",
+  "result": "7 PASS in5.2s; exactsamefixtures asprior6FAIL/1PASS",
+  "command": "PLAYWRIGHT_BASE_URL=http://127.0.0.1:4191 ./node_modules/.bin/playwright test e2e/active-trader-fires-truth.spec.ts --reporter=line",
+  "log_path": "/tmp/tradeai-scalp-health-fixed-playwright-20261009.log",
+  "log_sha256": "14ba12c765d7db9861a97e7faa8f5b3baf7e1217f05f6655d13eba2e0818d9c2",
+  "source_sha256": "a512df8cb581f5f2619f1ca2b1de3ae0c298ccbb2cc3d7e6e9f12f8aadac4723",
+  "fixture_sha256": "8219e91bf570fc3ece062770938967664b09840c972a33455a851d313a7e71a4",
+  "limitations": [
+    "EveryAPIrequestintercepted",
+    "No production/live claim; parentownsreleaseproof",
+    "No repository mutations after releasedlease"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schema": "PublicationEvidenceRedactionReview@v1",
+  "as_of": "2026-10-09T18:31:59.295850+00:00",
+  "evidence_class": "SOURCE_ONLY",
+  "reviewed_artifacts": 39,
+  "unresolved_findings": [],
+  "benign_synthetic_matches": [
+    {
+      "artifact": "tradeai-n8n-integration-routing-regression-initial-20261009.log",
+      "pattern": "long bearer value",
+      "value_sha256": "bd913ff68243d41b9611b2690dfbf2b0f6e42ea14536a98232af60e9f64ffdaa",
+      "evidence": "Wrong-key parametrized fixture only; exact x multiplied by 40; never a host/relay/provider credential",
+      "fixture": "tests/test_bridge_executor_hardening_20261009.py",
+      "fixture_sha256": "ea002b7d63c621c857ad6cfa204e5f835a510d7f8d565389705d7c944953ba6e"
+    },
+    {
+      "artifact": "tradeai-n8n-integration-routing-regression-initial-20261009.log",
+      "pattern": "long bearer value",
+      "value_sha256": "bd913ff68243d41b9611b2690dfbf2b0f6e42ea14536a98232af60e9f64ffdaa",
+      "evidence": "Wrong-key parametrized fixture only; exact x multiplied by 40; never a host/relay/provider credential",
+      "fixture": "tests/test_bridge_executor_hardening_20261009.py",
+      "fixture_sha256": "ea002b7d63c621c857ad6cfa204e5f835a510d7f8d565389705d7c944953ba6e"
+    }
+  ],
+  "sequence_correction": "Collector40 was invoked after the preliminary extra-pattern command returned1; its two matches are now independently verified synthetic wrong-key fixtures. This complete review occurred after repo copy but before any staging, commit, push or grant request. Preserve original40; this receipt supplies actual review chronology.",
+  "actual_secret_values_returned": false,
+  "provider_model_calls": false,
+  "remote_publication": false
+}

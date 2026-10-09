@@ -1,0 +1,1636 @@
+profile=full M2_TEST_DATABASE=m2_shadow_test_bfecc8f89a9f
+ensure_m2_test_database: m2_shadow_test_bfecc8f89a9f exists
+== Trade AI local acceptance ==
+python: /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/bin/python
+
+== Policy hook self-test ==
+pre-push blocks unauthorized sync: OK
+
+== Policy unit tests ==
+...........                                                              [100%]
+11 passed in 6.28s
+
+== Target/repository validation ==
+CI-equivalent release proof: PASS (17/17 passed, 80.91s)
+  [PASS] execution_state (exit 0, 0.29s)
+  [PASS] release_readiness (exit 0, 35.68s)
+  [PASS] schwab_write_policy (exit 0, 18.58s)
+  [PASS] no_broker_write_bypass (exit 0, 20.35s)
+  [PASS] execution_readiness (exit 0, 0.79s)
+  [PASS] evidence_bound_approval (exit 0, 0.21s)
+  [PASS] intraday_window_fail_closed (exit 0, 0.23s)
+  [PASS] order_lifecycle (exit 0, 0.2s)
+  [PASS] reconcile_orders (exit 0, 0.06s)
+  [PASS] audit_ledger (exit 0, 0.4s)
+  [PASS] options_hard_risk_blocks_matrix (exit 0, 2.78s)
+  [PASS] options_hard_risk_blocks (exit 0, 0.37s)
+  [PASS] llm_governance_no_override (exit 0, 0.41s)
+  [PASS] kill_switches_status (exit 0, 0.19s)
+  [PASS] journal_ai_critique (exit 0, 0.15s)
+  [PASS] audit_ledger_coverage (exit 0, 0.1s)
+  [PASS] frontend_smoke (exit 0, 0.12s)
+Markdown: /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/project/CI_EVIDENCE_LATEST.md
+
+== Lane registry ==
+declared lanes          : 240  (180 ACTIVE)
+inherited-debt baseline : 476
+inherited tranche 2026-09-28: 107 lines — Installed on the host between 2026-09-27 12:22 ET and 2026-09-28 by the crons-to-CURRENT m…
+inherited tranche 2026-09-28: 6 lines — LP-DEF-19 (LIVEPROOF-20260928, PR #1339): six cron lines that the lane-registry gate had s…
+reason ESTABLISHED     : 97
+reason CORRELATED      : 11 (successor runs; equivalence NOT verified)
+reason UNKNOWN         : 3  ['deep-overnight-llm', 'overnight-batch', 'cio-decision-engine']
+structural errors       : 0
+undeclared (NEW)        : 0
+lane registry: clean
+[RUN]  options_workflow: tests/test_options_workflow.py tests/test_options_workflow_execution.py tests/test_options_workflow_journal.py tests/test_options_workflow_submission.py tests/test_options_workflow_entry.py
+........................................................................ [ 72%]
+...............ssssssssssss                                              [100%]
+87 passed, 12 skipped in 4.20s
+[PASS] options_workflow
+[RUN]  learning_outcome_governance: tests/test_learning_outcome_governance.py
+......................                                                   [100%]
+22 passed in 1.06s
+[PASS] learning_outcome_governance
+[RUN]  learning_research_remediation: tests/test_learning_research_remediation.py
+...........................                                              [100%]
+27 passed in 30.19s
+[PASS] learning_research_remediation
+[RUN]  learning_operator_remediation: tests/test_learning_operator_remediation.py
+.....                                                                    [100%]
+5 passed in 2.34s
+[PASS] learning_operator_remediation
+[RUN]  learning_operational_remediation: tests/test_learning_operational_remediation.py
+...............................                                          [100%]
+31 passed in 1.14s
+[PASS] learning_operational_remediation
+[RUN]  campaign_m2_canary_lanes: tests/test_persistent_agent_wake.py tests/test_replay_determinism_a.py tests/test_replay_determinism_b.py tests/test_replay_determinism_c.py tests/test_replay_determinism_d.py tests/test_research_dossier_consumption.py tests/test_comms_campaign_gaps_b.py tests/test_comms_memory_and_self_repair.py tests/test_belief_calibration_d.py tests/test_outcome_lifecycle_d.py tests/test_self_repair_d.py tests/test_memory_wake_loading.py tests/test_memory_loader_schema_compat.py tests/test_wake_memory_symbol_resolve.py tests/test_wake_stale_memory_degrades.py tests/test_memory_decay.py tests/test_memory_grounding_l2.py tests/test_wake_l3_call_site.py tests/test_narrative_subject_confidence.py tests/test_material_change_gateway_route.py tests/test_ddl_guard.py tests/test_social_ingest_rows_measured.py tests/test_l3_judgment_pipeline.py tests/test_l3_judgment_cache.py tests/test_l3_judgment_author_registered_20260919.py tests/test_l3_author_billing_fallback_20260919.py tests/test_l3_critic.py tests/test_l3_commitment.py tests/test_model_policy.py tests/test_material_residual_gate.py tests/test_judgment_schema.py tests/test_agent_view_v1_l3.py tests/test_deepseek_offpeak_l3.py tests/test_hub_release_drift.py tests/test_runtime_identity.py tests/test_oscillator_registry.py tests/test_oscillator_alerts.py tests/test_confluence_flip_routing.py tests/test_oscillator_board_reads.py tests/test_telegram_operator_presentation.py tests/test_wake_schedule_contract.py tests/test_wake_negative_mutation_controls.py tests/test_comms_memory_gateway.py tests/test_brave_router.py tests/test_brave_router_governs_api_v2.py tests/test_brave_router_shared_file_requests.py tests/test_brave_direct_call_bypass_scan.py tests/test_consumption_evidence_counting.py tests/test_integrated_traces.py tests/test_run_persistent_wake.py tests/test_wake_state_root_stability.py tests/test_wake_subject_selector.py tests/test_critique_question_writeback_20260919.py tests/test_cio_instrument_wake_enqueue_20260919.py tests/test_wake_research_consumption.py tests/test_governed_research_producer.py tests/test_governed_research_producer_runner.py tests/test_current_pin_gitignore_exemption.py tests/test_narrative_subject_identity.py tests/test_sector_move_subject.py tests/test_narrative_lane_wiring.py tests/test_wake_memory_carryforward.py tests/test_outbound_identity.py tests/test_narrative_composition.py tests/test_narrative_narrator.py tests/test_wake_composition.py tests/test_wake_consumption_loop_closure.py tests/test_agent_gateway_adapter.py tests/test_gateway_settlement.py tests/test_durable_event_settlement.py tests/test_comms_settlement_terminal_states_20260930.py tests/test_inbound_event_normalizer.py tests/test_inbound_consumption.py tests/test_atomic_inbound.py tests/test_atomic_inbound_poller_gate.py tests/test_cio_poller_reply.py tests/test_cio_answer_quality.py tests/test_governed_commitment.py tests/test_governed_commitment_shadow.py tests/test_cortex_shadow_pipeline.py tests/test_wake_cortex_shadow_hook.py tests/test_drive_mutation_safety.py tests/test_campaign_maturity_truth.py tests/test_runtime_reachability.py tests/test_inbound_poller_integration.py tests/test_receipt_write_barrier.py tests/test_poller_release_identity.py tests/test_comms_credential_resolve.py tests/test_delivery_provenance_quarantine.py tests/test_maturity_lanes_f_j.py tests/test_observe_flash_cio_soak.py tests/test_gog_drive_safe_parse_id.py tests/test_drive_sync_preserved_captures_20260923.py tests/test_run_self_repair_loop_dry.py tests/test_holding_llm_curation.py
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+........................................................................ [ 45%]
+......xx................................................................ [ 54%]
+........................................................................ [ 63%]
+........................................................................ [ 72%]
+........................................................................ [ 81%]
+........................................................................ [ 90%]
+........................................................................ [ 99%]
+.                                                                        [100%]
+791 passed, 2 xfailed in 85.04s (0:01:25)
+[PASS] campaign_m2_canary_lanes
+[RUN]  cash_as_of_surfaces: tests/test_cash_as_of_three_surfaces.py
+............                                                             [100%]
+12 passed in 0.58s
+[PASS] cash_as_of_surfaces
+[RUN]  p1_digest_sender: tests/test_p1_digest_sender.py
+..............                                                           [100%]
+14 passed in 1.04s
+[PASS] p1_digest_sender
+[RUN]  gog_broker_approval: tests/test_gog_broker_approval.py
+.........                                                                [100%]
+9 passed in 0.62s
+[PASS] gog_broker_approval
+[RUN]  provider_billing_alarm: tests/test_provider_health_alarm.py
+......................                                                   [100%]
+22 passed in 8.33s
+[PASS] provider_billing_alarm
+[RUN]  alarm_fires: tests/test_alarm_capture_selftest.py tests/test_alarm_fires.py tests/test_alarm_fires_stop_path.py tests/test_alarm_fires_ci_outage_emergency_20261005.py tests/test_alarm_fires_positions_proof_20261006.py tests/test_alarm_fires_batch3.py tests/test_alarm_fires_batch4.py tests/test_alarm_fires_scalp_alerts_20261005.py tests/test_alarm_fires_batch5.py tests/test_alarm_fires_guard_approval.py tests/test_alarm_fires_options_intent_20261005.py tests/test_alarm_fires_disk_and_handler_20260919.py tests/test_alarm_fires_disk_pressure_20260921.py tests/test_alarm_coverage.py
+........................................................................ [ 96%]
+...                                                                      [100%]
+=============================== warnings summary ===============================
+tests/test_alarm_coverage.py::test_no_file_gains_an_untested_alarm
+tests/test_alarm_coverage.py::test_baseline_has_no_stale_entries
+tests/test_alarm_coverage.py::test_coverage_is_reported_not_implied
+  <unknown>:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+75 passed, 3 warnings in 74.48s (0:01:14)
+[PASS] alarm_fires
+[RUN]  store_cadence: tests/test_store_cadence.py
+.........                                                                [100%]
+9 passed in 0.49s
+[PASS] store_cadence
+[RUN]  no_swallowed_alarms: tests/test_no_swallowed_alarms.py
+......                                                                   [100%]
+=============================== warnings summary ===============================
+tests/test_no_swallowed_alarms.py::test_no_file_exceeds_its_baseline
+tests/test_no_swallowed_alarms.py::test_baseline_has_no_stale_entries
+  <unknown>:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+6 passed, 2 warnings in 36.44s
+[PASS] no_swallowed_alarms
+[RUN]  alarm_imports_resolve: tests/test_alarm_imports_resolve.py
+....                                                                     [100%]
+=============================== warnings summary ===============================
+tests/test_alarm_imports_resolve.py::test_no_unresolved_alarm_imports
+  <unknown>:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+4 passed, 1 warning in 20.60s
+[PASS] alarm_imports_resolve
+[RUN]  detectors_distinguish_states: tests/test_detectors_distinguish_states.py
+....                                                                     [100%]
+4 passed in 2.44s
+[PASS] detectors_distinguish_states
+[RUN]  signal_flow_regression: tests/test_signal_sync_onconflict_regression.py
+........                                                                 [100%]
+8 passed in 0.82s
+[PASS] signal_flow_regression
+[RUN]  notification_no_network: tests/test_cio_phase1_notification_containment.py tests/test_cio_phase9_alex_telegram.py tests/test_cio_telegram_canary_dry.py
+.................................                                        [100%]
+33 passed in 2.56s
+[PASS] notification_no_network
+[RUN]  notification_signal_over_spam: tests/test_cio_notification_signal.py
+...........................................                              [100%]
+43 passed in 0.69s
+[PASS] notification_signal_over_spam
+[RUN]  telegram_notification_normalization: tests/test_telegram_notification_normalization.py tests/test_r20_v2_notification_idempotency.py tests/test_alert_normalization_blockers.py tests/test_alert_occurrence_persistence_db.py tests/test_alert_delivery_recording_db.py
+........................................................................ [ 67%]
+....ssssssssssssssssssssssssssssss                                       [100%]
+76 passed, 30 skipped in 26.42s
+[PASS] telegram_notification_normalization
+[RUN]  capital_ledger: tests/test_cio_capital_plan.py
+.................................................                        [100%]
+49 passed in 2.41s
+[PASS] capital_ledger
+[RUN]  financial_truth_gate: tests/test_cio_financial_truth_gate.py tests/test_cio_canonical_quote.py
+........................                                                 [100%]
+24 passed in 2.49s
+[PASS] financial_truth_gate
+[RUN]  freshness_materiality: tests/test_cio_freshness_materiality_gate.py
+................                                                         [100%]
+16 passed in 2.26s
+[PASS] freshness_materiality
+[RUN]  decision_semantics: tests/test_cio_decision_semantics.py tests/test_cio_office_consistency.py
+.................                                                        [100%]
+17 passed in 2.20s
+[PASS] decision_semantics
+[RUN]  sector_taxonomy: tests/test_cio_sector_opportunity.py
+..................................                                       [100%]
+34 passed in 0.60s
+[PASS] sector_taxonomy
+[RUN]  report_model_and_parity: tests/test_cio_report_v2.py tests/test_cio_report_architecture.py tests/test_cio_report_analytics.py tests/test_cio_report_charts.py tests/test_cio_report_pipeline.py
+...........................................................              [100%]
+59 passed in 7.16s
+[PASS] report_model_and_parity
+[RUN]  command_center: tests/test_cio_command_center.py
+...................                                                      [100%]
+19 passed in 2.24s
+[PASS] command_center
+[RUN]  release_manifest: tests/test_cio_release_manifest.py
+................                                                         [100%]
+16 passed in 1.94s
+[PASS] release_manifest
+[RUN]  adversarial_phase11: tests/test_cio_phase11_adversarial.py
+...............                                                          [100%]
+15 passed in 2.92s
+[PASS] adversarial_phase11
+[RUN]  institutional_sizing: tests/test_cio_institutional_sizing.py
+............                                                             [100%]
+12 passed in 0.86s
+[PASS] institutional_sizing
+[RUN]  decision_quality: tests/test_cio_decision_quality_pr1.py
+................................................                         [100%]
+48 passed in 1.04s
+[PASS] decision_quality
+[RUN]  account_capital_ledger: tests/test_cio_account_capital_ledger.py
+...                                                                      [100%]
+3 passed in 0.67s
+[PASS] account_capital_ledger
+[RUN]  decision_field_parity: tests/test_cio_decision_parity.py
+.......                                                                  [100%]
+7 passed in 0.77s
+[PASS] decision_field_parity
+[RUN]  live_report_parity: tests/test_cio_live_report_parity.py
+..........                                                               [100%]
+10 passed in 4.78s
+[PASS] live_report_parity
+[RUN]  advisory_provenance: tests/test_cio_advisory_provenance.py
+...........                                                              [100%]
+11 passed in 0.67s
+[PASS] advisory_provenance
+[RUN]  strategy_seasonality: tests/test_cio_strategy_seasonality.py tests/test_cio_research_brain.py
+.......................                                                  [100%]
+23 passed in 2.79s
+[PASS] strategy_seasonality
+[RUN]  acceptance_harness_v4: tests/test_cio_acceptance_v4.py
+...............................                                          [100%]
+31 passed in 0.49s
+[PASS] acceptance_harness_v4
+[RUN]  intelligence_lineage: tests/test_cio_intelligence_lineage.py
+.........                                                                [100%]
+9 passed in 0.44s
+[PASS] intelligence_lineage
+[RUN]  maturity_closure_v2: tests/test_cio_maturity_closure_v2.py
+....................                                                     [100%]
+20 passed in 0.62s
+[PASS] maturity_closure_v2
+[RUN]  maturity_overnight_20260912: tests/test_l3_record_integrity_20260912.py tests/test_llm_lane_reservation_20260912.py tests/test_state_root_split_20260912.py tests/test_free_first_deadline_20260912.py tests/test_free_first_scheduler_health_20260912.py tests/test_commitment_outcome_sweep_20260912.py tests/test_oscillator_board_truth_20260912.py tests/test_commitment_uses_judgment_falsifier_20260912.py tests/test_detector_explains_its_zero_20260912.py tests/test_detector_heartbeat_20260912.py tests/test_health_derives_sha_20260912.py tests/test_db_password_no_pgpass_fallback_20260912.py tests/test_wake_jobs_single_pass_20260912.py tests/test_health_boundary_advisory_state_20260912.py tests/test_run_worker_health_receipt_20260912.py tests/test_health_evidence_coverage_20260912.py tests/test_health_snapshot_feed_20260912.py tests/test_market_aware_freshness_20260913.py tests/test_data_broker_state_override_20260913.py tests/test_state_root_is_honoured_20260913.py tests/test_scheduler_flush_before_force_exit_20260913.py tests/test_finviz_recom_plausibility_20260913.py tests/test_finviz_column_map_20260913.py tests/test_data_plausibility_contracts_20260913.py tests/test_data_plausibility_alarm_fires_20260913.py tests/test_expected_services_20260913.py tests/test_immediate_availability_alerts_20260913.py tests/test_db_retention_reports_failures_20260913.py tests/test_operator_turn_integrity_20260913.py tests/test_analyst_view_domain_20260913.py tests/test_pending_expiry_unanswerable_20260913.py tests/test_pending_close_wording_20260913.py tests/test_subject_answer_completeness_20260913.py tests/test_subject_memory_recall_20260913.py tests/test_desk_spelled_ticker_levels_20260914.py tests/test_subject_dossier_pills_20260914.py tests/test_comms_editor_20260914.py tests/test_comms_editor_transport_20260914.py tests/test_single_letter_tickers.py tests/test_tg_chat_routing_20260914.py tests/test_cio_checkin_only_with_action_20260914.py tests/test_screener_go_alerts_20260914.py tests/test_screener_go_alerts_delivery_20260914.py tests/test_comms_editor_mode_file_20260914.py tests/test_m5_gate_coverage_20260923.py tests/test_cio_telegram_stance_gate_20260918.py tests/test_cio_telegram_stance_gate_m5_20260923.py tests/test_cio_stance_review_request_20260923.py tests/test_cio_stance_classification_drain_20260923.py tests/test_stop_health_batch_20260916.py tests/test_held_label_20260916.py tests/test_dividend_events_20260916.py tests/test_cio_origin_gate_20260916.py tests/test_proposal_channel_gate_20260916.py tests/test_daily_budget_20260916.py tests/test_research_joinback_20260914.py tests/test_hermes_mcd_close_20260923.py tests/test_answer_quality_research_landed_20260914.py tests/test_research_circle_20260914.py tests/test_llm_spend_20260914.py tests/test_desk_reply_delivery_20260914.py tests/test_telegram_desk_render_20260914.py tests/test_research_heartbeat_20260914.py tests/test_bridge_hang_20260914.py tests/test_llm_label_split_20260914.py tests/test_operator_offpeak_window_20260914.py tests/test_llm_offpeak_deferral.py tests/test_telegram_rich_20260914.py tests/test_answer_quality_reply_not_delivered_20260914.py tests/test_telegram_rich_wiring_20260914.py tests/test_price_unit_integrity_20260914.py tests/test_finviz_view_contracts_20260914.py tests/test_source_health_and_av_selection_20260914.py tests/test_researched_price_universe_20260925.py tests/test_source_litmus_vs_yahoo_20260914.py tests/test_social_discovery_monday_window_20260914.py tests/test_retention_fk_and_schwab_fractional_20260914.py tests/test_eod_consolidated_close_sync_20260914.py tests/test_served_copy_split_20260913.py tests/test_data_source_authority_20260913.py tests/test_data_source_health_decay_20260913.py tests/test_data_plausibility_required_fields_20260913.py tests/test_data_broker_envelope_20260913.py tests/test_brave_router_spill.py tests/test_data_source_authority_resolve_backup.py tests/test_catalyst_news_search_backup.py tests/test_account_state_classifier.py tests/test_account_state_read_path.py tests/test_gap_resolver_20260913.py tests/test_gap_resolution_monitor_20260913.py tests/test_free_search_fallback_20260916.py tests/test_identity_spine_20260916.py tests/test_watchlist_snapshot_nonfinite_20260916.py tests/test_alert_transition_20260916.py tests/test_goal_predicate_20260916.py tests/test_goal_termination_20260916.py tests/test_goal_budget_20260916.py tests/test_goal_need_ledger_20260916.py tests/test_goal_loop_second_lap_20260916.py tests/test_goal_pilot_material_change_20260916.py tests/test_goal_loop_drivers_20260917.py tests/test_hardening_ci_exit_code_20260916.py tests/test_operator_answers_use_house_facts_20260913.py tests/test_data_gap_registry_writer_20260913.py tests/test_desk_gap_queue_reconnect_20260913.py tests/test_agent_number_grounding_20260913.py tests/test_report_maturity_bar_m1_m5_20260919.py tests/test_command_snapshot_source_20260920.py tests/test_census_phantom_accounts_20260920.py tests/test_data_gap_resolver_chain_resolve_20260920.py tests/test_gap_resolver_live_host_flag_20260920.py tests/test_synthesis_prompt_budget_20260913.py tests/test_operator_answer_quality_20260913.py tests/test_operator_reply_routing_sources_20260913.py tests/test_hermes_join_internal_first_20260923.py tests/test_research_packet_hygiene_20260925.py tests/test_join_format_m5_20260923.py tests/test_gateway_cron_jobs_mirror_20260923.py tests/test_specialist_attribution_stage2_20260923.py tests/test_maria_outbound_gate_20260923.py tests/test_maria_gate_prose_stance_20260930.py tests/test_operator_evidence_contract_20260913.py tests/test_operator_intent_resolution_20260913.py tests/test_company_names_from_house_20260913.py tests/test_sot_p9_symbol_profiles_writer.py tests/test_sot_phase9_quotes_prices_writers.py tests/test_sot_p9_news_articles_writer.py tests/test_watch_directives_writer_phase9.py tests/test_watchlist_membership_honesty_20260923.py tests/test_watchlist_api_reconciliation.py tests/test_watchlist_items_legacy_20260923.py tests/test_sot_p9_hermes_research_writer.py tests/test_p26_shadow_autonomy.py
+........................................................................ [  3%]
+........................................................................ [  6%]
+.......................s................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 17%]
+........................................................................ [ 20%]
+........................................................................ [ 24%]
+........................................................................ [ 27%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 76%]
+......................................................s................. [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 89%]
+........................................................................ [ 93%]
+........................................................................ [ 96%]
+....................................................................     [100%]
+2082 passed, 2 skipped in 610.47s (0:10:10)
+[PASS] maturity_overnight_20260912
+[RUN]  r11_operator_value_tier0: tests/test_r11_situation_engine.py tests/test_r11_office_integration.py tests/test_r11_golden_scenarios.py tests/test_r11_feedback_learning.py tests/test_r11_telegram_attention.py tests/test_r11_gpu_and_authority.py tests/test_cio_r9_2_cash_capital.py tests/test_cio_brain_snapshot.py tests/test_cio_brain_frontend.py tests/test_cio_scorecard_20260929.py
+........................................................................ [ 86%]
+...........                                                              [100%]
+83 passed in 3.52s
+[PASS] r11_operator_value_tier0
+[RUN]  r12_operator_intelligence: tests/test_r12_policy_provenance.py tests/test_cio_policy_field_advisor.py tests/test_r12_situation_matrix.py tests/test_r12_dedupe_message_samebrain.py tests/test_r12_chokepoint_outbox.py tests/test_r12_acceptance_scenarios.py tests/test_r12_properties.py
+........................................................................ [ 67%]
+..................................                                       [100%]
+106 passed in 1.81s
+[PASS] r12_operator_intelligence
+[RUN]  ci_self_guards: tests/test_ci_test_coverage_gate.py tests/test_wake_turn_effect.py tests/test_cio_decision_lineage_projection.py tests/test_cio_operator_evidence.py tests/test_cio_operator_evidence_bounds_20261002.py tests/test_research_delta_index_20261002.py tests/test_maturity_lessons_stream_cache_20261002.py tests/test_cio_advisory_dependency_clocks_20261002.py tests/test_cio_cross_surface_links_20261002.py tests/test_cio_decision_lineage_states_20261002.py tests/test_cio_lineage_identity_readtime_20261003.py tests/test_cio_lineage_deeplinks_20261002.py tests/test_cio_lineage_stage_sources_20261003.py tests/test_decision_payload_guid_stamp_20261003.py tests/test_decision_trace_no_fabricated_notification_20261003.py tests/test_cio_operator_evidence_receipts_20261002.py tests/test_cio_source_clocks_20261002.py tests/test_cio_xsurface_census_completeness_20261002.py tests/test_cio_payload_flow_20261002.py tests/test_cio_surface_panels_20261002.py tests/test_cio_advisory_dependency_clocks.py tests/test_cio_api_contract_census.py tests/test_cio_completeness_measurement.py
+........................................................................ [ 38%]
+........................................................................ [ 76%]
+............................................                             [100%]
+188 passed in 59.68s
+[PASS] ci_self_guards
+[RUN]  capital_plan_methodology_20261003: tests/test_capital_plan_methodology_20261003.py
+.....                                                                    [100%]
+5 passed in 0.30s
+[PASS] capital_plan_methodology_20261003
+[RUN]  cio_desk_degraded_20261003: tests/test_cio_desk_degraded_20261003.py
+......                                                                   [100%]
+6 passed in 0.33s
+[PASS] cio_desk_degraded_20261003
+[RUN]  health_paper_siem_20261003: tests/test_health_paper_excluded_20261003.py tests/test_siem_incident_visibility.py tests/test_siem_health_identity.py tests/test_siem_incident_identity.py tests/test_stop_health_recovery_20261006.py tests/test_alert_resolution_bounds_20261006.py
+........................................................................ [ 45%]
+........................................................................ [ 91%]
+.............s                                                           [100%]
+157 passed, 1 skipped in 20.05s
+[PASS] health_paper_siem_20261003
+[RUN]  blocked_ledger_comms_20261003: tests/test_blocked_ledger_comms_20261003.py
+...........                                                              [100%]
+11 passed in 0.56s
+[PASS] blocked_ledger_comms_20261003
+[RUN]  meme_squeeze_gate_20261003: tests/test_meme_squeeze_gate_20261003.py
+.....                                                                    [100%]
+5 passed in 0.66s
+[PASS] meme_squeeze_gate_20261003
+[RUN]  cio_scorecard_live_counts_20261003: tests/test_cio_scorecard_live_counts_20261003.py
+......                                                                   [100%]
+6 passed in 0.47s
+[PASS] cio_scorecard_live_counts_20261003
+[RUN]  cio_operator_artifacts_20261003: tests/test_cio_operator_artifacts_20261003.py
+...........                                                              [100%]
+11 passed in 23.23s
+[PASS] cio_operator_artifacts_20261003
+[RUN]  alert_quality_producer_20261003: tests/test_alert_quality_producer_20261003.py
+........                                                                 [100%]
+8 passed in 0.32s
+[PASS] alert_quality_producer_20261003
+[RUN]  cio_plan_expiry_20261003: tests/test_cio_plan_expiry_20261003.py
+.........                                                                [100%]
+9 passed in 0.35s
+[PASS] cio_plan_expiry_20261003
+[RUN]  cio_browser_gates_20261003: tests/test_cio_browser_gates_20261003.py
+......                                                                   [100%]
+6 passed in 0.32s
+[PASS] cio_browser_gates_20261003
+[RUN]  health_finviz_scalp_20261003: tests/test_health_finviz_scalp_20261003.py
+.....                                                                    [100%]
+5 passed in 0.32s
+[PASS] health_finviz_scalp_20261003
+[RUN]  scalp_advisory_20261003: tests/test_scalp_advisory_20261003.py
+...........                                                              [100%]
+11 passed in 0.57s
+[PASS] scalp_advisory_20261003
+[RUN]  scalp_shadow_schema_20261003: tests/test_scalp_shadow_logger_schema_20261003.py
+..                                                                       [100%]
+2 passed in 0.46s
+[PASS] scalp_shadow_schema_20261003
+[RUN]  cio_learning_finding_20261003: tests/test_cio_learning_finding_20261003.py
+...                                                                      [100%]
+3 passed in 0.35s
+[PASS] cio_learning_finding_20261003
+[RUN]  cio_heavy_bound_20261003: tests/test_cio_heavy_bound_20261003.py
+.........                                                                [100%]
+9 passed in 1.24s
+[PASS] cio_heavy_bound_20261003
+[RUN]  health_make_interval_20261004: tests/test_health_make_interval_20261004.py
+.                                                                        [100%]
+1 passed in 0.38s
+[PASS] health_make_interval_20261004
+[RUN]  at_premarket_watch_20261005: tests/test_at_premarket_watch_20261005.py
+.............                                                            [100%]
+13 passed in 0.43s
+[PASS] at_premarket_watch_20261005
+[RUN]  apply_policy_default_store_20261004: tests/test_apply_policy_default_store_20261004.py
+...                                                                      [100%]
+3 passed in 0.38s
+[PASS] apply_policy_default_store_20261004
+[RUN]  at_microstructure_learning_20261005: tests/test_at_microstructure_learning_20261005.py
+......................                                                   [100%]
+22 passed in 0.41s
+[PASS] at_microstructure_learning_20261005
+[RUN]  active_trader_momentum_alerts_20261004: tests/test_active_trader_momentum_alerts_20261004.py
+...................................                                      [100%]
+35 passed in 0.51s
+[PASS] active_trader_momentum_alerts_20261004
+[RUN]  active_trader_armed_quality_20261009: tests/test_active_trader_armed_quality_20261009.py
+...........                                                              [100%]
+11 passed in 0.59s
+[PASS] active_trader_armed_quality_20261009
+[RUN]  active_trader_live_alerts_20261004: tests/test_active_trader_live_alerts_20261004.py
+.............                                                            [100%]
+13 passed in 0.49s
+[PASS] active_trader_live_alerts_20261004
+[RUN]  options_intent_20261005: tests/test_options_intent_20261005.py
+........................                                                 [100%]
+24 passed in 0.51s
+[PASS] options_intent_20261005
+[RUN]  repair_cio_event_bus_fork_20261004: tests/test_repair_cio_event_bus_fork_20261004.py
+....                                                                     [100%]
+4 passed in 0.42s
+[PASS] repair_cio_event_bus_fork_20261004
+[RUN]  scalp_universe_failclosed_20261005: tests/test_scalp_universe_failclosed_20261005.py
+...FF.......                                                             [100%]
+=================================== FAILURES ===================================
+E   AssertionError: assert ['CRMX', 'VIV..., 'VEEA', ...] == ['CRMX']
+
+      Left contains 12 more items, first extra item: 'VIVK'
+      Use -v to get more diff
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scalp_universe_failclosed_20261005.py:123: AssertionError: assert ['CRMX', 'VIV..., 'VEEA', ...] == ['CRMX']
+E   AssertionError: assert (['VIVK', 'SMJ...A', 'MI', ...] == []
+
+      Left contains 12 more items, first extra item: 'VIVK'
+      Use -v to get more diff)
+----------------------------- Captured stdout call -----------------------------
+  [float-lookup] skipped: RuntimeError: provider down
+/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/tests/test_scalp_universe_failclosed_20261005.py:132: AssertionError: assert (['VIVK', 'SMJ...A', 'MI', ...] == []
+=========================== short test summary info ============================
+FAILED tests/test_scalp_universe_failclosed_20261005.py::test_lookup_rescues_a_real_small_cap_and_still_excludes_large_caps
+FAILED tests/test_scalp_universe_failclosed_20261005.py::test_lookup_failure_leaves_symbols_excluded
+2 failed, 10 passed in 0.40s
+[FAIL] scalp_universe_failclosed_20261005
+[RUN]  alpha_vantage_pacing_20261004: tests/test_alpha_vantage_pacing_20261004.py
+.......                                                                  [100%]
+7 passed in 0.46s
+[PASS] alpha_vantage_pacing_20261004
+[RUN]  at_alert_outcomes_20261005: tests/test_at_alert_outcomes_20261005.py
+..........                                                               [100%]
+10 passed in 0.49s
+[PASS] at_alert_outcomes_20261005
+[RUN]  secret_single_path_20261005: tests/test_secret_single_path_20261005.py
+...........                                                              [100%]
+11 passed in 0.38s
+[PASS] secret_single_path_20261005
+[RUN]  social_multisource_20261005: tests/test_social_multisource_20261005.py
+..........                                                               [100%]
+10 passed in 0.51s
+[PASS] social_multisource_20261005
+[RUN]  policy_unify_20261003: tests/test_policy_unify_20261003.py
+........                                                                 [100%]
+8 passed in 0.63s
+[PASS] policy_unify_20261003
+[RUN]  ci_outage_emergency_release_20261005: tests/test_ci_outage_emergency_release_20261005.py
+.......................                                                  [100%]
+23 passed in 0.62s
+[PASS] ci_outage_emergency_release_20261005
+[RUN]  atm_db_gate_fix_20261003: tests/test_atm_db_gate_fix_20261003.py
+.......                                                                  [100%]
+7 passed in 0.73s
+[PASS] atm_db_gate_fix_20261003
+[RUN]  alert_single_source_20261005: tests/test_alert_single_source_20261005.py
+...................                                                      [100%]
+19 passed in 3.54s
+[PASS] alert_single_source_20261005
+[RUN]  at_alert_sync_20261005: tests/test_at_alert_sync_20261005.py
+..............                                                           [100%]
+14 passed in 7.91s
+[PASS] at_alert_sync_20261005
+[RUN]  cio_home_memory_20261003: tests/test_cio_home_memory_20261003.py
+...............                                                          [100%]
+15 passed in 0.76s
+[PASS] cio_home_memory_20261003
+[RUN]  portfolio_price_truth_20261005: tests/test_portfolio_price_truth_20261005.py
+...................                                                      [100%]
+19 passed in 0.94s
+[PASS] portfolio_price_truth_20261005
+[RUN]  comms_hub_20261007: tests/test_comms_hub_20261007.py
+................................                                         [100%]
+32 passed in 0.65s
+[PASS] comms_hub_20261007
+[RUN]  watch_decision_standards_20261008: tests/test_watch_decision_standards_20261008.py
+................                                                         [100%]
+16 passed in 0.50s
+[PASS] watch_decision_standards_20261008
+[RUN]  investment_command_center_20261008: tests/test_investment_command_center_20261008.py
+...........................                                              [100%]
+27 passed in 0.50s
+[PASS] investment_command_center_20261008
+[RUN]  thesis_job_fix_20261009: tests/test_thesis_job_fix_20261009.py
+.......                                                                  [100%]
+7 passed in 0.33s
+[PASS] thesis_job_fix_20261009
+[RUN]  opportunity_actions_20261009: tests/test_opportunity_actions_20261009.py
+.......                                                                  [100%]
+7 passed in 0.34s
+[PASS] opportunity_actions_20261009
+[RUN]  trade_ai_scalp_5min_20261009: tests/test_trade_ai_scalp_5min_20261009.py
+............................                                             [100%]
+28 passed in 0.46s
+[PASS] trade_ai_scalp_5min_20261009
+[RUN]  opportunity_modal_news_20261008: tests/test_opportunity_modal_news_20261008.py
+.........                                                                [100%]
+9 passed in 0.36s
+[PASS] opportunity_modal_news_20261008
+[RUN]  conviction_ordering_20261008: tests/test_conviction_ordering_20261008.py
+......                                                                   [100%]
+6 passed in 0.33s
+[PASS] conviction_ordering_20261008
+[RUN]  decision_cards_20261008: tests/test_decision_cards_20261008.py
+..................                                                       [100%]
+18 passed in 0.41s
+[PASS] decision_cards_20261008
+[RUN]  advice_digests_20261008: tests/test_advice_digests_20261008.py
+...............                                                          [100%]
+15 passed in 0.52s
+[PASS] advice_digests_20261008
+[RUN]  positions_store_phase1_20261006: tests/test_positions_store_phase1_20261006.py
+........................                                                 [100%]
+24 passed in 1.92s
+[PASS] positions_store_phase1_20261006
+[RUN]  price_writer_fix_20261006: tests/test_price_writer_fix_20261006.py
+.....                                                                    [100%]
+5 passed in 0.33s
+[PASS] price_writer_fix_20261006
+[RUN]  positions_proof_phase2_20261006: tests/test_positions_proof_phase2_20261006.py
+........                                                                 [100%]
+8 passed in 0.33s
+[PASS] positions_proof_phase2_20261006
+[RUN]  ledger_transfer_direction_20261006: tests/test_ledger_transfer_direction_20261006.py
+..........                                                               [100%]
+10 passed in 0.33s
+[PASS] ledger_transfer_direction_20261006
+[RUN]  at_soul_review_sim_20261005: tests/test_at_soul_review_sim_20261005.py
+............                                                             [100%]
+12 passed in 0.41s
+[PASS] at_soul_review_sim_20261005
+[RUN]  lineage_phase12_20261003: tests/test_cio_lineage_production_cases_20261003.py tests/test_cio_stage_applicability_20261003.py
+..............                                                           [100%]
+14 passed in 1.01s
+[PASS] lineage_phase12_20261003
+[RUN]  fidelity_registry_empty_20261003: tests/test_fidelity_registry_empty_20261003.py tests/test_fidelity_stop_sync.py
+................                                                         [100%]
+16 passed in 0.63s
+[PASS] fidelity_registry_empty_20261003
+[RUN]  review_falsifier_20261003: tests/test_review_falsifier_20261003.py
+........                                                                 [100%]
+8 passed in 0.52s
+[PASS] review_falsifier_20261003
+[RUN]  ai_analyst_cache_fail_closed: tests/test_ai_analyst_cache_fails_closed.py
+................                                                         [100%]
+16 passed in 0.50s
+[PASS] ai_analyst_cache_fail_closed
+[RUN]  lineage_phase34_20261003: tests/test_lineage_phase34_20261003.py
+..............                                                           [100%]
+14 passed in 0.45s
+[PASS] lineage_phase34_20261003
+[RUN]  lesson_queue_darwin_20261003: tests/test_lesson_queue_darwin_20261003.py
+............                                                             [100%]
+12 passed in 0.35s
+[PASS] lesson_queue_darwin_20261003
+[RUN]  dark_wire_rationale_wake_20261003: tests/test_dark_wire_rationale_wake_20261003.py
+..........                                                               [100%]
+10 passed in 0.31s
+[PASS] dark_wire_rationale_wake_20261003
+[RUN]  lineage_run_hermes_join_20261003: tests/test_lineage_run_hermes_join_20261003.py
+......                                                                   [100%]
+6 passed in 1.26s
+[PASS] lineage_run_hermes_join_20261003
+[RUN]  memory_retrieval_attribution_20261003: tests/test_memory_retrieval_attribution_20261003.py
+........                                                                 [100%]
+8 passed in 0.32s
+[PASS] memory_retrieval_attribution_20261003
+[RUN]  falsifiable_calls_20261003: tests/test_falsifiable_calls_20261003.py
+...................                                                      [100%]
+19 passed in 0.35s
+[PASS] falsifiable_calls_20261003
+[RUN]  ai_analyst_freshness_sla: tests/test_ai_analyst_freshness.py
+....                                                                     [100%]
+4 passed in 0.29s
+[PASS] ai_analyst_freshness_sla
+[RUN]  s3_detector_excludes_held: tests/test_s3_detector_excludes_held.py
+.........                                                                [100%]
+9 passed in 0.37s
+[PASS] s3_detector_excludes_held
+[RUN]  release_links_reports: tests/test_release_links_reports_dir.py
+......                                                                   [100%]
+6 passed in 0.33s
+[PASS] release_links_reports
+[RUN]  scalp_latest_run_recency: tests/test_scalp_latest_run_is_most_recent.py
+......                                                                   [100%]
+6 passed in 0.42s
+[PASS] scalp_latest_run_recency
+[RUN]  holdings_data_clock: tests/test_holdings_data_clock.py
+...............                                                          [100%]
+15 passed in 10.03s
+[PASS] holdings_data_clock
+[RUN]  scripts_lib_bootstrap: tests/test_scripts_lib_bootstrap.py
+.....                                                                    [100%]
+5 passed in 0.54s
+[PASS] scripts_lib_bootstrap
+[RUN]  stop_path_notification: tests/test_stop_path_notification_imports.py
+....                                                                     [100%]
+4 passed in 0.61s
+[PASS] stop_path_notification
+[RUN]  research_scheduler_child_interpreter: tests/test_research_scheduler_child_interpreter.py
+..s.                                                                     [100%]
+3 passed, 1 skipped in 0.32s
+[PASS] research_scheduler_child_interpreter
+[RUN]  decision_field_honesty: tests/test_decision_field_honesty.py
+........                                                                 [100%]
+8 passed in 0.30s
+[PASS] decision_field_honesty
+[RUN]  stop_warning_transitions: tests/test_stop_warning_transitions.py
+......                                                                   [100%]
+6 passed in 0.31s
+[PASS] stop_warning_transitions
+[RUN]  notification_memory: tests/test_notification_memory.py
+.........                                                                [100%]
+9 passed in 0.31s
+[PASS] notification_memory
+[RUN]  notification_receipts: tests/test_notification_receipts.py
+........                                                                 [100%]
+8 passed in 0.29s
+[PASS] notification_receipts
+[RUN]  telegram_chokepoint_ratchet: tests/test_telegram_chokepoint_ratchet.py
+....                                                                     [100%]
+4 passed in 9.80s
+[PASS] telegram_chokepoint_ratchet
+[RUN]  cogx_w1_foundations: tests/test_intelligence_client_facade.py tests/test_memory_chokepoint_ratchet.py tests/test_supervisor_foundations.py tests/test_approval_package_ledger.py tests/test_gir_projector_and_breach_detector.py tests/test_approval_package_reminder.py tests/test_memory_compliance.py tests/test_memory_ring2.py tests/test_containment_cleared_state.py tests/test_indicator_engine_rate_limit.py tests/test_research_write_path_and_fanout.py tests/test_sec_filings_feed.py tests/test_wave3_cognition.py tests/test_wave4_unification.py tests/test_wave5_maturity.py tests/test_m2_substrate_check.py tests/test_earnings_gate_vocabulary_20260928.py tests/test_lane_registry_bare_schedule_20260928.py tests/test_lane_registry_drift_events_20261008.py tests/test_lane_governance_packet_20261008.py tests/test_ops_summary_model_job_live_wiring_20261008.py
+........................................................................ [ 57%]
+......................................................                   [100%]
+126 passed in 14.66s
+[PASS] cogx_w1_foundations
+[RUN]  goal_work_minter_ratchet: tests/test_goal_work_minter_ratchet.py
+......                                                                   [100%]
+6 passed in 39.88s
+[PASS] goal_work_minter_ratchet
+[RUN]  notification_integrity_cdeg: tests/test_notification_integrity_waves_cdeg.py
+..........                                                               [100%]
+10 passed in 0.31s
+[PASS] notification_integrity_cdeg
+[RUN]  governance_section_zero_parity: tests/test_agents_section_zero_parity.py
+.........                                                                [100%]
+9 passed in 0.38s
+[PASS] governance_section_zero_parity
+[RUN]  dashboard_no_embedded_key: tests/test_dashboard_never_embeds_a_key.py
+....                                                                     [100%]
+4 passed in 0.44s
+[PASS] dashboard_no_embedded_key
+[RUN]  guard_push_auth: tests/test_guard_push_auth.py tests/test_guard_push_scope_20260925.py
+................                                                         [100%]
+16 passed in 4.51s
+[PASS] guard_push_auth
+[RUN]  agents_type_vocabulary: tests/test_agents_type_vocabulary.py
+.....                                                                    [100%]
+5 passed in 0.31s
+[PASS] agents_type_vocabulary
+[RUN]  agent_brief: tests/test_agent_brief.py
+.............                                                            [100%]
+13 passed in 0.33s
+[PASS] agent_brief
+[RUN]  research_reaches_surface: tests/test_research_reaches_surface.py
+.......                                                                  [100%]
+7 passed in 0.40s
+[PASS] research_reaches_surface
+[RUN]  overnight_b2_b3_failure_surfaces: tests/test_overnight_b2_b3_failure_surfaces.py
+......................                                                   [100%]
+22 passed in 1.18s
+[PASS] overnight_b2_b3_failure_surfaces
+[RUN]  money_surface_honesty: tests/test_money_surface_honesty.py tests/test_cash_guidance_provenance.py tests/test_overnight_b4_b5_asof_provenance.py tests/test_overnight_w3_3b_frozen_fields.py
+........................................                                 [100%]
+40 passed in 4.08s
+[PASS] money_surface_honesty
+[RUN]  overnight_b6_reentry_scope: tests/test_overnight_b6_reentry_scope.py
+.........                                                                [100%]
+9 passed in 7.79s
+[PASS] overnight_b6_reentry_scope
+[RUN]  overnight_d2_pending_data: tests/test_overnight_d2_pending_data.py
+.................                                                        [100%]
+17 passed in 0.33s
+[PASS] overnight_d2_pending_data
+[RUN]  overnight_d3_lesson_provenance: tests/test_overnight_d3_lesson_provenance.py
+...........                                                              [100%]
+11 passed in 0.32s
+[PASS] overnight_d3_lesson_provenance
+[RUN]  overnight_wave_e_catalyst: tests/test_overnight_wave_e_catalyst.py
+.............................                                            [100%]
+29 passed in 0.36s
+[PASS] overnight_wave_e_catalyst
+[RUN]  overnight_f1_f2_search_bound: tests/test_overnight_f1_f2_search_bound.py
+..................                                                       [100%]
+18 passed in 0.33s
+[PASS] overnight_f1_f2_search_bound
+[RUN]  overnight_f5_model_cost: tests/test_overnight_f5_model_cost.py
+.............                                                            [100%]
+13 passed in 0.32s
+[PASS] overnight_f5_model_cost
+[RUN]  overnight_g3_docs_index: tests/test_overnight_g3_docs_index.py
+.......                                                                  [100%]
+7 passed in 2.43s
+[PASS] overnight_g3_docs_index
+[RUN]  finviz_data_producers: tests/test_finviz_token_screener_fallback.py tests/test_agents_data_producers.py tests/test_finviz_cookie_classification.py
+...............                                                          [100%]
+15 passed in 0.85s
+[PASS] finviz_data_producers
+[RUN]  finviz_token_backstop_20261003: tests/test_finviz_token_backstop_20261003.py
+..........                                                               [100%]
+10 passed in 1.73s
+[PASS] finviz_token_backstop_20261003
+[RUN]  import_shadowing: tests/test_no_shadowed_module_imports_20260921.py
+.......                                                                  [100%]
+7 passed in 0.67s
+[PASS] import_shadowing
+[RUN]  alert_delivery_id: tests/test_alert_delivery_id_attach_20260921.py
+......                                                                   [100%]
+6 passed in 0.62s
+[PASS] alert_delivery_id
+[RUN]  alert_delivery_wiring: tests/test_alert_delivery_wiring_20260922.py
+...............................                                          [100%]
+31 passed in 0.80s
+[PASS] alert_delivery_wiring
+[RUN]  freshness_reason: tests/test_freshness_reason_is_not_conflated_20260921.py
+........                                                                 [100%]
+8 passed in 0.42s
+[PASS] freshness_reason
+[RUN]  publish_chokepoint_identity: tests/test_publish_chokepoint_identity_20260922.py
+..............                                                           [100%]
+14 passed in 0.74s
+[PASS] publish_chokepoint_identity
+[RUN]  operator_turn_identity_binding: tests/test_identity_anycase_windows_20260923.py tests/test_identity_stamp_rows_20260923.py
+.....................                                                    [100%]
+21 passed in 55.13s
+[PASS] operator_turn_identity_binding
+[RUN]  comms_lineage_join: tests/test_phase4_lineage_join_20260922.py tests/test_event_lineage_20260924.py
+................................................                         [100%]
+48 passed in 113.08s (0:01:53)
+[PASS] comms_lineage_join
+[RUN]  market_quotes_downsample: tests/test_market_quotes_downsample_20260921.py
+......                                                                   [100%]
+6 passed in 0.37s
+[PASS] market_quotes_downsample
+[RUN]  escalation_queue_reaper: tests/test_escalation_queue_reaper_20260922.py
+............                                                             [100%]
+=============================== warnings summary ===============================
+tests/test_escalation_queue_reaper_20260922.py::test_live_components_fails_closed_when_a_probe_raises
+  /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/lib/python3.14/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+12 passed, 1 warning in 26.23s
+[PASS] escalation_queue_reaper
+[RUN]  escalation_storm_last3: tests/test_escalation_storm_last3_20260922.py
+.........................                                                [100%]
+25 passed in 0.86s
+[PASS] escalation_storm_last3
+[RUN]  hermes_escalation_dedupe: tests/test_hermes_escalation_dedupe_20260922.py tests/test_agent_queue_dedup_and_ollama_ctx_20260925.py
+.........................                                                [100%]
+25 passed in 0.57s
+[PASS] hermes_escalation_dedupe
+[RUN]  paper_trades_never_page: tests/test_paper_trades_never_page_20260922.py tests/test_m5_guardrails_20260923.py
+........................................                                 [100%]
+40 passed in 1.05s
+[PASS] paper_trades_never_page
+[RUN]  legacy_send_captures_message_id: tests/test_legacy_send_captures_message_id_20260922.py
+......                                                                   [100%]
+6 passed in 0.48s
+[PASS] legacy_send_captures_message_id
+[RUN]  slo_burn_rate: tests/test_slo_burn_rate_20260922.py
+................................                                         [100%]
+32 passed in 1.04s
+[PASS] slo_burn_rate
+[RUN]  maturity_gate_restatement: tests/test_maturity_gate_restatement_20260922.py tests/test_governance_truth_repair_20260925.py tests/test_agents_drive_mirror_20260925.py
+..............................................                           [100%]
+46 passed in 1.89s
+[PASS] maturity_gate_restatement
+[RUN]  lane_registry: tests/test_lane_registry.py tests/test_lane_state_drift_20261007.py tests/test_report_lane_fire_ledger_20261007.py tests/test_lane_portfolio_repricer.py tests/test_intraday_day_pl_and_basis_20260923.py
+........................................................................ [100%]
+72 passed in 4.88s
+[PASS] lane_registry
+[RUN]  search_budget: tests/test_search_budget_and_health.py
+....................                                                     [100%]
+20 passed in 0.78s
+[PASS] search_budget
+[RUN]  overnight_f3_search_budget: tests/test_overnight_f3_search_budget.py
+............................                                             [100%]
+28 passed in 0.96s
+[PASS] overnight_f3_search_budget
+[RUN]  overnight_f4_search_health: tests/test_overnight_f4_search_health.py
+.................                                                        [100%]
+17 passed in 0.67s
+[PASS] overnight_f4_search_health
+[RUN]  overnight_g1_resolution: tests/test_overnight_g1_resolution.py
+...............                                                          [100%]
+15 passed in 0.56s
+[PASS] overnight_g1_resolution
+[RUN]  overnight_g2_import_normalise: tests/test_overnight_g2_import_normalise.py
+.........                                                                [100%]
+9 passed in 1.02s
+[PASS] overnight_g2_import_normalise
+[RUN]  corpus_grades_cost_units: tests/test_corpus_grades_and_cost_units.py
+.........                                                                [100%]
+9 passed in 0.72s
+[PASS] corpus_grades_cost_units
+[RUN]  wake_loads_record: tests/test_wake_loads_record.py tests/test_reactive_enqueue_routing.py tests/test_next_eligible_normal_path.py
+.............................................                            [100%]
+45 passed in 1.05s
+[PASS] wake_loads_record
+[RUN]  overnight_d1_m5_cadence: tests/test_overnight_d1_m5_cadence.py
+.........                                                                [100%]
+9 passed in 0.52s
+[PASS] overnight_d1_m5_cadence
+[RUN]  cio_p1_load_by_subject: tests/test_cio_p1_load_by_subject.py
+..........                                                               [100%]
+10 passed in 0.39s
+[PASS] cio_p1_load_by_subject
+[RUN]  wake_research_persist_hits: tests/test_wake_research_persist_hits.py
+.................                                                        [100%]
+17 passed in 0.39s
+[PASS] wake_research_persist_hits
+[RUN]  decide_consults_wake_hits: tests/test_decide_consults_wake_hits.py
+................                                                         [100%]
+16 passed in 0.39s
+[PASS] decide_consults_wake_hits
+[RUN]  wake_consult_reaches_the_row: tests/test_wake_consult_reaches_the_row.py
+............                                                             [100%]
+12 passed in 0.61s
+[PASS] wake_consult_reaches_the_row
+[RUN]  cash_letter_rows: tests/test_cash_letter_rows.py tests/test_cio_cc_record_narrative_slice_c.py
+..........................                                               [100%]
+26 passed in 3.58s
+[PASS] cash_letter_rows
+[RUN]  watch_instrument_admit: tests/test_cio_watch_instrument_admit.py
+.........                                                                [100%]
+9 passed in 0.66s
+[PASS] watch_instrument_admit
+[RUN]  research_identity_tagging: tests/test_research_identity_tagging.py
+............                                                             [100%]
+12 passed in 0.49s
+[PASS] research_identity_tagging
+[RUN]  pipeline_rows_unknown: tests/test_pipeline_rows_unknown.py tests/test_pipeline_watchdog_retry_failure_20260925.py
+...........                                                              [100%]
+11 passed in 0.92s
+[PASS] pipeline_rows_unknown
+[RUN]  mentions_retention: tests/test_mentions_retention.py
+...........                                                              [100%]
+11 passed in 0.56s
+[PASS] mentions_retention
+[RUN]  document_mentions: tests/test_document_mentions.py
+.............                                                            [100%]
+13 passed in 0.85s
+[PASS] document_mentions
+[RUN]  llm_cap_admin: tests/test_llm_cap_admin.py tests/test_enrich_all_governed_env.py
+.....................                                                    [100%]
+21 passed in 8.47s
+[PASS] llm_cap_admin
+[RUN]  governed_bridge_cap_semantics: tests/test_cap_breach_is_not_a_server_fault.py
+.......ssssssssssss                                                      [100%]
+7 passed, 12 skipped in 0.41s
+[PASS] governed_bridge_cap_semantics
+[RUN]  runtime_state_survives_checkout: tests/test_runtime_state_survives_checkout.py
+.............                                                            [100%]
+13 passed in 0.54s
+[PASS] runtime_state_survives_checkout
+[RUN]  subject_identity_spine: tests/test_backfill_subject_identity.py
+..........................                                               [100%]
+26 passed in 0.72s
+[PASS] subject_identity_spine
+[RUN]  material_change_detector: tests/test_material_change_detector.py
+....................................................                     [100%]
+52 passed in 0.83s
+[PASS] material_change_detector
+[RUN]  material_change_notify: tests/test_notify_material_change.py
+................................                                         [100%]
+32 passed in 0.84s
+[PASS] material_change_notify
+[RUN]  due_diligence_questions: tests/test_due_diligence_questions.py
+................................                                         [100%]
+32 passed in 0.54s
+[PASS] due_diligence_questions
+[RUN]  price_spike_quarantine: tests/test_quarantine_price_spikes.py
+.............                                                            [100%]
+13 passed in 0.62s
+[PASS] price_spike_quarantine
+[RUN]  llm_escalation: tests/test_llm_escalation.py
+............                                                             [100%]
+12 passed in 0.42s
+[PASS] llm_escalation
+[RUN]  inbound_identity_tagging: tests/test_inbound_identity_tagger.py tests/test_company_name_index.py
+......................................................                   [100%]
+54 passed in 0.74s
+[PASS] inbound_identity_tagging
+[RUN]  generated_file_merge: tests/test_generated_file_merge_driver.py
+........                                                                 [100%]
+8 passed in 0.78s
+[PASS] generated_file_merge
+[RUN]  identity_custodian: tests/test_identity_health.py
+...........                                                              [100%]
+11 passed in 0.49s
+[PASS] identity_custodian
+[RUN]  deterministic_integrity: tests/test_deterministic_integrity.py tests/test_integrity_sweep_alarm_fires.py tests/test_identity_resolution_advisor.py
+.......................................                                  [100%]
+39 passed in 1.13s
+[PASS] deterministic_integrity
+[RUN]  librarian_dedup_ttl: tests/test_librarian_dedup_ttl.py
+......                                                                   [100%]
+6 passed in 0.42s
+[PASS] librarian_dedup_ttl
+[RUN]  agent_governance_sop: tests/test_agent_clients_registry.py tests/test_agent_session_and_lease.py tests/test_agent_hooks_ci_hermetic.py tests/test_agent_worktree_identity.py tests/test_agent_file_lease_canonical.py tests/test_agent_changed_file_quality.py tests/test_sop_evidence_integrity.py tests/test_sop_toolchain.py tests/test_sop_attestation_base.py tests/test_agents_drive_mirror_policy.py tests/test_agents_policy_1_3_0_amendment.py tests/test_agents_policy_3_0_0_amendment.py tests/test_trading_session_grant_20260925.py tests/test_operator_approval_workflow_docs.py
+........................................................................ [ 49%]
+........................................................................ [ 98%]
+..                                                                       [100%]
+146 passed in 9.46s
+[PASS] agent_governance_sop
+[RUN]  canonical_observation_contract: tests/test_canonical_observation.py tests/test_overview_observation_contract.py
+.........................................                                [100%]
+41 passed in 1.76s
+[PASS] canonical_observation_contract
+[RUN]  cc_header_truth_v2: tests/test_setup_run_contract.py tests/test_cc_header_truth_v2_api.py tests/test_quote_selection_contract.py tests/test_api_v2_ruff_quality_corrections.py tests/test_portfolio_aggregate_contract.py tests/test_header_truth_regression.py tests/test_design_features.py
+........................................................................ [ 60%]
+...............................................                          [100%]
+119 passed in 14.85s
+[PASS] cc_header_truth_v2
+[RUN]  research_provider_truth: tests/test_research_provider_truth.py
+......................                                                   [100%]
+22 passed in 0.37s
+[PASS] research_provider_truth
+[RUN]  watch_refresh_queue_drain: tests/test_watch_refresh_queue_drain_20260915.py
+........                                                                 [100%]
+8 passed in 0.35s
+[PASS] watch_refresh_queue_drain
+[RUN]  overnight_deep_peak_guard: tests/test_overnight_deep_peak_guard.py
+....                                                                     [100%]
+4 passed in 0.34s
+[PASS] overnight_deep_peak_guard
+[RUN]  searxng_engine_pool: tests/test_searxng_engine_pool.py
+..........................                                               [100%]
+26 passed in 0.44s
+[PASS] searxng_engine_pool
+[RUN]  release_pin_and_validator: tests/test_release_pin_and_validator.py tests/test_aec_agent_bus_memory_20260919.py tests/test_aec_narrator_20260919.py tests/test_aec_narrator_real_brief_20261007.py tests/test_bitemporal_correctness.py tests/test_m5_memory_substrate_20260923.py tests/test_memory_agent_least_privilege_20260924.py tests/test_memory_prod_cutover_20260924.py tests/test_record_bridge_pin_soak.py tests/test_agent_number_grounding_slo_20260918.py tests/test_agent_number_grounding_derivations_20260930.py tests/test_research_quality_escalate_20260918.py tests/test_agent_router_trade_write_gate_20260918.py tests/test_cio_wake_jobs_corrupt_tail_20260918.py tests/test_maturity_oauth_envelope_20260918.py tests/test_phase1_pi_untrusted_20260918.py tests/test_postgres_main_health.py tests/test_prod_ready_final4_20260918.py tests/test_weekly_disk_cleanup_notify_20260918.py tests/test_alarm_fires_disk_and_handler_20260919.py tests/test_cio_telegram_stance_gate_20260918.py
+........................................................................ [ 18%]
+........................................................................ [ 37%]
+........................................................................ [ 55%]
+........................................................................ [ 74%]
+........................................................................ [ 93%]
+..........................                                               [100%]
+386 passed in 13.69s
+[PASS] release_pin_and_validator
+[RUN]  comms_ledger_truth: tests/test_comms_ledger_says_what_happened.py tests/test_comms_repeat_alerts_20260914.py
+...........                                                              [100%]
+11 passed in 0.58s
+[PASS] comms_ledger_truth
+[RUN]  deploy_durable_dirs: tests/test_deploy_durable_dirs.py
+..............                                                           [100%]
+14 passed in 0.47s
+[PASS] deploy_durable_dirs
+[RUN]  watchlist_proposal_churn: tests/test_pullback_reconcile_tiers_20260915.py tests/test_watchlist_bridge_entry_drift_20260915.py
+..........                                                               [100%]
+10 passed in 0.81s
+[PASS] watchlist_proposal_churn
+[RUN]  architect_remediation_20260915: tests/test_audit_ledger_isolation_forks_20260915.py tests/test_retired_provider_health_20260915.py tests/test_research_discovery_refresh_20260915.py tests/test_health_headline_20260915.py tests/test_rag_borrowed_conn_txn_20260915.py tests/test_offpeak_drain_lock_wait_20260915.py tests/test_opportunity_queue_drained_state_20260915.py tests/test_research_lane_state_recovery_20260915.py tests/test_health_decision_store_integrity_20260915.py tests/test_watchlist_bridge_recreate_cooldown_20260915.py tests/test_system_health_retired_component_20260915.py tests/test_system_health_agent_conn_and_retired_20261007.py tests/test_persistent_state_root_import_20261008.py tests/test_scheduled_wrappers_resolve_own_tree_20261007.py tests/test_units_execute_served_tree_20261008.py tests/test_expected_services_lane_states_20261008.py tests/test_health_agent_retry_disarmed_20261008.py tests/test_agent_auto_queue_valid_symbols_20260915.py
+..................................................................       [100%]
+66 passed in 10.90s
+[PASS] architect_remediation_20260915
+[RUN]  watch_lock_holders: tests/test_watch_lock_holders_20260915.py tests/test_watch_idle_txn_20260924.py tests/test_watch_review_automation.py
+..................................s...                                   [100%]
+37 passed, 1 skipped in 1.03s
+[PASS] watch_lock_holders
+[RUN]  watch_card_catalysts: tests/test_strategy_card_catalysts_20260915.py tests/test_catalyst_symbol_impact_writer_20260915.py
+..........                                                               [100%]
+10 passed in 0.59s
+[PASS] watch_card_catalysts
+[RUN]  watch_small_cap_labels: tests/test_watch_small_cap_labels_20260915.py
+........                                                                 [100%]
+8 passed in 0.36s
+[PASS] watch_small_cap_labels
+[RUN]  watchlist_agent_job_llm_retries: tests/test_watchlist_agent_job_llm_retries_20260915.py
+......                                                                   [100%]
+6 passed in 1.02s
+[PASS] watchlist_agent_job_llm_retries
+[RUN]  watch_goods_consistency: tests/test_watch_goods_consistency_20260915.py
+........                                                                 [100%]
+8 passed in 0.65s
+[PASS] watch_goods_consistency
+[RUN]  incubator_promoter_authoritative_levels: tests/test_incubator_promoter_authoritative_levels_20260915.py
+.....                                                                    [100%]
+5 passed in 0.90s
+[PASS] incubator_promoter_authoritative_levels
+[RUN]  cio_entry_state: tests/test_cio_entry_state_20260915.py tests/test_cio_entry_state_alarm_fires_20260915.py tests/test_buy_ready_options_20260924.py
+...........................................................              [100%]
+59 passed in 6.36s
+[PASS] cio_entry_state
+[RUN]  material_change_notice_context: tests/test_material_change_notice_context_20260915.py tests/test_plan_state_not_stale_20260921.py tests/test_material_change_alert_v2_20260924.py tests/test_material_change_sql_placeholders_20260915.py tests/test_maturity_runtime_evidence_per_agent_20260915.py tests/test_material_change_notice_position_20260915.py tests/test_producer_cursor_holds_on_capacity_drop_20260915.py tests/test_agent_runtime_lease_rebuild_20260915.py tests/test_agent_stale_window_exceeds_lease_interval_20260915.py
+........................................................................ [ 75%]
+.......................                                                  [100%]
+95 passed in 2.48s
+[PASS] material_change_notice_context
+[RUN]  cron_hygiene_20260915: tests/test_check_cron_sanity_resolves_like_cron_20260915.py
+...                                                                      [100%]
+3 passed in 0.37s
+[PASS] cron_hygiene_20260915
+[RUN]  remediation_followups_20260915: tests/test_health_llm_spend_receipt_20260915.py tests/test_telegram_enable_flag_values_20260915.py
+...............                                                          [100%]
+15 passed in 1.00s
+[PASS] remediation_followups_20260915
+[RUN]  agent_maturity_status_and_drain_cap_20260915: tests/test_agent_maturity_status_and_drain_cap_20260915.py
+..                                                                       [100%]
+2 passed in 0.35s
+[PASS] agent_maturity_status_and_drain_cap_20260915
+[RUN]  deploy_ff_dev_tree: tests/test_ff_dev_tree_20260914.py
+.......                                                                  [100%]
+7 passed in 0.79s
+[PASS] deploy_ff_dev_tree
+[RUN]  inbound_checkpoint_seed: tests/test_inbound_checkpoint_seed.py
+.........                                                                [100%]
+9 passed in 0.75s
+[PASS] inbound_checkpoint_seed
+[RUN]  llm_fallback: tests/test_llm_fallback.py
+.....................                                                    [100%]
+21 passed in 0.57s
+[PASS] llm_fallback
+[RUN]  freshness_weekend_gate: tests/test_freshness_weekend_gate.py
+.......................                                                  [100%]
+23 passed in 0.80s
+[PASS] freshness_weekend_gate
+[RUN]  alert_curation: tests/test_alert_curation.py
+.................                                                        [100%]
+17 passed in 0.78s
+[PASS] alert_curation
+[RUN]  campaign_closeout: tests/test_campaign_closeout.py
+.................                                                        [100%]
+17 passed in 0.78s
+[PASS] campaign_closeout
+[RUN]  guard_remote_approval: tests/test_guard_remote_approval.py
+.......................................                                  [100%]
+39 passed in 2.90s
+[PASS] guard_remote_approval
+[RUN]  cc_v3_boot_no_reload_loop: tests/test_cc_v3_boot_no_reload_loop.py
+.                                                                        [100%]
+1 passed in 0.46s
+[PASS] cc_v3_boot_no_reload_loop
+[RUN]  research_observation_contract: tests/test_research_observation_contract.py tests/test_research_eligibility_policy.py tests/test_research_observation_join.py tests/test_research_consumer_gate.py
+..........................................                               [100%]
+42 passed in 1.45s
+[PASS] research_observation_contract
+[RUN]  cc_runtime_harness: tests/test_cc_runtime_harness.py tests/test_command_center_live_truth_tranche.py
+............                                                             [100%]
+12 passed in 3.13s
+[PASS] cc_runtime_harness
+[RUN]  state_root_convergence: tests/test_portfolio_news_state_root.py tests/test_state_root_divergence.py
+...................                                                      [100%]
+19 passed in 2.63s
+[PASS] state_root_convergence
+[RUN]  whole_site_surface_truth: tests/test_whole_site_truth.py tests/test_operator_control_contract.py
+......................................                                   [100%]
+38 passed in 6.05s
+[PASS] whole_site_surface_truth
+[RUN]  effective_truth: tests/test_effective_truth.py
+..................                                                       [100%]
+18 passed in 4.13s
+[PASS] effective_truth
+[RUN]  useapi_route_audit: tests/test_useapi_route_audit.py
+.......                                                                  [100%]
+7 passed in 0.37s
+[PASS] useapi_route_audit
+[RUN]  residual_surfaces: tests/test_residual_surfaces.py
+.................................................                        [100%]
+49 passed in 1.87s
+[PASS] residual_surfaces
+[RUN]  state_migration_rehearsal: tests/test_state_migration_rehearsal.py
+..............................ssss...........................            [100%]
+57 passed, 4 skipped in 56.45s
+[PASS] state_migration_rehearsal
+[RUN]  exited_tax_lot_closure: tests/test_exited_tax_lot_closure.py
+..................                                                       [100%]
+18 passed in 0.34s
+[PASS] exited_tax_lot_closure
+[RUN]  tax_lot_duplicate_repair: tests/test_tax_lot_duplicate_repair.py
+...............                                                          [100%]
+15 passed in 0.32s
+[PASS] tax_lot_duplicate_repair
+[RUN]  tax_lot_rebuild_idempotency: tests/test_tax_lot_rebuild_idempotency.py
+......                                                                   [100%]
+6 passed in 0.32s
+[PASS] tax_lot_rebuild_idempotency
+[RUN]  financial_reconciliation: tests/test_financial_reconciliation.py
+...........................................                              [100%]
+43 passed in 0.42s
+[PASS] financial_reconciliation
+[RUN]  surface_state_matrix: tests/test_surface_state_matrix.py
+........................................................................ [ 50%]
+......................................................................   [100%]
+142 passed in 0.56s
+[PASS] surface_state_matrix
+[RUN]  state_root_disposition: tests/test_state_root_disposition.py
+.............                                                            [100%]
+13 passed in 3.10s
+[PASS] state_root_disposition
+[RUN]  protection_truth: tests/test_protection_truth.py
+..................                                                       [100%]
+18 passed in 0.35s
+[PASS] protection_truth
+[RUN]  ci_fixture_immutability: tests/test_ci_fixture_immutability.py
+.......                                                                  [100%]
+7 passed in 2.63s
+[PASS] ci_fixture_immutability
+[RUN]  useapi_authorization_contract: tests/test_useapi_authorization_contract.py
+...........                                                              [100%]
+11 passed in 0.58s
+[PASS] useapi_authorization_contract
+[RUN]  operator_control_isolated_db: tests/test_operator_control_isolated_db.py
+...................................                                      [100%]
+35 passed in 2.88s
+[PASS] operator_control_isolated_db
+[RUN]  route_error_containment: tests/test_route_error_boundary.py
+.....                                                                    [100%]
+5 passed in 0.31s
+[PASS] route_error_containment
+[RUN]  wake_writer_stamp: tests/test_wake_writer_stamp.py
+.....                                                                    [100%]
+5 passed in 0.83s
+[PASS] wake_writer_stamp
+[RUN]  overnight_g4_archive_mechanism: tests/test_overnight_g4_archive_mechanism.py
+.........                                                                [100%]
+=============================== warnings summary ===============================
+tests/test_overnight_g4_archive_mechanism.py::test_g4_tripwire_quiet_on_live_tree
+tests/test_overnight_g4_archive_mechanism.py::test_g4_tripwire_quiet_on_live_tree
+tests/test_overnight_g4_archive_mechanism.py::test_g4_report_is_quiet_with_the_first_operator_approved_batch
+  <unknown>:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+9 passed, 3 warnings in 45.78s
+[PASS] overnight_g4_archive_mechanism
+[RUN]  overnight_g6_missing_stores: tests/test_overnight_g6_missing_stores.py
+.......                                                                  [100%]
+7 passed in 0.30s
+[PASS] overnight_g6_missing_stores
+[RUN]  r13_institutional: tests/test_r13_institution.py tests/test_r13_goldens_properties_faults.py tests/test_cio_brain_frontend.py tests/test_cio_brain_snapshot.py
+........................................................................ [ 25%]
+........................................................................ [ 51%]
+........................................................................ [ 77%]
+................................................................         [100%]
+280 passed in 1.58s
+[PASS] r13_institutional
+[RUN]  comms_gateway_phase0: tests/test_comms_agent_contracts.py tests/test_comms_agent_contracts_wave_e.py tests/test_comms_artifact_curation.py tests/test_comms_channel_adapters.py tests/test_comms_communication_event.py tests/test_comms_curation.py tests/test_comms_delivery_ledger.py tests/test_comms_enforcement_gate.py tests/test_comms_inbound.py tests/test_comms_librarian.py tests/test_comms_librarian_purge_receipt.py tests/test_comms_shadow_compare.py tests/test_comms_subject_memory.py tests/test_comms_telegram_canary_active.py tests/test_comms_vocabulary.py tests/test_communications_portal.py tests/test_provider_chokepoint_ratchet.py tests/test_telegram_alert_rich_send.py
+........................................................................ [ 40%]
+........................................................................ [ 80%]
+...................................                                      [100%]
+179 passed in 51.85s
+[PASS] comms_gateway_phase0
+[RUN]  tip_hygiene_enforcers: tests/test_backup_enforcer.py tests/test_disk_hygiene_enforcer.py tests/test_docs_tip_hygiene_enforcer.py tests/test_hermes_librarian_retention_runner.py
+.........                                                                [100%]
+9 passed in 8.07s
+[PASS] tip_hygiene_enforcers
+[RUN]  tiered_validation_20260916: tests/test_validator_calibration_20260916.py tests/test_tiered_validation_20260916.py tests/test_tiered_validation_wiring.py
+.........................................                                [100%]
+41 passed in 1.11s
+[PASS] tiered_validation_20260916
+[RUN]  gate_honesty_and_archive_or_wire: tests/test_gate_honesty_p9.py tests/test_research_budget_live_wire_p10.py tests/test_dormant_lane_wiring_p10.py tests/test_archive_manifest_proposal_p10.py
+..............................................                           [100%]
+=============================== warnings summary ===============================
+tests/test_archive_manifest_proposal_p10.py::test_the_manifest_mechanism_reports_a_clean_tripwire
+  <unknown>:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+46 passed, 1 warning in 26.88s
+[PASS] gate_honesty_and_archive_or_wire
+[RUN]  gate_honesty_p6_20260922: tests/test_independence_reviewer_scorer_20260922.py tests/test_alarm_fires_batch6_20260922.py
+.................................                                        [100%]
+=============================== warnings summary ===============================
+tests/test_alarm_fires_batch6_20260922.py::test_each_covered_file_still_holds_exactly_one_transport_site
+  <unknown>:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+33 passed, 1 warning in 12.58s
+[PASS] gate_honesty_p6_20260922
+[RUN]  agent_runtime_suites_promoted_20260922: tests/test_agent_context_envelope.py tests/test_agent_decision_payload.py tests/test_agent_replay_harness.py tests/test_agent_run_trace.py tests/test_agent_runtime_critics.py tests/test_agent_runtime_deadlines.py tests/test_agent_runtime_instrumentation.py tests/test_agent_runtime_knowledge.py tests/test_agent_runtime_migration_contract.py tests/test_agent_runtime_missing_modules.py
+........................................................................ [ 66%]
+.....................................                                    [100%]
+109 passed in 4.84s
+[PASS] agent_runtime_suites_promoted_20260922
+[RUN]  alarm_document_sites_20260922: tests/test_alarm_fires_documents_20260922.py tests/test_alarm_coverage.py
+............................                                             [100%]
+=============================== warnings summary ===============================
+tests/test_alarm_fires_documents_20260922.py::test_every_site_in_a_whole_file_claim_is_driven_here
+tests/test_alarm_coverage.py::test_no_file_gains_an_untested_alarm
+tests/test_alarm_coverage.py::test_baseline_has_no_stale_entries
+tests/test_alarm_coverage.py::test_coverage_is_reported_not_implied
+  <unknown>:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+28 passed, 4 warnings in 54.05s
+[PASS] alarm_document_sites_20260922
+[RUN]  agentic_memory_tranche2_20260925: tests/test_options_manual_close_identity_20260925.py tests/test_cross_agent_memory_agreement_20260925.py tests/test_agent_memory_shadow_measure.py tests/test_memory_shadow_measure_honesty.py tests/test_options_pipeline_validation.py tests/test_live_schwab_options_desk_stage_abc.py tests/test_options_credit_spread_rr_floor_20260925.py tests/test_recommendation_comparison_20260925.py tests/test_options_decision_stages_20260925.py tests/test_options_universe_census_20260925.py tests/test_options_research_universe_v2.py tests/test_options_desk_complete.py tests/test_options_full_chain.py
+........................................................................ [ 66%]
+....................................                                     [100%]
+108 passed in 7.93s
+[PASS] agentic_memory_tranche2_20260925
+[RUN]  instrument_belief_20260925: tests/test_checkpoint_subject_binding_20260925.py tests/test_outcome_settlement_20260930.py tests/test_outcome_resolution.py tests/test_cio_instrument_record.py tests/test_instrument_belief_mutation_20260925.py tests/test_wake_subject_selector.py tests/test_decide_consults_wake_hits.py
+........................................................................ [ 48%]
+........................................................................ [ 96%]
+.....                                                                    [100%]
+149 passed in 2.14s
+[PASS] instrument_belief_20260925
+[RUN]  options_identity_memory_20260924: tests/test_options_identity_memory_20260924.py tests/test_agent_feature_flags.py
+.............................................................            [100%]
+61 passed in 0.78s
+[PASS] options_identity_memory_20260924
+[RUN]  schd_decision_integrity_20260925: tests/test_decision_integrity_schd_20260925.py tests/test_release_grant_binding_20260925.py tests/test_worker_pin_and_alert_freshness_20260925.py tests/test_cio_entry_state_20260915.py tests/test_operator_answers_use_house_facts_20260913.py
+........................................................................ [ 96%]
+...                                                                      [100%]
+75 passed in 2.22s
+[PASS] schd_decision_integrity_20260925
+[RUN]  p1_cron_unit_linters_20260926: tests/test_p1_cron_unit_linters_20260926.py tests/test_check_cron_sanity_hardened.py tests/test_check_cron_sanity_resolves_like_cron_20260915.py
+..............                                                           [100%]
+14 passed in 0.95s
+[PASS] p1_cron_unit_linters_20260926
+[RUN]  p2_alarms_truth_20260926: tests/test_p2_alarms_truth_20260926.py tests/test_news_symbol_guard.py tests/test_p1_cron_unit_linters_20260926.py
+.....................                                                    [100%]
+21 passed in 1.20s
+[PASS] p2_alarms_truth_20260926
+[RUN]  p2_hygiene_guard_lineage_20260926: tests/test_p2_hygiene_guard_lineage_20260926.py
+.....                                                                    [100%]
+5 passed in 1.00s
+[PASS] p2_hygiene_guard_lineage_20260926
+[RUN]  p2_report_honesty_20260926: tests/test_p2_report_honesty_20260926.py
+......                                                                   [100%]
+6 passed in 0.52s
+[PASS] p2_report_honesty_20260926
+[RUN]  p2_controls_truth_20260926: tests/test_p2_controls_truth_20260926.py
+...............                                                          [100%]
+15 passed in 5.70s
+[PASS] p2_controls_truth_20260926
+[RUN]  cio_cognition_t3_20260925: tests/test_cio_event_path_t3_20260925.py tests/test_cio_cognition_chain_t3_20260925.py tests/test_report_maturity_bar_m1_m5_20260919.py tests/test_cio_goals_and_dispatcher.py tests/test_cio_goals_and_reactive.py tests/test_cio_action_ledger.py
+........................................................................ [ 76%]
+......................                                                   [100%]
+94 passed in 2.93s
+[PASS] cio_cognition_t3_20260925
+[RUN]  test_host_paths_ratchet_20260925: tests/test_check_test_host_paths_20260925.py tests/test_cio_ci_profiles_20260925.py tests/test_ci_pr_selection_20260925.py
+.................................                                        [100%]
+33 passed in 3.57s
+[PASS] test_host_paths_ratchet_20260925
+[RUN]  cio_action_notify_20260926: tests/test_cio_action_notify_20260926.py tests/test_cio_checkin_only_with_action_20260914.py
+.....                                                                    [100%]
+5 passed in 0.71s
+[PASS] cio_action_notify_20260926
+[RUN]  everything_blocked_20260926: tests/test_everything_blocked_20260926.py
+.....................                                                    [100%]
+21 passed in 0.58s
+[PASS] everything_blocked_20260926
+[RUN]  options_thesis_20260926: tests/test_options_thesis_20260926.py tests/test_options_thesis_lifecycle_20260926.py tests/test_options_identity_memory_20260924.py
+..............................................................           [100%]
+62 passed in 1.63s
+[PASS] options_thesis_20260926
+[RUN]  contradiction_incremental_20260927: tests/test_contradiction_incremental_20260927.py tests/test_research_metadata_contradiction.py
+......                                                                   [100%]
+6 passed in 0.54s
+[PASS] contradiction_incremental_20260927
+[RUN]  thesis_acquisition_containment_20260927: tests/test_thesis_acquisition_containment_20260927.py
+....                                                                     [100%]
+4 passed in 0.55s
+[PASS] thesis_acquisition_containment_20260927
+[RUN]  lane_breaker_unavailable_20260927: tests/test_lane_breaker_unavailable_20260927.py
+....                                                                     [100%]
+4 passed in 0.43s
+[PASS] lane_breaker_unavailable_20260927
+[RUN]  local_llm_compat_20260927: tests/test_local_llm_compat_registered_20260927.py
+..                                                                       [100%]
+2 passed in 0.39s
+[PASS] local_llm_compat_20260927
+[RUN]  symbol_news_curation_20260927: tests/test_symbol_news_curation_20260927.py tests/test_options_thesis_lifecycle_20260926.py
+.................................                                        [100%]
+33 passed in 0.64s
+[PASS] symbol_news_curation_20260927
+[RUN]  news_url_column_20260927: tests/test_news_url_column_20260927.py
+.                                                                        [100%]
+1 passed in 0.34s
+[PASS] news_url_column_20260927
+[RUN]  thesis_evidence_not_circular_20260927: tests/test_thesis_evidence_not_circular_20260927.py
+...                                                                      [100%]
+3 passed in 0.59s
+[PASS] thesis_evidence_not_circular_20260927
+[RUN]  weekend_aware_liquidity_20260927: tests/test_weekend_aware_liquidity_20260927.py
+....                                                                     [100%]
+4 passed in 0.29s
+[PASS] weekend_aware_liquidity_20260927
+[RUN]  fundamentals_feed_20260927: tests/test_fundamentals_feed_20260927.py tests/test_symbol_news_curation_20260927.py tests/test_fundamentals_f3_f5_20260927.py
+...................                                                      [100%]
+19 passed in 0.75s
+[PASS] fundamentals_feed_20260927
+[RUN]  options_economics_20260927: tests/test_options_economics_20260927.py tests/test_thesis_packet_sec_and_stance_retire_20260927.py
+...................                                                      [100%]
+19 passed in 0.53s
+[PASS] options_economics_20260927
+[RUN]  options_wave_b_20260927: tests/test_options_wave_b_20260927.py
+........                                                                 [100%]
+8 passed in 0.30s
+[PASS] options_wave_b_20260927
+[RUN]  sec_filing_documents_20260927: tests/test_sec_filing_documents_20260927.py tests/test_sec_ingest_since_days_20260927.py
+...............                                                          [100%]
+15 passed in 0.53s
+[PASS] sec_filing_documents_20260927
+[RUN]  options_fill_truth_20260927: tests/test_options_fill_truth_20260927.py
+.............                                                            [100%]
+13 passed in 0.39s
+[PASS] options_fill_truth_20260927
+[RUN]  options_broker_gates_20260927: tests/test_options_broker_gates_20260927.py
+..................                                                       [100%]
+18 passed in 68.85s (0:01:08)
+[PASS] options_broker_gates_20260927
+[RUN]  cio_review_retry_20260927: tests/test_cio_review_retry_20260927.py
+......                                                                   [100%]
+6 passed in 0.39s
+[PASS] cio_review_retry_20260927
+[RUN]  cio_packet_derived_ratios_20260927: tests/test_cio_packet_derived_ratios_20260927.py
+...                                                                      [100%]
+3 passed in 0.31s
+[PASS] cio_packet_derived_ratios_20260927
+[RUN]  options_order_authorization_20260927: tests/test_options_order_authorization_20260927.py tests/test_options_broker_gates_20260927.py
+...........................................                              [100%]
+43 passed in 72.37s (0:01:12)
+[PASS] options_order_authorization_20260927
+[RUN]  wave3_lane_dedupe_lock_bp_20260927: tests/test_wave3_lane_dedupe_lock_bp_20260927.py
+....                                                                     [100%]
+4 passed in 0.43s
+[PASS] wave3_lane_dedupe_lock_bp_20260927
+[RUN]  options_queue_eligibility_legacy_pins_20260927: tests/test_options_queue_eligibility_legacy_pins_20260927.py
+.....                                                                    [100%]
+5 passed in 1.93s
+[PASS] options_queue_eligibility_legacy_pins_20260927
+[RUN]  ui_metric_guide_insight_20260927: tests/test_ui_metric_guide.py tests/test_ui_insight.py
+............                                                             [100%]
+12 passed in 0.61s
+[PASS] ui_metric_guide_insight_20260927
+[RUN]  options_chain_truth_20260928: tests/test_option_chain_truth_20260928.py
+.......                                                                  [100%]
+=============================== warnings summary ===============================
+tests/test_option_chain_truth_20260928.py::test_expiration_pins_one_date_and_side_halves
+  /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/.venv/lib/python3.14/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+7 passed, 1 warning in 0.45s
+[PASS] options_chain_truth_20260928
+[RUN]  reentry_entry_alerts_lane_20260928: tests/test_buy_ready_packets_index_20260928.py
+.....                                                                    [100%]
+5 passed in 0.44s
+[PASS] reentry_entry_alerts_lane_20260928
+[RUN]  buy_ready_packet_verdict_20260928: tests/test_buy_ready_packet_verdict_20260928.py
+.........                                                                [100%]
+9 passed in 0.52s
+[PASS] buy_ready_packet_verdict_20260928
+[RUN]  options_lifecycle_inherited_lock_20260928: tests/test_lifecycle_inherited_lock_20260928.py
+....                                                                     [100%]
+4 passed in 0.38s
+[PASS] options_lifecycle_inherited_lock_20260928
+[RUN]  earnings_gate_replay_axti_20260928: tests/test_earnings_gate_replay_axti_20260928.py
+..............                                                           [100%]
+14 passed in 1.49s
+[PASS] earnings_gate_replay_axti_20260928
+[RUN]  options_exposure_earnings_20260928: tests/test_options_exposure_earnings_20260928.py
+.....                                                                    [100%]
+5 passed in 0.38s
+[PASS] options_exposure_earnings_20260928
+[RUN]  options_hedge_recon_yield_labels_20260927: tests/test_options_hedge_recon_yield_labels_20260927.py
+.....                                                                    [100%]
+5 passed in 0.58s
+[PASS] options_hedge_recon_yield_labels_20260927
+[RUN]  options_order_gates_20260927: tests/test_options_order_gates_20260927.py
+....................                                                     [100%]
+20 passed in 2.60s
+[PASS] options_order_gates_20260927
+[RUN]  hermes_web_research_20260926: tests/test_hermes_web_research_20260926.py tests/test_options_thesis_lifecycle_20260926.py tests/test_research_heartbeat_20260914.py
+...................................................................      [100%]
+67 passed in 4.68s
+[PASS] hermes_web_research_20260926
+[RUN]  options_memory_20260926: tests/test_options_memory_projection_20260926.py tests/test_options_thesis_lifecycle_20260926.py tests/test_aec_agent_bus_memory_20260919.py
+.............................................................            [100%]
+61 passed in 1.24s
+[PASS] options_memory_20260926
+[RUN]  chain_iv_fallback_20260926: tests/test_chain_iv_fallback_20260926.py tests/test_options_holdings_funnel.py tests/test_cc_yield_scoring_20260926.py tests/test_truthful_cards_20260926.py tests/test_card_cleanup_20260926.py tests/test_calendar_catalyst_20260926.py tests/test_options_validate_20260926.py tests/test_option_spot_freshness_20260926.py tests/test_iv_history_depth_20260926.py
+............................................................             [100%]
+60 passed in 3.08s
+[PASS] chain_iv_fallback_20260926
+[RUN]  symbol_thesis_enrich_20260926: tests/test_symbol_thesis_enrich_20260926.py tests/test_research_thesis_delta.py tests/test_symbol_thesis_integration.py tests/test_cio_product_reassessment.py
+...........................................................              [100%]
+59 passed in 72.43s (0:01:12)
+[PASS] symbol_thesis_enrich_20260926
+[RUN]  drive_sync_options_export_20260926: tests/test_drive_sync_purge_20260926.py tests/test_options_runtime_export_20260926.py tests/test_options_runtime_export_url_digits_20261007.py
+.......................                                                  [100%]
+23 passed in 1.02s
+[PASS] drive_sync_options_export_20260926
+[RUN]  ws7_belief_wake_20260926: tests/test_ws7_belief_wake_20260926.py
+.......                                                                  [100%]
+7 passed in 0.66s
+[PASS] ws7_belief_wake_20260926
+[RUN]  ci_honesty_ws4_20260926: tests/test_r18_2_production_hardening.py tests/test_advisory_desk_phase3.py tests/test_alpaca_paper_options_executor.py tests/test_dark_contract_guard.py tests/test_options_prime_rubric.py tests/test_p211_restart.py
+........................................................................ [ 48%]
+........................................................................ [ 97%]
+...                                                                      [100%]
+=============================== warnings summary ===============================
+tests/test_dark_contract_guard.py::test_the_gate_is_green_on_this_tree
+tests/test_dark_contract_guard.py::test_a_declaration_that_says_not_installed_is_not_a_caller
+tests/test_dark_contract_guard.py::test_reclassification_lands_in_declared_not_in_new
+  scripts/defense_recommendations.py:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+    "no equity pair qualified (no same-account destination cleared the \$2K-leg rails)")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+147 passed, 3 warnings in 43.05s
+[PASS] ci_honesty_ws4_20260926
+[RUN]  audit_remaining_phases_20260927: tests/test_audit_remaining_phases_20260927.py
+..                                                                       [100%]
+2 passed in 0.34s
+[PASS] audit_remaining_phases_20260927
+[RUN]  audit_rest_20260927: tests/test_audit_rest_20260927.py
+....                                                                     [100%]
+4 passed in 0.42s
+[PASS] audit_rest_20260927
+[RUN]  audit_all_phases_20260927: tests/test_audit_all_phases_20260927.py
+..                                                                       [100%]
+2 passed in 0.33s
+[PASS] audit_all_phases_20260927
+[RUN]  audit_finish_20260927: tests/test_audit_finish_20260927.py
+..                                                                       [100%]
+2 passed in 0.64s
+[PASS] audit_finish_20260927
+[RUN]  momentum_scalp_proposal_contract_20260928: tests/test_momentum_scalp_proposal_contract_20260928.py
+..............                                                           [100%]
+14 passed in 0.68s
+[PASS] momentum_scalp_proposal_contract_20260928
+[RUN]  go_alerts_and_lane_collectors_20260928: tests/test_go_alerts_and_lane_collectors_20260928.py tests/test_screener_go_alerts_delivery_20260914.py tests/test_cio_telegram_stance_gate_20260918.py
+..................................                                       [100%]
+34 passed in 1.07s
+[PASS] go_alerts_and_lane_collectors_20260928
+[RUN]  execution_truth_20260928: tests/test_execution_truth_20260928.py tests/test_quote_selection_contract.py tests/test_portfolio_aggregate_contract.py
+...................................                                      [100%]
+35 passed in 1.26s
+[PASS] execution_truth_20260928
+[RUN]  preopen_window_honesty_20260928: tests/test_preopen_window_honesty_20260928.py
+..........                                                               [100%]
+10 passed in 0.51s
+[PASS] preopen_window_honesty_20260928
+[RUN]  social_inject_source_priority_20260928: tests/test_social_inject_and_source_priority_20260928.py
+......                                                                   [100%]
+6 passed in 0.77s
+[PASS] social_inject_source_priority_20260928
+[RUN]  momentum_scalp_refresh_alarm_20260928: tests/test_momentum_scalp_refresh_alarm_20260928.py tests/test_momentum_scalp_source_health.py
+..........                                                               [100%]
+10 passed in 1.28s
+[PASS] momentum_scalp_refresh_alarm_20260928
+[RUN]  momentum_scalp_lane_refresh_20260928: tests/test_momentum_scalp_lane_refresh_20260928.py
+.........                                                                [100%]
+9 passed in 0.58s
+[PASS] momentum_scalp_lane_refresh_20260928
+[RUN]  lane_registry_inherited_tranche_20260928: tests/test_lane_registry_inherited_tranche_20260928.py tests/test_alarm_fires_reminder_and_supervisor_20260928.py
+.......                                                                  [100%]
+7 passed in 0.53s
+[PASS] lane_registry_inherited_tranche_20260928
+[RUN]  book_map_day_pl_20260928: tests/test_book_map_rows_20260928.py
+......                                                                   [100%]
+6 passed in 0.31s
+[PASS] book_map_day_pl_20260928
+[RUN]  options_proposal_cache_cadence_20260929: tests/test_options_proposal_cache_cadence_20260929.py
+....                                                                     [100%]
+4 passed in 0.32s
+[PASS] options_proposal_cache_cadence_20260929
+[RUN]  cross_asset_decision_intelligence_phase1_20260929: tests/test_cross_asset_decision_intelligence.py
+........................................                                 [100%]
+40 passed in 0.38s
+[PASS] cross_asset_decision_intelligence_phase1_20260929
+[RUN]  cio_desk_observability_20260930: tests/test_cio_observability.py
+.......                                                                  [100%]
+7 passed in 0.31s
+[PASS] cio_desk_observability_20260930
+[RUN]  alert_chrome_stopwords_20260929: tests/test_alert_chrome_stopwords_20260929.py
+....                                                                     [100%]
+4 passed in 0.39s
+[PASS] alert_chrome_stopwords_20260929
+[RUN]  interim_plus_hermes_queue_20260929: tests/test_interim_plus_hermes_queue_20260929.py
+.                                                                        [100%]
+1 passed in 0.30s
+[PASS] interim_plus_hermes_queue_20260929
+[RUN]  operator_watch_research_20260929: tests/test_operator_watch_research_20260929.py
+........                                                                 [100%]
+8 passed in 0.45s
+[PASS] operator_watch_research_20260929
+[RUN]  cross_asset_decision_intel_20260929: tests/test_cross_asset_symbol_decision_object_20260929.py tests/test_security_research_spine_20260929.py tests/test_cadi_spine_hooks_20260929.py tests/test_identity_carriage_20260929.py tests/test_identity_forward_ingestion_pivot_20260929.py tests/test_hermes_last_n_stamp_20260929.py tests/test_spine_multi_producer_lifecycle_20260929.py tests/test_spine_gaps_close_20260929.py
+...............................................                          [100%]
+47 passed in 34.01s
+[PASS] cross_asset_decision_intel_20260929
+[RUN]  exit_cause_txn_scope_20261005: tests/test_exit_cause_txn_scope_20261005.py
+.....                                                                    [100%]
+5 passed in 0.29s
+[PASS] exit_cause_txn_scope_20261005
+[RUN]  maturity_score_stale_20261005: tests/test_maturity_score_latest_stale_20261005.py
+............                                                             [100%]
+12 passed in 0.70s
+[PASS] maturity_score_stale_20261005
+[RUN]  atm_cursor_txn_scope_20261005: tests/test_atm_cursor_txn_scope_20261005.py
+.....                                                                    [100%]
+5 passed in 0.32s
+[PASS] atm_cursor_txn_scope_20261005
+[RUN]  wake_operator_turn_selection_20261005: tests/test_wake_operator_turn_selection_20261005.py
+........                                                                 [100%]
+8 passed in 0.58s
+[PASS] wake_operator_turn_selection_20261005
+[RUN]  scheduler_operations: tests/test_scheduler_operations.py tests/test_n8n_release_rebind.py tests/test_scheduler_launcher_roots.py
+......................................................................   [100%]
+70 passed in 1.41s
+[PASS] scheduler_operations
+[RUN]  N8N_LANE_KIND: tests/test_lane_registry_n8n_kind_20261008.py tests/test_n8n_lane_cutover_20261008.py tests/test_n8n_lane_readiness_20261008.py
+........................................................................ [ 91%]
+.......                                                                  [100%]
+79 passed in 4.88s
+[PASS] N8N_LANE_KIND
+[RUN]  n8n_parallel_20261007: tests/test_approval_reminder_receipt_20261007.py tests/test_approval_reminder_reconcile_20261007.py tests/test_approval_reminder_reconcile_lane_20261007.py tests/test_llm_adr_model_id_20261007.py tests/test_n8n_model_job_20261007.py tests/test_n8n_model_job_operation_20261007.py tests/test_n8n_phase1_dispatch_20261007.py tests/test_notification_outbox_projection_20261008.py tests/test_approval_board_20261008.py tests/test_platform_maintenance_pipeline_20261007.py tests/test_cron_tranche_c_lowrisk_20261007.py tests/test_tranche_b_readiness_20261008.py tests/test_health_tick_20261007.py tests/test_morning_brief_sent_flag_20261007.py tests/test_telegram_ack_hook_20261007.py tests/test_retention_registry_20261007.py tests/test_pgvector_migration_plan_20261008.py tests/test_maturity_score_independent_20261007.py tests/test_n8n_coordination_gateway_20261007.py tests/test_n8n_research_intake_20261008.py tests/test_n8n_coordination_ledger_20261007.py tests/test_n8n_gateway_http_20261007.py tests/test_n8n_lab_watchdog_20261007.py tests/test_n8n_gateway_durable_20261007.py tests/test_n8n_pilot_observations_20261007.py tests/test_n8n_coordination_projection_20261007.py tests/test_n8n_lane_host_conflict_20261007.py tests/test_n8n_pilot_compare_20261007.py tests/test_n8n_pilot_contracts_20261007.py
+........................................................................ [ 31%]
+........................................................................ [ 63%]
+........................................................................ [ 95%]
+..........                                                               [100%]
+226 passed in 20.05s
+[PASS] n8n_parallel_20261007
+[RUN]  N8N_RUN_ROUTE: tests/test_n8n_run_route_20261008.py tests/test_n8n_run_store_20261008.py tests/test_n8n_run_executor_20261008.py tests/test_n8n_run_allowlist_20261008.py tests/test_n8n_gateway_concurrency_20261008.py
+...............................................                          [100%]
+47 passed in 8.52s
+[PASS] N8N_RUN_ROUTE
+[RUN]  n8n_workflow_gen_20261008: tests/test_n8n_workflow_templates_20261008.py tests/test_n8n_cutover_checklist_20261008.py
+...................................................                      [100%]
+51 passed in 1.75s
+[PASS] n8n_workflow_gen_20261008
+[RUN]  N8N_RUN_RELAY: tests/test_n8n_run_relay_20261008.py
+.......................                                                  [100%]
+23 passed in 2.01s
+[PASS] N8N_RUN_RELAY
+[RUN]  N8N_AGENT2_W1: tests/test_n8n_w1_registry_20261008.py
+............                                                             [100%]
+12 passed in 0.59s
+[PASS] N8N_AGENT2_W1
+[RUN]  N8N_AGENT2_W2: tests/test_n8n_w2_registry_20261008.py
+...............................................                          [100%]
+47 passed in 0.43s
+[PASS] N8N_AGENT2_W2
+[RUN]  cron_tranche_b_20261007: tests/test_pipeline_manifest_runner_20261007.py
+..................                                                       [100%]
+18 passed in 5.25s
+[PASS] cron_tranche_b_20261007
+[RUN]  cadence_timer_units_20261008: tests/test_cadence_timer_units_20261008.py
+......                                                                   [100%]
+6 passed in 0.30s
+[PASS] cadence_timer_units_20261008
+[RUN]  n8n_migration_board_20261008: tests/test_n8n_coordination_runs_projection_20261008.py tests/test_n8n_incident_fanin_runs_20261008.py tests/test_n8n_migration_board_20261008.py
+.................                                                        [100%]
+17 passed in 0.72s
+[PASS] n8n_migration_board_20261008
+[RUN]  n8n_observability_gaps_20261008: tests/test_lane_monitor_n8n_rendering_20261008.py tests/test_n8n_incident_fanin_relay_20261008.py tests/test_secret_rotation_schedule_20261008.py
+.................                                                        [100%]
+17 passed in 0.73s
+[PASS] n8n_observability_gaps_20261008
+[RUN]  N8N_MODEL_JOB_SHAPE: tests/test_n8n_model_job_20261007.py tests/test_n8n_model_job_operation_20261007.py tests/test_ops_summary_model_job_live_wiring_20261008.py
+.............................                                            [100%]
+29 passed in 0.90s
+[PASS] N8N_MODEL_JOB_SHAPE
+[RUN]  n8n_w4_routing_20261008: tests/test_llm_routing_policy_20261008.py
+................................................                         [100%]
+48 passed in 1.43s
+[PASS] n8n_w4_routing_20261008
+[RUN]  bridge_executor_hardening_20261009: tests/test_bridge_executor_hardening_20261009.py
+........................                                                 [100%]
+24 passed in 12.43s
+[PASS] bridge_executor_hardening_20261009
+[timing] gates profile=full jobs=8 wall=2373s
+[PASS] docs/INDEX.md matches inventory (MISSING HEADER=136, md=2386, files=3212, duplicate_groups=9, fingerprint=f4769b0ddb50)
+{
+  "ok": true,
+  "mode": "committed_integrity",
+  "mutated": false,
+  "errors": [],
+  "warnings": [],
+  "disk_canonical_source_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+  "disk_release_content_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+  "disk_release_attestation_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+  "disk_status": "production",
+  "disk_schema": "investment_office_release_manifest_v2",
+  "code_report_version": "report_v2_1.5.0"
+}
+{
+  "written": true,
+  "mode": "candidate",
+  "mutated_committed": false,
+  "md": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate/RELEASE_MANIFEST.md",
+  "json": "/home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate/RELEASE_MANIFEST.json",
+  "canonical_source_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
+  "release_content_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
+  "release_attestation_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
+  "manifest_hash": "74983ff892ff11e8652075581bbd519f65ea244c29b84d9edebb4a716d146c2e",
+  "status": "release_candidate",
+  "manifest_schema": "investment_office_release_manifest_v2"
+}
+[RUN]  docs_index_drift
+[PASS] docs_index_drift
+[RUN]  validate_committed_manifest
+[PASS] validate_committed_manifest
+[RUN]  generate_candidate_manifest
+[PASS] generate_candidate_manifest → /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate
+[info] candidate DIFFERS from committed pin (informational; not a substitute for check-committed)
+--- /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/docs/investment-office/RELEASE_MANIFEST.json	2026-10-08 20:41:22.891206156 -0400
++++ /home/johnclaw/tradeai-wt-runtime-n8n-host-recovery-20261008/data/audit/manifest_candidate/RELEASE_MANIFEST.json	2026-10-09 13:40:09.228546803 -0400
+@@ -1,17 +1,17 @@
+ {
+   "manifest_schema": "investment_office_release_manifest_v2",
+-  "status": "production",
+-  "branch": "chore/cio-pin-aa037b73",
+-  "release_content_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "release_attestation_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "remote_main_sha_at_manifest": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "canonical_source_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "origin_main_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "frontend_build_sha": "e7b722b3b0a84baa41dfb202765d7c744faf128e",
+-  "backend_release_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "report_source_sha": "aa037b738bf5792b81b4ff174dda04b62c2ee2d4",
+-  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/aa037b73-main-exact-phase2-20260814-220259",
+-  "deployed_release_name": "aa037b73-main-exact-phase2-20260814-220259",
++  "status": "release_candidate",
++  "branch": "codex/runtime-n8n-host-recovery-20261008",
++  "release_content_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
++  "release_attestation_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
++  "remote_main_sha_at_manifest": "8008bb323ccaa469292c91c6a52125485eb8a073",
++  "canonical_source_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
++  "origin_main_sha": "8008bb323ccaa469292c91c6a52125485eb8a073",
++  "frontend_build_sha": "3.0.0",
++  "backend_release_sha": "377e9b536afc2d9b7a3dde8f5c043066bc5cdfeb",
++  "report_source_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
++  "deployed_release_path": "/home/johnclaw/trade-ai-releases/portfolio-server/377e9b536-main-exact-phase2-20261009-122248",
++  "deployed_release_name": "377e9b536-m
+
+CIO HARDENING CI FAILED: ['scalp_universe_failclosed_20261005']
+...............                                                          [100%]
+15 passed in 3.28s
+[RUN] adversarial: tests/test_cio_phase11_adversarial.py
+[PASS] Phase 11 adversarial suite
+scripts/defense_recommendations.py:1031: SyntaxWarning: "\$" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\$"? A raw string is also an option.
+  "no equity pair qualified (no same-account destination cleared the \$2K-leg rails)")
+uncompilable modules      : 0
+versioned-schema definers : 599
+zero-consumer             : 78
+  inherited (seeded)      : 22
+  declared NO_CONSUMER_REASON: 56
+    of which declare NOT installed: 3
+      · scripts/check_operator_answer_quality.py
+      · scripts/report_slo_burn_rate.py
+      · scripts/set_goal_predicate.py
+  NEW (unexplained)       : 0
+
+  resolved since baseline (8):
+    ✓ scripts/lib/cio_intelligence_outcomes.py
+    ✓ scripts/lib/decision_rationale.py
+    ✓ scripts/lib/hermes_golden_judge.py
+    ✓ scripts/lib/memory_m2_v2.py
+    ✓ scripts/lib/proactive_cio.py
+    ✓ scripts/lib/symbol_thesis_event_wake.py
+    ✓ scripts/lib/tradeai_record_envelope.py
+    ✓ scripts/repair_health_threshold_tuning_noise.py
+line-ending churn: none (0 files examined)
+test host paths: 21 files (baseline 24), new violations: 0
+Data source authority — one source of truth per domain
+==========================================================================
+  domains=52  providers=22  retired=finnhub,fmp,newsapi,polygon
+  operator grants     : providers=22/22  domains=52/52  (schema DataSourceAuthority@v2)
+  writers per store   : {"market_quotes": 1, "symbol_profiles": 1, "yahoo_analyst_targets_history": 1, "news_articles": 1, "ticker_prices": 1, "sector_rs_daily": 1, "market_regime_snapshots": 1, "positions_current": 1, "options_iv_history": 1, "hermes_research_intelligence": 1, "watch_directives": 1, "watch_candidate_events": 1, "private_company_proxies": 1, "ticker_dividend_data": 1, "fred_economic_series": 2, "fundamental_data": 1, "watchlist_agent_results": 1, "agent_debate_log": 2, "ai_reports": 4, "data_gap_registry": 1, "operator_conversation_turns": 1, "intelligence.heartbeat": 1, "intelligence.approval_package": 0, "intelligence.gir_entity": 1, "intelligence.breach": 0, "intelligence.research_index": 1}
+  hub direct reads    : {"market_quotes": 13, "symbol_profiles": 11, "yahoo_analyst_targets_history": 5, "news_articles": 45, "ticker_prices": 0, "sector_rs_daily": 0, "market_regime_snapshots": 3, "options_iv_history": 0, "hermes_research_intelligence": 31, "watch_directives": 11, "watch_candidate_events": 0, "watchlist_agent_results": 46, "agent_debate_log": 9, "ai_reports": 3}
+--------------------------------------------------------------------------
+  findings=0
+stale: none
+
+CIO GATES FAILED: cio_hardening

@@ -1,0 +1,470 @@
+............FFFFFFFFFF.FF.FF                                             [100%]
+=================================== FAILURES ===================================
+_____ test_failed_scalp_cycle_preserves_outputs_and_reports_failure[None] ______
+
+result = None
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_failed_scalp_cycle_preser0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb6bd074050>
+capsys = <_pytest.capture.CaptureFixture object at 0x7eb6bd106a50>
+
+    @pytest.mark.parametrize("result", [None, {}, "unavailable", [None]])
+    def test_failed_scalp_cycle_preserves_outputs_and_reports_failure(result, tmp_path, monkeypatch, capsys):
+        import continuous_runner as cr
+        import run_trade_ai_scalp_live as r
+
+        monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+        for p in (r.state_path(), r.projection_path()):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b'{"prior_observation": true}')
+        before = {p: p.read_bytes() for p in (r.state_path(), r.projection_path())}
+        monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: result)
+>       assert r.main(["--force"]) != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = <function main at 0x7eb6bd0680f0>(['--force'])
+E        +    where <function main at 0x7eb6bd0680f0> = <module 'run_trade_ai_scalp_live' from '/home/johnclaw/tradeai-wt-scalp-health-truth-20261009/scripts/run_trade_ai_scalp_live.py'>.main
+
+tests/test_trade_ai_scalp_5min_20261009.py:201: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[scalp-live] heartbeat ok label=scalp go=0 universe=0 seconds=0
+____ test_failed_scalp_cycle_preserves_outputs_and_reports_failure[result1] ____
+
+result = {}
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_failed_scalp_cycle_preser1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb6bd177710>
+capsys = <_pytest.capture.CaptureFixture object at 0x7eb6bd1ee0d0>
+
+    @pytest.mark.parametrize("result", [None, {}, "unavailable", [None]])
+    def test_failed_scalp_cycle_preserves_outputs_and_reports_failure(result, tmp_path, monkeypatch, capsys):
+        import continuous_runner as cr
+        import run_trade_ai_scalp_live as r
+
+        monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+        for p in (r.state_path(), r.projection_path()):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b'{"prior_observation": true}')
+        before = {p: p.read_bytes() for p in (r.state_path(), r.projection_path())}
+        monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: result)
+>       assert r.main(["--force"]) != 0
+E       AssertionError: assert 0 != 0
+E        +  where 0 = <function main at 0x7eb6bd0680f0>(['--force'])
+E        +    where <function main at 0x7eb6bd0680f0> = <module 'run_trade_ai_scalp_live' from '/home/johnclaw/tradeai-wt-scalp-health-truth-20261009/scripts/run_trade_ai_scalp_live.py'>.main
+
+tests/test_trade_ai_scalp_5min_20261009.py:201: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[scalp-live] heartbeat ok label=scalp go=0 universe=0 seconds=0
+__ test_failed_scalp_cycle_preserves_outputs_and_reports_failure[unavailable] __
+
+result = 'unavailable'
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_failed_scalp_cycle_preser2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb6bd068cb0>
+capsys = <_pytest.capture.CaptureFixture object at 0x7eb6bd1ee710>
+
+    @pytest.mark.parametrize("result", [None, {}, "unavailable", [None]])
+    def test_failed_scalp_cycle_preserves_outputs_and_reports_failure(result, tmp_path, monkeypatch, capsys):
+        import continuous_runner as cr
+        import run_trade_ai_scalp_live as r
+
+        monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+        for p in (r.state_path(), r.projection_path()):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b'{"prior_observation": true}')
+        before = {p: p.read_bytes() for p in (r.state_path(), r.projection_path())}
+        monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: result)
+>       assert r.main(["--force"]) != 0
+               ^^^^^^^^^^^^^^^^^^^
+
+tests/test_trade_ai_scalp_5min_20261009.py:201:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts/run_trade_ai_scalp_live.py:101: in main
+    n = write_projection(scored, datetime.now(ET)) if scored else 0
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+scored = 'unavailable'
+now = datetime.datetime(2026, 10, 9, 12, 34, 42, 720724, tzinfo=zoneinfo.ZoneInfo(key='America/New_York'))
+
+    def write_projection(scored, now: datetime) -> int:
+        rows = [{"symbol": str(t.get("symbol") or "").upper(), "decision": t.get("decision"), "score": t.get("score"),
+                 "float_m": t.get("float_m"), "price": t.get("price"), "setup_class": t.get("setup_class")}
+>               for t in (scored or []) if t.get("symbol")]
+                                           ^^^^^
+E       AttributeError: 'str' object has no attribute 'get'
+
+scripts/run_trade_ai_scalp_live.py:45: AttributeError
+____ test_failed_scalp_cycle_preserves_outputs_and_reports_failure[result3] ____
+
+result = [None]
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_failed_scalp_cycle_preser3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb6bd068ec0>
+capsys = <_pytest.capture.CaptureFixture object at 0x7eb6bd055810>
+
+    @pytest.mark.parametrize("result", [None, {}, "unavailable", [None]])
+    def test_failed_scalp_cycle_preserves_outputs_and_reports_failure(result, tmp_path, monkeypatch, capsys):
+        import continuous_runner as cr
+        import run_trade_ai_scalp_live as r
+
+        monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+        for p in (r.state_path(), r.projection_path()):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b'{"prior_observation": true}')
+        before = {p: p.read_bytes() for p in (r.state_path(), r.projection_path())}
+        monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: result)
+>       assert r.main(["--force"]) != 0
+               ^^^^^^^^^^^^^^^^^^^
+
+tests/test_trade_ai_scalp_5min_20261009.py:201:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+scripts/run_trade_ai_scalp_live.py:101: in main
+    n = write_projection(scored, datetime.now(ET)) if scored else 0
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+scored = [None]
+now = datetime.datetime(2026, 10, 9, 12, 34, 42, 740329, tzinfo=zoneinfo.ZoneInfo(key='America/New_York'))
+
+    def write_projection(scored, now: datetime) -> int:
+        rows = [{"symbol": str(t.get("symbol") or "").upper(), "decision": t.get("decision"), "score": t.get("score"),
+                 "float_m": t.get("float_m"), "price": t.get("price"), "setup_class": t.get("setup_class")}
+>               for t in (scored or []) if t.get("symbol")]
+                                           ^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'get'
+
+scripts/run_trade_ai_scalp_live.py:45: AttributeError
+________ test_completed_empty_scalp_cycle_publishes_known_empty_result _________
+
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_completed_empty_scalp_cyc0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7eb6bd0360d0>
+capsys = <_pytest.capture.CaptureFixture object at 0x7eb6bd0563f0>
+
+    def test_completed_empty_scalp_cycle_publishes_known_empty_result(tmp_path, monkeypatch, capsys):
+        import continuous_runner as cr
+        import run_trade_ai_scalp_live as r
+
+        monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+        r.write_projection([{"symbol": "OLD"}], datetime.now(ET) - timedelta(hours=1))
+        monkeypatch.setattr(cr, "run_live_cycle", lambda *a, **k: [])
+        assert r.main(["--force"]) == 0
+        output = json.loads(r.projection_path().read_text())
+        assert output["schema"] == "TradeAIScalpUniverse@v1"
+>       assert output["rows"] == []
+E       AssertionError: assert [{'symbol': '...': None, ...}] == []
+E
+E         Left contains one more item: {'symbol': 'OLD', 'decision': None, 'score': None, 'float_m': None, ...}
+E         Use -v to get more diff
+
+tests/test_trade_ai_scalp_5min_20261009.py:219: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[scalp-live] heartbeat ok label=scalp go=0 universe=0 seconds=0
+_ test_scalp_projection_requires_current_versioned_aware_observation[bad_field0] _
+
+bad_field = {'as_of': '2026-10-09T13:34:42.773164-04:00'}
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_requires0')
+
+    @pytest.mark.parametrize("bad_field", [
+        {"as_of": "future"}, {"schema": "OtherUniverse@v1"}, {"schema": None},
+        {"rows": "bad"}, {"rows": [None]}, {"as_of": "naive"},
+    ])
+    def test_scalp_projection_requires_current_versioned_aware_observation(bad_field, tmp_path):
+        import scalp_shadow_logger as L
+
+        observation = {"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                       "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}
+        bad_field = dict(bad_field)
+        if bad_field.get("as_of") == "future":
+            bad_field["as_of"] = (datetime.now(ET) + timedelta(hours=1)).isoformat()
+        elif bad_field.get("as_of") == "naive":
+            bad_field["as_of"] = datetime.now().isoformat()
+        observation.update(bad_field)
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps(observation))
+        before = p.read_bytes()
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p)}) == []
+E       AssertionError: assert [('WFF', 12.0...calp', False)] == []
+E
+E         Left contains one more item: ('WFF', 12.0, 3.1, 'shared:trade_ai_scalp', False)
+E         Use -v to get more diff
+
+tests/test_trade_ai_scalp_5min_20261009.py:242: AssertionError
+_ test_scalp_projection_requires_current_versioned_aware_observation[bad_field1] _
+
+bad_field = {'schema': 'OtherUniverse@v1'}
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_requires1')
+
+    @pytest.mark.parametrize("bad_field", [
+        {"as_of": "future"}, {"schema": "OtherUniverse@v1"}, {"schema": None},
+        {"rows": "bad"}, {"rows": [None]}, {"as_of": "naive"},
+    ])
+    def test_scalp_projection_requires_current_versioned_aware_observation(bad_field, tmp_path):
+        import scalp_shadow_logger as L
+
+        observation = {"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                       "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}
+        bad_field = dict(bad_field)
+        if bad_field.get("as_of") == "future":
+            bad_field["as_of"] = (datetime.now(ET) + timedelta(hours=1)).isoformat()
+        elif bad_field.get("as_of") == "naive":
+            bad_field["as_of"] = datetime.now().isoformat()
+        observation.update(bad_field)
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps(observation))
+        before = p.read_bytes()
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p)}) == []
+E       AssertionError: assert [('WFF', 12.0...calp', False)] == []
+E
+E         Left contains one more item: ('WFF', 12.0, 3.1, 'shared:trade_ai_scalp', False)
+E         Use -v to get more diff
+
+tests/test_trade_ai_scalp_5min_20261009.py:242: AssertionError
+_ test_scalp_projection_requires_current_versioned_aware_observation[bad_field2] _
+
+bad_field = {'schema': None}
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_requires2')
+
+    @pytest.mark.parametrize("bad_field", [
+        {"as_of": "future"}, {"schema": "OtherUniverse@v1"}, {"schema": None},
+        {"rows": "bad"}, {"rows": [None]}, {"as_of": "naive"},
+    ])
+    def test_scalp_projection_requires_current_versioned_aware_observation(bad_field, tmp_path):
+        import scalp_shadow_logger as L
+
+        observation = {"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                       "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}
+        bad_field = dict(bad_field)
+        if bad_field.get("as_of") == "future":
+            bad_field["as_of"] = (datetime.now(ET) + timedelta(hours=1)).isoformat()
+        elif bad_field.get("as_of") == "naive":
+            bad_field["as_of"] = datetime.now().isoformat()
+        observation.update(bad_field)
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps(observation))
+        before = p.read_bytes()
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p)}) == []
+E       AssertionError: assert [('WFF', 12.0...calp', False)] == []
+E
+E         Left contains one more item: ('WFF', 12.0, 3.1, 'shared:trade_ai_scalp', False)
+E         Use -v to get more diff
+
+tests/test_trade_ai_scalp_5min_20261009.py:242: AssertionError
+_ test_scalp_projection_requires_current_versioned_aware_observation[bad_field3] _
+
+bad_field = {'rows': 'bad'}
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_requires3')
+
+    @pytest.mark.parametrize("bad_field", [
+        {"as_of": "future"}, {"schema": "OtherUniverse@v1"}, {"schema": None},
+        {"rows": "bad"}, {"rows": [None]}, {"as_of": "naive"},
+    ])
+    def test_scalp_projection_requires_current_versioned_aware_observation(bad_field, tmp_path):
+        import scalp_shadow_logger as L
+
+        observation = {"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                       "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}
+        bad_field = dict(bad_field)
+        if bad_field.get("as_of") == "future":
+            bad_field["as_of"] = (datetime.now(ET) + timedelta(hours=1)).isoformat()
+        elif bad_field.get("as_of") == "naive":
+            bad_field["as_of"] = datetime.now().isoformat()
+        observation.update(bad_field)
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps(observation))
+        before = p.read_bytes()
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p)}) == []
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_trade_ai_scalp_5min_20261009.py:242:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sf = {'scalp_projection_path': '/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_requires3/universe.json'}
+
+    def scalp_projection_rows(sf: dict) -> list[tuple]:
+        """Trade-AI's 5-minute RTH scalp universe (run_trade_ai_scalp_live → scalp_universe_latest.json): every symbol
+        its Finviz scalp screeners returned this cycle, with float/price. Used only while fresh."""
+        path = sf.get("scalp_projection_path")
+        if not path:
+            return []
+        import json as _json
+        from datetime import datetime as _dt, timezone as _tz
+
+        p = Path(os.path.expanduser(str(path)))
+        try:
+            d = _json.loads(p.read_text(encoding="utf-8"))
+            age_min = (_dt.now(_tz.utc) - _dt.fromisoformat(str(d["as_of"]))).total_seconds() / 60
+        except Exception:  # noqa: BLE001 — absent/unreadable projection adds nothing
+            return []
+        if age_min > float(sf.get("scalp_projection_max_age_min") or 15):
+            return []
+        skip = set(sf.get("trade_ai_exclude_setup_classes") or [])
+        return [(r["symbol"], r.get("float_m"), r.get("price"), "shared:trade_ai_scalp", False)
+>               for r in d.get("rows") or [] if r.get("symbol") and r.get("setup_class") not in skip]
+                                                ^^^^^
+E       AttributeError: 'str' object has no attribute 'get'
+
+scripts/scalp_shadow_logger.py:324: AttributeError
+_ test_scalp_projection_requires_current_versioned_aware_observation[bad_field4] _
+
+bad_field = {'rows': [None]}
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_requires4')
+
+    @pytest.mark.parametrize("bad_field", [
+        {"as_of": "future"}, {"schema": "OtherUniverse@v1"}, {"schema": None},
+        {"rows": "bad"}, {"rows": [None]}, {"as_of": "naive"},
+    ])
+    def test_scalp_projection_requires_current_versioned_aware_observation(bad_field, tmp_path):
+        import scalp_shadow_logger as L
+
+        observation = {"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                       "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}
+        bad_field = dict(bad_field)
+        if bad_field.get("as_of") == "future":
+            bad_field["as_of"] = (datetime.now(ET) + timedelta(hours=1)).isoformat()
+        elif bad_field.get("as_of") == "naive":
+            bad_field["as_of"] = datetime.now().isoformat()
+        observation.update(bad_field)
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps(observation))
+        before = p.read_bytes()
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p)}) == []
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_trade_ai_scalp_5min_20261009.py:242:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sf = {'scalp_projection_path': '/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_requires4/universe.json'}
+
+    def scalp_projection_rows(sf: dict) -> list[tuple]:
+        """Trade-AI's 5-minute RTH scalp universe (run_trade_ai_scalp_live → scalp_universe_latest.json): every symbol
+        its Finviz scalp screeners returned this cycle, with float/price. Used only while fresh."""
+        path = sf.get("scalp_projection_path")
+        if not path:
+            return []
+        import json as _json
+        from datetime import datetime as _dt, timezone as _tz
+
+        p = Path(os.path.expanduser(str(path)))
+        try:
+            d = _json.loads(p.read_text(encoding="utf-8"))
+            age_min = (_dt.now(_tz.utc) - _dt.fromisoformat(str(d["as_of"]))).total_seconds() / 60
+        except Exception:  # noqa: BLE001 — absent/unreadable projection adds nothing
+            return []
+        if age_min > float(sf.get("scalp_projection_max_age_min") or 15):
+            return []
+        skip = set(sf.get("trade_ai_exclude_setup_classes") or [])
+        return [(r["symbol"], r.get("float_m"), r.get("price"), "shared:trade_ai_scalp", False)
+>               for r in d.get("rows") or [] if r.get("symbol") and r.get("setup_class") not in skip]
+                                                ^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'get'
+
+scripts/scalp_shadow_logger.py:324: AttributeError
+______ test_scalp_projection_invalid_freshness_contract_is_unproven[nan] _______
+
+max_age = nan
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_invalid_0')
+
+    @pytest.mark.parametrize("max_age", [float("nan"), float("inf"), -1, True, "bad"])
+    def test_scalp_projection_invalid_freshness_contract_is_unproven(max_age, tmp_path):
+        import scalp_shadow_logger as L
+
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps({"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                                 "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}))
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p), "scalp_projection_max_age_min": max_age}) == []
+E       AssertionError: assert [('WFF', 12.0...calp', False)] == []
+E
+E         Left contains one more item: ('WFF', 12.0, 3.1, 'shared:trade_ai_scalp', False)
+E         Use -v to get more diff
+
+tests/test_trade_ai_scalp_5min_20261009.py:253: AssertionError
+______ test_scalp_projection_invalid_freshness_contract_is_unproven[inf] _______
+
+max_age = inf
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_invalid_1')
+
+    @pytest.mark.parametrize("max_age", [float("nan"), float("inf"), -1, True, "bad"])
+    def test_scalp_projection_invalid_freshness_contract_is_unproven(max_age, tmp_path):
+        import scalp_shadow_logger as L
+
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps({"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                                 "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}))
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p), "scalp_projection_max_age_min": max_age}) == []
+E       AssertionError: assert [('WFF', 12.0...calp', False)] == []
+E
+E         Left contains one more item: ('WFF', 12.0, 3.1, 'shared:trade_ai_scalp', False)
+E         Use -v to get more diff
+
+tests/test_trade_ai_scalp_5min_20261009.py:253: AssertionError
+______ test_scalp_projection_invalid_freshness_contract_is_unproven[True] ______
+
+max_age = True
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_invalid_3')
+
+    @pytest.mark.parametrize("max_age", [float("nan"), float("inf"), -1, True, "bad"])
+    def test_scalp_projection_invalid_freshness_contract_is_unproven(max_age, tmp_path):
+        import scalp_shadow_logger as L
+
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps({"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                                 "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}))
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p), "scalp_projection_max_age_min": max_age}) == []
+E       AssertionError: assert [('WFF', 12.0...calp', False)] == []
+E
+E         Left contains one more item: ('WFF', 12.0, 3.1, 'shared:trade_ai_scalp', False)
+E         Use -v to get more diff
+
+tests/test_trade_ai_scalp_5min_20261009.py:253: AssertionError
+______ test_scalp_projection_invalid_freshness_contract_is_unproven[bad] _______
+
+max_age = 'bad'
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_invalid_4')
+
+    @pytest.mark.parametrize("max_age", [float("nan"), float("inf"), -1, True, "bad"])
+    def test_scalp_projection_invalid_freshness_contract_is_unproven(max_age, tmp_path):
+        import scalp_shadow_logger as L
+
+        p = tmp_path / "universe.json"
+        p.write_text(json.dumps({"schema": "TradeAIScalpUniverse@v1", "as_of": datetime.now(ET).isoformat(),
+                                 "rows": [{"symbol": "WFF", "price": 3.1, "float_m": 12.0}]}))
+>       assert L.scalp_projection_rows({"scalp_projection_path": str(p), "scalp_projection_max_age_min": max_age}) == []
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_trade_ai_scalp_5min_20261009.py:253:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+sf = {'scalp_projection_path': '/tmp/pytest-of-johnclaw/pytest-127412/test_scalp_projection_invalid_4/universe.json', 'scalp_projection_max_age_min': 'bad'}
+
+    def scalp_projection_rows(sf: dict) -> list[tuple]:
+        """Trade-AI's 5-minute RTH scalp universe (run_trade_ai_scalp_live → scalp_universe_latest.json): every symbol
+        its Finviz scalp screeners returned this cycle, with float/price. Used only while fresh."""
+        path = sf.get("scalp_projection_path")
+        if not path:
+            return []
+        import json as _json
+        from datetime import datetime as _dt, timezone as _tz
+
+        p = Path(os.path.expanduser(str(path)))
+        try:
+            d = _json.loads(p.read_text(encoding="utf-8"))
+            age_min = (_dt.now(_tz.utc) - _dt.fromisoformat(str(d["as_of"]))).total_seconds() / 60
+        except Exception:  # noqa: BLE001 — absent/unreadable projection adds nothing
+            return []
+>       if age_min > float(sf.get("scalp_projection_max_age_min") or 15):
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: could not convert string to float: 'bad'
+
+scripts/scalp_shadow_logger.py:320: ValueError
+=========================== short test summary info ============================
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_failed_scalp_cycle_preserves_outputs_and_reports_failure[None]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_failed_scalp_cycle_preserves_outputs_and_reports_failure[result1]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_failed_scalp_cycle_preserves_outputs_and_reports_failure[unavailable]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_failed_scalp_cycle_preserves_outputs_and_reports_failure[result3]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_completed_empty_scalp_cycle_publishes_known_empty_result
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_requires_current_versioned_aware_observation[bad_field0]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_requires_current_versioned_aware_observation[bad_field1]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_requires_current_versioned_aware_observation[bad_field2]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_requires_current_versioned_aware_observation[bad_field3]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_requires_current_versioned_aware_observation[bad_field4]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_invalid_freshness_contract_is_unproven[nan]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_invalid_freshness_contract_is_unproven[inf]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_invalid_freshness_contract_is_unproven[True]
+FAILED tests/test_trade_ai_scalp_5min_20261009.py::test_scalp_projection_invalid_freshness_contract_is_unproven[bad]
+14 failed, 14 passed in 1.94s

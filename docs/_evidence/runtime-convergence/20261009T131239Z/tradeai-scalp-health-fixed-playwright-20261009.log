@@ -1,0 +1,15 @@
+
+Running 7 tests using 1 worker
+
+
+(node:1506657) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:28:1 › loading alerts have an unknown count until the API is measured
+[2/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › missing decisions cannot become a confirmed zero
+[3/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decisions cannot become a confirmed zero
+[4/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:44:3 › invalid decision row cannot become a confirmed zero
+[5/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:53:1 › failed alert API is unavailable, not an empty session
+[6/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:61:1 › a measured empty alert response can show zero
+[7/7] [chromium] › e2e/active-trader-fires-truth.spec.ts:68:1 › failed refetch labels retained sent alerts as stale
+  7 passed (5.2s)

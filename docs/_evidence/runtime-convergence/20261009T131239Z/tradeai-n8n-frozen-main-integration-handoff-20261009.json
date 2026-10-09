@@ -1,0 +1,184 @@
+{
+  "schema": "N8nFrozenMainSourceIntegrationHandoff@v1",
+  "evidence_class": "SOURCE_ONLY/TEST_ONLY",
+  "measured_at": "2026-10-09T18:25:09.219289+00:00",
+  "base_sha": "3e76210332038e5c8c663e6e77660c49e5276ace",
+  "integrated_main_sha": "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf",
+  "head_sha": "8c72ea5e8cff77984670f18f373a5a9817519701",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-main-governance-integration-20261009",
+  "branch": "wt/n8n-main-governance-integration-20261009",
+  "commits": [
+    "8c72ea5e8cff77984670f18f373a5a9817519701 test(bridge): prove explicit fallback and current provider recovery",
+    "97d085b1e3f6282f06bf08cd2565b52f9519e4fd fix: refuse malformed n8n output and separate activation authority",
+    "a907be57e768e3cbc063568e07ab2719a2c704db Merge frozen main cb851ce8e with strict routing controls retained",
+    "022676a6824dc40132d45ea3fabbf8f789da58e4 Merge main d7ec9ac13 while preserving strict fallback and scheduler gates",
+    "cb851ce8ef66aa5d1a45dbe96fd0a9ef805a78cf test(scalp): keep the universe fail-closed tests hermetic (shared feeds off) (#1568)",
+    "8008bb323ccaa469292c91c6a52125485eb8a073 fix: nightly rollup payload recursion (70 days silent failure) + fused_signal embedding text (#1566)",
+    "848fdf8ff93e3618c528d3e6bb62664e8571d93e ci: sharded full suite on PRs + tree-attested promote (flagged off) (#1556)",
+    "eefa32299657d30aeaf6513876748b936ab38e63 n8n W4: name unknown health health_unknown_routed (#1562)",
+    "d7ec9ac135250102d8997458c0140912746713d0 test(n8n): de-flake gateway concurrency and executor flock tests (#1559)",
+    "a66944ed77e53e01bc7197ed037f942e8b23450c feat(bridge): n8n Agent preconditions P4/P5/P6/P21 + n8n routing Grok->ChatGPT->DeepSeek (#1555)",
+    "861d417d3a6f630eec5dbe4c4d9f0495f38d78bc feat(n8n): Agent-gate governance controls P16 attribution, P17 registry-first, P18 drift, P20 agent registry (#1554)"
+  ],
+  "production_delta_vs_frozen_main": [
+    "apps/command-center-v3/src/components/tradeai/ActiveTraderFiresStrip.tsx",
+    "config/lane_registry.json",
+    "linux_launchers/run_lookthrough.sh",
+    "linux_launchers/run_pg_backup.sh",
+    "linux_launchers/run_portfolio.sh",
+    "linux_launchers/run_portfolio_monthly.sh",
+    "linux_launchers/run_portfolio_weekly.sh",
+    "linux_launchers/run_price_cache.sh",
+    "scripts/check_n8n_activation_grants.py",
+    "scripts/lib/bridge_agent_preconditions.py",
+    "scripts/lib/cio_governed_model_bridge.py",
+    "scripts/lib/governed_research_producer.py",
+    "scripts/lib/lane_registry.py",
+    "scripts/n8n_run_relay.py",
+    "scripts/n8n_workflow_templates.py",
+    "scripts/ops/run_cross_asset_historical_replay.py",
+    "scripts/pipelines/cutover/_cutover.py",
+    "scripts/run_trade_ai_scalp_live.py",
+    "scripts/scalp_shadow_logger.py"
+  ],
+  "production_sha256": {
+    "apps/command-center-v3/src/components/tradeai/ActiveTraderFiresStrip.tsx": "a512df8cb581f5f2619f1ca2b1de3ae0c298ccbb2cc3d7e6e9f12f8aadac4723",
+    "config/lane_registry.json": "3709b570cfca6a2651988b7fc35c2b9c3788bc13e3b755b02d4ffdd41fef912b",
+    "linux_launchers/run_lookthrough.sh": "b5a5c1d4f298bee3147f65a31fb093d92a6c4052aadb161c367dac6f525d859c",
+    "linux_launchers/run_pg_backup.sh": "ae9b5811d34d1598addec5ac003a833957b1b64611631ef1f5b8cfef5f329513",
+    "linux_launchers/run_portfolio.sh": "1542d875dd99a05c05ab9be9806af68f1bd6ffa631fc9b12ef9a1668a73e995f",
+    "linux_launchers/run_portfolio_monthly.sh": "528ab699c5b32be0459c16edda51dafa372baa576c4a208cdc374ba094326b23",
+    "linux_launchers/run_portfolio_weekly.sh": "49b2a7b5fcce3369709bd1ee355e8017990641407494f0ece05c1d1d6dc06764",
+    "linux_launchers/run_price_cache.sh": "203d308c8e5437db5a4859055e55800c21dbfd1eebc3f475b4b5f2942de6e7d2",
+    "scripts/check_n8n_activation_grants.py": "6c5c0b3bbd2e2ccfba56e60bf775c96879042b916df20cd363fe0195c04c154d",
+    "scripts/lib/bridge_agent_preconditions.py": "f7b22b70a0ea0b44829451c433428e3ad8cc0234bd1433bd0f4b736af8a1f5a8",
+    "scripts/lib/cio_governed_model_bridge.py": "48a9cb2c3d425f07df09863244f88e11ca1b8a137cab37f90d2d25d012c83596",
+    "scripts/lib/governed_research_producer.py": "ef2d61ec5a29bd0d79ea3612e9fb47c5312f1201398acf4a960ddbe5b864459d",
+    "scripts/lib/lane_registry.py": "64ba9dea5584def46132699709c9ad5e7561eda697bbc1dccefe3a50750f5ea4",
+    "scripts/n8n_run_relay.py": "1dc8a8e2757166a962d8d032fd34a76c7253100b290a20843cef94a4822f65bc",
+    "scripts/n8n_workflow_templates.py": "c18f274f1f155b0c93d6f886fd242ee1cf819c5fea76c094c84b2c3a80adb345",
+    "scripts/ops/run_cross_asset_historical_replay.py": "1d33afe1cc31fdfd43ab0702dc17557c64bf7066e15015f61ecddcfc51fc2f57",
+    "scripts/pipelines/cutover/_cutover.py": "18caff9f1e85925415239a93b27140939337e3d161d43dfa49e3b78c3e561b39",
+    "scripts/run_trade_ai_scalp_live.py": "c1dbead1b060a2ba75b40d38f8952da2fcd3ee99b7c0ccb8e3c092698e8b3af3",
+    "scripts/scalp_shadow_logger.py": "ddb871f407b55f3c235c309902dc21fcf782f9c79a677b45475887cd40613e33"
+  },
+  "ast_preservation": {
+    "all_original_gateway_assertions_preserved": true,
+    "gateway_added_assertions": 3,
+    "original_flock_function_ast_exact": true,
+    "incoming_ops_and_preconditions_assertions_preserved": true
+  },
+  "strict_thresholds": {
+    "client_mean_s": 0.25,
+    "kernel_lock_acquire_release_us": 50,
+    "socket_barrier_join_timeout_s": 10
+  },
+  "n8n_process_authority_metadata": {
+    "n8n_material_digest_draft": {
+      "fallback_allowed": false,
+      "tools_allowed": false,
+      "advisory_only": true,
+      "output_schema_id": "material_change_digest_draft/v1",
+      "lane_policy": "deepseek_only"
+    },
+    "n8n_ops_summary_draft": {
+      "fallback_allowed": false,
+      "tools_allowed": false,
+      "advisory_only": true,
+      "output_schema_id": "ops_summary_draft/v1",
+      "lane_policy": "deepseek_only"
+    }
+  },
+  "logs": {
+    "transport_prior": {
+      "path": "/tmp/tradeai-n8n-transport-prior-negative-20261009.log",
+      "result": "9FAIL/1PASS; beforetransportguard",
+      "sha256": "4a84c36331be36f1ce32ee45e62372f648b243c7ba65b83e263dd054c45c52fb"
+    },
+    "transport_fixed": {
+      "path": "/tmp/tradeai-n8n-transport-fixed-negative-20261009.log",
+      "result": "10PASS",
+      "sha256": "dcc6f186b79ffdcb8187d1fdf805703ee7721f97aa3324ab2c824b4c59ca5d3f"
+    },
+    "initial_loopback_tooling_and_ops_gap": {
+      "path": "/tmp/tradeai-n8n-integration-routing-regression-initial-20261009.log",
+      "result": "73PASS/18FAIL;16socketEPERM+2opsfixtureauthoritygaps; DBattemptsandboxblocked",
+      "sha256": "4ff4239409213a5fb0c4d29bde0ea1aa3cc14b39decc2f107156099eb306f4df"
+    },
+    "d7_bridge_routing_ops": {
+      "path": "/tmp/tradeai-n8n-integration-routing-regression-approved-20261009.log",
+      "result": "91PASS15.37s",
+      "sha256": "61de9090b2fa42416674f3d3edd237ab069f59d9dd976131c43fd3a61469185a"
+    },
+    "strict_n8n_route": {
+      "path": "/tmp/tradeai-n8n-integration-strict-route-gate-20261009.log",
+      "result": "47PASS8.34s; identicalperformanceceilings",
+      "sha256": "016b91ea209f4138cefce11ceda81d8c8a8160951db3dbad7700f3020f4ea80a"
+    },
+    "governance_and_lane_imports": {
+      "path": "/tmp/tradeai-n8n-integration-governance-fixtures-20261009.log",
+      "result": "81PASS2.26s",
+      "sha256": "6c4d20f48855fb0a6c9822e420527852f002b8530cde5494c148c4b72186ab2a"
+    },
+    "cb_new_families": {
+      "path": "/tmp/tradeai-n8n-integration-cb-new-families-20261009.log",
+      "result": "96PASS3.53s",
+      "sha256": "e908233cc727a13fe1fe1ba18d4d4a0e13e9a897a4e127b96a80ebcf19989bfd"
+    },
+    "integration_fixture_prior": {
+      "path": "/tmp/tradeai-n8n-integration-final-routing-fixture-mismatch-prior-20261009.log",
+      "result": "157PASS/3FAIL16.44s; malformedpositivefixturesnotproductionregression",
+      "sha256": "e90ce73a950036d3499e96cd77028bd034ef051f7d314558582588a3201c73d7"
+    },
+    "integration_fixed": {
+      "path": "/tmp/tradeai-n8n-integration-final-routing-guardrails-fixed-20261009.log",
+      "result": "160PASS16.36s",
+      "sha256": "025a9e1388ec6009504f9ead79bb2970fb6140eb04a20503d61a42435036ed17"
+    },
+    "peer_output_activation_prior": {
+      "path": "/tmp/tradeai-incoming-guardrail-negative-prior-20261009.log",
+      "result": "9FAIL/6PASS/50deselected",
+      "sha256": "1150cd4d0d6303059e2109660634dda61514bc73dacda10966398e82861f470c"
+    },
+    "peer_output_activation_fixed": {
+      "path": "/tmp/tradeai-incoming-guardrail-final-tests-20261009.log",
+      "result": "65PASS0.94s",
+      "sha256": "63372f0f2be251f85f30e5a244e362e68416146eb59c9310b0871b46db3fa6e3"
+    }
+  },
+  "checks": [
+    "Ruff9ownedPythonpathsPASS",
+    "nativeendingcheckPASS(0CRfilesexamined;rawbaselinecheckalsoPASS)",
+    "gitdiffcb--checkPASS",
+    "nativecommitsecretchecksPASS",
+    "freshsourcehashes+originalassertASTchecksPASS"
+  ],
+  "corrections": [
+    "ProcessfallbackexplicitTrue requiredfortransportalternates;false/missing/non-bool failclosedbeforepaidreservation/provider",
+    "Alternate mustqualifyhealthy throughcurrentattributablehealthcontract; UNKNOWN cannotserve",
+    "Missing/empty/malformedn8nchoices refuse typed beforeoutput_validatedclaim",
+    "Importgrantattributionseparatedfromactivationtimestampauthorization",
+    "Originalgatewayperformanceassertions/timeouts and realfcntlfixture retained, incomingdurableuniquenessassertionsadded",
+    "Positivefixtures explicitlygrantfallback and currentproviderproof atcanonicalraw+normalizedboundaries; alloldpositiveassertionsretained",
+    "Frozenupstreampureuniversetestfixture disablesonlytest-localsharedfeeds; no productionuniverse/scoring/riskchange"
+  ],
+  "index": "REGEN_PENDING: exactcbmerge nativeMERGE-REGENERATE keptours; parentownsINDEXlease andwillregenerateafterFF. NochildINDEXwrite.",
+  "lease": {
+    "released": true,
+    "lease_id": "3569041c-d33b-45db-9b75-aa47ccef4481",
+    "session_id": "220aad1c-e053-4269-ae0e-81f209a0792c",
+    "earlier": "Original4path+opsleasesexpired duringapprovaltimegap, releasedownstale and reacquired9paths natively before peercherrypick. No override."
+  },
+  "readiness": "READY_FOR_PARENT_FAST_FORWARD_AND_REGEN_THEN_FINAL_CANONICAL_ACCEPTANCE; notremote/publication/deploymentapproval",
+  "remaining": [
+    "Rootfinalcanonicalfullallregisteredgatesonregeneratedfinalcandidate",
+    "ParentSOURCEevidence/checkpoint/PRexactheadpublicationflow",
+    "AGENTS3.0.0ACTIVEheadingstillhasawaiting/untilthen2.0.1stalestatusprose; owneronlycorrection"
+  ],
+  "limits": [
+    "No remote push/merge/deploy, scheduler/hostchanges,provider/LLM/broker/sendcalls orcredentialreadsbychild",
+    "Allmodelproviderexercisessynthetic/injected; no usermodelselection",
+    "Allnewmainconfigurationmetadata/retention/CIchangesretained asoperator-reviewedupstream; tree-attested promoteflagdefaultsOFF",
+    "ProductionsourceproofdoesnotmeanRuntimeLIVEacceptance. Priorroot36 failure retained; noqualified-passclaim"
+  ]
+}

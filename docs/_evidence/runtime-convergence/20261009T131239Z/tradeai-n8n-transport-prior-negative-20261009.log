@@ -1,0 +1,361 @@
+FFFFFFFFF.                                                               [100%]
+=================================== FAILURES ===================================
+___ test_transport_failover_cannot_bypass_process_fallback_authority[False] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3db26ea0>
+fallback_allowed = False
+
+    @pytest.mark.parametrize("fallback_allowed", [False, None, 1])
+    def test_transport_failover_cannot_bypass_process_fallback_authority(monkeypatch, fallback_allowed):
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        if fallback_allowed is None:
+            row.pop("fallback_allowed")
+        else:
+            row["fallback_allowed"] = fallback_allowed
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        monkeypatch.setattr(bridge, "read_health_snapshot", lambda _: {"lanes": {"deepseek": "healthy"}})
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:708: AssertionError
+____ test_transport_failover_cannot_bypass_process_fallback_authority[None] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3db26b10>
+fallback_allowed = None
+
+    @pytest.mark.parametrize("fallback_allowed", [False, None, 1])
+    def test_transport_failover_cannot_bypass_process_fallback_authority(monkeypatch, fallback_allowed):
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        if fallback_allowed is None:
+            row.pop("fallback_allowed")
+        else:
+            row["fallback_allowed"] = fallback_allowed
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        monkeypatch.setattr(bridge, "read_health_snapshot", lambda _: {"lanes": {"deepseek": "healthy"}})
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:708: AssertionError
+_____ test_transport_failover_cannot_bypass_process_fallback_authority[1] ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3d5ee7b0>
+fallback_allowed = 1
+
+    @pytest.mark.parametrize("fallback_allowed", [False, None, 1])
+    def test_transport_failover_cannot_bypass_process_fallback_authority(monkeypatch, fallback_allowed):
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        if fallback_allowed is None:
+            row.pop("fallback_allowed")
+        else:
+            row["fallback_allowed"] = fallback_allowed
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        monkeypatch.setattr(bridge, "read_health_snapshot", lambda _: {"lanes": {"deepseek": "healthy"}})
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:708: AssertionError
+_ test_transport_failover_requires_current_attributable_alternate_health[absent] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3d560270>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128967/test_transport_failover_requir0')
+proof = 'absent'
+
+    @pytest.mark.parametrize("proof", ["absent", "global_only", "future", "stale", "unattributable", "naive"])
+    def test_transport_failover_requires_current_attributable_alternate_health(monkeypatch, tmp_path, proof):
+        from datetime import datetime, timedelta, timezone
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        row["fallback_allowed"] = True  # explicitly granted fixture only; real registry stays unchanged
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        if proof != "absent":
+            health = _fresh_recovered_health("deepseek")
+            if proof == "global_only":
+                health["findings"] = []
+            elif proof == "future":
+                health["checked_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            elif proof == "stale":
+                health["checked_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+            elif proof == "unattributable":
+                health["findings"][0]["lane"] = "other_deepseek_audit"
+            elif proof == "naive":
+                health["checked_at"] = datetime.now().isoformat()
+            path = tmp_path / "transport-health.json"
+            path.write_text(json.dumps(health))
+            monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:743: AssertionError
+_ test_transport_failover_requires_current_attributable_alternate_health[global_only] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3d560af0>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128967/test_transport_failover_requir1')
+proof = 'global_only'
+
+    @pytest.mark.parametrize("proof", ["absent", "global_only", "future", "stale", "unattributable", "naive"])
+    def test_transport_failover_requires_current_attributable_alternate_health(monkeypatch, tmp_path, proof):
+        from datetime import datetime, timedelta, timezone
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        row["fallback_allowed"] = True  # explicitly granted fixture only; real registry stays unchanged
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        if proof != "absent":
+            health = _fresh_recovered_health("deepseek")
+            if proof == "global_only":
+                health["findings"] = []
+            elif proof == "future":
+                health["checked_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            elif proof == "stale":
+                health["checked_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+            elif proof == "unattributable":
+                health["findings"][0]["lane"] = "other_deepseek_audit"
+            elif proof == "naive":
+                health["checked_at"] = datetime.now().isoformat()
+            path = tmp_path / "transport-health.json"
+            path.write_text(json.dumps(health))
+            monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:743: AssertionError
+_ test_transport_failover_requires_current_attributable_alternate_health[future] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3d445a50>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128967/test_transport_failover_requir2')
+proof = 'future'
+
+    @pytest.mark.parametrize("proof", ["absent", "global_only", "future", "stale", "unattributable", "naive"])
+    def test_transport_failover_requires_current_attributable_alternate_health(monkeypatch, tmp_path, proof):
+        from datetime import datetime, timedelta, timezone
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        row["fallback_allowed"] = True  # explicitly granted fixture only; real registry stays unchanged
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        if proof != "absent":
+            health = _fresh_recovered_health("deepseek")
+            if proof == "global_only":
+                health["findings"] = []
+            elif proof == "future":
+                health["checked_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            elif proof == "stale":
+                health["checked_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+            elif proof == "unattributable":
+                health["findings"][0]["lane"] = "other_deepseek_audit"
+            elif proof == "naive":
+                health["checked_at"] = datetime.now().isoformat()
+            path = tmp_path / "transport-health.json"
+            path.write_text(json.dumps(health))
+            monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:743: AssertionError
+_ test_transport_failover_requires_current_attributable_alternate_health[stale] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3d447850>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128967/test_transport_failover_requir3')
+proof = 'stale'
+
+    @pytest.mark.parametrize("proof", ["absent", "global_only", "future", "stale", "unattributable", "naive"])
+    def test_transport_failover_requires_current_attributable_alternate_health(monkeypatch, tmp_path, proof):
+        from datetime import datetime, timedelta, timezone
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        row["fallback_allowed"] = True  # explicitly granted fixture only; real registry stays unchanged
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        if proof != "absent":
+            health = _fresh_recovered_health("deepseek")
+            if proof == "global_only":
+                health["findings"] = []
+            elif proof == "future":
+                health["checked_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            elif proof == "stale":
+                health["checked_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+            elif proof == "unattributable":
+                health["findings"][0]["lane"] = "other_deepseek_audit"
+            elif proof == "naive":
+                health["checked_at"] = datetime.now().isoformat()
+            path = tmp_path / "transport-health.json"
+            path.write_text(json.dumps(health))
+            monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:743: AssertionError
+_ test_transport_failover_requires_current_attributable_alternate_health[unattributable] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3d4423f0>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128967/test_transport_failover_requir4')
+proof = 'unattributable'
+
+    @pytest.mark.parametrize("proof", ["absent", "global_only", "future", "stale", "unattributable", "naive"])
+    def test_transport_failover_requires_current_attributable_alternate_health(monkeypatch, tmp_path, proof):
+        from datetime import datetime, timedelta, timezone
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        row["fallback_allowed"] = True  # explicitly granted fixture only; real registry stays unchanged
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        if proof != "absent":
+            health = _fresh_recovered_health("deepseek")
+            if proof == "global_only":
+                health["findings"] = []
+            elif proof == "future":
+                health["checked_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            elif proof == "stale":
+                health["checked_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+            elif proof == "unattributable":
+                health["findings"][0]["lane"] = "other_deepseek_audit"
+            elif proof == "naive":
+                health["checked_at"] = datetime.now().isoformat()
+            path = tmp_path / "transport-health.json"
+            path.write_text(json.dumps(health))
+            monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:743: AssertionError
+_ test_transport_failover_requires_current_attributable_alternate_health[naive] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x776a3d442030>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-128967/test_transport_failover_requir5')
+proof = 'naive'
+
+    @pytest.mark.parametrize("proof", ["absent", "global_only", "future", "stale", "unattributable", "naive"])
+    def test_transport_failover_requires_current_attributable_alternate_health(monkeypatch, tmp_path, proof):
+        from datetime import datetime, timedelta, timezone
+        from lib import llm_consumption
+
+        process_id = "n8n_material_digest_draft"
+        row = dict(llm_consumption._registry_process(process_id))
+        row["fallback_allowed"] = True  # explicitly granted fixture only; real registry stays unchanged
+        monkeypatch.setattr(llm_consumption, "_registry_process", lambda _: row)
+        if proof != "absent":
+            health = _fresh_recovered_health("deepseek")
+            if proof == "global_only":
+                health["findings"] = []
+            elif proof == "future":
+                health["checked_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            elif proof == "stale":
+                health["checked_at"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+            elif proof == "unattributable":
+                health["findings"][0]["lane"] = "other_deepseek_audit"
+            elif proof == "naive":
+                health["checked_at"] = datetime.now().isoformat()
+            path = tmp_path / "transport-health.json"
+            path.write_text(json.dumps(health))
+            monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(path))
+        monkeypatch.setattr(bridge, "BIND_MODE", "canary")
+        provider = MagicMock()
+        provider.generate.side_effect = RuntimeError("injected provider must remain unreachable")
+        monkeypatch.setattr(bridge.RealProvider, "instance", lambda: provider)
+        with _governed(monkeypatch) as reserve:
+            result = bridge.execute_governed_call([{"role": "user", "content": "offline fixture"}], process_id=process_id)
+>       assert result["error"]["code"] == "provider_not_configured"
+E       AssertionError: assert 'PROVIDER_ERROR' == 'provider_not_configured'
+E
+E         - provider_not_configured
+E         + PROVIDER_ERROR
+
+tests/test_llm_routing_policy_20261008.py:743: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_cannot_bypass_process_fallback_authority[False]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_cannot_bypass_process_fallback_authority[None]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_cannot_bypass_process_fallback_authority[1]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_requires_current_attributable_alternate_health[absent]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_requires_current_attributable_alternate_health[global_only]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_requires_current_attributable_alternate_health[future]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_requires_current_attributable_alternate_health[stale]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_requires_current_attributable_alternate_health[unattributable]
+FAILED tests/test_llm_routing_policy_20261008.py::test_transport_failover_requires_current_attributable_alternate_health[naive]
+9 failed, 1 passed, 48 deselected in 0.80s

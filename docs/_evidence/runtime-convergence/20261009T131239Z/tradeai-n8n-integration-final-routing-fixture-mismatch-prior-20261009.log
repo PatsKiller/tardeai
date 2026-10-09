@@ -1,0 +1,68 @@
+................................................F....................... [ 45%]
+...............................................................F..F..... [ 90%]
+................                                                         [100%]
+=================================== FAILURES ===================================
+_________ test_measured_healthy_still_routes_when_unknown_would_refuse _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f6d665d3a10>
+tmp_path = PosixPath('/tmp/pytest-of-johnclaw/pytest-129651/test_measured_healthy_still_ro0')
+
+    def test_measured_healthy_still_routes_when_unknown_would_refuse(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        monkeypatch.setenv("TRADEAI_LLM_ROUTING_POLICY", str(_policy_copy(tmp_path, on_health_unknown="refuse")))
+        health = {"checked_at": "2026-10-09T12:00:00Z", "worst_severity": "OK", "findings": []}
+        health_path = tmp_path / "health.json"
+        health_path.write_text(json.dumps(health), encoding="utf-8")
+        monkeypatch.setenv("TRADEAI_LLM_PROVIDER_HEALTH", str(health_path))
+        selected = bridge.select_governed_lane("alex_cio_synthesis")
+>       assert selected.get("refused") is None
+E       AssertionError: assert 'health_unknown' is None
+E        +  where 'health_unknown' = <built-in method get of dict object at 0x7f6d65c76580>('refused')
+E        +    where <built-in method get of dict object at 0x7f6d65c76580> = {'refused': 'health_unknown', 'refused_status': 503, 'refused_message': 'Provider health for process alex_cio_synthesi...h': 'present', 'provider_health_worst': 'OK', 'deepseek_balance': 'missing', 'deepseek_balance_available': None, ...}}}.get
+
+tests/test_llm_routing_policy_20261008.py:718: AssertionError
+____________ test_canary_n8n_call_walks_to_deepseek_and_records_why ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f6d657a00c0>
+
+    def test_canary_n8n_call_walks_to_deepseek_and_records_why(monkeypatch):
+        provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)), canary=True)
+        monkeypatch.setattr(bridge, "read_health_snapshot", lambda _row: {
+            "provider_health": "present", "provider_health_worst": "OK",
+            "lanes": {"grok": "healthy", "chatgpt": "healthy", "deepseek": "healthy"},
+        })
+        with _governed(monkeypatch, fallback_allowed=True):
+            out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST)
+>       assert "error" not in out, out.get("error")
+E       AssertionError: {'code': 'provider_not_configured', 'message': "Live bridge transport is DeepSeek only; this lane's provider is not co...y': {'schema': 'RetryDisposition@v1', 'disposition': 'RETRYABLE_TRANSIENT', 'retryable': True, 'max_attempts': 3, ...}}
+E       assert 'error' not in {'error': {'code': 'provider_not_configured', 'message': "Live bridge transport is DeepSeek only; this lane's provider...': True, 'max_attempts': 3, ...}}, 'id': 'eb16d4deb5ce', 'object': 'chat.completion.error', 'created': 1791570046, ...}
+
+tests/test_bridge_agent_preconditions_20261009.py:520: AssertionError
+_____ test_policy_primary_is_grok_and_mock_receipt_names_the_live_provider _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f6d657e1080>
+
+    def test_policy_primary_is_grok_and_mock_receipt_names_the_live_provider(monkeypatch):
+        monkeypatch.setattr(bridge, "read_health_snapshot", lambda _row: {
+            "provider_health": "present", "provider_health_worst": "OK",
+            "lanes": {"grok": "healthy", "chatgpt": "healthy", "deepseek": "healthy"},
+        })
+        policy = bridge.resolve_model_policy(DIGEST)
+        assert policy["provider"] == "grok" and policy["requested_policy"] == "FAST"
+        _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+        with _governed(monkeypatch, fallback_allowed=True):
+            out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST)
+>       assert out["_tradeai"]["provider"] == "deepseek" and out["_tradeai"]["mock"] is True
+E       AssertionError: assert ('grok' == 'deepseek'
+E
+E         - deepseek
+E         + grok)
+
+tests/test_bridge_agent_preconditions_20261009.py:558: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_llm_routing_policy_20261008.py::test_measured_healthy_still_routes_when_unknown_would_refuse
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_canary_n8n_call_walks_to_deepseek_and_records_why
+FAILED tests/test_bridge_agent_preconditions_20261009.py::test_policy_primary_is_grok_and_mock_receipt_names_the_live_provider
+3 failed, 157 passed in 16.44s

@@ -1,0 +1,78 @@
+{
+  "schema": "ScalpHealthSourceHandoff@v1",
+  "evidence_class": "TEST_ONLY",
+  "measured_at": "2026-10-09T16:46:58.350556+00:00",
+  "base_sha": "e6ac1863a3556bf9ba4ae3d74197700c696bb4e1",
+  "head_sha": "64acef155a80ddecd1a2449db9f6e857244b4d77",
+  "worktree": "/home/johnclaw/tradeai-wt-scalp-health-truth-20261009",
+  "branch": "wt/scalp-health-truth-20261009",
+  "files": {
+    "scripts/run_trade_ai_scalp_live.py": "c1dbead1b060a2ba75b40d38f8952da2fcd3ee99b7c0ccb8e3c092698e8b3af3",
+    "scripts/scalp_shadow_logger.py": "ddb871f407b55f3c235c309902dc21fcf782f9c79a677b45475887cd40613e33",
+    "tests/test_trade_ai_scalp_5min_20261009.py": "94a72a0e2c2a05daccece4d216a0b54c8f00021c10bac4420d2283b4ec1f5607",
+    "apps/command-center-v3/src/components/tradeai/ActiveTraderFiresStrip.tsx": "a512df8cb581f5f2619f1ca2b1de3ae0c298ccbb2cc3d7e6e9f12f8aadac4723",
+    "apps/command-center-v3/e2e/active-trader-fires-truth.spec.ts": "8219e91bf570fc3ece062770938967664b09840c972a33455a851d313a7e71a4"
+  },
+  "scope": [
+    "None/non-list/malformed-row cycle result exits1 before state/projection writes or OK heartbeat",
+    "Valid emptylist result writes fresh knownempty projection",
+    "Projection reader requires versioned mapping/rows, aware nonfuture observation, finitepositive configured freshness",
+    "Alert strip distinguishes loading/unavailable from validempty and labels retained failures stale"
+  ],
+  "reachability": {
+    "cycle_failure": "SOURCE_ONLY: continuous_runner.py:468 returnsNone on empty ingestion; :491 catches ingestion failure and returnsNone",
+    "projection_future": "TEST_ONLY: future versioned fixture reached oldreader and suppliedrows beforefix",
+    "unknown_count": "TEST_ONLY: prior Chromiumfixture shows0/no-alerts during pending request; malformed andfailed responses also covered"
+  },
+  "checks": {
+    "prior_python": {
+      "path": "/tmp/tradeai-scalp-health-prior-pytest-20261009.log",
+      "result": "14 FAIL / 14 PASS; actual behavioral negatives",
+      "sha256": "d8ed3ff5242dfb41c18839b4ae625dd70f0795b84587205cbf0f9fbead016242"
+    },
+    "fixed_python": {
+      "path": "/tmp/tradeai-scalp-health-fixed-pytest-20261009.log",
+      "result": "28 PASS in1.35s",
+      "sha256": "70a8d7dfc3a68fd23535e7d9a7dd6bdaede94c2a12c0839818081d2cc7a0cd84"
+    },
+    "prior_browser_tooling": {
+      "path": "/tmp/tradeai-scalp-health-prior-playwright-fixture-20261009.log",
+      "result": "BLOCKED sandbox Chrome shutdown EPERM; not defect proof",
+      "sha256": "a52a728b47e3618d241fdeb1d25db21b2799866f2d22721962a97ad1b50a37b1"
+    },
+    "prior_browser": {
+      "path": "/tmp/tradeai-scalp-health-prior-playwright-browser-20261009.log",
+      "result": "6 FAIL / 1 PASS in45.9s; e6unchanged bundle4189",
+      "sha256": "92c6635bdc9c8b09ef04ac621f9faa0a548ac0d96e57013c50f3021c9a1be023"
+    },
+    "typescript": {
+      "path": "/tmp/tradeai-scalp-health-tsc-20261009.log",
+      "result": "--noEmit exit0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "vite": {
+      "path": "/tmp/tradeai-scalp-health-vite-20261009.log",
+      "result": "isolated build exit0",
+      "sha256": "d47f318cfa705a252a675aa5053239c8972376623600b8783225a3c9256b13e1"
+    }
+  },
+  "other_checks": [
+    "Ruff changedPython3files PASS",
+    "git diff --check PASS",
+    "git diff --cached --check PASS",
+    "native commit secret checks5files PASS"
+  ],
+  "pending": [
+    "Same7 fixed fixturePlaywright checks running, session84424 on isolated4191build; root additionally rebuilds and runs postintegration fixtures/canonical"
+  ],
+  "lease": {
+    "lease_id": "0b92ca9c-550e-4546-b8fd-41f91a085a12",
+    "session_id": "aabd7e55-7c8c-41f1-bee6-99321020846f",
+    "released": true
+  },
+  "limits": [
+    "SOURCE/TEST only; no runtime/provider/LLM/broker/send calls",
+    "No scoring/catalystGO/risk/tradingpolicy, authorityconfiguration, registry, scheduler, grants, gates, thresholds, INDEX or parentWT changes",
+    "No child push/merge/deploy; parent owns publication and canonical acceptance"
+  ]
+}
