@@ -1,17 +1,43 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      3.0.0
+Policy-Version:      4.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-09
-Last-Reviewed:       2026-10-09T12:00:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-09T17:30:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          2.0.1
+Supersedes:          4.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**4.0.0 is ACTIVE (MAJOR) — one named n8n live-lane exception: `trade-ai-scalp-live` (§23.3).**
+Ratified by the operator 2026-10-09 15:25 ET in session (`APPROVE_AGENTS_POLICY_4_0_0`, verbatim:
+"APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix"; §20), after the operator decision of the
+same day "n8n drives a governed lane (Recommended)". The 5-minute Trade-AI scalp scan — a Finviz
+ingest through the data broker, a `trade_ai_scans` writer and a `send_telegram` caller — may run in
+`live` mode from n8n under the conditions in §23.3; it is the only such lane, and the never-list
+is otherwise unchanged. MAJOR because it widens what the n8n actor may cause (version policy).
+
+**4.1.0 is PROPOSED (MAJOR) — registry-driven n8n dispatch, wave ladder, program push budget, 48 h
+merge approval (§23.11–§23.14).** The 4.0.0 text governs until the operator sends
+`APPROVE_AGENTS_POLICY_4_1_0 <pr> <sha>` (§20); nothing 4.1.0 adds grants anything before then. It
+records five operator decisions of 2026-10-09: (1) one `cron` grant activates six generic n8n
+workflows once, and a lane is then enabled by a reviewed registry-row and allowlist PR, with no
+per-lane import or grant (§23.11); (2) dispatcher lanes climb shadow → canary → cutover by wave,
+with one `cron` grant per wave cutover (§23.12); (3) `n8nmat/*` branches get 4 pushes until
+2026-10-12T23:59:59-04:00, enforced by the pre-push hook (§23.13); (4) a standing 48 h merge approval for `n8nmat/*` PRs with Agent A's review verdict on
+the program board, green on the exact head, and nothing live until main CI is green on the merged SHA — merge only,
+never deploy or grant (§23.13). §23.14 keeps broker,
+order, secret and daemon lanes off the dispatcher by test; the 4.0.0 `trade-ai-scalp-live` exception
+is kept unchanged and stays the only one. (5) Operator decision 16:40 ET: the approval-router lane
+may read guard state (pending requests, grant expiry) through a read-only projection and never
+request, grant, revoke or consume (§23.14). MAJOR because §17 changes (a merged
+dispatcher-row PR becomes the operator's scheduling decision) and merge and push authority widen for
+one program (version policy). Nothing in §0, §2, §2A or §7A, and none of the broker, secret or
+delete rails, is weakened.
 
 **3.0.0 is ACTIVE (MAJOR) — governed LLM and Agent capability in n8n (§23 amendment).** Ratified by
 the operator 2026-10-09 (`APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9`, §20).
@@ -2449,7 +2475,11 @@ accumulates the divergence this document exists to remove.
 - **A job has a `config/lane_registry.json` row with an `output_signal` before it is installed** —
   the durable artifact that proves it ran. Not an exit code, not a log file existing.
 - **Installing, editing or removing a scheduler entry is operator-only. Propose.** An n8n workflow
-  that schedules a Trade AI lane is a scheduler entry (§23.2; `scheduler.kind = "n8n"`).
+  that schedules a Trade AI lane is a scheduler entry (§23.2; `scheduler.kind = "n8n"`). So is a
+  dispatcher row (`scheduler.expression = "dispatcher"`, §23.11): **the merge of its reviewed
+  registry-row PR — by the operator, or under §23.13's standing approval — is the operator's
+  decision for that lane**, and no separate grant is asked. *Cause (§20): one import and one grant
+  per lane moved 4 lanes in two days against 438 cron lines (measured 2026-10-09).*
 - **Dry-run under the exact cron form**: by path, neutral cwd, from a **pinned release directory**,
   never `CURRENT`.
 - **Verify both schedulers** — cron and systemd.
@@ -3421,8 +3451,10 @@ variable to raise, the control surface is the code · re-enabling the retired
 overnight LLM window · merging divergent copies of any authoritative store · **adding, replacing or
 retiring a data source, or a writer of an authoritative store** (§7A — an agent proposes the
 registry row; the operator's grant is recorded in its `approval`; the gate fails an ungranted
-source) · **activating, editing or deactivating an n8n workflow that schedules a Trade AI lane**
-(§23 — a `cron` grant; ACTIVE in 2.0.0) · **activating an n8n Agent node, or creating the n8n bridge
+source) · **activating, editing or deactivating an n8n workflow that schedules a Trade AI lane** (§23 — a
+`cron` grant naming the workflow id; ACTIVE in 2.0.0), **including the six generic workflows of
+§23.11, activated once under one `cron` grant listing all six ids; and adding, re-staging or removing
+a dispatcher row** (§23.11 — the merged reviewed registry-row PR is the decision; PROPOSED in 4.1.0) · **activating an n8n Agent node, or creating the n8n bridge
 token** (§23.8, §23.10 — a grant naming the workflow id; ACTIVE in 3.0.0) · branch-protection or
 required-context changes ·
 provisioning or funding any model or data
@@ -3872,12 +3904,16 @@ superseded).
 
 ---
 
-# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 3.0.0
+# 23 · n8n: scheduler-of-record and governed routing (carve-out, n8n only) — ACTIVE 4.0.0
 
 **Status: 2.0.0 ACTIVE since 2026-10-08** (`APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d`).
-**3.0.0 ACTIVE (ratified 2026-10-09)** — §23.3 first bullet, §23.4 and §23.5 first bullet replaced, §23.8–§23.10 added;
-awaiting `APPROVE_AGENTS_POLICY_3_0_0 <pr> <sha>`. Until then the 2.0.1 text of those subsections
-governs (recorded in §23.7) and nothing 3.0.0 adds grants anything. Operator direction 2026-10-09:
+**3.0.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9`**)** —
+§23.3 first bullet, §23.4 and §23.5 first bullet replaced, §23.8–§23.10 added; the replaced 2.0.1 text
+is recorded in §23.7; §23.10 still grants nothing until each precondition is measured true with a receipt.
+**4.0.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_4_0_0`**)** — §23.3 gains the one named
+live-lane exception `trade-ai-scalp-live`. **4.1.0 PROPOSED** — §23.11–§23.14 added; §23.2, §23.5,
+§9.3 and §17 sentences amended in place (§23.7); until `APPROVE_AGENTS_POLICY_4_1_0 <pr> <sha>` the
+4.0.0 text governs and nothing 4.1.0 adds grants anything. Operator direction 2026-10-09:
 n8n gets governed AI capability, never unrestricted AI access or provider credentials; no capability
 expands until a guardrail audit proves governance parity or better. Operator direction
 2026-10-08: *"make agents.md carve out just for n8n"*, after the three decisions of the same day —
@@ -3907,20 +3943,35 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
 
 ## 23.2 n8n workflows are scheduler entries — §9.3 applies in full
 
-- **Registry row first.** An n8n workflow that schedules a Trade AI lane is a scheduler entry. The
-  lane has a `config/lane_registry.json` row with `scheduler.kind = "n8n"`, `scheduler.expression`
-  = the n8n workflow id, `scheduler.match` = the retired cron text, and an `output_signal`, before the
-  workflow is activated (§9.3 rule 1). A script that writes nothing gains a `--receipt` flag before it
-  is moved; rail 8 is not waived for a lane because it is small.
-- **Install, activate, edit or retire only under an operator grant** — a `cron` grant for the
-  crontab/timer side, a `config-write` grant for units and registry-bearing config (§9.3 rule 2,
-  §17). An agent proposes the workflow JSON (exported under
-  `docs/implementation/n8n-parallel/workflows/`); the operator imports and activates it.
-- **Shadow before canary before cutover.** Every lane fires at least once from n8n in `dry_run`
-  (shadow; the cron line stays live), then at least once in `live` while the cron line is still
-  present (canary; the lane's existing `safe_flock` lock proves no double-run), and only then is cut
-  over. Weekly and monthly lanes take one manual natural-equivalent fire as the canary. Each step
-  leaves a `RunReceipt@v1`; a step without a receipt did not happen (§0 rail 7, §6).
+- **Registry row first.** An n8n workflow that schedules a Trade AI lane is a scheduler entry, and
+  the lane has a `config/lane_registry.json` row with an `output_signal` before anything fires it
+  (§9.3 rule 1). The row takes one of two forms, both `scheduler.kind = "n8n"`: a lane-specific
+  workflow sets `scheduler.expression` = its n8n workflow id and `scheduler.match` = the retired cron
+  text; a dispatcher lane sets `scheduler.expression = "dispatcher"`, `scheduler.cadence` = the cron
+  expression, `scheduler.match` = the cron line it will retire, `scheduler.wave` and
+  `scheduler.stage` (§23.11). A script that writes nothing gains a `--receipt` flag before it is
+  moved; rail 8 is not waived for a lane because it is small. *Cause (§20): 321 of 438 cron lines
+  had no registry row (2026-10-09, behind a 476-entry `undeclared_baseline`), so the dispatcher form
+  keeps the schedule in the one file `check_lane_registry` already reads instead of inside a
+  workflow.*
+- **Install, activate, edit or retire a workflow only under an operator `cron` grant naming its n8n
+  workflow id** (§9.3 rule 2, §17). An agent proposes the workflow JSON (exported under
+  `docs/implementation/n8n-parallel/workflows/`); the operator imports and activates it. A
+  dispatcher lane has no workflow of its own: it is enabled by its merged registry-row PR (§23.11),
+  not by a grant. **One grant tier: `cron`.** It covers n8n activation, edit and deactivation and
+  every cutover; `config-write` is for host unit files and registry-bearing config on disk, and
+  `service` is not an activation tier. `scripts/check_n8n_activation_grants.py` accepts `cron` only.
+  *Cause (§20): due-diligence audit E D5 — §17 said `cron`, §23.2 said `cron` or `config-write`, the
+  checker also accepted `service`, and the only GRANTED activation (2026-10-09 09:01 ET) used a
+  `service` grant.*
+- **Shadow before canary before cutover.** Every lane fired by a lane-specific workflow fires at
+  least once from n8n in `dry_run` (shadow; the cron line stays live), then at least once in `live`
+  while the cron line is still present (canary; the lane's existing `safe_flock` lock proves no
+  double-run), and only then is cut over. Weekly and monthly lanes take one manual
+  natural-equivalent fire as the canary. Each step leaves a `RunReceipt@v1`; a step without a receipt
+  did not happen (§0 rail 7, §6). **Dispatcher rows climb by wave instead (§23.12).** *Cause (§20):
+  the per-lane ladder, with one import and one grant per lane, moved 4 lanes in two days against 438
+  cron lines (measured 2026-10-09).*
 - **Cutover comments, never deletes.** Cutover is `scripts/pipelines/cutover/_cutover.py --lane
   <lane_id>` under a `cron` grant: the exact crontab line is commented with
   `# RETIRED <date> n8n-cutover <lane_id>` (a systemd lane is `disable --now` on its timer, recorded
@@ -3935,6 +3986,13 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   double *run*; the registry gate prevents the double *schedule*. *Cause: a lane left `kind: cron`
   with its line removed is reported ORPHANED by the lane monitor (measured 2026-10-08), and the
   mirror-image — a line left live beside a new scheduler — had no finding at all.*
+- **A dispatcher row in stage `shadow` or `canary` is the declared ladder state, not a double
+  schedule (4.1.0).** Its cron line is live by design while the dispatcher fires it once per step
+  (§23.12). The conflict check (`scripts/lib/n8n_lane_host_conflict.py`) must read `scheduler.stage`
+  and raise `CRON_PRESENT_WHILE_SCHEDULER_N8N` for a dispatcher row only at `stage: cutover`; until
+  that change is merged and served, no wave starts. Outside the two ladder fires the dispatcher does
+  not fire a `shadow` or `canary` row. *Cause (§20): the check flags every `kind: n8n` row whose
+  `match` line is live, so the wave ladder as written would fail its own registry gate.*
 - **The retirement tag is the §9.3 tag's fixed form for this one case.** The reason is the cutover
   itself; owner and review date live in the `CutoverReceipt@v1`, which the tag's `<lane_id>` keys.
 
@@ -3978,6 +4036,21 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   fails that test does not enter the allowlist, whatever its owner says. *Cause: the ADR threat
   model — a stolen bearer must not place an order, mint a grant, satisfy 2FA, promote a release, bid
   or open a DOF SQL path — is only true if the set of runnable commands cannot contain one.*
+- **Exception (4.0.0) — `trade-ai-scalp-live` only.** This one lane may run in `live` mode from n8n
+  although its live cycle ingests the Finviz screener through the data broker, writes `trade_ai_scans`
+  and the shared scalp projection, and sends a new GO through `send_telegram`. Conditions, each a test
+  (`tests/test_agents_policy_4_0_0_scalp_lane.py`): it runs the exact cron argv
+  (`scripts/run_trade_ai_scalp_live.py`) under the cron line's lock `/tmp/tradeai_scalp_live.lock`
+  (`flock -n`), `timeout_s` 295 and `market_day_gate.sh`; n8n holds no provider key (Finviz stays
+  behind the data broker on the host); the send stays the host chokepoint with GO de-duplication
+  persisted in `state/trade_ai_scalp_live_state.json`; live is reachable only when the lane is also in
+  the relay's `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant) and the live workflow is activated
+  (grant naming the workflow id). The cron line stays live as the fallback until n8n has 3 market days
+  of `RUN_DONE` with no `trade-ai-scalp-live:STALLED` finding; it is then retired as
+  `# RETIRED <date> n8n-cutover trade-ai-scalp-live` under a cron grant. No other ingest writer or
+  sender enters the allowlist by analogy. *Cause (§20): 2026-10-09 13:30–15:00 the cron-run scan
+  stalled unseen for 90 minutes (cold catalyst cache, every run killed at 295 s); operator: "n8n drives
+  a governed lane", then "APPROVE_AGENTS_POLICY_4_0_0".*
 - **The gateway never spawns.** It validates the claim and writes a `RunRequested@v1` row to the
   ledger `runs` table and stops. `tradeai-n8n-run-executor.service` (own cgroup) runs the lane's
   existing runner under the lane's existing lock (`safe_flock.sh`, `market_day_gate.sh` where the
@@ -4038,9 +4111,13 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
 ## 23.5 Secrets — at most two n8n credentials, each valid only at its own door
 
 - **n8n holds at most two credentials: the relay bearer (run requests and reads) and, once the Agent
-  gate opens (§23.10), one bridge token (AI requests).** Each is valid only at its own door, rendered
-  from Bitwarden SM (project `trade-ai-prod`) by `render_env.py`, rotated weekly through
-  `config/secret_registry.yaml` with a `_PREVIOUS` overlap. Any other credential in n8n — provider,
+  gate opens (§23.10), one bridge token (AI requests).** Each is valid only at its own door and
+  rendered from Bitwarden SM (project `trade-ai-prod`) by `render_env.py`, with a `_PREVIOUS` overlap
+  declared in `config/secret_registry.yaml`. **Weekly rotation is the rule but is not scheduled:**
+  no rotation job exists, only the proposal
+  `docs/implementation/n8n-parallel/proposals/key-rotation-schedule-20261008.md` (measured
+  2026-10-09, due-diligence audit E D7); until a lane runs it, rotation is a manual operator step and
+  its absence is an open finding, not a control (4.1.0). Any other credential in n8n — provider,
   broker, database, messaging, n8n API key — is a defect and a §17 decision. Execution data on success
   is not retained; error data is pruned at 168 h. *Cause (§20): audit C G7 — the public API was
   enabled, so one n8n API key would have been a third, unbounded credential; audit C G18 — the
@@ -4057,8 +4134,14 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
 - **Execution data on success is not retained, as the precondition for any credential existing.**
   `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`, `EXECUTIONS_DATA_SAVE_ON_ERROR=all`,
   `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE=168` (hours). If the running compose file
-  does not say so, the credential is not created. Owner MFA is waived (above); the n8n database role is not a
-  superuser before the credential exists. *Cause: `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md`
+  does not say so, the credential is not created. Owner MFA is waived (above). **The non-superuser
+  role precondition does not hold today (4.1.0).** The relay credential `tradeai-run-relay` was
+  created 2026-10-08T16:45:48Z, after 2.0.0 was ratified, while owner MFA was off (the waiver came only
+  on 2026-10-09) and the n8n database role `n8n` was a superuser (`rolsuper = t`); it was still a
+  superuser when measured 2026-10-09 (due-diligence audit E C1/D7). That was a breach of the 2.0.0
+  precondition and it stays open: the MFA half closed by waiver on 2026-10-09, the role half closes
+  only with §23.10 **P13** (`n8n_app`, not a superuser). No further n8n credential is created until
+  P13 has a receipt. *Cause: `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md`
   — n8n stores execution input, so a bearer in a workflow is a bearer in the n8n database; the lab
   measured `EXECUTIONS_DATA_SAVE_ON_SUCCESS=all` on 2026-10-07.*
 - **Never print a value.** Name the variable; never its content — in a receipt, a PR, a chat, a
@@ -4078,7 +4161,7 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   `CRON_PRESENT_WHILE_SCHEDULER_N8N`; relay bearer failures; n8n `healthz` down > 10 min; any
   `RUN_REFUSED` row. Rollback target: under five minutes, by re-enabling the exact line.
 
-## 23.7 Sentences amended in place by 2.0.0 and 3.0.0 (§20: replaced, not accumulated)
+## 23.7 Sentences amended in place by 2.0.0, 3.0.0, 4.0.0 and 4.1.0 (§20: replaced, not accumulated)
 
 2.0.0:
 
@@ -4109,6 +4192,42 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   (audit C G11).
 - `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md`: its Policy line no longer says "PROPOSED
   2.0.0" (audit C G11), and it gains a 3.0.0 addendum (second credential only after §23.10; MFA waiver).
+
+4.0.0 (ACTIVE 2026-10-09; the 3.0.0 text stays readable at `origin/main` `113c6f3a4`):
+
+- §23.3 gains the exception bullet for `trade-ai-scalp-live`; the allowlist bullet's never-list is
+  unchanged for every other lane. `config/n8n_run_allowlist.json` `never` names the exception.
+- The §23 status line now names both ratification tokens; its stale "awaiting
+  `APPROVE_AGENTS_POLICY_3_0_0` … the 2.0.1 text governs" sentence (left by #1552) is removed.
+
+4.1.0 (PROPOSED 2026-10-09; the replaced 4.0.0 text stays readable at `origin/main` `079e8ff42`):
+
+- §23.2 "Registry row first": the row now has two forms — lane-specific workflow id, or
+  `scheduler.expression = "dispatcher"` with `cadence`, `match`, `wave`, `stage` (§23.11).
+- §23.2 "Install, activate, edit or retire only under an operator grant — a `cron` grant for the
+  crontab/timer side, a `config-write` grant for units and registry-bearing config" now reads "only
+  under an operator `cron` grant naming its n8n workflow id": one tier, `cron`; `config-write` is for
+  host unit files; `service` is not an activation tier (audit E D5). A dispatcher lane is enabled by
+  its merged registry-row PR.
+- §23.2 "Shadow before canary before cutover" now applies to lane-specific workflows; dispatcher
+  rows use the wave ladder (§23.12).
+- §9.3 "Installing, editing or removing a scheduler entry is operator-only" gains: the merge of a
+  reviewed dispatcher-row PR is the operator's decision for that lane.
+- §17 "activating, editing or deactivating an n8n workflow that schedules a Trade AI lane (§23 — a
+  `cron` grant; ACTIVE in 2.0.0)" now names the six generic workflows (one `cron` grant listing all
+  six ids) and dispatcher rows (the merged row PR is the decision).
+- §23.5 present-tense facts corrected: weekly rotation is not scheduled (only a proposal); the relay
+  credential `tradeai-run-relay` was created 2026-10-08T16:45:48Z while owner MFA was off and the DB
+  role `n8n` was a superuser — a breach of the 2.0.0 precondition that is still open (`rolsuper=t`
+  measured 2026-10-09, audit E C1/D7); P13 stays open.
+- `AI_WORK_POLICY.md` §3 and §17: the push budget is 4 for `n8nmat/*` branches until
+  2026-10-12T23:59:59-04:00 (§23.13); 2 everywhere else.
+- §23.2 gains "A dispatcher row in stage `shadow` or `canary` is the declared ladder state": the
+  double-scheduler check reads `scheduler.stage`; no wave starts until it does.
+- §23.14 gains the read-only guard carve-out for the approval router's lane (operator decision
+  2026-10-09 16:40 ET); the allowlist `never` list's "guard" entry still blocks every guard write.
+- Version history 3.0.0 row: the activation event is the ratification merge #1552 (`377e9b536`);
+  #1547 (`3b5c24856`) merged the proposed text (due-diligence audit E D3).
 
 No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
 
@@ -4201,13 +4320,168 @@ status lines, audit C G11/G12 — closes on ratification), **P10** (container re
 *Cause (§20): audit C "minimum controls before an Agent" — every gap the three audits rated
 CRITICAL or HIGH for Agent enablement maps to one item here.*
 
+## 23.11 Registry-driven dispatch (4.1.0)
+
+- **Six generic workflows, activated once.** n8n runs six generic workflows — the dispatcher, the
+  event router, the heartbeat watcher, the incident router, the digest scheduler and the approval
+  router — and no per-lane workflow for a dispatcher lane. They are activated once, under one
+  operator `cron` grant whose reason lists each of the six n8n workflow ids; a grant that lists fewer
+  activates only those it lists. `scripts/check_n8n_activation_grants.py` reconciles every
+  activation against `guard log` and reports any other as ungranted. *Cause (§20): due-diligence
+  audit E C2 — of 13 activations since 2026-10-08, 9 were UNGRANTED and 3 had a name-only grant; a
+  grant per lane was not being given, so the program asks for six, once.*
+- **After that, enabling a lane is a reviewed PR — no per-lane n8n import, no per-lane grant.** The
+  PR adds the lane's `config/lane_registry.json` row (`scheduler.kind = "n8n"`,
+  `scheduler.expression = "dispatcher"`, `scheduler.cadence`, `scheduler.match`, `scheduler.wave`,
+  `scheduler.stage` ∈ {`shadow`, `canary`, `cutover`}, `output_signal`) and its
+  `config/n8n_run_allowlist.json` entry in the same PR, and the lane passes §23.14 (the only named
+  exception is `trade-ai-scalp-live`, on its 4.0.0 terms). A stage change is a registry PR. **The
+  merge of a dispatcher-row PR — by the operator, or under §23.13's standing approval — is the §9.3 and
+  §17 operator decision for that lane.** *Cause (§20): 438 cron lines, 321 of them undeclared, and 4
+  lanes moved in two days at one import plus one grant per lane (measured 2026-10-09).*
+- **The gateway decides what is due; the dispatcher only relays.** The gateway's read route
+  `coordination/due` computes due lanes from each dispatcher row's `scheduler.cadence` with
+  `scripts/lib/cron_schedule.py` `next_run`. The dispatcher calls `coordination/run` only for lane
+  ids that route returned. n8n never supplies a command, argv, lock, cadence or any mode beyond
+  `{dry_run, live}`, and lane identity stays server-side (§23.3). The gateway and the executor clamp
+  the mode to the row's stage: a lane in `shadow` runs `dry_run` whatever was requested. *Cause
+  (§20): in the 2.0.0 shape each lane's cron expression lived inside its workflow, where no registry
+  check reads it and no git-vs-live drift check existed (audit C G9).*
+- **The other five send nothing and decide nothing.** The event router, heartbeat watcher, incident
+  router and digest scheduler hand findings to host chokepoints through the coordination endpoints;
+  `send_telegram` stays the only sender and §23.3 "No sends from n8n" holds for each. **The
+  approval router never mints, approves or extends a grant.** It relays an operator's reply to the
+  host guard path, which decides. *Cause (§20): due-diligence audit A — any agent in the `docker` group can import
+  or publish a workflow, so a router able to approve would make the grant check a workflow setting.*
+- **Editing or deactivating one of the six is still a `cron` grant naming its workflow id**, and the
+  edited JSON lands in `docs/implementation/n8n-parallel/workflows/` by reviewed PR. *Cause (§20):
+  the dispatcher now fires every dispatcher lane, so one unreviewed edit reaches all of them at
+  once.*
+- **One registry PR at a time.** Dispatcher rows travel in one serialised registry train; a second
+  PR touching `config/lane_registry.json` waits for the first to merge. *Cause (§20): due-diligence
+  audit E C5 (the registry lock broken twice, one conflict resolved by hand in #1554) and C4 (#1542
+  merged in 10 minutes with no review, carrying three cadences corrupted by shell-glob expansion).*
+
+## 23.12 Wave ladder (4.1.0)
+
+For dispatcher rows this replaces the per-lane ladder of §23.2; lane-specific workflows keep it.
+
+- **A wave climbs together.** (1) **Shadow:** the dispatcher fires every lane in the wave once in
+  `dry_run`; the cron lines stay live. (2) **Canary:** it fires every lane once in `live` with the
+  cron line still present; the lane's lock proves no double run. A lane whose allowlist lock is not
+  the cron line's lock cannot prove that, does not take the live fire, and stays out of the wave.
+  Weekly and monthly lanes take one manual natural-equivalent fire as the canary. Each fire leaves a
+  `RunReceipt@v1` per lane per fire; a lane without one did not take the step. *Cause (§20): the
+  per-lane ladder moved 4 lanes in two days (measured 2026-10-09).*
+- **A lane that fails any fire leaves the wave and stays on cron.** `RUN_FAILED`, `RUN_REFUSED`, no
+  receipt, or a `RUN_SKIPPED_LOCK` as its only live fire is a failure. It rejoins a later wave by
+  registry PR. *Cause (§20): due-diligence audit E C8 — `n8n-incident-fanin` was cut over when its
+  only live fire was `RUN_SKIPPED_LOCK`, which proves no double run but not that the n8n-initiated
+  run works.*
+- **Cutover is per wave, under one `cron` grant whose reason names every lane id in the wave.**
+  `scripts/pipelines/cutover/_cutover.py --lane <lane_id>` runs per lane: the line is commented,
+  never deleted (§0 rail 6), the row moves to `scheduler.stage = "cutover"`, and each lane gets its own
+  `CutoverReceipt@v1`. A lane the grant does not name is not cut over. **Rollback stays per line**
+  (§23.2). *Cause (§20): one wave receipt would hide which line failed; one grant per lane is the
+  treadmill §23.11 removes.*
+- **A wave fire is not natural-schedule evidence.** After cutover each lane still owes durable
+  evidence on its natural schedule (§9.3). The 9.5 maturity stretch needs natural fires, including
+  weekly and monthly ones, and a wave fire does not close that. *Cause (§20): the program plan
+  states the 7-day and weekly/monthly gates cannot be proven inside 48 h.*
+
+## 23.13 Program window — push budget and standing merge approval (4.1.0)
+
+The program is **N8N Maturity Acceleration** (`docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md`).
+Its window ends **2026-10-12T23:59:59-04:00**. **Agent A** is the supervising session named on the
+program board. The standing merge approval below lasts 48 h from ratification and never past the
+window; it ends at:
+
+Expires-At: PENDING
+
+While that line reads `PENDING` the standing merge approval does not apply. The ratifying edit sets it
+to an ISO-8601 timestamp with offset (ratification + 48 h, no later than 2026-10-12T23:59:59-04:00).
+
+- **Branches named `n8nmat/*` get 4 authorized pushes per tranche until the window ends.** Everywhere
+  else, and after the window, the budget is 2 and a third push needs the operator, as
+  `AI_WORK_POLICY.md` §3 and §17 say. `.githooks/pre-push` enforces it through
+  `scripts/lib/tradeai_push_budget.py` (`PROGRAM_WINDOWS`) — the hook, not the honour system.
+  Renaming a branch to get the budget is §0 rail 3, routing around a denial. *Cause (§20):
+  due-diligence audit E C6 — #1534 pushed 4 distinct CI heads and #1543, #1552 and #1554 3 each,
+  under overrides recorded only on the board (one with no operator approval at all).*
+- **No merge queue, no strict mode.** The repository is owned by a user account, and GitHub offers
+  the merge queue only to organization-owned repositories (measured 2026-10-09); strict up-to-date
+  branch protection is off (operator, 2026-10-09 16:20 ET). So nothing serialises merges: a PR can
+  merge green into a `main` it was never tested against, and the check that catches it is main CI on
+  the merged SHA, which is the promote gate below. *Cause (§20): due-diligence audit E C5 — two
+  registry PRs overlapped and the conflict was resolved by hand in #1554; audit E C6 — the extra
+  heads were update-and-repush cycles that strict mode forced.*
+- **Standing merge approval.** Agent A may merge an `n8nmat/*` PR without a per-PR operator word
+  when all three hold: (a) **Agent A's review verdict for that PR's exact head is recorded on the
+  program board** before the merge (a GitHub review comment by Agent A on a PR it merges is blocked
+  as self-approval, so the board line is the review record); (b) the required checks
+  `agent-governance`, `cio-hardening` and `release-readiness` are green on the exact head SHA;
+  (c) **nothing goes live until main CI is green on the exact merged SHA** — the promote gate; a
+  merge whose main CI is red is reverted or fixed forward before any promote. The approval ends at
+  the `Expires-At` line above. *Cause (§20): due-diligence audit E C4 — #1542 and ten more PRs
+  merged with zero reviews, and #1542 carried three corrupted cadences that every required check
+  passed; review was the only control that could have caught it.*
+- **Excluded — these keep the operator's per-PR word:** any PR that changes `AGENTS.md`,
+  `AI_WORK_POLICY.md`, `.githooks/`, `bin/guard`, branch protection, the execution (broker) file
+  set, secrets, or the `never` list of `config/n8n_run_allowlist.json`. *Cause (§20): each is a rail
+  the approval would otherwise let Agent A widen for itself.*
+- **The approval covers merge only.** Never a deploy or promote, never a grant: grants stay capped
+  at 12 h and promote stays the operator's SSH. §2 is unchanged — "a push authorization is not a
+  deployment authorization", and neither is this merge approval. *Cause (§20): audit E C3 — external
+  agents promoted their own self-merged PRs within minutes.*
+
+## 23.14 Never dispatcher-eligible — broker, order, secret and daemon lanes (4.1.0)
+
+- **Broker, order, secret and daemon lanes are never dispatcher-eligible.** About 99 such lines stay
+  on cron or systemd. n8n watches them: the heartbeat watcher reads their `output_signal` and hands a
+  stale one to the incident router. Watching is not scheduling; no n8n workflow fires them.
+  *Cause (§0 rails 1–2, §2A, §23.3): a stolen relay bearer must not be able to place an order, render
+  a secret or start a second copy of a long-running process.*
+- **The test is code, not judgement.** `tests/test_agents_policy_4_1_0_amendment.py` fails unless
+  every row with `scheduler.expression = "dispatcher"` has a `config/n8n_run_allowlist.json` entry
+  whose argv passes `FORBIDDEN_COMMAND_TOKENS` (`scripts/pipelines/pipeline_manifest.py`) and the
+  gateway's `FORBIDDEN_ROUTE_TOKENS` (`scripts/lib/n8n_coordination_gateway.py`), and is not a
+  daemon (no `--daemon`, `--loop`, `--forever`, `--watch` style flag; not a systemd service lane). A
+  lane that fails does not enter the registry as a dispatcher row, whatever its owner says. *Cause
+  (§20): audit A — the allowlist's `never` list was prose enforced only at merge time.*
+- **`trade-ai-scalp-live` is the single named exception, and only on the 4.0.0 terms.** The
+  dispatcher may fire it `live` only under every §23.3 4.0.0 condition: the exact cron argv
+  (`scripts/run_trade_ai_scalp_live.py`), the cron line's lock `/tmp/tradeai_scalp_live.lock`
+  (`flock -n`), `timeout_s` 295, `market_day_gate.sh`, the lane listed in the relay's
+  `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant), a grant naming the id of the workflow that
+  fires it, and the cron line live as the fallback until 3 clean market days. The test checks those
+  conditions for it instead of the token test. No other ingest writer or sender becomes
+  dispatcher-eligible by analogy. *Cause (§20): 4.0.0 admitted one lane by name after it stalled
+  unseen for 90 minutes on 2026-10-09; dispatch must not turn that into a class.*
+- **Read-only guard carve-out — the approval router's lane may read guard state, never change it.**
+  Operator decision recorded 2026-10-09 16:40 ET: the approval-router lane (`approval-escalate`,
+  `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` §10) may **read** pending guard
+  requests and grant expiry through a read-only projection (`scripts/lib/approval_board_projection.py`:
+  `guard_ledger.py list` and the remote-approval request store, read-only). It may never request,
+  grant, revoke, consume, settle or approve anything, and it writes no guard ledger, request store or
+  guard config. The allowlist `never` list keeps blocking every guard write path, and
+  `tests/test_agents_policy_4_1_0_amendment.py` pins that the projection only calls read subcommands
+  of the guard CLI. This carve-out admits the guard **read** only: the lane's escalation message is a
+  `send_telegram` call, and a sender stays off the dispatcher under the sentence above until the
+  operator admits it by name. *Cause (§20): on 2026-09-06 a pending guard request expired unseen, and
+  on 2026-10-07 two approved grants expired unused; the allowlist's blanket "guard" entry blocked the
+  read that would have escalated both.*
+- **No amendment made inside a program window can change this; it needs a new MAJOR.** *Cause (§20):
+  a time-boxed program has every incentive to widen what it may move.*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 3.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for governed LLM and Agent capability in n8n: §23.3 first bullet replaced (n8n workflows **and Agent nodes** cause host work only through the relay → gateway `coordination/run` for allowlisted lanes and the read-only coordination endpoints; Agent tools = those endpoints; never-list incl. DOF SQL applies to Agent tools; per-process tool allowlist enforced at the bridge with typed refusal; container internet egress BLOCKED by a DOCKER-USER rule, host reach only `172.19.0.1:18092`); §23.4 replaced (capability not provider: registered `n8n_*` process + versioned template + optional routing policy through the governed bridge; default routing Grok OAuth → ChatGPT OAuth → DeepSeek metered; free text only after `sanitise_for_external` for `free_text_allowed` processes; output schema + behaviour-field scan at the bridge; caps and typed refusal kept); §23.5 first bullet replaced (at most two credentials — relay bearer, and a bridge token only after §23.10; owner MFA waived; non-superuser `n8n_app` role still required); §23.8 n8n Agent nodes (registry row, receipt per turn, grant naming the workflow id, model node → bridge only, tool nodes excluded, turn/token/wall caps, no streaming until audit B H1 is fixed; first Agent read-only "explain why lane X failed", coordination-read tools only, shadowed first); §23.9 governance parity; §23.10 preconditions P2–P9, P11–P13, P15–P22 as a checklist that grants nothing until each is measured true with a receipt. §17 gains Agent-node activation / bridge-token creation; §23 and top-of-file 2.0.0 status lines corrected; ADR_COORDINATION_SECRETS Policy line fixed + 3.0.0 addendum. Proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`; audits `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md`, `guardrail-audit-b-code-20261009.md`, `guardrail-audit-c-policy-n8n-20261009.md`. MAJOR: egress policy and the n8n actor's authority change; nothing in §0, §2, §2A, §2B or §7A is weakened for any actor. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9` (operator, 2026-10-09, in session); merged #1547 as 3b5c24856; operator decisions recorded 2026-10-09: (1) ratify the proposal's §3 text as 3.0.0; (2) routing Grok → ChatGPT → DeepSeek; (3) container internet egress blocked, not proxied; (4) first Agent read-only lane-failure explainer, shadowed first; (5) owner MFA waived, `n8n_app` role still required. |
+| 4.1.0 | 2026-10-09 | PROPOSED | MAJOR | §23 amended for the N8N Maturity Acceleration program (`docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md`): §23.11 registry-driven dispatch (six generic workflows — dispatcher, event router, heartbeat watcher, incident router, digest scheduler, approval router — activated once under one `cron` grant listing their ids; a lane is enabled by a reviewed PR adding its registry row `kind: n8n`, `expression: "dispatcher"`, `cadence`, `match`, `wave`, `stage` plus its `config/n8n_run_allowlist.json` entry, no per-lane import or grant; gateway read route `coordination/due` computes due lanes with `cron_schedule.next_run`; mode clamped to stage; lane identity server-side; the five non-dispatcher workflows send nothing and the approval router never mints or approves a grant; one registry PR at a time); §23.12 wave ladder (whole-wave dry_run then live-with-cron fire, receipts per lane per fire, failing lanes stay on cron, cutover per wave under one `cron` grant naming every lane, per-lane `CutoverReceipt@v1`, per-line rollback, natural-schedule evidence still owed); §23.13 program window (push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00 via `.githooks/pre-push` + `scripts/lib/tradeai_push_budget.py`; no merge queue (user-owned repository) and strict protection off; standing 48 h merge approval — Agent A's review verdict on the program board, the three required checks green on the exact head, nothing live until main CI is green on the merged SHA — with `Expires-At: PENDING` until ratified, excluding governance, hook, guard, branch-protection, broker, secret and allowlist-`never` changes; merge only, never deploy or grant); §23.14 broker, order, secret and daemon lanes never dispatcher-eligible, by test (`tests/test_agents_policy_4_1_0_amendment.py`); `trade-ai-scalp-live` stays the single named exception, only on its 4.0.0 §23.3 terms; read-only guard carve-out — the approval-router lane may read pending guard requests and grant expiry through `scripts/lib/approval_board_projection.py`, never request, grant, revoke or consume, test-pinned; the guard `never` entry still blocks every guard write. Replaced in place: §23.2 "Registry row first", "Install, activate, edit or retire…" (one grant tier, `cron`; audit E D5) and "Shadow before canary before cutover"; §9.3 scheduler-entry bullet; §17 n8n fragment; §23.5 present-tense facts (rotation unscheduled; relay credential created 2026-10-08T16:45:48Z with MFA off and DB role `n8n` superuser, still open; P13 open); `AI_WORK_POLICY.md` §3/§17; `scripts/check_n8n_activation_grants.py` tiers `cron` only. Causes: due-diligence audits A–F of 2026-10-09 (audit E C2, C3, C4, C5, C6, C8, D5, D7); 438 cron lines, 321 undeclared, 4 lanes moved. MAJOR: §17 and merge/push authority change; nothing in §0, §2, §2A or §7A or the broker, secret or delete rails is weakened. | **PENDING** — awaiting `APPROVE_AGENTS_POLICY_4_1_0 <pr> <sha>` (operator); operator decisions recorded 2026-10-09: (1) registry-driven dispatch — one `cron` grant activates the six generic workflows, lanes enabled by reviewed registry PR; (2) wave ladder with one `cron` grant per wave cutover; (3) push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00, hook-enforced; (4) standing 48 h merge approval for `n8nmat/*` PRs with a board review verdict, green on the exact head, nothing live until main CI is green on the merged SHA, merge only; (5) 16:40 ET: read-only guard projection for the approval router, never a guard write. |
+| 4.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23.3 gains one named live-lane exception: `trade-ai-scalp-live` (Finviz ingest via the data broker, `trade_ai_scans` writer, `send_telegram` caller) may run `live` from n8n, only under the cron line's argv, lock, 295 s timeout and market gate, no provider key in n8n, relay live-lane listing and a workflow-id grant; cron stays the fallback until 3 clean market days. §23 status line corrected (stale 3.0.0 "awaiting" sentence). Allowlist `never` names the exception; `live_arg: []`. Evidence: `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md`, PR #1573, `tests/test_agents_policy_4_0_0_scalp_lane.py`. | Operator 2026-10-09 15:25 ET in session: "APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix" (`APPROVE_AGENTS_POLICY_4_0_0`), after "n8n drives a governed lane (Recommended)". |
+| 3.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for governed LLM and Agent capability in n8n: §23.3 first bullet replaced (n8n workflows **and Agent nodes** cause host work only through the relay → gateway `coordination/run` for allowlisted lanes and the read-only coordination endpoints; Agent tools = those endpoints; never-list incl. DOF SQL applies to Agent tools; per-process tool allowlist enforced at the bridge with typed refusal; container internet egress BLOCKED by a DOCKER-USER rule, host reach only `172.19.0.1:18092`); §23.4 replaced (capability not provider: registered `n8n_*` process + versioned template + optional routing policy through the governed bridge; default routing Grok OAuth → ChatGPT OAuth → DeepSeek metered; free text only after `sanitise_for_external` for `free_text_allowed` processes; output schema + behaviour-field scan at the bridge; caps and typed refusal kept); §23.5 first bullet replaced (at most two credentials — relay bearer, and a bridge token only after §23.10; owner MFA waived; non-superuser `n8n_app` role still required); §23.8 n8n Agent nodes (registry row, receipt per turn, grant naming the workflow id, model node → bridge only, tool nodes excluded, turn/token/wall caps, no streaming until audit B H1 is fixed; first Agent read-only "explain why lane X failed", coordination-read tools only, shadowed first); §23.9 governance parity; §23.10 preconditions P2–P9, P11–P13, P15–P22 as a checklist that grants nothing until each is measured true with a receipt. §17 gains Agent-node activation / bridge-token creation; §23 and top-of-file 2.0.0 status lines corrected; ADR_COORDINATION_SECRETS Policy line fixed + 3.0.0 addendum. Proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`; audits `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md`, `guardrail-audit-b-code-20261009.md`, `guardrail-audit-c-policy-n8n-20261009.md`. MAJOR: egress policy and the n8n actor's authority change; nothing in §0, §2, §2A, §2B or §7A is weakened for any actor. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9` (operator, 2026-10-09, in session); proposed text merged #1547 as `3b5c24856`; ratification (the activation event) merged #1552 as `377e9b536`; operator decisions recorded 2026-10-09: (1) ratify the proposal's §3 text as 3.0.0; (2) routing Grok → ChatGPT → DeepSeek; (3) container internet egress blocked, not proxied; (4) first Agent read-only lane-failure explainer, shadowed first; (5) owner MFA waived, `n8n_app` role still required. |
 | 2.0.1 | 2026-10-08 | ACTIVE on merge | PATCH | On top of 2.0.0: Telegram/Communications section gains the Investment Command Center rule: opportunity rules in `config/opportunity_conviction.yaml`; curated assessments persisted only by `cio_opportunity_curator.py` into the CIO opportunity store (never as a thesis version); no behaviour keys; the Telegram opportunity line only via `send_telegram`. Adds obligations, weakens nothing; §0/§2/§17 untouched. | Operator-directed 2026-10-08 (/plan Investment Command Center; "make sure all data is curated by and persistent in CIO memory"; "resonate in telegram alerts"). |
 | 2.0.0 | 2026-10-08 | ACTIVE | MAJOR | §23 "n8n: scheduler-of-record and governed routing (carve-out, n8n only)" added: scope limited to the `m8m-n8n` compose project; n8n workflows are §9.3 scheduler entries (registry row with `output_signal` first, grant-gated install/activate/edit/retire, shadow → canary → cutover → per-line rollback, `# RETIRED <date> n8n-cutover <lane_id>` never deleted, double scheduler fails the registry gate); the only trigger path is the gateway `coordination/run` operation for lanes in `config/n8n_run_allowlist.json` (never broker/order/stop/position/paper-execution/sender/secret-render/guard/release-deploy/destructive-retention/memory-writer/authoritative-ingest), gateway never spawns, executor reuses the lane's lock, RunReceipt is the evidence; n8n may pick registered `n8n_*` process ids, versioned template ids and named routing policies but never a model, provider, raw prompt or caller identity, every call capped by the process registry and the $2.00/day cap with typed refusal; exactly one n8n credential (relay bearer from Bitwarden SM, weekly rotation, valid only at the relay), HMAC key host-side, `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` + prune ≤168 h as the precondition; n8n is replaceable. §9.3 and §17 amended in place; ADR_COORDINATION_SECRETS moves to ACCEPTED (one credential). MAJOR: routing and scheduler reach widen for one actor; nothing weakened for any other. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_2_0_0 1513 20d8b5f0d88ac4943612b6703402f638ba3ed9af` (operator, 2026-10-08, in session: "i approve"); merged #1513 at 2026-10-08T09:06:46-04:00; operator direction 2026-10-08 ("make agents.md carve out just for n8n"; decisions 1–3 of the n8n program plan). |
 | 1.6.1 | 2026-10-08 | ACTIVE on merge | PATCH | Telegram/Communications rule extended to the Watchlist: Watch decision standards live in `config/watch_decision_standards.yaml` via `lib/data_broker/watch_decision.py`; the signal expires, never the membership. No rule weakened; §0/§2/§17 untouched. | Operator-directed 2026-10-07 ("watchlist etc"; "start the watchlist"). |

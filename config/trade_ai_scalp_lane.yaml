@@ -3,3 +3,25 @@
 # so catalyst lookups stop after enrich_budget_s and the rest score on today's last cached lookup.
 schema: TradeAIScalpLane@v1
 enrich_budget_s: 150
+# Hard per-cycle deadline (= the cron line's `timeout 295` and the n8n allowlist timeout). Every cycle writes a
+# ScalpCycleReceipt@v1 with budget.used_pct against it; the monitor counts an ok past it as a missed slot.
+cycle_deadline_s: 295
+# Wall-clock guard (2026-10-09 forensics): catalyst lookups stop once fewer than post_enrich_reserve_s remain before
+# cycle_deadline_s, counted from process start. Scoring + persist + send measured 60-75 s under load.
+post_enrich_reserve_s: 100
+# Catalysts are read in bulk (scripts/scalp_catalyst_bulk.py, 2026-10-09): one news_articles query through the data
+# broker plus the Finviz Elite news export for finviz_batch_size tickers per request (measured 2026-10-09: 76 names,
+# 8 requests, 17.7 s, 64 covered), replacing ~2 throttled Finviz page requests per ticker. Up to
+# per_ticker_fallback_max uncovered names still get the old per-ticker lookup inside enrich_budget_s.
+catalysts:
+  bulk_enabled: true
+  source_order: [data_broker_news, finviz_elite_news_bulk]
+  fill_gaps_only: false
+  db_news_max_age_hours: 72
+  db_news_per_symbol: 6
+  finviz_news_url: https://elite.finviz.com/news_export.ashx
+  finviz_news_view: 3
+  finviz_batch_size: 10
+  finviz_per_symbol: 10
+  finviz_timezone: America/New_York
+  per_ticker_fallback_max: 8

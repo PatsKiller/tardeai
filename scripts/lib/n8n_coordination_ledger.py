@@ -25,6 +25,14 @@ saw a dropped connection. Every method that touches the connection is ``@_locked
 ledger, shared by its adapters), reads included: a single SELECT on a shared connection would otherwise
 observe another thread's half-finished transaction. The lock is in-process only; cross-process safety
 (executor vs. gateway on the same file) stays with sqlite's BEGIN IMMEDIATE + busy timeout.
+
+2026-10-09 (n8n maturity B5.4, design 02 §3.3): ADDITIVE schema for registry-driven dispatch. ``runs`` gains
+nullable ``slot_key, attempt, parent_run_id, class, priority, worker_id, pid, heartbeat_at, verdict`` (added by
+ALTER TABLE only when missing, so an old file keeps every row); new tables ``dead_letters``, ``breakers`` and
+``event_cursors``. The executor writes dead letters and breakers (it holds the verdict, see
+scripts/lib/n8n_retry_policy.py ``finalize_outcome``); ``coordination/due`` only reads them;
+scripts/n8n_dlq.py releases them. Breaker open iff ``opened_at`` is set and (``released_at`` is NULL or
+``released_at < opened_at``).
 """
 from __future__ import annotations
 
@@ -63,6 +71,37 @@ RUN_FINISHED_STATES = frozenset({"RUN_DONE", "RUN_FAILED", "RUN_TIMEOUT", "RUN_S
 RUN_STATES = frozenset({RUN_STATE_REQUESTED, RUN_STATE_RUNNING}) | RUN_FINISHED_STATES
 RUN_ROW_FIELDS = ("run_id", "lane_id", "mode", "state", "requested_by", "caller_id", "requested_at", "started_at",
                   "finished_at", "exit_code", "duration_s")
+#: 2026-10-09 (B5.4): additive nullable ``runs`` columns -> SQL type. Row dicts carry them under the same names.
+RUN_EXT_COLUMNS: dict[str, str] = {
+    "slot_key": "TEXT", "attempt": "INTEGER", "parent_run_id": "TEXT", "class": "TEXT", "priority": "INTEGER",
+    "worker_id": "TEXT", "pid": "INTEGER", "heartbeat_at": "TEXT", "verdict": "TEXT",
+}
+RUN_VERDICTS = frozenset({"ok", "retryable", "terminal", "skipped"})
+DEAD_LETTER_FIELDS = ("slot_key", "lane_id", "mode", "slot_local", "attempts", "last_run_id", "last_state",
+                      "last_reason", "verdict", "dead_at", "released_at", "released_by", "release_note",
+                      "class", "max_attempts", "policy")
+#: Additive dead_letters columns (review of #1594): what dead_letter_rearmable needs to refuse a re-run.
+DEAD_LETTER_EXT_COLUMNS: dict[str, str] = {"class": "TEXT", "max_attempts": "INTEGER", "policy": "TEXT"}
+#: Classes that never retry, whatever their policy says (a retry could double-send or double-write).
+SINGLE_ATTEMPT_CLASSES = frozenset({"send", "learn"})
+
+
+def dead_letter_rearmable(row: Mapping[str, Any] | None) -> tuple[bool, str]:
+    """Whether a dead letter may be released and so re-armed by ``coordination/due``: (ok, why_not). Pure.
+
+    Refused for class send/learn, for a single-attempt run (``max_attempts`` <= 1), and when either is unknown
+    (NULL, e.g. a legacy row): unknown means no re-run. ``release_dead_letter(s)`` enforce it; B5.3 due must
+    re-arm a released dead letter only when this returns (True, "")."""
+    if not row:
+        return False, "not_found"
+    klass, max_attempts = row.get("class"), row.get("max_attempts")
+    if klass is None or max_attempts is None:
+        return False, "unknown_class_or_policy"
+    if klass in SINGLE_ATTEMPT_CLASSES:
+        return False, f"class_{klass}_never_retries"
+    if int(max_attempts) <= 1:
+        return False, "single_attempt_policy"
+    return True, ""
 MAX_PAYLOAD_BYTES = 65536
 RATE_LIMIT = 30
 RATE_WINDOW_S = 60
@@ -94,15 +133,28 @@ def _token_hash(token: str) -> str:
 
 
 class CoordinationLedger:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, read_only: bool = False) -> None:
+        """``read_only=True`` (B5.4 review): open with ``mode=ro``, no WAL pragma and NO migration, so a reader
+        (``n8n_dlq.py list``) never alters a production schema. The file must exist. Writes raise."""
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.read_only = read_only
         # One connection, many handler threads (see the module docstring).
         self.lock = threading.RLock()
+        if read_only:
+            self._conn = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True, timeout=5,
+                                         isolation_level=None, check_same_thread=False)
+            self._conn.row_factory = sqlite3.Row
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path, timeout=5, isolation_level=None, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._migrate()
+
+    @_locked
+    def has_table(self, name: str) -> bool:
+        return self._conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() \
+            is not None
 
     @_locked
     def close(self) -> None:
@@ -184,6 +236,64 @@ class CoordinationLedger:
             CREATE INDEX IF NOT EXISTS runs_state_requested_at ON runs (state, requested_at);
             """
         )
+        self._migrate_dispatch_v2()
+
+    def _migrate_dispatch_v2(self) -> None:
+        """B5.4 additive migration; idempotent (columns added only when missing, tables IF NOT EXISTS)."""
+        self._add_columns("runs", RUN_EXT_COLUMNS)
+        self._conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS runs_slot_key ON runs (slot_key);
+            CREATE INDEX IF NOT EXISTS runs_lane_state ON runs (lane_id, state);
+            CREATE TABLE IF NOT EXISTS dead_letters (
+                slot_key TEXT PRIMARY KEY,
+                lane_id TEXT NOT NULL,
+                mode TEXT,
+                slot_local TEXT,
+                attempts INTEGER,
+                last_run_id TEXT,
+                last_state TEXT,
+                last_reason TEXT,
+                verdict TEXT,
+                dead_at TEXT NOT NULL,
+                released_at TEXT,
+                released_by TEXT,
+                release_note TEXT,
+                class TEXT,
+                max_attempts INTEGER,
+                policy TEXT
+            );
+            CREATE INDEX IF NOT EXISTS dead_letters_lane ON dead_letters (lane_id, dead_at);
+            CREATE TABLE IF NOT EXISTS breakers (
+                lane_id TEXT PRIMARY KEY,
+                opened_at TEXT,
+                consecutive INTEGER,
+                released_at TEXT,
+                released_by TEXT
+            );
+            CREATE TABLE IF NOT EXISTS event_cursors (
+                lane_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                cursor TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (lane_id, source)
+            );
+            """
+        )
+        self._add_columns("dead_letters", DEAD_LETTER_EXT_COLUMNS)
+
+    def _add_columns(self, table: str, columns: Mapping[str, str]) -> None:
+        """ALTER TABLE ADD COLUMN for each missing column. Two processes migrating at once (gateway + executor
+        starting together) can both see a column missing; the loser's "duplicate column name" is success."""
+        have = {str(r["name"]) for r in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for col, typ in columns.items():
+            if col in have:
+                continue
+            try:
+                self._conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" {typ}')
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
 
     @_locked
     def accept(
@@ -518,8 +628,13 @@ class LedgerRunStore:
 
     @_locked
     def request(self, *, run_id: str, lane_id: str, mode: str, requested_by: str | None, caller_id: str | None,
-                now: float) -> tuple[dict[str, Any], bool]:
-        """Insert a REQUESTED row, or return the existing row for this run_id with duplicate=True."""
+                now: float, slot_key: str | None = None, attempt: int | None = None,
+                parent_run_id: str | None = None, klass: str | None = None,
+                priority: int | None = None) -> tuple[dict[str, Any], bool]:
+        """Insert a REQUESTED row, or return the existing row for this run_id with duplicate=True.
+
+        The B5.4 keywords are optional and stored as given (NULL when omitted); an existing row is returned
+        unchanged whatever they say (insert-or-return-existing)."""
         if not run_id or not lane_id or not mode:
             raise LedgerError("malformed_event")
         self._l._conn.execute("BEGIN IMMEDIATE")
@@ -529,9 +644,12 @@ class LedgerRunStore:
                 self._l._conn.execute("ROLLBACK")
                 return self._row_dict(existing), True
             self._l._conn.execute(
-                "INSERT INTO runs (run_id, lane_id, mode, state, requested_by, caller_id, requested_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (run_id, lane_id, mode, RUN_STATE_REQUESTED, requested_by, caller_id, _iso(now)))
+                "INSERT INTO runs (run_id, lane_id, mode, state, requested_by, caller_id, requested_at,"
+                ' slot_key, attempt, parent_run_id, "class", priority)'
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (run_id, lane_id, mode, RUN_STATE_REQUESTED, requested_by, caller_id, _iso(now),
+                 slot_key, None if attempt is None else int(attempt), parent_run_id, klass,
+                 None if priority is None else int(priority)))
             self._l._conn.execute("COMMIT")
         except Exception:
             self._l._conn.execute("ROLLBACK")
@@ -602,9 +720,185 @@ class LedgerRunStore:
         sql += " ORDER BY requested_at DESC, run_id DESC LIMIT ?"; args.append(int(limit))
         return [self._row_dict(r) for r in self._l._conn.execute(sql, args).fetchall()]
 
+    # ── B5.4: verdicts, dead letters, breakers, event cursors (design 02 §3.3/§3.4) ──
+
+    def _write(self, sql: str, args: tuple) -> int:
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            cur = self._l._conn.execute(sql, args)
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+        return int(cur.rowcount)
+
+    @_locked
+    def set_verdict(self, run_id: str, verdict: str) -> dict[str, Any]:
+        if verdict not in RUN_VERDICTS:
+            raise LedgerError("bad_verdict")
+        if self._write("UPDATE runs SET verdict = ? WHERE run_id = ?", (verdict, run_id)) == 0:
+            raise LedgerError("unknown_event")
+        out = self.get(run_id)
+        assert out is not None
+        return out
+
+    @_locked
+    def record_dead_letter(self, *, slot_key: str, lane_id: str, mode: str | None, slot_local: str | None,
+                           attempts: int | None, last_run_id: str | None, last_state: str | None,
+                           last_reason: str | None, verdict: str | None, now: float, klass: str | None = None,
+                           max_attempts: int | None = None, policy: str | None = None) -> dict[str, Any]:
+        """Upsert the slot's dead letter. A re-dead slot (released, re-armed, died again) clears its release.
+        ``klass`` / ``max_attempts`` (effective) / ``policy`` feed ``dead_letter_rearmable``; NULL = not re-armable."""
+        if not slot_key or not lane_id:
+            raise LedgerError("malformed_event")
+        self._write(
+            "INSERT INTO dead_letters (slot_key, lane_id, mode, slot_local, attempts, last_run_id, last_state,"
+            " last_reason, verdict, dead_at, released_at, released_by, release_note, class, max_attempts, policy)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)"
+            " ON CONFLICT(slot_key) DO UPDATE SET lane_id=excluded.lane_id, mode=excluded.mode,"
+            " slot_local=excluded.slot_local, attempts=excluded.attempts, last_run_id=excluded.last_run_id,"
+            " last_state=excluded.last_state, last_reason=excluded.last_reason, verdict=excluded.verdict,"
+            " dead_at=excluded.dead_at, released_at=NULL, released_by=NULL, release_note=NULL,"
+            " class=excluded.class, max_attempts=excluded.max_attempts, policy=excluded.policy",
+            (slot_key, lane_id, mode, slot_local, attempts, last_run_id, last_state, last_reason, verdict, _iso(now),
+             klass, None if max_attempts is None else int(max_attempts), policy))
+        out = self.get_dead_letter(slot_key)
+        assert out is not None
+        return out
+
+    @_locked
+    def get_dead_letter(self, slot_key: str) -> dict[str, Any] | None:
+        row = self._l._conn.execute("SELECT * FROM dead_letters WHERE slot_key = ?", (slot_key,)).fetchone()
+        return None if row is None else _dead_letter_dict(row)
+
+    @_locked
+    def list_dead_letters(self, lane_id: str | None = None, include_released: bool = False) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM dead_letters WHERE 1=1", []
+        if lane_id:
+            sql += " AND lane_id = ?"; args.append(lane_id)
+        if not include_released:
+            sql += " AND released_at IS NULL"
+        sql += " ORDER BY dead_at DESC, slot_key ASC"
+        return [_dead_letter_dict(r) for r in self._l._conn.execute(sql, args).fetchall()]
+
+    @_locked
+    def release_dead_letter(self, slot_key: str, by: str, note: str, now: float) -> dict[str, Any] | None:
+        """Mark an UNRELEASED dead letter released. None when no such row or it is already released.
+        Raises ``LedgerError("release_refused:<why>")`` when ``dead_letter_rearmable`` refuses the row."""
+        cur = self.get_dead_letter(slot_key)
+        if cur is None or cur["released_at"]:
+            return None
+        ok, why = dead_letter_rearmable(cur)
+        if not ok:
+            raise LedgerError(f"release_refused:{why}")
+        n = self._write("UPDATE dead_letters SET released_at = ?, released_by = ?, release_note = ?"
+                        " WHERE slot_key = ? AND released_at IS NULL", (_iso(now), by, note, slot_key))
+        return self.get_dead_letter(slot_key) if n else None
+
+    @_locked
+    def release_dead_letters(self, slot_keys: list[str], by: str, note: str, now: float, *,
+                             breaker_lane: str | None = None) -> dict[str, Any]:
+        """Release several dead letters and (optionally) the lane's open breaker in ONE transaction. Every key
+        must be an unreleased, re-armable dead letter or nothing is written (LedgerError release_refused /
+        not_found). Returns {"released": [rows], "breaker_released": bool}."""
+        for key in slot_keys:
+            cur = self.get_dead_letter(key)
+            if cur is None or cur["released_at"]:
+                raise LedgerError(f"not_found:{key}")
+            ok, why = dead_letter_rearmable(cur)
+            if not ok:
+                raise LedgerError(f"release_refused:{why}:{key}")
+        brk = self.breaker(breaker_lane) if breaker_lane else None
+        at = _iso(now)
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            for key in slot_keys:
+                self._l._conn.execute("UPDATE dead_letters SET released_at = ?, released_by = ?, release_note = ?"
+                                      " WHERE slot_key = ? AND released_at IS NULL", (at, by, note, key))
+            if brk and brk["open"]:
+                self._l._conn.execute("UPDATE breakers SET released_at = ?, released_by = ? WHERE lane_id = ?",
+                                      (at, by, breaker_lane))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+        return {"released": [self.get_dead_letter(k) for k in slot_keys], "breaker_released": bool(brk and brk["open"])}
+
+    @_locked
+    def consecutive_dead(self, lane_id: str) -> int:
+        """Dead slots of the lane since the later of its last RUN_DONE and its last breaker release.
+
+        A RUN_DONE resets the streak; so does an operator breaker release (otherwise the next dead slot
+        would re-open the breaker at once)."""
+        last_ok = self._l._conn.execute(
+            "SELECT MAX(finished_at) AS t FROM runs WHERE lane_id = ? AND state = 'RUN_DONE'", (lane_id,)).fetchone()["t"]
+        brk = self.breaker(lane_id)
+        cutoff = max([t for t in (last_ok, (brk or {}).get("released_at")) if t] or [""])
+        row = self._l._conn.execute("SELECT COUNT(*) AS n FROM dead_letters WHERE lane_id = ? AND dead_at > ?",
+                                    (lane_id, cutoff)).fetchone()
+        return int(row["n"])
+
+    @_locked
+    def breaker(self, lane_id: str) -> dict[str, Any] | None:
+        """The lane's breaker row plus ``open`` (bool), or None when the lane never had one."""
+        row = self._l._conn.execute("SELECT * FROM breakers WHERE lane_id = ?", (lane_id,)).fetchone()
+        if row is None:
+            return None
+        out = {k: row[k] for k in ("lane_id", "opened_at", "consecutive", "released_at", "released_by")}
+        out["open"] = breaker_is_open(out)
+        return out
+
+    @_locked
+    def open_breaker(self, lane_id: str, consecutive: int, now: float) -> dict[str, Any]:
+        self._write(
+            "INSERT INTO breakers (lane_id, opened_at, consecutive, released_at, released_by) VALUES (?, ?, ?, NULL, NULL)"
+            " ON CONFLICT(lane_id) DO UPDATE SET opened_at=excluded.opened_at, consecutive=excluded.consecutive,"
+            " released_at=NULL, released_by=NULL", (lane_id, _iso(now), int(consecutive)))
+        out = self.breaker(lane_id)
+        assert out is not None
+        return out
+
+    @_locked
+    def release_breaker(self, lane_id: str, by: str, now: float) -> dict[str, Any] | None:
+        """Release an OPEN breaker. None when the lane has no open breaker."""
+        cur = self.breaker(lane_id)
+        if cur is None or not cur["open"]:
+            return None
+        self._write("UPDATE breakers SET released_at = ?, released_by = ? WHERE lane_id = ?", (_iso(now), by, lane_id))
+        return self.breaker(lane_id)
+
+    @_locked
+    def get_cursor(self, lane_id: str, source: str) -> str | None:
+        row = self._l._conn.execute("SELECT cursor FROM event_cursors WHERE lane_id = ? AND source = ?",
+                                    (lane_id, source)).fetchone()
+        return None if row is None else row["cursor"]
+
+    @_locked
+    def set_cursor(self, lane_id: str, source: str, cursor: str | None, now: float) -> None:
+        self._write(
+            "INSERT INTO event_cursors (lane_id, source, cursor, updated_at) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(lane_id, source) DO UPDATE SET cursor=excluded.cursor, updated_at=excluded.updated_at",
+            (lane_id, source, cursor, _iso(now)))
+
     @staticmethod
     def _row_dict(row: sqlite3.Row) -> dict[str, Any]:
         out = {k: row[k] for k in RUN_ROW_FIELDS}
+        keys = row.keys()
+        for col in RUN_EXT_COLUMNS:
+            out[col] = row[col] if col in keys else None
         raw = row["receipt_json"]
         out["receipt"] = json.loads(raw) if raw else None
         return out
+
+
+def _dead_letter_dict(row: sqlite3.Row) -> dict[str, Any]:
+    keys = row.keys()
+    return {k: (row[k] if k in keys else None) for k in DEAD_LETTER_FIELDS}
+
+
+def breaker_is_open(row: Mapping[str, Any] | None) -> bool:
+    """Open iff ``opened_at`` is set and (``released_at`` is NULL or ``released_at < opened_at``). Pure."""
+    if not row or not row.get("opened_at"):
+        return False
+    released = row.get("released_at")
+    return not released or str(released) < str(row["opened_at"])

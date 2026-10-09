@@ -455,8 +455,39 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                    state: CycleState, time_str: str,
                    _timeout: int = 600,  # 10 min max per live cycle
                    publish_dashboard: bool = True,
-                   enrich_budget_s: Optional[float] = None) -> Optional[List[Dict]]:
+                   enrich_budget_s: Optional[float] = None,
+                   bulk_catalysts: Optional[Dict] = None,
+                   cycle_stats: Optional[Dict] = None,
+                   state_saver=None,
+                   deadline_monotonic: Optional[float] = None,
+                   post_enrich_reserve_s: float = 0.0) -> Optional[List[Dict]]:
     sys.path.insert(0, str(root / "scripts"))
+    # cycle_stats (optional, filled in place): the phase reached, symbols scanned, triggers, alert outcome and
+    # errors, so a caller can write a per-cycle receipt (ScalpCycleReceipt@v1) even when the cycle is cut short.
+    _cs: Dict = cycle_stats if cycle_stats is not None else {}
+    _cs.setdefault("errors", [])
+    _phase_t = {"t": time.monotonic()}
+    _cs["phase_s"] = {}
+
+    def _enter(phase: str) -> None:
+        # per-phase wall seconds, so a receipt shows where the 295 s went (ingest included)
+        now_m = time.monotonic()
+        prev = _cs.get("phase")
+        if prev:
+            _cs["phase_s"][prev] = round(_cs["phase_s"].get(prev, 0.0) + now_m - _phase_t["t"], 1)
+        _phase_t["t"] = now_m
+        _cs["phase"] = phase
+
+    def _past_deadline() -> bool:
+        # 2026-10-09 (n8n maturity B4): enrich_budget_s counts from enrichment start, but the 295 s timeout
+        # counts from process start; ingest took 1-3.4 min under load, so a 150 s budget still overran
+        # (2 of 3 cycles killed after the #1572 promote). A wall-clock deadline keeps post_enrich_reserve_s
+        # for scoring + persist + send whatever the earlier phases cost.
+        return (deadline_monotonic is not None
+                and time.monotonic() >= deadline_monotonic - float(post_enrich_reserve_s or 0))
+
+    _cs["phase"] = None
+    _enter("ingest")
 
     try:
         from finviz_ingestion import load_live_candidates
@@ -465,6 +496,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         live = load_live_candidates(root, run_label, date_str, out)
         tickers = live["dataframe"].to_dict(orient="records")
         if not tickers: return
+        _enter("inject")
         try:
             import sys as _sys_uc
             _uc_lib = root / "scripts" / "lib"
@@ -482,7 +514,9 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             print(f"  [live] universe inject warning: {_e}")
         print(f"  [live] {len(tickers)} tickers")
     except Exception as e:
-        print(f"  [live] ingestion error: {e}"); return
+        print(f"  [live] ingestion error: {e}")
+        _cs["errors"].append(f"ingestion: {type(e).__name__}: {e}"[:200])
+        return
 
     # Inject social/news candidates from scalp_scan_results — P0-4: ROUTE-AWARE (not score-only).
     # Only verified micro-cap GO names enter the live scoring path as tradeable momentum_scalp;
@@ -547,18 +581,27 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     except Exception as e:
         # A dead overlay is a finding, not a footnote: record it where the run summary can see it.
         print(f"  [live] social inject ERROR: {e}")
+        _cs["errors"].append(f"social_inject: {type(e).__name__}: {e}"[:200])
         try:
             _SOCIAL_INJECT_ERRORS.append({"run": run_label, "error": f"{type(e).__name__}: {e}"[:200]})
         except Exception:  # noqa: BLE001  # ALARM-DELIVERY-DECLARED: in-memory counter only; the print above is the log line
             pass
 
+    _cs["symbols_scanned"] = len(tickers)
+    _enter("market")
     market: Dict = {}
-    try:
-        from market_context import get_market_snapshot
-        market = get_market_snapshot()
-    except Exception as e:
-        print(f"  [live] market error: {e}")
+    if _past_deadline():
+        # ingest already ate the budget: the market snapshot only colours sector momentum and the alert header
+        print("  [live] market snapshot skipped (cycle deadline)")
+        _cs.setdefault("budget_skips", []).append("market")
+    else:
+        try:
+            from market_context import get_market_snapshot
+            market = get_market_snapshot()
+        except Exception as e:
+            print(f"  [live] market error: {e}")
 
+    _enter("catalysts")
     enrichments: Dict = {}
     try:
         from catalyst_cache import get_bulk, set_bulk
@@ -569,12 +612,39 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         enrichments.update(cached)
         fresh, deferred = {}, []
         _enrich_t0 = time.monotonic()
+        bulk_note = ""
+        if bulk_catalysts and bulk_catalysts.get("bulk_enabled") and _past_deadline():
+            deferred.extend(miss)
+            miss = []
+            bulk_note = "  bulk skipped (cycle deadline)"
+        elif bulk_catalysts and bulk_catalysts.get("bulk_enabled"):
+            # 2026-10-09: the scalp lane reads catalysts in bulk (data-broker news + batched Finviz Elite news
+            # export, scripts/scalp_catalyst_bulk.py) instead of ~2 throttled Finviz page requests per ticker.
+            from scalp_catalyst_bulk import enrich_bulk
+            due = {}
+            for sym in miss:
+                row = next((t for t in tickers if t.get("symbol","").upper() == sym), {})
+                fps = set(row.get("catalyst_fingerprints",[]))
+                if state.needs_haiku(sym, fps):
+                    due[sym] = fps
+            bulk, bstats = enrich_bulk(list(due), bulk_catalysts)
+            for sym, enr in bulk.items():
+                fresh[sym] = enr
+                state.record_haiku(sym, due.get(sym, set()))
+            if bulk:
+                set_bulk(bulk, str(root), date_str)
+            cap = int(bulk_catalysts.get("per_ticker_fallback_max", 0))
+            left = [s for s in bstats.get("uncovered", []) if s in due]
+            miss, deferred = left[:cap], left[cap:]
+            bulk_note = (f"  bulk {len(bulk)}/{len(due)} in {bstats.get('seconds')}s"
+                         f" ({bstats.get('finviz_calls')} finviz calls"
+                         + (f", {bstats['finviz_error']}" if bstats.get("finviz_error") else "") + ")")
         for sym in miss:
             row = next((t for t in tickers if t.get("symbol","").upper() == sym), {})
             fps = set(row.get("catalyst_fingerprints",[]))
             # 2026-10-09: the 5-min scalp lane caps lookups so the cycle always finishes inside its timeout;
             # names past the budget score on today's last cached lookup and refresh on the next run.
-            if enrich_budget_s is not None and time.monotonic() - _enrich_t0 >= enrich_budget_s:
+            if (enrich_budget_s is not None and time.monotonic() - _enrich_t0 >= enrich_budget_s) or _past_deadline():
                 deferred.append(sym)
                 continue
             if state.needs_haiku(sym, fps):
@@ -592,12 +662,13 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         if deferred:
             stale, _ = get_bulk(deferred, str(root), date_str, 24 * 60)
             enrichments.update(stale)
-        print(f"  [live] catalysts: {len(cached)} cached  {len(fresh)} fresh"
-              + (f"  {len(deferred)} deferred (budget {enrich_budget_s:.0f}s, {len(stale)} on stale cache)"
-                 if deferred else ""))
+        print(f"  [live] catalysts: {len(cached)} cached  {len(fresh)} fresh" + bulk_note
+              + (f"  {len(deferred)} deferred ({len(stale)} on stale cache)" if deferred else ""))
     except Exception as e:
         print(f"  [live] catalyst error: {e}")
+        _cs["errors"].append(f"catalysts: {type(e).__name__}: {e}"[:200])
 
+    _enter("score")
     try:
         from scoring import score_all, filter_candidates
         from short_interest import enrich_short_interest, apply_squeeze_bonus_to_scores
@@ -635,7 +706,9 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                 except Exception as _e:
                     print(f"  [live] restore warning: {_e}")
     except Exception as e:
-        print(f"  [live] scoring error: {e}"); return
+        print(f"  [live] scoring error: {e}")
+        _cs["errors"].append(f"scoring: {type(e).__name__}: {e}"[:200])
+        return
 
     halt_data: Dict = {}
     try:
@@ -648,6 +721,16 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
 
     triggers = state.detect_triggers(scored, halt_data)
     state.update(scored)
+    if state_saver is not None:
+        # Persist the "already alerted" memory BEFORE the send: a cycle killed after sending but before the
+        # caller's save would otherwise re-alert the same GO next cycle (n8n maturity B4, 2026-10-09).
+        try:
+            state_saver(state)
+        except Exception as _e:  # noqa: BLE001 — the caller saves again after the cycle
+            _cs["errors"].append(f"state_save: {type(_e).__name__}: {_e}"[:200])
+    _enter("persist")
+    _cs["signals"] = sum(1 for t in scored if t.get("decision") == "GO")
+    _cs["triggers"] = len(triggers)
 
     # Write live scores so API/command center stays in sync
     try:
@@ -729,7 +812,10 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             print(f"  [live] {len(_go_wait)} tickers → trade_ai_scans")
     except Exception as _e:
         print(f"  [live] db persist error: {_e}")
+        _cs["errors"].append(f"db_persist: {type(_e).__name__}: {_e}"[:200])
 
+    _enter("alert")
+    _cs["alert_sent"] = False
     if triggers:
         print(f"  [live] {len(triggers)} trigger(s): {[t['type'] for t in triggers]}")
         msg = _build_live_alert(triggers, time_str, market)
@@ -739,10 +825,12 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         except Exception: pass
         try:
             from telegram_alert import send_telegram
-            send_telegram(msg)
-        except Exception: pass
+            _cs["alert_sent"] = bool(send_telegram(msg))
+        except Exception as _e:
+            _cs["errors"].append(f"alert: {type(_e).__name__}: {_e}"[:200])
     else:
         print("  [live] no changes  -- alerts suppressed")
+    _enter("done")
 
     # Refresh dashboard (no PDF/DOCX). The 5-min scalp lane scores a scalp-only subset, so it does not
     # overwrite the main dashboard / delta state (publish_dashboard=False).

@@ -12,11 +12,19 @@ Activation evidence (read-only SELECTs, scripts/lib/n8n_live_inventory.py):
   * ``workflow_publish_history`` rows with event ``activated`` (UI activations);
   * ``workflow_published_version`` rows — ``createdAt`` is when the current version was published
     (``updatedAt`` is touched on every n8n restart and is NOT an activation time);
-  * ``workflow_history`` — when that version was imported, used as a second time a grant may cover.
+  * ``workflow_history`` — when that version was imported, attributed separately from activation.
 
 One event per (workflow id, version id). A ``grant-issued`` ledger entry covers it when its reason names
 the workflow id (a tranche grant listing several ids covers each), its tier is one of ``--tiers``
-(default cron, config-write, service) and the event time falls inside [ts - skew, ts + seconds + skew].
+(default ``cron`` only) and the event time falls inside [ts - skew, ts + seconds + skew].
+
+One activation tier (AGENTS.md 3.1.0 §17, §23.2; due-diligence audit E D5): before 3.1.0, §17 said a
+``cron`` grant, §23.2 said ``cron``/``config-write``, and this checker also accepted ``service`` — three
+answers to one question. From 3.1.0 activating, editing or deactivating an n8n workflow (and a cutover)
+is a ``cron`` grant; ``config-write`` stays for host unit files and registry-bearing config on disk and
+``service`` is not an activation tier, so a grant naming the id under either reports NAMED_IN_OTHER_TIER.
+A historical audit of activations made under the older wording can pass the old set explicitly:
+``--tiers cron,config-write,service``.
 
 Verdicts: GRANTED; NAMED_IN_OTHER_TIER (the id is named, but under a tier that does not authorise an
 activation, e.g. release-write); NAME_ONLY_GRANT (the grant names the workflow/lane name, not the id —
@@ -68,7 +76,8 @@ NAME_ONLY_GRANT = "NAME_ONLY_GRANT"
 UNGRANTED_ACTIVATION = "UNGRANTED_ACTIVATION"
 FINDINGS = (UNGRANTED_ACTIVATION, NAMED_IN_OTHER_TIER, NAME_ONLY_GRANT)
 
-DEFAULT_TIERS = ("cron", "config-write", "service")
+# AGENTS.md 3.1.0: one n8n activation tier. --tiers widens it for a historical audit only.
+DEFAULT_TIERS = ("cron",)
 DEFAULT_SKEW_S = 120
 
 
@@ -201,31 +210,50 @@ def reconcile(
     skew = timedelta(seconds=skew_s)
     rows = []
     for ev in events:
-        # Every recorded activation of this version counts: a workflow first activated without a grant and
-        # then re-activated under a grant naming its id (regularisation, 2026-10-09) is attributed by the
-        # later grant. imported_at stays a second time a grant may cover.
-        times = [t for t in [*(ev.get("times") or [ev["activated_at"]]), ev.get("imported_at")] if t is not None]
 
-        def covering(match_name: bool) -> list[dict]:
+        def covering(match_name: bool, at: datetime) -> list[dict]:
             hits = []
             for g in grants:
                 token = ev["name"] if match_name else ev["workflow_id"]
                 if not _names(g["reason"], token):
                     continue
                 lo, hi = _window(g, skew)
-                if any(lo <= t <= hi for t in times):
+                if lo <= at <= hi:
                     hits.append(g)
             return hits
 
-        by_id = covering(False)
-        good = [g for g in by_id if g["tier"] in tiers]
-        if good:
-            status, used = GRANTED, good
-        elif by_id:
-            status, used = NAMED_IN_OTHER_TIER, by_id
-        else:
-            by_name = [g for g in covering(True) if g["tier"] in tiers]
-            status, used = (NAME_ONLY_GRANT, by_name) if by_name else (UNGRANTED_ACTIVATION, [])
+        def attribution(at: Optional[datetime]) -> tuple[str, list[dict]]:
+            if at is None:
+                return "NOT_MEASURED", []
+            by_id = covering(False, at)
+            good = [g for g in by_id if g["tier"] in tiers]
+            if good:
+                return GRANTED, good
+            if by_id:
+                return NAMED_IN_OTHER_TIER, by_id
+            by_name = [g for g in covering(True, at) if g["tier"] in tiers]
+            return (NAME_ONLY_GRANT, by_name) if by_name else (UNGRANTED_ACTIVATION, [])
+
+        def grant_metadata(used: list[dict]) -> list[dict]:
+            return [
+                {
+                    "ts": g["ts"].isoformat(),
+                    "tier": g["tier"],
+                    "event_id": g.get("event_id"),
+                    "reason": g["reason"][:160],
+                }
+                for g in used
+            ]
+
+        # Every recorded activation of this version counts and the best attribution wins: a workflow first
+        # activated without a grant and then re-activated under a grant naming its id (regularisation,
+        # 2026-10-09) is attributed by the later grant. Import attribution stays separate (#1587).
+        rank = {GRANTED: 0, NAMED_IN_OTHER_TIER: 1, NAME_ONLY_GRANT: 2, UNGRANTED_ACTIVATION: 3}
+        status, used = min(
+            (attribution(t) for t in (ev.get("times") or [ev["activated_at"]])),
+            key=lambda su: rank.get(su[0], 9),
+        )
+        import_status, import_used = attribution(ev.get("imported_at"))
         rows.append(
             {
                 "workflow_id": ev["workflow_id"],
@@ -237,15 +265,9 @@ def reconcile(
                 "imported_at": ev["imported_at"].isoformat() if ev.get("imported_at") else None,
                 "sources": ev["sources"],
                 "status": status,
-                "grants": [
-                    {
-                        "ts": g["ts"].isoformat(),
-                        "tier": g["tier"],
-                        "event_id": g.get("event_id"),
-                        "reason": g["reason"][:160],
-                    }
-                    for g in used
-                ],
+                "grants": grant_metadata(used),
+                "import_status": import_status,
+                "import_grants": grant_metadata(import_used),
             }
         )
     return rows
@@ -322,7 +344,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--container", default=inv.DB_CONTAINER)
     ap.add_argument("--guard-log", default=None, help="guard audit jsonl (default: what `bin/guard log` reads)")
     ap.add_argument(
-        "--tiers", default=",".join(DEFAULT_TIERS), help="grant tiers that authorise an activation (comma separated)"
+        "--tiers",
+        default=",".join(DEFAULT_TIERS),
+        help="grant tiers that authorise an activation, comma separated (default: cron, AGENTS.md 3.1.0; "
+        "pass cron,config-write,service only to audit activations made under the pre-3.1.0 wording)",
     )
     ap.add_argument("--skew-s", type=int, default=DEFAULT_SKEW_S)
     ap.add_argument("--receipt", default=None)

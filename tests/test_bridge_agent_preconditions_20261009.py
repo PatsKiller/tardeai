@@ -90,11 +90,11 @@ def hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
 
 @contextmanager
-def _governed(monkeypatch: pytest.MonkeyPatch, projected: float = 0.002):
+def _governed(monkeypatch: pytest.MonkeyPatch, projected: float = 0.002, *, fallback_allowed: bool = False):
     ledger = {"reserve": MagicMock(return_value=4242), "settle": MagicMock(), "log_call": MagicMock()}
 
     def cfg(pid):
-        return {"process_id": pid, "registered": True, "mode": "automated",
+        return {"process_id": pid, "registered": True, "mode": "automated", "fallback_allowed": fallback_allowed,
                 "deepseek_allowed_policies": ["PRO", "PRO_THINK", "FAST", "FAST_THINK"],
                 "max_input_tokens": 16000, "max_output_tokens": 2048, "daily_soft_cap": 40, "daily_cost_cap_usd": 1.0}
     monkeypatch.setattr("lib.llm_consumption.get_process_config", cfg)
@@ -362,6 +362,40 @@ def test_n8n_output_is_schema_and_behaviour_checked(monkeypatch, content, code):
     assert ledger["log_call"].call_args.kwargs["success"] is False
 
 
+@pytest.mark.parametrize("shape", [
+    "missing", "empty", "null", "mapping", "string", "null_choice", "string_choice",
+    "missing_message", "null_message", "string_message", "mixed_choices", "mapping_tool_calls",
+])
+def test_n8n_malformed_choices_fail_closed_through_bridge(monkeypatch, shape):
+    provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
+    generate = provider.generate
+
+    def malformed(messages, model_id, **kwargs):
+        response = generate(messages, model_id, **kwargs)
+        good = response["choices"][0]
+        if shape == "missing":
+            response.pop("choices")
+        else:
+            response["choices"] = {
+                "empty": [], "null": None, "mapping": {"0": good}, "string": "invalid",
+                "null_choice": [None], "string_choice": ["invalid"], "missing_message": [{}],
+                "null_message": [{"message": None}], "string_message": [{"message": "invalid"}],
+                "mixed_choices": [good, {"message": "invalid"}],
+                "mapping_tool_calls": [{"message": {"content": json.dumps(VALID_DIGEST), "tool_calls": {}}}],
+            }[shape]
+        return response
+
+    monkeypatch.setattr(provider, "generate", malformed)
+    with _governed(monkeypatch) as ledger:
+        out = bridge.execute_governed_call([{"role": "user", "content": "digest"}], process_id=DIGEST)
+    assert out["error"]["code"] == "OUTPUT_INVALID_JSON"
+    assert out["error"]["status"] == 422
+    assert out.get("_tradeai", {}).get("output_validated") is not True
+    assert out["governance_pass"] is False and len(provider.calls) == 1
+    assert ledger["settle"].call_count == 1
+    assert ledger["log_call"].call_args.kwargs["success"] is False
+
+
 def test_valid_n8n_output_passes_and_is_stamped_advisory(monkeypatch):
     _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
     with _governed(monkeypatch):
@@ -477,7 +511,11 @@ def test_only_n8n_rows_route_grok_chatgpt_deepseek_with_transport_failover():
 
 def test_canary_n8n_call_walks_to_deepseek_and_records_why(monkeypatch):
     provider = _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)), canary=True)
-    with _governed(monkeypatch):
+    monkeypatch.setattr(bridge, "read_health_snapshot", lambda _row: {
+        "provider_health": "present", "provider_health_worst": "OK",
+        "lanes": {"grok": "healthy", "chatgpt": "healthy", "deepseek": "healthy"},
+    })
+    with _governed(monkeypatch, fallback_allowed=True):
         out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST)
     assert "error" not in out, out.get("error")
     decision = out["_tradeai"]["routing_decision"]
@@ -508,10 +546,14 @@ def test_canary_n8n_with_deepseek_indicted_refuses(monkeypatch, hermetic):
 
 
 def test_policy_primary_is_grok_and_mock_receipt_names_the_live_provider(monkeypatch):
+    monkeypatch.setattr(bridge, "read_health_snapshot", lambda _row: {
+        "provider_health": "present", "provider_health_worst": "OK",
+        "lanes": {"grok": "healthy", "chatgpt": "healthy", "deepseek": "healthy"},
+    })
     policy = bridge.resolve_model_policy(DIGEST)
     assert policy["provider"] == "grok" and policy["requested_policy"] == "FAST"
     _use(monkeypatch, FakeProvider(content=json.dumps(VALID_DIGEST)))
-    with _governed(monkeypatch):
+    with _governed(monkeypatch, fallback_allowed=True):
         out = bridge.execute_governed_call([{"role": "user", "content": "x"}], process_id=DIGEST)
     assert out["_tradeai"]["provider"] == "deepseek" and out["_tradeai"]["mock"] is True
     assert out["_tradeai"]["routing_decision"]["reason"] == "transport_failover_fallback"

@@ -12,6 +12,16 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'scripts'))
 
+
+def _child_python(code_root) -> str:
+    """Interpreter for child Python steps: release dirs ship no .venv (lib/live_project_root.venv_python)."""
+    try:
+        from lib.live_project_root import venv_python
+    except ImportError:
+        from live_project_root import venv_python
+    return venv_python(code_root)
+
+
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / '.env')
 
@@ -365,14 +375,14 @@ class AlpacaPaperAdapter:
             try:
                 import subprocess
                 subprocess.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                    [_child_python(PROJECT_ROOT),
                      str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
                     cwd=str(PROJECT_ROOT),
                     stdout=open(str(PROJECT_ROOT / "logs/post_trade_thesis_auto.log"), "a"),
                     stderr=subprocess.STDOUT,
                 )
                 subprocess.Popen(
-                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                    [_child_python(PROJECT_ROOT),
                      str(PROJECT_ROOT / "scripts/paper_outcome_analytics.py"), "--since", "7", "--apply"],
                     cwd=str(PROJECT_ROOT),
                     stdout=open(str(PROJECT_ROOT / "logs/paper_outcome_analytics_auto.log"), "a"),

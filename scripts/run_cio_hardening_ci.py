@@ -1156,6 +1156,18 @@ GATES = [
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
     ),
+    # Cron interpreter resolution (operator 2026-10-09 "fix the broken cron jobs"): release dirs ship no .venv, so
+    # rotation_autopilot died on `import dotenv` every 15 min and hermes_coordinator's child steps hit "No such file".
+    (
+        "cron_venv_resolver_20261009",
+        ["tests/test_cron_venv_resolver_20261009.py"],
+    ),
+    # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
+    # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
+    (
+        "paper_venv_resolver_20261009",
+        ["tests/test_paper_venv_resolver_20261009.py"],
+    ),
     # Symbol-thesis job repair (operator 2026-10-09 "fix the thesis job"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop
     # backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies.
     (
@@ -1173,6 +1185,12 @@ GATES = [
     (
         "trade_ai_scalp_5min_20261009",
         ["tests/test_trade_ai_scalp_5min_20261009.py"],
+    ),
+    # Scalp lane bulk catalyst read (operator 2026-10-09: "build the finviz API fix"): data-broker news plus the
+    # Finviz Elite news export in batches instead of ~2 throttled Finviz page requests per ticker.
+    (
+        "scalp_catalyst_bulk_20261009",
+        ["tests/test_scalp_catalyst_bulk_20261009.py"],
     ),
     # Opportunity modal news (operator 2026-10-08: "nothing here on what company does or latest news, catalyst"):
     # profile description, typed catalysts, latest news without catalyst repeats, and the news-ingestion opportunity
@@ -2075,8 +2093,10 @@ GATES = [
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.
             "tests/test_agents_policy_1_3_0_amendment.py",
-            # AGENTS.md 3.0.0 (PROPOSED 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
+            # AGENTS.md 3.0.0 (ACTIVE 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
             "tests/test_agents_policy_3_0_0_amendment.py",
+            # AGENTS.md 4.1.0 (PROPOSED 2026-10-09): registry dispatch, wave ladder, program push budget, 48 h merge approval.
+            "tests/test_agents_policy_4_1_0_amendment.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3555,6 +3575,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
+        # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
+        # Pure and hermetic: explicit instants only, no clock, no I/O.
+        "n8n_maturity_cron_tz_20261009",
+        [
+            "tests/test_n8n_maturity_cron_tz_20261009.py",
+        ],
+    ),
+    (
         # N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n
         # scheduler-of-record workflow generator and the per-lane cutover checklist. The tests
         # pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set
@@ -3564,6 +3593,15 @@ GATES = [
         [
             "tests/test_n8n_workflow_templates_20261008.py",
             "tests/test_n8n_cutover_checklist_20261008.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_GENERIC_WORKFLOWS (2026-10-09, design 02 §11, B5.6): the six generic
+        # registry-driven workflows (build-generic). Static only: byte-determinism, node allowlist, /run body keys,
+        # bridge-IP relay, errorWorkflow, no lane constants beyond SYSTEM_FILTER_LANES. Imports nothing into n8n.
+        "n8n_maturity_generic_workflows_20261009",
+        [
+            "tests/test_n8n_maturity_generic_workflows_20261009.py",
         ],
     ),
     (
@@ -3588,6 +3626,35 @@ GATES = [
         # workflows. Hermetic: tmp_path dumps/stamps, fake runners, fake DB connections that record SQL.
         "n8n_ops_lanes_20261009",
         ["tests/test_n8n_ops_lanes_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_RETRY_DLQ — n8n maturity B5.4 (design 02 §3.3/§3.4, F8/F9): N8nRetryPolicies@v1
+        # + program rules, verdict table, additive ledger schema (runs dispatch columns, dead_letters, breakers,
+        # event_cursors), DLQ + breaker after 3, n8n_dlq.py list/release receipts. Hermetic tmp_path ledgers.
+        "n8n_maturity_retry_dlq_20261009",
+        ["tests/test_n8n_maturity_retry_dlq_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_SCHED_FIXES — 2026-10-09 audit (operator "fix the broken cron jobs"): watchdog unit lock
+        # miss = clean skip; ACTIVE kind-n8n rows need an active workflow (INACTIVE_N8N_WORKFLOW); board
+        # same-second receipt tie-break; executor opt-in bounded retry; cleanup_stale_locks report-only.
+        # Hermetic: tmp_path receipts/registries, fake runner and sleeper.
+        "n8n_sched_fixes_20261009",
+        ["tests/test_n8n_sched_fixes_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
+        # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
+        # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
+        "n8n_scalp_lane_20261009",
+        ["tests/test_n8n_scalp_lane_20261009.py", "tests/test_agents_policy_4_0_0_scalp_lane.py"],
+    ),
+    (
+        # ANCHOR: SCALP_CYCLE_RECEIPT_B4 — n8n maturity B4 2026-10-09: ScalpCycleReceipt@v1 per 5-min cycle
+        # (started/ok/error/killed on SIGTERM), market-hours-aware monitor (P2 2 missed RTH slots, P1 30 min),
+        # fan-in source 3h, state saved before the send, slot guard. Hermetic: tmp state root, fakes, no send.
+        "scalp_cycle_receipt_b4_20261009",
+        ["tests/test_scalp_cycle_receipt_b4_20261009.py"],
     ),
     (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
@@ -3737,6 +3804,21 @@ GATES = [
             "tests/test_rag_fused_signal_text_20261009.py",
             "tests/test_retention_source_windows_junk_20261009.py",
         ],
+    ),
+    (
+        # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
+        # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
+        # in 503 errors, alert-quality registry row matches the host.
+        "cron_crash_fixes_20261009",
+        ["tests/test_cron_crash_fixes_20261009.py"],
+    ),
+    (
+        # 2026-10-09 cron audit, stale/silent jobs: document_mentions watermark + budget + flushed log;
+        # job_coverage_monitor schedule-aware (last due fire), systemd timers, dev-tree logs, moved schedulers;
+        # schwab stream reconnects while open + line-buffered log; ri_overnight / paper post-close processors
+        # resolve a real interpreter in release dirs; BOOK checkpoints never price-resolvable.
+        "cron_stale_fixes_20261009",
+        ["tests/test_cron_stale_fixes_20261009.py"],
     ),
     (
         # ANCHOR: SYSTEM_TELEGRAM_INTERDICT_SCOPE — 2026-10-09: C4's lowest-layer interdict keyed on

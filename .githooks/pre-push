@@ -34,7 +34,7 @@ guard_scoped="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1]
 guard_has="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1]).get("reason") else "0")' "$guard_meta")"
 if [[ "$guard_has" == "1" && "$guard_scoped" != "1" ]]; then
   echo "WARNING: the active guard git-push grant does not name branch '$push_branch' or head ${push_head:0:9}."
-  echo "         A grant is permission for one operation; set TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1 to refuse unscoped grants."
+  echo "         A grant is permission for one operation; unscoped grants are refused and not consumed (TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0 to warn only)."
 fi
 guard_ok="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1])["ok"] else "0")' "$guard_meta")"
 guard_reason="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$guard_meta")"
@@ -55,7 +55,7 @@ if [[ "$guard_ok" == "1" ]]; then
   fi
 fi
 
-decision="$(python3 - <<PY
+decision="$(PUSH_BRANCH="$push_branch" python3 - <<PY
 import os, json, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
 from scripts.lib.tradeai_push_budget import decide, load_state
@@ -64,6 +64,7 @@ d = decide(
     authorized=os.environ.get("TRADEAI_REMOTE_PUSH_AUTHORIZED") == "1" or ${authorized} == 1,
     override=os.environ.get("TRADEAI_REMOTE_PUSH_OVERRIDE") == "1" or ${override} == 1,
     count=int(st.get("authorized_push_count") or 0),
+    branch=os.environ.get("PUSH_BRANCH") or None,
 )
 print(json.dumps({**d, "state_count": int(st.get("authorized_push_count") or 0), "guard_grant": ${guard_ok} == 1}))
 PY
@@ -72,18 +73,21 @@ PY
 reason="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$decision")"
 allow="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["allow"])' "$decision")"
 count="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["state_count"])' "$decision")"
+budget="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("budget", 2))' "$decision")"
 
 if [[ "$allow" != "True" ]]; then
   if [[ "$reason" == "BUDGET_EXCEEDED" ]]; then
     cat >&2 <<EOF
 REMOTE PUSH BLOCKED (push budget).
 
-This tranche already used ${count} authorized remote push(es).
-Default budget is 2. A third push requires explicit operator approval:
+This tranche (branch '${push_branch}') already used ${count} authorized remote push(es).
+Effective budget for this branch is ${budget}.
+Default budget is 2 (4 for n8nmat/* until 2026-10-12T23:59:59-04:00, AGENTS.md §23.13).
+Any push beyond the effective budget requires explicit operator approval:
 
     TRADEAI_REMOTE_PUSH_OVERRIDE=1 TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
 
-See AI_WORK_POLICY.md §17. Do not use the override as the normal path.
+See AI_WORK_POLICY.md §3 and §17. Renaming a branch to gain budget is routing around a denial. Do not use the override as the normal path.
 EOF
   else
     cat >&2 <<'EOF'

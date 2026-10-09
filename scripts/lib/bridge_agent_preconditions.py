@@ -200,15 +200,32 @@ def behaviour_hits(value: Any, extra_keys: frozenset[str] = frozenset(), path: s
 def output_refusal(process_id: str, response: Mapping[str, Any],
                    row: Mapping[str, Any] | None) -> dict[str, Any] | None:
     """P5 tool_calls for every process with a declared tool policy; P6 for n8n_* processes only."""
-    refused = response_tool_calls_refusal(process_id, response, row)
-    if refused is not None or not is_n8n_process(process_id):
-        return refused
+    if not is_n8n_process(process_id):
+        return response_tool_calls_refusal(process_id, response, row)
     schema_id, schema = output_schema_for(row)
     if schema is None:
         return _refusal("OUTPUT_SCHEMA_UNKNOWN", 500, f"No output schema for n8n process '{process_id}'",
                         output_schema_id=schema_id)
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return _refusal("OUTPUT_INVALID_JSON", 422, "model output choices must be a nonempty list",
+                        output_schema_id=schema_id)
+    for choice in choices:
+        msg = choice.get("message") if isinstance(choice, Mapping) else None
+        if not isinstance(msg, Mapping):
+            return _refusal("OUTPUT_INVALID_JSON", 422, "each model output choice must contain a message object",
+                            output_schema_id=schema_id)
+        calls = msg.get("tool_calls")
+        if calls is not None and (not isinstance(calls, list) or any(
+            not isinstance(call, Mapping) or not isinstance(call.get("function"), Mapping) for call in calls
+        )):
+            return _refusal("OUTPUT_INVALID_JSON", 422, "model output tool_calls must be a list of function objects",
+                            output_schema_id=schema_id)
+    refused = response_tool_calls_refusal(process_id, response, row)
+    if refused is not None:
+        return refused
     extra_keys = frozenset(str(k) for k in schema.get("forbidden_keys") or [])
-    for choice in response.get("choices") or []:
+    for choice in choices:
         msg = (choice or {}).get("message") if isinstance(choice, Mapping) else None
         msg = msg if isinstance(msg, Mapping) else {}
         content = msg.get("content")
