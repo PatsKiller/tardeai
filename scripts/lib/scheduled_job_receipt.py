@@ -3,16 +3,22 @@
 Only a receipt path is added to the CLI. The wrapped job still owns its argument
 parser and return value. Receipt summaries never contain stdout, exception text,
 credentials, or a claim that an accepted notification was delivered.
+
+``ok_at`` (added 2026-10-10, n8n refactor wave 1) is the registry ``json_key`` freshness key: it
+advances to ``as_of`` only when the job exited 0 and is carried forward from the previous receipt
+otherwise, so a failing job keeps writing receipts without ever looking fresh. ``summary_from``
+lets a job add its own small, non-secret result fields (e.g. a health status) to the summary.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import Any, Callable, Mapping, TypeVar
 
 from .atomic_json_store import atomic_write_json
 from .lane_registry import state_root
@@ -27,7 +33,20 @@ def default_receipt(script: str, root: Path) -> Path:
     return runtime / f"{script}_last.json"
 
 
-def run_with_receipt(action: Callable[[], T], *, script: str, root: Path) -> T:
+def _previous_ok_at(path: Path) -> Any:
+    try:
+        return (json.loads(Path(path).read_text(encoding="utf-8")) or {}).get("ok_at")
+    except Exception:  # noqa: BLE001 — no previous receipt
+        return None
+
+
+def run_with_receipt(
+    action: Callable[[], T],
+    *,
+    script: str,
+    root: Path,
+    summary_from: Callable[[], Mapping[str, Any]] | None = None,
+) -> T:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--receipt", type=Path, default=default_receipt(script, root))
     args, remaining = parser.parse_known_args(sys.argv[1:])
@@ -56,12 +75,20 @@ def run_with_receipt(action: Callable[[], T], *, script: str, root: Path) -> T:
     finally:
         sys.argv[:] = original
         if not help_only:
+            if summary_from is not None:
+                try:
+                    extra = summary_from() or {}
+                    summary.update({k: v for k, v in extra.items() if k not in ("state", "exception_type")})
+                except Exception:  # noqa: BLE001 — extra fields never mask the job's own result
+                    pass
+            as_of = datetime.now(timezone.utc).isoformat()
             atomic_write_json(
                 args.receipt,
                 {
                     "schema": SCHEMA,
-                    "as_of": datetime.now(timezone.utc).isoformat(),
+                    "as_of": as_of,
                     "exit": code,
+                    "ok_at": as_of if code == 0 else _previous_ok_at(args.receipt),
                     "summary": summary,
                 },
             )

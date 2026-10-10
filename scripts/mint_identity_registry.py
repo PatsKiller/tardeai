@@ -9,6 +9,11 @@ through the system, resolves each once through the existing
     python scripts/mint_identity_registry.py            # dry run (default)
     python scripts/mint_identity_registry.py --json
     python scripts/mint_identity_registry.py --apply    # write the registry
+    python scripts/mint_identity_registry.py --dry-run  # explicit dry run; wins over --apply
+
+Refactor wave 1 (2026-10-10): `--dry-run` forces the dry run even beside `--apply`, and a full
+`--apply` mint writes data/runtime/mint-identity-registry_last.json (LaneRunReceipt@v1; ok_at only on
+success) under the persistent-state root.
 
 Scope is holdings and the watch universe — the symbols decisions are actually
 made about. The 6,000+ symbols in `ticker_prices` are deliberately excluded:
@@ -29,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +44,8 @@ for p in (str(ROOT), str(ROOT / "scripts")):
 
 from scripts.lib.identity_registry import load, lookup_symbol, register_all  # noqa: E402
 from scripts.lib.security_identity import normalize_symbol  # noqa: E402
+
+LANE_ID = "mint-identity-registry"
 
 
 def _holdings_rows() -> list[dict]:
@@ -432,9 +440,11 @@ def register_one_verified(symbol: str, *, apply: bool = False) -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Mint the durable identity registry (Phase A)")
     ap.add_argument("--apply", action="store_true", help="write the registry (default: dry run)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="explicit dry run: never writes, even with --apply (n8n dry_run mode)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--symbol", default=None, help="show the registered identity for one symbol")
     ap.add_argument(
@@ -448,7 +458,10 @@ def main() -> int:
         metavar="SYM",
         help="E3: deliberate one-at-a-time mint; verifies against symbol_profiles; dry-run unless --apply",
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        # Decided before any path can reach register_all(apply=True) (AGENTS.md §6).
+        args.apply = False
 
     if args.propose_catalyst_gap:
         report = propose_catalyst_registry_gap()
@@ -474,7 +487,7 @@ def main() -> int:
                 print(f"  already registered  status={report.get('identity_status')}  "
                       f"guid={(report.get('subject_guid') or '')[:8]}")
             else:
-                print(f"  verified against symbol_profiles")
+                print("  verified against symbol_profiles")
                 print(f"  entities_added={report.get('register_summary', {}).get('entities_added')}")
                 if not args.apply:
                     print("\nnothing written. re-run with --register-symbol SYM --apply.")
@@ -486,8 +499,21 @@ def main() -> int:
               else f"{normalize_symbol(args.symbol)}: not registered")
         return 0
 
+    started = datetime.now(timezone.utc)
     rows = collect_rows()
-    summary = register_all(rows, apply=args.apply)
+    if args.apply:
+        from scripts.lib.lane_last_receipt import write_lane_receipt
+        try:
+            summary = register_all(rows, apply=True)
+        except Exception as exc:
+            write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                               summary={"error_type": type(exc).__name__, "rows_seen": len(rows)})
+            raise
+        write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, summary={
+            k: summary.get(k) for k in ("rows_seen", "entities_before", "entities_after",
+                                        "entities_added", "symbols_indexed", "path")})
+    else:
+        summary = register_all(rows, apply=False)
 
     if args.json:
         print(json.dumps(summary, indent=2, sort_keys=True))

@@ -8,6 +8,7 @@ their asset-class label. Refresh: only missing or >30d-old rows (profiles barely
 
   python3 scripts/build_symbol_profiles.py [--symbols X,Y] [--force]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,29 +24,64 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 # symbol_identity; the SQL itself lives in lib/writers/symbol_profiles_writer.py and is
 # re-exported here so every producer can `from build_symbol_profiles import upsert_profile`.
 from lib.writers.symbol_profiles_writer import (  # noqa: E402,F401  (re-export)
-    EARNINGS_NONE, EARNINGS_SCHEDULED, EARNINGS_UNKNOWN, LANES, WriteReceipt,
-    earnings_state_for, resolve_subject_guid, upsert_profile, write_earnings, write_symbol_profiles,
+    EARNINGS_NONE,
+    EARNINGS_SCHEDULED,
+    EARNINGS_UNKNOWN,
+    LANES,
+    WriteReceipt,
+    earnings_state_for,
+    resolve_subject_guid,
+    upsert_profile,
+    write_earnings,
+    write_symbol_profiles,
 )
 
 
 # ETFs have no sector in yfinance .info — give the card a real sector so it shows sector + vs-sector.
 # Mirrors open_trades_intelligence._ETF_SECTOR (reference data, kept in sync).
 _ETF_SECTOR = {
-    "XLK": "Technology", "XLF": "Financial", "XLV": "Healthcare", "XLE": "Energy",
-    "XLI": "Industrials", "XLB": "Materials", "XLU": "Utilities", "XLP": "Consumer Defensive",
-    "XLY": "Consumer Cyclical", "XLRE": "Real Estate", "XLC": "Communication Services",
-    "BND": "Fixed Income", "AGG": "Fixed Income", "TLT": "Fixed Income", "BNDX": "Fixed Income", "LQD": "Fixed Income",
-    "JEPI": "Income / Covered Call", "JEPQ": "Income / Covered Call",
-    "SCHD": "Dividend Equity", "DGRO": "Dividend Equity", "VYM": "Dividend Equity", "DIV": "Dividend Equity", "SCHG": "Growth Equity",
-    "SPY": "Broad Equity", "VOO": "Broad Equity", "VTI": "Broad Equity", "QQQ": "Broad Equity", "IWM": "Broad Equity",
-    "ARKG": "Healthcare", "ARKK": "Innovation", "ARKQ": "Innovation", "ARKW": "Innovation", "ARKF": "Innovation",
+    "XLK": "Technology",
+    "XLF": "Financial",
+    "XLV": "Healthcare",
+    "XLE": "Energy",
+    "XLI": "Industrials",
+    "XLB": "Materials",
+    "XLU": "Utilities",
+    "XLP": "Consumer Defensive",
+    "XLY": "Consumer Cyclical",
+    "XLRE": "Real Estate",
+    "XLC": "Communication Services",
+    "BND": "Fixed Income",
+    "AGG": "Fixed Income",
+    "TLT": "Fixed Income",
+    "BNDX": "Fixed Income",
+    "LQD": "Fixed Income",
+    "JEPI": "Income / Covered Call",
+    "JEPQ": "Income / Covered Call",
+    "SCHD": "Dividend Equity",
+    "DGRO": "Dividend Equity",
+    "VYM": "Dividend Equity",
+    "DIV": "Dividend Equity",
+    "SCHG": "Growth Equity",
+    "SPY": "Broad Equity",
+    "VOO": "Broad Equity",
+    "VTI": "Broad Equity",
+    "QQQ": "Broad Equity",
+    "IWM": "Broad Equity",
+    "ARKG": "Healthcare",
+    "ARKK": "Innovation",
+    "ARKQ": "Innovation",
+    "ARKW": "Innovation",
+    "ARKF": "Innovation",
 }
 
 # Open-end mutual funds have no single GICS sector in yfinance either — give them an asset-class label
 # so the card's sector slot isn't blank (Morningstar-style category, not a GICS sector → no vs-sector).
 _FUND_SECTOR = {
-    "FCNTX": "Large-Cap Growth Fund", "TILCX": "Large-Cap Growth Fund",
-    "AMANX": "Equity Income Fund", "VFTNX": "Large-Cap Equity Fund (ESG)",
+    "FCNTX": "Large-Cap Growth Fund",
+    "TILCX": "Large-Cap Growth Fund",
+    "AMANX": "Equity Income Fund",
+    "VFTNX": "Large-Cap Equity Fund (ESG)",
     "ABSZX": "Small/Mid-Cap Equity Fund",
 }
 
@@ -69,6 +105,7 @@ def _finviz_map(symbols, root="."):
         return {}
     try:
         import finviz_enrichment as fe
+
         return fe.enrich_tickers(plain, project_root=root) or {}
     except Exception as e:
         print(f"  [finviz fallback] error: {str(e)[:80]}")
@@ -94,24 +131,42 @@ def _cio_ranked(top_n: int) -> list[str]:
         from lib.cio_opportunity_store import CIOOpportunityStore
 
         items = CIOOpportunityStore().read_projection().get("items") or {}
-        ranked = sorted((a["rank"], s.upper()) for s, a in items.items()
-                        if isinstance(a, dict) and a.get("rank") and a["rank"] <= top_n)
+        ranked = sorted(
+            (a["rank"], s.upper())
+            for s, a in items.items()
+            if isinstance(a, dict) and a.get("rank") and a["rank"] <= top_n
+        )
         return [s for _, s in ranked if re.fullmatch(r"[A-Z]{1,5}", s)]
     except Exception:
         return []
 
 
-def run(symbols=None, force=False, watchlist_top=0):
+def run(symbols=None, force=False, watchlist_top=0, dry_run=False):
+    """Profile the stale watch-grade universe. Returns the summary dict it prints.
+
+    dry_run: compute the universe and the stale list from the DB (SELECTs only) and report what a
+    real run would fetch and upsert, then return BEFORE yfinance/Finviz are imported or called and
+    before any upsert/commit is reachable (AGENTS.md §6).
+    """
     from db_adapter import _get_conn
     import watch_universe as wu
     from holding_proxies import HOLDING_PROXY_MAP
-    conn = _get_conn(); cur = conn.cursor()
+
+    conn = _get_conn()
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
+    cur = conn.cursor()
     uni = set(s.upper() for s in symbols) if symbols else (wu.symbols(cur) | set(HOLDING_PROXY_MAP))
     # operator 2026-06-18: also cover the top watchlist names so their cards get sector/description
     # (the unified card layer was blank for AI-discovered names — only watch_universe was profiled).
     if watchlist_top and not symbols:
-        cur.execute("""SELECT symbol FROM watchlist_items WHERE status<>'removed' AND symbol ~ '^[A-Z]{1,5}$'
-                       ORDER BY hermes_rank ASC NULLS LAST LIMIT %s""", (watchlist_top,))
+        cur.execute(
+            """SELECT symbol FROM watchlist_items WHERE status<>'removed' AND symbol ~ '^[A-Z]{1,5}$'
+                       ORDER BY hermes_rank ASC NULLS LAST LIMIT %s""",
+            (watchlist_top,),
+        )
         uni |= {r[0].upper() for r in cur.fetchall()}
     lane = _profile_lane() if not symbols else {}
     ranked = _cio_ranked(int(lane.get("top_n") or 0)) if lane.get("enabled") else []
@@ -122,11 +177,13 @@ def run(symbols=None, force=False, watchlist_top=0):
         # it is a stand-in, not a description, so it is retried after stub_retry_days instead of counting as fresh
         # for 30 days (operator 2026-10-08: the opportunity modal said nothing about what the company does — 1,074
         # profiles were stubs that had never been retried). Retries are capped per run, CIO top-ranked first.
-        cur.execute("""SELECT symbol FROM symbol_profiles
+        cur.execute(
+            """SELECT symbol FROM symbol_profiles
                        WHERE updated_at > now() - interval '30 days' AND description_1s IS NOT NULL
                          AND (COALESCE(source, '') <> 'finviz'
                               OR updated_at > now() - make_interval(days => %s))""",
-                    (int(lane.get("stub_retry_days") or 30),))
+            (int(lane.get("stub_retry_days") or 30),),
+        )
         fresh = {r[0] for r in cur.fetchall()}
         stale = [s for s in uni if s not in fresh]
         cap = int(lane.get("stub_retry_max") or 0)
@@ -138,17 +195,40 @@ def run(symbols=None, force=False, watchlist_top=0):
             stale = [s for s in stale if s not in stubs] + retry
         uni = sorted(stale)
     if not uni:
-        print(json.dumps({"status": "fresh", "updated": 0}))
-        return
+        out = {"status": "fresh", "updated": 0}
+        if dry_run:
+            out["mode"] = "dry_run"
+            conn.rollback()
+        print(json.dumps(out))
+        return out
+    if dry_run:
+        proxies = [s for s in uni if s in HOLDING_PROXY_MAP and not re.fullmatch(r"[A-Z]{1,5}", s)]
+        fetch = [s for s in uni if s not in proxies]
+        out = {
+            "mode": "dry_run",
+            "checked": len(uni),
+            "would_upsert_proxy_labels": len(proxies),
+            "would_fetch": len(fetch),
+            "sample": fetch[:25],
+            "would_write": {"table": "symbol_profiles", "max_rows": len(uni)},
+        }
+        conn.rollback()  # end the read transaction; nothing was written
+        print(json.dumps(out))
+        return out
     import yfinance as yf
-    fvz = _finviz_map(uni)                      # batch Finviz once (sector/industry/company)
+
+    fvz = _finviz_map(uni)  # batch Finviz once (sector/industry/company)
     updated = missed = fvz_used = rejected = 0
     for sym in uni:
         if sym in HOLDING_PROXY_MAP and not re.fullmatch(r"[A-Z]{1,5}", sym):
             etf, label = HOLDING_PROXY_MAP[sym]
             # proxy_label owns description + sector only; an existing industry is left alone.
-            rcpt = upsert_profile(cur, sym, {"description_1s": f"Retirement-plan fund — {label} (tracked via {etf} proxy).",
-                                             "sector": label}, source="proxy_label")
+            rcpt = upsert_profile(
+                cur,
+                sym,
+                {"description_1s": f"Retirement-plan fund — {label} (tracked via {etf} proxy).", "sector": label},
+                source="proxy_label",
+            )
             updated += rcpt.rows_written
             rejected += rcpt.rows_rejected
             continue
@@ -158,8 +238,9 @@ def run(symbols=None, force=False, watchlist_top=0):
             info = {}
         desc = _two_line_summary(info.get("longBusinessSummary"))
         sector = info.get("sector") or _ETF_SECTOR.get(sym) or _FUND_SECTOR.get(sym) or None
-        industry = info.get("industry") or ("Exchange Traded Fund" if sym in _ETF_SECTOR
-                                            else "Mutual Fund" if sym in _FUND_SECTOR else None)
+        industry = info.get("industry") or (
+            "Exchange Traded Fund" if sym in _ETF_SECTOR else "Mutual Fund" if sym in _FUND_SECTOR else None
+        )
         source = "yfinance"
         # ── Finviz fallback (yfinance rate-limited / empty): sector + industry + a synthesized one-liner ──
         if not (desc or sector):
@@ -180,15 +261,61 @@ def run(symbols=None, force=False, watchlist_top=0):
         updated += rcpt.rows_written
         rejected += rcpt.rows_rejected
     conn.commit()
-    print(json.dumps({"checked": len(uni), "updated": updated, "finviz_fallback": fvz_used, "no_profile": missed,
-                      "rejected": rejected}))
+    out = {
+        "checked": len(uni),
+        "updated": updated,
+        "finviz_fallback": fvz_used,
+        "no_profile": missed,
+        "rejected": rejected,
+    }
+    print(json.dumps(out))
+    return out
 
 
-if __name__ == "__main__":
+def receipt_name(symbols, watchlist_top) -> str | None:
+    """Which lane receipt a real run writes. An ad-hoc --symbols run is not a scheduled lane."""
+    if symbols:
+        return None
+    return "build_symbol_profiles_watchlist" if watchlist_top else "build_symbol_profiles"
+
+
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols")
     ap.add_argument("--force", action="store_true")
-    ap.add_argument("--watchlist-top", type=int, default=0,
-                    help="also profile the top-N watchlist names by hermes_rank")
-    a = ap.parse_args()
-    run(symbols=a.symbols.split(",") if a.symbols else None, force=a.force, watchlist_top=a.watchlist_top)
+    ap.add_argument(
+        "--watchlist-top", type=int, default=0, help="also profile the top-N watchlist names by hermes_rank"
+    )
+    ap.add_argument("--dry-run", action="store_true", help="compute the stale universe and report; no fetch, no write")
+    a = ap.parse_args(argv)
+    symbols = a.symbols.split(",") if a.symbols else None
+    if a.dry_run:
+        run(symbols=symbols, force=a.force, watchlist_top=a.watchlist_top, dry_run=True)
+        return 0
+    name = receipt_name(symbols, a.watchlist_top)
+    started_at = _now_iso()
+    try:
+        out = run(symbols=symbols, force=a.force, watchlist_top=a.watchlist_top)
+    except Exception as exc:
+        if name:
+            _receipt(name, ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
+    if name:
+        _receipt(name, ok=True, started_at=started_at, summary=out or {})
+    return 0
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _receipt(name, **kw):
+    from lib.lane_last_receipt import write_receipt
+
+    write_receipt(name, **kw)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -3987,6 +3987,69 @@ GATES = [
         "portfolio_reports_state_root_20261009",
         ["tests/test_portfolio_reports_state_root_20261009.py"],
     ),
+    (
+        # ANCHOR: REFACTOR_W1_20261010 — n8n refactor wave 1: --dry-run that cannot reach a write/send
+        # (read-only DB session or return-before-writer, asserted by source ordering), LaneRunReceipt@v1
+        # <state_root>/data/runtime/<lane_id>_last.json with ok_at only on success, findings exit 0 /
+        # failed check exits non-zero. data_gap_resolver, crawl_v3_dashboard, hermes_pipeline_health,
+        # materialize_income_engine, classifier_health_check, sector_rs_daily, youtube_cookie_health_check.
+        # Hermetic: fake conns / fake db_adapter / fake sender modules, tmp TRADEAI_STATE_ROOT.
+        "refactor_w1_20261010",
+        [
+            "tests/test_refactor_w1_data_gap_resolver_20261010.py",
+            "tests/test_refactor_w1_health_monitors_20261010.py",
+            "tests/test_refactor_w1_materializers_20261010.py",
+        ],
+    ),
+    (
+        # n8n refactor wave 1 bucket W2 (operator 2026-10-09 ~23:00 ET "start with refactoring ... dry run and unit
+        # test"): --dry-run that cannot reach the write/send/LLM, LaneRunReceipt@v1 / ok_at receipts, honest exit
+        # codes, state-root paths for llm_spend_report, finviz_health_check, job_coverage_monitor,
+        # materialize_watchlist_strategy_cards, oauth_lane_keepalive, supervisor_breach_detector,
+        # distributions_enrich. Hermetic: tmp state roots, fake DB/yfinance/Telegram/LLM.
+        "refactor_w1_w2_20261010",
+        [
+            "tests/test_refactor_w1_llm_spend_20261010.py",
+            "tests/test_refactor_w1_finviz_health_20261010.py",
+            "tests/test_refactor_w1_job_coverage_20261010.py",
+            "tests/test_refactor_w1_strategy_cards_20261010.py",
+            "tests/test_refactor_w1_oauth_keepalive_20261010.py",
+            "tests/test_refactor_w1_breach_detector_20261010.py",
+            "tests/test_refactor_w1_distributions_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W1_BUCKET_W3 — 2026-10-10 cron->n8n refactor wave 1, bucket W3: --dry-run that
+        # cannot reach a write (READ ONLY session / no connection / return-before-write, source-order
+        # pinned), LaneRunReceipt@v1 <state_root>/data/runtime/<script>_last.json with ok_at on success
+        # only, honest exit codes. Scripts: market_regime_collector, build_symbol_profiles,
+        # refresh_symbol_cards, fund_technicals_enrich, hermes_config_governor, llm_retry_monitor,
+        # maturity_remeasure, sync_watchlist_items_to_db. Hermetic: fake DB, tmp state root. Schedules nothing.
+        "refactor_w1_bucket_w3_20261010",
+        [
+            "tests/test_refactor_w1_lane_receipt_20261010.py",
+            "tests/test_refactor_w1_regime_collector_20261010.py",
+            "tests/test_refactor_w1_symbol_profiles_20261010.py",
+            "tests/test_refactor_w1_hermes_config_governor_20261010.py",
+            "tests/test_refactor_w1_llm_retry_monitor_20261010.py",
+            "tests/test_refactor_w1_maturity_remeasure_20261010.py",
+            "tests/test_refactor_w1_watchlist_sync_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W1_BUCKET_W4 — 2026-10-10 cron->n8n refactor wave 1, bucket W4: --dry-run that
+        # cannot reach the write/send/psql, honest exit codes, LaneRunReceipt@v1 (ok_at only on success)
+        # for audit_enrichment_coverage, build_hermes_canonical_status, classify_candidates,
+        # hermes_governance_api, market_regime_classifier, mint_identity_registry,
+        # report_agent_number_grounding, write_state_freshness_history, warm_caches. Hermetic: tmp roots.
+        "refactor_w1_bucket_w4_20261010",
+        [
+            "tests/test_refactor_w1_audit_reports_20261010.py",
+            "tests/test_refactor_w1_hermes_status_20261010.py",
+            "tests/test_refactor_w1_classifiers_20261010.py",
+            "tests/test_refactor_w1_warm_caches_20261010.py",
+        ],
+    ),
 ]
 
 

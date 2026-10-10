@@ -5,6 +5,11 @@ Usage:
     .venv/bin/python scripts/market_regime_classifier.py --dry-run --json
     .venv/bin/python scripts/market_regime_classifier.py --apply --json
     .venv/bin/python scripts/market_regime_classifier.py --latest --json
+
+Dry run is the default (no --apply). Refactor wave 1 (2026-10-10): an explicit --dry-run now WINS over
+--apply (previously `--dry-run --apply` applied). An --apply run exits 1 when the snapshot write failed
+and writes data/runtime/market-regime-classifier_last.json (LaneRunReceipt@v1; ok_at only when the
+snapshot row was written) under the persistent-state root.
 """
 import argparse, json, os, sys, uuid
 from datetime import datetime, timezone
@@ -17,6 +22,8 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
 def _f(v): return float(v) if isinstance(v, Decimal) else v
+LANE_ID = "market-regime-classifier"
+
 def _uid(p="RS_"): return f"{p}{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
 def _get_conn():
@@ -235,7 +242,7 @@ def _alert_regime_change(old_regime, snapshot):
         pass
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Market Regime Classifier")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--apply", action="store_true")
@@ -244,9 +251,10 @@ def main():
     parser.add_argument("--output-json", type=str)
     parser.add_argument("--output-md", type=str)
     parser.add_argument("--verbose", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    dry_run = not args.apply
+    # An explicit --dry-run always wins: a preview must not be able to reach the write (AGENTS.md §6).
+    dry_run = args.dry_run or not args.apply
     conn = _get_conn()
     try:
         if args.latest:
@@ -259,7 +267,7 @@ def main():
             else:
                 out = {"message": "No regime snapshots yet"}
             print(json.dumps(out, indent=2, default=str) if args.json else str(out))
-            return
+            return 0
 
         started_at = datetime.now(timezone.utc)
         run_id = _uid("RUN_")
@@ -299,9 +307,21 @@ def main():
             if snapshot.get("missing_data"):
                 md.append(f"- Missing: {', '.join(snapshot['missing_data'])}")
             Path(args.output_md).write_text("\n".join(md))
+        if dry_run:
+            print(f"DRY RUN: would insert market_regime_snapshots snapshot_id={snapshot['snapshot_id']} "
+                  f"regime={snapshot['regime_label']} + one risk_regime_run_log row; nothing written",
+                  file=sys.stderr if args.json else sys.stdout)
+            return 0
+        rc = 0 if write_ok else 1
+        from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(LANE_ID, ok=write_ok, exit_code=rc, started_at=started_at,
+                           summary={"run_id": run_id, "snapshot_id": snapshot["snapshot_id"] if write_ok else None,
+                                    "regime_label": snapshot["regime_label"],
+                                    "confidence": snapshot["confidence"], "stale_data": snapshot["stale_data"]})
+        return rc
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

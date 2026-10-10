@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""classify_candidates.py — classify watchlist/discovery candidates into asset types + strategy buckets.
+
+Writes data/portfolios/state/classified_candidates.json and classification_review_queue.json (the
+lane's output signal is the queue's generated_at).
+
+--dry-run (refactor wave 1, 2026-10-10): same reads and classification, prints the counts and the
+files it would write; writes nothing.
+"""
 import argparse
 import json
 import re
@@ -147,10 +155,11 @@ def classify(rec, rules):
     return rec
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="classify + print; write nothing")
+    args = ap.parse_args(argv)
 
     rules = load_json(CONFIG, {})
     candidates = extract_candidates({}, rules)
@@ -168,6 +177,24 @@ def main():
         "needs_review": len(review),
         "classified_candidates": classified
     }
+
+    if args.dry_run:
+        # Returns BEFORE any write is reachable (AGENTS.md §6).
+        print(json.dumps({
+            "ok": True,
+            "dry_run": True,
+            "total": len(classified),
+            "clean": len(clean),
+            "needs_review": len(review),
+            "would_write": [
+                str(STATE / "classified_candidates.json"),
+                str(STATE / "classification_review_queue.json")
+            ],
+            "needs_review_symbols": [c["symbol"] for c in review][:50],
+        }, indent=2))
+        if not args.json:
+            print("DRY RUN: nothing written")
+        return 0
 
     STATE.mkdir(parents=True, exist_ok=True)
     (STATE / "classified_candidates.json").write_text(json.dumps(out, indent=2))
@@ -189,7 +216,8 @@ def main():
         }, indent=2))
     else:
         print(f"classified={len(classified)} clean={len(clean)} needs_review={len(review)}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

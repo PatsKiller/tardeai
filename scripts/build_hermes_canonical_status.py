@@ -5,15 +5,24 @@ Read-only. Fetches the live /api/v2/hermes/* endpoints + systemd timer status an
 snapshot to data/runtime/hermes_canonical_status_latest.json. Portal labels, the matrix Markdown, and the
 Word doc are all regenerated FROM this single source so portal/state/docs agree. No secrets are stored.
 
-  python3 scripts/build_hermes_canonical_status.py
+  python3 scripts/build_hermes_canonical_status.py [--dry-run]
+
+--dry-run (refactor wave 1, 2026-10-10): fetches the same read-only endpoints, prints the snapshot it
+would write and exits; writes neither the snapshot nor the lane receipt. A real run still writes the
+snapshot exactly as before, then writes data/runtime/build-hermes-canonical-status_last.json
+(LaneRunReceipt@v1) and exits 1 when any endpoint failed (ok_at advances only when all succeeded).
 """
 import os, sys, json, subprocess, urllib.request
-from datetime import datetime
+import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = os.environ.get("HERMES_API_BASE", "http://127.0.0.1:7777/api/v2/hermes")
 OUT = ROOT / "data" / "runtime" / "hermes_canonical_status_latest.json"
+LANE_ID = "build-hermes-canonical-status"
+ENDPOINTS = ("workflow-matrix", "llm-auth-status", "self-learning-loops", "researcher-matrix",
+             "legacy-agents", "health", "profiles-status")
 XDG = {"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}", **os.environ}
 
 
@@ -38,9 +47,16 @@ def timer(name):
             "active": sysd(["is-active", f"{name}.timer"]) or "unknown"}
 
 
-def main():
-    wf = api("workflow-matrix"); auth = api("llm-auth-status"); sll = api("self-learning-loops")
-    rmx = api("researcher-matrix"); leg = api("legacy-agents"); health = api("health"); ps = api("profiles-status")
+def endpoint_errors(results):
+    """{endpoint: error} for every endpoint api() could not read."""
+    return {ep: r["_error"] for ep, r in results.items() if isinstance(r, dict) and "_error" in r}
+
+
+def build_snapshot():
+    """Read-only: the snapshot dict plus the raw endpoint results. Writes nothing."""
+    results = {ep: api(ep) for ep in ENDPOINTS}
+    wf = results["workflow-matrix"]; auth = results["llm-auth-status"]; sll = results["self-learning-loops"]
+    leg = results["legacy-agents"]; health = results["health"]; ps = results["profiles-status"]
     db = {d.get("table"): d for d in (wf.get("db_lineage") or []) if isinstance(d, dict)}
 
     deep_timer = timer("hermes-deep-research-local")
@@ -104,6 +120,23 @@ def main():
                        "Codex headless: blocked on Hermes 0.16.0 (auto-recovers on newer build)",
                        "Claude: add Anthropic credits; Nous: complete OAuth; gemma4: deferred"],
     }
+    return snap, results
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    ap.add_argument("--dry-run", action="store_true", help="fetch + print; write nothing")
+    args = ap.parse_args(argv)
+    started = datetime.now(timezone.utc)
+    snap, results = build_snapshot()
+    errors = endpoint_errors(results)
+    if args.dry_run:
+        # Returns BEFORE any write is reachable (AGENTS.md §6).
+        print(json.dumps(snap, indent=2, default=str))
+        print(f"DRY RUN: would write {OUT}")
+        print(f"DRY RUN: endpoint errors: {errors or 'none'}; live exit would be {1 if errors else 0}")
+        print("DRY RUN: nothing written, no receipt")
+        return 0
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(snap, indent=2, default=str))
     print(json.dumps({k: snap[k] for k in ("workflows_count", "graph_nodes_count", "db_tables_count",
@@ -112,7 +145,16 @@ def main():
     print("codex headless_available:", snap["codex_lane"]["headless_available"], "reason:", snap["codex_lane"]["headless_reason"])
     print("serverops tools:", snap["serverops"]["tool_count"], "p1:", snap["serverops"]["p1_hardening_required"])
     print("wrote", OUT)
+    rc = 1 if errors else 0
+    if errors:
+        print(f"ERROR: {len(errors)}/{len(ENDPOINTS)} endpoint(s) failed: {sorted(errors)}", file=sys.stderr)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from lib.lane_last_receipt import write_lane_receipt
+    write_lane_receipt(LANE_ID, ok=not errors, exit_code=rc, started_at=started,
+                       summary={"out": str(OUT), "endpoints": len(ENDPOINTS),
+                                "endpoint_errors": sorted(errors)})
+    return rc
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

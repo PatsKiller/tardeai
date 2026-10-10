@@ -5,6 +5,11 @@ Surfaces the research-scope audit + budget-guard posture so the operator can see
 much Hermes researches, by tier and lane, and what the budget guard is deferring/blocking.
 
 Read-only. No writes, no broker calls, no LLM calls, no gate bypass.
+
+CLI (refactor wave 1, 2026-10-10): `--warm` recomputes and writes the disk cache and now exits
+non-zero when the cache write fails (the lane's output signal is the cache file's mtime);
+`--warm --dry-run` (or `--dry-run`) computes the same summary and prints it without writing the cache.
+The request path (`governance_summary`) is unchanged.
 """
 import json
 import os
@@ -64,16 +69,21 @@ def governance_summary(fresh=False):
             pass
     out = _governance_summary_compute()
     try:
-        out["_cached_at"] = time.time()
-        out["cached"] = False
-        os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
-        tmp = _CACHE_PATH + ".tmp"
-        with open(tmp, "w") as f:
-            f.write(json.dumps(out, default=str))
-        os.replace(tmp, _CACHE_PATH)
+        _write_cache(out)
     except Exception:
         pass
     return out
+
+
+def _write_cache(out):
+    """Stamp + atomically replace the disk cache. Raises on failure (the --warm CLI reports it)."""
+    out["_cached_at"] = time.time()
+    out["cached"] = False
+    os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
+    tmp = _CACHE_PATH + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(json.dumps(out, default=str))
+    os.replace(tmp, _CACHE_PATH)
 
 
 def _governance_summary_compute():
@@ -125,18 +135,36 @@ def _governance_summary_compute():
     }
 
 
-if __name__ == "__main__":
+def main(argv=None):
     # `--warm` recomputes and writes the disk cache (cron, out of the request path).
     # `--json` prints the (possibly cached) summary.
+    # `--dry-run` recomputes and prints; the cache is never written.
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--warm", action="store_true", help="recompute + write cache, then exit")
     ap.add_argument("--json", action="store_true")
-    a = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="recompute + print; never write the cache")
+    a = ap.parse_args(argv)
     t0 = time.time()
-    d = governance_summary(fresh=a.warm)
+    if a.dry_run:
+        # Returns BEFORE _write_cache is reachable (AGENTS.md §6).
+        d = _governance_summary_compute()
+        print(json.dumps({"dry_run": True, "would_write": _CACHE_PATH, "ttl_sec": _TTL_SEC,
+                          "compute_sec": round(time.time() - t0, 2), "status": d.get("status"),
+                          "by_tier": d.get("by_tier"), "budget_decisions": d.get("budget_decisions")},
+                         indent=2, default=str))
+        print("DRY RUN: cache not written")
+        return 0
     if a.warm:
+        d = _governance_summary_compute()
+        _write_cache(d)  # raises -> non-zero exit: a warm that wrote nothing is a failed warm
         print(json.dumps({"warmed": True, "cached_path": _CACHE_PATH, "ttl_sec": _TTL_SEC,
                           "compute_sec": round(time.time() - t0, 2), "status": d.get("status")}, indent=2))
     else:
+        d = governance_summary(fresh=False)
         print(json.dumps(d, indent=2, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

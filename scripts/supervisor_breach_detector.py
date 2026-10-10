@@ -17,7 +17,14 @@ data/runtime/supervisor_breach_detector_latest.json (the lane's own output signa
 L1–L5 are NOT executed here: L1 restarts need the sudoers allowlist review (11 S-6) and land in
 Wave 2; escalation to the health agent (L3) is available with --enqueue-escalations and is off by default.
 
-Dry-run by default (prints, writes nothing); --write records.
+Dry-run by default (prints, writes nothing); --write records. ``--dry-run`` (n8n refactor 2026-10-10) is
+the explicit spelling of the default and WINS over --write/--heal/--ladder/--enqueue-escalations: the
+write block is not reachable from it (AGENTS.md §6).
+
+Exit (2026-10-10): 0 when the run completed — breaches are FINDINGS, not a failed run. 1 when a --write
+step failed (L3 enqueue, L1/L2 self-heal, L4/L5 ladder used to be printed to stderr and exit 0). The
+lane receipt ``supervisor_breach_detector_latest.json`` is now written LAST and carries ``ok_at`` (advanced
+only when every step succeeded) and ``steps_failed``.
 Approval: pkg-20260927-cogx-w1-d9e1 item 2. Authority: READ_ONLY_ADVISORY. Never touches a broker.
 """
 from __future__ import annotations
@@ -362,10 +369,15 @@ def main() -> int:
     ap.add_argument("--root", default=str(PROJ), help="code root (lane registry, silos)")
     ap.add_argument("--state-root", help="persistent-state root for output signals (default: production)")
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="detect and print only; overrides --write and every live flag")
     ap.add_argument("--enqueue-escalations", action="store_true", help="L3: append to the health agent's escalation queue (off by default)")
     ap.add_argument("--ladder", action="store_true", help="L4/L5 live: page the operator / write the orchestration proposal (default: shadow receipts only)")
     ap.add_argument("--heal", action="store_true", help="L1/L2 live: restart the lane's --user unit / start its alternate (default: shadow Recovery rows)")
     a = ap.parse_args()
+    if a.dry_run and (a.write or a.heal or a.ladder or a.enqueue_escalations):
+        print("--dry-run given: ignoring --write/--heal/--ladder/--enqueue-escalations", file=sys.stderr)
+    if a.dry_run:
+        a.write = a.heal = a.ladder = a.enqueue_escalations = False
     root = Path(a.root)
     env = os.environ
     now = _dt.datetime.now(_dt.timezone.utc)
@@ -407,7 +419,7 @@ def main() -> int:
             for r in new:
                 fh.write(json.dumps(r, sort_keys=True, default=str) + "\n")
         latest = runtime_dir / "supervisor_breach_detector_latest.json"
-        tmp = latest.with_suffix(".json.tmp"); tmp.write_text(json.dumps({**summary, "new_rows": len(new)}, indent=1, default=str) + "\n"); os.replace(tmp, latest)
+        steps_failed: list[str] = []
         # item 10 (pkg-20260928-wave-2-enforcement-35c4): upsert the beat into intelligence.heartbeat when reachable
         _conn = None
         try:
@@ -438,6 +450,7 @@ def main() -> int:
                 print(f"L3: {len(findings)} escalation(s) enqueued")
             except Exception as exc:  # noqa: BLE001
                 print(f"L3 enqueue unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
+                steps_failed.append(f"l3:{type(exc).__name__}")
         # Wave 5 O-W5-3: self-healing L1 (systemctl --user restart of the lane's own unit) and L2 (start the SLA row's
         # alternate). SHADOW unless --heal: what WOULD be restarted is a Recovery@v1 row with executed=false.
         try:
@@ -445,6 +458,7 @@ def main() -> int:
             print(f"self-heal L1/L2: {heal}")
         except Exception as exc:  # noqa: BLE001
             print(f"self-heal skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+            steps_failed.append(f"self_heal:{type(exc).__name__}")
         # Wave 4 O-W4-5: ladder L4 (operator page) and L5 (orchestration-change proposal). SHADOW unless --ladder:
         # what WOULD be paged / proposed is recorded on data/runtime/supervisor_ladder_receipts.jsonl.
         try:
@@ -452,6 +466,16 @@ def main() -> int:
             print(f"ladder L4/L5: {ladder_rows}")
         except Exception as exc:  # noqa: BLE001
             print(f"ladder skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+            steps_failed.append(f"ladder:{type(exc).__name__}")
+        # The lane's output signal, written last so it can say whether every step held.
+        try:
+            prev_ok = json.loads(latest.read_text(encoding="utf-8")).get("ok_at")
+        except (OSError, ValueError, AttributeError):
+            prev_ok = None
+        doc = {**summary, "new_rows": len(new), "steps_failed": steps_failed,
+               "ok_at": now.isoformat() if not steps_failed else prev_ok}
+        tmp = latest.with_suffix(".json.tmp"); tmp.write_text(json.dumps(doc, indent=1, default=str) + "\n"); os.replace(tmp, latest)
+        return 1 if steps_failed else 0
     else:
         print("dry run: nothing written (add --write)")
     return 0
