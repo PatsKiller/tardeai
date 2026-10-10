@@ -1,6 +1,6 @@
 Status:      ACTIVE
-as_of:       2026-10-10T17:30:00-04:00 (change log); inventory data as last rebuilt (#1649)
-Measured at: main 2aa2cc37d / live af292381c-main-exact-phase2-20261010-113824 (change log); data: main c4782f219 / live b7dbe6e60
+as_of:       2026-10-10T18:55:00-04:00 (change log); inventory data as last rebuilt (#1649)
+Measured at: main 7df77950a / live 8ddf2ad59-main-exact-phase2-20261010-183820 (change log); data: main c4782f219 / live b7dbe6e60
 
 # Cron inventory — system of record
 
@@ -41,7 +41,29 @@ that record. It is updated **every time a job is retired, consolidated or cut ov
 | 2026-10-10 15:58 | Dispatch shadow waves 2+3: 14 more shadow rows; 19 R1 rows staged `r1_pending` (inert until activation) | 14 + 19 registry rows (wave 2: cron:L433 L435 L444 L1000 L1002 L969 L975 L137 L147 L161 L605 L908 L685 L686; wave 3: L381 L406 L420 L447 L750 L413 L504 L418 L553 L508 L552 L877 L409 L411 L551 L408 L318 L314 L427) | merge #1661; dry runs from CURRENT, 154,675-file snapshot unchanged |
 | 2026-10-10 16:20 | `flock -n` added to crontab L318 (agent_outcome_linker), L314 (agent_calibration_engine), L427 (update_agent_performance) so their allowlist locks equal the cron locks | cron:L318 L314 L427 | cron grant 08c0bb77ec898136; backup `~/.local/state/tradeai/backups/crontab-20261010T202023Z-pre-wave23-flock.txt`; `packets/wave23-flock/` |
 | 2026-10-10 16:27 | Gateway lane `n8n-workflow-error` allowed (relay `POST /event`); no cron line changed | systemd `tradeai-n8n-coordination-gateway` drop-in `20-workflow-error-lane.conf` | config-write 8c235faa82733127, service 7752d1c23506de55; `packets/gateway-lane-evidence/install-20261010.log` |
-| 2026-10-10 16:40 | Wave-3 activation merged: the 19 staged R1 rows move to `stage: shadow` (`dispatch.mode: dry_run`); live once promoted | 19 registry rows | merge #1665 `e8a4a6815` (20:40Z); not yet promoted |
+| 2026-10-10 16:40 | Wave-3 activation merged: the 19 staged R1 rows move to `stage: shadow` (`dispatch.mode: dry_run`); live since the 17:13 ET promote | 19 registry rows | merge #1665 `e8a4a6815` (20:40Z); release `e8a4a6815` 17:13 ET |
+| 2026-10-10 17:13 | Release `e8a4a6815` promoted (relay `POST /event`, gateway lane in the repo unit, wave-3 rows live); the first release grant was refused by the SHA binding (no SHA named), the second named the sha | — | `status-20261010/release-e8a4a6815-*.log` (`ReleaseGrantBinding@v1`, `matched_by: sha`) |
+| 2026-10-10 17:14 | W0 re-run: dispatcher, event router, incident router, digest scheduler re-imported (`W0_REIMPORT=1`) and published; heartbeat watcher and approval router held (no registry rows) | n8n `tradeai-*` (4) | grant c90266247a4c4cd4; `packets/w0-import-six/rerun-apply-20261010.txt`, `rerun-verify-20261010.txt` |
+| 2026-10-10 17:20 | W0 partial rollback: event router, incident router, digest scheduler unpublished, dispatcher kept (RC11: concurrent `GET /due` refused `relay_gateway_unreachable`) | n8n `tradeai-*` (3) | grant c90266247a4c4cd4; `rerun-partial-rollback-20261010.txt`; fix #1667 |
+| 2026-10-10 before 18:20 | L556 `coder_dispatch`: `CODER_DISPATCH_MODE=advisory` prefixed (interim stop of push/PR from cron) | cron:L556 | cron grant 4b3623125f6b6d7e; the line carries the comment; code fix #1672 |
+| 2026-10-10 18:40 | Release `8ddf2ad59` promoted: `/due` matcher fix (#1667), quick wins (#1668), consolidation step 1 (#1669), desk-loop drain (#1670), scalp hot tier code with the knob OFF (#1671); no cron line changed | — | `status-20261010/release-8ddf2ad59-*.log` |
+| 2026-10-10 18:40–18:47 | Event router (18:40), incident router (18:44), digest scheduler (18:47) re-published one at a time; four generic workflows live | n8n `tradeai-*` (3) | grant 4b3623125f6b6d7e; `packets/w0-import-six/republish-20261010.txt` |
+| 2026-10-10 (merged) | #1672 no push/PR from scheduled jobs (L556, L541); #1673 `_cutover.py` retires up to 8 lines per lane; #1674 C1: 75 lines into 4 pipeline manifests, `hermes_learning` registry flip (`hermes-config-governor` leaves wave D1b; 7 absorbed rows RETIRED `superseded_by` the stage) — merged, **not promoted**, no crontab change yet | registry rows (hermes_learning) | merges `dbadb9c1b`, `ca922a6ee`, `7df77950a` |
+
+**Approved 2026-10-10, not yet applied (each needs its grant; rows change here when applied):**
+
+| Item | Rows | Packet (`~/n8n-maturity-verification/packets/`) | Grant |
+|---|---|---|---|
+| C1 manifest flips in order hermes_learning → hermes_overnight → after_close → premarket (75 lines commented, never deleted; 528 → 453 jobs). C1 takes the 22 dispatcher-shadow lanes among them; L184 and L243 go to the consolidation plan instead. Before flips 3–4: stage-runner per-step env (it sources the whole `.env` today) and premarket parallelisation (Σ p95 5,899 s of a 6,000 s window) | 75 cron lines | `c1-manifest-flips/` (rebuilt on the post-L556 crontab) | `cron` per flip |
+| Consolidation: L185 + L186 merged into L184's union line, L324 retired; end dates for the `cio-memory-shadow-measure` and `advisory-shadow-seed` timers | cron:L184 L185 L186 L324; 2 timers | `consolidation-cron-1/` (crontab 422 → 419 entries) | `cron`, `config-write` |
+| Three per-lane n8n shadows archived (superseded by dispatcher rows) | n8n 283ceeb030de5e66, 498d749165a93ff9, 5966437c872aa18b | `consolidation-n8n-archive-1/` | `cron` naming the 3 ids |
+| Scalp hot tier switch-on (new lines `scalp-hot-list`, `--scalp-hot`, `--scalp-list`; L708/L636/L246 gated on list advance) | new + existing scalp-data lines | `scalp-hot-tier/` | `cron` + registry PR, staged |
+| NYC DOF leaves the Trade AI crontab and inventory counts as an **other application** (own n8n instance + DOF-only runner; `dof_app` DB role first); never deleted, re-classified | cron:L145 L152 | `nyc-dof-n8n/` (`DESIGN.md`, `NON_TRADE_AI_ENTRIES.md`) | `cron` + DOF's own grants |
+| Optional: `TRADEAI_REMOTE_PUSH_AUTHORIZED=0` pinned on L541/L556 (belt and braces; #1672 makes it unnecessary once promoted) | cron:L541 L556 | `stop-cron-pushes/` | `cron` |
+
+Inventory data (`CRON_INVENTORY.md`, `data/*`) is still the #1649 rebuild; the FUNNEL sheet and per-job
+action / target / domain / approval columns (operator ~17:25 ET) and the DOF "other application" re-classification
+land with the next builder run (`n8nmat/cron-inventory-*`).
 
 Procedure for any n8n change that this log records: `../N8N_ONBOARDING_STANDARD.md`; configuration reference:
 `../N8N_CONFIGURATION.md`.

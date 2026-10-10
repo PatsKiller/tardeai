@@ -72,7 +72,9 @@ def test_every_n8n_lane_workflow_and_host_monitor_has_a_contract(committed):
     shadow = {
         r["lane_id"] for r in reg["lanes"] if (r.get("scheduler") or {}).get("stage") == "shadow" or "r1_pending" in r
     }
-    assert len(shadow) >= 55 and shadow <= ids
+    # 55 shadow rows on 2026-10-10 (waves 1-3); #1674 (C1) moved hermes-config-governor into the hermes_learning
+    # stage (dispatch_retired), leaving 54. Every remaining shadow row must still carry a contract.
+    assert len(shadow) >= 54 and shadow <= ids
 
 
 def test_contracts_answer_the_five_questions(committed):

@@ -2,11 +2,12 @@
 
 ```
 Status:      ACTIVE
-as_of:       2026-10-10T17:30:00-04:00
-Measured at: origin/main 2aa2cc37d (#1664) / live af292381c-main-exact-phase2-20261010-113824; host ms01-openclaw
+as_of:       2026-10-10T18:55:00-04:00
+Measured at: origin/main 7df77950a (#1674) / live 8ddf2ad59-main-exact-phase2-20261010-183820; host ms01-openclaw
 Owner:       platform (n8n maturity program, Agent A supervises)
 Policy:      AGENTS.md 4.4.1 §9.3, §17, §23 (this file restates; where it differs, AGENTS.md wins). AGENTS.md 4.5.0
-             §23.19 (PROPOSED, awaiting APPROVE_AGENTS_POLICY_4_5_0) makes this procedure mandatory.
+             §23.19 (PROPOSED, awaiting APPROVE_AGENTS_POLICY_4_5_0) makes this procedure mandatory. AGENTS.md
+             4.6.0 §24 (PROPOSED, branch n8nmat/agents-4-6-0) adds the platform rules restated in rules 9–13 of §2.
 Companion:   docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md (monitoring, SIEM,
              Telegram, LLM remediation, workflow health contracts)
 Entry point: docs/implementation/n8n-maturity/N8N_CONFIGURATION.md (how n8n is configured on this host)
@@ -89,6 +90,21 @@ Source: refactor waves 1–3 (#1641, #1646, #1658) and AGENTS.md §23.18 (e).
 8. **Governed LLM only.** An `llm` lane declares `llm_route: {"via": "cio-governed-bridge", "process_id": <id>}`
    with a registered process; no argv picks a provider or model (§23.18). Open finding: the R1 gate trusts the
    declared route; a code-level check is still needed.
+9. **Read through the data broker, fetch only as the owner.** A consumer lane reads its inputs through a
+   `scripts/lib/data_broker/` projection (`as_of` / `age` / `stale`, declared `no_coverage`) and never calls a
+   provider itself; only the domain's owner lane (the single writer in `config/data_source_authority.json`) fetches.
+   Do not add a direct provider call or a direct store read where a projection exists, and state the lane's direct
+   reads in the PR (the checker scans hub files only — `N8N_CONFIGURATION.md` §6.1). Pattern: #1669
+   (`finviz_enrichment_snapshot`).
+10. **Web search goes through the routing engine.** A lane that searches names itself as a caller in
+    `config/search_routing_policy.json` and calls `scripts/lib/search_router.py` (PR #1676); it never calls Brave or
+    SearXNG directly and never names a Brave engine in a SearXNG request. Alpha Vantage is reached only through its
+    owner (`scripts/lib/alpha_vantage_owner.py`, ≤ 23/day; PR #1675).
+11. **Emit a notification intent, never send.** Sends go through the host communications gateway; n8n orchestrates
+    and sends nothing; a P1 path never depends on n8n (`N8N_CONFIGURATION.md` §4).
+12. **No push, PR or remote write** from the lane, even in a "PR mode" (#1672; L556, L541).
+13. **Portable by construction.** New authoritative state goes in a Postgres table, not a new persistent-state JSON
+    file; the workflow side holds no host path or credential (`N8N_CONFIGURATION.md` §6.9).
 
 ---
 
@@ -99,8 +115,8 @@ The schedule lives in `config/lane_registry.json`, never in a workflow. Check ev
 
 | Stage | `scheduler` | `dispatch` | allowlist | Example |
 |---|---|---|---|---|
-| **shadow** (cron row) | `kind: "cron"`, live expression, `match`, `stage: "shadow"`, `wave` | `mode: "dry_run"`, `cron` = the live line's schedule, `tz: "America/New_York"`, `class`, `priority`, `retry_policy` | `live_arg: null` | 36 rows on main (#1656, #1661): `fee-efficiency-analyzer` |
-| **staged R1** | cron row + an `r1_pending` block holding the shadow `scheduler`, `output_signal`, `dispatch`; **no** `dispatch` key | none until activation | `live_arg: null` | 19 rows (#1661); activated by #1665 (merged 2026-10-10 20:40Z as `e8a4a6815`) |
+| **shadow** (cron row) | `kind: "cron"`, live expression, `match`, `stage: "shadow"`, `wave` | `mode: "dry_run"`, `cron` = the live line's schedule, `tz: "America/New_York"`, `class`, `priority`, `retry_policy` | `live_arg: null` | 54 rows on main (#1656, #1661, #1665; `hermes-config-governor` left by #1674): `fee-efficiency-analyzer` |
+| **staged R1** | cron row + an `r1_pending` block holding the shadow `scheduler`, `output_signal`, `dispatch`; **no** `dispatch` key | none until activation | `live_arg: null` | 19 rows (#1661); activated by #1665 (merged 2026-10-10 20:40Z as `e8a4a6815`, live since its 17:13 ET promote); none left staged |
 | **canary** (cron row) | as shadow, `stage: "canary"`, `command_text` carrying the cron line's `flock` lock | `mode: "live"` | `live_arg` set, `lock_kind: flock`, `lock` = every `flock` lock in `command_text` | none yet |
 | **cutover** (dispatcher row) | `kind: "n8n"`, `expression: "dispatcher"`, `cadence`, `match` (the retired line), `wave`, `stage: "cutover"` | `mode: "live"` | as canary | none yet |
 
@@ -119,7 +135,15 @@ Rules:
   "reconcile_lane_registry@v1"`, `adopted_on`, `adopted_reason`; otherwise the next reconcile drops the block
   (`tests/test_n8n_maturity_registry_reconcile_20261009.py`, 17 rows in wave 1, 7 in wave 2, 19 in wave 3).
 - **One registry PR at a time** (§23.11): the next PR touching `config/lane_registry.json` waits for the previous
-  merge. 2026-10-10 ran four in order (#1654, #1656, #1657, #1661) plus #1665.
+  merge. 2026-10-10 ran #1654, #1656, #1657, #1661, #1665 and #1674 in order.
+- **A row moved into a pipeline stage leaves its wave.** When a manifest stage absorbs a cron line (C1, #1674), the
+  line's shadow cron row cannot stand: the registry edit moves the row's `stage`/`wave`/`dispatch` into
+  `dispatch_retired` and removes its allowlist entry (the `never` list is untouched). Stage lanes are never
+  dispatcher lanes (they contain senders).
+- **A multi-line lane** retires up to `DISPATCH_CRON_MAX_SLOTS = 8` cron lines through `_cutover.py` with a
+  `scheduler.match` list (each item exactly one live line) or `--expect-lines K` (#1673). Only `_cutover.py` reads a
+  list today; `check_lane_registry` and three report scripts still read `match` as a string — keep list rows out of a
+  registry PR until they do.
 - **`retry_policy` per class** (`config/n8n_retry_policies.json`): `none` for `send` and `learn` (and the R1
   `ingest` rows on 2026-10-10); `transient-2` (default, 3 attempts) for `monitor`, `report`, `hygiene`, `pipeline`;
   `transient-1-slow` for `heavy`; `llm-transient` for `llm` (COST_CAP, PEAK_SKIP and 4xx are terminal). The
@@ -147,6 +171,13 @@ declared to the registry gate by their INDEX (#1650). Rules, each enforced befor
    on a free loopback port and refuses `unsupported_route`, `lane_filter_unknown`, `http_timeout_missing`,
    `http_timeout_exceeds_execution`, `execution_timeout_missing`, `save_manual_executions_true`. Exit 0 = PASS,
    1 = REFUSED, 2 = could not check.
+   **It probes one call at a time, so it cannot see a concurrency failure (RC11).** On 2026-10-10 17:14 ET two or
+   three workflows calling `GET /due` in the same minute got `relay_gateway_unreachable`: the gateway rebuilt its
+   forbidden-token matcher on every call (~0.5 s CPU, ~2.3 s wall at `CPUQuota=20%`), and GIL-serialised calls
+   passed the relay's 5 s timeout. Fixed by #1667 (510 → 10 ms). Until the checker gains a concurrency probe
+   (`N8N_CONFIGURATION.md` open item 19), a change that adds a workflow calling a gateway read in the same minute as
+   another must pass `tests/test_gateway_due_latency_20261010.py` (8 tests, incl. a CPU-budget gate) and is published
+   **one workflow at a time**, reading the relay log between publishes (§5 step 4).
 3. **HTTP timeouts sit inside `executionTimeout`**, and every workflow sets `executionTimeout` (same checker).
 4. **`saveManualExecutions: false`** in every workflow (`n8n_workflow_templates.py` :1823; closes F4).
 5. **`errorWorkflow = tradeai-incident-router`** for the other five (:1826). The incident router's Error Trigger
@@ -177,7 +208,9 @@ Packet: `~/n8n-maturity-verification/packets/w0-import-six/` (`README.md`, `impo
 3. **Import inactive**: `TRADEAI_W0_GRANT=<id> bash import-six.sh --apply` (expects `imported_inactive=N`).
    Re-import over inactive rows with `W0_REIMPORT=1` (refuses if any row is active, published or foreign).
 4. **Publish** each id (`docker exec m8m-n8n n8n publish:workflow --id=<id>`), then **restart** n8n — a CLI publish
-   loads only at start.
+   loads only at start. **Publish one workflow at a time** when more than one calls the gateway in the same minute:
+   publish, restart, wait for `/healthz`, read the relay log for `relay_gateway_unreachable` over the next minutes,
+   then the next id (RC11; the 18:40, 18:44 and 18:47 ET re-publish did this, `republish-20261010.txt`).
 5. **Verify with durable evidence, never the n8n status.** Successful executions are soft-deleted
    (`EXECUTIONS_DATA_SAVE_ON_SUCCESS=none`) and keep `status = 'running'`. Read:
    - `SELECT id, active FROM workflow_entity WHERE id LIKE 'tradeai-%'`;
@@ -189,8 +222,11 @@ Packet: `~/n8n-maturity-verification/packets/w0-import-six/` (`README.md`, `impo
      `check_lane_registry --n8n-live --fail-on-new`.
 6. **Rollback** = `rollback.sh --apply [id ...]`: unpublish, restart, then archive through n8n's own archive
    endpoint. Never delete. On 2026-10-10 the six were imported inactive and published at 15:53 ET and unpublished
-   at 15:58 ET (grant f9c459a230d3bc58; `apply-20261010.txt`, `rollback-unpublish-20261010.txt`). The re-run waits
-   for the release carrying #1663/#1664 and imports the four whose filters are served.
+   at 15:58 ET (grant f9c459a230d3bc58; `apply-20261010.txt`, `rollback-unpublish-20261010.txt`). Re-run 17:14 ET
+   with the four whose filters are served (grant c90266247a4c4cd4); partial rollback 17:20 ET kept only the
+   dispatcher (RC11); after the RC11 fix was promoted (`8ddf2ad59`, 18:40 ET) the event router, incident router and
+   digest scheduler were re-published one at a time (18:40, 18:44, 18:47 ET, grant 4b3623125f6b6d7e). Heartbeat
+   watcher and approval router stay held until their host lanes have registry rows.
 
 ---
 
@@ -283,13 +319,20 @@ Full procedure, per lane, in the companion `N8N_MONITORING_AND_REMEDIATION_STAND
 2. PR → Agent A review verdict on the program board → required checks green on the exact head → merge.
 3. **Promote is the operator's**, only after main CI is green on the exact merged SHA. Merge is not deploy.
 4. **Then** request the grant for the host step the PR needs (install, import, restart).
-5. **Grants:** one per scope; the guard ledger holds one grant per tier (`.cursor/hooks/guard-lib.sh` :127–133,
+5. **A `release-write` grant names the exact merged SHA (≥ 9 hex) and the PR numbers in its reason.**
+   `scripts/lib/release_grant_binding.py` (`ReleaseGrantBinding@v1`, `enforce` by default) refuses a generic grant:
+   on 2026-10-10 ~17:07 ET the 6 h release grant 7792ff3948d8d2d9 was refused ("no SHA named") and the re-requested
+   grant naming `e8a4a6815524…` and #1665 matched (`matched_by: sha:…`). One grant per release; a campaign grant does
+   not stand in for a specific pending request.
+6. **Grants:** one per scope; the guard ledger holds one grant per tier (`.cursor/hooks/guard-lib.sh` :127–133,
    `.grants[$tier]`), and a new request for a scope supersedes the pending one (`scripts/lib/guard_remote_approval.py`
    :219–224). Ask for one scope at a time, for ≤ 12 h (`MAX_GRANT_SECONDS`, :92), naming the PR, the sha and the
    packet. **If the request is not visible in Telegram, re-send it** — on 2026-10-10 a tap never reached Telegram,
    and the re-sent request landed in seconds (RC10). Never route around a denial.
-6. Every host change writes a receipt in its packet (`*-evidence/*.log`) and a change-log row in the cron
+7. Every host change writes a receipt in its packet (`*-evidence/*.log`) and a change-log row in the cron
    inventory README.
+8. **No push from scheduled work, and agents never read, copy or symlink `.env`.** A worktree gets no `.env` link
+   (`scripts/new-worktree.sh`); a dry run that needs credentials uses stubs or a masked env.
 
 ---
 
@@ -312,14 +355,15 @@ Full procedure, per lane, in the companion `N8N_MONITORING_AND_REMEDIATION_STAND
 
 | Fact | Value | Evidence |
 |---|---|---|
-| Policy | AGENTS.md 4.4.0 ACTIVE (ratified #1660 comment 20:04:37Z, ratification edit #1662) | `R1_STATUS`, `R1_SHADOW_SHAPE_STATUS` = ACTIVE in `lane_dispatch.py` :76, :100 |
+| Policy | AGENTS.md 4.4.0 ACTIVE (ratified #1660 comment 20:04:37Z, ratification edit #1662); 4.4.1 + 4.5.0 in PR #1666, 4.6.0 PROPOSED on `n8nmat/agents-4-6-0` | `R1_STATUS`, `R1_SHADOW_SHAPE_STATUS` = ACTIVE in `lane_dispatch.py` :76, :100 |
 | n8n execution data | `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` — successes soft-deleted, status stays `running` | AGENTS.md §23.5; W0 README |
 | Executor | v2, 3 workers, since 13:07 ET | drop-in `10-executor-v2.conf`, grant eebd4ca0a6b31bd2 |
 | Gateway extra lanes | `incident-fanin research-intake n8n-workflow-error` since 16:27 ET | drop-in `20-workflow-error-lane.conf` |
-| Relay routes | `/status`, `/due`, `/runs/<lane_id>/last`, `/run`, `/event` (POST /event on main via #1663, needs a promote) | `n8n_run_relay.py` `ROUTES` |
-| Generic workflows | imported inactive; published 15:53, unpublished 15:58 ET (W0 rollback) | `packets/w0-import-six/` |
+| Relay routes | `/status`, `/due`, `/runs/<lane_id>/last`, `/run`, `/event` (POST /event served since the `e8a4a6815` promote, 17:13 ET) | `n8n_run_relay.py` `ROUTES` |
+| Gateway `/due` | matcher built once (#1667, RC11), served since `8ddf2ad59` 18:40 ET: 510 → 10 ms per call | `tests/test_gateway_due_latency_20261010.py` |
+| Generic workflows | **live:** dispatcher (since 17:14), event router (18:40), incident router (18:44), digest scheduler (18:47 ET); **held:** heartbeat watcher, approval router | `workflow_entity.active`, `packets/w0-import-six/republish-20261010.txt` |
 | Live per-lane n8n workflows | 4: `n8n-incident-fanin` (722fac0e043ea5c4), `n8n-pilot-dispatch` (078e8fcbea0c5020), `n8n-research-intake-consumer` (21fd15d5f8a4c4da), `crontab-snapshot-for-health-agent` (c0d4c7845e5c4fcc) | registry `kind: n8n` ACTIVE rows |
-| Shadow rows | 36 on main (wave 1: 22, #1656; wave 2: 14, #1661); 19 R1 rows activated by #1665 (merged 20:40Z, `e8a4a6815`, not yet promoted) → 55 | registry `stage: shadow` |
+| Shadow rows | 55 served (wave 1: 22, #1656; wave 2: 14, #1661; wave 3: 19 R1, #1665); 54 on main after #1674 moved `hermes-config-governor` into the `hermes_learning` stage | registry `stage: shadow` |
 | Flock for R1 learn lanes | L318, L314, L427 `flock -n` installed 16:20 ET (cron grant 08c0bb77ec898136; backup `~/.local/state/tradeai/backups/crontab-20261010T202023Z-pre-wave23-flock.txt`) | `packets/wave23-flock/` |
 | Incident notifier | cron L1052, ACTIVE since 2026-10-09 23:34 ET | registry `incident-notifier` (#1654) |
 | SIEM bridge, diagnoser | registry rows PAUSED (#1657), not installed | `packets/siem-diagnoser-schedule/` |
@@ -341,7 +385,8 @@ Full procedure, per lane, in the companion `N8N_MONITORING_AND_REMEDIATION_STAND
 | RC7 | `@needs_db` test without `TRADE_AI_CI=1` wrote to the live DB | §9.1 always `TRADE_AI_CI=1` |
 | RC8 | W0: `bad_lane_filter` 403 and `POST /event` 404 within 4 minutes; rows "running" were soft-deleted successes | §4.1–4.2, §5.5 registry lane names, served routes, verify with `deletedAt IS NULL` |
 | RC9 | W0 dry run checked URLs, not served paths/lanes | §5.1 relay contract check is step 1b of every import |
-| RC10 | A Telegram approval tap never arrived | §10.5 re-send a request that is not visible |
+| RC10 | A Telegram approval tap never arrived | §10.6 re-send a request that is not visible |
+| RC11 | W0 re-run 17:14 ET: concurrent `GET /due` calls got `relay_gateway_unreachable`; the gateway rebuilt its forbidden-token matcher per call (~0.5 s CPU, ~2.3 s wall at `CPUQuota=20%`) and the relay contract check probed one call at a time (#1667) | §4.2 latency test + publish one at a time until the checker has a concurrency probe; §5 step 4 |
 
 Other open findings carried here: crontab-wide `LLM_DEFER_OFFPEAK=1` (now stated in AGENTS.md §12); the older
 wrapper copy in `~/.config/tradeai/bin`; inotify watch exhaustion on executor restarts; R1 admission trusts a

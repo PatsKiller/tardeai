@@ -2,8 +2,8 @@
 
 ```
 Status:      ACTIVE
-as_of:       2026-10-10T17:30:00-04:00
-Measured at: origin/main 2aa2cc37d (#1664) / live af292381c-main-exact-phase2-20261010-113824; host ms01-openclaw
+as_of:       2026-10-10T18:55:00-04:00
+Measured at: origin/main 7df77950a (#1674) / live 8ddf2ad59-main-exact-phase2-20261010-183820; host ms01-openclaw
 Owner:       platform (n8n maturity program)
 Policy:      AGENTS.md 4.4.0 §2A, §9.1, §9.3, §12, §23.3, §23.4 (where this differs, AGENTS.md wins)
 Parent:      docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md (steps 3, 7, 11)
@@ -174,6 +174,15 @@ evaluates `degraded` / `failed` checks with the contract baseline; (3) the diagn
 - **Proof of delivery:** `data/cio/system_telegram_sends.jsonl` `ok: true` with a `message_id`; the notifier's
   receipt `incident_notifier_last.json` (`IncidentNotification@v1`) and history `incident_notifications.jsonl`.
 - Defaults live in `scripts/incident_notifier.py` :79–99. A lane never sends Telegram itself (onboarding §2.7).
+- **The notification model (operator, approved 2026-10-10 ~18:40 ET).** n8n orchestrates — it fires the host lanes
+  that route, batch digests, escalate and handle button callbacks — and the host communications gateway
+  (`send_telegram` and the delivery ledger, the approved adapters under `scripts/check_comms_gateway_enforcement.py`,
+  baselines `config/telegram_chokepoint_baseline.json` and `config/provider_chokepoint_baseline.json`, which may only
+  shrink) is the **only sender**. **The P1 path never depends on n8n:** this notifier and the SIEM bridge run from host
+  cron, so an n8n outage still delivers P1 (operator ruling 7, 2026-10-10 ~13:00 ET). Sender jobs (~66 in the
+  inventory) migrate to **notification intents** handed to the gateway (category, severity, dedupe key, `as_of`,
+  body) one PR at a time; a new or changed lane emits an intent and never calls a provider. Proposed as AGENTS.md
+  4.6.0 §24.1; §23.3 "No sends from n8n" is unchanged.
 
 ### 4.4 The n8n workflow-error path
 
@@ -185,7 +194,8 @@ n8n Error Trigger (incident router, `errorWorkflow` of the other five) → relay
 design 02 §8 says the fan-in reads these events as P2 (P1 for the dispatcher or watcher); `scripts/n8n_incident_fanin.py`
 has no reader for them yet (measured 2026-10-10: no `n8n-workflow-error` reference), so a workflow error is recorded
 but reaches neither the SIEM nor Telegram until that reader lands (fan-in PR with a test). Tests: `tests/test_n8n_w0_relay_fix_20261010.py`, `tests/test_gateway_workflow_error_lane_20261010.py`.
-Until the release carrying #1663 is promoted, the served relay answers 404 on `/event`.
+**Live since the `e8a4a6815` promote (17:13 ET):** the 17:14 ET W0 re-run produced 5 `op: event` lines `ACCEPTED`
+(`packets/w0-import-six/rerun-verify-20261010.txt`). The path records; the reader is still the missing piece.
 
 ### 4.5 Where the operator sees it
 
@@ -348,3 +358,8 @@ lock; exceed a cap; send portfolio data to a provider (§2A); act on a lane in `
 | Diagnoser DB row | synced 16:27 ET | `packets/llm-seed-sync/apply-20261010.txt` |
 | Health contracts | 68 DRAFT, not read at runtime yet | §3 |
 | Wrapper copies | 17 lines on `~/.config/tradeai/bin` copy (no `--defer-in-process`), 2 on the repo copy | crontab, measured 2026-10-10 |
+| Workflow-error path | relay `POST /event` → gateway `n8n-workflow-error` **live** (17:13 ET); fan-in reader **missing** | §4.4 |
+| Generic workflows | dispatcher, event router, incident router, digest scheduler live (last published 18:47 ET); heartbeat watcher, approval router held | `N8N_CONFIGURATION.md` §3.1 |
+| Gateway `/due` latency | RC11 fixed (#1667, 510 → 10 ms), served since 18:40 ET; the relay contract check still has no concurrency probe | `N8N_CONFIGURATION.md` §2.1 |
+| Search spend health | `search_spend_report.py` → fan-in source `search_spend` (P2 at 80% of $15) — with PR #1676 | `N8N_CONFIGURATION.md` §6.2 |
+| Scalp hot tier SLOs | list ≤ 5, enrichment ≤ 10, catalyst ≤ 30, social ≤ 15 min (market days); `scalp_hot_tier_report.py --freshness`; knob OFF | `N8N_CONFIGURATION.md` §6.3 |

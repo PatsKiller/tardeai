@@ -1,7 +1,7 @@
 # CURRENT rollback (exact-main phase2)
 
 Status:      ACTIVE
-as_of:       2026-10-10 (n8n executor/gateway drop-in rollbacks); 2026-10-09 otherwise
+as_of:       2026-10-10T18:55-04:00 (n8n executor/gateway drop-ins, W0 partial rollback, RC11 caveat, flag kill switches); 2026-10-09 otherwise
 Authority:   READ_ONLY_ADVISORY
 
 Do not run unless operator-authorized. Rollback moves CURRENT, restarts portfolio-server,
@@ -58,3 +58,36 @@ Added 2026-10-10 16:27 ET by the drop-in
 `systemctl --user daemon-reload && systemctl --user restart tradeai-n8n-coordination-gateway.service` and check
 `curl -s http://127.0.0.1:18091/healthz`. Relay `POST /event` then answers `unknown_lane`. Every other n8n rollback:
 `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` §11.
+
+## A release rollback past `8ddf2ad59` brings back RC11
+
+`8ddf2ad59` (promoted 2026-10-10 18:40 ET) carries #1667, which builds the gateway's forbidden-token matcher once.
+Rolling CURRENT back to `e8a4a6815` or older restores the per-call rebuild (~0.5 s CPU per `GET /due`, ~2.3 s wall at
+the gateway's `CPUQuota=20%`), and concurrent calls from the four live generic workflows then fail
+`relay_gateway_unreachable`. **Before such a rollback, unpublish the event router, incident router and digest
+scheduler** (the W0 partial rollback below), keep only the dispatcher, then roll back.
+
+## W0 partial rollback (unpublish named generic workflows, keep the rest)
+
+Under a `cron` grant naming the ids (AGENTS.md §23.11); never delete, never archive in a hurry:
+
+```bash
+for id in tradeai-event-router tradeai-incident-router tradeai-digest-scheduler; do
+  docker exec m8m-n8n n8n unpublish:workflow --id="$id"
+done
+docker restart m8m-n8n            # CLI publish/unpublish take effect only at start
+docker exec m8m-n8n-db psql -U n8n -d n8n -tAc "SELECT id, active FROM workflow_entity WHERE id LIKE 'tradeai-%' ORDER BY id"
+```
+
+Record the output in `~/n8n-maturity-verification/packets/w0-import-six/` (as `rerun-partial-rollback-20261010.txt`
+did at 17:20 ET). Full rollback of all six and archive: `packets/w0-import-six/rollback.sh` (dry run by default).
+
+## Kill switches for features promoted in `8ddf2ad59` (no release rollback needed)
+
+| Feature | Off without a rollback | Authority |
+|---|---|---|
+| Scalp hot tier (#1671) | already off unless `SCALP_HOT_TIER=1`; with it on, create `persistent-state/data/runtime/SCALP_HOT_TIER_DISABLED` (the code reverts to the legacy clocks; `FIRE_LEGACY_CLOCK`) | operator; the crontab flag is a `cron` change |
+| Directive enrichment via the broker (#1669) | `DIRECTIVE_ENRICH_VIA_BROKER=0` (direct path), `DIRECTIVE_ENRICH_PREFETCH=0` (no batched pre-pass) on the L442 line | `cron` |
+| CIO desk cost-cap backoff (#1668) | `CIO_DESK_COST_CAP_BACKOFF=0` | unit env (`config-write` + `service`) |
+| L556 interim stop | remove `CODER_DISPATCH_MODE=advisory` from L556 only after #1672 is live (it is the push guard until then) | `cron` |
+

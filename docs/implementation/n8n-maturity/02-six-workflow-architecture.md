@@ -167,6 +167,16 @@ For each registry row with `dispatch.mode ≠ off` whose lane is in the allowlis
 
 The response is [`schemas/due-response.schema.json`](schemas/due-response.schema.json). Each item carries only `lane_id`, `mode`, `idempotency_key`, `attempt`, `slot_local`, `reason` and `priority`. The command, lock, argv, timeout and output_signal **never leave the host** (§23.3).
 
+*Amended 2026-10-10 (RC11, #1667):* `compute_due` must be cheap under concurrency. The served gateway runs at
+`CPUQuota=20%` behind a relay `urlopen(timeout=5)`, and it is GIL-serialised under `ThreadingHTTPServer`. When the
+event router, incident router and digest scheduler joined the dispatcher at 17:14 ET, the calls that landed in the
+same minute were refused `relay_gateway_unreachable`. 99% of the CPU went to `lane_dispatch.forbidden_text_hits` /
+`_compound_hit`, which rebuilt ~160 word-form sets for ~560 command texts on every call. The matcher is now built once
+and keyed on its inputs, with a per-text memo; one call takes 510 → 10 ms and four concurrent calls 1.61 s → 38 ms,
+with byte-identical verdicts. `tests/test_gateway_due_latency_20261010.py` holds a CPU-budget gate. Any change to
+`compute_due` or the eligibility predicate keeps that gate green, and the relay-contract check (one call at a time)
+is not evidence of concurrency.
+
 ### 3.3 `_run` additions and ledger changes (additive)
 
 - **`_run` validates server-minted keys.**
@@ -451,6 +461,13 @@ sequenceDiagram
 
 ## 9. Component 7 — digest scheduler workflow (`tradeai-digest-scheduler`)
 
+*Amended 2026-10-10 (operator notification model, approved ~18:40 ET):* n8n orchestrates notifications — this
+workflow, the incident router and the approval router fire the host lanes that route, batch digests, escalate and
+handle button callbacks — and the host communications gateway (`send_telegram`, the delivery ledger and the approved
+adapters) is the only sender. The P1 path does not depend on n8n: the incident notifier (L1052) and the SIEM bridge
+stay on host cron. Sender jobs migrate to notification intents handed to the gateway. Nothing in §23.3 or §23.11
+changes (AGENTS.md 4.6.0 §24.1, PROPOSED).
+
 **Anchor.** The `advice-digest` lane (`scripts/send_advice_digest.py`, slots 10/15/17 ET in `config/advice_digest.yaml`) is already a watermark-pull digest. It reads `communication_events`, held CIO notes and P1 archives, and five digest lines were folded into it on 10-08. The scheduler builds on it instead of replacing it.
 
 **Windows.** A new DigestWindows@v1 config holds windows and members. It is not in the repo yet (planned path: config/digest_windows.json, lands with the digest-scheduler PR):
@@ -532,7 +549,7 @@ These are generated **once** by `python3 scripts/n8n_workflow_templates.py build
 
 | Wave | Lanes | Cron lines | Timers | Prerequisites |
 |---|---|---:|---:|---|
-| **W0 Foundation** | 0 moved: `due` route, relay `/due` `/event`, executor v2, retry policies, DLQ, ledger columns, 6 workflows imported and activated with **every row `dispatch.mode: off`** (a proven no-op: dispatcher ticks, `/due` returns `[]`) | 0 | 0 | AGENTS 3.1.0; one config-write grant for the 6 activations; one release. *Amended 2026-10-10:* the grant tier is **`cron`** naming the six ids (AGENTS.md 4.1.0 §23.2, §23.11; `check_n8n_activation_grants.py` accepts `cron` only). W0 ran 15:53 ET and was rolled back 15:58 ET (RC8); re-run with four ids after the #1663/#1664 release. |
+| **W0 Foundation** | 0 moved: `due` route, relay `/due` `/event`, executor v2, retry policies, DLQ, ledger columns, 6 workflows imported and activated with **every row `dispatch.mode: off`** (a proven no-op: dispatcher ticks, `/due` returns `[]`) | 0 | 0 | AGENTS 3.1.0; one config-write grant for the 6 activations; one release. *Amended 2026-10-10:* the grant tier is **`cron`** naming the six ids (AGENTS.md 4.1.0 §23.2, §23.11; `check_n8n_activation_grants.py` accepts `cron` only). W0 ran 15:53 ET and was rolled back 15:58 ET (RC8); re-run 17:14 ET with four ids, partial rollback 17:20 ET to the dispatcher alone (RC11, §3.2 amendment); after the RC11 fix (#1667, served 18:40 ET) the event router, incident router and digest scheduler were re-published one at a time (18:40, 18:44, 18:47 ET). Heartbeat watcher and approval router wait for their registry rows. |
 | **W1 Watch + self** | `heartbeat-watch`, `incident-fanin`, `incident-notify`, `approval-escalate` (or fallback), plus the 18 allowlist lanes, including the 4 live per-lane workflows re-pointed to the dispatcher and the 6 proposed ops lanes | 6 | 2 | B1 rows for all 438 lines (baseline → 0); B2 notifier |
 | **W2 Pipelines** | 8 pipeline stage lanes with `after` edges (close-capture → broker-truth → planning; learn → tune; close → night; premarket). 86 member lines retire as stages go `--apply`. | 8 (+86 retire) | 7 | stage parity, 1 dry + 1 live receipt each (B2) |
 | **W3 A lanes + events** | 70 A standalone lanes; event triggers rows 1, 2, 5, 6, 7; digest preparers that are A class; 6 prewarms → 3 triggers, 2 eliminated | 70 (+6) | 21 | per-script contract: `--dry-run`, receipt, lock (4 ready, 62 M-effort, 10 need a send split) |
