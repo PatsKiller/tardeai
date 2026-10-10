@@ -190,7 +190,13 @@ def test_ratification_gated_classes_refused_until_permitted(klass):
     row = _good_row()
     row["dispatch"]["class"] = klass
     assert [i.code for i in LD.validate_dispatch_block(row)] == ["class_not_permitted"]
-    assert LD.validate_dispatch_block(row, permitted_classes=LD.DISPATCH_CLASSES) == []
+    widened = LD.validate_dispatch_block(row, permitted_classes=LD.DISPATCH_CLASSES)
+    if klass in LD.R1_ADMITTED_CLASSES:
+        # AGENTS 4.3.0 §23.18: widening the class set never waives R1 — ratification, a dispatcher row at a ladder
+        # stage, a dry-run arg and a LaneRunReceipt output_signal are still required (this row has none of them).
+        assert [i.code for i in widened] == ["class_not_permitted"] and "(R1)" in widened[0].detail
+    else:
+        assert widened == []
 
 
 def test_after_and_run_done_unknown_lane():

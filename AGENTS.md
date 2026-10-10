@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      4.1.0
+Policy-Version:      4.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-09
-Last-Reviewed:       2026-10-09T17:30:03-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-10T00:26:44-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          4.0.0
+Supersedes:          4.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -20,6 +20,24 @@ same day "n8n drives a governed lane (Recommended)". The 5-minute Trade-AI scalp
 ingest through the data broker, a `trade_ai_scans` writer and a `send_telegram` caller — may run in
 `live` mode from n8n under the conditions in §23.3; it is the only such lane, and the never-list
 is otherwise unchanged. MAJOR because it widens what the n8n actor may cause (version policy).
+
+**4.3.0 is PROPOSED (MAJOR) — R1: three dispatcher classes — ingest writers, governed LLM jobs,
+learning/memory writers (§23.18).** The 4.1.0 text governs until the operator sends
+`APPROVE_AGENTS_POLICY_4_3_0 <pr> <sha>` (§20); nothing 4.3.0 adds grants anything before then, and
+`scripts/lib/lane_dispatch.py` keeps refusing the three classes while its `R1_STATUS` says `PROPOSED`.
+Numbered 4.3.0 because 4.2.0 is PROPOSED in the open PR #1634; whichever merges second takes the
+other's history row on rebase, and if #1634 is withdrawn this becomes 4.2.0 and §23.18 becomes
+§23.15. It records the operator's rulings of 2026-10-10 ~00:20 ET for all waves: (1) ingest writers,
+governed LLM jobs and learning/memory writers are dispatcher-eligible classes, always shadow → canary
+→ cutover, and the governed DeepSeek route is approved for the overnight trade reviewer (crontab
+L401); (2) forbidden-token matching becomes whole-word / path-segment (a separate code PR);
+(3) dispatched lanes carry no broker credential — the entry planner fetches bars through the data
+broker (a separate code PR); (4) an `alert_events` row is not a send and backtest fields on
+`paper_trade_proposals` are not paper execution; the `symbol_profiles` (L504) and `market_regime`
+(L205) writers are approved for dispatch. Broker, order, stop, secret and daemon lanes stay never
+dispatcher-eligible: no §23.14 sentence changes. MAJOR because what the n8n actor may cause widens by
+three classes (version policy); nothing in §0, §2, §2A or §7A, and none of the broker, secret or
+delete rails, is weakened.
 
 **4.1.0 is ACTIVE (MAJOR) — registry-driven n8n dispatch, wave ladder, program push budget, 48 h
 merge approval (§23.11–§23.14).** Ratified by the operator 2026-10-09 (`APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079`, §20;
@@ -3913,7 +3931,9 @@ is recorded in §23.7; §23.10 still grants nothing until each precondition is m
 **4.0.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_4_0_0`**)** — §23.3 gains the one named
 live-lane exception `trade-ai-scalp-live`. **4.1.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079`**)** —
 §23.11–§23.14 added; §23.2, §23.5, §9.3 and §17 sentences amended in place (§23.7); the replaced
-4.0.0 text is recorded in §23.7. Operator direction 2026-10-09:
+4.0.0 text is recorded in §23.7. **4.3.0 PROPOSED** — §23.18 (R1 dispatcher classes) added; the
+allowlist `never` string is reworded (§23.7); until `APPROVE_AGENTS_POLICY_4_3_0 <pr> <sha>` the
+4.1.0 text governs. Operator direction 2026-10-09:
 n8n gets governed AI capability, never unrestricted AI access or provider credentials; no capability
 expands until a guardrail audit proves governance parity or better. Operator direction
 2026-10-08: *"make agents.md carve out just for n8n"*, after the three decisions of the same day —
@@ -4229,6 +4249,22 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
 - Version history 3.0.0 row: the activation event is the ratification merge #1552 (`377e9b536`);
   #1547 (`3b5c24856`) merged the proposed text (due-diligence audit E D3).
 
+4.3.0 (PROPOSED; the 4.1.0 text stays readable at `origin/main` `6b88751bd`):
+
+- No sentence of §0, §2, §2A, §7A, §17 or §23.14 is changed. §23.18 is added.
+- `config/n8n_run_allowlist.json` `never` read: "… destructive retention stages, memory/learning
+  writers, CIO/persona/OpenClaw agent loops, price and research ingest writers (rails §0 and §17). Sole
+  exception: trade-ai-scalp-live …". It now splits that list in two. The first part is the
+  broker/positions/stops/orders/paper, sender, sm-render, guard, deploy, destructive-retention and
+  agent-loop entries: never, under any class. The second part is memory/learning writers,
+  price/research ingest writers and LLM jobs: never, except as the §23.18 classes once 4.3.0 is
+  ACTIVE. It also records R1 ruling 4 and keeps "Sole exception: trade-ai-scalp-live" word for word.
+- `scripts/lib/lane_dispatch.py`: `validate_dispatch_block` takes its default class set from
+  `permitted_classes_now()`, which is the pre-R1 set while `R1_STATUS` is `PROPOSED`.
+  `scripts/lib/n8n_due.py` asks `r1_class_admission` instead of testing membership in
+  `PERMITTED_CLASSES_PRE_R1`. `EXTRA_FORBIDDEN_SUBSTRINGS` gains `render_env`, `rotation_daemon` and
+  `bitwarden`, which only tightens it.
+
 No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
 
 ## 23.8 n8n Agent nodes (3.0.0)
@@ -4474,12 +4510,88 @@ every merge needs the operator's per-PR word again.
 - **No amendment made inside a program window can change this; it needs a new MAJOR.** *Cause (§20):
   a time-boxed program has every incentive to widen what it may move.*
 
+## 23.18 R1 — ingest, governed-LLM and learning classes on the dispatcher (4.3.0)
+
+Operator rulings for all waves, 2026-10-10 ~00:20 ET (the verification workspace's
+`REMEDIATION_PLAN.md` §7). §23.15–§23.17 are reserved for 4.2.0 (PR #1634, PROPOSED). This subsection
+**adds classes. It does not widen broker reach.** §23.14 is unchanged, and so is every sentence it
+holds.
+
+- **Three classes become dispatcher-eligible: `ingest` (price, research and authoritative-store
+  ingest writers), `llm` (governed LLM jobs) and `learn` (learning and memory writers).** A row
+  enters only by the §23.11 reviewed registry-row and allowlist PR. It climbs the §23.12 ladder
+  shadow → canary → cutover with a `RunReceipt@v1` per fire, and its cutover still needs the wave's
+  `cron` grant naming it. The admission is by class and by an operator ruling. It is not "by
+  analogy", so the §23.14 scalp sentence still holds for any lane outside these three classes.
+  *Cause (§20): ruling 1. The verified cron inventory of 2026-10-09 (676 rows, 560 active) classed
+  247 active rows "Requires Refactoring Before Migration", and most of those were blocked first by the
+  allowlist `never` list (ingest, memory and learning writers; LLM lanes held for "R1/R2"), not by
+  their code.*
+- **The gate is code: `scripts/lib/lane_dispatch.py` `r1_class_admission`.** It admits an
+  `ingest`, `llm` or `learn` row only when every one of these holds:
+  (a) `R1_STATUS` is `ACTIVE`, which only the ratifying edit sets;
+  (b) `dispatch_eligible(row)` passes, so no class relaxes the forbidden-token rule, `stay_on_cron`,
+  `KEEP_ON_CRON` or stay-behind, and the lane is not a daemon (no `--daemon`, `--loop`, `--forever`,
+  `--watch` or `--serve` flag, and no systemd service);
+  (c) `scheduler.expression = "dispatcher"` and `scheduler.stage` is `shadow`, `canary` or `cutover`;
+  (d) its `config/n8n_run_allowlist.json` entry has a non-empty `dry_run_arg`;
+  (e) its `output_signal` is the `LaneRunReceipt@v1` (`json_key` `ok_at` on
+  `data/runtime/<lane>_last.json`, written by `scripts/lib/lane_last_receipt.py`), and the allowlist
+  `output_signal` names the same file.
+  `scripts/lib/n8n_due.py` asks this gate before it emits a lane, and `validate_dispatch_block` asks
+  it even when a caller passes a wider class set. `send` stays refused (R2).
+  *Cause (§0 rails 7–8, §6): refactor wave 1 (#1641) had to add `--dry-run`, honest exits and lane
+  receipts to 36 cron rows (31 scripts) before any of them could be fired, because a log-file mtime
+  proves only that cron opened a file.*
+- **A governed LLM job calls a model only through the governed bridge.** An `llm` row's allowlist
+  entry declares `llm_route: {"via": "cio-governed-bridge", "process_id": <id>}`. The `<id>` must be
+  registered in `config/llm_process_registry.json`, and no argv token may pick a provider or model.
+  The $2.00/day cap (§12), the process caps, the caller identity (§9.2) and off-peak deferral
+  (`lib/llm_deferral`) apply on that path. **The governed DeepSeek route is approved for the overnight
+  trade reviewer (L401, `scripts/multi_tier_trade_reviewer.py --tier overnight`, process
+  `multi_tier_trade_reviewer`) on these terms and no others.** Its `weekly` and `monthly` tiers call
+  OpenAI and Anthropic and are not admitted. **Measured 2026-10-10: the overnight tier calls
+  `llm_lane.generate` → `llm_consumption.gate_and_generate` → `deepseek_client` in-process. That path
+  is capped and deferred, but it is not the `cio-governed-bridge` process.** Until the code routes
+  that call through the bridge, or the operator rules that the in-process gate counts as the bridge,
+  L401 cannot truthfully declare the route and stays on cron. *Cause (§20): ruling 1. Refactor wave 2
+  bucket V3 recorded L401 as "governed DeepSeek approval missing" (a refused or empty review now
+  exits 1). §23.4: a capability, never a provider.*
+- **Dispatched lanes carry no broker credential.** For an admitted class, `r1_class_admission`
+  refuses an allowlist entry whose `env_names` names a broker credential (`SCHWAB`, `ALPACA`,
+  `SNAPTRADE`, `MOOMOO`, `IBKR`, …). The entry planner (L473/L474) fetches bars through the host data
+  broker (§7A), not a broker client, and stays on cron until that separate code PR is merged.
+  *Cause (§20): ruling 3. §0 rail 2 says no agent reads a live credential, and a lane environment
+  that holds one lets a stolen relay bearer reach it.*
+- **Not a sender, not execution (ruling 4).** A lane that writes `alert_events` rows and does not
+  deliver them is not a sender: the host notifier delivers (fee analyzer L549, config governor
+  L671). Backtest fields written on `paper_trade_proposals` are not paper execution (proposal
+  backtest engine L606). Neither ruling admits a lane that calls `send_telegram`, places a paper or
+  live order, or moves a position, and the allowlist `never` list still names every sender and every
+  paper/broker lane. **The `symbol_profiles` writer (L504, `classify_instruments.py`) and the
+  `market_regime` writer (L205, `market_regime_classifier.py`) are approved for dispatch** under the
+  gate above. They remain the single writers of those stores (§7A), and moving the scheduler adds no
+  writer. *Cause (§20): ruling 4. The 2026-10-09 inventory found no §23.14 token in any of these five
+  rows. What remained open for each was whether an `alert_events` write is a send, or a
+  `paper_trade_proposals` write is execution. Refactor wave 2 bucket V3 left `classify_instruments`
+  (the `symbol_profiles` authority) to the operator.*
+- **Forbidden-token matching moves to whole-word / path-segment matching in a separate PR, and only
+  with proof.** That PR's tests must show that every real broker, order, stop, positions, secret and
+  daemon lane still blocks. This amendment changes the matcher in one way only: it adds the
+  secret-renderer substrings `render_env`, `rotation_daemon` and `bitwarden`. Measured 2026-10-10:
+  `lane_dispatch.dispatch_eligible` passed a lane whose argv was `scripts/render_env.py --write`,
+  although the 4.1.0 policy test refuses it. *Cause (§20): ruling 2.
+  `lane_dispatch.EXTRA_FORBIDDEN_SUBSTRINGS` matches `stop`, `position`, `paper` and `guard` as
+  substrings, so it refuses any word that contains one of them.
+  `tests/test_agents_policy_4_3_0_r1_classes.py` pins the refusals that any new matcher must keep.*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 4.3.0 | 2026-10-10 | PROPOSED | MAJOR | R1 (§23.18): `ingest`, `llm` and `learn` become dispatcher-eligible classes, always shadow → canary → cutover by §23.11 registry PR and §23.12 waves. Gate in code: `scripts/lib/lane_dispatch.py` `r1_class_admission`. It requires R1 ACTIVE (`R1_STATUS`), `dispatch_eligible`, a dispatcher row at stage shadow/canary/cutover, a non-empty `dry_run_arg`, a `LaneRunReceipt@v1` `output_signal` that matches the allowlist, and no broker credential in `env_names`. An `llm` job also needs `llm_route` via `cio-governed-bridge` with a registered process and no provider/model argv. `n8n_due` and `validate_dispatch_block` both ask the gate, and `send` stays refused. `EXTRA_FORBIDDEN_SUBSTRINGS` gains `render_env`, `rotation_daemon` and `bitwarden` (measured: `render_env.py --write` passed `dispatch_eligible`); this only tightens the matcher. The governed DeepSeek route is approved for L401 overnight only; measured: today it calls `llm_lane` in-process, not the bridge, so it stays on cron until rerouted or ruled. Ruling 4: `alert_events` rows are not a send; `paper_trade_proposals` backtest fields are not paper execution; the L504 `symbol_profiles` and L205 `market_regime` writers are approved for dispatch. Rulings 2 (whole-word/path-segment token matching) and 3 (entry planner via the data broker; no broker credentials in lanes) land as separate code PRs. Allowlist `never` reworded: broker/order/stop/paper/sender/secret/guard/deploy/agent-loop stay never under any class; the three classes are excepted only once 4.3.0 is ACTIVE; "Sole exception: trade-ai-scalp-live" kept. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Numbered after 4.2.0 PROPOSED (#1634). Tests: `tests/test_agents_policy_4_3_0_r1_classes.py`. Causes: the cron inventory of 2026-10-09 (247 active rows needing refactoring, mostly policy-blocked); refactor wave 1 #1641 (36 rows needed dry-run and receipts); wave 2 V3 (L401 governed route missing). MAJOR: the n8n actor may cause three more classes of host work; broker, secret and delete rails unchanged. | **PENDING**: awaiting `APPROVE_AGENTS_POLICY_4_3_0 <pr> <sha>` (operator, per-PR word; excluded from the §23.13 standing merge approval because it changes `AGENTS.md` and the allowlist `never` list). Operator rulings recorded 2026-10-10 ~00:20 ET: (1) ingest writers, governed LLM jobs and learning/memory writers are dispatcher-eligible, always shadow → canary → cutover; governed DeepSeek route approved for L401; (2) whole-word / path-segment forbidden-token matching; (3) entry planner (L473/L474) via the host data broker, no broker credentials in lanes; (4) `alert_events` rows not a sender, `paper_trade_proposals` backtest fields not execution, L504 and L205 approved for n8n. |
 | 4.1.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for the N8N Maturity Acceleration program (`docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md`): §23.11 registry-driven dispatch (six generic workflows — dispatcher, event router, heartbeat watcher, incident router, digest scheduler, approval router — activated once under one `cron` grant listing their ids; a lane is enabled by a reviewed PR adding its registry row `kind: n8n`, `expression: "dispatcher"`, `cadence`, `match`, `wave`, `stage` plus its `config/n8n_run_allowlist.json` entry, no per-lane import or grant; gateway read route `coordination/due` computes due lanes with `cron_schedule.next_run`; mode clamped to stage; lane identity server-side; the five non-dispatcher workflows send nothing and the approval router never mints or approves a grant; one registry PR at a time); §23.12 wave ladder (whole-wave dry_run then live-with-cron fire, receipts per lane per fire, failing lanes stay on cron, cutover per wave under one `cron` grant naming every lane, per-lane `CutoverReceipt@v1`, per-line rollback, natural-schedule evidence still owed); §23.13 program window (push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00 via `.githooks/pre-push` + `scripts/lib/tradeai_push_budget.py`; no merge queue (user-owned repository) and strict protection off; standing 48 h merge approval — Agent A's review verdict on the program board, the three required checks green on the exact head, nothing live until main CI is green on the merged SHA — with `Expires-At` set at ratification + 48 h, excluding governance, hook, guard, branch-protection, broker, secret and allowlist-`never` changes; merge only, never deploy or grant); §23.14 broker, order, secret and daemon lanes never dispatcher-eligible, by test (`tests/test_agents_policy_4_1_0_amendment.py`); `trade-ai-scalp-live` stays the single named exception, only on its 4.0.0 §23.3 terms; read-only guard carve-out — the approval-router lane may read pending guard requests and grant expiry through `scripts/lib/approval_board_projection.py`, never request, grant, revoke or consume, test-pinned; the guard `never` entry still blocks every guard write. Replaced in place: §23.2 "Registry row first", "Install, activate, edit or retire…" (one grant tier, `cron`; audit E D5) and "Shadow before canary before cutover"; §9.3 scheduler-entry bullet; §17 n8n fragment; §23.5 present-tense facts (rotation unscheduled; relay credential created 2026-10-08T16:45:48Z with MFA off and DB role `n8n` superuser, still open; P13 open); `AI_WORK_POLICY.md` §3/§17; `scripts/check_n8n_activation_grants.py` tiers `cron` only. Causes: due-diligence audits A–F of 2026-10-09 (audit E C2, C3, C4, C5, C6, C8, D5, D7); 438 cron lines, 321 undeclared, 4 lanes moved. MAJOR: §17 and merge/push authority change; nothing in §0, §2, §2A or §7A or the broker, secret or delete rails is weakened. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079` (operator, 2026-10-09 ~17:30 ET, in session: "Approve agents 4.1.0"); merged #1592 as 71d27c799; standing merge approval expires 2026-10-11T17:30:03-04:00; operator decisions recorded 2026-10-09: (1) registry-driven dispatch — one `cron` grant activates the six generic workflows, lanes enabled by reviewed registry PR; (2) wave ladder with one `cron` grant per wave cutover; (3) push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00, hook-enforced; (4) standing 48 h merge approval for `n8nmat/*` PRs with a board review verdict, green on the exact head, nothing live until main CI is green on the merged SHA, merge only; (5) 16:40 ET: read-only guard projection for the approval router, never a guard write. |
 | 4.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23.3 gains one named live-lane exception: `trade-ai-scalp-live` (Finviz ingest via the data broker, `trade_ai_scans` writer, `send_telegram` caller) may run `live` from n8n, only under the cron line's argv, lock, 295 s timeout and market gate, no provider key in n8n, relay live-lane listing and a workflow-id grant; cron stays the fallback until 3 clean market days. §23 status line corrected (stale 3.0.0 "awaiting" sentence). Allowlist `never` names the exception; `live_arg: []`. Evidence: `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md`, PR #1573, `tests/test_agents_policy_4_0_0_scalp_lane.py`. | Operator 2026-10-09 15:25 ET in session: "APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix" (`APPROVE_AGENTS_POLICY_4_0_0`), after "n8n drives a governed lane (Recommended)". |
 | 3.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for governed LLM and Agent capability in n8n: §23.3 first bullet replaced (n8n workflows **and Agent nodes** cause host work only through the relay → gateway `coordination/run` for allowlisted lanes and the read-only coordination endpoints; Agent tools = those endpoints; never-list incl. DOF SQL applies to Agent tools; per-process tool allowlist enforced at the bridge with typed refusal; container internet egress BLOCKED by a DOCKER-USER rule, host reach only `172.19.0.1:18092`); §23.4 replaced (capability not provider: registered `n8n_*` process + versioned template + optional routing policy through the governed bridge; default routing Grok OAuth → ChatGPT OAuth → DeepSeek metered; free text only after `sanitise_for_external` for `free_text_allowed` processes; output schema + behaviour-field scan at the bridge; caps and typed refusal kept); §23.5 first bullet replaced (at most two credentials — relay bearer, and a bridge token only after §23.10; owner MFA waived; non-superuser `n8n_app` role still required); §23.8 n8n Agent nodes (registry row, receipt per turn, grant naming the workflow id, model node → bridge only, tool nodes excluded, turn/token/wall caps, no streaming until audit B H1 is fixed; first Agent read-only "explain why lane X failed", coordination-read tools only, shadowed first); §23.9 governance parity; §23.10 preconditions P2–P9, P11–P13, P15–P22 as a checklist that grants nothing until each is measured true with a receipt. §17 gains Agent-node activation / bridge-token creation; §23 and top-of-file 2.0.0 status lines corrected; ADR_COORDINATION_SECRETS Policy line fixed + 3.0.0 addendum. Proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`; audits `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md`, `guardrail-audit-b-code-20261009.md`, `guardrail-audit-c-policy-n8n-20261009.md`. MAJOR: egress policy and the n8n actor's authority change; nothing in §0, §2, §2A, §2B or §7A is weakened for any actor. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9` (operator, 2026-10-09, in session); proposed text merged #1547 as `3b5c24856`; ratification (the activation event) merged #1552 as `377e9b536`; operator decisions recorded 2026-10-09: (1) ratify the proposal's §3 text as 3.0.0; (2) routing Grok → ChatGPT → DeepSeek; (3) container internet egress blocked, not proxied; (4) first Agent read-only lane-failure explainer, shadowed first; (5) owner MFA waived, `n8n_app` role still required. |

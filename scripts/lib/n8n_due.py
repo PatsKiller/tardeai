@@ -436,8 +436,9 @@ def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: 
         if policy is None:                                 # RetryPolicies.get would return UNRESOLVED_POLICY
             errors.append(_err(lane, "unknown_retry_policy", f"retry_policy {block.retry_policy!r}"))
             continue
-        if block.klass not in _ld.PERMITTED_CLASSES_PRE_R1 or not _rp.policy_permits_class(policy, block.klass):
-            errors.append(_err(lane, "class_not_permitted", f"class {block.klass!r} under policy {policy.name!r}"))
+        admitted, why = _ld.r1_class_admission(row, entry)   # PRE_R1 classes; R1 classes only per AGENTS §23.18
+        if not admitted or not _rp.policy_permits_class(policy, block.klass):
+            errors.append(_err(lane, "class_not_permitted", f"class {block.klass!r} under policy {policy.name!r}: {why}"))
             continue
         bad_after = [e.lane_id for e in block.after if e.lane_id not in known or e.lane_id == lane]
         if bad_after:
