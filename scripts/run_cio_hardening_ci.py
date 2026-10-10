@@ -4125,6 +4125,15 @@ GATES = [
             "tests/test_refactor_w2_portfolio_lanes_20261010.py",
         ],
     ),
+    (
+        # finviz-view-contracts n8n lane RUN_TIMEOUT (2026-10-10 01:44Z, 13:11Z): finviz_throttle obeyed a
+        # last_request 76 days in the future, so every Finviz request slept its whole throttle timeout.
+        # Pins: acquire() discards corrupt future state (kept under `discarded`), status() stays read-only,
+        # check_finviz_view_contracts --dry-run makes no Finviz request and writes nothing (source order
+        # pinned), the real run's throttle wait is bounded under the allowlist timeout_s. Hermetic.
+        "finviz_view_contracts_timeout_20261010",
+        ["tests/test_finviz_view_contracts_timeout_20261010.py"],
+    ),
 ]
 
 
