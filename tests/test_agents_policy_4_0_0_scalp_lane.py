@@ -91,7 +91,7 @@ def test_allowlist_matches_the_exception_and_the_cron_line():
     assert cron["kind"] == "cron"                                       # cron stays the fallback scheduler
     for frag in ("flock -n /tmp/tradeai_scalp_live.lock", "timeout 295", "market_day_gate.sh",
                  "scripts/run_trade_ai_scalp_live.py >>"):
-        assert frag in cron["expression"], frag
+        assert frag in cron["expression"] + " " + cron.get("command_text", ""), frag  # registry-ops-crons 2026-10-09: bare schedule + command_text
     assert "Sole exception: trade-ai-scalp-live" in ALLOW["never"]
     assert "LIVE CANDIDATE" in REG[LANE]["note"]
 

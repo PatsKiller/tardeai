@@ -32,7 +32,7 @@ def test_watch_review_workers_split_one_row_per_crontab_line():
     assert cio["output_signal"]["path"] == "logs/watch_review_cio.log"
     for row in (maria, cio):
         assert row["state"] == "ACTIVE"
-        assert re.match(r"^\d+ 16 \* \* 1,3,5 ", row["scheduler"]["expression"])
+        assert re.match(r"^\d+ 16 \* \* 1,3,5(?: |$)", row["scheduler"]["expression"])  # bare since registry-ops-crons
     # no other row may also claim either line
     others = [r["lane_id"] for r in REG["lanes"]
               if "run_watch_review_workers.py" in str((r.get("scheduler") or {}).get("match") or "")]
@@ -47,9 +47,11 @@ def test_due_diligence_questions_signal_is_run_log():
 def test_n8n_governance_rows_cadence_without_state_change():
     assert ROWS["n8n-activation-grants"]["expected_cadence_hours"] == 0.5
     assert ROWS["n8n-workflow-drift-check"]["expected_cadence_hours"] == 1.0
+    # registry-ops-crons 2026-10-09: both moved to host cron (PAUSED pending install, then ACTIVE);
+    # tests/test_registry_ops_crons_20261009.py pins the rows.
     for lid in ("n8n-activation-grants", "n8n-workflow-drift-check"):
-        assert ROWS[lid]["state"] == "NEVER_SCHEDULED"
-        assert ROWS[lid]["scheduler"]["kind"] == "none"
+        assert ROWS[lid]["state"] in {"PAUSED", "ACTIVE"}
+        assert ROWS[lid]["scheduler"]["kind"] == "cron"
 
 
 def test_watch_intelligence_dependency_names_both_review_lanes():

@@ -1,7 +1,7 @@
 {
  "schema": "SchedulerSnapshot@v1",
  "captured_on": "2026-10-09",
- "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~",
+ "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host",
  "cron_lines": [
   {
    "n": 92,
@@ -1361,7 +1361,7 @@
   },
   {
    "n": 792,
-   "line": "15 9 * * 1-5 cd $PROJ && export $(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=300 SHADOW_BATCH_HARD_CAP=400 SHADOW_BATCH_CONCURRENCY=4 flock -n -E 99 /tmp/shadow_batch.lock timeout 60m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\\\ \\%H:\\%M:\\%S) [flock] shadow_batch skipped — previous still running\" >> $PROJ/logs/shadow_batch.log  # daily shadow decision-packet refresh: 300 symbols (6x old rate); idempotent (fresh<12h skipped)"
+   "line": "15 9 * * 1-5 cd $PROJ && export $(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=300 SHADOW_BATCH_HARD_CAP=400 SHADOW_BATCH_CONCURRENCY=4 flock -n -E 99 /tmp/shadow_batch_cron.lock timeout 60m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\\\ \\%H:\\%M:\\%S) [flock] shadow_batch skipped — previous still running\" >> $PROJ/logs/shadow_batch.log  # daily shadow decision-packet refresh: 300 symbols (6x old rate); idempotent (fresh<12h skipped)"
   },
   {
    "n": 793,
@@ -1401,11 +1401,11 @@
   },
   {
    "n": 823,
-   "line": "20 6 * * 1,4 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_synthesizer.lock timeout 20m $PY scripts/hermes_cross_source_synthesizer.py --apply --json >> logs/hermes_synthesizer.log 2>&1  # Phase 4 cross-source synthesis: off-hours, llm_priority_guard-wrapped (2026-08-04)"
+   "line": "20 18 * * 1,4 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_synthesizer.lock timeout 20m $PY scripts/hermes_cross_source_synthesizer.py --apply --json >> logs/hermes_synthesizer.log 2>&1  # Phase 4 cross-source synthesis: off-hours, llm_priority_guard-wrapped (2026-08-04)"
   },
   {
    "n": 824,
-   "line": "45 3 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_yield_builder.lock $PY scripts/hermes_discovery_yield_builder.py --apply --json >> logs/hermes_discovery_yield.log 2>&1  # Phase 5 outcome yield: after 03:35 outcome learning (2026-08-04)"
+   "line": "45 3 * * * cd $PROJ && flock -n /tmp/hermes_yield_builder.lock $PY scripts/hermes_discovery_yield_builder.py --apply --json >> logs/hermes_discovery_yield.log 2>&1  # Phase 5 outcome yield: after 03:35 outcome learning (2026-08-04)"
   },
   {
    "n": 827,
@@ -1417,7 +1417,7 @@
   },
   {
    "n": 832,
-   "line": "30 5 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
+   "line": "30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
   },
   {
    "n": 835,
@@ -1754,6 +1754,18 @@
   {
    "n": 1050,
    "line": "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1  # TRADEAI_LANE trade-ai-scalp-live"
+  },
+  {
+   "n": 1051,
+   "line": "*/5 * * * * cd $PROJ && set -a && . ./.env && set +a && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state SYSTEM_TELEGRAM_ENABLED=1 CIO_TELEGRAM_INTERDICT=1 bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_incident_notifier.lock timeout 120 $PY scripts/incident_notifier.py --live >> logs/incident_notifier.log 2>&1  # TRADEAI_LANE incident-notifier"
+  },
+  {
+   "n": 1052,
+   "line": "*/30 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_activation_attribution.lock timeout 300 $PY scripts/check_n8n_activation_grants.py --write >> logs/n8n_activation_grants.log 2>&1  # TRADEAI_LANE n8n-activation-grants"
+  },
+  {
+   "n": 1053,
+   "line": "7 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY scripts/check_n8n_workflow_drift.py --write >> logs/n8n_workflow_drift.log 2>&1  # TRADEAI_LANE n8n-workflow-drift-check"
   }
  ],
  "units": {

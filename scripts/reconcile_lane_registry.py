@@ -18,6 +18,8 @@ ran. This generator closes that gap deterministically:
       2. else the log the scheduler itself appends to (``>> logs/x.log`` / ``StandardOutput=append:``);
       3. else ``{"kind": "none", "reason": "UNVERIFIED_OUTPUT"}`` plus the row flag
          ``UNVERIFIED_OUTPUT`` — reported, never invented.
+      (0. an evidence entry ``declared_no_output`` {reason, evidence} wins over both: a job with no durable
+         per-run artifact, e.g. a ``curl -o /dev/null`` prewarm, gets kind none + flag NO_DURABLE_OUTPUT.)
   * Rows that already exist keep every hand-written field; the generator only refreshes the
     ``rationalization`` block (value_class/recommendation copied from the rationalization).
   * ``undeclared_baseline`` and ``inherited_tranches`` are removed: nothing is exempt any more.
@@ -724,6 +726,20 @@ def verified_receipt(entry: Optional[dict[str, Any]], sources: Iterable[Path]) -
     return None
 
 
+def declared_no_output(entry: Optional[dict[str, Any]]) -> Optional[tuple[dict[str, Any], list[str]]]:
+    """(signal, flags) for an evidence entry that declares the job has NO durable per-run artifact.
+
+    2026-10-09 registry-ops-crons (breach triage): a ``curl -s -o /dev/null ... >> log`` prewarm writes nothing,
+    so its redirect log is a false NO_OUTPUT every day. Absence needs no source token, but it needs written
+    evidence; the row is flagged NO_DURABLE_OUTPUT (the detector skips kind none, so the lane is reported,
+    not monitored)."""
+    dn = (entry or {}).get("declared_no_output")
+    if not isinstance(dn, dict) or not str(dn.get("evidence") or "").strip():
+        return None
+    return ({"kind": "none", "reason": str(dn.get("reason") or "NO_DURABLE_OUTPUT"),
+             "detail": sanitize(str(dn["evidence"]))[:300]}, ["NO_DURABLE_OUTPUT"])
+
+
 # ── building rows ─────────────────────────────────────────────────────────────────────────────
 
 def _rationalization_block(f: Optional[dict[str, Any]], rec: Optional[str]) -> dict[str, Any]:
@@ -865,7 +881,7 @@ def build_cron_rows(lines: list[str], undeclared: list[str], raw_lines: list[str
         if ev and ev.get("output_signal") and not receipt:
             problems.append({"code": "EVIDENCE_REJECTED", "lane_id": lid,
                              "detail": "verified_token not found in script source"})
-        sig, flags = _signal(receipt, log_redirect(it["cmd"]), "CRON_LOG_REDIRECT")
+        sig, flags = declared_no_output(ev) or _signal(receipt, log_redirect(it["cmd"]), "CRON_LOG_REDIRECT")
         schedules = it.get("schedules") or [it["sched"]]
         cadence = cron_cadence_hours(schedules[0]) if len(schedules) == 1 else cron_cadence_hours_union(schedules)
         sched_doc: dict[str, Any] = {"kind": "cron", "expression": " + ".join(schedules), "match": match}

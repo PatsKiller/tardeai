@@ -1448,7 +1448,8 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 7,19 * * 1-5 drain_cio_stance_classification.py --apply",
+        "expression": "20 7,19 * * 1-5",
+        "command_text": "drain_cio_stance_classification.py --apply",
         "match": "drain_cio_stance_classification.py"
       },
       "expected_cadence_hours": 24.0,
@@ -1473,7 +1474,8 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "output_signal_note": "2026-10-09 (registry-signals-r1): was file_mtime ~/.local/state/tradeai/cio_stance_classification_receipts.jsonl, which the drain appends only when a request is pending, so an idle drain (pending=0) read as a false NO_OUTPUT breach (supervisor_breaches.jsonl 2026-10-01..05). The cron line appends to logs/cio_stance_classification_drain.log (state-root logs) and main() prints one '[APPLY] pending=N counts=...' line on every run."
+      "output_signal_note": "2026-10-09 (registry-signals-r1): was file_mtime ~/.local/state/tradeai/cio_stance_classification_receipts.jsonl, which the drain appends only when a request is pending, so an idle drain (pending=0) read as a false NO_OUTPUT breach (supervisor_breaches.jsonl 2026-10-01..05). The cron line appends to logs/cio_stance_classification_drain.log (state-root logs) and main() prints one '[APPLY] pending=N counts=...' line on every run.",
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "cio-decision-engine",
@@ -1498,7 +1500,8 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/5 * * * * cio_wake_dispatch_entrypoint.py",
+        "expression": "*/5 * * * *",
+        "command_text": "cio_wake_dispatch_entrypoint.py",
         "match": "cio_wake_dispatch_entrypoint.py"
       },
       "expected_cadence_hours": 0.25,
@@ -1520,7 +1523,8 @@
         "f_recommendation": "KEEP (inside its pipeline)",
         "event_driven_candidate": true,
         "f_evidence": "core advisory/protection/data path; healthy logs today"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "cio-situation-detector",
@@ -2343,7 +2347,8 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/8 * * * * warm_caches.py",
+        "expression": "*/8 * * * *",
+        "command_text": "warm_caches.py",
         "match": "warm_caches.py"
       },
       "expected_cadence_hours": 1,
@@ -2364,15 +2369,21 @@
         "f_recommendation": "EVENT-DRIVEN (refresh on data-arrival event)",
         "event_driven_candidate": false,
         "f_evidence": "*/8 24×7 cache warm"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "portfolio-repricer",
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5 portfolio_repricer.py",
-        "match": "portfolio_repricer.py"
+        "expression": "*/15 9-16 * * 1-5 + 10 16 * * 1-5",
+        "command_text": "portfolio_repricer.py",
+        "match": "portfolio_repricer.py",
+        "schedules": [
+          "*/15 9-16 * * 1-5",
+          "10 16 * * 1-5"
+        ]
       },
       "expected_cadence_hours": 0.25,
       "active_days": [
@@ -2399,14 +2410,16 @@
         "f_recommendation": "CONSOLIDATE → P01 quote service",
         "event_driven_candidate": false,
         "f_evidence": "same quote-writer overlap as above; ticker_prices 22.1M writes since 09-20"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "portfolio-ai-analyst",
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "15 7 * * 1-5 portfolio_orchestrator.py (AI Analyst stage)",
+        "expression": "15 7 * * 1-5",
+        "command_text": "portfolio_orchestrator.py (AI Analyst stage)",
         "match": "portfolio_orchestrator.py"
       },
       "expected_cadence_hours": 72.0,
@@ -2434,14 +2447,16 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "sector-momentum-engine",
       "owner": "defense",
       "scheduler": {
         "kind": "cron",
-        "expression": "25 17 * * 1-5 sector_momentum_engine.py",
+        "expression": "25 17 * * 1-5",
+        "command_text": "sector_momentum_engine.py",
         "match": "sector_momentum_engine.py"
       },
       "expected_cadence_hours": 24,
@@ -2462,15 +2477,21 @@
         "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "industry-momentum-groups",
       "owner": "defense",
       "scheduler": {
         "kind": "cron",
-        "expression": "30 12 * * 1-5 finviz_industry_groups.py",
-        "match": "finviz_industry_groups.py"
+        "expression": "30 12 * * 1-5 + 18 16 * * 1-5",
+        "command_text": "finviz_industry_groups.py",
+        "match": "finviz_industry_groups.py",
+        "schedules": [
+          "30 12 * * 1-5",
+          "18 16 * * 1-5"
+        ]
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -2490,14 +2511,16 @@
         "f_recommendation": "CONSOLIDATE-into P02",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "rotation-autopilot",
       "owner": "defense",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 4-16 * * 1-5 run_rotation_autopilot.sh cron",
+        "expression": "*/15 4-16 * * 1-5",
+        "command_text": "run_rotation_autopilot.sh cron",
         "match": "run_rotation_autopilot.sh"
       },
       "expected_cadence_hours": 0.25,
@@ -2518,14 +2541,16 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "indicator-cache-refresh",
       "owner": "signals",
       "scheduler": {
         "kind": "cron",
-        "expression": "45 5 * * 1-5 indicator_cache_refresh.py",
+        "expression": "45 5 * * 1-5",
+        "command_text": "indicator_cache_refresh.py",
         "match": "scripts/indicator_cache_refresh.py"
       },
       "expected_cadence_hours": 24,
@@ -2547,14 +2572,16 @@
         "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "persistent-wake-hourly",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 * * * * .../run_persistent_wake.py --agent-id cio",
+        "expression": "0 * * * *",
+        "command_text": ".../run_persistent_wake.py --agent-id cio",
         "match": "scripts/run_persistent_wake.py --agent-id cio"
       },
       "expected_cadence_hours": 1.0,
@@ -2575,14 +2602,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "governed-research-producer",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "45 * * * * .../run_governed_research_producer.py --limit 5 --execute",
+        "expression": "45 * * * *",
+        "command_text": ".../run_governed_research_producer.py --limit 5 --execute",
         "match": "scripts/run_governed_research_producer.py"
       },
       "expected_cadence_hours": 1.0,
@@ -2604,14 +2633,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "wake-selection-feed",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "55 * * * * .../wake_selection_feed.py --hours 48",
+        "expression": "55 * * * *",
+        "command_text": ".../wake_selection_feed.py --hours 48",
         "match": "ops/wake_selection_feed.py"
       },
       "expected_cadence_hours": 1.0,
@@ -2632,14 +2663,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "identity-sweep-stage0",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/30 * * * * .../backfill_subject_identity.py --all --apply",
+        "expression": "*/30 * * * *",
+        "command_text": ".../backfill_subject_identity.py --all --apply",
         "match": "scripts/backfill_subject_identity.py --all --apply"
       },
       "expected_cadence_hours": 0.5,
@@ -2660,14 +2693,16 @@
         "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10",
         "event_driven_candidate": true,
         "f_evidence": "polls */30 * * * *"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "material-change-detector-stage1",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/30 * * * * .../material_change_detector.py --apply",
+        "expression": "*/30 * * * *",
+        "command_text": ".../material_change_detector.py --apply",
         "match": "scripts/material_change_detector.py --apply"
       },
       "expected_cadence_hours": 0.5,
@@ -2689,14 +2724,16 @@
         "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10",
         "event_driven_candidate": true,
         "f_evidence": "polls */30 * * * *"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "material-change-notifier-stage2",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "7-59/15 * * * * .../notify_material_change.py --apply",
+        "expression": "7-59/15 * * * *",
+        "command_text": ".../notify_material_change.py --apply",
         "match": "scripts/notify_material_change.py --apply"
       },
       "expected_cadence_hours": 0.25,
@@ -2717,14 +2754,16 @@
         "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10",
         "event_driven_candidate": true,
         "f_evidence": "polls 7-59/15 * * * *"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "watch-review-workers",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "5 16 * * 1,3,5 run_watch_review_workers.py --mode execute --allow-execute --role maria",
+        "expression": "5 16 * * 1,3,5",
+        "command_text": "run_watch_review_workers.py --mode execute --allow-execute --role maria",
         "match": "run_watch_review_workers.py --mode execute --allow-execute --role maria"
       },
       "expected_cadence_hours": 72.0,
@@ -2748,14 +2787,16 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "output_signal_note": "2026-10-09 (registry-signals-r1): split from the combined '5,20 16 * * 1,3,5 ... --role maria|cio' row: this row is the Maria 16:05 crontab line only (signal logs/watch_review_maria.log); the CIO 16:20 line is watch-review-workers-cio with its own log signal."
+      "output_signal_note": "2026-10-09 (registry-signals-r1): split from the combined '5,20 16 * * 1,3,5 ... --role maria|cio' row: this row is the Maria 16:05 crontab line only (signal logs/watch_review_maria.log); the CIO 16:20 line is watch-review-workers-cio with its own log signal.",
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "watch-review-workers-cio",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 16 * * 1,3,5 run_watch_review_workers.py --mode execute --allow-execute --role cio",
+        "expression": "20 16 * * 1,3,5",
+        "command_text": "run_watch_review_workers.py --mode execute --allow-execute --role cio",
         "match": "run_watch_review_workers.py --mode execute --allow-execute --role cio"
       },
       "expected_cadence_hours": 72.0,
@@ -2779,7 +2820,8 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "output_signal_note": "2026-10-09 (registry-signals-r1): own signal logs/watch_review_cio.log (the 16:20 line's redirect)."
+      "output_signal_note": "2026-10-09 (registry-signals-r1): own signal logs/watch_review_cio.log (the 16:20 line's redirect).",
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "material-change-digest",
@@ -2807,7 +2849,8 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/20 * * * * run_with_deepseek_offpeak.sh --scheduled -- .../due_diligence_questions.py --apply --route",
+        "expression": "*/20 * * * *",
+        "command_text": "run_with_deepseek_offpeak.sh --scheduled -- .../due_diligence_questions.py --apply --route",
         "match": "scripts/due_diligence_questions.py --apply --route"
       },
       "expected_cadence_hours": 12.5,
@@ -2829,14 +2872,16 @@
         "event_driven_candidate": true,
         "f_evidence": "polls */20 * * * *"
       },
-      "output_signal_note": "2026-10-09 (registry-signals-r1): was db_max due_diligence_questions.created_at, which does not move when a run curates/routes 0 rows (and outside the off-peak window by design). The cron line appends every */20 run (including the off-peak wrapper's skip line) to logs/due_diligence_questions.log."
+      "output_signal_note": "2026-10-09 (registry-signals-r1): was db_max due_diligence_questions.created_at, which does not move when a run curates/routes 0 rows (and outside the off-peak window by design). The cron line appends every */20 run (including the off-peak wrapper's skip line) to logs/due_diligence_questions.log.",
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "document-mentions-backfill",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "25 * * * * .../backfill_document_mentions.py --all --limit 4000 --apply",
+        "expression": "25 * * * *",
+        "command_text": ".../backfill_document_mentions.py --all --limit 4000 --apply",
         "match": "scripts/backfill_document_mentions.py --all"
       },
       "expected_cadence_hours": 1.0,
@@ -2858,7 +2903,8 @@
         "f_recommendation": "REDESIGN (one-shot backfill, not hourly)",
         "event_driven_candidate": false,
         "f_evidence": "hourly backfill; log stale since 09-30"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "document-mentions-prune",
@@ -2905,7 +2951,8 @@
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "5 */2 * * * .../hermes_top20_external_intel.py --top 20 --lanes grok,chatgpt --apply",
+        "expression": "5 */2 * * *",
+        "command_text": ".../hermes_top20_external_intel.py --top 20 --lanes grok,chatgpt --apply",
         "match": "scripts/hermes_top20_external_intel.py --top 20"
       },
       "expected_cadence_hours": 2.0,
@@ -2925,14 +2972,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-usefulness-backfill",
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "15 * * * * run_with_deepseek_offpeak.sh --scheduled -- .../hermes_external_feedback_loop.py --apply --max-rows 2000",
+        "expression": "15 * * * *",
+        "command_text": "run_with_deepseek_offpeak.sh --scheduled -- .../hermes_external_feedback_loop.py --apply --max-rows 2000",
         "match": "scripts/hermes_external_feedback_loop.py --apply"
       },
       "expected_cadence_hours": 12.5,
@@ -2952,7 +3001,8 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-librarian-retention",
@@ -3038,7 +3088,8 @@
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "30 7 * * 1-5 send_morning_brief.py",
+        "expression": "30 7 * * 1-5",
+        "command_text": "send_morning_brief.py",
         "match": "scripts/send_morning_brief.py"
       },
       "expected_cadence_hours": 24.0,
@@ -3071,7 +3122,8 @@
         "class": "pipeline_excluded_gate",
         "token": "market_day_gate.sh",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "aegis-morning-brief-delivery-0805",
@@ -3114,7 +3166,8 @@
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5 screener_go_alerts.py --send",
+        "expression": "*/15 9-16 * * 1-5",
+        "command_text": "screener_go_alerts.py --send",
         "match": "scripts/screener_go_alerts.py"
       },
       "expected_cadence_hours": 0.25,
@@ -3142,7 +3195,8 @@
         "f_recommendation": "EVENT-DRIVEN on new GO (P02)",
         "event_driven_candidate": true,
         "f_evidence": "148 of 310 retained runs go_rows=0; polls */15"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "data-plausibility-audit",
@@ -3365,7 +3419,8 @@
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5 moomoo_live_read_sync.py",
+        "expression": "*/15 9-16 * * 1-5",
+        "command_text": "moomoo_live_read_sync.py",
         "match": "moomoo_live_read_sync.py"
       },
       "expected_cadence_hours": 24,
@@ -3398,14 +3453,16 @@
         "class": "broker_order",
         "token": "moomoo",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "llm-spend-report-daily",
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "5 7 * * * llm_spend_report.py --period daily --send",
+        "expression": "5 7 * * *",
+        "command_text": "llm_spend_report.py --period daily --send",
         "match": "scripts/llm_spend_report.py --period daily"
       },
       "expected_cadence_hours": 24,
@@ -3426,14 +3483,16 @@
         "f_recommendation": "CONSOLIDATE → one line `--period auto` or fold into P11 digest",
         "event_driven_candidate": false,
         "f_evidence": "3 lines (daily/weekly/monthly) same script; last run \"failed\""
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "llm-spend-report-weekly",
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "10 7 * * 1 llm_spend_report.py --period weekly --send",
+        "expression": "10 7 * * 1",
+        "command_text": "llm_spend_report.py --period weekly --send",
         "match": "scripts/llm_spend_report.py --period weekly"
       },
       "expected_cadence_hours": 168,
@@ -3454,14 +3513,16 @@
         "f_recommendation": "CONSOLIDATE → one line `--period auto` or fold into P11 digest",
         "event_driven_candidate": false,
         "f_evidence": "3 lines (daily/weekly/monthly) same script; last run \"failed\""
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "llm-spend-report-monthly",
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "15 7 1 * * llm_spend_report.py --period monthly --send",
+        "expression": "15 7 1 * *",
+        "command_text": "llm_spend_report.py --period monthly --send",
         "match": "scripts/llm_spend_report.py --period monthly"
       },
       "expected_cadence_hours": 744,
@@ -3483,14 +3544,16 @@
         "f_recommendation": "CONSOLIDATE → one line `--period auto` or fold into P11 digest",
         "event_driven_candidate": false,
         "f_evidence": "3 lines (daily/weekly/monthly) same script; last run \"failed\""
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "research-scheduler-holdings",
       "owner": "research",
       "scheduler": {
         "kind": "cron",
-        "expression": "5 9 * * 1-5 research_scheduler.py --mode holdings",
+        "expression": "5 9 * * 1-5",
+        "command_text": "research_scheduler.py --mode holdings",
         "match": "research_scheduler.py --mode holdings"
       },
       "expected_cadence_hours": 24,
@@ -3511,14 +3574,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "research-scheduler-priority-hourly",
       "owner": "research",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 10-16 * * 1-5 research_scheduler.py --mode priority",
+        "expression": "0 10-16 * * 1-5",
+        "command_text": "research_scheduler.py --mode priority",
         "match": "research_scheduler.py --mode priority"
       },
       "expected_cadence_hours": 1,
@@ -3539,14 +3604,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "research-scheduler-watchlist-2030",
       "owner": "research",
       "scheduler": {
         "kind": "cron",
-        "expression": "30 20 * * 1-5 research_scheduler.py --mode watchlist",
+        "expression": "30 20 * * 1-5",
+        "command_text": "research_scheduler.py --mode watchlist",
         "match": "research_scheduler.py --mode watchlist"
       },
       "expected_cadence_hours": 24,
@@ -3567,14 +3634,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "research-scheduler-incubator-sun-1900",
       "owner": "research",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 19 * * 0 research_scheduler.py --mode incubator",
+        "expression": "0 19 * * 0",
+        "command_text": "research_scheduler.py --mode incubator",
         "match": "research_scheduler.py --mode incubator"
       },
       "expected_cadence_hours": 168,
@@ -3595,7 +3664,8 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "cio-bridge-watchdog",
@@ -3651,7 +3721,8 @@
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "50 * * * * deepseek_balance_snapshot.py --apply",
+        "expression": "50 * * * *",
+        "command_text": "deepseek_balance_snapshot.py --apply",
         "match": "scripts/deepseek_balance_snapshot.py --apply"
       },
       "expected_cadence_hours": 1,
@@ -3672,14 +3743,16 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "catalyst-symbol-impact",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 7,12,17 * * 1-5 catalyst_symbol_impact_writer.py --apply",
+        "expression": "20 7,12,17 * * 1-5",
+        "command_text": "catalyst_symbol_impact_writer.py --apply",
         "match": "catalyst_symbol_impact_writer.py"
       },
       "expected_cadence_hours": 24.0,
@@ -3701,14 +3774,16 @@
         "f_recommendation": "CONSOLIDATE-into P03",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "watch-goods-consistency",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "40 8,12,16 * * 1-5 watch_goods_consistency_check.py --apply-proposal-backfill",
+        "expression": "40 8,12,16 * * 1-5",
+        "command_text": "watch_goods_consistency_check.py --apply-proposal-backfill",
         "match": "watch_goods_consistency_check.py"
       },
       "expected_cadence_hours": 24.0,
@@ -3730,14 +3805,16 @@
         "f_recommendation": "CONSOLIDATE → P12 health plane (one check registry, one receipt, one incident router)",
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "cio-entry-state",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/10 9-16 * * 1-5 cio_entry_state_runner.py --apply",
+        "expression": "*/10 9-16 * * 1-5",
+        "command_text": "cio_entry_state_runner.py --apply",
         "match": "cio_entry_state_runner.py"
       },
       "expected_cadence_hours": 0.5,
@@ -3771,14 +3848,16 @@
         "class": "pipeline_excluded_gate",
         "token": "market_day_gate.sh",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "catalyst-graph",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "10 6 * * 1-5 build_catalyst_graph.py --apply",
+        "expression": "10 6 * * 1-5",
+        "command_text": "build_catalyst_graph.py --apply",
         "match": "build_catalyst_graph.py --apply"
       },
       "expected_cadence_hours": 24,
@@ -3799,14 +3878,16 @@
         "f_recommendation": "CONSOLIDATE-into P03",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "goal-loop-baseline",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 * * * * report_goal_loop_baseline.py",
+        "expression": "20 * * * *",
+        "command_text": "report_goal_loop_baseline.py",
         "match": "report_goal_loop_baseline.py"
       },
       "expected_cadence_hours": 1,
@@ -3827,14 +3908,16 @@
         "f_recommendation": "CONSOLIDATE → P12 health plane (one check registry, one receipt, one incident router)",
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "goal-gate-bridge",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "35 * * * * cio_gate_measurement_bridge.py",
+        "expression": "35 * * * *",
+        "command_text": "cio_gate_measurement_bridge.py",
         "match": "cio_gate_measurement_bridge.py"
       },
       "expected_cadence_hours": 1,
@@ -3855,14 +3938,16 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "goal-pilot-material-change",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "40 * * * * run_goal_pilot_material_change.py",
+        "expression": "40 * * * *",
+        "command_text": "run_goal_pilot_material_change.py",
         "match": "run_goal_pilot_material_change.py"
       },
       "expected_cadence_hours": 1,
@@ -3883,14 +3968,16 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "dormant-lane-consumers",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "50 * * * * run_dormant_lane_consumers.py",
+        "expression": "50 * * * *",
+        "command_text": "run_dormant_lane_consumers.py",
         "match": "run_dormant_lane_consumers.py"
       },
       "expected_cadence_hours": 1,
@@ -3911,7 +3998,8 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "tradeai-aec-command-center-cycle",
@@ -4020,7 +4108,8 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "10 10,13,16,19 * * * cd $PROJ && $PY scripts/drain_llm_deferred.py",
+        "expression": "10 10,13,16,19 * * *",
+        "command_text": "cd $PROJ && $PY scripts/drain_llm_deferred.py",
         "match": "scripts/drain_llm_deferred.py"
       },
       "expected_cadence_hours": 24.0,
@@ -4041,7 +4130,8 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "tradeai-stance-organic-observe",
@@ -4219,14 +4309,15 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_PENDING_DATA_APPLY=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/resolve_due_checkpoints.py --apply --apply-pending-data >> logs/resolve_due_checkpoints.log 2>&1",
+        "expression": "20 * * * *",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_PENDING_DATA_APPLY=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/resolve_due_checkpoints.py --apply --apply-pending-data >> logs/resolve_due_checkpoints.log 2>&1",
         "match": "scripts/resolve_due_checkpoints.py --apply"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/cio/outcome_observations.jsonl"
+        "path": "logs/resolve_due_checkpoints.log"
       },
       "note": "Declared 2026-09-24 (agentic-memory tranche 1): was in undeclared_baseline while resolving outcome checkpoints hourly. Settlement hop 1 of the learning loop; feeds the belief writer through outcome_observations. 2026-10-03 operator decision: also --apply-pending-data with TRADEAI_PENDING_DATA_APPLY=1 so OUTCOME_PENDING_DATA rows whose prices now exist settle (dry run: 7 would resolve, 0 expire; append-only).",
       "value_class": "Nice to Have",
@@ -4240,7 +4331,9 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "output_signal_note": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): was file_mtime data/cio/outcome_observations.jsonl, append-only and grows only when something resolves (last 10-08); the hourly run logs 'due N / resolved N' every run. Why nothing was due for ~30h is a separate question (triage)."
     },
     {
       "lane_id": "alert-quality",
@@ -4267,7 +4360,8 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "40 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/build_lesson_candidates.py --apply >> logs/build_lesson_candidates.log 2>&1",
+        "expression": "40 6 * * *",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/build_lesson_candidates.py --apply >> logs/build_lesson_candidates.log 2>&1",
         "match": "scripts/build_lesson_candidates.py --apply"
       },
       "expected_cadence_hours": 24.0,
@@ -4288,7 +4382,8 @@
         "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "advisory-outcome-scorer",
@@ -4349,7 +4444,8 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+        "expression": "20 18 * * *",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
         "match": "scripts/sweep_commitment_outcomes.py --apply"
       },
       "expected_cadence_hours": 24.0,
@@ -4358,7 +4454,7 @@
       "state_reason": "Installed 2026-09-24 20:54 ET under an operator cron grant (Telegram /approve), after PR #1226 went live as 7a9dcec26. Previously NEVER_SCHEDULED: Built 2026-09-12 (P10), unscheduled: 1,877 commitments, 426 past due, 0 outcomes measured 2026-09-24. Tranche 1 gives it a price-based observation_provider (commitment_price_observation) so CONFIRMED/REFUTED are possible. Install as '20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1' (after resolve-due-checkpoints :20, before advisory-outcome-scorer 18:30; deterministic, no LLM), then flip this row to kind=cron, state=ACTIVE. A new cron entry is operator-only (AGENTS.md §17).",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-state/persistent_wake/state/commitment_outcomes.jsonl"
+        "path": "logs/sweep_commitment_outcomes.log"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/sweep_commitment_outcomes.py SCHEDULED_ENTRYPOINT (PROPOSAL ONLY); commitment_outcome_sweep.py:11-24; plan mutable-riding-origami.md Slice 3d.",
@@ -4374,14 +4470,17 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "output_signal_note": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): was file_mtime commitment_outcomes.jsonl, which grows only when an outcome is scored (none since 10-02: 883 due, all INSUFFICIENT_EVIDENCE / claim_not_falsifiable); the daily run logs every run. Zero scored outcomes is a design finding (producers need falsifiable claims with a horizon), not a scheduler fault."
     },
     {
       "lane_id": "instrument-belief-writer",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1",
+        "expression": "50 18 * * *",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1",
         "match": "scripts/write_instrument_beliefs.py --apply"
       },
       "expected_cadence_hours": 24.0,
@@ -4407,7 +4506,8 @@
         "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "options-thesis-lifecycle",
@@ -4435,7 +4535,8 @@
       "owner": "execution",
       "scheduler": {
         "kind": "cron",
-        "expression": "7-59/20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock bash scripts/market_day_gate.sh $PY scripts/alpaca_stop_manager.py --apply >> logs/alpaca_stop_manager_cron.log 2>&1",
+        "expression": "7-59/20 9-16 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock bash scripts/market_day_gate.sh $PY scripts/alpaca_stop_manager.py --apply >> logs/alpaca_stop_manager_cron.log 2>&1",
         "match": "scripts/alpaca_stop_manager.py --apply"
       },
       "expected_cadence_hours": 0.34,
@@ -4472,14 +4573,16 @@
         "class": "broker_order",
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "alpaca-stop-manager-oco-repair",
       "owner": "execution",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 4-10 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock $PY scripts/alpaca_stop_manager.py --repair-oco --apply >> logs/alpaca_stop_manager_repair.log 2>&1",
+        "expression": "*/15 4-10 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock $PY scripts/alpaca_stop_manager.py --repair-oco --apply >> logs/alpaca_stop_manager_repair.log 2>&1",
         "match": "scripts/alpaca_stop_manager.py --repair-oco --apply"
       },
       "expected_cadence_hours": 0.25,
@@ -4516,14 +4619,16 @@
         "class": "broker_order",
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "reconcile-exit-advisory-outcomes",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 9 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
+        "expression": "0 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
         "match": "scripts/reconcile_exit_advisory_outcomes.py"
       },
       "expected_cadence_hours": 168.0,
@@ -4548,14 +4653,16 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "reconcile-pullback-outcomes",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "45 9 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scripts/reconcile_pullback_outcomes.py >> logs/pullback_outcomes.log 2>&1",
+        "expression": "45 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scripts/reconcile_pullback_outcomes.py >> logs/pullback_outcomes.log 2>&1",
         "match": "scripts/reconcile_pullback_outcomes.py"
       },
       "expected_cadence_hours": 168.0,
@@ -4580,14 +4687,16 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "reconcile-watch-outcomes",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "50 9 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_outcomes.lock $PY scripts/reconcile_watch_outcomes.py >> logs/watch_outcomes.log 2>&1",
+        "expression": "50 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_outcomes.lock $PY scripts/reconcile_watch_outcomes.py >> logs/watch_outcomes.log 2>&1",
         "match": "scripts/reconcile_watch_outcomes.py"
       },
       "expected_cadence_hours": 168.0,
@@ -4612,7 +4721,8 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "options-memory-projector",
@@ -4694,7 +4804,8 @@
       "owner": "options",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python bash linux_launchers/reconcile_alpaca_paper_options.sh",
+        "expression": "0 10-15 * * 1-5",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python bash linux_launchers/reconcile_alpaca_paper_options.sh",
         "match": "linux_launchers/reconcile_alpaca_paper_options.sh"
       },
       "expected_cadence_hours": 1.0,
@@ -4731,7 +4842,8 @@
         "class": "broker_order",
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "symbol-news-curation-monitor",
@@ -4759,7 +4871,8 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "30 21 * * * sec_fundamentals_ingest.py --apply",
+        "expression": "30 21 * * *",
+        "command_text": "sec_fundamentals_ingest.py --apply",
         "match": "sec_fundamentals_ingest.py"
       },
       "expected_cadence_hours": 24.0,
@@ -4780,7 +4893,8 @@
         "f_recommendation": "CONSOLIDATE-into P03",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "platform-conformance-audit",
@@ -4921,7 +5035,8 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 8,12,17,21 * * 1-5 sec_filings_feed.py --apply",
+        "expression": "20 8,12,17,21 * * 1-5",
+        "command_text": "sec_filings_feed.py --apply",
         "match": "sec_filings_feed.py"
       },
       "expected_cadence_hours": 6.0,
@@ -4953,7 +5068,8 @@
         "f_recommendation": "CONSOLIDATE-into P03",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "contradiction-adjudicator",
@@ -4988,7 +5104,8 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "40 6 * * 1 maturity_remeasure.py --write",
+        "expression": "40 6 * * 1",
+        "command_text": "maturity_remeasure.py --write",
         "match": "maturity_remeasure.py"
       },
       "expected_cadence_hours": 168.0,
@@ -5010,14 +5127,16 @@
         "f_recommendation": "CONSOLIDATE-into P12",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "finviz-momentum-scalp-early-lane",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/5 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
+        "expression": "*/5 6-11 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
         "match": "scripts/run_finviz_momentum_scalp_scan.py"
       },
       "expected_cadence_hours": 0.084,
@@ -5026,7 +5145,7 @@
       "state_reason": "Declared 2026-09-28 (plan 'Momentum scalps: why none arrive', root cause 2). Was two inherited-baseline lines sharing one lock: the */15 refresh line ran `timeout 150` around a 240 s Finviz stage and was killed silently every quarter-hour, so the lane had not refreshed Finviz since 2026-09-18 while reporting PASS on borrowed scan rows. The lane now refreshes itself when its DONE receipt is older than 15 min (--refresh-if-older-min) under an outer deadline; the */15 line is retired. The installed cron line changes only under an operator cron grant; `match` covers the pre- and post-edit text.",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/momentum_scalp_refresh_receipt.json"
+        "path": "logs/finviz_momentum_scalp_scan.log"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "persistent-state/logs/finviz_momentum_scalp_scan.log 2026-09-28: 20 runs, every one reason=skipped_finviz_refresh, none at quarter-hours; momentum_scalp_early_lane_runner.py FINVIZ_TIMEOUT=240 vs crontab `timeout 150`; tests/test_momentum_scalp_lane_refresh_20260928.py.",
@@ -5042,14 +5161,17 @@
         "f_recommendation": "CONSOLIDATE → one P02 scalp loop feeding Trade-AI + Active Trader",
         "event_driven_candidate": false,
         "f_evidence": "3 scalp scanners on overlapping 5-min cadences (06–11 and 09:30–16) each pulling Finviz/quotes"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "output_signal_note": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): was file_mtime momentum_scalp_refresh_receipt.json, written only when a refresh happens (--refresh-if-older-min 15; 'skipped_finviz_refresh_fresh' runs write nothing), so healthy */5 runs read NO_OUTPUT. The line's redirect log gets a line every run. The old expression also carried --submit-validation, which the live line does not."
     },
     {
       "lane_id": "agent-number-grounding-slo",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "40 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/report_agent_number_grounding.py --days 7 --check-slo --out data/runtime/agent_number_grounding_slo_last_run.json >> logs/agent_number_grounding_slo.log 2>&1",
+        "expression": "40 18 * * *",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/report_agent_number_grounding.py --days 7 --check-slo --out data/runtime/agent_number_grounding_slo_last_run.json >> logs/agent_number_grounding_slo.log 2>&1",
         "match": "scripts/report_agent_number_grounding.py --days 7 --check-slo"
       },
       "expected_cadence_hours": 24.0,
@@ -5070,7 +5192,8 @@
         "f_recommendation": "CONSOLIDATE-into P12",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "counterfactual-ledger",
@@ -5094,7 +5217,8 @@
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/10 6-11 * * 1-5 cd $PROJ && AUTO_PROPOSAL_STRATEGIES=momentum_scalp flock -n /tmp/auto_proposal_momentum_scalp.lock timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal_momentum_scalp.log 2>&1",
+        "expression": "*/10 6-11 * * 1-5",
+        "command_text": "cd $PROJ && AUTO_PROPOSAL_STRATEGIES=momentum_scalp flock -n /tmp/auto_proposal_momentum_scalp.lock timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal_momentum_scalp.log 2>&1",
         "match": "AUTO_PROPOSAL_STRATEGIES=momentum_scalp"
       },
       "expected_cadence_hours": 0.17,
@@ -5122,15 +5246,21 @@
         "f_recommendation": "CONSOLIDATE-into P07",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "active-trader-premarket-watch",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/5 6-9 * * 1-5 cd $PROJ && flock -n /tmp/at_premarket.lock timeout 240 $PY scripts/active_trader/premarket_watch.py --apply >> logs/at_premarket_watch.log 2>&1",
-        "match": "scripts/active_trader/premarket_watch.py"
+        "expression": "*/5 6-9 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/at_premarket.lock timeout 240 $PY scripts/active_trader/premarket_watch.py --apply >> logs/at_premarket_watch.log 2>&1",
+        "match": "scripts/active_trader/premarket_watch.py",
+        "due_schedules": [
+          "*/5 6-8 * * 1-5",
+          "0-25/5 9 * * 1-5"
+        ]
       },
       "expected_cadence_hours": 0.084,
       "state": "ACTIVE",
@@ -5154,14 +5284,17 @@
         "f_recommendation": "KEEP (inside its pipeline)",
         "event_driven_candidate": false,
         "f_evidence": "core advisory/protection/data path; healthy logs today"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "scheduler_due_note": "2026-10-09 registry-ops-crons: the line fires */5 06:00-09:55 but premarket_watch.py returns before writing its heartbeat after 09:29 (premarket window), so the 09:30-09:55 fires produce nothing by design. supervisor_breach_detector judges the deadline on due_schedules (the fires whose output is due) when present."
     },
     {
       "lane_id": "active-trader-micro-recorder-premarket",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 6 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder_pm.lock $PY scripts/active_trader/microstructure_recorder.py --apply --premarket >> logs/at_micro_recorder.log 2>&1",
+        "expression": "0 6 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/at_micro_recorder_pm.lock $PY scripts/active_trader/microstructure_recorder.py --apply --premarket >> logs/at_micro_recorder.log 2>&1",
         "match": "microstructure_recorder.py --apply --premarket"
       },
       "expected_cadence_hours": 24,
@@ -5186,14 +5319,16 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "active-trader-micro-recorder",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "28 9 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder.lock $PY scripts/active_trader/microstructure_recorder.py --apply >> logs/at_micro_recorder.log 2>&1",
+        "expression": "28 9 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/at_micro_recorder.lock $PY scripts/active_trader/microstructure_recorder.py --apply >> logs/at_micro_recorder.log 2>&1",
         "match": "microstructure_recorder.py --apply >>"
       },
       "expected_cadence_hours": 24,
@@ -5218,14 +5353,16 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "active-trader-signal-calibration",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "10 12 * * 1-5 cd $PROJ && $PY scripts/active_trader/signal_calibration.py --apply >> logs/at_signal_calibration.log 2>&1",
+        "expression": "10 12 * * 1-5",
+        "command_text": "cd $PROJ && $PY scripts/active_trader/signal_calibration.py --apply >> logs/at_signal_calibration.log 2>&1",
         "match": "scripts/active_trader/signal_calibration.py"
       },
       "expected_cadence_hours": 24,
@@ -5250,14 +5387,16 @@
         "f_recommendation": "CONSOLIDATE-into P13",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "options-intent-matcher",
       "owner": "options",
       "scheduler": {
         "kind": "cron",
-        "expression": "15,45 9-15 * * 1-5 cd $PROJ && flock -n /tmp/options_intent_matcher.lock timeout 240 $PY scripts/options_intent_matcher.py --apply >> logs/options_intent_matcher.log 2>&1",
+        "expression": "15,45 9-15 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/options_intent_matcher.lock timeout 240 $PY scripts/options_intent_matcher.py --apply >> logs/options_intent_matcher.log 2>&1",
         "match": "scripts/options_intent_matcher.py"
       },
       "expected_cadence_hours": 0.5,
@@ -5282,14 +5421,16 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "active-trader-session-review",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+        "expression": "5 12 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
         "match": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply"
       },
       "expected_cadence_hours": 24,
@@ -5314,14 +5455,16 @@
         "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "active-trader-session-review-close",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+        "expression": "10 16 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
         "match": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply"
       },
       "expected_cadence_hours": 24,
@@ -5346,14 +5489,16 @@
         "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "portfolio-broker-reconciliation",
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "30 20 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_reconcile.lock timeout 300 $PY scripts/portfolio_reconcile.py --json data/runtime/portfolio_reconcile_latest.json >> logs/portfolio_reconcile.log 2>&1",
+        "expression": "30 20 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/portfolio_reconcile.lock timeout 300 $PY scripts/portfolio_reconcile.py --json data/runtime/portfolio_reconcile_latest.json >> logs/portfolio_reconcile.log 2>&1",
         "match": "scripts/portfolio_reconcile.py"
       },
       "expected_cadence_hours": 24,
@@ -5377,7 +5522,8 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "owner": "portfolio",
@@ -5388,7 +5534,8 @@
       "lane_id": "positions-sync",
       "scheduler": {
         "kind": "cron",
-        "expression": "9,24,39,54 9-16 * * 1-5 cd $PROJ && flock -n /tmp/positions_sync.lock timeout 240 bash -c \"set -a; . ./.env; set +a; GIT_SHA=$(basename $(readlink -f $PROJ) | cut -d- -f1) $PY scripts/positions_sync.py --apply\" >> logs/positions_sync.log 2>&1",
+        "expression": "9,24,39,54 9-16 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/positions_sync.lock timeout 240 bash -c \"set -a; . ./.env; set +a; GIT_SHA=$(basename $(readlink -f $PROJ) | cut -d- -f1) $PY scripts/positions_sync.py --apply\" >> logs/positions_sync.log 2>&1",
         "match": "scripts/positions_sync.py --apply"
       },
       "expected_cadence_hours": 0.25,
@@ -5413,7 +5560,8 @@
         "class": "broker_order",
         "token": "positions_sync.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "owner": "portfolio",
@@ -5424,7 +5572,8 @@
       "lane_id": "positions-shadow-diff",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 17 * * 1-5 cd $PROJ && flock -n /tmp/positions_sync.lock timeout 120 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_sync.py --diff\" >> logs/positions_sync.log 2>&1",
+        "expression": "20 17 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/positions_sync.lock timeout 120 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_sync.py --diff\" >> logs/positions_sync.log 2>&1",
         "match": "scripts/positions_sync.py --diff"
       },
       "expected_cadence_hours": 24,
@@ -5449,14 +5598,16 @@
         "class": "broker_order",
         "token": "positions_sync.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "positions-proof-daily",
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "25 17 * * 1-5 cd $PROJ && flock -n /tmp/positions_proof.lock timeout 180 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_proof_daily.py --send\" >> logs/positions_proof.log 2>&1",
+        "expression": "25 17 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/positions_proof.lock timeout 180 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_proof_daily.py --send\" >> logs/positions_proof.log 2>&1",
         "match": "scripts/positions_proof_daily.py"
       },
       "expected_cadence_hours": 24,
@@ -5480,14 +5631,16 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "approval-reminder-reconcile",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "12 * * * * cd $PROJ && TRADEAI_SERVED_SHA=$(cat $PROJ/GIT_SHA) flock -n /tmp/tradeai_approval_reconcile.lock $PY scripts/approval_reminder_reconcile.py --write >> $HOME/trade-ai-releases/persistent-state/logs/approval_reminder_reconcile.log 2>&1",
+        "expression": "12 * * * *",
+        "command_text": "cd $PROJ && TRADEAI_SERVED_SHA=$(cat $PROJ/GIT_SHA) flock -n /tmp/tradeai_approval_reconcile.lock $PY scripts/approval_reminder_reconcile.py --write >> $HOME/trade-ai-releases/persistent-state/logs/approval_reminder_reconcile.log 2>&1",
         "match": "scripts/approval_reminder_reconcile.py --write"
       },
       "expected_cadence_hours": 1.0,
@@ -5508,7 +5661,8 @@
         "f_recommendation": "ELIMINATE",
         "event_driven_candidate": false,
         "f_evidence": "self-heal audit: 64 runs, all NO_ACTION; receipt written into old release dir 377e9b536"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "n8n-pilot-dispatch",
@@ -5575,6 +5729,31 @@
         "event_driven_candidate": false,
         "f_evidence": "live lane"
       }
+    },
+    {
+      "lane_id": "incident-notifier",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "scripts/incident_notifier.py --live",
+        "install_line": "*/5 * * * * cd $PROJ && set -a && . ./.env && set +a && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state SYSTEM_TELEGRAM_ENABLED=1 CIO_TELEGRAM_INTERDICT=1 bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_incident_notifier.lock timeout 120 $PY scripts/incident_notifier.py --live >> logs/incident_notifier.log 2>&1  # TRADEAI_LANE incident-notifier"
+      },
+      "expected_cadence_hours": 0.1,
+      "state": "PAUSED",
+      "state_since": "2026-10-09",
+      "state_reason": "APPROVED, PENDING INSTALL (2026-10-09, PR n8nmat/registry-ops-crons): declared PAUSED so the row exists before the line does. PAUSED is the registry's only state that is green both before and after the install: check_lane_registry --state-drift classifies PAUSED+line-absent ALIGNED and PAUSED+line-present as no conflict; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in governance liveness (receipt:missing/stale) and supervisor breaches only arm on ACTIVE. Agent A installs scheduler.install_line verbatim under a `cron` grant (packet ~/n8n-maturity-program/packets/ops-crons-install.md), then flips state to ACTIVE in a registry PR. Host cron */5 (merged #1603 e094ec117): fan-in P1/P2 -> operator through the SYSTEM ops family only (telegram_system.send_system -> transport chokepoint, comms editor, SYSTEM interdict). Never on config/n8n_run_allowlist.json (AGENTS.md §23.3: no senders from n8n). The line sources $PROJ/.env for the ops bot exactly like the other cron senders and sets SYSTEM_TELEGRAM_ENABLED=1 CIO_TELEGRAM_INTERDICT=1 as tradeai-autonomy-watchdog.service does.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/incident_notifier_last.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_incident_notifier_20261009.py (36); tests/test_registry_ops_crons_20261009.py; PR #1603 body (row proposal, cron */5 by Agent A); --dry-run 2026-10-09T23:43Z against a scratch copy of the live fan-in receipt + ledger: 2 messages planned (P1 x2, P2 batch x25), nothing sent.",
+      "review_by": "2026-10-16",
+      "note": "Reads n8n_incident_fanin_last.json + ledger acks; P1 immediate and never capped; P2 batch/30 min, held 22:00-07:00 America/New_York; recovery; 24 h dedupe; 60-min flap cooldown; daily cap 24 per NY day; the receipt is rewritten every run (also NO_INPUT), so file_mtime is a liveness signal; exit 75 = lock held.",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because a sender (SYSTEM ops family): AGENTS.md §23.3 keeps senders off n8n."
     },
     {
       "lane_id": "n8n-lab-backup",
@@ -5732,7 +5911,8 @@
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/30 9-16 * * 1-5 watchlist_enrichment_sweep.py --once",
+        "expression": "*/30 9-16 * * 1-5",
+        "command_text": "watchlist_enrichment_sweep.py --once",
         "match": "scripts/watchlist_enrichment_sweep.py"
       },
       "expected_cadence_hours": 0.5,
@@ -5761,15 +5941,21 @@
         "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P14",
         "event_driven_candidate": true,
         "f_evidence": "polls */30 9-16 * * 1-5"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "plan-drift-revalidator",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 10,13 * * 1-5 plan_drift_revalidator.py --apply",
-        "match": "scripts/plan_drift_revalidator.py"
+        "expression": "0 10,13 * * 1-5 + 25 17 * * 1-5",
+        "command_text": "plan_drift_revalidator.py --apply",
+        "match": "scripts/plan_drift_revalidator.py",
+        "schedules": [
+          "0 10,13 * * 1-5",
+          "25 17 * * 1-5"
+        ]
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -5797,14 +5983,16 @@
         "f_recommendation": "CONSOLIDATE into P07 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "auto-proposal-general",
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/30 9-16 * * 1-5 auto_proposal_generator.py --today --apply (AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp)",
+        "expression": "*/30 9-16 * * 1-5",
+        "command_text": "auto_proposal_generator.py --today --apply (AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp)",
         "match": "AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp"
       },
       "expected_cadence_hours": 0.5,
@@ -5833,7 +6021,8 @@
         "f_recommendation": "CONSOLIDATE-into P07",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "atm-position-reconciler",
@@ -5857,7 +6046,8 @@
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "25 6-15 * * 1-5 hermes_momentum_catalyst_researcher.py --source scalp --apply",
+        "expression": "25 6-15 * * 1-5",
+        "command_text": "hermes_momentum_catalyst_researcher.py --source scalp --apply",
         "match": "scripts/hermes_momentum_catalyst_researcher.py"
       },
       "expected_cadence_hours": 1.0,
@@ -5886,7 +6076,8 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-external-feedback-nightly",
@@ -5931,7 +6122,8 @@
       "owner": "tradeai-core",
       "scheduler": {
         "kind": "cron",
-        "expression": "5 16 * * 1-5 run_after_close_pipeline.sh --stage close-capture --dry-run",
+        "expression": "5 16 * * 1-5",
+        "command_text": "run_after_close_pipeline.sh --stage close-capture --dry-run",
         "match": "run_after_close_pipeline.sh --stage close-capture"
       },
       "expected_cadence_hours": 24.0,
@@ -5955,14 +6147,16 @@
         "f_recommendation": "CONSOLIDATE: flip pipeline to --apply, then retire its member lines",
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "after-close-pipeline-broker-truth",
       "owner": "tradeai-core",
       "scheduler": {
         "kind": "cron",
-        "expression": "25 17 * * 1-5 run_after_close_pipeline.sh --stage broker-truth --dry-run",
+        "expression": "25 17 * * 1-5",
+        "command_text": "run_after_close_pipeline.sh --stage broker-truth --dry-run",
         "match": "run_after_close_pipeline.sh --stage broker-truth"
       },
       "expected_cadence_hours": 24.0,
@@ -5991,14 +6185,16 @@
         "class": "broker_order",
         "token": "broker",
         "source": "config/lane_stay_on_cron_tokens.json"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "after-close-pipeline-planning",
       "owner": "tradeai-core",
       "scheduler": {
         "kind": "cron",
-        "expression": "35 17 * * 1-5 run_after_close_pipeline.sh --stage planning --dry-run",
+        "expression": "35 17 * * 1-5",
+        "command_text": "run_after_close_pipeline.sh --stage planning --dry-run",
         "match": "run_after_close_pipeline.sh --stage planning"
       },
       "expected_cadence_hours": 24.0,
@@ -6022,14 +6218,16 @@
         "f_recommendation": "CONSOLIDATE: flip pipeline to --apply, then retire its member lines",
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "premarket-data-pipeline",
       "owner": "tradeai-core",
       "scheduler": {
         "kind": "cron",
-        "expression": "45 5 * * * run_premarket_data_pipeline.sh --stage premarket --dry-run",
+        "expression": "45 5 * * *",
+        "command_text": "run_premarket_data_pipeline.sh --stage premarket --dry-run",
         "match": "run_premarket_data_pipeline.sh --stage premarket"
       },
       "expected_cadence_hours": 24.0,
@@ -6053,14 +6251,16 @@
         "f_recommendation": "CONSOLIDATE: flip pipeline to --apply, then retire its member lines",
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-learning-pipeline-learn",
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "50 10 * * * run_hermes_pipeline.sh --stage learn --dry-run",
+        "expression": "50 10 * * *",
+        "command_text": "run_hermes_pipeline.sh --stage learn --dry-run",
         "match": "run_hermes_pipeline.sh --stage learn"
       },
       "expected_cadence_hours": 24.0,
@@ -6084,14 +6284,16 @@
         "f_recommendation": "CONSOLIDATE: flip pipeline to --apply, then retire its member lines",
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-learning-pipeline-tune",
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 17 * * * run_hermes_pipeline.sh --stage tune --dry-run",
+        "expression": "0 17 * * *",
+        "command_text": "run_hermes_pipeline.sh --stage tune --dry-run",
         "match": "run_hermes_pipeline.sh --stage tune"
       },
       "expected_cadence_hours": 24.0,
@@ -6115,14 +6317,16 @@
         "f_recommendation": "CONSOLIDATE: flip pipeline to --apply, then retire its member lines",
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-overnight-pipeline-night",
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 2 * * * hermes_overnight.json --stage night --dry-run",
+        "expression": "20 2 * * *",
+        "command_text": "hermes_overnight.json --stage night --dry-run",
         "match": "hermes_overnight.json --stage night"
       },
       "expected_cadence_hours": 24.0,
@@ -6146,14 +6350,16 @@
         "f_recommendation": "CONSOLIDATE: flip pipeline to --apply, then retire its member lines",
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-overnight-pipeline-close",
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "13 23 * * * hermes_overnight.json --stage close --dry-run",
+        "expression": "13 23 * * *",
+        "command_text": "hermes_overnight.json --stage close --dry-run",
         "match": "hermes_overnight.json --stage close"
       },
       "expected_cadence_hours": 24.0,
@@ -6177,14 +6383,16 @@
         "f_recommendation": "CONSOLIDATE: flip pipeline to --apply, then retire its member lines",
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "options-tick",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "7,22,37,52 * * * * options_tick.py --apply",
+        "expression": "7,22,37,52 * * * *",
+        "command_text": "options_tick.py --apply",
         "match": "scripts/options_tick.py"
       },
       "expected_cadence_hours": 0.25,
@@ -6209,15 +6417,21 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "orchestrator-slot",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 12,14,16 * * 1-5 + 30 17 * * 1-5 run_orchestrator_slot.sh",
-        "match": "scripts/run_orchestrator_slot.sh"
+        "expression": "0 12,14,16 * * 1-5 + 30 17 * * 1-5",
+        "command_text": "run_orchestrator_slot.sh",
+        "match": "scripts/run_orchestrator_slot.sh",
+        "schedules": [
+          "0 12,14,16 * * 1-5",
+          "30 17 * * 1-5"
+        ]
       },
       "expected_cadence_hours": 24.0,
       "active_days": [
@@ -6248,14 +6462,16 @@
         "f_recommendation": "CONSOLIDATE-into P02",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "drive-syncs-hourly",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "5 * * * * run_drive_syncs.sh --apply",
+        "expression": "5 * * * *",
+        "command_text": "run_drive_syncs.sh --apply",
         "match": "scripts/run_drive_syncs.sh"
       },
       "expected_cadence_hours": 1.0,
@@ -6281,14 +6497,16 @@
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "hermes-subject-enhance-dispatch",
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "0,20,25,30,40 * * * * hermes_subject_enhance_dispatch.py --apply",
+        "expression": "0,20,25,30,40 * * * *",
+        "command_text": "hermes_subject_enhance_dispatch.py --apply",
         "match": "scripts/hermes_subject_enhance_dispatch.py"
       },
       "expected_cadence_hours": 0.5,
@@ -6314,7 +6532,8 @@
         "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10",
         "event_driven_candidate": true,
         "f_evidence": "polls 0,20,25,30,40 * * * *"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "platform-maintenance-nightly",
@@ -6378,7 +6597,9 @@
         "f_recommendation": "KEEP as P16/P05 pipeline timer",
         "event_driven_candidate": false,
         "f_evidence": "approved N2 pipeline cadence"
-      }
+      },
+      "first_due": "2026-10-11T04:00:00-04:00",
+      "first_due_note": "2026-10-09 registry-ops-crons: first timer fire + 1 h; the detector skips a lane until first_due, so a never-fired timer is not 'never produced'."
     },
     {
       "lane_id": "platform-maintenance-monthly",
@@ -6410,7 +6631,9 @@
         "f_recommendation": "KEEP as P16/P05 pipeline timer",
         "event_driven_candidate": false,
         "f_evidence": "approved N2 pipeline cadence"
-      }
+      },
+      "first_due": "2026-11-01T07:00:00-05:00",
+      "first_due_note": "2026-10-09 registry-ops-crons: first timer fire + 1 h; the detector skips a lane until first_due, so a never-fired timer is not 'never produced'."
     },
     {
       "lane_id": "n8n-research-intake-consumer",
@@ -6468,7 +6691,8 @@
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "17 * * * * cd $PROJ && flock -n /tmp/comms_lifecycle.lock timeout 900 $PY scripts/comms_lifecycle.py --apply >> logs/comms_lifecycle.log 2>&1",
+        "expression": "17 * * * *",
+        "command_text": "cd $PROJ && flock -n /tmp/comms_lifecycle.lock timeout 900 $PY scripts/comms_lifecycle.py --apply >> logs/comms_lifecycle.log 2>&1",
         "match": "scripts/comms_lifecycle.py"
       },
       "expected_cadence_hours": 1,
@@ -6492,14 +6716,16 @@
         "f_recommendation": "CONSOLIDATE-into P11",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "cio-opportunity-curator",
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/cio_opportunity_curator.lock timeout 600 $PY scripts/cio_opportunity_curator.py --apply >> logs/cio_opportunity_curator.log 2>&1  # TRADEAI_LANE cio-opportunity-curator",
+        "expression": "*/30 9-16 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/cio_opportunity_curator.lock timeout 600 $PY scripts/cio_opportunity_curator.py --apply >> logs/cio_opportunity_curator.log 2>&1 # TRADEAI_LANE cio-opportunity-curator",
         "match": "scripts/cio_opportunity_curator.py"
       },
       "expected_cadence_hours": 0.5,
@@ -6523,14 +6749,16 @@
         "f_recommendation": "KEEP (inside its pipeline)",
         "event_driven_candidate": false,
         "f_evidence": "core advisory/protection/data path; healthy logs today"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "advice-digest",
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 10,15,17 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/send_advice_digest.py --slot auto --send >> logs/advice_digest.log 2>&1  # TRADEAI_LANE advice-digest",
+        "expression": "0 10,15,17 * * 1-5",
+        "command_text": "cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/send_advice_digest.py --slot auto --send >> logs/advice_digest.log 2>&1 # TRADEAI_LANE advice-digest",
         "match": "scripts/send_advice_digest.py"
       },
       "expected_cadence_hours": 7,
@@ -6559,32 +6787,41 @@
         "class": "pipeline_excluded_gate",
         "token": "market_day_gate.sh",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "n8n-workflow-drift-check",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "7 * * * *",
+        "match": "scripts/check_n8n_workflow_drift.py --write",
+        "install_line": "7 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_workflow_drift.lock timeout 300 $PY scripts/check_n8n_workflow_drift.py --write >> logs/n8n_workflow_drift.log 2>&1  # TRADEAI_LANE n8n-workflow-drift-check"
       },
       "expected_cadence_hours": 1.0,
-      "state": "NEVER_SCHEDULED",
+      "state": "PAUSED",
       "state_since": "2026-10-09",
-      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P18, audit C G9): scripts/check_n8n_workflow_drift.py compares every ACTIVE n8n workflow with its generated git copy (relay URL placeholder substituted) and writes data/runtime/n8n_workflow_drift_last.json with --write. Registry row first (§9.3): the allowlist entry exists (--dry-run / --write); since 2026-10-09 the generated workflows n8n-workflow-drift-check-shadow / n8n-workflow-drift-check exist (tranche N7, proposed 20 6 * * *) but nothing is imported and nothing schedules it. Activation = generated workflow + operator import under a grant naming the workflow id, then shadow -> canary -> live, then this row flips to kind n8n ACTIVE.",
+      "state_reason": "APPROVED, PENDING INSTALL (2026-10-09, PR n8nmat/registry-ops-crons): declared PAUSED so the row exists before the line does. PAUSED is the registry's only state that is green both before and after the install: check_lane_registry --state-drift classifies PAUSED+line-absent ALIGNED and PAUSED+line-present as no conflict; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in governance liveness (receipt:missing/stale) and supervisor breaches only arm on ACTIVE. Agent A installs scheduler.install_line verbatim under a `cron` grant (packet ~/n8n-maturity-program/packets/ops-crons-install.md), then flips state to ACTIVE in a registry PR. Host cron hourly at :07, not n8n: P18 checks what n8n runs, so it must not depend on n8n being healthy. The allowlist entry and the generated workflows n8n-workflow-drift-check(-shadow) (tranche N7) stay inactive; activating them as well would double-schedule the lane. Was NEVER_SCHEDULED; packet governance-checks-cron.md (#1608).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_workflow_drift_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_n8n_workflow_drift_20261009.py (fixture workflows: OK after relay substitution, DRIFT on a node edit, MISSING_IN_GIT on an unknown id; --dry-run writes nothing, --write writes the receipt under tmp_path); live dry run 2026-10-09 from the worktree read the n8n DB with one SELECT and wrote nothing.",
-      "note": "Read-only governance lane for the n8n Agent preconditions (P18). Daily cadence proposed; no send (fan-in findings are shaped in the receipt but not wired)."
+      "reason_evidence": "tests/test_n8n_workflow_drift_20261009.py; tests/test_registry_ops_crons_20261009.py; packets/governance-checks-cron.md (exact line; receipt data/runtime/n8n_workflow_drift_last.json).",
+      "note": "Read-only governance lane for the n8n Agent preconditions (P18): one SELECT on the n8n DB, atomic receipt; no send. Hourly at :07; the fan-in reads the receipt (GOVERNANCE_SOURCES: DRIFT / MISSING_IN_GIT / unsubstituted placeholder P2; receipt:missing/stale P2 once the row is ACTIVE).",
+      "review_by": "2026-10-16",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because it audits what n8n runs, so it must not depend on n8n."
     },
     {
       "lane_id": "trade-ai-scalp-live",
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1  # TRADEAI_LANE trade-ai-scalp-live",
+        "expression": "*/5 9-15 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1 # TRADEAI_LANE trade-ai-scalp-live",
         "match": "scripts/run_trade_ai_scalp_live.py"
       },
       "expected_cadence_hours": 0.084,
@@ -6621,7 +6858,8 @@
         "class": "pipeline_excluded_gate",
         "token": "market_day_gate.sh",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "storage-watch",
@@ -6681,19 +6919,26 @@
       "lane_id": "n8n-activation-grants",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "*/30 * * * *",
+        "match": "scripts/check_n8n_activation_grants.py --write",
+        "install_line": "*/30 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_activation_attribution.lock timeout 300 $PY scripts/check_n8n_activation_grants.py --write >> logs/n8n_activation_grants.log 2>&1  # TRADEAI_LANE n8n-activation-grants"
       },
       "expected_cadence_hours": 0.5,
-      "state": "NEVER_SCHEDULED",
+      "state": "PAUSED",
       "state_since": "2026-10-09",
-      "state_reason": "PROPOSED n8n lane (AGENTS.md 3.0.0 §23.10 P16, merged #1554): scripts/check_n8n_activation_grants.py --write writes the receipt. NOT in config/n8n_run_allowlist.json: its command, receipt and natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant', which the allowlist test refuses by design (blocked_reasons entry). Needs an operator decision (rename the entrypoint or an explicit exemption) before an allowlist entry or workflow; until then it runs by hand only.",
+      "state_reason": "APPROVED, PENDING INSTALL (2026-10-09, PR n8nmat/registry-ops-crons): declared PAUSED so the row exists before the line does. PAUSED is the registry's only state that is green both before and after the install: check_lane_registry --state-drift classifies PAUSED+line-absent ALIGNED and PAUSED+line-present as no conflict; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in governance liveness (receipt:missing/stale) and supervisor breaches only arm on ACTIVE. Agent A installs scheduler.install_line verbatim under a `cron` grant (packet ~/n8n-maturity-program/packets/ops-crons-install.md), then flips state to ACTIVE in a registry PR. Host cron */30, not n8n: the command, receipt and lock contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant' (config/n8n_run_allowlist.json blocked_reasons), and the check attributes n8n activations, so it must not depend on n8n. Was NEVER_SCHEDULED (hand runs only); scheduling packet governance-checks-cron.md (#1608).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/n8n_activation_grants_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md",
-      "note": "Read-only: SELECTs on the n8n DB + guard audit log; GRANTED / NAMED_IN_OTHER_TIER / NAME_ONLY_GRANT / UNGRANTED_ACTIVATION verdicts; fan-in-shaped findings, unwired; no send."
+      "reason_evidence": "tests/test_n8n_ops_lanes_20261009.py; tests/test_registry_ops_crons_20261009.py; packets/governance-checks-cron.md (exact line, exit codes 0 report / 2 cannot run, receipt data/runtime/n8n_activation_grants_last.json); fan-in GOVERNANCE_SOURCES arms receipt:missing/stale only when ACTIVE.",
+      "note": "Read-only: SELECTs on the n8n DB + guard audit log; GRANTED / NAMED_IN_OTHER_TIER / NAME_ONLY_GRANT / UNGRANTED_ACTIVATION verdicts; the fan-in reads the receipt (GOVERNANCE_SOURCES: ungranted + currently active P1, others P3; receipt:missing/stale P2 once the row is ACTIVE); no send.",
+      "review_by": "2026-10-16",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because its command carries the gateway FORBIDDEN_ROUTE_TOKENS token 'grant' and it audits n8n activations."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -10162,8 +10407,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/protection_pipeline_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/protection_pipeline.log",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the cron redirect log protection_pipeline_cron.log is silent since 10-02 (market_day_gate no longer prints); the wrapper appends every step to the dev-tree logs/protection_pipeline.log (host mtime 2026-10-09 16:30:25 '=== protection pipelin"
       },
       "value_class": "Obsolete",
       "recommendation": "KEEP_ON_CRON",
@@ -10199,8 +10445,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/protection_pipeline_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/protection_pipeline.log",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): same wrapper and log as run-protection-pipeline-at-x-30-9-16 (after-close 20:30 run)."
       },
       "value_class": "Obsolete",
       "recommendation": "KEEP_ON_CRON",
@@ -11409,9 +11656,11 @@
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/schwab_stream.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "db_max",
+        "table": "schwab_stream_quotes",
+        "column": "captured_at",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the 09:31 start ran from an old release without line buffering, so logs/schwab_stream.log is unflushed while the daemon streams; DB max(captured_at) 2026-10-09 19:44:41, 167,971 rows that day. Side bug (code, not here): _market_open() uses "
       },
       "value_class": "Technical Debt",
       "recommendation": "KEEP_ON_CRON",
@@ -13089,9 +13338,9 @@
       "expected_cadence_hours": 60.07,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/finviz_strip_prewarm.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "none",
+        "reason": "NO_DURABLE_OUTPUT",
+        "detail": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): `curl -s -o /dev/null ... >> log` writes nothing, so the redirect log is 0 bytes (mtime 09-28) while the endpoint answers 200 in 0.14 s. No durable per-run artifact exists; declared NO_DURABLE_OUTPUT until the line gains a `-w` receipt or i"
       },
       "value_class": "Technical Debt",
       "recommendation": "R0_ELIMINATE",
@@ -13108,7 +13357,10 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "flags": [
+        "NO_DURABLE_OUTPUT"
+      ]
     },
     {
       "lane_id": "hermes-think-tank",
@@ -15293,9 +15545,9 @@
       "expected_cadence_hours": 0.08,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/trade_ai_prewarm.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "none",
+        "reason": "NO_DURABLE_OUTPUT",
+        "detail": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): same pattern as prewarm-finviz-strip-map: two `curl -o /dev/null`, redirect log 0 bytes (09-27); endpoint 200 in 0.006 s. Declared NO_DURABLE_OUTPUT."
       },
       "value_class": "Technical Debt",
       "recommendation": "R0_ELIMINATE",
@@ -15312,7 +15564,10 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "flags": [
+        "NO_DURABLE_OUTPUT"
+      ]
     },
     {
       "lane_id": "finviz-market-movers",
@@ -16299,7 +16554,7 @@
       "owner": "research",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 6 * * 1,4",
+        "expression": "20 18 * * 1,4",
         "match": "scripts/hermes_cross_source_synthesizer.py"
       },
       "expected_cadence_hours": 96.0,
@@ -16319,7 +16574,11 @@
         "recommendation": "PIPELINE:P10",
         "f_recommendation": "REDESIGN or ELIMINATE",
         "event_driven_candidate": false,
-        "f_evidence": "log file never created (scheduled Mon/Thu 06:20)"
+        "f_evidence": "log file never created (scheduled Mon/Thu 06:20)",
+        "schedule_changed_since_rationalization": {
+          "f_sched": "20 6 * * 1,4",
+          "live_sched": "20 18 * * 1,4"
+        }
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -16758,8 +17017,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/symbol_thesis_acquisition.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/symbol_thesis_acquisition.log",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the wrapper sets PROJ to the dev tree and logs there (host mtime 2026-10-09 17:18:48, exit=0); the CURRENT redirect log is 0 bytes since 08-28."
       },
       "value_class": "Business Critical",
       "recommendation": "KEEP_ON_CRON",
