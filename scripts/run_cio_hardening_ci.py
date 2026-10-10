@@ -4137,6 +4137,15 @@ GATES = [
         ["tests/test_finviz_view_contracts_timeout_20261010.py"],
     ),
     (
+        # run_with_deepseek_offpeak.sh --scheduled --defer-in-process (2026-10-10): on PEAK_SKIP the wrapper exits
+        # 0 with no receipt, so a lane with a receipt liveness check (n8n_failure_diagnosis.py, stale at 45 min)
+        # would raise P1 nightly. Pins: without the flag behaviour is unchanged; with it, out of window the
+        # command runs with LLM_DEFER_OFFPEAK=1 (in-process lib/llm_deferral gate, same window); it needs
+        # --scheduled; it falls back to PEAK_SKIP when lib/llm_deferral cannot load. Hermetic subprocess.
+        "offpeak_wrapper_defer_in_process_20261010",
+        ["tests/test_offpeak_wrapper_defer_in_process_20261010.py"],
+    ),
+    (
         # llm_process_config seed sync (2026-10-10): n8n_lane_failure_diagnosis was seeded with the table
         # default allowed_lanes {grok,chatgpt} and a NULL daily_cost_cap_usd because _seed_registry's INSERT
         # named neither column. Pins: a new row carries the registry allowlist and dollar cap; an existing
