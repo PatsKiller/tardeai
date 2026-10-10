@@ -1,7 +1,7 @@
 {
  "schema": "SchedulerSnapshot@v1",
  "captured_on": "2026-10-09",
- "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host",
+ "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point",
  "cron_lines": [
   {
    "n": 92,
@@ -977,7 +977,7 @@
   },
   {
    "n": 608,
-   "line": "*/20 13-21 * * 1-5 cd ~/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/intraday_vwap.lock $PY scripts/compute_intraday_vwap.py >> logs/intraday_vwap.log 2>&1"
+   "line": "*/20 9-16 * * 1-5 cd ~/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/intraday_vwap.lock $PY scripts/compute_intraday_vwap.py >> logs/intraday_vwap.log 2>&1"
   },
   {
    "n": 609,
