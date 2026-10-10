@@ -122,7 +122,7 @@ def test_contract_claims_every_live_domain_and_every_catalog_projection():
     doc = json.loads(CONTRACT.read_text(encoding="utf-8"))
     assert doc["schema"] == contract.SCHEMA
     ids = [p["id"] for p in PROJECTIONS]
-    assert len(ids) == 30   # +active_trader_microstructure (2026-10-05); +price_stats, ohlc_bars, positions_context, opportunity (2026-10-08); +finviz_enrichment_snapshot, scalp_list (2026-10-10) — all excused in never_needed
+    assert len(ids) == 33   # +active_trader_microstructure (2026-10-05); +price_stats, ohlc_bars, positions_context, opportunity (2026-10-08); +finviz_enrichment_snapshot, scalp_list (2026-10-10, step 1 / hot tier); +latest_quote, social_feed, yfinance_info (2026-10-10, broker domains Q1) — all excused in never_needed
     cov = contract.coverage(doc, LIVE_DOMAINS, ids)
     assert cov["unclaimed_domains"] == [], cov
     assert cov["unclaimed_projections"] == [], cov

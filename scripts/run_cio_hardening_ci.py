@@ -3870,6 +3870,15 @@ GATES = [
         ],
     ),
     (
+        # Stage runner per-step env (2026-10-10, operator "Yes" ~19:45 ET): the manifest runner no longer sources
+        # $PROJ/.env into steps; each step runs under `env -i` with exactly its cron line's names (cron base +
+        # preceding crontab NAME= lines). Fake .env with canary + broker names in a scratch root; names only.
+        "stage_runner_env_20261010",
+        [
+            "tests/test_stage_runner_env_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: CADENCE_TIMER_UNITS — 2026-10-08: the five timer-driven pipeline services (governance,
         # portfolio daily/weekly/monthly/lookthrough) executed the DEV tree from host-only unit copies with no
         # repo text; tradeai-operator-answer-quality.service was the sixth --alert monitor still dev-tree.
@@ -4173,6 +4182,19 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):
+        # registry rows finviz_enrichment / scalp_list / social_posts / yfinance_info_snapshot with the operator's
+        # grant; StockTwits rate limit; latest_quote projection; quote-only get_best_quote (stored first, first
+        # fresh provider, never the fan-out; legacy mode unchanged for execution-readiness callers); the Data
+        # Broker's dead fallback revived bounded; yfinance_info_snapshot single writer; enrichment-cache merge tool
+        # (dry run read-only; apply through the single writer, archive + tripwire + alias). Hermetic: fake DB,
+        # stub providers, tmp_path stores. Listing it schedules nothing.
+        "broker_domains_q1_20261010",
+        [
+            "tests/test_broker_domains_q1_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: REFACTOR_W3_BUCKET_X1 — 2026-10-10 cron -> n8n refactor wave 3, bucket X1 (ingest: cron L142 L150 L243 L244 L248 L216 L505 L520 L550 — finviz_enrichment, sec_data_ingest, social_ingest, fred_data_ingest, sync_dividend_data, etf_*_enrich, validate_expense_ratios):
         # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
         # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
@@ -4331,6 +4353,16 @@ GATES = [
         # asks. Before: 35 model calls in 5 passes over 7 chat-less rows, all left open; after: 0, all closed.
         "desk_loop_pending_drain_20261010",
         ["tests/test_desk_loop_pending_drain_20261010.py"],
+    ),
+    (
+        # Search source routing engine (operator 2026-10-10: $20/month Brave, scalps about to fire first, a
+        # mature engine with rules for which source answers what). Policy validator, table-driven routing
+        # decisions, dollar budget math (pools, shares, pacing, $12/$15/$18 lines), the scalp-priority
+        # classifier, the shared cache, dry run proved at 0 Brave requests, the free lane never naming a Brave
+        # engine, the fan-in P2 source, the rerouted callers; plus the heartbeat fixture that leaked into the
+        # production search ledger. Hermetic.
+        "search_routing_engine_20261010",
+        ["tests/test_search_routing_engine_20261010.py"],
     ),
 ]
 

@@ -234,6 +234,11 @@ def window_minutes_for(source_key: str, registry: Optional[dict[str, Any]], *,
     for d in (registry or {}).get("domains") or []:
         if str(d.get("primary_provider") or "") != provider:
             continue
+        if d.get("provider_health_window") is False:
+            # A store-level freshness contract that is not a statement about the provider's liveness
+            # (e.g. scalp_list's 15-minute RTH window on a Finviz-fed file): it must not tighten the
+            # provider's data_source_health window (2026-10-10, broker domains Q1).
+            continue
         h = d.get("stale_after_hours")
         if market_closed and d.get("stale_after_hours_closed") is not None:
             h = d.get("stale_after_hours_closed")

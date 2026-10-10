@@ -205,6 +205,17 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
                 out.append({"source": "gap_resolution", "item": f"{cat}:{n}", "severity": "P3",
                             "detail": f"{n} findings ran_at {doc.get('ran_at')}", "artifact_rel": "data/runtime/gap_resolution_last_run.json",
                             "store": "data/runtime", "detected_at": doc.get("ran_at")})
+    # 2b. Brave dollar spend (search routing engine, 2026-10-10): scripts/search_spend_report.py --write.
+    # warning = gross month spend >= 80% of the $15 working target; critical = the $18 local ceiling or an
+    # unreadable ledger. Both are P2 (operator: "alert at 80% of target via the incident notifier (P2)");
+    # the item names the month so a new month opens a new incident. Clears when the receipt reads ok.
+    doc = _load(rt / "search_spend_last.json")
+    if doc and str(doc.get("alert") or "ok") in {"warning", "critical"}:
+        sp = doc.get("spend") or {}
+        out.append({"source": "search_spend", "item": f"{sp.get('month') or 'unknown'}:{doc.get('alert')}", "severity": "P2",
+                    "detail": (f"Brave gross ${sp.get('gross_usd')} = {sp.get('pct_of_target')}% of ${(sp.get('lines') or {}).get('working_target_usd')}"
+                               f" target (net billed ${sp.get('net_billed_usd')}); {doc.get('error') or ''}")[:160],
+                    "artifact_rel": "data/runtime/search_spend_last.json", "store": "data/runtime", "detected_at": doc.get("as_of")})
     # 3. watchdogs
     doc = _load(rt / "cio_bridge_watchdog.json")
     if doc and (doc.get("alert_needed") or str(doc.get("status") or "").lower() not in {"ok", "healthy", ""}):

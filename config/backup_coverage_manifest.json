@@ -221,7 +221,9 @@
     "store:research_thesis",
     "store:symbol_identity",
     "store:watch_directives",
-    "store:watch_discovery"
+    "store:watch_discovery",
+    "store:social_posts",
+    "store:yfinance_info_snapshot"
    ]
   },
   {
@@ -260,7 +262,8 @@
     "store:opportunity_assessment",
     "store:redeploy_analytics",
     "store:research_write_path_receipts",
-    "store:sec_filing_events"
+    "store:sec_filing_events",
+    "store:finviz_enrichment"
    ]
   },
   {
@@ -338,6 +341,16 @@
    "gap": "the live copy is persistent-state/data/active_trader (79 files written since 2026-10-08); the dev-tree data/active_trader that data_offsite tars is a stale fork (3 files)",
    "covers": [
     "store:active_trader_microstructure"
+   ]
+  },
+  {
+   "id": "stores_trade_ai_files",
+   "description": "Trade-AI scalp universe file (data/trade_ai under the persistent-state root)",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "the writer (run_trade_ai_scalp_live) resolves production_state_root(), so the file lives in persistent-state/data/trade_ai; the dev tree has no data/trade_ai link, so data_offsite never tars it (measured 2026-10-10). A 5-minute snapshot rebuilt by the next RTH cycle: restore = rerun the writer.",
+   "covers": [
+    "store:scalp_list"
    ]
   },
   {
