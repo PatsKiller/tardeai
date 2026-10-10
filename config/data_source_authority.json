@@ -387,7 +387,7 @@
       ],
       "rate_limit": {
         "declared_on": "2026-10-10",
-        "approval_reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); branch n8nmat/broker-domains-q1 — decision (14)",
+        "approval_reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (14)",
         "budget_per_hour": 150,
         "provider_ceiling_per_hour": 200,
         "scope": "per egress IP, shared by every caller on this host (unauthenticated api.stocktwits.com/api/2)",
@@ -2870,7 +2870,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); branch n8nmat/broker-domains-q1 — decision (2) register finviz_enrichment; (3) store of record = data/state copy",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (2) register finviz_enrichment; (3) store of record = data/state copy",
         "scope": "per-symbol Finviz Elite six-view enrichment (rsi, float, rvol, atr, valuation, performance, sector/industry) in data/state/ticker_enrichment_cache.json, read through finviz_enrichment_snapshot; market data only"
       },
       "store": {
@@ -2916,7 +2916,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); branch n8nmat/broker-domains-q1 — decision (5) register scalp_list",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register scalp_list",
         "scope": "scalp screener membership plus per-symbol price/float/setup_class in TradeAIScalpUniverse@v1; market data only — the scalp lane's GO/score columns are not part of this domain"
       },
       "store": {
@@ -2953,7 +2953,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); branch n8nmat/broker-domains-q1 — decision (5) register social_posts",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register social_posts",
         "scope": "StockTwits posts (text, sentiment label/score, engagement) per mentioned symbol, read through social_feed"
       },
       "store": {
@@ -3000,7 +3000,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); branch n8nmat/broker-domains-q1 — decision (13) create store yfinance_info_snapshot",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (13) create store yfinance_info_snapshot",
         "scope": "one raw yfinance .info payload per symbol (status ok/no_profile/error) for the reference owner to fan out; read through yfinance_info"
       },
       "store": {
