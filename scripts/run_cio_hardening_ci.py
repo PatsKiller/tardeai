@@ -4243,6 +4243,17 @@ GATES = [
         ["tests/test_finviz_view_contracts_timeout_20261010.py"],
     ),
     (
+        # Broker guards (n8nmat/broker-guards, operator-approved 2026-10-10). GAP 5: check_data_source_authority
+        # counts direct reads of projection-owned stores (FROM <table>, raw enrichment cache file) by scheduled
+        # lane scripts + the lib modules they import; ceilings recorded 2026-10-10 may only fall (even under
+        # --write-baseline); the broker execution file set is never opened. GAP 13: finviz_throttle state resolves
+        # through production_state_root, shared across cron cwd / executor code_root / worktree. GAP 14: one
+        # ticker validator (lib/provider_ticker_guard) before every Finviz request path; CUSIPs never sent or cached.
+        # Hermetic: tmp roots, fake HOME, stubbed HTTP, no DB, no credential.
+        "broker_guards_20261010",
+        ["tests/test_broker_guards_20261010.py"],
+    ),
+    (
         # Coordination gateway allows the relay POST /event lane n8n-workflow-error (RC8, W0 rollback
         # 2026-10-10); existing extra lanes kept. Static unit-file check.
         "gateway_workflow_error_lane_20261010",
