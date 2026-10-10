@@ -3,7 +3,8 @@
 
 Roadmap Phase 1 (2026-10-07). Reads, never checks: the breach detector's per-lane rows,
 the five `--alert` timer receipts, the bridge watchdog, the n8n lab watchdog, the lab
-backup receipt, and (2026-10-09) the P16 activation-attribution and P18 workflow-drift receipts. Every open finding becomes ONE coordination event on lane `incident-fanin`
+backup receipt, (2026-10-09) the P16 activation-attribution and P18 workflow-drift receipts, and (2026-10-10)
+the gateway's n8n workflow-error events (lane n8n-workflow-error, one incident per workflow). Every open finding becomes ONE coordination event on lane `incident-fanin`
 (idempotent per source+item+UTC day), walked to ARTIFACT_WRITTEN with a reference to the
 source receipt. A finding that disappears is closed with a `consumer_ack` from
 `recovery-observer`. Operator acks (Telegram) are a separate, later hook.
@@ -274,6 +275,10 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     # refused action or failed remediation; P2 suggestion / approval) and its own liveness (a stale, failed or
     # blind diagnoser is a P1). The diagnoser never sends; the incident notifier carries these. See _diagnosis_findings.
     out.extend(_diagnosis_findings(root, now))
+    # 3l. n8n workflow errors (gap 11, 2026-10-10): the relay's POST /event writes one gateway event per failed n8n
+    # execution on lane n8n-workflow-error (#1663/#1664); nothing read them. One incident per workflow (P1 for the
+    # dispatcher, else the health contract or P2/WARN) while an error is inside the window. See _workflow_error_findings.
+    out.extend(_workflow_error_findings(root, now))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -675,6 +680,142 @@ def _diagnosis_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     return found
 
 
+WFERR_SOURCE = "n8n_workflow_error"
+WFERR_LANE = "n8n-workflow-error"                   # scripts/n8n_run_relay.py EVENT_LANE
+WFERR_PREFIX = "wferr-"                             # relay idempotency key: wferr-<workflow_id>-<execution_id>
+WFERR_RELAY_LOG_REL = "data/runtime/n8n_relay/relay_log.jsonl"
+WFERR_DEFAULT_WINDOW_MIN = 60                       # an incident stays open while an error is this recent
+WFERR_P1_WORKFLOWS = frozenset({"tradeai-dispatcher"})   # operator 2026-10-10: P1 only for the dispatcher
+HEALTH_CONTRACTS_PATH = ROOT / "config" / "n8n_health_contracts.json"
+
+
+def _wferr_split(key: str) -> tuple[str, str] | None:
+    """(workflow_id, execution_id) from ``wferr-<wf>-<exec>``. n8n execution ids are hyphen-free; workflow ids
+    may carry hyphens, so the execution id is the last segment."""
+    if not key.startswith(WFERR_PREFIX):
+        return None
+    wf, sep, ex = key[len(WFERR_PREFIX):].rpartition("-")
+    return (wf, ex) if sep and wf and ex else None
+
+
+def _wferr_ledger_rows(path: Path) -> list[dict[str, Any]] | None:
+    """Accepted workflow-error events from the ledger ``receipts`` table (sqlite mode=ro, no migration).
+    None when the ledger file is absent."""
+    import sqlite3
+
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=3)
+    try:
+        rows = conn.execute("SELECT store_key, state, receipt_json, updated_at FROM receipts WHERE lane_id = ?",
+                            (WFERR_LANE,)).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for store_key, state, receipt_json, updated_at in rows:
+        try:
+            rec = json.loads(receipt_json or "{}")
+        except json.JSONDecodeError:
+            rec = {}
+        key = str(rec.get("idempotency_key") or str(store_key).split(":", 1)[-1])
+        out.append({"key": key, "state": state, "at": rec.get("recorded_at") or updated_at})
+    return out
+
+
+def _wferr_severity(workflow_id: str) -> tuple[str, str]:
+    """(fan-in severity, basis). The dispatcher is P1. Any other workflow takes its health contract's failed
+    notifier_priority when config/n8n_health_contracts.json carries one, clamped to P2 (P1 is the dispatcher's
+    alone), else P2 — WARN in the SIEM bridge's PRIORITY_SEVERITY."""
+    if workflow_id in WFERR_P1_WORKFLOWS:
+        return "P1", "dispatcher"
+    doc = _load(HEALTH_CONTRACTS_PATH)
+    for c in (doc or {}).get("contracts") or []:
+        if isinstance(c, dict) and c.get("id") == workflow_id:
+            prio = str(((c.get("alerting") or {}).get("failed") or {}).get("notifier_priority") or "").upper()
+            if prio in ("P1", "P2"):
+                return "P2", (f"contract:{prio}->P2" if prio == "P1" else "contract:P2")
+            if prio == "P3":
+                return "P3", "contract:P3"
+    return "P2", "default:WARN"
+
+
+def _workflow_error_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """One incident per n8n workflow with a workflow-error event in the last TRADEAI_FANIN_WFERR_WINDOW_MIN minutes.
+
+    Source of truth: the coordination ledger ``receipts`` rows on lane n8n-workflow-error, one per relay idempotency
+    key ``wferr-<workflow_id>-<execution_id>`` (so a retried POST /event is one error, not two). The relay log's
+    ``op: event`` lines add the failing node and message, and stand in for the ledger when it cannot be read.
+    Repeats of one workflow are grouped into one incident (``wferr:<workflow_id>``) that carries the count, the
+    execution ids and the latest node/message; the fan-in's source|item|UTC-day key dedupes it per day, and the
+    notifier's day-independent key dedupes its sends. The incident closes (recovery-observer) once no error of that
+    workflow is inside the window. Read-only; sends nothing. TRADEAI_FANIN_WFERR=0 opts out."""
+    key = "workflow_error_source"
+    NOTES.pop(key, None)
+    if os.environ.get("TRADEAI_FANIN_WFERR", "1") == "0":
+        NOTES[key] = "unavailable:RuntimeError:disabled_by_env"
+        return []
+    try:
+        window_min = float(os.environ.get("TRADEAI_FANIN_WFERR_WINDOW_MIN") or WFERR_DEFAULT_WINDOW_MIN)
+    except ValueError:
+        window_min = float(WFERR_DEFAULT_WINDOW_MIN)
+    explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    ledger = Path(explicit) if explicit else root / LEDGER_REL
+    events: dict[str, dict[str, Any]] = {}
+    try:
+        rows = _wferr_ledger_rows(ledger)
+        ledger_note = "absent" if rows is None else f"ok:{len(rows)}"
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        rows, ledger_note = None, f"error:{type(exc).__name__}"
+    for r in rows or []:
+        if str(r.get("state") or "") == "REFUSED":
+            continue
+        events[r["key"]] = {"key": r["key"], "at": r["at"], "node": None, "message": None}
+    relay_rows = 0
+    for r in _tail_jsonl(root / WFERR_RELAY_LOG_REL):
+        if r.get("op") != "event" or r.get("state") != "ACCEPTED" or r.get("lane_id") != WFERR_LANE:
+            continue
+        k = str(r.get("idempotency_key") or "")
+        if not k.startswith(WFERR_PREFIX):
+            continue
+        relay_rows += 1
+        ev = events.get(k)
+        if ev is None:
+            if rows is not None:
+                continue                            # the ledger is the record; a relay-only line is not an event
+            ev = events[k] = {"key": k, "at": r.get("at"), "node": None, "message": None}
+        ev["node"], ev["message"] = r.get("node"), r.get("message")
+        if r.get("workflow_id") and r.get("execution_id"):
+            ev["wf"], ev["exec"] = str(r["workflow_id"]), str(r["execution_id"])
+    by_wf: dict[str, list[dict[str, Any]]] = {}
+    for ev in events.values():
+        if "wf" not in ev:
+            split = _wferr_split(ev["key"])
+            if split is None:
+                continue
+            ev["wf"], ev["exec"] = split
+        at = _stable(ev.get("at"), datetime.min.replace(tzinfo=timezone.utc))
+        age_min = (now - at).total_seconds() / 60
+        if -5 <= age_min <= window_min:             # a few minutes of clock skew ahead of `now` is tolerated
+            ev["at_dt"] = at
+            by_wf.setdefault(ev["wf"], []).append(ev)
+    found: list[dict[str, Any]] = []
+    for wf, evs in sorted(by_wf.items()):
+        evs.sort(key=lambda e: (e["at_dt"], e["exec"]))
+        last = evs[-1]
+        sev, basis = _wferr_severity(wf)
+        execs = ",".join(e["exec"] for e in evs[-6:]) + (f",+{len(evs) - 6}" if len(evs) > 6 else "")
+        where = f"{last.get('node')}: {last.get('message')}" if last.get("node") or last.get("message") else "no detail"
+        detail = (f"{len(evs)} error(s) {evs[0]['at_dt']:%H:%M}-{last['at_dt']:%H:%MZ} exec {execs} · {where} "
+                  f"[{basis}]")
+        found.append({"source": WFERR_SOURCE, "item": f"wferr:{wf}", "severity": sev, "detail": detail[:160],
+                      "artifact_rel": LEDGER_REL, "store": "persistent-state",
+                      "detected_at": evs[0]["at_dt"].isoformat(), "workflow_id": wf, "count": len(evs),
+                      "event_keys": [e["key"] for e in evs]})
+    NOTES[key] = (f"ledger:{ledger_note}:relay_log_rows={relay_rows}:events={len(events)}:"
+                  f"in_window={sum(len(v) for v in by_wf.values())}:workflows={len(by_wf)}:window_min={window_min:g}")
+    return found
+
+
 def _outbox_findings(now: datetime) -> list[dict[str, Any]]:
     """Anomalies from scripts/lib/notification_outbox_projection; fail-soft and recorded in the receipt."""
     global OUTBOX_SOURCE_STATUS
@@ -762,6 +903,9 @@ def main(argv: list[str] | None = None) -> int:
         current_keys.add(ev["idempotency_key"])
         row = {**{k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")}, "idempotency_key": ev["idempotency_key"],
                "event_id": ev["event_id"], "ops": []}
+        for extra in ("workflow_id", "count", "event_keys"):   # workflow-error grouping evidence (gap 11)
+            if extra in f:
+                row[extra] = f[extra]
         if client is None:
             row["state"] = "DRY_RUN"
         else:

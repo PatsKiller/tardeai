@@ -3717,6 +3717,10 @@ GATES = [
             "tests/test_n8n_agent_identity_parity_20261009.py",
             # incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)
             "tests/test_n8n_incident_fanin_governance_20261009.py",
+            # 2026-10-10 (gap 11): fan-in reader for gateway events on lane n8n-workflow-error (ledger receipts, key
+            # wferr-<wf>-<exec>): one incident per workflow, P1 only for the dispatcher, else contract/P2 (WARN);
+            # notifier plan + SIEM n8n:<workflow> row from the same rows. Hermetic: tmp_path ledgers and relay logs.
+            "tests/test_n8n_incident_fanin_workflow_error_20261010.py",
         ],
     ),
     (
