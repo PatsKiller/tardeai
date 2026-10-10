@@ -144,6 +144,31 @@ def _load_registry() -> dict:
 
 
 def _seed_registry() -> None:
+    """Create/refresh one llm_process_config row per registry process.
+
+    Policy fields, per column (2026-10-10, n8n_lane_failure_diagnosis seeded as
+    allowed_lanes {grok,chatgpt} + NULL daily_cost_cap_usd while the registry said
+    [grok, chatgpt, fast, deepseek-flash] / $0.10):
+
+    * NEW row: ``allowed_lanes`` is the registry allowlist (``_allowed_lanes_from_registry``)
+      and ``daily_cost_cap_usd`` the registry cap. Before this, the INSERT named neither
+      column, so a new row took the TABLE default (the 2026-07-08 migration's
+      ``ARRAY['grok','chatgpt']``) and a NULL cap -- a row that disagreed with the
+      registry from its first second.
+    * EXISTING row, ``daily_cost_cap_usd``: filled from the registry only while it is
+      NULL. A non-NULL value is never overwritten here: the operator cap surface
+      (``llm_cap_admin.set_caps``) writes the DB first and the registry file of the
+      release it runs in, so a registry-wins seed would silently revert an operator cap
+      on the next deploy. Filling a NULL changes no enforcement --
+      ``get_process_config`` / ``check_cost_cap`` already fall back to the registry
+      when the column is NULL -- it makes the row say what is enforced.
+    * EXISTING row, ``allowed_lanes``: never touched. Enforcement reads the allowlist
+      from the registry, not this column ("Do not expand allowlist from DB" in
+      ``get_process_config``); rewriting it on every process start would narrow every
+      row ``sync_process_policies_from_registry`` widened, a divergent-store
+      remediation that is the operator's call (AGENTS.md §0 rule 5). An existing
+      row's lanes are changed only by a reviewed one-time sync.
+    """
     reg = _load_registry()
     default = reg.get("default_mode") or "manual"
     cur = _conn().cursor()
@@ -152,27 +177,37 @@ def _seed_registry() -> None:
         if not pid:
             continue
         mode = p.get("default_mode") or default
+        daily_cap = p.get("daily_soft_cap")
+        cost_cap = p.get("daily_cost_cap_usd")
+        lanes = list(dict.fromkeys(_allowed_lanes_from_registry(p)))
+        params = (pid, p.get("name") or pid, p.get("category"), mode, lanes, daily_cap, cost_cap,
+                  p.get("description"))
         # Processes with an explicit default_mode in the registry are bootstrap-synced so
         # operator-approved defaults (e.g. cloud_review=automated) apply on deploy.
-        daily_cap = p.get("daily_soft_cap")
         if "default_mode" in p:
             cur.execute("""
-                INSERT INTO llm_process_config (process_id, process_name, category, mode, daily_soft_cap, notes, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO llm_process_config (process_id, process_name, category, mode, allowed_lanes,
+                                                daily_soft_cap, daily_cost_cap_usd, notes, updated_at)
+                VALUES (%s, %s, %s, %s, %s::text[], %s, %s, %s, NOW())
                 ON CONFLICT (process_id) DO UPDATE SET
                   process_name = EXCLUDED.process_name,
                   category = EXCLUDED.category,
                   mode = EXCLUDED.mode,
                   daily_soft_cap = COALESCE(EXCLUDED.daily_soft_cap, llm_process_config.daily_soft_cap),
+                  daily_cost_cap_usd = COALESCE(llm_process_config.daily_cost_cap_usd, EXCLUDED.daily_cost_cap_usd),
                   notes = EXCLUDED.notes,
                   updated_at = NOW()
-            """, (pid, p.get("name") or pid, p.get("category"), mode, daily_cap, p.get("description")))
+            """, params)
         else:
             cur.execute("""
-                INSERT INTO llm_process_config (process_id, process_name, category, mode, daily_soft_cap, notes)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (process_id) DO NOTHING
-            """, (pid, p.get("name") or pid, p.get("category"), mode, daily_cap, p.get("description")))
+                INSERT INTO llm_process_config (process_id, process_name, category, mode, allowed_lanes,
+                                                daily_soft_cap, daily_cost_cap_usd, notes)
+                VALUES (%s, %s, %s, %s, %s::text[], %s, %s, %s)
+                ON CONFLICT (process_id) DO UPDATE SET
+                  daily_cost_cap_usd = EXCLUDED.daily_cost_cap_usd
+                WHERE llm_process_config.daily_cost_cap_usd IS NULL
+                  AND EXCLUDED.daily_cost_cap_usd IS NOT NULL
+            """, params)
     _conn().commit()
 
 

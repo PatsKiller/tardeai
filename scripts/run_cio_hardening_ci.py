@@ -1195,7 +1195,9 @@ GATES = [
     # catalogue from the inventory, governed diagnosis (n8n_lane_failure_diagnosis), bounded actions, selftest lane.
     (
         "n8n_llm_remediation_20261010",
-        ["tests/test_n8n_llm_remediation_20261010.py"],
+        ["tests/test_n8n_llm_remediation_20261010.py",
+         # 2026-10-10 optional: trade-ai-scalp-live excluded from the LLM diagnosis catalogue (operator decision pending).
+         "tests/test_n8n_diagnosis_exclude_scalp_20261010.py"],
     ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
@@ -4173,6 +4175,31 @@ GATES = [
         # pinned), the real run's throttle wait is bounded under the allowlist timeout_s. Hermetic.
         "finviz_view_contracts_timeout_20261010",
         ["tests/test_finviz_view_contracts_timeout_20261010.py"],
+    ),
+    (
+        # run_with_deepseek_offpeak.sh --scheduled --defer-in-process (2026-10-10): on PEAK_SKIP the wrapper exits
+        # 0 with no receipt, so a lane with a receipt liveness check (n8n_failure_diagnosis.py, stale at 45 min)
+        # would raise P1 nightly. Pins: without the flag behaviour is unchanged; with it, out of window the
+        # command runs with LLM_DEFER_OFFPEAK=1 (in-process lib/llm_deferral gate, same window); it needs
+        # --scheduled; it falls back to PEAK_SKIP when lib/llm_deferral cannot load. Hermetic subprocess.
+        "offpeak_wrapper_defer_in_process_20261010",
+        ["tests/test_offpeak_wrapper_defer_in_process_20261010.py"],
+    ),
+    (
+        # llm_process_config seed sync (2026-10-10): n8n_lane_failure_diagnosis was seeded with the table
+        # default allowed_lanes {grok,chatgpt} and a NULL daily_cost_cap_usd because _seed_registry's INSERT
+        # named neither column. Pins: a new row carries the registry allowlist and dollar cap; an existing
+        # NULL cap is filled, a non-NULL (operator) cap is never overwritten; existing lanes are never
+        # rewritten by seeding; get_process_config still takes lanes from the registry. Hermetic fake cursor.
+        "llm_process_seed_sync_20261010",
+        ["tests/test_llm_process_seed_sync_20261010.py"],
+    ),
+    (
+        # The six generic n8n workflows (AGENTS.md §23.11) are declared by their committed INDEX, so activating
+        # them under their `cron` grant does not turn check_lane_registry --n8n-live red with six
+        # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.
+        "lane_registry_generic_workflows_20261010",
+        ["tests/test_lane_registry_generic_workflows_20261010.py"],
     ),
 ]
 
