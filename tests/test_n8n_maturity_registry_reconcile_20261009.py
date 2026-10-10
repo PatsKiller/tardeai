@@ -243,7 +243,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # Wave D2 (2026-10-10) adopted 7 more the same way (313 generated rows left).
     # Wave D3 (R1, 2026-10-10) adopted 19 more: 18 rows carrying a reviewed r1_pending block, plus
     # build-symbol-profiles-at-0-19 unchanged so its lane_id stays stable (294 generated rows left).
-    assert len(gen) >= 290
+    # C1 hermes_learning flip (2026-10-10) retired 6 generated rows into the stage lanes and made them
+    # hand-curated (the retire-batch-1 pattern) so the generator keeps RETIRED (288 generated rows left).
+    assert len(gen) >= 288
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19 is adopted unchanged only to keep its lane_id stable.

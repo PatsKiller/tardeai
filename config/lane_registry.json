@@ -6504,19 +6504,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "50 10 * * *",
-        "command_text": "run_hermes_pipeline.sh --stage learn --dry-run",
+        "command_text": "run_hermes_pipeline.sh --stage learn --apply",
         "match": "run_hermes_pipeline.sh --stage learn"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-07",
-      "state_reason": "Tranche B day 0 (2026-10-07 22:40Z, cron grant 69093b20b90691d1, backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-b-day0.txt): the stage line is installed in --dry-run for the parallel-run observation — the runner executes nothing in that mode and writes only its PipelineRun@v1 summary; every absorbed line keeps running. Cutover (--apply + absorbed lines commented + their lanes RETIRED) follows per stage once the dry-run summaries match the old lines' receipts (docs/implementation/n8n-parallel/14-execution-week-20261008.md).",
+      "state_since": "2026-10-11",
+      "state_reason": "C1 manifest flip 2026-10-11 (operator approval 2026-10-10 ~18:28 ET, JOB_REDUCTION_DEEP_PASS.md D-1; cron grant <grant id>, backup ~/.local/state/tradeai/backups/crontab-<ts>-pre-c1-hermes_learning.txt): stage line flipped --dry-run -> --apply and the 6 absorbed crontab line(s) commented `# RETIRED 2026-10-11 c1-manifest hermes_learning ` (never deleted). Each step runs its live cron command verbatim with its own lock, timeout and log (equivalence: packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/pipeline_hermes_learning_learn_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "Serial sum 466 s median / 568 s p95 (4/6 VERIFIED via safe_flock: grader 6 s, tag engine 245 s, feedback 4 s, outcome learning 2 s). Each step keeps its run_with_deepseek_offpeak.sh wrapper verbatim; the runner never wraps the stage. Dry-run from the served tree 2026-10-07 21:09Z: END ... DRY_RUN=1 with the manifest step count for every stage; crontab non-comment lines 441 -> 449.",
+      "reason_evidence": "Pending: the first natural --apply run's data/runtime/pipeline_hermes_learning_learn_last.json (overall_status, per-step rc) — the natural-run proof required before the next manifest flips. Dry-run 2026-10-10 against the C1-synced manifest: 6 step(s) planned, ids and commands identical to the live lines.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P06",
       "rationalization": {
@@ -6537,19 +6537,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 17 * * *",
-        "command_text": "run_hermes_pipeline.sh --stage tune --dry-run",
+        "command_text": "run_hermes_pipeline.sh --stage tune --apply",
         "match": "run_hermes_pipeline.sh --stage tune"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-07",
-      "state_reason": "Tranche B day 0 (2026-10-07 22:40Z, cron grant 69093b20b90691d1, backup ~/.local/state/tradeai/backups/crontab-20261007T224010Z-pre-tranche-b-day0.txt): the stage line is installed in --dry-run for the parallel-run observation — the runner executes nothing in that mode and writes only its PipelineRun@v1 summary; every absorbed line keeps running. Cutover (--apply + absorbed lines commented + their lanes RETIRED) follows per stage once the dry-run summaries match the old lines' receipts (docs/implementation/n8n-parallel/14-execution-week-20261008.md).",
+      "state_since": "2026-10-11",
+      "state_reason": "C1 manifest flip 2026-10-11 (operator approval 2026-10-10 ~18:28 ET, JOB_REDUCTION_DEEP_PASS.md D-1; cron grant <grant id>, backup ~/.local/state/tradeai/backups/crontab-<ts>-pre-c1-hermes_learning.txt): stage line flipped --dry-run -> --apply and the 1 absorbed crontab line(s) commented `# RETIRED 2026-10-11 c1-manifest hermes_learning ` (never deleted). Each step runs its live cron command verbatim with its own lock, timeout and log (equivalence: packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/pipeline_hermes_learning_tune_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "Upper bound 123 s median / 824 s p95 (PAM group, NOT VERIFIED); kept as its own stage so the 17:00 timing survives. Dry-run from the served tree 2026-10-07 21:09Z: END ... DRY_RUN=1 with the manifest step count for every stage; crontab non-comment lines 441 -> 449.",
+      "reason_evidence": "Pending: the first natural --apply run's data/runtime/pipeline_hermes_learning_tune_last.json (overall_status, per-step rc) — the natural-run proof required before the next manifest flips. Dry-run 2026-10-10 against the C1-synced manifest: 1 step(s) planned, ids and commands identical to the live lines.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P06",
       "rationalization": {
@@ -9336,12 +9336,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 11 * * *",
-        "match": "scripts/hermes_config_governor.py",
-        "stage": "shadow",
-        "wave": "D1b"
+        "match": "scripts/hermes_config_governor.py"
       },
       "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/hermes_config_governor.log",
@@ -9359,22 +9357,40 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "45 11 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W3",
-        "class": "report",
-        "priority": 5,
-        "retry_policy": "transient-2"
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-learning-pipeline-learn",
+      "state_reason": "Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L671 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step config_governor with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step config_governor of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step config_governor rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L671",
+      "c1_flip": {
+        "manifest": "hermes_learning",
+        "stage": "learn",
+        "step_id": "config_governor",
+        "on": "2026-10-11"
+      },
+      "dispatch_retired": {
+        "on": "2026-10-11",
+        "reason": "absorbed by C1 stage hermes-learning-pipeline-learn; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+        "stage": "shadow",
+        "wave": "D1b",
+        "dispatch": {
+          "mode": "dry_run",
+          "cron": [
+            "45 11 * * *"
+          ],
+          "tz": "America/New_York",
+          "wave": "W3",
+          "class": "report",
+          "priority": 5,
+          "retry_policy": "transient-2"
+        },
+        "adopted_from_generator": "reconcile_lane_registry@v1"
       }
     },
     {
@@ -10649,6 +10665,266 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "hermes-outcome-learning",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 11 * * *",
+        "match": "scripts/hermes_outcome_learning.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_outcome_learning.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L452",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-learning-pipeline-learn",
+      "state_reason": "Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L452 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step outcome_learning with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step outcome_learning of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step outcome_learning rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L452",
+      "c1_flip": {
+        "manifest": "hermes_learning",
+        "stage": "learn",
+        "step_id": "outcome_learning",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "hermes-autonomous-self-tune",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 17 * * *",
+        "match": "scripts/hermes_autonomous_self_tune.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_self_tune.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L577",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-learning-pipeline-tune",
+      "state_reason": "Superseded by hermes-learning-pipeline-tune on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L577 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step autonomous_self_tune with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step autonomous_self_tune of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step autonomous_self_tune rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L577",
+      "c1_flip": {
+        "manifest": "hermes_learning",
+        "stage": "tune",
+        "step_id": "autonomous_self_tune",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "hermes-score-history-retention",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 11 * * *",
+        "match": "scripts/hermes_score_history_retention.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_score_retention.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L650",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-learning-pipeline-learn",
+      "state_reason": "Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L650 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step score_history_retention with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step score_history_retention of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step score_history_retention rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L650",
+      "c1_flip": {
+        "manifest": "hermes_learning",
+        "stage": "learn",
+        "step_id": "score_history_retention",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "hermes-outcome-grader",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 10 * * *",
+        "match": "scripts/hermes_outcome_grader.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_outcome_grader.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L658",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-learning-pipeline-learn",
+      "state_reason": "Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L658 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step outcome_grader with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step outcome_grader of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step outcome_grader rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L658",
+      "c1_flip": {
+        "manifest": "hermes_learning",
+        "stage": "learn",
+        "step_id": "outcome_grader",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "hermes-outcome-feedback-agent",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 11 * * *",
+        "match": "scripts/hermes_outcome_feedback_agent.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes_outcome_feedback_heartbeat.json",
+        "key": "ts",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/hermes_outcome_feedback_agent.py:812 _write_heartbeat (with ts) at end of run; host mtime 2026-10-09T11:25:18"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L662",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-learning-pipeline-learn",
+      "state_reason": "Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L662 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step outcome_feedback_agent with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step outcome_feedback_agent of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step outcome_feedback_agent rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L662",
+      "c1_flip": {
+        "manifest": "hermes_learning",
+        "stage": "learn",
+        "step_id": "outcome_feedback_agent",
+        "on": "2026-10-11"
+      }
+    },
+    {
+      "lane_id": "hermes-tag-engine",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 11 * * *",
+        "match": "scripts/hermes_tag_engine.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_tag_engine.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L668",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-11",
+      "superseded_by": "hermes-learning-pipeline-learn",
+      "state_reason": "Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L668 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step tag_engine with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step tag_engine of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step tag_engine rc=0 (CORRELATED until then; ESTABLISHED after).",
+      "inventory_id": "cron:L668",
+      "c1_flip": {
+        "manifest": "hermes_learning",
+        "stage": "learn",
+        "step_id": "tag_engine",
+        "on": "2026-10-11"
       }
     },
     {
@@ -14056,38 +14332,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "hermes-outcome-learning",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 11 * * *",
-        "match": "scripts/hermes_outcome_learning.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_outcome_learning.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L452",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "generate-max-hold-exit-proposals",
       "owner": "execution",
       "scheduler": {
@@ -15686,38 +15930,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "hermes-autonomous-self-tune",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 17 * * *",
-        "match": "scripts/hermes_autonomous_self_tune.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_self_tune.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L577",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "register-analyst-sources",
       "owner": "research",
       "scheduler": {
@@ -16411,38 +16623,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "hermes-score-history-retention",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "40 11 * * *",
-        "match": "scripts/hermes_score_history_retention.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_score_retention.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L650",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "hermes-scope-governor",
       "owner": "research",
       "scheduler": {
@@ -16502,104 +16682,6 @@
         "f_recommendation": "EVENT-DRIVEN (queue drain/poller) inside P10",
         "event_driven_candidate": true,
         "f_evidence": "polls */5 * * * *"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "hermes-outcome-grader",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "50 10 * * *",
-        "match": "scripts/hermes_outcome_grader.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_outcome_grader.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L658",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "hermes-outcome-feedback-agent",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "25 11 * * *",
-        "match": "scripts/hermes_outcome_feedback_agent.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/hermes_outcome_feedback_heartbeat.json",
-        "key": "ts",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_outcome_feedback_agent.py:812 _write_heartbeat (with ts) at end of run; host mtime 2026-10-09T11:25:18"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L662",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "hermes-tag-engine",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "5 11 * * *",
-        "match": "scripts/hermes_tag_engine.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_tag_engine.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L668",
-        "pipeline": "P13",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P13",
-        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",

@@ -8,7 +8,19 @@
 #
 # Cron (daily, flock-guarded):
 #   50 23 * * * cd $PROJ && bash linux_launchers/backup_generated_docs.sh >> logs/docs_backup.log 2>&1
+#
+# LOCAL ONLY by default (2026-10-10): the commit lands on the local `generated-docs-backup` branch and
+# nothing is pushed. Operator-only push: `TRADEAI_REMOTE_PUSH_AUTHORIZED=1 bash
+# linux_launchers/backup_generated_docs.sh --push` (both are required; cron passes neither).
 set -uo pipefail
+
+ALLOW_PUSH=0
+for _arg in "$@"; do
+  case "$_arg" in
+    --push) ALLOW_PUSH=1 ;;
+    *) echo "unknown argument: $_arg" >&2; exit 64 ;;
+  esac
+done
 
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJ"
@@ -71,11 +83,17 @@ if [ -z "${COMMIT:-}" ]; then
 fi
 git update-ref "refs/heads/$BR" "$COMMIT"
 
+SHORT="$(git rev-parse --short "$COMMIT")"
+# Local-only by default (AGENTS.md §0 rule 4, AI_WORK_POLICY.md; 2026-10-10, cron L541): a checkpoint is
+# a commit, not a push. The branch ref above IS the backup. A push to origin happens only when an
+# operator runs this by hand with --push AND TRADEAI_REMOTE_PUSH_AUTHORIZED=1 in the environment.
+if [ "${ALLOW_PUSH:-0}" != "1" ] || [ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-}" != "1" ]; then
+  echo "$TS backed up $SHORT -> refs/heads/$BR (local only; push not authorized)"
+  exit 0
+fi
 if git push -q origin "$BR" 2>/dev/null; then
-  echo "$TS backed up $(git rev-parse --short "$COMMIT") -> origin/$BR"
+  echo "$TS backed up $SHORT -> origin/$BR (operator-authorized push)"
 else
-  SHORT="$(git rev-parse --short "$COMMIT")"
-  echo "$TS commit $SHORT made locally; push FAILED (will retry next run)"
-  tg_alert "🔴 docs-backup ($HOST): commit $SHORT made locally but PUSH to origin/$BR FAILED. Backup is stranded — check network/auth; it will retry next run."
+  echo "$TS commit $SHORT made locally; authorized push FAILED"
   exit 1
 fi

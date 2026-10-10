@@ -628,27 +628,6 @@
       "output_signal": "data/runtime/sync_watchlist_items_to_db_last.json"
     },
     {
-      "lane_id": "hermes-config-governor",
-      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
-      "env_allowlist_mode": "report",
-      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D1b: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
-      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
-      "source": "dispatcher shadow wave D1b (n8n-maturity R3 §3 wave 5), cron:L671, refactor bucket W3. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L671).",
-      "command": [
-        "$PY",
-        "scripts/hermes_config_governor.py"
-      ],
-      "lock": "/tmp/hermes_config_governor.lock",
-      "lock_kind": "flock",
-      "timeout_s": 120,
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "market_gate": false,
-      "output_signal": "data/runtime/hermes_config_governor_last.json"
-    },
-    {
       "lane_id": "audit-enrichment-coverage",
       "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
       "env_allowlist_mode": "report",
