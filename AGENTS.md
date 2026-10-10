@@ -1,26 +1,17 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      4.4.1
+Policy-Version:      4.5.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-10
-Last-Reviewed:       2026-10-10T17:45:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-10T17:50:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          4.4.0
+Supersedes:          4.4.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
-
-**4.4.1 is ACTIVE on merge (PATCH) — §12 off-peak arming restated as measured; §23 points at the n8n
-configuration and procedure documents.** Operator-directed 2026-10-10 ~16:35 ET ("make sure you totally update the
-documentation on this and the agents.md ..."). §12: the crontab header arms `LLM_DEFER_OFFPEAK=1` for every cron
-line (operator, 2026-09-20), not one systemd drop-in; the wrapper count is re-measured. §23: an informational
-pointer to `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md`, `N8N_ONBOARDING_STANDARD.md` and
-`N8N_MONITORING_AND_REMEDIATION_STANDARD.md`, which restate §23 and add no rule. No required behaviour changes; §0,
-§2, §2A, §7A, §17 and §23.14 are byte-identical. Rides `APPROVE_AGENTS_POLICY_1_2_0` (PATCH outside §0/§2/§17); the
-merge still needs the operator's per-PR word (§23.13 excludes `AGENTS.md`).
 
 **4.4.0 is ACTIVE (MAJOR) — the R1 shadow and canary rows may be cron rows (§23.11, §23.18 (c)).**
 Ratified by the operator 2026-10-10 (`APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe`, §20; PR #1660 comment
@@ -44,6 +35,24 @@ same day "n8n drives a governed lane (Recommended)". The 5-minute Trade-AI scalp
 ingest through the data broker, a `trade_ai_scans` writer and a `send_telegram` caller — may run in
 `live` mode from n8n under the conditions in §23.3; it is the only such lane, and the never-list
 is otherwise unchanged. MAJOR because it widens what the n8n actor may cause (version policy).
+
+**4.5.0 is PROPOSED (MINOR) — every n8n addition follows the onboarding standard and carries a workflow health
+contract (§23.19).** Until the operator ratifies it, the 4.4.1 text governs. It makes
+`docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` the mandatory procedure for adding or changing
+anything n8n fires, watches or calls; requires a workflow health contract (`config/n8n_health_contracts.json`,
+gate `scripts/check_n8n_health_contracts.py`) before a lane enters shadow, canary or cutover; and requires the relay
+contract check before any n8n import. It adds obligations and grants nothing: no grant tier, §17 item or never-list
+entry changes, and §0, §2, §2A, §7A, §17 and §23.14 are byte-identical. Operator approval phrase (§20):
+`APPROVE_AGENTS_POLICY_4_5_0 <pr_number> <head_sha>`.
+
+**4.4.1 is ACTIVE on merge (PATCH) — §12 off-peak arming restated as measured; §23 points at the n8n
+configuration and procedure documents.** Operator-directed 2026-10-10 ~16:35 ET ("make sure you totally update the
+documentation on this and the agents.md ..."). §12: the crontab header arms `LLM_DEFER_OFFPEAK=1` for every cron
+line (operator, 2026-09-20), not one systemd drop-in; the wrapper count is re-measured. §23: an informational
+pointer to `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md`, `N8N_ONBOARDING_STANDARD.md` and
+`N8N_MONITORING_AND_REMEDIATION_STANDARD.md`, which restate §23 and add no rule. No required behaviour changes; §0,
+§2, §2A, §7A, §17 and §23.14 are byte-identical. Rides `APPROVE_AGENTS_POLICY_1_2_0` (PATCH outside §0/§2/§17); the
+merge still needs the operator's per-PR word (§23.13 excludes `AGENTS.md`).
 
 **4.3.0 is ACTIVE (MAJOR) — R1: three dispatcher classes — ingest writers, governed LLM jobs,
 learning/memory writers (§23.18).** Ratified by the operator 2026-10-10 (`APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1`, §20,
@@ -3987,7 +3996,8 @@ workflow, relay path or executor setting, with the gate and the grant for each s
 `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md`; per-lane monitoring, SIEM, Telegram routing, LLM
 auto-remediation and the workflow health contract (`config/n8n_health_contracts.json`) are in
 `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md`. They restate this section and add
-no rule; where they differ, this section wins. *Cause (§20): operator 2026-10-10 ~16:35 ET, after the W0 rollback
+no rule; where they differ, this section wins. §23.19 (4.5.0, PROPOSED) makes following the onboarding standard
+mandatory. *Cause (§20): operator 2026-10-10 ~16:35 ET, after the W0 rollback
 (15:58 ET) showed the procedure lived in packets and PR bodies, not in one place.*
 
 ## 23.1 Scope — this section reaches n8n and nothing else
@@ -4659,12 +4669,41 @@ holds.
   substrings, so it refuses any word that contains one of them.
   `tests/test_agents_policy_4_3_0_r1_classes.py` pins the refusals that any new matcher must keep.*
 
+## 23.19 Every n8n addition follows the onboarding standard (4.5.0, PROPOSED)
+
+Numbered §23.19 because §23.15–§23.17 are reserved for 4.2.0 (PR #1634, PROPOSED). This subsection adds
+obligations. It grants nothing: no grant tier, §17 item or allowlist `never` entry changes.
+
+- **The procedure is `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md`, and it is mandatory** for adding
+  or changing anything n8n fires, watches or calls: a lane at any stage, a registry row with a `dispatch` or
+  `r1_pending` block, a generic workflow, a relay route, a gateway lane or an executor setting. The PR carries the
+  standard's checklist with the evidence for each step, and its per-lane template
+  (`N8N_MONITORING_AND_REMEDIATION_STANDARD.md` §7) for a lane. Where the standard and this file differ, this file
+  wins and the difference is a finding (§20). *Cause (§20): W0, 2026-10-10 15:53–15:58 ET (REMEDIATION_PLAN §8
+  RC8/RC9) — the procedure lived in packets and PR bodies, the import dry run checked JSON shape only, and six
+  workflows failed within four minutes; operator ~16:35 ET: "so when new stuff is added to N8N, it follows the
+  procedures".*
+- **No lane enters shadow, canary or cutover without a workflow health contract** in
+  `config/n8n_health_contracts.json` (`N8nHealthContract@v1`: purpose, connects_to, healthy, degraded, failed,
+  baseline, alerting, remediation, owner, review_by). `scripts/check_n8n_health_contracts.py` fails a lane without
+  one. A new lane's contract is `REVIEWED` by its owner before its registry PR; a lane at canary or cutover needs a
+  `REVIEWED` contract with no `UNKNOWN` field. The DRAFT contracts that existed on 2026-10-10 are grandfathered at
+  their stage of that day; a move to canary or cutover needs `REVIEWED`. *Cause (§20): operator ~16:45 ET — "What is it supposed to do? What does it connect to? What does
+  positive mean? What does degraded mean? What is it measuring against if it doesn't know?"; 617 of 619 registry
+  rows carry no `severity`, so every n8n RUN_* failure reached the SIEM as WARN.*
+- **Before any n8n import, `scripts/check_n8n_relay_contract.py` passes** against the relay the workflows will
+  call, and import verification reads `execution_entity` with `"deletedAt" IS NULL`, the coordination ledger and the
+  relay log — never an n8n execution status. *Cause (§20): RC8/RC9 — 403 `bad_lane_filter` and 404 `POST /event`
+  were invisible to the dry run, and successful executions soft-deleted under
+  `EXECUTIONS_DATA_SAVE_ON_SUCCESS=none` kept `status = 'running'` and read as hangs.*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 4.5.0 | 2026-10-10 | PROPOSED | MINOR | §23.19 added: `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` is the mandatory procedure for adding or changing anything n8n fires, watches or calls (lane at any stage, dispatch / `r1_pending` row, generic workflow, relay route, gateway lane, executor setting), with the checklist evidence and per-lane template in the PR; no lane enters shadow, canary or cutover without a workflow health contract in `config/n8n_health_contracts.json` (gate `scripts/check_n8n_health_contracts.py`; new lanes REVIEWED before the registry PR; canary/cutover REVIEWED with no UNKNOWN; 2026-10-10 DRAFTs grandfathered at their stage of that day); `scripts/check_n8n_relay_contract.py` passes before any n8n import and import verification never reads an n8n execution status. Adds obligations and grants nothing; §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Tests: `tests/test_n8n_onboarding_standard_20261010.py`, `tests/test_n8n_health_contracts_20261010.py`. Causes: W0 rollback 2026-10-10 15:58 ET (RC8/RC9); operator 2026-10-10 ~16:35, ~16:40, ~16:45 ET. MINOR: a new mandatory operating and evidence rule, weakening nothing. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_4_5_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 4.4.1 text governs. |
 | 4.4.1 | 2026-10-10 | ACTIVE on merge | PATCH | §12 off-peak arming restated as measured 2026-10-10: the crontab header sets `LLM_DEFER_OFFPEAK=1` for every cron line (operator, 2026-09-20), systemd units set it per unit (portfolio-server, cio-reactive, nightly-reflection drop-ins and the executor and health-tick units `=1`; hermes-cio-worker `=0`); the 2026-09-20 "exactly one place" sentence is replaced, and "never arm it in passing" now reads arm, widen or disarm. The process-boundary wrapper count is re-measured (19 active lines: 2 `--scheduled`, 8 `--official`, 9 default; 17 on the older `~/.config/tradeai/bin` copy) and `--defer-in-process` (#1652) is named. §23 gains an informational pointer to `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md`, `N8N_ONBOARDING_STANDARD.md` and `N8N_MONITORING_AND_REMEDIATION_STANDARD.md` (restate §23, add no rule). No required behaviour changes; §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Cause: REMEDIATION_PLAN §8 "crontab header sets LLM_DEFER_OFFPEAK=1 for all lines (AGENTS §12 drift)"; the W0 rollback. | **Operator-directed** 2026-10-10 ~16:35 ET ("Make sure you totally update the documentation on this and the agents.md or any other files that need to know these baseline configurations"). PATCH outside §0/§2/§17: rides `APPROVE_AGENTS_POLICY_1_2_0`, ACTIVE on merge; merge needs the operator's per-PR word (§23.13 excludes `AGENTS.md`). |
 | 4.4.0 | 2026-10-10 | ACTIVE | MAJOR | R1 shadow and canary row shape (§23.11, §23.18 (c)). A §23.11 dispatcher row (`kind: n8n`, `expression: "dispatcher"`) fails `CRON_PRESENT_WHILE_SCHEDULER_N8N` and the inactive-n8n-row check while its cron line is live, which is true through shadow and canary. The shadow wave is therefore built as cron rows, and 4.3.0 §23.18 (c) refused every R1 lane in that shape. Now an `ingest`, `llm` or `learn` lane may use the cron row at `shadow` (`dispatch.mode: dry_run`, allowlist `live_arg` null) and at `canary` (`dispatch.mode: live`, `live_arg` set, `lock_kind: flock`, allowlist lock equal to every `flock` lock in `scheduler.command_text`, so the lock proves no double run, §23.12). Cutover keeps the dispatcher row. Gate in code: `lane_dispatch.r1_shadow_on_cron_shape`, `r1_canary_lock_matches` and `r1_class_admission`, inert until `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`. Every other R1 condition is unchanged: R1 ACTIVE, `dispatch_eligible`, no daemon, `dry_run_arg`, LaneRunReceipt@v1, no broker credential, and for `llm` the governed bridge. Naming: `dispatcher` is the row expression; `tradeai-dispatcher` (the workflow id; design 02 §12.2 wrote it as the expression) is refused by the gate and the registry check, clamped to `dry_run` by the stage clamp, and refused as `_cutover.py --workflow-id`. `--workflow-id dispatcher` leaves the row at stage `cutover`. The allowlist `never` sentence for the three classes names both cron rows; every never-under-any-class entry is word for word. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Tests: `tests/test_agents_policy_4_4_0_r1_shadow_shape.py`, `tests/test_r1_shadow_shape_20261010.py`. Causes: Agent A finding 2026-10-10 (no R1 lane could shadow); operator ruling 2026-10-10 ~14:00 ET ("All yes": extend 4.4.0 to canary). MAJOR: the R1 admission widens by two row shapes, one of them a live fire. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe` (operator, PR #1660 comment by PatsKiller 2026-10-10T20:04:37Z, verbatim: "APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe"); merged #1660 as `40e445d790c4b8294c3f2e3fb64cbb9f1658e9d9`; approved in principle 2026-10-10 ~14:00 ET ("All yes"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` and the allowlist `never` list. The ratifying edit sets `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`. |
 | 4.3.0 | 2026-10-10 | ACTIVE | MAJOR | R1 (§23.18): `ingest`, `llm` and `learn` become dispatcher-eligible classes, always shadow → canary → cutover by §23.11 registry PR and §23.12 waves. Gate in code: `scripts/lib/lane_dispatch.py` `r1_class_admission`. It requires R1 ACTIVE (`R1_STATUS`), `dispatch_eligible`, a dispatcher row at stage shadow/canary/cutover, a non-empty `dry_run_arg`, a `LaneRunReceipt@v1` `output_signal` that matches the allowlist, and no broker credential in `env_names`. An `llm` job also needs `llm_route` via `cio-governed-bridge` with a registered process and no provider/model argv. `n8n_due` and `validate_dispatch_block` both ask the gate, and `send` stays refused. `EXTRA_FORBIDDEN_SUBSTRINGS` gains `render_env`, `rotation_daemon` and `bitwarden` (measured: `render_env.py --write` passed `dispatch_eligible`); this only tightens the matcher. The governed DeepSeek route is approved for L401 overnight only; measured: today it calls `llm_lane` in-process, not the bridge, so it stays on cron until rerouted or ruled. Ruling 4: `alert_events` rows are not a send; `paper_trade_proposals` backtest fields are not paper execution; the L504 `symbol_profiles` and L205 `market_regime` writers are approved for dispatch. Rulings 2 (whole-word/path-segment token matching) and 3 (entry planner via the data broker; no broker credentials in lanes) land as separate code PRs. Allowlist `never` reworded: broker/order/stop/paper/sender/secret/guard/deploy/agent-loop stay never under any class; the three classes are excepted only once 4.3.0 is ACTIVE; "Sole exception: trade-ai-scalp-live" kept. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Numbered after 4.2.0 PROPOSED (#1634). Tests: `tests/test_agents_policy_4_3_0_r1_classes.py`. Causes: the cron inventory of 2026-10-09 (247 active rows needing refactoring, mostly policy-blocked); refactor wave 1 #1641 (36 rows needed dry-run and receipts); wave 2 V3 (L401 governed route missing). MAJOR: the n8n actor may cause three more classes of host work; broker, secret and delete rails unchanged. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1` (operator, 2026-10-10 ~09:10 ET, in session, verbatim: "APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1"); re-approved by the operator 2026-10-10 ~09:25 ET, in session, verbatim: "approved", for PR #1642 head `c3d5e895d4de5eb16f43f90ce8f43dc61a0cadfc` after the conflict merge with #1643 (which changed only the forbidden-token list in `scripts/lib/lane_dispatch.py`; `AGENTS.md` and `config/n8n_run_allowlist.json` byte-identical to `64c9210e1`); merged #1642 as `203b469146154c6729620a2428fcb76740a4d0a8`; the ratifying edit sets `R1_STATUS = "ACTIVE"`; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` and the allowlist `never` list. Operator rulings recorded 2026-10-10 ~00:20 ET: (1) ingest writers, governed LLM jobs and learning/memory writers are dispatcher-eligible, always shadow → canary → cutover; governed DeepSeek route approved for L401; (2) whole-word / path-segment forbidden-token matching; (3) entry planner (L473/L474) via the host data broker, no broker credentials in lanes; (4) `alert_events` rows not a sender, `paper_trade_proposals` backtest fields not execution, L504 and L205 approved for n8n. |

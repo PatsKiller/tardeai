@@ -5,7 +5,8 @@ Status:      ACTIVE
 as_of:       2026-10-10T17:30:00-04:00
 Measured at: origin/main 2aa2cc37d (#1664) / live af292381c-main-exact-phase2-20261010-113824; host ms01-openclaw
 Owner:       platform (n8n maturity program, Agent A supervises)
-Policy:      AGENTS.md 4.4.0 §9.3, §17, §23 (this file restates; where it differs, AGENTS.md wins)
+Policy:      AGENTS.md 4.4.1 §9.3, §17, §23 (this file restates; where it differs, AGENTS.md wins). AGENTS.md 4.5.0
+             §23.19 (PROPOSED, awaiting APPROVE_AGENTS_POLICY_4_5_0) makes this procedure mandatory.
 Companion:   docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md (monitoring, SIEM,
              Telegram, LLM remediation, workflow health contracts)
 Entry point: docs/implementation/n8n-maturity/N8N_CONFIGURATION.md (how n8n is configured on this host)

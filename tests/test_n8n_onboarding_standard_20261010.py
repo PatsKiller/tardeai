@@ -203,3 +203,46 @@ def test_claude_md_adapter_restates_no_n8n_rule():
     """CLAUDE.md is an adapter (AGENTS.md §19): it must not grow n8n rules of its own."""
     text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
     assert "n8n" not in text.lower()
+
+
+# ------------------------------------------------------------------------------ AGENTS.md 4.5.0 (PROPOSED)
+
+
+def _control(key: str) -> str:
+    m = re.search(rf"^{re.escape(key)}:\s+(\S+)", _agents(), re.M)
+    assert m, key
+    return m.group(1)
+
+
+def _v() -> tuple[int, ...]:
+    return tuple(int(x) for x in _control("Policy-Version").split("."))
+
+
+def test_4_5_0_row_and_header_agree_and_wait_for_the_operator():
+    assert _v() >= (4, 5, 0)
+    m = re.search(r"^\| 4\.5\.0 \| 2026-10-10 \| (PROPOSED|ACTIVE)[^|]* \| MINOR \|(.*)$", _agents(), re.M)
+    assert m, "no 4.5.0 MINOR row"
+    if m.group(1) == "PROPOSED":
+        assert "PENDING" in m.group(2) and "APPROVE_AGENTS_POLICY_4_5_0 <pr_number> <head_sha>" in m.group(2)
+        assert not re.search(r"\brides?\b", m.group(2), re.I), "a PROPOSED 4.5.0 must not claim to ride a prior token"
+        if _v() == (4, 5, 0):
+            assert _control("Status") == "PROPOSED" and _control("Effective-Date") == "PENDING"
+            assert "4.5.0 is PROPOSED (MINOR)" in re.sub(r"\s+", " ", _agents()[:6000])
+    else:
+        assert re.search(r"APPROVE_AGENTS_POLICY_4_5_0 \d+ [0-9a-f]{7,40}", m.group(2))
+
+
+def test_4_4_1_patch_row_is_recorded():
+    assert re.search(r"^\| 4\.4\.1 \| 2026-10-10 \| ACTIVE on merge \| PATCH \|", _agents(), re.M)
+
+
+def test_23_19_makes_the_standard_mandatory_and_cites_its_causes():
+    m = re.search(r"^## 23\.19 .*?(?=^---$)", _agents(), re.M | re.S)
+    assert m, "§23.19 missing"
+    body = re.sub(r"\s+", " ", m.group(0))
+    assert "N8N_ONBOARDING_STANDARD.md`, and it is mandatory" in body
+    assert "config/n8n_health_contracts.json" in body and "check_n8n_health_contracts.py" in body
+    assert "check_n8n_relay_contract.py" in body and '"deletedAt" IS NULL' in body
+    bullets = [b for b in re.split(r"\n- ", m.group(0))[1:]]
+    assert len(bullets) == 3 and all("*Cause (§20):" in b for b in bullets)
+    assert "grants nothing" in body
