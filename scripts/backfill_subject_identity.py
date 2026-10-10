@@ -34,6 +34,22 @@ a lookup failure the run stops rather than continuing to write worthless answers
 
     python3 scripts/backfill_subject_identity.py --all                 # dry run
     python3 scripts/backfill_subject_identity.py --all --add-columns --apply
+    python3 scripts/backfill_subject_identity.py --all --apply --dry-run   # dry run (wins)
+
+LANE (cron L926, ``--all --apply``): identity-sweep-stage0.
+
+--dry-run wins over --apply (and over --add-columns): ``apply`` is computed once as
+``args.apply and not args.dry_run`` and every UPDATE / ALTER / commit is behind it; a dry run's
+session is also READ ONLY at the server (lane_last_receipt.enforce_readonly). A run without --apply
+is the same dry run. A dry run prints one DRY-RUN report line (symbols that would resolve per table,
+topics, columns that would be added) and never writes the lane receipt.
+
+A real (--apply) run writes <state_root>/data/runtime/identity-sweep-stage0_last.json
+(LaneRunReceipt@v1: rows_stamped / topic_rows / unresolvable_rows / symbols_resolved per run; ok_at only
+on success). Exit codes: 0 = ran (zero rows stamped is a finding -- it is the usual yield -- and still
+0); 1 = the run failed: DB unavailable, or the registry could not be read (REGISTRY_UNREADABLE, which
+stops the run rather than stamp UNRESOLVED), or any other crash -- the receipt is written ``failed``
+and the error re-raised; 2 = usage error (no --all / --table).
 """
 from __future__ import annotations
 
@@ -72,6 +88,16 @@ IDENTITY_COLUMNS = (
 RANK = {"CONFIRMED": 3, "CANDIDATE": 2, "UNRESOLVED": 1, None: 0, "": 0}
 
 BATCH = int(os.getenv("IDENTITY_BACKFILL_BATCH", "2000"))
+
+LANE_ID = "identity-sweep-stage0"
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.backfill_subject_identity
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 #: SubjectIdentityBackfill@v1 is a run receipt, and nothing reads it yet. Its
 #: consumer is stage 1 of docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md — the
@@ -239,54 +265,89 @@ def backfill(cur, table: str, symbol_col: str, *, apply: bool, limit: int | None
     return {"table": table, **counts}
 
 
-def main() -> int:
+def _totals(results: list[dict]) -> dict:
+    keys = ("symbols_seen", "resolved", "unresolved", "not_applicable", "rows_stamped",
+            "topics", "topic_rows", "unresolvable_rows")
+    out = {k: sum(int(r.get(k) or 0) for r in results) for k in keys}
+    out["tables"] = len(results)
+    out["tables_skipped"] = sorted(r["table"] for r in results if r.get("skipped"))
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--table", action="append", choices=sorted(TARGETS))
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--add-columns", action="store_true")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="report only; wins over --apply")
     ap.add_argument("--limit", type=int)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     tables = sorted(TARGETS) if args.all else (args.table or [])
     if not tables:
         ap.error("pass --all or --table <name>")
 
-    conn = _db()
-    cur = conn.cursor()
-    print(f"Stage 0 identity backfill — apply={args.apply} tables={len(tables)}")
-    results = []
-    for t in tables:
-        added = add_columns(cur, t, apply=args.apply and args.add_columns) if args.add_columns else []
-        if added:
-            print(f"  {t}: {'added' if args.apply else 'would add'} {', '.join(added)}")
-        if args.apply:
-            conn.commit()
-        res = backfill(cur, t, TARGETS[t], apply=args.apply, limit=args.limit)
-        if args.apply:
-            conn.commit()
-        if not res.get("skipped") and not args.limit:
-            # Only on a full pass. Under --limit the remainder has not actually been
-            # examined, and marking it UNRESOLVABLE would be a lie the next run
-            # inherits.
-            res.update(classify_remainder(cur, t, TARGETS[t], apply=args.apply))
-            if args.apply:
+    # AGENTS.md §6: one decision, made before the connection opens; every write below is behind it.
+    apply = bool(args.apply and not args.dry_run)
+    started = datetime.now(timezone.utc).isoformat()
+    results: list[dict] = []
+    added_by_table: dict[str, list[str]] = {}
+    try:
+        conn = _db()
+        if not apply:
+            _receipt_lib().enforce_readonly(conn)
+        cur = conn.cursor()
+        print(f"Stage 0 identity backfill — apply={apply} tables={len(tables)}")
+        for t in tables:
+            added = add_columns(cur, t, apply=apply) if args.add_columns else []
+            if added:
+                added_by_table[t] = added
+                print(f"  {t}: {'added' if apply else 'would add'} {', '.join(added)}")
+            if apply:
                 conn.commit()
-        results.append(res)
-        if res.get("skipped"):
-            print(f"  {t}: SKIPPED — {res['skipped']}")
-        else:
-            print(f"  {t}: symbols={res['symbols_seen']} resolved={res['resolved']} "
-                  f"unresolved={res['unresolved']} n/a={res['not_applicable']} "
-                  f"rows_stamped={res['rows_stamped']}"
-                  + (f" | topics={res.get('topics', 0)} topic_rows={res.get('topic_rows', 0)}"
-                     f" unresolvable={res.get('unresolvable_rows', 0)}"
-                     if "topics" in res else ""))
-    conn.close()
+            res = backfill(cur, t, TARGETS[t], apply=apply, limit=args.limit)
+            if apply:
+                conn.commit()
+            if not res.get("skipped") and not args.limit:
+                # Only on a full pass. Under --limit the remainder has not actually been
+                # examined, and marking it UNRESOLVABLE would be a lie the next run
+                # inherits.
+                res.update(classify_remainder(cur, t, TARGETS[t], apply=apply))
+                if apply:
+                    conn.commit()
+            results.append(res)
+            if res.get("skipped"):
+                print(f"  {t}: SKIPPED — {res['skipped']}")
+            else:
+                print(f"  {t}: symbols={res['symbols_seen']} resolved={res['resolved']} "
+                      f"unresolved={res['unresolved']} n/a={res['not_applicable']} "
+                      f"rows_stamped={res['rows_stamped']}"
+                      + (f" | topics={res.get('topics', 0)} topic_rows={res.get('topic_rows', 0)}"
+                         f" unresolvable={res.get('unresolvable_rows', 0)}"
+                         if "topics" in res else ""))
+        conn.close()
+    except Exception as exc:
+        print(f"Stage 0 identity backfill FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
+        if apply:
+            _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                              script="backfill_subject_identity.py", summary=_totals(results),
+                                              error=f"{type(exc).__name__}: {exc}")
+            raise
+        return 1
     import json
     print("RESULT: " + json.dumps({"schema": "SubjectIdentityBackfill@v1",
                                   "authority": "READ_ONLY_ADVISORY",
                                   "model_calls": 0, "tables": results}, default=str))
+    totals = _totals(results)
+    if not apply:
+        _receipt_lib().dry_run_report(LANE_ID, {**totals, "would_add_columns": added_by_table}, would_write=[
+            "UPDATE <table> SET subject_guid/issuer_guid/identity_status for resolved symbols x resolved",
+            "UPDATE <table> topic subject_guid x topics; identity_status=UNRESOLVABLE for the remainder"
+            " (full pass only)"])
+        return 0
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                                      script="backfill_subject_identity.py", summary=totals)
     return 0
 
 

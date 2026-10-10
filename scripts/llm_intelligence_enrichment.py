@@ -13,6 +13,24 @@ Usage:
     .venv/bin/python scripts/llm_intelligence_enrichment.py --section portfolio_risk
 
 Schedule: Cron at 7:20 AM weekdays (after pipeline, before morning brief)
+
+Lane llm-intelligence-enrichment (cron L184/L185/L186 -- one lane, three identical lines, no args).
+With --section (cron L600's llm_synth_heavy loop, registry lane llm-intelligence-enrichment-section)
+the receipt goes to that lane id instead, so a single-section run never overwrites the full run's.
+
+--dry-run (AGENTS.md §6): reads the same inputs and builds every prompt, then returns BEFORE
+_llm_generate in each section, so no governed cloud lane (paid) is reachable; ensure_cache_table
+(CREATE TABLE + commit) and _save_cache (INSERT/UPSERT) are not reached either, and the session is
+READ ONLY at the server (lane_last_receipt.enforce_readonly). It prints one DRY-RUN report line
+(sections with prompt sizes, sections with no input) and never writes the lane receipt.
+
+A real run writes <state_root>/data/runtime/llm-intelligence-enrichment_last.json (LaneRunReceipt@v1;
+ok_at only on success). Exit codes: 0 = ran (a content-gate reject keeps the prior cache and is not a
+failure; a section with no input is not a failure); 1 = the run failed: the DB connection could not be
+opened, or sections raised and NONE produced content (e.g. no governed cloud lane available ->
+CLOUD_GENERATION_FAILED_CLOSED in every section that had input; a section with no input returns
+nothing without raising and is not counted either way); 2 = usage error (unknown --section). One failed section among
+several is reported in the receipt (``errors``) and does not fail the run.
 """
 import argparse
 import json
@@ -31,6 +49,27 @@ load_dotenv(PROJECT_ROOT / ".env")
 from llm_content_quality import is_valid_prose, extract_prose  # noqa: E402
 
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+
+LANE_ID = "llm-intelligence-enrichment"
+#: --section runs (cron L600 llm_synth_heavy loop) are a separate registry lane; their receipt must not
+#: overwrite the all-sections lane's. Mapping: no --section -> LANE_ID; --section X -> LANE_ID_SECTION.
+LANE_ID_SECTION = "llm-intelligence-enrichment-section"
+#: per-process run bookkeeping read by main(): sections saved / rejected by the content gate, and the
+#: dry-run plan (section -> what would be sent to the LLM). Reset by main().
+_RUN: dict = {"saved": [], "rejected": [], "dry_plan": {}}
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.llm_intelligence_enrichment
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _note_dry(section: str, prompt: str, **extra) -> None:
+    """Dry run only: record what the LLM call would have been sent (prompt size, inputs). Writes nothing."""
+    _RUN["dry_plan"][section] = {"prompt_chars": len(prompt), **extra}
 
 
 def _get_conn():
@@ -69,6 +108,7 @@ def _save_cache(conn, section: str, content: str, metadata: dict = None) -> bool
     prose = extract_prose(content)
     if not is_valid_prose(prose):
         print(f"  [{section}] REJECTED invalid prose (chars={len(prose)}) — prior cache retained")
+        _RUN["rejected"].append(section)
         return False
     cur = conn.cursor()
     meta = dict(metadata or {})
@@ -83,6 +123,7 @@ def _save_cache(conn, section: str, content: str, metadata: dict = None) -> bool
             generated_at = NOW()
     """, (section, prose, json.dumps(meta, default=str)))
     conn.commit()
+    _RUN["saved"].append(section)
     return True
 
 
@@ -116,6 +157,7 @@ Use the exact unprotected count {len(no_stop)} — do not invent a different num
 
     if dry_run:
         print(f"[portfolio_risk] Prompt: {len(prompt)} chars")
+        _note_dry("portfolio_risk", prompt, positions=len(positions), unprotected=len(no_stop))
         return ""
 
     result = _llm_generate(prompt)
@@ -174,6 +216,7 @@ Format as numbered suggestions, each 1-2 sentences."""
 
     if dry_run:
         print(f"[rebalance] Prompt: {len(prompt)} chars")
+        _note_dry("rebalance_suggestions", prompt, positions=len(positions))
         return ""
 
     result = _llm_generate(prompt, timeout=180)
@@ -220,6 +263,7 @@ Write a concise recovery watch assessment. Be specific about symbols."""
 
     if dry_run:
         print(f"[recovery] Prompt: {len(prompt)} chars")
+        _note_dry("recovery_analysis", prompt, items=len(items))
         return ""
 
     result = _llm_generate(prompt)
@@ -266,6 +310,7 @@ Write a professional morning briefing paragraph. No bullet points — flowing pr
 
     if dry_run:
         print(f"[morning] Prompt: {len(prompt)} chars")
+        _note_dry("morning_synthesis", prompt, news=len(news), social=len(social))
         return ""
 
     result = _llm_generate(prompt)
@@ -307,6 +352,7 @@ Format: SYMBOL: thesis sentence"""
 
     if dry_run:
         print(f"[prospects] Prompt: {len(prompt)} chars, {len(prospects)} symbols")
+        _note_dry("prospect_narratives", prompt, prospects=len(prospects))
         return ""
 
     result = _llm_generate(prompt)
@@ -342,16 +388,12 @@ def ensure_cache_table(conn):
     conn.commit()
 
 
-def main():
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="LLM Intelligence Enrichment")
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="build prompts and report; no LLM call, no cache write, no receipt")
     parser.add_argument("--section", help="Run only one section")
-    args = parser.parse_args()
-
-    print(f"[llm_enrichment] Starting — {datetime.now().isoformat()}")
-
-    conn = _get_conn()
-    ensure_cache_table(conn)
+    args = parser.parse_args(argv)
 
     sections = {
         "portfolio_risk": generate_portfolio_risk,
@@ -360,24 +402,87 @@ def main():
         "morning_synthesis": generate_morning_synthesis,
         "prospect_narratives": generate_prospect_narratives,
     }
+    if args.section and args.section not in sections:
+        print(f"Unknown section: {args.section}. Available: {list(sections.keys())}")
+        return 2
+    selected = {args.section: sections[args.section]} if args.section else sections
+    lane = LANE_ID_SECTION if args.section else LANE_ID
 
-    if args.section:
-        if args.section in sections:
-            sections[args.section](conn, dry_run=args.dry_run)
-        else:
-            print(f"Unknown section: {args.section}. Available: {list(sections.keys())}")
+    _RUN.update(saved=[], rejected=[], dry_plan={})
+    started = datetime.now().astimezone().isoformat()
+    print(f"[llm_enrichment] Starting — {datetime.now().isoformat()}")
+
+    try:
+        conn = _get_conn()
+    except Exception as exc:
+        print(f"[llm_enrichment] DB connection failed: {type(exc).__name__}")
+        if not args.dry_run:
+            _receipt_lib().write_lane_receipt(lane, ok=False, exit_code=1, started_at=started,
+                                              script="llm_intelligence_enrichment.py",
+                                              error=f"{type(exc).__name__}: db connect")
+        return 1
+
+    if args.dry_run:
+        # AGENTS.md §6: no DDL, no upsert, no LLM call is reachable from here; the server refuses writes too.
+        _receipt_lib().enforce_readonly(conn)
     else:
-        for name, fn in sections.items():
-            try:
-                print(f"  [{name}] Running...")
-                fn(conn, dry_run=args.dry_run)
-                time.sleep(2)
-            except Exception as e:
-                print(f"  [{name}] Error: {e}")
+        try:
+            ensure_cache_table(conn)
+        except Exception as exc:
+            _receipt_lib().write_lane_receipt(lane, ok=False, exit_code=1, started_at=started,
+                                              script="llm_intelligence_enrichment.py",
+                                              error=f"{type(exc).__name__}: ensure_cache_table")
+            raise
 
-    conn.close()
+    errors: dict = {}
+    produced: list = []  # sections that returned content (new generation or the retained prior)
+    for name, fn in selected.items():
+        try:
+            print(f"  [{name}] Running...")
+            if fn(conn, dry_run=args.dry_run):
+                produced.append(name)
+            if not args.dry_run and len(selected) > 1:
+                time.sleep(2)
+        except Exception as e:
+            print(f"  [{name}] Error: {e}")
+            errors[name] = type(e).__name__
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+    try:
+        conn.close()
+    except Exception:
+        pass
+    # Failed = sections raised and none produced anything. A section with no input (no active recovery
+    # items, no prospects) returns "" without raising and is neither work done nor a failure. In a dry
+    # run, a planned section counts as produced.
+    failed = bool(errors) and not (produced or _RUN["dry_plan"])
+    rc = 1 if failed else 0
+
+    if args.dry_run:
+        plan = _RUN["dry_plan"]
+        _receipt_lib().dry_run_report(lane, {
+            "sections_run": list(selected),
+            "would_call_llm": sorted(plan),
+            "llm_calls_would_make": len(plan),
+            "no_input": sorted(n for n in selected if n not in plan and n not in errors),
+            "plan": plan,
+            "errors": errors,
+            "exit_would_be": rc,
+        }, would_write=[f"llm_intelligence_cache section={n} (upsert, if prose passes the gate)" for n in sorted(plan)])
+        print(f"[llm_enrichment] DRY-RUN complete — {datetime.now().isoformat()}")
+        return rc
+
+    _receipt_lib().write_lane_receipt(lane, ok=not failed, exit_code=rc, started_at=started,
+                                      script="llm_intelligence_enrichment.py",
+                                      summary={"sections_run": len(selected), "saved": list(_RUN["saved"]),
+                                               "rejected_prior_kept": list(_RUN["rejected"]),
+                                               "errors": errors})
     print(f"[llm_enrichment] Complete — {datetime.now().isoformat()}")
+    return rc
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
