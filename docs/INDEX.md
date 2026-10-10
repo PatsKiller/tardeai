@@ -1428,10 +1428,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
 | `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `902770aafb9a` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
-| `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-09 | review_required | OK | `8e42997e9417` |
+| `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `097ee87ad4e0` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `da2dacdebcd3` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |
