@@ -9,17 +9,40 @@ when samples >= MIN_SAMPLES). NEVER mutates catalyst_events, prices, trading, or
 
   python3 scripts/catalyst_calibration.py            # compute + write calibration JSON
   python3 scripts/catalyst_calibration.py --dry-run  # print, don't write
+
+Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L408):
+- ``--dry-run`` runs its one SELECT on a READ ONLY session and returns before the output file and the
+  receipt; it names the file it would have written.
+- The output resolves to the SERVED data/runtime (persistent root first) via the resolution layer,
+  not ``Path(__file__)``-relative (same file today: the release symlinks data/runtime there).
+- A real run writes data/runtime/catalyst_calibration_last.json (LaneRunReceipt@v1, ok_at only on
+  success); a DB error still exits non-zero. Zero settled catalysts is a finding, not a failure.
 """
 import os, sys, json
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "data" / "runtime" / "catalyst_calibration.json"
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+
+def _out_path() -> Path:
+    """Served data/runtime/catalyst_calibration.json (persistent root first; AGENTS.md §9.4)."""
+    try:
+        from lib.persistent_state_root import resolve_durable_dir
+
+        return resolve_durable_dir("data/runtime", ROOT) / "catalyst_calibration.json"
+    except Exception:  # noqa: BLE001 -- resolution layer unavailable: the code tree (old behaviour)
+        return ROOT / "data" / "runtime" / "catalyst_calibration.json"
+
+
+OUT = _out_path()
 SETTLE_DAYS = 2          # forward window to measure realized move
 LOOKBACK_DAYS = 120      # history window of catalysts to calibrate on
 MIN_SAMPLES = 10         # per-type minimum before a multiplier is trusted
-for ln in (ROOT / ".env").read_text().splitlines():
+_ENV = ROOT / ".env"
+for ln in (_ENV.read_text().splitlines() if _ENV.exists() else []):  # absent in CI / a bare checkout
     if "=" in ln and not ln.strip().startswith("#"):
         k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 import psycopg2
@@ -31,9 +54,40 @@ def _db():
                             password=os.getenv("DB_PASSWORD"))
 
 
-def main():
-    dry = "--dry-run" in sys.argv
-    c = _db(); cur = c.cursor()
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    dry = "--dry-run" in argv
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    started_at = now_iso()
+    if dry:
+        out = compute(readonly=True)
+        print(json.dumps(out, indent=2))
+        print(f"[dry-run] would write {OUT} ({out['total_settled_catalysts']} settled catalysts); nothing written")
+        return 0
+    try:
+        out = compute()
+        OUT.parent.mkdir(parents=True, exist_ok=True)
+        OUT.write_text(json.dumps(out, indent=2))
+    except Exception as exc:
+        write_receipt("catalyst_calibration", ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
+    trusted = sum(1 for v in out["by_type"].values() if v["trusted"])
+    print(f"wrote {OUT}  ({out['total_settled_catalysts']} settled catalysts, {trusted} trusted types)")
+    write_receipt("catalyst_calibration", ok=True, started_at=started_at,
+                  summary={"output": str(OUT), "settled_catalysts": out["total_settled_catalysts"],
+                           "trusted_types": trusted})
+    return 0
+
+
+def compute(readonly: bool = False) -> dict:
+    """READ ONLY on the DB: one SELECT, aggregated in Python. Writes nothing."""
+    c = _db()
+    if readonly:
+        from lib.lane_last_receipt import enforce_readonly
+
+        enforce_readonly(c)  # the server refuses any write (AGENTS.md §6)
+    cur = c.cursor()
     # settled catalysts with a stored direction; realized fwd return from daily-ish bars
     cur.execute(f"""
         WITH cat AS (
@@ -85,13 +139,8 @@ def main():
            "settle_days": SETTLE_DAYS, "lookback_days": LOOKBACK_DAYS, "min_samples": MIN_SAMPLES,
            "total_settled_catalysts": len(rows), "dropped_as_data_error": dropped, "credible_samples": len(rows)-dropped,
            "by_type": dict(sorted(by_type.items(), key=lambda kv: -kv[1]["samples"]))}
-    if dry:
-        print(json.dumps(out, indent=2))
-    else:
-        OUT.parent.mkdir(parents=True, exist_ok=True)
-        OUT.write_text(json.dumps(out, indent=2))
-        print(f"wrote {OUT}  ({len(rows)} settled catalysts, {sum(1 for v in by_type.values() if v['trusted'])} trusted types)")
+    return out
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

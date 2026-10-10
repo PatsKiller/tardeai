@@ -8,6 +8,14 @@ Usage:
     .venv/bin/python3 scripts/holdings_llm_refresh.py --dry-run
     .venv/bin/python3 scripts/holdings_llm_refresh.py --run --limit 15
     .venv/bin/python3 scripts/holdings_llm_refresh.py --run --symbol LMT
+
+Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L383 --run --limit 50):
+- ``--dry-run`` runs on a READ ONLY session and returns from ``refresh_one`` before any fetch,
+  governed-cloud (paid) call, UPDATE or DecisionPayload emit; it reports the symbols it would refresh.
+- holdings.json is read from the SERVED state dir (persistent root first), not the checkout copy.
+- A real ``--run`` writes data/runtime/holdings_llm_refresh_last.json (LaneRunReceipt@v1, ok_at only
+  on success) and exits 1 when it had candidates and refreshed none (lane dead). Per-symbol
+  parse_error/empty results are findings, counted in the receipt, not a failed run.
 """
 import argparse
 import json
@@ -52,6 +60,16 @@ def get_db():
     )
 
 
+def _holdings_path() -> Path:
+    """The SERVED holdings.json (persistent root first), not a checkout copy (AGENTS.md §9.4)."""
+    try:
+        from lib.persistent_state_root import portfolio_state_write_targets
+
+        return portfolio_state_write_targets(PROJECT_ROOT)[0] / "holdings.json"
+    except Exception:  # noqa: BLE001 -- resolution layer unavailable: the code tree (old behaviour)
+        return PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+
+
 def get_holdings(conn):
     """Load current holdings from canonical holdings.json.
 
@@ -59,7 +77,7 @@ def get_holdings(conn):
     spent months assessing an April portfolio (long-sold positions in, all Fidelity positions
     missing). Retired 2026-07-03; holdings.json is the source of truth.
     """
-    path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    path = _holdings_path()
     if not path.exists():
         return []
     data = json.loads(path.read_text())
@@ -296,16 +314,21 @@ def refresh_one(conn, holding, dry_run=False):
         return {'symbol': symbol, 'status': 'error', 'error': str(e)}
 
 
-def main():
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Holdings LLM health refresh")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--run", action="store_true")
     parser.add_argument("--limit", type=int, default=15)
     parser.add_argument("--symbol", type=str)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
+    from lib.lane_last_receipt import enforce_readonly, now_iso, write_receipt
+
+    started_at = now_iso()
     conn = get_db()
+    if args.dry_run:
+        enforce_readonly(conn)  # the server refuses any write (AGENTS.md §6)
     try:
         holdings = get_holdings(conn)
         log.info(f"Found {len(holdings)} stock holdings")
@@ -322,7 +345,7 @@ def main():
         refreshed = sum(1 for r in results if r.get('status') == 'refreshed')
         errors = sum(1 for r in results if r.get('status') in ('error', 'parse_error', 'empty'))
 
-        print(f"\nHoldings LLM Refresh")
+        print("\nHoldings LLM Refresh")
         print(f"{'=' * 40}")
         print(f"  Holdings:  {len(holdings)}")
         print(f"  Refreshed: {refreshed}")
@@ -331,10 +354,27 @@ def main():
             h = r.get('health', r.get('status', '?'))
             a = r.get('action', '')
             print(f"  {r['symbol']}: {h} {a}")
-
+        if args.dry_run:
+            print(f"  [dry-run] would call the governed cloud lane for {len(candidates)} symbol(s) and "
+                  f"UPDATE watchlist_items for each; nothing written")
+            return 0
+        statuses: dict = {}
+        for r in results:
+            statuses[r.get("status", "?")] = statuses.get(r.get("status", "?"), 0) + 1
+        ok = not candidates or refreshed > 0
+        write_receipt("holdings_llm_refresh", ok=ok, started_at=started_at,
+                      summary={"holdings": len(holdings), "candidates": len(candidates),
+                               "refreshed": refreshed, "errors": errors, "statuses": statuses},
+                      error=None if ok else f"0/{len(candidates)} refreshed")
+        return 0 if ok else 1
+    except Exception as exc:
+        if not args.dry_run:
+            write_receipt("holdings_llm_refresh", ok=False, started_at=started_at,
+                          error=f"{type(exc).__name__}: {exc}")
+        raise
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

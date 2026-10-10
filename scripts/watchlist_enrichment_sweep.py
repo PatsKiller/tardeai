@@ -13,7 +13,12 @@ computations (no new indicators):
 HARD: never reads/writes scalp screeners; never writes holdings.json; idempotent; fail-closed
 (enrichment failure → leave prior values, mark nothing fake, log). Runs under the app role.
 
-  python3 scripts/watchlist_enrichment_sweep.py --once [--limit N]
+  python3 scripts/watchlist_enrichment_sweep.py --once [--limit N] [--dry-run]
+
+--dry-run reads the selection and the CACHED enrichment only: no Finviz fetch (enrich_tickers), no yfinance
+price fallback and its market_quotes backfill, no watchlist_items UPDATE, no ticker_prices sync, no receipt.
+A real run writes <state_root>/data/runtime/watchlist-enrichment-sweep_last.json (ok_at only on success) and
+exits 1 when symbols were selected but none could be updated.
 """
 from __future__ import annotations
 import argparse, sys
@@ -35,7 +40,19 @@ def _conn():
     return _get_conn()
 
 
-def _price(conn, symbol):
+LANE_ID = "watchlist-enrichment-sweep"
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.watchlist_enrichment_sweep
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _price(conn, symbol, *, allow_fetch: bool = True):
+    """Fresh market_quotes price; else (allow_fetch only) yfinance + market_quotes backfill."""
     try:
         cur = conn.cursor()
         cur.execute("""SELECT price, day_change_pct FROM market_quotes WHERE symbol=%s
@@ -46,6 +63,8 @@ def _price(conn, symbol):
             return float(r[0]), (float(r[1]) if r[1] is not None else None)
     except Exception:
         pass
+    if not allow_fetch:  # dry run: never fetch, never backfill (AGENTS.md §6)
+        return None, None
     # Fallback: no FRESH market_quotes row (e.g. a brand-new IPO the Alpaca/finviz repricer lags on) →
     # pull from yfinance and backfill market_quotes so downstream stays current.
     try:
@@ -89,14 +108,17 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
         return {"total": 0, "enriched": 0, "symbols": []}
 
     conn = _conn()
+    if dry:
+        _receipt_lib().enforce_readonly(conn)
     cur = conn.cursor()
     enriched = 0
     for i in range(0, len(syms), BATCH):
         batch = syms[i:i + BATCH]
-        try:
-            enrich_tickers(batch, project_root=str(PROJECT_ROOT))
-        except Exception as e:
-            print(f"  [sweep] enrich_tickers batch failed (non-fatal): {str(e)[:80]}")
+        if not dry:  # a dry run reads the cache only: no Finviz Elite fetch, no cache write
+            try:
+                enrich_tickers(batch, project_root=str(PROJECT_ROOT))
+            except Exception as e:
+                print(f"  [sweep] enrich_tickers batch failed (non-fatal): {str(e)[:80]}")
         for sym in batch:
             try:
                 tech = get_enriched(sym, project_root=str(PROJECT_ROOT)) or {}
@@ -104,7 +126,7 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
                 sma50, sma200 = _num(tech.get("sma50_pct")), _num(tech.get("sma200_pct"))
                 trend = _trend_label(sma50, sma200)
                 floatm, rvol = _num(tech.get("float_m")), _num(tech.get("rvol"))
-                price, chg = _price(conn, sym)
+                price, chg = _price(conn, sym, allow_fetch=not dry)
                 if price is not None:
                     tech["price"] = price
                 band = rsi_band(rsi) if rsi is not None else None
@@ -125,6 +147,7 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
 
                 if dry:
                     print(f"  {sym}: rsi={rsi} trend={trend} price={price} score={score}({score_kind}) {advisory}")
+                    enriched += 1  # would-update count (the UPDATE below is unreachable from a dry run)
                     continue
                 cur.execute("""UPDATE watchlist_items SET
                                  rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
@@ -151,7 +174,10 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False) -> dict:
 
 
 def sweep(limit=None, dry=False):
-    conn = _conn(); cur = conn.cursor()
+    conn = _conn()
+    if dry:
+        _receipt_lib().enforce_readonly(conn)
+    cur = conn.cursor()
     # Two-tier selection so the VISIBLE high-rank cards stay fresh (under the 1h stale flag) without
     # starving the long tail. The research pipeline moves items active→researched within hours; the
     # watchlist UI shows both, so enrich both.
@@ -201,18 +227,39 @@ def sweep(limit=None, dry=False):
 
     result = enrich_symbols(symbols, dry=dry)
     enriched = result["enriched"]
-    print(f"[sweep] enriched {enriched}/{len(symbols)} active watchlist items")
+    print(f"[sweep] {'would enrich' if dry else 'enriched'} {enriched}/{len(symbols)} active watchlist items")
     return {"total": len(symbols), "enriched": enriched}
 
 
-def main():
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--dry-run", action="store_true")
-    a = ap.parse_args()
-    sweep(limit=a.limit, dry=a.dry_run)
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        res = sweep(limit=a.limit, dry=True)
+        _receipt_lib().dry_run_report(LANE_ID, {"selected": res["total"], "would_update": res["enriched"]},
+                                      would_write=["watchlist_items (rsi/trend/score/price...)",
+                                                   "data/state/ticker_enrichment_cache.json (Finviz fetch)",
+                                                   "market_quotes (yfinance fallback)", "ticker_prices"])
+        return 0
+    from datetime import datetime, timezone
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        res = sweep(limit=a.limit, dry=False)
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="watchlist_enrichment_sweep.py",
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
+    # selected symbols but none updated = every per-symbol step failed; an empty watchlist is not a failure
+    rc = 1 if res["total"] and not res["enriched"] else 0
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
+                                      script="watchlist_enrichment_sweep.py",
+                                      summary={"selected": res["total"], "enriched": res["enriched"]})
+    return rc
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -8,6 +8,8 @@ ADVISORY/READ-ONLY. One row per symbol (actionable + held universe) combining:
   - Internal-vs-professional divergence (fused_signals direction vs Street consensus): aligned/mixed/divergent/unavailable.
   - confidence, stale flag, raw provenance.
 Writes data/runtime/pro_analyst_pills_latest.json (+ coverage by tier). No scoring/trade/holdings change.
+
+--dry-run: same reads on a READ ONLY session, prints the summary, returns before the file write.
 """
 import os, sys, json
 from datetime import datetime, timezone
@@ -29,8 +31,15 @@ def _db():
                             password=os.getenv("DB_PASSWORD"), cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def main():
-    c = _db(); cur = c.cursor()
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    dry_run = "--dry-run" in argv
+    c = _db()
+    if dry_run:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(c)  # dry run: the server refuses any write (AGENTS.md §6)
+    cur = c.cursor()
     # universe with tier membership
     cur.execute("""
         SELECT symbol,
@@ -161,6 +170,11 @@ def main():
            "note": "Yahoo = authoritative consensus (1-5 mean/key/targets). Finviz rating is target-distance (NOT used as rating; target only). "
                    "Upgrade/downgrade headlines are EVENT pills. Advisory; no scoring/trade change.",
            "pills": sorted(pills, key=lambda p: (not p["has_professional_coverage"], p["symbol"]))}
+    if dry_run:  # returns before the read-model write (AGENTS.md §6)
+        print(json.dumps({"dry_run": True, "would_write": str(OUT), "symbols": len(pills),
+                          "with_consensus": sum(1 for p in pills if p["has_professional_coverage"])},
+                         indent=2))
+        return 0
     OUT.parent.mkdir(parents=True, exist_ok=True)
     # ATOMIC write — never leave readers (the watchlist analyst-rating layer) seeing a half-written/empty
     # file during the daily rebuild (that briefly blanked all Strong-Buy/Buy ratings).
@@ -172,7 +186,8 @@ def main():
     print(json.dumps({"symbols": len(pills), "coverage_by_tier": coverage,
                       "with_consensus": sum(1 for p in pills if p["has_professional_coverage"]),
                       "divergent": sum(1 for p in pills if p["divergence"] == "divergent")}, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

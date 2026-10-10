@@ -472,6 +472,9 @@ def review_trade(conn, trade, tier, dry_run=False):
 def run_tier(tier, trade_id=None, dry_run=False):
     """Run a specific review tier."""
     conn = _get_conn()
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
     cfg = TIER_CONFIG[tier]
 
     if tier == "realtime":
@@ -560,12 +563,53 @@ def run_tier(tier, trade_id=None, dry_run=False):
     return {"tier": tier, "trades_reviewed": len(trades), "results": results}
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
+def run_outcome(result):
+    """(ok, exit_code) for one run. No closed trades is a clean no-op, not a failure; a review the
+    model lane refused (e.g. "manual approval required") or returned empty for IS a failure, so the
+    nightly run stops reporting exit 0 while reviewing nothing (cron:L401, 4/4 runs 10-06..10-09)."""
+    if result.get("error"):
+        return False, 2
+    results = result.get("results") or []
+    failed = sum(1 for r in results if not r.get("success"))
+    if failed:
+        return False, 1
+    return True, 0
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Multi-tier trade reviewer")
     parser.add_argument("--tier", required=True, choices=["realtime", "overnight", "weekly", "monthly"])
     parser.add_argument("--trade-id", type=int, help="Specific trade ID (required for realtime)")
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
-    result = run_tier(args.tier, args.trade_id, args.dry_run)
+    parser.add_argument("--dry-run", action="store_true",
+                        help="build prompts and report; no model call, no DB write (READ ONLY), no receipt")
+    args = parser.parse_args(argv)
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        result = run_tier(args.tier, args.trade_id, args.dry_run)
+    except Exception as exc:
+        if not args.dry_run:
+            _receipt(args.tier, ok=False, exit_code=1, started_at=started_at,
+                     error=f"{type(exc).__name__}: {exc}")
+        raise
+    ok, code = run_outcome(result)
     print(json.dumps(result, indent=2, default=str))
+    if not args.dry_run:
+        results = result.get("results") or []
+        _receipt(args.tier, ok=ok, exit_code=code, started_at=started_at,
+                 error=None if ok else (result.get("error") or "one or more trade reviews failed"),
+                 summary={"tier": args.tier, "trades_reviewed": result.get("trades_reviewed", 0),
+                          "succeeded": sum(1 for r in results if r.get("success")),
+                          "failed": sum(1 for r in results if not r.get("success"))})
+    return code
+
+
+def _receipt(tier, **kw):
+    """Real-run receipt (data/runtime/multi-tier-trade-reviewer-<tier>_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    write_lane_receipt(f"multi-tier-trade-reviewer-{tier}", script="multi_tier_trade_reviewer.py", **kw)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
+    sys.exit(main())

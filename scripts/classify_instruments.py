@@ -8,6 +8,10 @@ symbol_profiles sector/description heuristics (ETF/Fund/Index keywords) → mutu
 (5 letters ending in X, e.g. FCNTX/AMANX) → holdings bucket → default stock. Persists to a new
 symbol_profiles.instrument_type column + writes data/runtime/instrument_types_latest.json for the UI/rotation.
 Read-only re: trading.
+
+--dry-run classifies from the DB + curated universe on a READ ONLY session (no ALTER TABLE, no
+yfinance quoteType fetch, no symbol_profiles upsert, no instrument_types_latest.json write, no receipt;
+AGENTS.md §6). A real run writes data/runtime/classify-instruments_last.json.
 """
 import json
 import re
@@ -25,15 +29,43 @@ _FUND_CODE = re.compile(r"^[A-Z]{4,5}X$")  # mutual-fund tickers usually end in 
 _ETF_KW = ("etf", "ishares", "spdr", "invesco qqq", "vaneck", "select sector", "index fund")
 
 
-def main():
+def _receipt(**kw):
+    """Real-run receipt (data/runtime/classify-instruments_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("classify-instruments", script="classify_instruments.py", **kw)
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    dry_run = "--dry-run" in argv
+    if dry_run:
+        return _run(argv, dry_run=True)
+    from datetime import datetime, timezone
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        rc, summary = _run(argv, dry_run=False)
+    except Exception as exc:  # failed real run: failed receipt (ok_at kept), then exit non-zero
+        _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
+    _receipt(ok=True, started_at=started_at, summary=summary)
+    return rc
+
+
+def _run(argv, dry_run):
     conn = _get_conn()
     cur = conn.cursor()
-    cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS instrument_type text")
-    cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS direction_hint text")
-    cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS expense_ratio numeric")
-    cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS quote_type text")
-    conn.commit()
-    enrich = "--no-fetch" not in sys.argv
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # the server refuses any write (AGENTS.md §6)
+    else:
+        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS instrument_type text")
+        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS direction_hint text")
+        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS expense_ratio numeric")
+        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS quote_type text")
+        conn.commit()
+    enrich = "--no-fetch" not in argv and not dry_run
 
     # 1) curated universe = ground truth
     uni = json.loads(UNIVERSE.read_text()).get("instruments", [])
@@ -123,6 +155,15 @@ def main():
         except Exception as e:
             print("  yfinance enrichment skipped (non-fatal):", str(e)[:80])
 
+    counts = {}
+    for info in cls.values():
+        counts[info["type"]] = counts.get(info["type"], 0) + 1
+    if dry_run:  # returns before the upsert and the runtime JSON write
+        conn.close()
+        print(json.dumps({"ok": True, "dry_run": True, "classified": len(cls), "counts": counts,
+                          "would_write": {"symbol_profiles_rows": len(cls), "file": str(OUT)}}, indent=2))
+        return 0
+
     # persist instrument_type + expense ratio + quote_type back to symbol_profiles
     upd = rejected = 0
     for sym, info in cls.items():
@@ -134,14 +175,12 @@ def main():
         rejected += rcpt.rows_rejected
     conn.commit()
 
-    counts = {}
-    for info in cls.values():
-        counts[info["type"]] = counts.get(info["type"], 0) + 1
     OUT.write_text(json.dumps({"types": {s: i["type"] for s, i in cls.items()},
                                "detail": cls, "counts": counts}, indent=2))
     print(json.dumps({"ok": True, "classified": len(cls), "profile_rows_updated": upd, "profile_rows_rejected": rejected,
                       "counts": counts}, indent=2))
-    return 0
+    return 0, {"classified": len(cls), "profile_rows_updated": upd, "profile_rows_rejected": rejected,
+               "counts": counts}
 
 
 if __name__ == "__main__":

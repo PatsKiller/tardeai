@@ -303,7 +303,10 @@ def test_ensemble_failure_is_visible_in_its_receipt(tmp_path):
     assert out["status"] == "error"
 
 
-def test_curator_main_exits_nonzero_when_the_ensemble_failed(monkeypatch):
+def test_curator_main_exits_nonzero_when_the_ensemble_failed(monkeypatch, tmp_path):
+    # refactor wave 2: a real main() run now writes its lane receipt under the state root -- keep it in tmp
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+
     class _Idle:
         def cursor(self, *a, **k):
             raise RuntimeError("no db in tests")

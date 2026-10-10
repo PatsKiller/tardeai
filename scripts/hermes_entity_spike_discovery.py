@@ -15,6 +15,10 @@ promoted, no broker/execution imports anywhere in this path.
 Usage:
   python3 scripts/hermes_entity_spike_discovery.py --run [--dry-run] [--json]
                                                    [--limit N] [--window-hours H]
+
+--dry-run never reaches inbox.upsert_candidate (entity_spikes.run_discovery checks it before the write) and
+writes no receipt. A real --run writes <state_root>/data/runtime/hermes-entity-spike-discovery_last.json
+(ok_at only on success); a crash writes a failed receipt and exits non-zero. Zero spikes is a finding, exit 0.
 """
 from __future__ import annotations
 
@@ -27,6 +31,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lib.hermes_discovery import entity_spikes  # noqa: E402
+
+LANE_ID = "hermes-entity-spike-discovery"
+
+
+def _receipt_lib():
+    from lib import lane_last_receipt as lr
+    return lr
+
+
+def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
+    """lane_last_receipt.dry_run_report, sent to stderr when stdout carries the script's JSON report."""
+    import contextlib
+    with contextlib.redirect_stdout(sys.stderr) if json_stdout else contextlib.nullcontext():
+        return _receipt_lib().dry_run_report(lane_id, summary, would_write=would_write)
 
 
 def _print_human(report: dict) -> None:
@@ -63,12 +81,32 @@ def main() -> int:
         ap.print_help()
         return 2
 
-    report = entity_spikes.run_discovery(dry_run=args.dry_run, limit=args.limit,
-                                         window_hours=max(1, args.window_hours))
+    if args.dry_run:
+        report = entity_spikes.run_discovery(dry_run=True, limit=args.limit,
+                                             window_hours=max(1, args.window_hours))
+    else:
+        from datetime import datetime, timezone
+        started = datetime.now(timezone.utc).isoformat()
+        try:
+            report = entity_spikes.run_discovery(dry_run=False, limit=args.limit,
+                                                 window_hours=max(1, args.window_hours))
+        except Exception as exc:
+            _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                              script="hermes_entity_spike_discovery.py",
+                                              error=f"{type(exc).__name__}: {exc}")
+            raise
+        _receipt_lib().write_lane_receipt(
+            LANE_ID, ok=True, exit_code=0, started_at=started, script="hermes_entity_spike_discovery.py",
+            summary={k: report.get(k) for k in ("scanned_terms", "spikes_detected", "upserted")})
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
         _print_human(report)
+    if args.dry_run:
+        _dry_report(
+            LANE_ID, {k: report.get(k) for k in ("scanned_terms", "spikes_detected", "would_upsert")},
+            would_write=["discovery inbox (inbox.upsert_candidate)"],
+            json_stdout=args.json)
     return 0
 
 

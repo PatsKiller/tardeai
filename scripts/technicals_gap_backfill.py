@@ -14,7 +14,11 @@ garbage to the LLM protection advisor. This script:
   5. --alert: Telegram report when symbols REMAIN missing after backfill (the "agent that checks
      regularly" — wire via cron)
 
-  python3 scripts/technicals_gap_backfill.py [--alert] [--symbols X,Y]
+  python3 scripts/technicals_gap_backfill.py [--alert] [--symbols X,Y] [--dry-run]
+
+--dry-run lists the missing symbols on a READ ONLY session and returns before yfinance, the
+ticker_snapshot_daily upsert and the --alert send (AGENTS.md §6). A real run writes
+data/runtime/technicals-gap-backfill_last.json. Symbols with no data are a finding (exit 0).
 """
 from __future__ import annotations
 
@@ -81,14 +85,25 @@ def _compute(closes):
     return out
 
 
-def run(symbols=None, alert=False):
+def run(symbols=None, alert=False, dry_run=False):
     from db_adapter import _get_conn
-    conn = _get_conn(); cur = conn.cursor()
+    conn = _get_conn()
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
+    cur = conn.cursor()
     universe = set(s.upper() for s in symbols) if symbols else _held_symbols()
     missing = _missing(cur, universe)
     if not missing:
-        print(json.dumps({"status": "clean", "checked": len(universe), "missing": 0}))
-        return
+        report = {"status": "clean", "checked": len(universe), "missing": 0}
+        print(json.dumps(report))
+        return report
+    if dry_run:  # returns before yfinance, the upsert and the alert
+        report = {"status": "dry_run", "checked": len(universe), "was_missing": len(missing),
+                  "would_backfill": missing, "would_alert": bool(alert)}
+        print(json.dumps(report, indent=1))
+        conn.close()
+        return report
     import yfinance as yf
     from holding_proxies import HOLDING_PROXY_MAP
     filled, dead = [], []
@@ -169,9 +184,37 @@ def _alert(dead):
         pass
 
 
-if __name__ == "__main__":
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--alert", action="store_true")
     ap.add_argument("--symbols")
-    a = ap.parse_args()
-    run(symbols=a.symbols.split(",") if a.symbols else None, alert=a.alert)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="list missing symbols; no yfinance, no upsert, no alert, no receipt")
+    a = ap.parse_args(argv)
+    started_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    try:
+        report = run(symbols=a.symbols.split(",") if a.symbols else None, alert=a.alert, dry_run=a.dry_run)
+    except Exception as exc:
+        if not a.dry_run:  # failed real run: failed receipt (ok_at kept), then exit non-zero
+            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
+    if not a.dry_run:
+        report = report or {}
+        _receipt(ok=True, started_at=started_at,
+                 summary={"checked": report.get("checked"),
+                          "was_missing": report.get("was_missing", report.get("missing", 0)),
+                          "filled": len(report.get("filled") or []),
+                          "no_data": len(report.get("no_data") or [])})
+    return 0
+
+
+def _receipt(**kw):
+    """Real-run receipt (data/runtime/technicals-gap-backfill_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("technicals-gap-backfill", script="technicals_gap_backfill.py", **kw)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

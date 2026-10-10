@@ -8,6 +8,15 @@ agent_recommendation_outcomes, pattern_library.
 Usage:
     .venv/bin/python scripts/proposal_backtest_engine.py --proposal-id 2
     .venv/bin/python scripts/proposal_backtest_engine.py --all-pending
+    .venv/bin/python scripts/proposal_backtest_engine.py --all-pending --dry-run
+
+--dry-run (refactor wave 2): the flag used to be parsed and ignored — every run upserted
+proposal_backtest_snapshots, updated paper_trade_proposals and inserted strategy_backtest_results. Now a dry
+run opens a READ ONLY session and backtest_proposal(..., persist=False) returns before the upsert; the
+strategy_backtest_results insert is not called. Without --dry-run the behaviour is unchanged (callers that
+import backtest_proposal still persist by default). A real --all-pending run writes
+<state_root>/data/runtime/proposal-backtest-engine_last.json (ok_at only on success) and exits 1 when any
+proposal failed to load or persist.
 """
 import argparse
 import json
@@ -21,6 +30,8 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from session13_db import get_conn
 
+LANE_ID = "proposal-backtest-engine"
+
 log = logging.getLogger("backtest_engine")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
@@ -32,8 +43,26 @@ def _safe_float(v, default=None):
         return default
 
 
-def backtest_proposal(conn, proposal_id):
-    """Run local evidence backtest for a single proposal."""
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.proposal_backtest_engine
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
+    """lane_last_receipt.dry_run_report, sent to stderr when stdout carries the script's JSON report."""
+    import contextlib
+    with contextlib.redirect_stdout(sys.stderr) if json_stdout else contextlib.nullcontext():
+        return _receipt_lib().dry_run_report(lane_id, summary, would_write=would_write)
+
+
+def backtest_proposal(conn, proposal_id, *, persist: bool = True):
+    """Run local evidence backtest for a single proposal.
+
+    ``persist=False`` (dry run) returns the computed result before the snapshot upsert / proposal update.
+    ``result["persisted"]`` is True only when the upsert committed."""
     cur = conn.cursor()
 
     # Load proposal
@@ -286,6 +315,14 @@ def backtest_proposal(conn, proposal_id):
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
+    if not persist:
+        # Structural (AGENTS.md §6): the upsert below is not reachable from a dry run. End the read-only
+        # transaction like the live path does (a failed optional query above leaves it aborted, and the next
+        # proposal's SELECT would otherwise fail with InFailedSqlTransaction).
+        conn.rollback()
+        result["persisted"] = False
+        return result
+
     # Upsert into proposal_backtest_snapshots
     try:
         conn.rollback()  # clear any prior aborted transaction
@@ -342,16 +379,18 @@ def backtest_proposal(conn, proposal_id):
             proposal_id,
         ])
         conn.commit()
+        result["persisted"] = True
         log.info(f"  {symbol} (#{proposal_id}): backtest={backtest_quality} samples={sample_size} wr={win_rate}")
     except Exception as e:
         log.warning(f"Failed to persist backtest for {proposal_id}: {e}")
+        result["persisted"] = False
         conn.rollback()
 
     return result
 
 
-def _write_strategy_backtest_result(conn, result):
-    """Session 23C: Also write to strategy_backtest_results table."""
+def _write_strategy_backtest_result(conn, result) -> bool:
+    """Session 23C: Also write to strategy_backtest_results table. Returns True when committed."""
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -373,15 +412,17 @@ def _write_strategy_backtest_result(conn, result):
             json.dumps({"limitations": result.get("limitations", [])}, default=str),
         ])
         conn.commit()
+        return True
     except Exception as e:
         log.warning(f"Failed to write strategy_backtest_results: {e}")
         try:
             conn.rollback()
         except Exception:
             pass
+        return False
 
 
-def main():
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Proposal backtest engine")
     parser.add_argument("--proposal-id", type=int)
     parser.add_argument("--all-pending", action="store_true")
@@ -390,48 +431,83 @@ def main():
     parser.add_argument("--statuses", type=str, help="comma list of statuses to backtest with --all-pending "
                         "(default PENDING,APPROVED_FOR_PAPER_TEST). e.g. EXPIRED to backfill the Expired view.")
     parser.add_argument("--limit", type=int, help="cap number of proposals (backfill batching)")
-    parser.add_argument("--apply", action="store_true", help="Write to DB")
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("--apply", action="store_true", help="Write to DB (the default unless --dry-run)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="READ ONLY session; compute and print, write nothing (wins over --apply)")
+    args = parser.parse_args(argv)
+    dry_run = bool(args.dry_run)
+    lane_run = bool(args.all_pending or args.pending) and not dry_run
+    started = datetime.now(timezone.utc).isoformat()
+    stats: dict = {"processed": 0, "load_errors": 0, "persist_failures": 0}
 
-    conn = get_conn()
     try:
-        if args.all_pending or args.pending:
-            cur = conn.cursor()
-            # Active proposals = PENDING and APPROVED_FOR_PAPER_TEST. The old filter was PENDING-only, so
-            # proposals that moved to approved/paper-test (the ones actually shown + executed) never got a
-            # backtest snapshot — proposal_backtest_snapshots went 34d stale and the card's Backtest field
-            # stayed blank. Cover both active statuses.
-            _ACTIVE = [s.strip().upper() for s in args.statuses.split(",")] if args.statuses \
-                else ['PENDING', 'APPROVED_FOR_PAPER_TEST']
-            _lim = f" LIMIT {int(args.limit)}" if args.limit else ""
-            if args.strategy:
-                cur.execute(f"""SELECT id FROM paper_trade_proposals
-                             WHERE status = ANY(%s) AND strategy_id=%s
-                             ORDER BY created_at DESC{_lim}""", [list(_ACTIVE), args.strategy])
-            else:
-                cur.execute(f"SELECT id FROM paper_trade_proposals WHERE status = ANY(%s) ORDER BY created_at DESC{_lim}",
-                            [list(_ACTIVE)])
-            results = []
-            for (pid,) in cur.fetchall():
-                result = backtest_proposal(conn, pid)
-                if result.get('error'):
-                    log.error(f"  #{pid}: {result['error']}")
+        conn = get_conn()
+        if dry_run:
+            _receipt_lib().enforce_readonly(conn)
+        try:
+            if args.all_pending or args.pending:
+                cur = conn.cursor()
+                # Active proposals = PENDING and APPROVED_FOR_PAPER_TEST. The old filter was PENDING-only, so
+                # proposals that moved to approved/paper-test (the ones actually shown + executed) never got a
+                # backtest snapshot — proposal_backtest_snapshots went 34d stale and the card's Backtest field
+                # stayed blank. Cover both active statuses.
+                _ACTIVE = [s.strip().upper() for s in args.statuses.split(",")] if args.statuses \
+                    else ['PENDING', 'APPROVED_FOR_PAPER_TEST']
+                _lim = f" LIMIT {int(args.limit)}" if args.limit else ""
+                if args.strategy:
+                    cur.execute(f"""SELECT id FROM paper_trade_proposals
+                                 WHERE status = ANY(%s) AND strategy_id=%s
+                                 ORDER BY created_at DESC{_lim}""", [list(_ACTIVE), args.strategy])
                 else:
+                    cur.execute(f"SELECT id FROM paper_trade_proposals WHERE status = ANY(%s) ORDER BY created_at DESC{_lim}",
+                                [list(_ACTIVE)])
+                results = []
+                for (pid,) in cur.fetchall():
+                    result = backtest_proposal(conn, pid, persist=not dry_run)
+                    if result.get('error'):
+                        log.error(f"  #{pid}: {result['error']}")
+                        stats["load_errors"] += 1
+                    else:
+                        if not dry_run:
+                            wrote = _write_strategy_backtest_result(conn, result)  # called as before
+                            stats["persist_failures"] += int(not (result.get("persisted") and wrote))
+                        results.append({"proposal_id": pid, "symbol": result.get("symbol"),
+                                        "quality": result.get("backtest_quality"),
+                                        "samples": result.get("sample_size")})
+                stats["processed"] = len(results)
+                print(json.dumps({"processed": len(results), "dry_run": dry_run, "results": results},
+                                 indent=2, default=str))
+            elif args.proposal_id:
+                result = backtest_proposal(conn, args.proposal_id, persist=not dry_run)
+                if not dry_run and not result.get("error"):
                     _write_strategy_backtest_result(conn, result)
-                    results.append({"proposal_id": pid, "symbol": result.get("symbol"),
-                                    "quality": result.get("backtest_quality"),
-                                    "samples": result.get("sample_size")})
-            print(json.dumps({"processed": len(results), "results": results}, indent=2, default=str))
-        elif args.proposal_id:
-            result = backtest_proposal(conn, args.proposal_id)
-            _write_strategy_backtest_result(conn, result)
-            print(json.dumps(result, indent=2, default=str))
-        else:
-            print("Usage: --proposal-id N or --pending --apply or --strategy swing_breakout --pending --apply")
-    finally:
-        conn.close()
+                print(json.dumps(result, indent=2, default=str))
+                if result.get("error"):
+                    stats["load_errors"] += 1
+            else:
+                print("Usage: --proposal-id N or --pending --apply or --strategy swing_breakout --pending --apply")
+                return 2
+        finally:
+            conn.close()
+    except Exception as exc:
+        if lane_run:
+            _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                              script="proposal_backtest_engine.py", summary=stats,
+                                              error=f"{type(exc).__name__}: {exc}")
+        raise
+
+    rc = 1 if (stats["load_errors"] or stats["persist_failures"]) else 0
+    if dry_run:
+        _dry_report(LANE_ID, stats, would_write=[
+            "proposal_backtest_snapshots (upsert per proposal)",
+            "paper_trade_proposals.backtest_status/backtest_summary/stock_history_summary",
+            "strategy_backtest_results (insert per proposal)"],
+            json_stdout=True)
+    elif lane_run:
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
+                                          script="proposal_backtest_engine.py", summary=stats)
+    return rc
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

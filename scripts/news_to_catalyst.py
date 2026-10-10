@@ -6,7 +6,12 @@ Loads news_articles where no linked catalyst_event exists (matched by title/symb
 classifies catalyst_type via keyword matching, scores using catalyst_type_weights
 from DB, and creates catalyst_events rows.
 
-CLI: python3 scripts/news_to_catalyst.py [--json]
+CLI: python3 scripts/news_to_catalyst.py [--json] [--symbol SYM] [--dry-run]
+
+--dry-run: READ ONLY session, deterministic classification only (no LLM call), prints what would be created;
+the INSERT and commit are unreachable from it. A real run writes the lane receipt
+<state_root>/data/runtime/news-to-catalyst_last.json (ok_at only on success); a crash exits 1 with a failed
+receipt.
 """
 import json, os, sys
 from datetime import datetime
@@ -101,8 +106,28 @@ def _severity_from_weight(weight: float) -> str:
     return "low"
 
 
-def run(as_json: bool = False, *, single_symbol: str | None = None):
+LANE_ID = "news-to-catalyst"
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.news_to_catalyst
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
+    """lane_last_receipt.dry_run_report, sent to stderr when stdout carries the script's JSON report."""
+    import contextlib
+    with contextlib.redirect_stdout(sys.stderr) if json_stdout else contextlib.nullcontext():
+        return _receipt_lib().dry_run_report(lane_id, summary, would_write=would_write)
+
+
+def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: bool = False):
     conn = _get_conn()
+    if dry_run:
+        _receipt_lib().enforce_readonly(conn)
     cur = conn.cursor()
 
     # Load catalyst_type_weights from DB
@@ -168,7 +193,8 @@ def run(as_json: bool = False, *, single_symbol: str | None = None):
                 continue
 
         if _cc:
-            cls = _cc(title, summary, symbol, source=source, allow_llm=(LLM_BUDGET > 0))
+            # a dry run never spends the LLM budget: deterministic classification only
+            cls = _cc(title, summary, symbol, source=source, allow_llm=(LLM_BUDGET > 0 and not dry_run))
             if cls.get("method") == "llm":
                 LLM_BUDGET -= 1
             ctype, severity = cls["catalyst_type"], cls["severity"]
@@ -182,6 +208,11 @@ def run(as_json: bool = False, *, single_symbol: str | None = None):
             severity, confidence, impact = _severity_from_weight(weight), round(weight, 2), round(weight * 10, 1)
             payload = {"news_article_id": nid, "classifier": "legacy"}
 
+        if dry_run:
+            # Structural (AGENTS.md §6): the INSERT below is not reachable from a dry run.
+            created.append({"catalyst_id": None, "news_id": nid, "symbol": symbol,
+                            "catalyst_type": ctype, "severity": severity, "impact_score": impact})
+            continue
         cur.execute("""
             INSERT INTO catalyst_events
                 (symbol, strategy_type, catalyst_type, headline, description,
@@ -209,30 +240,59 @@ def run(as_json: bool = False, *, single_symbol: str | None = None):
             "catalyst_type": ctype, "severity": severity, "impact_score": impact,
         })
 
-    conn.commit()
+    if not dry_run:
+        conn.commit()
     cur.close()
     conn.close()
 
+    verb = "Would create" if dry_run else "Created"
     if as_json:
         print(json.dumps({
-            "created": len(created),
+            "dry_run": dry_run,
+            "candidates": len(rows),
+            "created": 0 if dry_run else len(created),
+            "would_create": len(created) if dry_run else None,
             "skipped": skipped,
             "catalysts": created,
         }, default=str))
     else:
-        print(f"[news_to_catalyst] Created {len(created)} catalyst events from unprocessed news.")
+        print(f"[news_to_catalyst] {verb} {len(created)} catalyst events from unprocessed news.")
         print(f"[news_to_catalyst] Skipped research_directive_slug={skipped['research_directive_slug']} "
               f"not_in_ticker_universe={skipped['not_in_ticker_universe']}")
         for c in created[:20]:
             print(f"  {c['symbol']:>8} | {c['catalyst_type']:<20} | sev={c['severity']:<6} | score={c['impact_score']}")
         if len(created) > 20:
             print(f"  ... and {len(created) - 20} more")
+    return {"candidates": len(rows), "created": 0 if dry_run else len(created),
+            "would_create": len(created) if dry_run else None, "skipped": dict(skipped)}
+
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="news_articles -> catalyst_events")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--symbol")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="READ ONLY session, no LLM, no INSERT; report what would be created")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        summary = run(as_json=a.json, single_symbol=a.symbol, dry_run=True)
+        _dry_report(LANE_ID, summary, would_write=["catalyst_events"],
+            json_stdout=a.json)
+        return 0
+    from datetime import datetime, timezone
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        summary = run(as_json=a.json, single_symbol=a.symbol)
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="news_to_catalyst.py", summary={"symbol": a.symbol},
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                                      script="news_to_catalyst.py", summary=summary)
+    return 0
 
 
 if __name__ == "__main__":
-    _sym = None
-    for i, arg in enumerate(sys.argv):
-        if arg == "--symbol" and i + 1 < len(sys.argv):
-            _sym = sys.argv[i + 1]
-            break
-    run(as_json="--json" in sys.argv, single_symbol=_sym)
+    sys.exit(main())

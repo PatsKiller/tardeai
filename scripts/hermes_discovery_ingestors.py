@@ -566,7 +566,8 @@ def run_scheduled(*, dry_run: bool = False,
             critical_errors.append(f"{name}: {e}")
 
     report["skipped_reasons"] = skipped
-    if critical_errors and len(critical_errors) == sum(enabled.values()):
+    report["all_enabled_failed"] = bool(critical_errors) and len(critical_errors) == sum(enabled.values())
+    if report["all_enabled_failed"]:
         # EVERY enabled ingestor failed → critical intake exception:
         # one throttled Telegram, nothing else.
         report["telegram_sent"] = _critical_alert(
@@ -596,12 +597,22 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.scheduled:
+        started_at = datetime.now(timezone.utc).isoformat()
         report = run_scheduled(dry_run=args.dry_run)
         print(json.dumps(report, indent=2, default=str))
         # suggested only — deliberately NOT installed by this script
         print(f"[hermes-discovery] suggested cron (not installed): {SUGGESTED_CRON}",
               file=sys.stderr)
-        return 1 if report.get("error") else 0
+        # A config failure or EVERY enabled ingestor failing is a failed run (was exit 0 for the
+        # latter); a pause, caps or one broken producer are findings in the report, not failure.
+        failed = bool(report.get("error") or report.get("all_enabled_failed"))
+        if not args.dry_run:  # dry runs never write the receipt (AGENTS.md §6)
+            _receipt(ok=not failed, started_at=started_at,
+                     error=report.get("error") or ("all enabled ingestors failed" if failed else None),
+                     summary={"do_no_harm": report.get("do_no_harm"),
+                              "by_type_counts": report.get("by_type_counts"),
+                              "skipped_reasons": report.get("skipped_reasons")})
+        return 1 if failed else 0
 
     if not args.run:
         ap.print_help()
@@ -628,6 +639,14 @@ def main() -> int:
                 extra = f" #{c['id']} {c['status']}" if "id" in c else ""
                 print(f"    {c['candidate_type']} {c['label']!r}{extra}")
     return 0
+
+
+def _receipt(**kw):
+    """--scheduled real-run receipt (data/runtime/hermes-discovery-ingestors_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("hermes-discovery-ingestors", script="hermes_discovery_ingestors.py", **kw)
 
 
 if __name__ == "__main__":

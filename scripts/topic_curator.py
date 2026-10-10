@@ -19,6 +19,11 @@ Usage:
     python topic_curator.py --topic ssdi       # single topic
     python topic_curator.py --reindex          # force RAG re-index
     python topic_curator.py --improve-queries  # LLM generates better queries
+    python topic_curator.py --dry-run          # read-only preview: what a run would rate/link/enqueue
+
+A real run writes the lane receipt <state_root>/data/runtime/topic_curator_last.json (LaneRunReceipt@v1,
+ok_at only on success). --dry-run opens a READ ONLY session, runs SELECT counts only and returns before any
+writer, LLM lane, subprocess or file write is reachable (AGENTS.md §6).
 """
 from __future__ import annotations
 import argparse
@@ -45,11 +50,23 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai",
                             user="trade_ai", password=_env("DB_PASSWORD"))
 
+LANE_ID = "topic-curator"  # receipt: <state_root>/data/runtime/topic-curator_last.json
+
+
+def _runtime_dir() -> Path:
+    """Served data/runtime (persistent-state root), never the checkout/release the code runs from (§9.4)."""
+    try:
+        from lib.lane_last_receipt import runtime_dir
+    except ImportError:  # imported as scripts.topic_curator
+        from scripts.lib.lane_last_receipt import runtime_dir
+    return runtime_dir()
+
+
 def _write_desk_projection(stats):
     """Persist curation counts to a desk-side projection (no Telegram)."""
     try:
         from datetime import datetime, timezone
-        out = PROJECT_ROOT / "data" / "runtime" / "topic_curator_latest.json"
+        out = _runtime_dir() / "topic_curator_latest.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -426,7 +443,10 @@ def improve_queries(conn, topic_id=None):
 # STEP 4: TRIGGER RAG RE-INDEX
 # ════════════════════════════════════════════════════════════
 def trigger_rag_reindex(conn):
-    """Trigger RAG re-indexing for newly approved content."""
+    """Trigger RAG re-indexing for newly approved content.
+
+    Returns "ok", "missing", "failed rc=N" or "error <Type>" so main() can exit non-zero on a failed
+    re-index instead of reporting success (refactor wave 2: exit code 0 only when the step worked)."""
     print("  [curator] Triggering RAG re-index...")
     try:
         import subprocess
@@ -438,7 +458,8 @@ def trigger_rag_reindex(conn):
                 cwd=str(PROJECT_ROOT)
             )
             if r.returncode == 0:
-                print(f"  [curator] RAG re-index complete")
+                print("  [curator] RAG re-index complete")
+                return "ok"
             else:
                 # Try without --incremental flag
                 r2 = subprocess.run(
@@ -447,10 +468,13 @@ def trigger_rag_reindex(conn):
                     cwd=str(PROJECT_ROOT)
                 )
                 print(f"  [curator] RAG index: rc={r2.returncode}")
+                return "ok" if r2.returncode == 0 else f"failed rc={r2.returncode}"
         else:
             print(f"  [curator] rag_indexer.py not found at {rag_script}")
+            return "missing"
     except Exception as e:
         print(f"  [curator] RAG re-index error: {e}")
+        return f"error {type(e).__name__}"
 
 
 # ════════════════════════════════════════════════════════════
@@ -650,6 +674,84 @@ def ensemble_rescue(topic_id=None, limit=None, *, connect=None, validate=None, r
 # ════════════════════════════════════════════════════════════
 # MAIN
 # ════════════════════════════════════════════════════════════
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.topic_curator
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def preview(conn, topic_id=None, limit=200, entity_limit=100) -> dict:
+    """READ-ONLY preview for --dry-run: the same selections the real steps make, as SELECT counts.
+
+    A different query from the writers, not the writers behind a flag (AGENTS.md §6): nothing here can
+    approve, link, promote, enqueue or call a model."""
+    cur = conn.cursor()
+    out: dict = {"topic": topic_id}
+    # step 1a mirrors approve_pending_by_relevance (store-wide, like the real call)
+    cur.execute("SELECT count(*) FROM news_articles WHERE rag_status='pending' AND source LIKE 'topic_%%' "
+                "AND relevance_score >= %s", (0.4,))
+    out["would_auto_approve"] = int(cur.fetchone()[0] or 0)
+    sql = ("SELECT count(*) FROM news_articles WHERE rag_status='pending' AND source LIKE 'topic_%%' "
+           "AND (relevance_score IS NULL OR relevance_score < %s)")
+    params: list = [0.4]
+    if topic_id:
+        sql += " AND strategy_type = %s"
+        params.append(topic_id)
+    cur.execute(sql, params)
+    out["would_llm_rate_articles"] = min(int(cur.fetchone()[0] or 0), limit)
+    sql = "SELECT count(*) FROM youtube_transcripts WHERE rag_status='pending' AND added_by='topic_ingestion'"
+    params = []
+    if topic_id:
+        sql += " AND strategy_tags::text LIKE %s"
+        params.append(f"%{topic_id}%")
+    cur.execute(sql, params)
+    out["would_llm_rate_transcripts"] = min(int(cur.fetchone()[0] or 0), limit)
+    sql = ("SELECT count(*) FROM news_articles na WHERE na.rag_status IN ('approved', 'pending') "
+           "AND NOT EXISTS (SELECT 1 FROM content_entity_links cel "
+           "WHERE cel.content_type='news_article' AND cel.content_id=na.id)")
+    params = []
+    if topic_id:
+        sql += " AND na.strategy_type = %s"
+        params.append(topic_id)
+    cur.execute(sql, params)
+    out["would_extract_entities_from"] = min(int(cur.fetchone()[0] or 0), entity_limit)
+    sql = ("SELECT count(*) FROM topic_monitor t WHERE t.enabled = true AND EXISTS (SELECT 1 FROM news_articles n "
+           "WHERE n.strategy_type = t.topic_id AND n.rag_status = 'approved' "
+           "AND n.created_at > NOW() - INTERVAL '24 hours')")
+    params = []
+    if topic_id:
+        sql += " AND t.topic_id = %s"
+        params.append(topic_id)
+    cur.execute(sql, params)
+    out["would_enqueue_agent_events"] = int(cur.fetchone()[0] or 0)
+    return out
+
+
+def _dry_run(args) -> int:
+    """--dry-run: READ ONLY session, SELECT counts, print, return. No LLM, no writer, no subprocess, no file."""
+    lr = _receipt_lib()
+    conn = lr.enforce_readonly(_get_conn())
+    try:
+        summary = preview(conn, args.topic)
+    finally:
+        conn.close()
+    would = ["news_articles.rag_status (auto-approve + LLM rating)", "youtube_transcripts.rag_status",
+             "content_entity_links", "watchlist_items (research-discovered tickers)", "agent_event_queue",
+             str(_runtime_dir() / "topic_curator_latest.json")]
+    if args.ensemble:
+        would.append(str(ENSEMBLE_RECEIPT))
+    if args.improve_queries:
+        would += ["topic_monitor.llm_generated_queries", "topic_curation_feedback",
+                  "subprocess topic_ingestion.py --use-llm-queries --no-auto-curate"]
+    would.append("subprocess rag_indexer.py --incremental (when anything is rated/approved or --reindex)")
+    summary.update(llm_calls="skipped (dry run)", improve_queries=bool(args.improve_queries),
+                   ensemble=bool(args.ensemble), no_llm=bool(args.no_llm))
+    lr.dry_run_report(LANE_ID, summary, would_write=would)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Post-ingestion topic curation")
     parser.add_argument("--topic", help="Single topic_id")
@@ -658,14 +760,34 @@ def main():
     parser.add_argument("--no-llm", action="store_true", help="Skip LLM steps")
     parser.add_argument("--ensemble", action="store_true",
                         help="Free-lane multi-LLM ensemble second opinion on borderline (low_quality) items")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="read-only preview (READ ONLY session, SELECT counts); no LLM, write, subprocess or file")
     args = parser.parse_args()
+    if args.dry_run:
+        return _dry_run(args)
 
+    from datetime import datetime, timezone
+    started = datetime.now(timezone.utc).isoformat()
+    stats: dict = {}
+    try:
+        rc = _curate(args, stats)
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="topic_curator.py", summary=stats,
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
+                                      script="topic_curator.py", summary=stats)
+    return rc
+
+
+def _curate(args, stats: dict) -> int:
+    """The real run (unchanged steps). ``stats`` is filled in place so a crash still leaves a receipt summary."""
     conn = _get_conn()
     print(f"\n{'='*60}")
-    print(f"  TOPIC CURATOR — Post-Ingestion Pipeline")
+    print("  TOPIC CURATOR — Post-Ingestion Pipeline")
     print(f"{'='*60}\n")
 
-    stats = {}
 
     # Step 1: Rate pending content
     if not args.no_llm:
@@ -728,7 +850,7 @@ def main():
     # Step 4: RAG re-index (always run if anything was approved, including auto-approvals)
     if args.reindex or (stats.get('approved', 0) > 0) or (stats.get('rated', 0) > 0):
         print("\n[4/5] Triggering RAG re-index...")
-        trigger_rag_reindex(conn)
+        stats['rag_reindex'] = trigger_rag_reindex(conn)
     else:
         print("[4/5] Skipping RAG re-index (no new content)")
 
@@ -739,7 +861,7 @@ def main():
 
     # Summary
     print(f"\n{'='*60}")
-    print(f"  CURATION COMPLETE")
+    print("  CURATION COMPLETE")
     print(f"  Rated: {stats.get('rated', 0)} | Approved: {stats.get('approved', 0)} | Blocked: {stats.get('blocked', 0)}")
     print(f"  Entity links: {stats.get('entity_links', 0)}")
     print(f"  Agent events: {stats.get('agent_events', 0)}")
@@ -758,7 +880,7 @@ def main():
         cur2.execute("SELECT count(DISTINCT topic_id) as n FROM topic_curation_feedback")
         topics_curated = cur2.fetchone()['n']
 
-        print(f"\n  VALIDATION METRICS:")
+        print("\n  VALIDATION METRICS:")
         print(f"  Topic articles: {total_topic} total | {rag_dist.get('approved',0)} approved ({approval_pct}%) | {rag_dist.get('low_quality',0)} low | {rag_dist.get('blocked',0)} blocked | {rag_dist.get('pending',0)} pending")
         print(f"  Entity links: {entity_count} | Topics curated: {topics_curated}")
     except Exception:
@@ -772,6 +894,10 @@ def main():
     if stats.get('ensemble_status') not in (None, 'ok'):
         # the rest of the curation ran and the receipt is written; the cron exit code still says it failed
         print(f"  [curator] ensemble rescue status={stats['ensemble_status']} -> exit 1")
+        return 1
+    if stats.get('rag_reindex') not in (None, 'ok'):
+        # curation itself is persisted; the step that makes it retrievable did not complete
+        print(f"  [curator] RAG re-index status={stats['rag_reindex']} -> exit 1")
         return 1
     return 0
 

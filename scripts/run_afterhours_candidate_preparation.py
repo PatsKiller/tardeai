@@ -98,22 +98,26 @@ def classify_readiness(match_strength, quote_status, missing_fields, liquidity_g
     return "no_fit"
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description="After-hours candidate preparation (default: dry-run)")
     p.add_argument("--session", type=str, default="after_close")
     p.add_argument("--date", type=str, default="today")
     p.add_argument("--run-strategy-fit", action="store_true")
     p.add_argument("--prepare-candidates", action="store_true")
-    p.add_argument("--dry-run", action="store_true", default=True)
+    p.add_argument("--dry-run", action="store_true", default=True,
+                   help="the default; given EXPLICITLY it wins over --apply (READ ONLY session, no "
+                        "INSERT, no --output-* file, no receipt -- AGENTS.md §6)")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--limit", type=int)
     p.add_argument("--output-json", type=str)
     p.add_argument("--output-md", type=str)
     p.add_argument("--verbose", action="store_true")
-    args = p.parse_args()
-    if args.apply:
+    args = p.parse_args(argv)
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if args.apply and "--dry-run" not in raw:
         args.dry_run = False
     dry_run = args.dry_run
+    started_at = datetime.now(timezone.utc).isoformat()
 
     run_date = date.today().isoformat() if args.date == "today" else args.date
     session = args.session
@@ -123,7 +127,13 @@ def main():
     from db_adapter import _get_conn
     conn = _get_conn()
     if not conn:
-        print("ERROR: no DB connection"); sys.exit(1)
+        print("ERROR: no DB connection")
+        if not dry_run:
+            _receipt(ok=False, started_at=started_at, error="no DB connection")
+        sys.exit(1)
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # the server refuses any write (AGENTS.md §6)
 
     # Load active symbols
     symbols = load_active_symbols(conn, args.limit)
@@ -219,84 +229,100 @@ def main():
     candidates.sort(key=lambda c: c["top_strategy_score"] or 0, reverse=True)
 
     if not dry_run:
-        cur = conn.cursor()
-        for c in candidates:
+        try:
+            cur = conn.cursor()
+            for c in candidates:
+                cur.execute("""
+                    INSERT INTO afterhours_candidate_snapshot
+                        (snapshot_id, run_date, session, symbol, source_screeners,
+                         catalog_status, membership_status, strategy_fit_status,
+                         top_strategy, top_strategy_score, quote_status,
+                         readiness_status, blockers, next_required_action,
+                         proposal_candidate_allowed, executable_now, human_review_only)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (snapshot_id, symbol) DO UPDATE SET
+                        strategy_fit_status = EXCLUDED.strategy_fit_status,
+                        top_strategy = EXCLUDED.top_strategy,
+                        top_strategy_score = EXCLUDED.top_strategy_score,
+                        quote_status = EXCLUDED.quote_status,
+                        readiness_status = EXCLUDED.readiness_status,
+                        blockers = EXCLUDED.blockers,
+                        next_required_action = EXCLUDED.next_required_action,
+                        proposal_candidate_allowed = EXCLUDED.proposal_candidate_allowed,
+                        executable_now = EXCLUDED.executable_now
+                """, [
+                    c["snapshot_id"], c["run_date"], c["session"], c["symbol"],
+                    c["source_screeners"], c["catalog_status"], c["membership_status"],
+                    c["strategy_fit_status"], c["top_strategy"], c["top_strategy_score"],
+                    c["quote_status"], c["readiness_status"], c["blockers"],
+                    c["next_required_action"], c["proposal_candidate_allowed"],
+                    c["executable_now"], c["human_review_only"],
+                ])
+
+            # Underfilled reason
+            underfilled_reason = None
+            if stats["symbols_considered"] < 50:
+                underfilled_reason = f"Only {stats['symbols_considered']} symbols in screener universe (< 50 threshold)"
+
+            # Insert run summary
+            run_id = snapshot_id
             cur.execute("""
-                INSERT INTO afterhours_candidate_snapshot
-                    (snapshot_id, run_date, session, symbol, source_screeners,
-                     catalog_status, membership_status, strategy_fit_status,
-                     top_strategy, top_strategy_score, quote_status,
-                     readiness_status, blockers, next_required_action,
-                     proposal_candidate_allowed, executable_now, human_review_only)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (snapshot_id, symbol) DO UPDATE SET
-                    strategy_fit_status = EXCLUDED.strategy_fit_status,
-                    top_strategy = EXCLUDED.top_strategy,
-                    top_strategy_score = EXCLUDED.top_strategy_score,
-                    quote_status = EXCLUDED.quote_status,
-                    readiness_status = EXCLUDED.readiness_status,
-                    blockers = EXCLUDED.blockers,
-                    next_required_action = EXCLUDED.next_required_action,
-                    proposal_candidate_allowed = EXCLUDED.proposal_candidate_allowed,
-                    executable_now = EXCLUDED.executable_now
+                INSERT INTO afterhours_readiness_run
+                    (run_id, run_date, session, symbols_considered, strategy_fit_evaluated,
+                     ready_for_review, proposal_candidate_pending, needs_data, blocked, no_fit,
+                     run_status, underfilled_reason)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (run_id) DO UPDATE SET
+                    symbols_considered = EXCLUDED.symbols_considered,
+                    strategy_fit_evaluated = EXCLUDED.strategy_fit_evaluated,
+                    ready_for_review = EXCLUDED.ready_for_review,
+                    proposal_candidate_pending = EXCLUDED.proposal_candidate_pending,
+                    needs_data = EXCLUDED.needs_data,
+                    blocked = EXCLUDED.blocked,
+                    no_fit = EXCLUDED.no_fit,
+                    run_status = EXCLUDED.run_status,
+                    underfilled_reason = EXCLUDED.underfilled_reason
             """, [
-                c["snapshot_id"], c["run_date"], c["session"], c["symbol"],
-                c["source_screeners"], c["catalog_status"], c["membership_status"],
-                c["strategy_fit_status"], c["top_strategy"], c["top_strategy_score"],
-                c["quote_status"], c["readiness_status"], c["blockers"],
-                c["next_required_action"], c["proposal_candidate_allowed"],
-                c["executable_now"], c["human_review_only"],
+                run_id, run_date, session,
+                stats["symbols_considered"], stats["strategy_fit_evaluated"],
+                stats["ready_for_review"],
+                stats.get("proposal_candidate_pending_market_open_check", 0),
+                stats["needs_data"],
+                stats.get("blocked_by_liquidity", 0) + stats.get("blocked_by_strategy_fit", 0),
+                stats["no_fit"],
+                "completed", underfilled_reason,
             ])
-
-        # Underfilled reason
-        underfilled_reason = None
-        if stats["symbols_considered"] < 50:
-            underfilled_reason = f"Only {stats['symbols_considered']} symbols in screener universe (< 50 threshold)"
-
-        # Insert run summary
-        run_id = snapshot_id
-        cur.execute("""
-            INSERT INTO afterhours_readiness_run
-                (run_id, run_date, session, symbols_considered, strategy_fit_evaluated,
-                 ready_for_review, proposal_candidate_pending, needs_data, blocked, no_fit,
-                 run_status, underfilled_reason)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (run_id) DO UPDATE SET
-                symbols_considered = EXCLUDED.symbols_considered,
-                strategy_fit_evaluated = EXCLUDED.strategy_fit_evaluated,
-                ready_for_review = EXCLUDED.ready_for_review,
-                proposal_candidate_pending = EXCLUDED.proposal_candidate_pending,
-                needs_data = EXCLUDED.needs_data,
-                blocked = EXCLUDED.blocked,
-                no_fit = EXCLUDED.no_fit,
-                run_status = EXCLUDED.run_status,
-                underfilled_reason = EXCLUDED.underfilled_reason
-        """, [
-            run_id, run_date, session,
-            stats["symbols_considered"], stats["strategy_fit_evaluated"],
-            stats["ready_for_review"],
-            stats.get("proposal_candidate_pending_market_open_check", 0),
-            stats["needs_data"],
-            stats.get("blocked_by_liquidity", 0) + stats.get("blocked_by_strategy_fit", 0),
-            stats["no_fit"],
-            "completed", underfilled_reason,
-        ])
-        conn.commit()
+            conn.commit()
+        except Exception as exc:  # failed real run: failed receipt (ok_at kept), then exit non-zero
+            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}",
+                     summary={"snapshot_id": snapshot_id})
+            raise
 
     conn.close()
 
+    if not dry_run:
+        _receipt(ok=True, started_at=started_at,
+                 summary={"snapshot_id": snapshot_id, "symbols_considered": stats["symbols_considered"],
+                          "candidates_written": len(candidates),
+                          "ready_for_review": stats["ready_for_review"]})
+
     # Report
+    if not args.verbose:  # one summary line, so the cron log carries evidence (was Starting/Finished only)
+        verb = "would write" if dry_run else "wrote"
+        print(f"[{mode}] {snapshot_id}: {verb} {len(candidates)} candidate rows + 1 run row; "
+              f"ready_for_review={stats['ready_for_review']} watchpool={stats['watchpool_candidate']} "
+              f"needs_data={stats['needs_data']}")
     if args.verbose:
         print(f"\n{'='*60}")
         print(f"[{mode}] After-Hours Candidate Preparation Summary")
         print(f"  Symbols considered: {stats['symbols_considered']}")
         print(f"  Strategy fit evaluated: {stats['strategy_fit_evaluated']}")
-        print(f"  Readiness breakdown:")
+        print("  Readiness breakdown:")
         for key in ("ready_for_review", "proposal_candidate_pending_market_open_check",
                      "watchpool_candidate", "needs_data", "blocked_by_liquidity",
                      "blocked_by_strategy_fit", "no_fit"):
             print(f"    {key}: {stats.get(key, 0)}")
-        print(f"\n  Top 25 candidates:")
+        print("\n  Top 25 candidates:")
         for i, c in enumerate(candidates[:25]):
             print(f"    {i+1:2d}. {c['symbol']:6s} -- {c['top_strategy'] or 'none':30s} "
                   f"({c['top_strategy_score']:3d}) [{c['readiness_status']}]")
@@ -316,6 +342,10 @@ def main():
             for c in candidates[:25]
         ],
     }
+
+    if dry_run and (args.output_json or args.output_md):
+        print(f"  [dry-run] would write {args.output_json or ''} {args.output_md or ''}".rstrip())
+        return 0  # returns before the report file writes (AGENTS.md §6)
 
     if args.output_json:
         Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
@@ -344,7 +374,16 @@ def main():
         for i, c in enumerate(candidates[:25]):
             md.append(f"| {i+1} | {c['symbol']} | {c['top_strategy'] or '-'} | {c['top_strategy_score']} | {c['readiness_status']} |")
         Path(args.output_md).write_text("\n".join(md))
+    return 0
+
+
+def _receipt(**kw):
+    """--apply receipt (data/runtime/run-afterhours-candidate-preparation_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("run-afterhours-candidate-preparation", script="run_afterhours_candidate_preparation.py", **kw)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

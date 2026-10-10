@@ -386,7 +386,7 @@ def save_results_to_db(results: List[Dict], run_id: str, mode: str):
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description="Enterprise price-replay backtester")
     p.add_argument("--replay-trades", action="store_true", help="Replay actual closed trades")
     p.add_argument("--replay-proposals", action="store_true", help="Replay untaken proposals")
@@ -398,16 +398,33 @@ def main():
     p.add_argument("--include-scalps", action="store_true", help="Include scalp strategies")
     p.add_argument("--days", type=int, default=20, help="Max hold period (default: 20)")
     p.add_argument("--apply", action="store_true", help="Write results to DB")
+    p.add_argument("--dry-run", action="store_true",
+                   help="replay from the cached OHLC only and report; no yfinance fetch, no cache/DB/report "
+                        "file write (wins over --apply)")
     p.add_argument("--output-json", type=str)
     p.add_argument("--output-md", type=str)
     p.add_argument("--verbose", action="store_true")
-    args = p.parse_args()
+    args = p.parse_args(argv)
+    dry_run = bool(args.dry_run)
+    if dry_run:
+        args.apply = False  # --dry-run wins (AGENTS.md §6)
 
     if args.include_scalps:
         args.exclude_scalps = False
 
     run_id = f"ER_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}"
-    log.info(f"Enterprise backtest run {run_id}")
+    log.info(f"Enterprise backtest run {run_id}" + (" (dry run)" if dry_run else ""))
+    started_at = datetime.now(timezone.utc).isoformat()
+    would_fetch: set = set()
+
+    def _ohlc_for(symbols, start, end):
+        # A dry run never reaches yfinance or the cache write inside fetch_ohlc_for_symbols:
+        # it replays against the cached OHLC (close-cache fallback) and reports the gap.
+        if dry_run:
+            cached = load_ohlc_cache()
+            would_fetch.update(s for s in symbols if s not in cached or not cached[s])
+            return cached
+        return fetch_ohlc_for_symbols(symbols, start, end)
 
     # Load price data
     close_cache = load_close_cache()
@@ -445,7 +462,7 @@ def main():
         symbols = list(set(t["symbol"] for t in trades))
         if symbols:
             earliest = min(str(t.get("entry_time", "2026-01-01"))[:10] for t in trades)
-            ohlc = fetch_ohlc_for_symbols(symbols, earliest, date.today().isoformat())
+            ohlc = _ohlc_for(symbols, earliest, date.today().isoformat())
 
         log.info(f"Replaying {len(trades)} actual trades...")
         for t in trades:
@@ -477,7 +494,7 @@ def main():
         symbols = list(set(p["symbol"] for p in proposals))
         if symbols:
             earliest = min(str(p.get("created_at", "2026-01-01"))[:10] for p in proposals)
-            ohlc = fetch_ohlc_for_symbols(symbols, earliest, date.today().isoformat())
+            ohlc = _ohlc_for(symbols, earliest, date.today().isoformat())
 
         log.info(f"Replaying {len(proposals)} untaken proposals...")
         for p in proposals:
@@ -516,7 +533,12 @@ def main():
     # Save to DB
     if args.apply and all_results:
         mode = "trades" if args.replay_trades else "proposals"
-        save_results_to_db(all_results, run_id, mode)
+        try:
+            save_results_to_db(all_results, run_id, mode)
+        except Exception as exc:  # failed write: failed receipt (ok_at kept), then exit non-zero
+            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}",
+                     summary={"run_id": run_id})
+            raise
 
     # Output
     report = {
@@ -530,7 +552,14 @@ def main():
         "per_strategy": per_strategy,
         "comparison": comp_summary,
         "config": {"max_days": args.days, "exclude_scalps": args.exclude_scalps},
+        "mode": "dry_run" if dry_run else ("apply" if args.apply else "report"),
     }
+    if dry_run:
+        report["would_fetch_ohlc_symbols"] = len(would_fetch)
+        report["would_write"] = {
+            "strategy_backtest_trades": report["completed"],
+            "output_json": args.output_json, "output_md": args.output_md,
+        }
 
     if args.verbose:
         print(f"\n{'='*60}")
@@ -544,24 +573,30 @@ def main():
             print(f"  Avg MFE:       {summary['avg_mfe_pct']}%")
             print(f"  Avg hold:      {summary['avg_hold_days']} days")
             print(f"  OHLC coverage: {summary['ohlc_coverage']}%")
-        print(f"\nPer strategy:")
+        print("\nPer strategy:")
         for sid, s in per_strategy.items():
             print(f"  {(sid or 'unknown'):25s} n={s['count']:3d} WR={s['win_rate']:5.1f}% PF={s['profit_factor']:5.2f} MAE={s['avg_mae_pct']:+.1f}% MFE={s['avg_mfe_pct']:+.1f}%")
         if comp_summary:
-            print(f"\nReplay vs Actual comparison:")
+            print("\nReplay vs Actual comparison:")
             print(f"  Matched: {comp_summary['matched_trades']} trades")
             print(f"  Outcome match: {comp_summary['outcome_match_rate']}%")
             print(f"  Avg P&L delta: ${comp_summary['avg_pnl_delta']}")
+
+    if dry_run:
+        print(json.dumps({k: report[k] for k in ("run_id", "mode", "total_signals", "completed", "no_data",
+                                                 "would_fetch_ohlc_symbols", "would_write")},
+                         indent=2, default=str))
+        return report  # returns before any report file write (AGENTS.md §6)
 
     if args.output_json:
         Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output_json).write_text(json.dumps(report, indent=2, default=str))
     if args.output_md:
         Path(args.output_md).parent.mkdir(parents=True, exist_ok=True)
-        md = [f"# Enterprise Backtest Report\n",
+        md = ["# Enterprise Backtest Report\n",
               f"Run: {run_id} | {report['completed']}/{report['total_signals']} completed\n"]
         if summary.get("count"):
-            md += [f"| Metric | Value |", f"|--------|-------|",
+            md += ["| Metric | Value |", "|--------|-------|",
                    f"| Win Rate | {summary['win_rate']}% |",
                    f"| Avg Return | {summary['avg_return_pct']}% |",
                    f"| Profit Factor | {summary['profit_factor']} |",
@@ -570,8 +605,20 @@ def main():
                    f"| OHLC Coverage | {summary['ohlc_coverage']}% |"]
         Path(args.output_md).write_text("\n".join(md))
 
+    if args.apply:
+        _receipt(ok=True, started_at=started_at,
+                 summary={"run_id": run_id, "total_signals": report["total_signals"],
+                          "completed": report["completed"], "no_data": report["no_data"]})
     return report
 
 
+def _receipt(**kw):
+    """--apply receipt (data/runtime/enterprise-backtester_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("enterprise-backtester", script="enterprise_backtester.py", **kw)
+
+
 if __name__ == "__main__":
-    main()
+    main()  # exceptions (incl. a failed DB save) exit non-zero

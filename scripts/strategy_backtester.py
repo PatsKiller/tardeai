@@ -7,6 +7,10 @@ Usage:
     .venv/bin/python scripts/strategy_backtester.py --all-strategies --dry-run --json
     .venv/bin/python scripts/strategy_backtester.py --strategy momentum_scalp --dry-run --json
     .venv/bin/python scripts/strategy_backtester.py --strategy momentum_scalp --apply --json
+
+Without --apply, or with --dry-run (which wins over --apply), nothing is written: the session is READ ONLY at
+the server and run_backtest() takes the no-insert branch. An --apply run writes the lane receipt
+<state_root>/data/runtime/strategy-backtester_last.json (ok_at only on success).
 """
 import argparse, json, os, sys, uuid, time
 from datetime import datetime, timezone, timedelta
@@ -26,9 +30,27 @@ SPREAD_BPS = 15    # 0.15% spread assumption
 STOP_PCT = 5.0     # default 5% stop
 TARGET_PCT = 8.0   # default 8% target (1.6:1 R)
 
+LANE_ID = "strategy-backtester"
+
+
 def _get_conn():
     from session13_db import get_conn
     return get_conn()
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.strategy_backtester
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
+    """lane_last_receipt.dry_run_report, sent to stderr when stdout carries the script's JSON report."""
+    import contextlib
+    with contextlib.redirect_stdout(sys.stderr) if json_stdout else contextlib.nullcontext():
+        return _receipt_lib().dry_run_report(lane_id, summary, would_write=would_write)
 
 
 def get_signals(conn, strategy_id=None):
@@ -196,15 +218,22 @@ def main():
     parser.add_argument("--dataset-id")
     parser.add_argument("--run-id")
     parser.add_argument("--summary", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--dry-run", action="store_true", help="preview only; wins over --apply")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
-    dry_run = not args.apply
-    conn = _get_conn()
+    dry_run = args.dry_run or not args.apply
+    if not (args.all_strategies or args.strategy):
+        parser.print_usage()
+        return 2
+    started = datetime.now(timezone.utc).isoformat()
+    out: dict = {"mode": "dry_run" if dry_run else "applied"}
     try:
-        if args.all_strategies or args.strategy:
+        conn = _get_conn()
+        if dry_run:
+            _receipt_lib().enforce_readonly(conn)
+        try:
             from strategy_rule_adapter import load_strategy_configs
             configs = load_strategy_configs()
             strategies = [args.strategy] if args.strategy else list(configs.keys())
@@ -214,8 +243,7 @@ def main():
                 result = run_backtest(conn, sid, dry_run=dry_run)
                 all_results.append(result)
 
-            out = {
-                "mode": "dry_run" if dry_run else "applied",
+            out.update({
                 "strategies_tested": len(all_results),
                 "results": [{
                     "strategy": r["run"]["strategy_id"],
@@ -227,16 +255,35 @@ def main():
                 } for r in all_results],
                 "low_sample_warning": all(r["results"].get("sample_size_status") in ("insufficient", "insight_only") for r in all_results),
                 "limitations": ["simulated_not_real", "no_intrabar_ohlcv", "simplified_model"],
-            }
-            if args.json:
-                print(json.dumps(out, indent=2, default=str))
-            else:
-                print(f"Backtest: {out['strategies_tested']} strategies ({out['mode']})")
-                for r in out["results"]:
-                    print(f"  {r['strategy']}: {r['trades']} trades, WR={r['win_rate']}, "
-                          f"PF={r['profit_factor']}, E[R]={r['expectancy_r']} [{r['sample_status']}]")
-    finally:
-        conn.close()
+            })
+        finally:
+            conn.close()
+    except Exception as exc:
+        if not dry_run:
+            _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                              script="strategy_backtester.py", summary=out,
+                                              error=f"{type(exc).__name__}: {exc}")
+        raise
+
+    if args.json:
+        print(json.dumps(out, indent=2, default=str))
+    else:
+        print(f"Backtest: {out['strategies_tested']} strategies ({out['mode']})")
+        for r in out["results"]:
+            print(f"  {r['strategy']}: {r['trades']} trades, WR={r['win_rate']}, "
+                  f"PF={r['profit_factor']}, E[R]={r['expectancy_r']} [{r['sample_status']}]")
+    # A low sample is a finding, not a failure: the run still completed and (on --apply) persisted.
+    summary = {k: out[k] for k in ("mode", "strategies_tested", "low_sample_warning")}
+    summary["trades"] = sum(r["trades"] for r in out["results"])
+    if dry_run:
+        _dry_report(LANE_ID, summary, would_write=[
+            "strategy_backtest_runs (1 row per strategy)", "strategy_backtest_trades (<=500 per strategy)"],
+            json_stdout=args.json)
+    else:
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                                          script="strategy_backtester.py", summary=summary)
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
