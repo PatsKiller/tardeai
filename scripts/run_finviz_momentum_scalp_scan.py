@@ -17,6 +17,15 @@ kill switches never weakened. Social-only stays WATCH/WAIT/SCOUT; large-float sc
 
 Env flags (cron): MOMENTUM_SCALP_EARLY_LANE=1 (enable handoff), MOMENTUM_SCALP_SYNC_SIGNALS=1,
 MOMENTUM_SCALP_GENERATE_PROPOSALS=1, MOMENTUM_SCALP_VALIDATION_FAST_PATH=1, MOMENTUM_SCALP_VALIDATION_SUBMIT=1.
+
+SCALP HOT TIER (operator decision (4), 2026-10-10; inert unless SCALP_HOT_TIER=1 and no kill file, lib/scalp_hot_tier):
+  --hot-list-only   the hot-tier list owner: market days 06:00-09:30 ET only, refreshes the four scalp screeners
+                    (assets/screeners.yaml window `scalp`) whenever the last DONE receipt is older than ~2 min; no
+                    handoff stage. Outside that window, or with the knob off, it prints SKIPPED_* and exits 0.
+  (the */5 lane)    with the knob on: inside 06:00-09:30 its own refresh is skipped (the hot line owns it), and its
+                    signal-sync + proposal stages run only when the scalp list's as_of advanced
+                    (lib/scalp_list_trigger, consumer `l636-proposal-stage`). The validation stage is unchanged.
+With the knob off this script behaves exactly as before.
 """
 from __future__ import annotations
 
@@ -33,6 +42,8 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import momentum_scalp_early_lane_runner as lane  # noqa: E402
+from lib import scalp_hot_tier as hot  # noqa: E402
+from lib import scalp_list_trigger as trig  # noqa: E402
 
 CONFIG = ROOT / "config" / "finviz_momentum_scalp_screen.yaml"
 
@@ -48,6 +59,51 @@ def load_window() -> dict:
 
 def _env(name: str) -> bool:
     return os.getenv(name) == "1"
+
+
+def _proposal_trigger() -> dict:
+    """Read the scalp list (read-only) and decide whether the proposal stage fires. Never raises."""
+    try:
+        from lib.data_broker import scalp_list as sl
+
+        env = sl.get_scalp_list()
+    except Exception as exc:  # unreadable list -> decide() sees no as_of -> FIRE_STALE_LIST on the legacy cadence
+        env = {"as_of": None, "symbols": [], "error": f"{type(exc).__name__}: {exc}"[:200]}
+    return {"list_env": env, "decision": trig.decide("l636-proposal-stage", env)}
+
+
+def _hot_list_only(args, rep: dict, *, apply: bool, hot_on: bool, hot_list_phase: bool) -> int:
+    """The hot-tier list owner: scalp-screener refresh only (no handoff). Single writer stays the screener runner."""
+    rep["mode"] = "hot_list_only"
+    if not hot_on:
+        rep.update(status="SKIPPED_FLAG_OFF", hot_tier=hot.flag_state())
+        print(json.dumps(rep, default=str))
+        return 0
+    if not hot_list_phase and not args.ignore_window:
+        rep.update(status="SKIPPED_OFF_HOT_WINDOW", phase=hot.phase(lane.now_et(args.now)))
+        print(json.dumps(rep, default=str))
+        return 0
+    ids = hot.scalp_screener_ids()
+    age = lane.refresh_age_min()
+    due_after = max(0.0, hot.LIST_REFRESH_MIN - hot.LIST_REFRESH_GRID_TOLERANCE_MIN)
+    rep["refresh_policy"] = {"screener_ids": ids, "refresh_if_older_min": hot.LIST_REFRESH_MIN,
+                             "due_after_min": due_after, "refresh_age_min": None if age is None else round(age, 2)}
+    if age is not None and age < due_after:
+        rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True,
+                              "reason": f"skipped_fresh (age={age:.2f}m < {due_after:g}m)"})
+    elif not apply:
+        rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True, "reason": "dry_run_no_refresh",
+                              "would_run": [["finviz_screener_runner.py", "--screener", sid] for sid in ids],
+                              "finviz_export_requests": len(ids)})
+    else:
+        deadline = lane.outer_deadline_s(args.deadline_s)
+        rep["stages"].append(lane.stage_finviz_scan(dry_run=False, deadline_s=deadline,
+                                                    started_monotonic=_time.monotonic(), screener_ids=ids))
+    failed = [st["stage"] for st in rep["stages"] if not st.get("ok")]
+    rep.update(status=("DRY_RUN" if not apply else ("PASS" if not failed else "PARTIAL")), failed_stages=failed,
+               safety_note="Source refresh only (screener membership). No broker call, no proposal, no send.")
+    print(json.dumps(rep, default=str))
+    return 0 if not failed else 1
 
 
 def main() -> int:
@@ -69,6 +125,8 @@ def main() -> int:
     ap.add_argument("--deadline-s", type=float, default=None,
                     help="outer deadline in seconds (default env MOMENTUM_SCALP_OUTER_DEADLINE_S); "
                          "stage timeouts are clamped so the run ends before cron's `timeout` kills it")
+    ap.add_argument("--hot-list-only", action="store_true",
+                    help="scalp hot tier list owner (SCALP_HOT_TIER=1): 2-min scalp-screener refresh 06:00-09:30 ET")
     ap.add_argument("--ignore-window", action="store_true", help="run outside 06:00-12:00 ET")
     ap.add_argument("--now", type=str, help="override ET now (ISO) for testing")
     args = ap.parse_args()
@@ -90,6 +148,12 @@ def main() -> int:
            "now_et": t.strftime("%H:%M"), "window": window, "window_ok": window_ok,
            "dry_run": not apply, "stages": []}
 
+    hot_on = hot.enabled()
+    hot_list_phase = hot_on and hot.in_window("list_hot", t)
+    rep["hot_tier"] = {"enabled": hot_on, "list_hot_phase": hot_list_phase}
+    if args.hot_list_only:
+        return _hot_list_only(args, rep, apply=apply, hot_on=hot_on, hot_list_phase=hot_list_phase)
+
     if not window_ok and not args.ignore_window:
         rep.update(status="SKIPPED_OFF_WINDOW",
                    note="Off-window no-op (06:00-12:00 ET trading days). Use --ignore-window to force.")
@@ -103,6 +167,9 @@ def main() -> int:
     rep["deadline_s"] = deadline
     if args.skip_finviz_refresh:
         rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True, "reason": "skipped_finviz_refresh"})
+    elif hot_list_phase:
+        rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True,
+                              "reason": "skipped_hot_tier_owns_refresh (--hot-list-only line, 06:00-09:30 ET)"})
     elif args.refresh_if_older_min is not None:
         age = lane.refresh_age_min()
         # Grid tolerance (2026-09-28, observed 10:20→11:40): the lane runs on a */5 grid and the
@@ -119,11 +186,25 @@ def main() -> int:
             rep["stages"].append(st)
     else:
         rep["stages"].append(lane.stage_finviz_scan(dry_run=not apply, deadline_s=deadline, started_monotonic=started))
-    # Stage 2-4 — optional handoff.
-    if sync:
-        rep["stages"].append(lane.stage_signal_sync(dry_run=not apply))
-    if gen:
-        rep["stages"].append(lane.stage_proposal_gen(dry_run=not apply))
+    # Stage 2-4 — optional handoff. With the hot tier on, sync + proposals fire on the scalp list's as_of advancing.
+    trigger = None
+    if hot_on and (sync or gen):
+        trigger = _proposal_trigger()
+        rep["hot_tier"]["proposal_trigger"] = trigger["decision"]
+    if trigger is not None and not trigger["decision"].get("fire"):
+        why = "skipped_no_list_advance: " + str(trigger["decision"].get("decision"))
+        if sync:
+            rep["stages"].append({"stage": "signal_sync", "ran": False, "ok": True, "reason": why})
+        if gen:
+            rep["stages"].append({"stage": "proposal_gen", "ran": False, "ok": True, "reason": why})
+    else:
+        if sync:
+            rep["stages"].append(lane.stage_signal_sync(dry_run=not apply))
+        if gen:
+            rep["stages"].append(lane.stage_proposal_gen(dry_run=not apply))
+        handoff_ok = all(st.get("ok") for st in rep["stages"] if st.get("stage") in ("signal_sync", "proposal_gen"))
+        if trigger is not None and apply and handoff_ok:
+            trig.commit("l636-proposal-stage", trigger["list_env"], decision=trigger["decision"]["decision"])
     if val:
         rep["stages"].append(lane.stage_validation(submit=submit and apply))
 

@@ -21,6 +21,12 @@ only on success) with a per-source summary. Exit codes: 0 = ran (posts already s
 configured while StockTwits fetched, or zero new posts are findings); 1 = the run failed: crash / DB
 unavailable (failed receipt, exception re-raised), or nothing could be fetched from any source while
 requests were attempted and errored (incl. HTTP 429); 2 = usage error (unknown --source).
+
+SCALP HOT TIER (``--source stocktwits --scalp-list`` -> lane ``social-ingest-scalp-hot``; operator decision (4),
+2026-10-10): every 10 min on market days 06:00-11:00 ET, StockTwits for the names on the scalp list
+(``lib.data_broker.scalp_list``, cap 25) into ``social_posts`` through the same ``ingest_stocktwits`` (this module
+stays the single writer). Inert unless ``SCALP_HOT_TIER=1`` and no kill file (SKIPPED_FLAG_OFF, exit 0). An empty
+list is a successful poll (receipt ok, 0 symbols). ``--dry-run`` reads the list only and prints the symbols.
 """
 import json, sys, time, hashlib
 from datetime import datetime, timezone
@@ -589,6 +595,49 @@ def _per_source(source: str, discover: bool, results) -> dict:
     return out
 
 
+SCALP_HOT_LANE_ID = "social-ingest-scalp-hot"
+
+
+def _scalp_hot_main(argv: list, now=None) -> int:
+    """Lane social-ingest-scalp-hot. Returns before any request/DB connection when off, off-window or dry run."""
+    try:
+        from lib import scalp_hot_tier as hot
+        from lib.data_broker import scalp_list as sl
+    except ImportError:  # imported as scripts.social_ingest
+        from scripts.lib import scalp_hot_tier as hot  # type: ignore
+        from scripts.lib.data_broker import scalp_list as sl  # type: ignore
+    flag = hot.flag_state()
+    if not flag["enabled"]:
+        print(json.dumps({"lane": SCALP_HOT_LANE_ID, "status": "SKIPPED_FLAG_OFF", "hot_tier": flag}))
+        return 0
+    if not hot.in_window("social", now):
+        print(json.dumps({"lane": SCALP_HOT_LANE_ID, "status": "SKIPPED_OFF_WINDOW", "phase": hot.phase(now)}))
+        return 0
+    lst = sl.get_scalp_list(now=now)
+    symbols = list(lst.get("symbols") or [])[: hot.SOCIAL_SYMBOL_CAP]
+    summary = {"symbols": symbols, "list_source": lst.get("list_source"), "list_as_of": lst.get("as_of"),
+               "list_stale": lst.get("stale"), "stocktwits_symbol_requests": len(symbols)}
+    if "--dry-run" in argv:
+        _receipt_lib().dry_run_report(
+            SCALP_HOT_LANE_ID, summary,
+            would_write=["social_posts INSERT (<= 10 per StockTwits symbol; dupes skipped)"])
+        return 0
+    started = _receipt_lib().now_iso()
+    try:
+        result = ingest_stocktwits(symbols) if symbols else {"inserted": 0, "skipped": 0, "errors": []}
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(SCALP_HOT_LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="social_ingest.py --scalp-list", summary=summary,
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
+    failed = bool(symbols) and run_failed([result])
+    summary.update(inserted=int(result.get("inserted") or 0), skipped=int(result.get("skipped") or 0),
+                   errors=len(result.get("errors") or []))
+    _receipt_lib().write_lane_receipt(SCALP_HOT_LANE_ID, ok=not failed, exit_code=int(failed), started_at=started,
+                                      script="social_ingest.py --scalp-list", summary=summary)
+    return 1 if failed else 0
+
+
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     source = "stocktwits"
@@ -608,6 +657,11 @@ def main(argv=None) -> int:
         symbols = _get_holdings_symbols()
 
     discover = "--discover" in argv
+    if "--scalp-list" in argv:
+        if source != "stocktwits" or discover or symbols:
+            print("--scalp-list takes --source stocktwits and no --discover/--symbols/--holdings")
+            return 2
+        return _scalp_hot_main(argv)
     if source not in ("stocktwits", "reddit", "all"):
         print(f"Unknown source: {source}. Use --source stocktwits|reddit|all [--discover] [--holdings] [--dry-run]")
         return 2

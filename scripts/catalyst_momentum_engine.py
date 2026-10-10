@@ -18,6 +18,9 @@ search, then prints what would be staged; write_research_rows, the auto_proposal
 last-run marker and the lane receipt are unreachable from it. A real run writes the per-band lane receipt
 <state_root>/data/runtime/catalyst-momentum-engine-<band>_last.json (ok_at only on success). Exit 1 when every
 candidate's catalyst search errored (search source down) — a run that found no catalyst is a finding, exit 0.
+Scalp hot tier (SCALP_HOT_TIER=1 + the search routing engine importable): search_catalyst goes through the routing
+engine (shared 20-min (subject, intent) cache with L708's identical "premarket catalyst" intent); the dry run passes
+dry_run=True to the engine. Knob off: the legacy SearXNG path, unchanged.
 """
 import os
 import sys
@@ -159,6 +162,16 @@ def main():
     return rc
 
 
+def _search_kwargs(*, dry_run: bool) -> dict:
+    """Routing-engine kwargs for search_catalyst, only when the scalp hot tier's routed path is on (else the legacy
+    two-argument call, unchanged)."""
+    try:
+        from hermes_momentum_catalyst_researcher import _hot_research_on
+    except Exception:
+        return {}
+    return {"caller": "catalyst_momentum_engine", "dry_run": dry_run} if _hot_research_on() else {}
+
+
 def _dry_run(args) -> int:
     """No DB connection, no writer, no subprocess, no marker, no receipt (AGENTS.md §6)."""
     band = BANDS[args.band]
@@ -170,7 +183,8 @@ def _dry_run(args) -> int:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
             sources, errored = _usable_sources(
-                search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing"))
+                search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing",
+                                **_search_kwargs(dry_run=True)))
         except Exception:
             sources, errored = [], True
         search_errors += int(errored and not sources)
@@ -215,7 +229,8 @@ def _run(args, stats: dict) -> int:
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
-            sources = search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing")
+            sources = search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing",
+                                      **_search_kwargs(dry_run=False))
         except Exception as e:
             log.warning("  %s: catalyst search failed: %s", sym, e); search_errors += 1; continue
         sources, errored = _usable_sources(sources)

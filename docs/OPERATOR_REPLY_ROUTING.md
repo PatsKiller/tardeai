@@ -164,6 +164,24 @@ The contract above is unchanged; these change what the desk rows put in front of
   instruments; `operator_evidence_contract` (`config/operator_evidence_contract.json`) reports facts the store
   had but the evidence did not carry (`MISSING_FACT`, `FALSE_EMPTY_CLAIM`) as soft `contract` gaps.
 
+## The pending pass and the daily cap (2026-10-10)
+
+- **Measured.** `llm_cost_reservations` showed 400 settled `cio_operator_reply` requests a day on 10-05..10-10, all
+  spent by `try_fulfill_pending_replies` between 00:00 and ~03:30 ET, so operator asks were refused for the rest of
+  the day. Seven pending rows (oldest 2026-10-05) had `chat_id` `""`. The Maria skill path (`operator_internal_first`)
+  passes no chat. The pass curated each one with the model, then dropped the answer at `if not chat_id: continue`
+  without a status change, and repeated this on every pass.
+- **Every row closes.** A row with no chat is closed (`expired`, `UNDELIVERABLE_REASON`) before any model call. A row
+  gets `CIO_PENDING_MAX_ATTEMPTS_PER_DAY` (default 3) answer attempts. An attempt is a pass that reaches the answer
+  step or raises. After the last attempt the row is closed with the reason, such as the last send error, and the
+  closing message goes out. A row waiting for evidence spends no attempt and still expires by `_pending_expiry_hours`.
+- **Operator reserve.** Inside the pass, `_operator_reply_llm` refuses (`OPERATOR_RESERVE`, no call) once the pass has
+  made `CIO_DESK_BACKGROUND_CAP_SHARE` (default 0.25) × the registry `daily_soft_cap` calls in the ledger day
+  (America/New_York). That is 100 of 400, so at least 300 are kept for operator-initiated asks. A refused call takes
+  the caller's existing fail-soft path, which is the house-facts answer. Interactive asks are not counted or held.
+- Both counters are kept in `data/cio/cio_operator_pending_budget.json`, keyed by ledger day, so a restart does not
+  reset them. Test: `tests/test_desk_loop_pending_drain_20261010.py`. Gate: `desk_loop_pending_drain_20261010`.
+
 ## What PRs #1006 and #1007 added (2026-09-14)
 
 - **Research answers come back.** A pending opened for missing research is joined to its Hermes result by pending id
