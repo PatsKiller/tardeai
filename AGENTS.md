@@ -1,17 +1,29 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      4.3.0
+Policy-Version:      4.4.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-10
-Last-Reviewed:       2026-10-10T09:25:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-10T14:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          4.1.0
+Supersedes:          4.3.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**4.4.0 is PROPOSED (MAJOR) — the R1 shadow row may be a cron row (§23.11, §23.18 (c)).** Until the
+operator ratifies it (`APPROVE_AGENTS_POLICY_4_4_0`, §20) the 4.3.0 text governs, and
+`scripts/lib/lane_dispatch.py` `R1_SHADOW_SHAPE_STATUS` reads `PROPOSED`, so the gate still refuses
+an `ingest`, `llm` or `learn` lane in that shape. It changes one condition of the R1 gate. At
+`shadow` only, an R1 lane may use the row shape the shadow wave already uses while its cron line is
+live: `scheduler.kind = "cron"`, `scheduler.stage = "shadow"`, a `dispatch` block in mode `dry_run`
+and an allowlist `live_arg` of null. Every other R1 condition, §23.14 and the allowlist `never`
+entries for broker, order, stop, paper, sender, secret, guard and daemon lanes are unchanged. It also
+fixes the dispatcher's name: `dispatcher` is the row expression, and `tradeai-dispatcher` is the
+workflow id, which is refused as an expression. MAJOR because it widens the R1 admission (version
+policy: classify by the weakest guarantee); nothing in §0, §2, §2A, §7A or §17 changes.
 
 **4.0.0 is ACTIVE (MAJOR) — one named n8n live-lane exception: `trade-ai-scalp-live` (§23.3).**
 Ratified by the operator 2026-10-09 15:25 ET in session (`APPROVE_AGENTS_POLICY_4_0_0`, verbatim:
@@ -4264,6 +4276,16 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   `PERMITTED_CLASSES_PRE_R1`. `EXTRA_FORBIDDEN_SUBSTRINGS` gains `render_env`, `rotation_daemon` and
   `bitwarden`, which only tightens it.
 
+4.4.0 (PROPOSED; the 4.3.0 text stays readable at `origin/main` `af292381c`):
+
+- §23.18 (c) read: "`scheduler.expression = "dispatcher"` and `scheduler.stage` is `shadow`,
+  `canary` or `cutover`;". It now also admits the §23.11 cron row at `shadow` only.
+- §23.11 gains the bullet "While its cron line is live, a lane in `shadow` may stay a cron row".
+- `config/n8n_run_allowlist.json` `never` read "… only for a dispatcher row at stage
+  shadow/canary/cutover with a dry_run_arg …". It now names the cron shadow row and its conditions
+  in the same sentence. Every never-under-any-class entry is word for word.
+- No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes.
+
 No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
 
 ## 23.8 n8n Agent nodes (3.0.0)
@@ -4374,6 +4396,18 @@ CRITICAL or HIGH for Agent enablement maps to one item here.*
   merge of a dispatcher-row PR — by the operator, or under §23.13's standing approval — is the §9.3 and
   §17 operator decision for that lane.** *Cause (§20): 438 cron lines, 321 of them undeclared, and 4
   lanes moved in two days at one import plus one grant per lane (measured 2026-10-09).*
+- **While its cron line is live, a lane in `shadow` may stay a cron row (4.4.0).** The row keeps
+  `scheduler.kind = "cron"`, its live cron expression and `match`, and adds `scheduler.stage =
+  "shadow"` and a `dispatch` block in mode `dry_run`. Its allowlist entry lands in the same PR. For
+  §17 and this section it is a dispatcher row: adding, re-staging or removing it is the merged
+  reviewed registry PR, in the one registry train. Canary and cutover keep the dispatcher row above.
+  `scheduler.expression = "dispatcher"` names that row. `tradeai-dispatcher` is the dispatcher's n8n
+  workflow id, and a row, the gate and `_cutover.py --workflow-id` refuse it as an expression. *Cause
+  (§20): Agent A, 2026-10-10. A `kind: n8n` row whose cron line is live fails
+  `CRON_PRESENT_WHILE_SCHEDULER_N8N` and the inactive-n8n-row check of
+  `scripts/check_lane_registry.py`, so the 22-lane shadow wave was built as cron rows. The §23.18 gate
+  named only the dispatcher row and so refused every R1 lane in that shape. Design 02 §12.2 wrote the
+  workflow id as the row expression.*
 - **The gateway decides what is due; the dispatcher only relays.** The gateway's read route
   `coordination/due` computes due lanes from each dispatcher row's `scheduler.cadence` with
   `scripts/lib/cron_schedule.py` `next_run`. The dispatcher calls `coordination/run` only for lane
@@ -4532,7 +4566,11 @@ holds.
   (b) `dispatch_eligible(row)` passes, so no class relaxes the forbidden-token rule, `stay_on_cron`,
   `KEEP_ON_CRON` or stay-behind, and the lane is not a daemon (no `--daemon`, `--loop`, `--forever`,
   `--watch` or `--serve` flag, and no systemd service);
-  (c) `scheduler.expression = "dispatcher"` and `scheduler.stage` is `shadow`, `canary` or `cutover`;
+  (c) the row is a dispatcher row (`scheduler.expression = "dispatcher"`, never the workflow id
+  `tradeai-dispatcher`) at `scheduler.stage` `shadow`, `canary` or `cutover`. At `shadow` only, it may
+  instead be the §23.11 cron row (`scheduler.kind = "cron"`, `scheduler.stage = "shadow"`,
+  `dispatch.mode = "dry_run"`) whose allowlist `live_arg` is null. That shape is admitted once
+  `R1_SHADOW_SHAPE_STATUS` is `ACTIVE`, which only the 4.4.0 ratifying edit sets;
   (d) its `config/n8n_run_allowlist.json` entry has a non-empty `dry_run_arg`;
   (e) its `output_signal` is the `LaneRunReceipt@v1` (`json_key` `ok_at` on
   `data/runtime/<lane>_last.json`, written by `scripts/lib/lane_last_receipt.py`), and the allowlist
@@ -4590,6 +4628,7 @@ holds.
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 4.4.0 | 2026-10-10 | PROPOSED | MAJOR | R1 shadow row shape (§23.11, §23.18 (c)). A §23.11 dispatcher row (`kind: n8n`, `expression: "dispatcher"`) fails `CRON_PRESENT_WHILE_SCHEDULER_N8N` and the inactive-n8n-row check while its cron line is live. The shadow wave is therefore built as cron rows (`kind: cron`, `stage: shadow`, `dispatch.mode: dry_run`), and 4.3.0 §23.18 (c) refused every R1 lane in that shape. Now an `ingest`, `llm` or `learn` lane may shadow in that cron row with an allowlist `live_arg` of null, at `shadow` only; canary and cutover keep the dispatcher row. Gate in code: `lane_dispatch.r1_shadow_on_cron_shape` and `r1_class_admission`, inert until `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`. Every other R1 condition is unchanged: R1 ACTIVE, `dispatch_eligible`, no daemon, `dry_run_arg`, LaneRunReceipt@v1, no broker credential, and for `llm` the governed bridge. Naming: `dispatcher` is the row expression; `tradeai-dispatcher` (the workflow id; design 02 §12.2 wrote it as the expression) is refused by the gate and the registry check, clamped to `dry_run` by the stage clamp, and refused as `_cutover.py --workflow-id`. `--workflow-id dispatcher` leaves the row at stage `cutover`. The allowlist `never` sentence for the three classes names the cron shadow row; every never-under-any-class entry is word for word. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Tests: `tests/test_agents_policy_4_4_0_r1_shadow_shape.py`, `tests/test_r1_shadow_shape_20261010.py`. Cause: Agent A finding 2026-10-10 (no R1 lane could shadow). MAJOR: the R1 admission widens by one row shape. | **PENDING** — `APPROVE_AGENTS_POLICY_4_4_0`. Operator word per PR (§23.13: it changes `AGENTS.md` and the allowlist `never` list). The ratifying edit sets `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`, the header to ACTIVE and this row's status. |
 | 4.3.0 | 2026-10-10 | ACTIVE | MAJOR | R1 (§23.18): `ingest`, `llm` and `learn` become dispatcher-eligible classes, always shadow → canary → cutover by §23.11 registry PR and §23.12 waves. Gate in code: `scripts/lib/lane_dispatch.py` `r1_class_admission`. It requires R1 ACTIVE (`R1_STATUS`), `dispatch_eligible`, a dispatcher row at stage shadow/canary/cutover, a non-empty `dry_run_arg`, a `LaneRunReceipt@v1` `output_signal` that matches the allowlist, and no broker credential in `env_names`. An `llm` job also needs `llm_route` via `cio-governed-bridge` with a registered process and no provider/model argv. `n8n_due` and `validate_dispatch_block` both ask the gate, and `send` stays refused. `EXTRA_FORBIDDEN_SUBSTRINGS` gains `render_env`, `rotation_daemon` and `bitwarden` (measured: `render_env.py --write` passed `dispatch_eligible`); this only tightens the matcher. The governed DeepSeek route is approved for L401 overnight only; measured: today it calls `llm_lane` in-process, not the bridge, so it stays on cron until rerouted or ruled. Ruling 4: `alert_events` rows are not a send; `paper_trade_proposals` backtest fields are not paper execution; the L504 `symbol_profiles` and L205 `market_regime` writers are approved for dispatch. Rulings 2 (whole-word/path-segment token matching) and 3 (entry planner via the data broker; no broker credentials in lanes) land as separate code PRs. Allowlist `never` reworded: broker/order/stop/paper/sender/secret/guard/deploy/agent-loop stay never under any class; the three classes are excepted only once 4.3.0 is ACTIVE; "Sole exception: trade-ai-scalp-live" kept. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Numbered after 4.2.0 PROPOSED (#1634). Tests: `tests/test_agents_policy_4_3_0_r1_classes.py`. Causes: the cron inventory of 2026-10-09 (247 active rows needing refactoring, mostly policy-blocked); refactor wave 1 #1641 (36 rows needed dry-run and receipts); wave 2 V3 (L401 governed route missing). MAJOR: the n8n actor may cause three more classes of host work; broker, secret and delete rails unchanged. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1` (operator, 2026-10-10 ~09:10 ET, in session, verbatim: "APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1"); re-approved by the operator 2026-10-10 ~09:25 ET, in session, verbatim: "approved", for PR #1642 head `c3d5e895d4de5eb16f43f90ce8f43dc61a0cadfc` after the conflict merge with #1643 (which changed only the forbidden-token list in `scripts/lib/lane_dispatch.py`; `AGENTS.md` and `config/n8n_run_allowlist.json` byte-identical to `64c9210e1`); merged #1642 as `203b469146154c6729620a2428fcb76740a4d0a8`; the ratifying edit sets `R1_STATUS = "ACTIVE"`; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` and the allowlist `never` list. Operator rulings recorded 2026-10-10 ~00:20 ET: (1) ingest writers, governed LLM jobs and learning/memory writers are dispatcher-eligible, always shadow → canary → cutover; governed DeepSeek route approved for L401; (2) whole-word / path-segment forbidden-token matching; (3) entry planner (L473/L474) via the host data broker, no broker credentials in lanes; (4) `alert_events` rows not a sender, `paper_trade_proposals` backtest fields not execution, L504 and L205 approved for n8n. |
 | 4.1.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for the N8N Maturity Acceleration program (`docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md`): §23.11 registry-driven dispatch (six generic workflows — dispatcher, event router, heartbeat watcher, incident router, digest scheduler, approval router — activated once under one `cron` grant listing their ids; a lane is enabled by a reviewed PR adding its registry row `kind: n8n`, `expression: "dispatcher"`, `cadence`, `match`, `wave`, `stage` plus its `config/n8n_run_allowlist.json` entry, no per-lane import or grant; gateway read route `coordination/due` computes due lanes with `cron_schedule.next_run`; mode clamped to stage; lane identity server-side; the five non-dispatcher workflows send nothing and the approval router never mints or approves a grant; one registry PR at a time); §23.12 wave ladder (whole-wave dry_run then live-with-cron fire, receipts per lane per fire, failing lanes stay on cron, cutover per wave under one `cron` grant naming every lane, per-lane `CutoverReceipt@v1`, per-line rollback, natural-schedule evidence still owed); §23.13 program window (push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00 via `.githooks/pre-push` + `scripts/lib/tradeai_push_budget.py`; no merge queue (user-owned repository) and strict protection off; standing 48 h merge approval — Agent A's review verdict on the program board, the three required checks green on the exact head, nothing live until main CI is green on the merged SHA — with `Expires-At` set at ratification + 48 h, excluding governance, hook, guard, branch-protection, broker, secret and allowlist-`never` changes; merge only, never deploy or grant); §23.14 broker, order, secret and daemon lanes never dispatcher-eligible, by test (`tests/test_agents_policy_4_1_0_amendment.py`); `trade-ai-scalp-live` stays the single named exception, only on its 4.0.0 §23.3 terms; read-only guard carve-out — the approval-router lane may read pending guard requests and grant expiry through `scripts/lib/approval_board_projection.py`, never request, grant, revoke or consume, test-pinned; the guard `never` entry still blocks every guard write. Replaced in place: §23.2 "Registry row first", "Install, activate, edit or retire…" (one grant tier, `cron`; audit E D5) and "Shadow before canary before cutover"; §9.3 scheduler-entry bullet; §17 n8n fragment; §23.5 present-tense facts (rotation unscheduled; relay credential created 2026-10-08T16:45:48Z with MFA off and DB role `n8n` superuser, still open; P13 open); `AI_WORK_POLICY.md` §3/§17; `scripts/check_n8n_activation_grants.py` tiers `cron` only. Causes: due-diligence audits A–F of 2026-10-09 (audit E C2, C3, C4, C5, C6, C8, D5, D7); 438 cron lines, 321 undeclared, 4 lanes moved. MAJOR: §17 and merge/push authority change; nothing in §0, §2, §2A or §7A or the broker, secret or delete rails is weakened. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079` (operator, 2026-10-09 ~17:30 ET, in session: "Approve agents 4.1.0"); merged #1592 as 71d27c799; standing merge approval expires 2026-10-11T17:30:03-04:00; operator decisions recorded 2026-10-09: (1) registry-driven dispatch — one `cron` grant activates the six generic workflows, lanes enabled by reviewed registry PR; (2) wave ladder with one `cron` grant per wave cutover; (3) push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00, hook-enforced; (4) standing 48 h merge approval for `n8nmat/*` PRs with a board review verdict, green on the exact head, nothing live until main CI is green on the merged SHA, merge only; (5) 16:40 ET: read-only guard projection for the approval router, never a guard write. |
 | 4.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23.3 gains one named live-lane exception: `trade-ai-scalp-live` (Finviz ingest via the data broker, `trade_ai_scans` writer, `send_telegram` caller) may run `live` from n8n, only under the cron line's argv, lock, 295 s timeout and market gate, no provider key in n8n, relay live-lane listing and a workflow-id grant; cron stays the fallback until 3 clean market days. §23 status line corrected (stale 3.0.0 "awaiting" sentence). Allowlist `never` names the exception; `live_arg: []`. Evidence: `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md`, PR #1573, `tests/test_agents_policy_4_0_0_scalp_lane.py`. | Operator 2026-10-09 15:25 ET in session: "APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix" (`APPROVE_AGENTS_POLICY_4_0_0`), after "n8n drives a governed lane (Recommended)". |

@@ -2144,6 +2144,8 @@ GATES = [
             "tests/test_agents_policy_4_1_0_amendment.py",
             # AGENTS.md 4.3.0 (PROPOSED 2026-10-10): R1 dispatcher classes ingest/llm/learn (§23.18).
             "tests/test_agents_policy_4_3_0_r1_classes.py",
+            # AGENTS.md 4.4.0 (PROPOSED 2026-10-10): R1 shadow row may be a cron row (§23.11, §23.18 (c)).
+            "tests/test_agents_policy_4_4_0_r1_shadow_shape.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
