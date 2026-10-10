@@ -3709,6 +3709,12 @@ GATES = [
             # matcher blocked still blocks (reviewed false positives excepted), env/flag tokens inspected,
             # mutations prove the matrix has teeth. Hermetic: repo config files only.
             "tests/test_lane_dispatch_word_boundary_20261010.py",
+            # 2026-10-10 (Agent F): the R1 shadow-on-cron row shape (cron row + dispatch dry_run + stage shadow),
+            # inert until the AGENTS 4.4.0 ratifying edit flips R1_SHADOW_SHAPE_STATUS; every R1 condition and the
+            # broker/order/stop/secret/daemon refusals pinned for the new shape; `dispatcher` (row expression) vs
+            # `tradeai-dispatcher` (workflow id) refused by name in the gate, registry check, stage clamp and
+            # _cutover.py. Hermetic: synthetic rows, fake crontab, repo config read only.
+            "tests/test_r1_shadow_shape_20261010.py",
         ],
     ),
     (

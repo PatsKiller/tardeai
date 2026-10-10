@@ -78,6 +78,22 @@ R1_STATUS = "ACTIVE"  # ratified 2026-10-10: APPROVE_AGENTS_POLICY_4_3_0 1642 64
 PERMITTED_CLASSES_R1 = PERMITTED_CLASSES_PRE_R1 | R1_ADMITTED_CLASSES
 #: The ladder stages an R1 row may be at (AGENTS §23.11/§23.12 scheduler.stage). Anything else is refused.
 R1_STAGES = frozenset({"shadow", "canary", "cutover"})
+#: The ONE `scheduler.expression` value that marks a dispatcher row (AGENTS §23.11; lane_stage_clamp, the 4.1.0 and
+#: 4.3.0 policy tests). `tradeai-dispatcher` is the n8n WORKFLOW id of the dispatcher (workflows/INDEX.json), not an
+#: expression: design 02 §12.2 wrote it as one. A row carrying it is refused here and reported by
+#: validate_dispatch_block, and lane_stage_clamp clamps it to dry_run, so the slip can never run live unstaged.
+DISPATCHER_EXPRESSION = "dispatcher"
+DISPATCHER_WORKFLOW_ID = "tradeai-dispatcher"
+# ── R1 shadow-on-cron shape (proposed AGENTS.md 4.4.0 §23.18 (c); Agent A finding 2026-10-10) ──────────────────
+#: While a lane's cron line is live, a §23.11 dispatcher row (kind n8n, expression "dispatcher") fails
+#: CRON_PRESENT_WHILE_SCHEDULER_N8N (scripts/lib/n8n_lane_host_conflict.py) and the inactive-n8n-row check, so the
+#: §23.12 shadow step is a CRON row: scheduler.kind "cron", scheduler.stage "shadow", dispatch.mode "dry_run" (wave 1,
+#: n8nmat/dispatch-shadow-wave1). 4.3.0 §23.18 (c) admits an R1 class only on an expression-"dispatcher" row, so this
+#: shape is admitted for R1 classes only once the amendment is ratified: "PROPOSED" until the ratifying edit flips it,
+#: and tests/test_r1_shadow_shape_20261010.py fails unless it matches AGENTS.md. Canary/cutover are unchanged: they
+#: still need the dispatcher row.
+R1_SHADOW_SHAPE_POLICY_VERSION = "4.4.0"
+R1_SHADOW_SHAPE_STATUS = "PROPOSED"
 #: The only route a governed LLM job may use for model calls (AGENTS §23.4, §9.2, §12; `cio-governed-bridge`).
 GOVERNED_LLM_ROUTE = "cio-governed-bridge"
 #: Ruling 3: no broker credential in an admitted lane's environment. Name fragments, matched on env_names.
@@ -683,7 +699,8 @@ def receipt_signal_path(row: Mapping[str, Any]) -> Optional[str]:
 def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]] = None, *,
                        status: Optional[str] = None, process_ids: Optional[Iterable[str]] = None,
                        allowlist_argv: Optional[Mapping[str, str]] = None,
-                       exceptions: Optional[Mapping[str, frozenset[str]]] = None) -> tuple[bool, str]:
+                       exceptions: Optional[Mapping[str, frozenset[str]]] = None,
+                       shadow_shape_status: Optional[str] = None) -> tuple[bool, str]:
     """AGENTS.md 4.3.0 §23.18: may this row's dispatch class run from the dispatcher? (ok, reason).
 
     Classes outside R1_ADMITTED_CLASSES are answered by PERMITTED_CLASSES_PRE_R1 alone (`send` stays refused).
@@ -691,7 +708,13 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
       * R1 is ACTIVE (R1_STATUS, flipped only by the ratifying edit);
       * dispatch_eligible(row): the forbidden-token rule, stay-behind and KEEP_ON_CRON are never relaxed by a class;
       * not a daemon: no R1_DAEMON_ARGV_TOKENS flag in the allowlist argv, no systemd service (non-timer) scheduler;
-      * scheduler.expression == "dispatcher" and scheduler.stage in {shadow, canary, cutover};
+      * the row shape is one of
+          - a dispatcher row: scheduler.kind "n8n", scheduler.expression == "dispatcher" and scheduler.stage in
+            {shadow, canary, cutover} (§23.11); or
+          - a shadow-on-cron row (r1_shadow_on_cron_shape; only while R1_SHADOW_SHAPE_STATUS is ACTIVE):
+            scheduler.kind "cron", scheduler.stage "shadow", dispatch.mode "dry_run", and an allowlist entry whose
+            live_arg is null, so no live argv exists for the dispatcher to run while the cron line does the work;
+        `tradeai-dispatcher` (the workflow id) as the expression is refused by name;
       * an allowlist entry with a non-empty dry_run_arg (the shadow step needs a real dry run);
       * output_signal is the LaneRunReceipt@v1 (json_key ok_at on data/runtime/<x>_last.json) and the allowlist
         entry's output_signal is the same path;
@@ -714,7 +737,15 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
     if not ok:
         return False, f"ineligible:{why}"
     sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
-    if sched.get("expression") != "dispatcher":
+    if sched.get("expression") == DISPATCHER_WORKFLOW_ID:
+        return False, (f"workflow_id_as_expression:{DISPATCHER_WORKFLOW_ID} "
+                       f"(scheduler.expression must be {DISPATCHER_EXPRESSION!r})")
+    cron_shadow = sched.get("kind") == "cron"
+    if cron_shadow:
+        ok, why = r1_shadow_on_cron_shape(row, block, status=shadow_shape_status)
+        if not ok:
+            return False, why
+    elif sched.get("expression") != DISPATCHER_EXPRESSION:
         return False, "not_a_dispatcher_row"
     if sched.get("stage") not in R1_STAGES:
         return False, f"stage:{sched.get('stage')!r} not in shadow/canary/cutover"
@@ -722,6 +753,8 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
         entry = load_run_allowlist_entries().get(lane)
     if not isinstance(entry, Mapping):
         return False, "not_allowlisted"
+    if cron_shadow and entry.get("live_arg") is not None:
+        return False, f"shadow_on_cron_live_arg_not_null:{entry.get('live_arg')!r}"
     for key in ("command", "dry_run_arg", "live_arg"):
         for tok in entry.get(key) or []:
             if any(str(tok) == d or str(tok).startswith(d + "=") for d in R1_DAEMON_ARGV_TOKENS):
@@ -757,6 +790,36 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
     return True, f"r1_admitted:{klass}"
 
 
+def r1_shadow_on_cron_shape(row: Mapping[str, Any], block: Optional[DispatchBlock] = None, *,
+                            status: Optional[str] = None) -> tuple[bool, str]:
+    """(ok, reason): is `row` the shadow-on-cron shape an R1 class may use while its cron line is live?
+
+    scheduler.kind "cron" with a 5-field cron expression, scheduler.stage "shadow", and dispatch.mode "dry_run";
+    admitted only while R1_SHADOW_SHAPE_STATUS (or `status`, tests only) is ACTIVE. The caller (r1_class_admission)
+    also requires the allowlist live_arg to be null and keeps every other R1 condition. Never a canary or cutover
+    shape: a live fire needs the §23.11 dispatcher row."""
+    sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
+    if sched.get("kind") != "cron":
+        return False, "shadow_on_cron:not_a_cron_row"
+    if (status or R1_SHADOW_SHAPE_STATUS) != "ACTIVE":
+        return False, (f"shadow_on_cron_not_ratified (AGENTS {R1_SHADOW_SHAPE_POLICY_VERSION} is "
+                       f"{status or R1_SHADOW_SHAPE_STATUS}); 4.3.0 needs scheduler.expression "
+                       f"{DISPATCHER_EXPRESSION!r}")
+    expr = sched.get("expression")
+    if not isinstance(expr, str) or not _CRON_SHAPE.match(expr.strip()):
+        return False, f"shadow_on_cron:expression {expr!r} is not a 5-field cron"
+    if sched.get("stage") != "shadow":
+        return False, f"shadow_on_cron:stage {sched.get('stage')!r} (a cron row is admitted at shadow only)"
+    if block is None:
+        try:
+            block = parse_dispatch_block(row)
+        except DispatchBlockError as e:
+            return False, f"bad_block:{e.detail}"
+    if block is None or block.mode != "dry_run":
+        return False, f"shadow_on_cron:dispatch.mode {getattr(block, 'mode', None)!r} (must be dry_run)"
+    return True, "shadow_on_cron"
+
+
 # ── validation ───────────────────────────────────────────────────────────────────────────────────
 
 def validate_dispatch_block(row: Mapping[str, Any], *, known_lane_ids: Optional[Iterable[str]] = None,
@@ -771,6 +834,11 @@ def validate_dispatch_block(row: Mapping[str, Any], *, known_lane_ids: Optional[
         permitted_classes = permitted_classes_now()
     lane = str(row.get("lane_id") or "?")
     issues: list[DispatchIssue] = []
+    sched = row.get("scheduler")
+    if isinstance(sched, Mapping) and sched.get("expression") == DISPATCHER_WORKFLOW_ID:
+        issues.append(DispatchIssue(lane, ISSUE_BAD_BLOCK,
+                                    f"scheduler.expression {DISPATCHER_WORKFLOW_ID!r} is the workflow id; a dispatcher "
+                                    f"row says {DISPATCHER_EXPRESSION!r} (AGENTS §23.11)"))
     try:
         parse_watch_block(row)
     except DispatchBlockError as e:

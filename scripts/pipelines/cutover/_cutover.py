@@ -65,6 +65,10 @@ NO_CONSUMER_REASON = (
 RECEIPT_DIR_REL = Path("data") / "runtime" / "n8n_cutover"
 LAST_RECEIPT_NAME = "n8n_cutover_last.json"
 DEFAULT_LOCK = "/tmp/n8n_cutover.lock"
+#: AGENTS §23.11: a dispatcher row's scheduler.expression; mirrors scripts/lib/lane_dispatch.DISPATCHER_EXPRESSION
+#: (kept local: this tool runs standalone). The dispatcher's workflow id is refused as an expression.
+DISPATCHER_EXPRESSION = "dispatcher"
+DISPATCHER_WORKFLOW_ID = "tradeai-dispatcher"
 N8N_TAG_RE = re.compile(r"^#\s*RETIRED\s+(\d{4}-\d{2}-\d{2})\s+n8n-cutover\s+(\S+)\s(.*)$")
 
 PIPELINES = {
@@ -393,6 +397,9 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
         problems.append(f"scheduler.kind {kind!r} has no host entry to retire")
     if not args.workflow_id:
         problems.append("--workflow-id is required (the n8n workflow id becomes scheduler.expression)")
+    elif str(args.workflow_id) == DISPATCHER_WORKFLOW_ID:
+        problems.append(f"--workflow-id {DISPATCHER_WORKFLOW_ID} is the dispatcher's workflow id, not a row expression; "
+                        f"a dispatcher lane is cut over with --workflow-id {DISPATCHER_EXPRESSION} (AGENTS §23.11)")
     if not match:
         problems.append("scheduler.match / expression is empty; nothing to find on the host")
 
@@ -425,6 +432,12 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
         return _refuse(rc, args, problems)
 
     new_sched = {"kind": "n8n", "expression": str(args.workflow_id), "match": match, "cadence": cadence}
+    if str(args.workflow_id) == DISPATCHER_EXPRESSION:
+        # §23.12: a dispatcher row moves to stage cutover (a dispatcher row without a stage is clamped to dry_run
+        # and refused by lane_dispatch.r1_class_admission); its wave label is kept.
+        new_sched["stage"] = "cutover"
+        if sched.get("wave"):
+            new_sched["wave"] = sched["wave"]
     rc["scheduler_after"] = new_sched
     rc["cadence"] = cadence
     rc["workflow_id"] = str(args.workflow_id)

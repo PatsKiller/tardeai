@@ -557,7 +557,7 @@ stateDiagram-v2
    - The gate: ≥ 1 live RUN_DONE per lane, and the wave's RUN_FAILED count ≤ the cron baseline over the same window, from `cron_health.json`. The wave stops on any regression.
 4. **Cutover.**
    - `_cutover.py cutover --wave Wn --apply` is a new batch mode over the existing per-lane code.
-   - Preflight runs for *all* lanes first and is all-or-nothing. It takes one crontab backup, comments each exact line `# RETIRED <date> n8n-cutover <lane_id>`, and flips each row to `{kind: n8n, expression: "tradeai-dispatcher", match, cadence}`.
+   - Preflight runs for *all* lanes first and is all-or-nothing. It takes one crontab backup, comments each exact line `# RETIRED <date> n8n-cutover <lane_id>`, and flips each row to `{kind: n8n, expression: "dispatcher", stage: "cutover", match, cadence}` (`tradeai-dispatcher` is the workflow id, not the row expression; `_cutover.py` refuses it as `--workflow-id`).
    - It writes one CutoverReceipt@v1 per lane and one WaveCutoverReceipt@v1. Systemd lanes emit `disable --now` operator commands, as today.
    - It runs under **one cron grant per wave** that names "PR #N sha <sha>" and the lane list.
 5. **Rollback.**

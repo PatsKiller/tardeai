@@ -12,7 +12,8 @@ Rule (pure, no I/O except ``load_stage_rows``):
 * stage ``shadow`` -> ``dry_run`` whatever was requested. ``canary`` / ``cutover`` -> the requested mode.
 * FAIL CLOSED to ``dry_run`` when the stage is unknown: the registry is unreadable, the lane has no registry row
   (§23.2 "registry row first"), or the row declares a stage that is not one of the three, or the row is a
-  dispatcher row (``scheduler.expression == "dispatcher"``) with no stage at all.
+  dispatcher row (``scheduler.expression == "dispatcher"``, or the workflow id ``tradeai-dispatcher`` written as
+  one) with no stage at all.
 * A registered row that is not a dispatcher row and declares no stage (a lane-specific workflow, §23.2 per-lane
   ladder, or a cron/systemd lane fired by its own grant) is NOT clamped: stage is a dispatcher-row field
   (§23.2 / §23.11), and its live gate is the relay's live-lane list plus the workflow's activation grant. Clamping
@@ -46,9 +47,15 @@ def _scheduler(row: Mapping[str, Any]) -> Mapping[str, Any]:
     return s if isinstance(s, Mapping) else {}
 
 
+#: ``dispatcher`` is the expression a dispatcher row carries (§23.11). ``tradeai-dispatcher`` is the dispatcher's n8n
+#: workflow id, written as an expression by design 02 §12.2; lane_dispatch refuses it, and the clamp treats it as a
+#: dispatcher row so a mis-flipped row without a stage fails closed to dry_run instead of passing live through.
+DISPATCHER_EXPRESSIONS = frozenset({"dispatcher", "tradeai-dispatcher"})
+
+
 def is_dispatcher_row(row: Mapping[str, Any]) -> bool:
     s = _scheduler(row)
-    return s.get("kind") == "n8n" and s.get("expression") == "dispatcher"
+    return s.get("kind") == "n8n" and s.get("expression") in DISPATCHER_EXPRESSIONS
 
 
 def lane_stage(lane_id: str, rows: Optional[Iterable[Mapping[str, Any]]]) -> Optional[str]:
