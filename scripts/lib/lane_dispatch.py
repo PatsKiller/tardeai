@@ -97,7 +97,7 @@ DISPATCHER_WORKFLOW_ID = "tradeai-dispatcher"
 #: flock lock as declared in scheduler.command_text, so the lock proves no double run (§23.12). Cutover still needs
 #: the dispatcher row.
 R1_SHADOW_SHAPE_POLICY_VERSION = "4.4.0"
-R1_SHADOW_SHAPE_STATUS = "PROPOSED"
+R1_SHADOW_SHAPE_STATUS = "ACTIVE"  # ratified 2026-10-10: APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe (merged as 40e445d79)
 #: The only route a governed LLM job may use for model calls (AGENTS §23.4, §9.2, §12; `cio-governed-bridge`).
 GOVERNED_LLM_ROUTE = "cio-governed-bridge"
 #: Ruling 3: no broker credential in an admitted lane's environment. Name fragments, matched on env_names.
