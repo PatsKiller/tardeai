@@ -47,7 +47,12 @@ def test_row_is_paused_pending_install_with_the_exact_line(lane_id):
     assert f"bash $PROJ/scripts/safe_flock.sh {lock} {timeout}$PY {match}" in line
     assert f" >> {log} 2>&1  # TRADEAI_LANE {lane_id}" in line and line.endswith(f"# TRADEAI_LANE {lane_id}")
     assert "/home/" not in line and "%" not in line          # no host path; no cron-escaped char
-    assert "--dry-run" not in line and "run_with_deepseek_offpeak" not in line   # see state_reason (diagnoser)
+    assert "--dry-run" not in line
+    wrap = "bash $PROJ/scripts/run_with_deepseek_offpeak.sh --scheduled --defer-in-process -- bash $PROJ/scripts/safe_flock.sh "
+    if lane_id == "n8n-failure-diagnosis":   # paid lane: off-peak wrapper, deferring in process (PR #1652)
+        assert wrap in line and line.index(wrap) < line.index(match)
+    else:                                    # no LLM: no wrapper
+        assert "run_with_deepseek_offpeak" not in line
     assert row["expected_cadence_hours"] == cadence and R.cron_cadence_hours(sched) <= cadence
     assert row["output_signal"] == {"kind": "json_key", "path": receipt, "key": "ok_at"}
     assert row["severity"] == "High" and row["remediation"]
@@ -60,6 +65,14 @@ def test_lines_are_discovered_as_exactly_these_lanes():
     for job in found:
         hits = [lid for lid in LANES if ROWS[lid]["scheduler"]["match"] in job["expression"]]
         assert len(hits) == 1
+
+
+def test_the_wrapper_flag_the_diagnoser_line_needs_is_pinned_by_its_own_pr():
+    """The line is only valid once run_with_deepseek_offpeak.sh accepts --defer-in-process (PR #1652); until that
+    lands the row stays PAUSED and the packet's install.sh refuses. This test records the dependency."""
+    row = ROWS["n8n-failure-diagnosis"]
+    assert "--defer-in-process" in row["scheduler"]["install_line"] and "PR #1652" in row["state_reason"]
+    assert row["state"] == "PAUSED"
 
 
 def test_neither_lane_is_a_sender_or_on_the_n8n_allowlist():
