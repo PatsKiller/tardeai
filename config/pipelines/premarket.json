@@ -1260,8 +1260,8 @@
       "cron_schedule": "0 6 * * 1-5",
       "cron_time": "06:00",
       "basename": "social_ingest.py",
-      "category": "DEFERRED_OPERATOR_PICK",
-      "reason": "C1 2026-10-10: inventory cron:L243 is claimed by two plans (premarket step vs approval-sheet social owner). Operator pick D-2 (JOB_REDUCTION_DEEP_PASS.md §10); stays its own cron line until then.",
+      "category": "DEFERRED_CONSOLIDATION_PLAN",
+      "reason": "C1 2026-10-10: inventory cron:L243 belongs to the consolidation plan (packets/consolidation-step1, social-ingest owner), not C1 — operator ruling 2026-10-10 ~19:45 ET (D-2 answered: sheet). Permanently out of the premarket stage; stays its own cron line until the consolidation plan acts on it.",
       "inv_id": "cron:L243",
       "former_step": "premarket/social_ingest",
       "measured": {
@@ -1298,8 +1298,8 @@
       "cron_schedule": "20 7 * * 1-5",
       "cron_time": "07:20",
       "basename": "llm_intelligence_enrichment.py",
-      "category": "DEFERRED_OPERATOR_PICK",
-      "reason": "C1 2026-10-10: inventory cron:L184 is claimed by two plans (premarket step vs approval-sheet C-IDENT-01 merge target). Operator pick D-2 (JOB_REDUCTION_DEEP_PASS.md §10); stays its own cron line until then.",
+      "category": "DEFERRED_CONSOLIDATION_PLAN",
+      "reason": "C1 2026-10-10: inventory cron:L184 belongs to the consolidation plan (packets/consolidation-step1, C-IDENT-01 merge target), not C1 — operator ruling 2026-10-10 ~19:45 ET (D-2 answered: sheet). Permanently out of the premarket stage; stays its own cron line until the consolidation plan acts on it.",
       "inv_id": "cron:L184",
       "former_step": "premarket/llm_intelligence_enrichment_am",
       "measured": {

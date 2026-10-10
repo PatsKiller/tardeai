@@ -2,7 +2,7 @@
 
 Pins the manifest sync that makes the four pipeline manifests flippable to --apply without a double run:
   * exactly the 75 approved crontab lines are stage steps, each tagged with its inventory id;
-  * the dual-claimed lines (L184, L243: operator pick D-2), approval-sheet lines (L185, L264) and the C2 line
+  * the dual-claimed lines (L184, L243: consolidation plan, operator ruling 2026-10-10 ~19:45 ET), approval-sheet lines (L185, L264) and the C2 line
     (L832) are `deferred`, never steps, so an --apply stage cannot run them a second time;
   * universe_history_retention (no cron line since tranche A rank 4) is excluded, not a step;
   * the steps whose cron text drifted (flock added, off-peak wrapper dropped) carry the live text again, so the
@@ -27,7 +27,7 @@ APPROVED = {
     "after_close/planning": 14, "hermes_overnight/night": 4, "hermes_overnight/close": 1,
     "hermes_learning/learn": 6, "hermes_learning/tune": 1,
 }
-HELD = {"cron:L184": "DEFERRED_OPERATOR_PICK", "cron:L243": "DEFERRED_OPERATOR_PICK",
+HELD = {"cron:L184": "DEFERRED_CONSOLIDATION_PLAN", "cron:L243": "DEFERRED_CONSOLIDATION_PLAN",
         "cron:L264": "DEFERRED_APPROVAL_SHEET", "cron:L185": "DEFERRED_APPROVAL_SHEET",
         "cron:L832": "DEFERRED_OTHER_PLAN"}
 
