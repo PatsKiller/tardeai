@@ -62,6 +62,45 @@ def _get_conn():
     )
 
 
+def _get_run_conn():
+    """The batch run's connection: survives a server-side connection loss (see lib/pg_reconnect.py).
+
+    2026-10-09: a Postgres restart mid-run closed the single long-lived connection and the whole
+    14-topic run died in the article-save handler. Reconnect once per loss; a lost first statement
+    of a transaction is retried, a lost mid-transaction op drops only that item.
+    """
+    from lib.pg_reconnect import ReconnectingConnection
+    return ReconnectingConnection(_get_conn)
+
+
+# ── Per-run lane receipt (registry output_signal) ────────────────────────
+# topic_ingestion_latest.json (the desk projection) is written only when a run saved something, so a
+# crashed or empty run was indistinguishable from "no new articles". This receipt is written by every
+# batch (cron) run -- ok, failed or skipped -- and its ok_at advances only on a successful run. Single
+# --topic invocations (RI queue / iris --gaps / reground drains) do not touch it, so they cannot make
+# the cron lane look fresh.
+RUN_RECEIPT = PROJECT_ROOT / "data" / "runtime" / "topic_ingestion_run_latest.json"
+RUN_RECEIPT_SCHEMA = "TopicIngestionRun@v1"
+
+
+def _write_run_receipt(receipt: dict, path: Path | None = None) -> None:
+    path = path or RUN_RECEIPT
+    if receipt.get("status") == "ok":
+        receipt["ok_at"] = receipt.get("finished_at")
+    else:
+        try:
+            receipt["ok_at"] = (json.loads(path.read_text(encoding="utf-8")) or {}).get("ok_at")
+        except Exception:  # noqa: BLE001 -- no previous receipt
+            receipt["ok_at"] = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(receipt, indent=2, default=str) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception as e:  # noqa: BLE001 -- the receipt must never mask the run's own result
+        print(f"  [topic_ingestion] run receipt write failed: {e}")
+
+
 # ── Desk-side projection (no Telegram) ───────────────────────────────────
 # Per-run ingestion counts are non-actionable noise on Telegram; the articles
 # themselves already land in news_articles / youtube_transcripts (the canonical
@@ -1422,15 +1461,40 @@ def main():
                              "curator's own re-ingest step to break the ingest<->curate loop.")
     args = parser.parse_args()
 
+    lane_run = not args.dry_run and not args.topic
+    receipt = {"schema": RUN_RECEIPT_SCHEMA, "started_at": datetime.now(timezone.utc).isoformat(),
+               "status": "failed", "max_topics": args.max_topics, "owner": args.owner or "tradeai+shared",
+               "topics_loaded": 0, "topics_processed": 0, "topics_skipped": 0, "articles": 0,
+               "transcripts": 0, "db_reconnects": 0, "db_retried_ops": 0, "db_dropped_ops": 0}
+    try:
+        _run(args, receipt)
+    except BaseException as e:
+        receipt["error"] = f"{type(e).__name__}: {e}"[:300]
+        raise
+    finally:
+        receipt["finished_at"] = datetime.now(timezone.utc).isoformat()
+        if lane_run:
+            _write_run_receipt(receipt)
+
+
+def _note_db(receipt: dict, conn) -> None:
+    for key, attr in (("db_reconnects", "reconnects"), ("db_retried_ops", "retried_ops"),
+                      ("db_dropped_ops", "dropped_ops")):
+        receipt[key] = int(getattr(conn, attr, 0) or 0)
+
+
+def _run(args, receipt: dict) -> None:
     # Global min-interval guard: skip (clean exit) if a prior ingestion started
     # too recently. Protects external news/YouTube APIs from sub-minute hammering.
     # --dry-run never hits the external APIs, so it is exempt.
     if not args.dry_run and not _interval_gate_ok():
         print(f"  [topic_ingestion] skipped — within {_INGESTION_MIN_INTERVAL_S:.0f}s "
               f"of the previous run (re-entry guard)")
+        receipt["status"] = "skipped"
+        receipt["reason"] = "interval_gate"
         return
 
-    conn = _get_conn()
+    conn = _get_run_conn()
     cur = conn.cursor()
 
     # Load topics from DB
@@ -1461,6 +1525,9 @@ def main():
 
     columns = [desc[0] for desc in cur.description]
     topics = [dict(zip(columns, row)) for row in cur.fetchall()]
+    # End the read transaction now: it would otherwise stay "idle in transaction" for the whole run, and a
+    # statement that opens a fresh transaction is the one a lost connection can safely retry.
+    conn.commit()
     # Backfill cap (2026-06-20): with 140+ topics and per-article LLM curation, a full run can't
     # finish in 30m. --max-topics lets a batch process the N stalest topics and exit clean; the
     # NULLS-FIRST ordering means never-searched (newly-routed) topics are picked up first.
@@ -1469,7 +1536,11 @@ def main():
 
     if not topics:
         print("No enabled topics found in topic_monitor table.")
+        receipt["status"] = "ok"
+        receipt["reason"] = "no_enabled_topics"
+        conn.close()
         return
+    receipt["topics_loaded"] = len(topics)
 
     # Deserialize JSONB fields
     for t in topics:
@@ -1505,6 +1576,7 @@ def main():
         if args.gaps_only and existing >= min_articles:
             print(f"  SKIP: {existing} >= {min_articles} (no gap)")
             total_stats["topics_skipped"] += 1
+            receipt["topics_skipped"] = total_stats["topics_skipped"]
             continue
 
         result = process_topic(conn, topic, dry_run=args.dry_run,
@@ -1524,6 +1596,11 @@ def main():
         total_stats["articles"] += result["articles"]
         total_stats["transcripts"] += result["transcripts"]
         total_stats["topics_processed"] += 1
+        for k in ("articles", "transcripts", "topics_processed"):
+            receipt[k] = total_stats[k]
+        _note_db(receipt, conn)
+        if getattr(conn, "exhausted", False):
+            raise RuntimeError("database connection could not be re-established; aborting the run")
 
         print(f"\n  Result: {result['articles']} articles, "
               f"{result['transcripts']} transcripts saved "
@@ -1543,7 +1620,11 @@ def main():
     if total_stats["articles"] + total_stats["transcripts"] > 0 and not args.dry_run:
         _write_desk_projection(total_stats)
 
+    _note_db(receipt, conn)
     conn.close()
+    if getattr(conn, "exhausted", False):
+        raise RuntimeError("database connection could not be re-established; run incomplete")
+    receipt["status"] = "ok"
 
     # Auto-trigger curation pipeline after ingestion (unless the caller is the
     # curator's own re-ingest step — that would form an unbounded ingest<->curate
