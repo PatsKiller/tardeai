@@ -552,16 +552,33 @@ run_pin_check() {
 # release (PR, SHA or the campaign this run is under); a generic grant of the
 # same tier no longer authorizes it. Fail closed; TRADEAI_RELEASE_GRANT_BINDING=warn
 # degrades visibly during the transition. No credential is read.
+# 2026-10-09 (due diligence B §2): a grant that names a SHA binds only that SHA,
+# and a promote reads exact-SHA CI BEFORE a grant use is consumed (exit 3 = CI
+# not green, nothing consumed). The CI-outage emergency path skips that read; it
+# proves the outage itself before activation.
 release_grant_preflight() {
   local action="$1" sha="$2"
-  local pr_arg=()
+  local pr_arg=() ci_arg=()
   [[ -n "${TRADEAI_RELEASE_PR:-}" ]] && pr_arg=(--pr "${TRADEAI_RELEASE_PR}")
+  if [[ "$action" == "promote" ]]; then
+    if [[ -n "$EMERGENCY_SHA" && "$EMERGENCY_SHA" == "$sha" ]]; then
+      ci_arg=(--skip-ci-gate)
+    else
+      ci_arg=(--ci-receipt "$CI_RECEIPT_FILE")
+    fi
+  fi
   if [[ ! -f "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" ]]; then
     log "release grant preflight script absent in ${CANONICAL_SOURCE}; skipping (pre-binding tree)"
     return 0
   fi
-  if ! "$VENV_PYTHON" "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" --action "$action" --sha "$sha" "${pr_arg[@]}"; then
-    die "release grant binding refused ${action} of ${sha} (set TRADEAI_RELEASE_PR / obtain a grant naming this PR or SHA)"
+  local rc=0
+  "$VENV_PYTHON" "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" --action "$action" --sha "$sha" "${pr_arg[@]}" "${ci_arg[@]}" || rc=$?
+  if (( rc == 3 )); then
+    write_deploy_receipt false "$action" blocked false "post_merge_ci_refused"
+    die "exact-SHA push-to-main checks are not completed successfully; ${action} refused before any release grant use was consumed"
+  fi
+  if (( rc != 0 )); then
+    die "release grant binding refused ${action} of ${sha} (set TRADEAI_RELEASE_PR / obtain a grant naming this PR or SHA; a grant that names a SHA binds only that SHA)"
   fi
 }
 
