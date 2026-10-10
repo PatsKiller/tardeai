@@ -89,6 +89,7 @@ _mr_step() {
   elif [ "$DRY_RUN" = "1" ]; then
     status="dry_run"; rc=0
     echo "  ---- step $id (L$cron_line, timeout ${tmo}s, dow=$dow) [DRY_RUN] would run: $cmd"
+    echo "       env (env -i, names only): ${envnames}"
   else
     echo "  ---- step $id (L$cron_line, timeout ${tmo}s, group=$grp) START $(_ts) ----"
     local steplog="$RUN_LOG"
