@@ -2109,6 +2109,8 @@ GATES = [
             "tests/test_agents_policy_3_0_0_amendment.py",
             # AGENTS.md 4.1.0 (PROPOSED 2026-10-09): registry dispatch, wave ladder, program push budget, 48 h merge approval.
             "tests/test_agents_policy_4_1_0_amendment.py",
+            # AGENTS.md 4.2.0 (PROPOSED 2026-10-09): n8n first, named system lanes, dead-man switch, error baseline.
+            "tests/test_agents_policy_4_2_0_amendment.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
