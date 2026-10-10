@@ -3989,6 +3989,8 @@ GATES = [
             "tests/test_registry_signals_r1_20261009.py",
             # registry-ops-crons 2026-10-09: incident-notifier + P16/P18 host-cron rows, PAUSED pending install.
             "tests/test_registry_ops_crons_20261009.py",
+            # siem-diagnoser-schedule 2026-10-10: n8n-siem-bridge + n8n-failure-diagnosis host-cron rows, PAUSED pending install.
+            "tests/test_registry_siem_diagnoser_crons_20261010.py",
         ],
     ),
     (
