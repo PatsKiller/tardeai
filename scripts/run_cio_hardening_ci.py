@@ -2472,6 +2472,9 @@ GATES = [
         [
             "tests/test_whole_site_truth.py",
             "tests/test_operator_control_contract.py",
+            # n8nmat reliability (2026-10-09): these truth contracts run in a
+            # child process under a deadline so one slow scan cannot wedge :7777.
+            "tests/test_api_request_isolation.py",
         ],
     ),
     (

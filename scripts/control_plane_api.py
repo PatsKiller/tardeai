@@ -136,25 +136,65 @@ def _read_json(path: Path) -> tuple[Any | None, str]:
         return None, "INVALID_SCHEMA"
 
 
-def _read_jsonl(path: Path) -> tuple[list[dict[str, Any]] | None, str]:
-    """Read an append-only projection without failing the whole endpoint on one bad row."""
+_JSONL_COMPACT_EVERY = 5000
+
+
+def _read_jsonl(
+    path: Path, *, keep: Any = None, compact: Any = None
+) -> tuple[list[dict[str, Any]] | None, str]:
+    """Read an append-only projection without failing the whole endpoint on one bad row.
+
+    Streams line by line. The previous ``read_text().splitlines()`` held the whole
+    file twice (bytes-as-str plus the split list) before a single row was parsed;
+    on the 150 MB workflow lineage that put ~800 MB on the API process for one
+    GET, pushed the service past MemoryHigh and froze it until the watchdog
+    SIGKILLed it (n8nmat reliability, 2026-10-09).
+
+    ``keep(row) -> bool`` drops rows a caller will discard anyway, so they are
+    never retained. ``compact(rows) -> rows`` is an idempotent reducer applied
+    every ``_JSONL_COMPACT_EVERY`` retained rows (and once at the end), so a
+    projection that collapses many rows into few never holds the whole file.
+    Every line is still parsed: one corrupt row keeps the file INVALID_SCHEMA
+    exactly as before.
+    """
     try:
         rows: list[dict[str, Any]] = []
-        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                value = json.loads(line)
-            except ValueError:
-                return None, "INVALID_SCHEMA"
-            if not isinstance(value, dict):
-                return None, "INVALID_SCHEMA"
-            rows.append(value)
+        compact_at = _JSONL_COMPACT_EVERY
+        with path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    value = json.loads(line)
+                except ValueError:
+                    return None, "INVALID_SCHEMA"
+                if not isinstance(value, dict):
+                    return None, "INVALID_SCHEMA"
+                if keep is not None and not keep(value):
+                    continue
+                rows.append(value)
+                if compact is not None and len(rows) >= compact_at:
+                    rows = compact(rows)
+                    # Never re-compact on every row when the reduced set is itself large.
+                    compact_at = max(_JSONL_COMPACT_EVERY, 2 * len(rows))
+        if compact is not None:
+            rows = compact(rows)
         return rows, "AVAILABLE"
     except FileNotFoundError:
         return None, "UNAVAILABLE"
+    except UnicodeDecodeError:
+        return None, "INVALID_SCHEMA"
     except OSError:
         return None, "UNAVAILABLE"
+
+
+def _workflow_list_keep(row: dict[str, Any]) -> bool:
+    """The workflow LIST never shows raw node/edge rows (see _project_workflow_collection).
+
+    Dropping them while streaming gives the same projection: envelopes win when
+    present, otherwise the untyped leftovers, otherwise the rows unchanged.
+    """
+    return row.get("record_type") not in {"node", "edge"}
 
 
 def _state_root() -> Path:
@@ -285,6 +325,15 @@ def _project_workflow_collection(rows: list[dict[str, Any]]) -> list[dict[str, A
     return leftovers
 
 
+def _jsonl_compactor(domain: str, path: Path) -> Any:
+    """Idempotent reducer for a JSONL source whose projection collapses rows, else None."""
+    if domain == "agents" and _is_agent_trace_source(path):
+        return _agents_from_traces
+    if domain == "workflows":
+        return _project_workflow_collection
+    return None
+
+
 def _extract_rows(value: Any, *, domain: str, path: Path) -> list[dict[str, Any]] | None:
     """Return usable rows, or None to skip this path (do not AVAILABLE-empty-steal)."""
     spec = CONTROL_PLANE_DOMAINS.get(domain) or {}
@@ -347,7 +396,9 @@ def _select_rows(paths: tuple[Path, ...], *, domain: str) -> tuple[list[dict[str
         if not path.is_file():
             continue
         if path.suffix.lower() == ".jsonl":
-            value, quality = _read_jsonl(path)
+            keep = _workflow_list_keep if domain == "workflows" else None
+            compact = _jsonl_compactor(domain, path)
+            value, quality = _read_jsonl(path, keep=keep, compact=compact)
         else:
             value, quality = _read_json(path)
         if quality == "INVALID_SCHEMA":
