@@ -717,6 +717,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/sender-inventory.md` | Communications Gateway — Sender Inventory | review_required | MISSING HEADER | `af5b68183139` |
 | `docs/audit/telegram-bypass-zero-closeout.md` | Telegram chokepoint — zero bypass closeout | review_required | OK | `73423300bcac` |
 | `docs/audit/wave-c-inbound-implementation.md` | Wave C — Communications Gateway, inbound half (implementation) | review_required | OK | `ca9edc237fc0` |
+| `docs/audits/ALPHA_VANTAGE_GAPS_AND_NEWSAPI_2026-10-10.md` | Alpha Vantage for the gaps, and the NewsAPI test | review_required | OK | `c38deb4b56de` |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | OK | `9f1bdc8d2d08` |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |

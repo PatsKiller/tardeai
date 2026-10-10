@@ -4261,6 +4261,15 @@ GATES = [
         ["tests/test_youtube_channel_id_cache_20261010.py"],
     ),
     (
+        # Alpha Vantage owner (operator 2026-10-10 "use Alpha Vantage for the gaps"): lib/alpha_vantage_owner.py is the only
+        # alphavantage.co caller; <= 23/day on both the UTC and ET day, per-job allotments, >= 12 s spacing; refuses up front
+        # (scope not granted in the registry, allotment, cap, provider exhausted, spacing); dry runs send and write nothing;
+        # earnings_calendar / news_sentiment projections carry the read envelope; former callers rerouted; the registry
+        # proposal passes the gate only once granted. Hermetic fakes.
+        "alpha_vantage_owner_20261010",
+        ["tests/test_alpha_vantage_owner_20261010.py"],
+    ),
+    (
         # Desk-loop cost-cap backoff (API overlap Q6, 2026-10-10): after COST_CAP_EXCEEDED inside try_fulfill_pending_replies
         # the pass makes no bridge call until the next America/New_York midnight (the ledger day); under the cap and
         # on interactive asks nothing changes. Before: 15 bridge calls in 5 refused passes; after: 1. Hermetic fakes.

@@ -380,12 +380,21 @@ AV_MIN_INTERVAL_S = 1.5      # free tier: 1 request/second; a margin so clock ji
 AV_BURST_BACKOFF_S = 5.0
 
 
-def _av_overview(sym: str, api_key: str) -> dict:
-    import urllib.request
-    url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={sym}&apikey={api_key}"
-    req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read())
+def _av_overview(sym: str, api_key: str | None = None, *, job: str = "fundamentals_overview") -> dict:
+    """OVERVIEW for ``sym`` through the Alpha Vantage owner (2026-10-10) — the only AV caller.
+
+    The owner holds the key (``api_key`` is accepted for old call sites and ignored), the one
+    budget (<= 23/day, per-job allotments, >= 12 s spacing) and the receipt. A refusal or a
+    provider notice comes back as {"Information": ...} with no "Symbol", which every caller
+    already treats as "not stored".
+    """
+    from lib.alpha_vantage_owner import AlphaVantageOwner
+    res = AlphaVantageOwner().request(job, {"symbol": sym})
+    if res.ok and isinstance(res.payload, dict):
+        return res.payload
+    if isinstance(res.payload, dict) and res.payload:
+        return res.payload
+    return {"Information": f"alpha_vantage owner: {res.outcome} — {res.detail}"[:300]}
 
 
 def _av_burst_notice(data: dict) -> bool:
@@ -468,28 +477,21 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
 
     conn.commit()
     conn.close()
-    # Liveness (2026-09-13): the alpha_vantage health row read 'unknown' forever
-    # because this lane never reported. Scheduled: cron `0 8 * * 1` (--fundamentals).
-    try:
-        from lib.data_source_report import report_source
-        report_source("alpha_vantage", fetched > 0, rows=fetched,
-                      error=None if fetched else (locals().get("last_exc") or f"0/{len(symbols[:limit])} symbols fetched"))
-    except Exception:
-        pass
+    # Liveness: the Alpha Vantage owner reports 'alpha_vantage' to data_source_health on every real
+    # call (2026-10-10). This lane no longer reports for itself: an owner refusal (budget spent,
+    # spacing) is not a provider failure and must not turn the provider row red.
     return {"source": "alpha_vantage", "fetched": fetched}
 
 
 def ingest_av_news_sentiment(symbols: list = None, limit: int = 10) -> dict:
-    """Fetch pre-scored news sentiment via Alpha Vantage NEWS_SENTIMENT endpoint.
+    """Copy Alpha Vantage per-ticker sentiment for the top holdings into news_articles.
 
-    Free tier: 25 calls/day total (shared with OVERVIEW).
-    Each call returns up to 50 articles with per-ticker sentiment scores.
-    Stores in news_articles table with sentiment_score from AV (not LLM-generated).
+    2026-10-10: reads the Alpha Vantage owner's store (lib.data_broker.news_sentiment) instead of
+    sending one NEWS_SENTIMENT request per symbol — the owner's windowed market-wide pulls already
+    carry every ticker an article mentions, at zero extra requests. Not scheduled (--news-sentiment
+    / --all only). The write path is unchanged: lib.writers.news_articles_writer.
     """
-    import urllib.request
-    api_key = _env("ALPHA_VANTAGE_API_KEY")
-    if not api_key:
-        return {"source": "av_news_sentiment", "fetched": 0, "reason": "no_key"}
+    from lib.data_broker.news_sentiment import get_articles
 
     if not symbols:
         # Top portfolio positions by market value
@@ -502,82 +504,44 @@ def ingest_av_news_sentiment(symbols: list = None, limit: int = 10) -> dict:
     cur = conn.cursor()
     fetched = 0
     articles_stored = 0
+    gap = None
 
     for sym in symbols[:limit]:
-        try:
-            url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={sym}&limit=20&apikey={api_key}"
-            req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0"})
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read())
-
-            feed = data.get("feed", [])
-            if not feed:
-                continue
-
-            for article in feed[:15]:
-                title = article.get("title", "")[:200]
-                summary = article.get("summary", "")[:500]
-                source = article.get("source", "")[:50]
-                url_link = article.get("url", "")
-                published = article.get("time_published", "")
-                overall_sentiment = float(article.get("overall_sentiment_score", 0))
-                overall_label = article.get("overall_sentiment_label", "Neutral")
-
-                # Get ticker-specific sentiment
-                ticker_sentiment = 0.0
-                relevance = 0.0
-                for ts in article.get("ticker_sentiment", []):
-                    if ts.get("ticker") == sym:
-                        ticker_sentiment = float(ts.get("ticker_sentiment_score", 0))
-                        relevance = float(ts.get("relevance_score", 0))
-                        break
-
-                if relevance < 0.3:
-                    continue  # Skip low-relevance articles
-
-                # Normalize published date
-                pub_date = None
-                if published:
-                    try:
-                        pub_date = datetime.strptime(published[:8], "%Y%m%d").date()
-                    except Exception:
-                        pass
-
-                try:
-                    from lib.writers.news_articles_writer import write_news_articles
-                    receipt = write_news_articles(cur, [{
-                        "symbol": sym, "title": title, "summary": summary, "source": f"av:{source}",
-                        "source_url": url_link, "published_at": pub_date,
-                        "relevance_score": round(relevance * 100),
-                        "sentiment": overall_label.lower(), "sentiment_score": round(ticker_sentiment, 3),
-                        "strategy_tags": json.dumps([f"av_sentiment_{overall_label.lower()}"]),
-                    }], source=f"av:{source}")
-                    articles_stored += receipt.rows_written
-                except Exception:
-                    conn.rollback()
-
-            fetched += 1
-            print(f"  [av-news] {sym}: {len(feed)} articles, {articles_stored} stored")
-
-            # Rate limit: 5 calls/min for free tier
-            import time
-            time.sleep(12)
-
-        except Exception as e:
-            print(f"  [av-news] {sym}: {e}")
-            last_exc = str(e)[:160]
+        got = get_articles(sym, lookback_hours=72, min_relevance=0.3)
+        if got.get("gap"):
+            gap = got["gap"]
+            print(f"  [av-news] owner store has no coverage ({gap.get('kind')}) — nothing to copy")
+            break
+        rows = got.get("articles") or []
+        for a in rows[:15]:
+            label = str(a.get("overall_label") or "Neutral")
+            pub_date = None
+            try:
+                pub_date = datetime.fromisoformat(a.get("published_at") or "").date()
+            except ValueError:
+                pass
+            try:
+                from lib.writers.news_articles_writer import write_news_articles
+                src = f"av:{(a.get('source') or '')[:46]}"
+                receipt = write_news_articles(cur, [{
+                    "symbol": sym, "title": (a.get("title") or "")[:200], "summary": "", "source": src,
+                    "source_url": a.get("url") or "", "published_at": pub_date,
+                    "relevance_score": round(float(a.get("relevance") or 0) * 100),
+                    "sentiment": label.lower(), "sentiment_score": round(float(a.get("ticker_score") or 0), 3),
+                    "strategy_tags": json.dumps([f"av_sentiment_{label.lower()}"]),
+                }], source=src)
+                articles_stored += receipt.rows_written
+            except Exception:
+                conn.rollback()
+        fetched += 1 if rows else 0
+        print(f"  [av-news] {sym}: {len(rows)} owner articles, {articles_stored} stored so far")
 
     conn.commit()
     conn.close()
-    # Liveness (2026-09-13): same provider, same key ('alpha_vantage'). Not on a
-    # schedule today (--news-sentiment / --all only); reports when it runs.
-    try:
-        from lib.data_source_report import report_source
-        report_source("alpha_vantage", fetched > 0, rows=articles_stored,
-                      error=None if fetched else (locals().get("last_exc") or "0 symbols fetched"))
-    except Exception:
-        pass
-    return {"source": "av_news_sentiment", "symbols": fetched, "articles": articles_stored}
+    # No provider call happens here, so no data_source_health report: the owner reports
+    # 'alpha_vantage' liveness on its own real calls.
+    return {"source": "av_news_sentiment", "symbols": fetched, "articles": articles_stored,
+            **({"gap": gap} if gap else {})}
 
 
 # ── FRED ─────────────────────────────────────────────────────────────

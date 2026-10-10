@@ -423,6 +423,35 @@ PROJECTIONS: list[dict[str, Any]] = [
         "provider_calls": 0,
         "consumers": ["Investment Command Center", "Telegram opportunity line"],
     },
+    {
+        "id": "earnings_calendar",
+        "module": "lib.data_broker.earnings_calendar",
+        "entrypoints": ["get_earnings", "upcoming"],
+        "http": [],
+        "domain": "earnings_calendar",
+        "authority_domain": "earnings_calendar (PROPOSED 2026-10-10; operator grant pending)",
+        "description": "Whole-market earnings calendar (report date, pre/post-market timing, estimate) published by "
+                       "the Alpha Vantage owner (one EARNINGS_CALENDAR call/day); file read only, envelope, say_so on gap",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": [],
+    },
+    {
+        "id": "news_sentiment",
+        "module": "lib.data_broker.news_sentiment",
+        "entrypoints": ["get_sentiment", "get_articles"],
+        "http": [],
+        "domain": "news_sentiment",
+        "authority_domain": "news_sentiment (PROPOSED 2026-10-10; operator grant pending)",
+        "description": "Per-ticker relevance-weighted news sentiment over 72 h from the Alpha Vantage owner's "
+                       "windowed NEWS_SENTIMENT pulls; file read only, envelope, say_so on gap",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["scripts/catalyst_enrichment.py (alpha_vantage slot)",
+                      "scripts/external_market_data_ingest.py --news-sentiment"],
+    },
 ]
 
 
