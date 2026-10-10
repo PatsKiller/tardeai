@@ -15,6 +15,20 @@ Candidates only. Nothing here ratifies a lesson or influences behaviour;
 `memory_behavior_influence` stays 0.
 
 AUTHORITY: READ_ONLY_ADVISORY.
+
+Dry run (n8n refactor wave 3, 2026-10-10): ``--dry-run`` WINS over ``--apply``; no ``--apply`` is still a
+dry run. Both read the observation corpus, the durable memory store and the existing candidate file, and
+call ``run(apply=False)``, in which ``_append`` is not reachable; the dry run also prints a ``DRY-RUN``
+report and writes no receipt.
+
+A REAL (``--apply``) run writes LaneRunReceipt@v1 ``<state_root>/data/runtime/build-lesson-candidates_last.json``
+(``ok_at`` only on success). Exit codes: 0 = ran (zero new candidates is a finding, still 0); 1 = the run
+failed (an exception, e.g. the append failed, or the observation store
+``data/cio/outcome_observations.jsonl`` is missing under the resolved state root -- a mis-resolved root
+would otherwise build nothing and look healthy); 2 = usage error.
+
+Log volume: the per-candidate text block is capped at ``--detail-limit`` (default 25; ``-1`` = all).
+The uncapped listing grew the cron log to ~6 MB; ``--json`` output is unchanged.
 """
 from __future__ import annotations
 
@@ -40,6 +54,13 @@ from scripts.lib.outcome_to_lesson import (  # noqa: E402
 )
 
 LESSON_CANDIDATE_PATH = "data/cio/lesson_candidates.jsonl"
+LANE_ID = "build-lesson-candidates"
+DEFAULT_DETAIL_LIMIT = 25
+
+
+def _receipt_lib():
+    from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _state_root() -> Path:
@@ -49,6 +70,7 @@ def _state_root() -> Path:
 
 def run(apply: bool = False) -> dict[str, Any]:
     root = _state_root()
+    observation_store_present = (root / OBSERVATION_PATH).is_file()
     observations = _jsonl(root / OBSERVATION_PATH)
     # The whole corpus is scanned, so counterexample search is genuinely done.
     candidates = build_candidates(observations, searched_counterexamples=True)
@@ -82,6 +104,7 @@ def run(apply: bool = False) -> dict[str, Any]:
 
     written = 0
     amended = 0
+    new_candidates = 0  # lesson_ids not yet in the file (what --apply appends)
     would_amend: list[dict[str, Any]] = []
     for candidate in candidates:
         lid = str(candidate.get("lesson_id") or "")
@@ -89,6 +112,7 @@ def run(apply: bool = False) -> dict[str, Any]:
             continue
         prev = existing_rows.get(lid)
         if prev is None:
+            new_candidates += 1
             if apply:
                 _append(path, candidate)
                 existing_rows[lid] = candidate
@@ -113,9 +137,11 @@ def run(apply: bool = False) -> dict[str, Any]:
         "financial_action": False,
         "memory_behavior_influence": 0,
         "applied": bool(apply),
+        "observation_store_present": observation_store_present,
         "observations_read": len(observations),
         "candidates": len(candidates),
         "case_summary_support_added": case_added,
+        "new_candidates": new_candidates,
         "written": written,
         "amended": amended if apply else len(would_amend),
         "would_amend": would_amend,
@@ -136,31 +162,73 @@ def run(apply: bool = False) -> dict[str, Any]:
     }
 
 
-def main() -> int:
+def _print_text(result: dict[str, Any], detail_limit: int) -> None:
+    for key in (
+        "observations_read", "candidates", "case_summary_support_added",
+        "written", "amended", "applied",
+    ):
+        print(f"{key:20} {result[key]}")
+    for a in result.get("would_amend") or []:
+        print(f"  would-amend {a.get('scope')} / {a.get('task_class')}  "
+              f"lid={a.get('lesson_id')} → {a.get('lesson_provenance')}")
+    details = result["detail"] if detail_limit < 0 else result["detail"][:detail_limit]
+    for d in details:
+        print(f"\n  {d['scope']} / {d['task_class']}  [{d['status']}]")
+        print(f"    independent samples {d['independent_samples']} "
+              f"of {d['total_observations']} observations")
+        print(f"    provenance={d.get('lesson_provenance')}")
+        print(f"    {d['statement']}")
+    hidden = len(result["detail"]) - len(details)
+    if hidden > 0:
+        print(f"\n  (+{hidden} more candidates not listed; --detail-limit -1 lists all)")
+
+
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Build lesson candidates from outcomes")
     ap.add_argument("--apply", action="store_true", help="write (default: dry run)")
+    ap.add_argument("--dry-run", action="store_true", help="never write; wins over --apply")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    ap.add_argument("--detail-limit", type=int, default=DEFAULT_DETAIL_LIMIT,
+                    help="candidates listed in text output (default 25; -1 = all)")
+    args = ap.parse_args(argv)
 
-    result = run(apply=args.apply)
+    if args.dry_run or not args.apply:
+        result = run(apply=False)
+        if args.json:
+            print(json.dumps(result, indent=2, sort_keys=True, default=str))
+        else:
+            _print_text(result, args.detail_limit)
+        if args.dry_run:
+            _receipt_lib().dry_run_report(
+                LANE_ID,
+                {"observation_store_present": result["observation_store_present"],
+                 "observations_read": result["observations_read"], "candidates": result["candidates"],
+                 "would_append_new": result["new_candidates"], "would_amend": result["amended"]},
+                would_write=[f"{result['path']} (append) x would_append_new + would_amend"],
+            )
+        return 0 if result["observation_store_present"] else 1
+
+    lr = _receipt_lib()
+    from datetime import datetime, timezone
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        result = run(apply=True)
+    except Exception as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="build_lesson_candidates.py", error=f"{type(exc).__name__}: {exc}")
+        raise
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True, default=str))
     else:
-        for key in (
-            "observations_read", "candidates", "case_summary_support_added",
-            "written", "amended", "applied",
-        ):
-            print(f"{key:20} {result[key]}")
-        for a in result.get("would_amend") or []:
-            print(f"  would-amend {a.get('scope')} / {a.get('task_class')}  "
-                  f"lid={a.get('lesson_id')} → {a.get('lesson_provenance')}")
-        for d in result["detail"]:
-            print(f"\n  {d['scope']} / {d['task_class']}  [{d['status']}]")
-            print(f"    independent samples {d['independent_samples']} "
-                  f"of {d['total_observations']} observations")
-            print(f"    provenance={d.get('lesson_provenance')}")
-            print(f"    {d['statement']}")
-    return 0
+        _print_text(result, args.detail_limit)
+    rc = 0 if result["observation_store_present"] else 1
+    lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                          script="build_lesson_candidates.py",
+                          summary={"observation_store_present": result["observation_store_present"],
+                                   "observations_read": result["observations_read"],
+                                   "candidates": result["candidates"], "written": result["written"],
+                                   "amended": result["amended"]})
+    return rc
 
 
 if __name__ == "__main__":

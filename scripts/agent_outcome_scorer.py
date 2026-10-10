@@ -1,9 +1,27 @@
 """
-agent_outcome_scorer.py — Nightly: score agent recommendations against closed trades.
-Cron: 5:30 AM daily. Feeds calibration data back to agents.
+agent_outcome_scorer.py — Weekly: score agent recommendations against closed trades.
+Cron (crontab L275): Sunday 11:00, ``--apply``. (This docstring said "5:30 AM daily" until 2026-10-10.)
+Feeds calibration data back to agents.
 
 Loop: trade_close → score → calibration → agent prompt → adjusted confidence
+
+CLI (n8n refactor wave 3, 2026-10-10). Until now the script parsed NO arguments: the cron's ``--apply``
+was ignored and ``--dry-run`` (advertised as ``safe_dry_run_cmd`` in pipeline_stage_owner_map.py) ran a
+LIVE scoring. Now:
+
+* ``--dry-run`` (wins over ``--apply``): READ ONLY session, runs ``match_and_score`` (SELECT only) and
+  read-only previews of the calibration / rules / source-performance stages, prints a ``DRY-RUN``
+  report and returns BEFORE ``PipelineRun`` (pipeline telemetry) or any save/rebuild/write stage is
+  reachable. It writes no receipt.
+* ``--apply`` or no flag: the live run, unchanged (no flag stays live because
+  pipeline_registry.py's remediation command runs it bare). Writes LaneRunReceipt@v1
+  ``<state_root>/data/runtime/agent-outcome-scorer_last.json`` (``ok_at`` only on success).
+
+Exit codes: 0 = ran (0 unscored pairs is a finding, still 0); 1 = the run failed (DB unavailable or a
+stage raised; EVERY outcome insert failed when there were pairs to save; or the source-performance
+stage failed); 2 = usage error. A single per-agent rule write failure is a soft failure.
 """
+import argparse
 import json
 import logging
 import os
@@ -27,6 +45,28 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+LANE_ID = "agent-outcome-scorer"
+
+_SOURCE_PERF_SQL = """
+            SELECT t.screener_label, COUNT(*) as signals,
+                   COUNT(CASE WHEN t.decision='GO' THEN 1 END) as go_signals,
+                   COUNT(tc.id) as trades,
+                   COUNT(CASE WHEN tc.pnl_pct > 0 THEN 1 END) as profitable,
+                   AVG(tc.pnl_pct) as avg_pnl
+            FROM trade_ai_scans t
+            LEFT JOIN trade_closed tc ON tc.symbol=t.symbol
+                AND tc.open_date >= t.run_date AND tc.open_date <= t.run_date + 5
+            WHERE t.screener_label IS NOT NULL AND t.scanned_at > NOW() - INTERVAL '90 days'
+            GROUP BY t.screener_label HAVING COUNT(*) >= 3
+        """
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.agent_outcome_scorer
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _get_conn():
@@ -147,9 +187,10 @@ def match_and_score(conn) -> list:
     return scored
 
 
-def save_outcomes(conn, scored: list) -> int:
+def save_outcomes(conn, scored: list, stats: dict | None = None) -> int:
     cur = conn.cursor()
     saved = 0
+    failed = 0
     for p in scored:
         try:
             cur.execute("""
@@ -167,8 +208,10 @@ def save_outcomes(conn, scored: list) -> int:
                   p.get('pnl_pct'), p['verdict'], p['verdict_score'], p.get('delta_days')])
             saved += 1
         except Exception:
-            pass
+            failed += 1
     conn.commit()
+    if stats is not None:
+        stats["save_failed"] = failed
     return saved
 
 
@@ -210,7 +253,7 @@ def rebuild_calibration(conn):
                 accuracy = (correct / denom * 100) if denom > 0 else None
 
                 # Trending — exclude RELIST_NEUTRAL from trending calc
-                cur.execute(f"""
+                cur.execute("""
                     SELECT AVG(CASE WHEN verdict='CORRECT' THEN 1.0 ELSE 0.0 END)
                     FROM agent_recommendation_outcomes
                     WHERE agent_name=%s AND verdict NOT IN ('NEUTRAL', 'RELIST_NEUTRAL')
@@ -246,9 +289,11 @@ def rebuild_calibration(conn):
     conn.commit()
 
 
-def write_calibration_to_rules(conn):
+def write_calibration_to_rules(conn, stats: dict | None = None):
     """Write calibration to agent_intelligence_rules for prompt injection."""
     cur = conn.cursor()
+    if stats is not None:
+        stats.setdefault("rule_write_failed", 0)
     cur.execute("""
         SELECT agent_name, accuracy_pct, correct_count, wrong_count,
                total_recommendations, trending, avg_pnl_pct
@@ -281,27 +326,18 @@ def write_calibration_to_rules(conn):
                 'text': text, 'updated': datetime.now().isoformat(),
             })])
         except Exception as e:
+            if stats is not None:
+                stats["rule_write_failed"] += 1
             log.error(f"Write calibration for {agent} failed: {e}")
 
     conn.commit()
 
 
-def update_source_performance(conn):
-    """Track win rates per screener label."""
+def update_source_performance(conn) -> bool:
+    """Track win rates per screener label. Returns False when the stage failed."""
     cur = conn.cursor()
     try:
-        cur.execute("""
-            SELECT t.screener_label, COUNT(*) as signals,
-                   COUNT(CASE WHEN t.decision='GO' THEN 1 END) as go_signals,
-                   COUNT(tc.id) as trades,
-                   COUNT(CASE WHEN tc.pnl_pct > 0 THEN 1 END) as profitable,
-                   AVG(tc.pnl_pct) as avg_pnl
-            FROM trade_ai_scans t
-            LEFT JOIN trade_closed tc ON tc.symbol=t.symbol
-                AND tc.open_date >= t.run_date AND tc.open_date <= t.run_date + 5
-            WHERE t.screener_label IS NOT NULL AND t.scanned_at > NOW() - INTERVAL '90 days'
-            GROUP BY t.screener_label HAVING COUNT(*) >= 3
-        """)
+        cur.execute(_SOURCE_PERF_SQL)
         for row in cur.fetchall():
             label, signals, go_sig, trades, profitable, avg_pnl = row
             if not label:
@@ -319,47 +355,130 @@ def update_source_performance(conn):
                     scar_factor=EXCLUDED.scar_factor, updated_at=NOW()
             """, [label, signals, go_sig, trades, profitable, win_rate, avg_pnl, scar])
         conn.commit()
+        return True
     except Exception as e:
         log.error(f"Source performance update failed: {e}")
+        return False
+
+
+def dry_run() -> dict:
+    """Read-only preview. PipelineRun, save_outcomes, rebuild_calibration, write_calibration_to_rules and
+    update_source_performance are not reachable from here."""
+    lr = _receipt_lib()
+    conn = _get_conn()
+    lr.enforce_readonly(conn)
+    print("=== Agent Outcome Scorer (DRY-RUN) ===")
+    scored = match_and_score(conn)
+    verdicts = defaultdict(int)
+    for p in scored:
+        verdicts[p['verdict']] += 1
+    print(f"Unscored pairs found: {len(scored)}")
+    cur = conn.cursor()
+    cur.execute("""SELECT COUNT(DISTINCT agent_name) FROM agent_recommendation_outcomes
+                   WHERE scored_at > NOW() - INTERVAL '365 days'""")
+    calib_agents = cur.fetchone()[0]
+    cur.execute("""SELECT COUNT(*) FROM agent_calibration
+                   WHERE window_days=90 AND strategy_type IS NULL AND total_recommendations>=3
+                     AND accuracy_pct IS NOT NULL""")
+    rule_agents = cur.fetchone()[0]
+    cur.execute(_SOURCE_PERF_SQL)
+    source_labels = sum(1 for r in cur.fetchall() if r[0])
+    conn.close()
+    summary = {"unscored_pairs": len(scored), "verdicts": dict(verdicts),
+               "would_save": len(scored), "calibration_agents_365d": calib_agents,
+               "rule_agents_90d": rule_agents, "source_labels": source_labels}
+    lr.dry_run_report(
+        LANE_ID, summary,
+        would_write=["agent_recommendation_outcomes (INSERT) x would_save",
+                     "agent_calibration (UPSERT, windows 30/90/365) for scored agents (counts exclude this run's new rows)",
+                     "agent_intelligence_rules calibration_stats (UPSERT) x rule_agents_90d",
+                     "source_performance (UPSERT) x source_labels", "pipeline run telemetry (PipelineRun)"],
+    )
+    return summary
+
+
+def run_scoring() -> dict:
+    """The live run (unchanged stages). Returns counts for the receipt."""
+    stats: dict = {}
+    conn = _get_conn()
+
+    print("=== Agent Outcome Scorer ===")
+    scored = match_and_score(conn)
+    print(f"Unscored pairs found: {len(scored)}")
+
+    saved = save_outcomes(conn, scored, stats)
+    print(f"Outcomes saved: {saved}")
+
+    rebuild_calibration(conn)
+    print("Calibration rebuilt")
+
+    write_calibration_to_rules(conn, stats)
+    print("Calibration written to agent_intelligence_rules")
+
+    source_ok = update_source_performance(conn)
+    print("Source performance updated" if source_ok else "Source performance update FAILED")
+
+    # Summary
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM agent_recommendation_outcomes")
+    print(f"\nTotal scored outcomes: {cur.fetchone()[0]}")
+
+    cur.execute("""
+        SELECT agent_name, accuracy_pct, correct_count, wrong_count, trending
+        FROM agent_calibration WHERE window_days=90 AND strategy_type IS NULL ORDER BY agent_name
+    """)
+    rows = cur.fetchall()
+    if rows:
+        print("Agent accuracy (90d):")
+        for agent, acc, correct, wrong, trend in rows:
+            print(f"  {agent}: {acc:.0f}% ({correct}✓/{wrong}✗) {trend or ''}" if acc else f"  {agent}: N/A")
+    else:
+        print("No calibration data yet — need 3+ closed trades per agent")
+
+    conn.close()
+    return {"unscored_pairs": len(scored), "saved": saved, "save_failed": stats.get("save_failed", 0),
+            "rule_write_failed": stats.get("rule_write_failed", 0), "source_performance_ok": source_ok}
+
+
+def _exit_code(summary: dict) -> int:
+    all_saves_failed = summary["unscored_pairs"] > 0 and summary["saved"] == 0
+    return 1 if (all_saves_failed or not summary["source_performance_ok"]) else 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Score agent recommendations against closed trades")
+    ap.add_argument("--dry-run", action="store_true", help="read-only preview; wins over --apply")
+    ap.add_argument("--apply", action="store_true", help="live run (also the no-flag default)")
+    args = ap.parse_args(argv)
+
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    if args.dry_run:
+        dry_run()
+        return 0
+
+    lr = _receipt_lib()
+    started = datetime.now(timezone.utc).isoformat()
+    summary: dict = {}
+    try:
+        with PipelineRun("agent_outcome_scorer") as _run:
+            summary = run_scoring()
+            _run.rows(summary["saved"])
+            rc = _exit_code(summary)
+            if rc:
+                raise SystemExit(rc)  # PipelineRun records the failure
+    except SystemExit as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=exc.code if isinstance(exc.code, int) else 1,
+                              started_at=started, script="agent_outcome_scorer.py", summary=summary)
+        raise
+    except Exception as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="agent_outcome_scorer.py", summary=summary,
+                              error=f"{type(exc).__name__}: {exc}")
+        raise
+    lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                          script="agent_outcome_scorer.py", summary=summary)
+    return 0
 
 
 if __name__ == '__main__':
-    with PipelineRun("agent_outcome_scorer") as _run:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-        conn = _get_conn()
-
-        print("=== Agent Outcome Scorer ===")
-        scored = match_and_score(conn)
-        print(f"Unscored pairs found: {len(scored)}")
-
-        saved = save_outcomes(conn, scored)
-        print(f"Outcomes saved: {saved}")
-
-        rebuild_calibration(conn)
-        print("Calibration rebuilt")
-
-        write_calibration_to_rules(conn)
-        print("Calibration written to agent_intelligence_rules")
-
-        update_source_performance(conn)
-        print("Source performance updated")
-
-        # Summary
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM agent_recommendation_outcomes")
-        print(f"\nTotal scored outcomes: {cur.fetchone()[0]}")
-
-        cur.execute("""
-            SELECT agent_name, accuracy_pct, correct_count, wrong_count, trending
-            FROM agent_calibration WHERE window_days=90 AND strategy_type IS NULL ORDER BY agent_name
-        """)
-        rows = cur.fetchall()
-        if rows:
-            print("Agent accuracy (90d):")
-            for agent, acc, correct, wrong, trend in rows:
-                print(f"  {agent}: {acc:.0f}% ({correct}✓/{wrong}✗) {trend or ''}" if acc else f"  {agent}: N/A")
-        else:
-            print("No calibration data yet — need 3+ closed trades per agent")
-
-        conn.close()
-
+    sys.exit(main())
