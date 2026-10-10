@@ -17,15 +17,25 @@ name: cio-full-suite-sharded
 # `ci-gate`. The ci-gate attestation artifact is the evidence a tree-attested promote reads
 # (scripts/lib/tree_attested_promote.py, flag TRADEAI_TREE_ATTESTED_PROMOTE, default off).
 #
+# MAIN SIGNAL (2026-10-09, due diligence C "Missing": no full-suite signal on main): every push
+# to main runs the whole sharded suite too, so `ci-gate` has a main run per merge SHA. The n8n
+# maturity scorer (scripts/lib/n8n_maturity/dims_governance.py collect_ci_signal) reads the
+# latest COMPLETED non-pull_request ci-gate run on main. A main run is therefore never cancelled
+# and never replaced while pending: its concurrency group is the SHA, not the ref (a replaced
+# pending run completes as "cancelled", which would read as a red main). PR runs keep
+# cancel-in-progress per ref.
+#
 # READ_ONLY_ADVISORY: no broker writes, no live Telegram (pytest interdict).
 
 on:
   pull_request:
+  push:
+    branches: ["main"]
   workflow_dispatch:
 
 concurrency:
-  group: cio-full-suite-sharded-${{ github.ref }}
-  cancel-in-progress: true
+  group: cio-full-suite-sharded-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -65,6 +75,15 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install pytest pyyaml requests "ruff==0.16.2"
           pip install python-docx || true
+      - name: Runner supports sharding (else the branch predates it)
+        # The workflow file comes from the merge ref but the runner from TEST_SHA (the PR head),
+        # so a branch cut before the sharded runner (#1556) failed every shard with "unrecognized
+        # arguments: --shard" (due diligence C #9, run 37966973164). Say what to do instead.
+        run: |
+          if ! python3 scripts/run_cio_hardening_ci.py --help | grep -q -- '--shard-out'; then
+            echo "::error::branch predates the sharded runner (#1556): update it from main"
+            exit 1
+          fi
       - name: Shard ${{ matrix.shard }} of ${{ env.CIO_SHARDS }}
         env:
           SHARD: ${{ matrix.shard }}
@@ -98,6 +117,15 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install pytest pyyaml requests "ruff==0.16.2"
           pip install python-docx || true
+      - name: Runner supports sharding (else the branch predates it)
+        # The workflow file comes from the merge ref but the runner from TEST_SHA (the PR head),
+        # so a branch cut before the sharded runner (#1556) failed every shard with "unrecognized
+        # arguments: --shard" (due diligence C #9, run 37966973164). Say what to do instead.
+        run: |
+          if ! python3 scripts/run_cio_hardening_ci.py --help | grep -q -- '--shard-out'; then
+            echo "::error::branch predates the sharded runner (#1556): update it from main"
+            exit 1
+          fi
       - name: Serial shard (shared-state files, one at a time)
         run: |
           python3 scripts/run_cio_hardening_ci.py \
@@ -148,6 +176,15 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip
           pip install pytest pyyaml requests "ruff==0.16.2" psycopg2-binary
+      - name: Runner supports sharding (else the branch predates it)
+        # The workflow file comes from the merge ref but the runner from TEST_SHA (the PR head),
+        # so a branch cut before the sharded runner (#1556) failed every shard with "unrecognized
+        # arguments: --shard" (due diligence C #9, run 37966973164). Say what to do instead.
+        run: |
+          if ! python3 scripts/run_cio_hardening_ci.py --help | grep -q -- '--shard-out'; then
+            echo "::error::branch predates the sharded runner (#1556): update it from main"
+            exit 1
+          fi
       - name: Create the test databases (fail closed if the service is unreachable)
         run: |
           python3 scripts/ensure_m2_test_database.py --name "$M2_TEST_DATABASE"

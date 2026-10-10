@@ -54,6 +54,15 @@ REQUIRED_PUSH_WORKFLOWS = frozenset({
     ".github/workflows/agent-governance.yml",
 })
 
+# Push workflows that report on main but do NOT gate a promote. The sharded full suite
+# (ci-gate) gained a push/main trigger on 2026-10-09 so main has a full-suite signal (n8n
+# maturity ci_signal; due diligence C "Missing"). Its rollout is still advisory: branch
+# protection and promote stay on the required contexts until the operator switches them.
+# Listed, not silently ignored: the report names what it set aside.
+ADVISORY_PUSH_WORKFLOWS = frozenset({
+    ".github/workflows/cio-full-suite-sharded.yml",
+})
+
 
 def evaluate_push_checks(sha: str, runs: list[dict]) -> dict:
     """Fail closed on exact-commit push/main evidence, including reruns in flight."""
@@ -78,6 +87,9 @@ def evaluate_push_checks(sha: str, runs: list[dict]) -> dict:
     for path in sorted(REQUIRED_PUSH_WORKFLOWS - latest.keys()):
         errors.append("missing:" + path)
     checks = []
+    advisory = sorted(p for p in latest if p in ADVISORY_PUSH_WORKFLOWS and p not in REQUIRED_PUSH_WORKFLOWS)
+    for path in advisory:
+        latest.pop(path)
     for path, (_, run) in sorted(latest.items()):
         check = {k: run.get(k) for k in (
             "id", "workflow_id", "name", "head_sha", "event", "head_branch",
@@ -89,6 +101,7 @@ def evaluate_push_checks(sha: str, runs: list[dict]) -> dict:
             errors.append("not_successful:" + path)
     return {"ok": not errors, "candidate_sha": sha, "checks": checks, "errors": errors,
             "required_workflows": sorted(REQUIRED_PUSH_WORKFLOWS),
+            "advisory_not_gating": advisory,
             "checked_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
 
 
