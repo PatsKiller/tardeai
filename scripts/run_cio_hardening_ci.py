@@ -4262,7 +4262,7 @@ GATES = [
     ),
     (
         # Alpha Vantage owner (operator 2026-10-10 "use Alpha Vantage for the gaps"): lib/alpha_vantage_owner.py is the only
-        # alphavantage.co caller; <= 23/day on both the UTC and ET day, per-job allotments, >= 12 s spacing; refuses up front
+        # Alpha Vantage HTTP caller; <= 23/day on both the UTC and ET day, per-job allotments, >= 12 s spacing; refuses up front
         # (scope not granted in the registry, allotment, cap, provider exhausted, spacing); dry runs send and write nothing;
         # earnings_calendar / news_sentiment projections carry the read envelope; former callers rerouted; the registry
         # proposal passes the gate only once granted. Hermetic fakes.
