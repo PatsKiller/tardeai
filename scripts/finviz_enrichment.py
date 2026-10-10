@@ -55,6 +55,14 @@ only on success). Exit codes: 0 = ran (all tickers fresh in cache, an empty univ
 batches failing while others returned data are findings); 1 = the run failed: crash (failed receipt,
 exception re-raised), the watchlist universe query failed (DB unavailable), or tickers were stale and no
 view returned any ticker (no auth, HTTP errors, throttle: nothing could be fetched when work existed).
+
+SCALP HOT TIER (``--scalp-hot``, lane ``finviz-enrichment-scalp-hot``; operator decision (4) 2026-10-10): every 5 min
+on market days 06:00-16:00 ET, ONE custom-column export (``v=152&c=...``: price, RVOL, gap, float, ATR, RSI,
+change-from-open, volume; ceil(N/20) requests) for the symbols on the scalp list (``lib.data_broker.scalp_list``,
+cap 100). The hot fields are merged into the existing record and stamped ``hot_cached_at``; ``cached_at`` (the
+six-view refresh stamp the 6 h TTL reads) is never touched, so a hot refresh cannot make a record look fully fresh.
+Inert unless ``SCALP_HOT_TIER=1`` and no kill file (prints SKIPPED_FLAG_OFF, exit 0). ``--dry-run`` reads the list
+and the cache only and prints the request count; it returns before any Finviz request and before save_cache.
 """
 from __future__ import annotations
 
@@ -76,6 +84,30 @@ BATCH_SIZE = 20              # Finviz max tickers per export request
 REQUEST_DELAY = 0.5          # seconds between requests
 FINVIZ_EXPORT = "https://elite.finviz.com/export"
 LANE_ID = "finviz-enrichment"
+HOT_LANE_ID = "finviz-enrichment-scalp-hot"
+#: Finviz Elite custom-column export for the scalp hot tier: 1 Ticker, 25 Float, 49 ATR, 59 RSI, 60 Change from
+#: Open, 61 Gap, 63 Avg Volume, 64 Rel Volume, 65 Price, 66 Change, 67 Volume. Parsed BY HEADER NAME (aliases below):
+#: a column id that maps to another header is reported as SCHEMA DRIFT and left unset, never read positionally.
+HOT_VIEW = 152
+HOT_COLUMNS = "1,25,49,59,60,61,63,64,65,66,67"
+HOT_COLUMN_MAP = {
+    "Ticker": "ticker",
+    "Shares Float": "float_m", "Float": "float_m",
+    "Average True Range": "atr", "ATR": "atr", "ATR (14)": "atr",
+    "Relative Strength Index (14)": "rsi", "RSI (14)": "rsi", "RSI": "rsi",
+    "Change from Open": "change_from_open_pct",
+    "Gap": "gap_pct",
+    "Average Volume": "avg_vol_m", "Avg Volume": "avg_vol_m",
+    "Relative Volume": "rvol", "Rel Volume": "rvol",
+    # price/change/volume are dropped from every six-view record (SKIP_DUPLICATES), so the cache has never held a
+    # price; the hot tier stores them under hot_* names so no existing raw reader starts reading a new field.
+    "Price": "hot_price", "Change": "hot_change_pct", "Volume": "hot_volume",
+}
+#: the fields a hot refresh owns; merge_cache_records carries them from whichever side has the newer hot stamp
+HOT_FIELDS = ("float_m", "atr", "rsi", "change_from_open_pct", "gap_pct", "avg_vol_m", "rvol", "hot_price",
+              "hot_change_pct", "hot_volume")
+#: a hot refresh skips a symbol whose hot stamp is younger than this (a */5 grid fires ~every 5 min)
+HOT_MIN_REFRESH_MIN = 4.0
 #: per-run measurements of the last enrich_tickers() call (read by main() for the receipt / exit code)
 _RUN_STATS: Dict[str, Any] = {}
 #: universe read failures seen by the last default_universe_symbols() call
@@ -198,6 +230,7 @@ PCT_FIELDS = {
     # positional map read "EPS Growth This Year" into a field named eps_ttm.
     "eps_growth_this_y_pct", "eps_growth_next_y_pct", "eps_growth_past_5y_pct",
     "eps_growth_next_5y_pct", "sales_growth_past_5y_pct",
+    "hot_change_pct",
 }
 
 # Skip these duplicate fields from secondary views
@@ -343,17 +376,38 @@ def _cached_at_key(record: Any) -> str:
     return ""
 
 
+def _hot_key(record: Any) -> str:
+    """When the record's hot fields were last fetched: the newer of ``hot_cached_at`` and ``cached_at``."""
+    if isinstance(record, dict):
+        return max(str(record.get("hot_cached_at") or ""), str(record.get("cached_at") or ""))
+    return ""
+
+
 def merge_cache_records(on_disk: Dict[str, Any], mine: Dict[str, Any]) -> Dict[str, Any]:
     """Union of two cache snapshots; per ticker the record with the newer ``cached_at`` wins.
 
     Pure. A ticker present on only one side is kept. On a tie ``mine`` wins (it is the
     writer's latest view). Nothing is dropped here: the cache only grows or refreshes.
+
+    Scalp hot tier (2026-10-10): when the losing side carries a NEWER hot stamp (``hot_cached_at``) than the
+    winner's, its HOT_FIELDS and ``hot_cached_at`` are carried onto the winner. A full refresh racing a hot
+    refresh therefore keeps both: the six views from one, the fresher price/RVOL/gap from the other.
     """
     merged: Dict[str, Any] = dict(on_disk or {})
     for sym, rec in (mine or {}).items():
         old = merged.get(sym)
-        if old is None or _cached_at_key(rec) >= _cached_at_key(old):
+        if old is None:
             merged[sym] = rec
+            continue
+        win, lose = (rec, old) if _cached_at_key(rec) >= _cached_at_key(old) else (old, rec)
+        if (isinstance(win, dict) and isinstance(lose, dict) and lose.get("hot_cached_at")
+                and _hot_key(lose) > _hot_key(win)):
+            win = dict(win)
+            for f in HOT_FIELDS:
+                if f in lose:
+                    win[f] = lose[f]
+            win["hot_cached_at"] = lose["hot_cached_at"]
+        merged[sym] = win
     return merged
 
 
@@ -446,8 +500,9 @@ def _is_stale(record: Dict) -> bool:
         return True
 
 
-def _fetch_view(tickers: List[str], view: int, root: Path) -> Dict[str, Dict]:
-    """Fetch one Finviz view for a batch of tickers."""
+def _fetch_view(tickers: List[str], view: int, root: Path, *, col_map: Optional[Dict[str, str]] = None,
+                extra_query: str = "") -> Dict[str, Dict]:
+    """Fetch one Finviz view for a batch of tickers (``col_map``/``extra_query``: the hot tier's custom export)."""
     _load_env(root)
     token = _env("FINVIZ_API_TOKEN")
     cookie = _env("FINVIZ_COOKIE")
@@ -455,7 +510,7 @@ def _fetch_view(tickers: List[str], view: int, root: Path) -> Dict[str, Dict]:
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
     results: Dict[str, Dict] = {}
-    col_map = VIEWS.get(view, {})
+    col_map = col_map if col_map is not None else VIEWS.get(view, {})
 
     for i in range(0, len(tickers), BATCH_SIZE):
         batch = tickers[i:i + BATCH_SIZE]
@@ -463,10 +518,10 @@ def _fetch_view(tickers: List[str], view: int, root: Path) -> Dict[str, Dict]:
 
         # Build URL — try token auth first, fall back to cookie
         if token:
-            url = f"{FINVIZ_EXPORT}?v={view}&t={ticker_str}&auth={token}"
+            url = f"{FINVIZ_EXPORT}?v={view}{extra_query}&t={ticker_str}&auth={token}"
             headers = {"User-Agent": ua}
         elif cookie:
-            url = f"{FINVIZ_EXPORT}?v={view}&t={ticker_str}"
+            url = f"{FINVIZ_EXPORT}?v={view}{extra_query}&t={ticker_str}"
             headers = {"User-Agent": ua, "Cookie": cookie,
                        "Referer": "https://elite.finviz.com/"}
         else:
@@ -509,7 +564,9 @@ def _fetch_view(tickers: List[str], view: int, root: Path) -> Dict[str, Dict]:
             # then left unset. It is never back-filled from a neighbouring
             # position: that is precisely how "Performance (10 Years)" came to
             # be stored as an analyst recommendation for five months.
-            missing = [c for c in col_map if c not in index_of]
+            # an alias whose field another present header already supplies is not missing (hot custom export)
+            present_fields = {f for c, f in col_map.items() if c in index_of}
+            missing = [c for c in col_map if c not in index_of and col_map[c] not in present_fields]
             if missing:
                 print(f"  [finviz-enrich] v={view} SCHEMA DRIFT — columns absent "
                       f"from the Finviz header, fields left unset: {missing}")
@@ -704,6 +761,111 @@ def enrich_tickers(
     return {s: cache.get(s, {"symbol": s}) for s in symbols}
 
 
+# ── Scalp hot tier (operator decision (4), 2026-10-10) ───────────────────────
+
+
+def _hot_due(symbols: List[str], cache: Dict[str, Any], now: Optional[datetime] = None) -> List[str]:
+    """Scalp symbols whose hot fields are missing or older than HOT_MIN_REFRESH_MIN (naive local stamps)."""
+    ref = now or datetime.now()
+    due = []
+    for sym in symbols:
+        key = _hot_key(cache.get(sym))
+        try:
+            fresh = bool(key) and (ref - datetime.fromisoformat(key)).total_seconds() < HOT_MIN_REFRESH_MIN * 60
+        except ValueError:
+            fresh = False
+        if not fresh:
+            due.append(sym)
+    return due
+
+
+def scalp_hot_plan(symbols: List[str], project_root: str = ".") -> Dict[str, Any]:
+    """What a hot refresh would fetch. Reads the cache file only; no request, no write."""
+    root = Path(project_root)
+    cache = _read_cache_readonly(root)
+    due = _hot_due(symbols, cache)
+    return {"symbols": len(symbols), "due": len(due), "fresh_hot": len(symbols) - len(due),
+            "view": HOT_VIEW, "columns": HOT_COLUMNS, "finviz_export_requests": -(-len(due) // BATCH_SIZE),
+            "cache_file": str(root / CACHE_FILE), "due_first": due[:10]}
+
+
+def enrich_scalp_hot(symbols: List[str], project_root: str = ".") -> Dict[str, Any]:
+    """ONE custom-column export for the scalp names; merges the hot fields and stamps ``hot_cached_at``.
+
+    ``cached_at`` is left as it was (absent for a name the six-view refresh never saw), so the 6 h full-refresh
+    TTL still sees the record as stale/fresh exactly as before. Writes only through save_cache (single writer).
+    """
+    root = Path(project_root)
+    cache = load_cache(root)
+    due = _hot_due(symbols, cache)
+    stats: Dict[str, Any] = {"symbols": len(symbols), "due": len(due), "requests": -(-len(due) // BATCH_SIZE),
+                             "returned": 0}
+    if not due:
+        return stats
+    got = _fetch_view(due, HOT_VIEW, root, col_map=HOT_COLUMN_MAP, extra_query=f"&c={HOT_COLUMNS}")
+    stamp = datetime.now().isoformat()
+    for sym, fields in got.items():
+        if sym not in due:
+            continue
+        rec = dict(cache.get(sym) or {"symbol": sym})
+        for f in HOT_FIELDS:
+            if fields.get(f) is not None:
+                rec[f] = fields[f]
+        rec["hot_cached_at"] = stamp
+        cache[sym] = rec
+        stats["returned"] += 1
+    if stats["returned"]:
+        save_cache(cache, root)
+    return stats
+
+
+def _hot_libs():
+    try:
+        from lib import scalp_hot_tier as hot
+        from lib.data_broker import scalp_list as sl
+    except ImportError:  # imported as scripts.finviz_enrichment
+        import sys as _sys
+
+        _sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from lib import scalp_hot_tier as hot
+        from lib.data_broker import scalp_list as sl
+    return hot, sl
+
+
+def main_scalp_hot(dry_run: bool, now: Optional[datetime] = None) -> int:
+    """Lane ``finviz-enrichment-scalp-hot``. Inert unless the hot tier is enabled; market days 06:00-16:00 ET."""
+    hot, sl = _hot_libs()
+    flag = hot.flag_state()
+    if not flag["enabled"]:
+        print(json.dumps({"lane": HOT_LANE_ID, "status": "SKIPPED_FLAG_OFF", "hot_tier": flag}))
+        return 0
+    if not hot.in_window("enrichment", now):
+        print(json.dumps({"lane": HOT_LANE_ID, "status": "SKIPPED_OFF_WINDOW", "phase": hot.phase(now)}))
+        return 0
+    lst = sl.get_scalp_list(now=now)
+    symbols = list(lst.get("symbols") or [])[: hot.ENRICH_SYMBOL_CAP]
+    if dry_run:
+        plan = scalp_hot_plan(symbols, ".")
+        plan.update(list_source=lst.get("list_source"), list_as_of=lst.get("as_of"), list_stale=lst.get("stale"))
+        _receipt_lib().dry_run_report(HOT_LANE_ID, plan,
+                                      would_write=[f"{plan['cache_file']} (hot fields of {plan['due']} tickers)"])
+        return 0
+    started = _receipt_lib().now_iso()
+    try:
+        stats = enrich_scalp_hot(symbols, ".")
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(HOT_LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="finviz_enrichment.py --scalp-hot",
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
+    failed = stats["due"] > 0 and stats["returned"] == 0
+    stats.update(list_source=lst.get("list_source"), list_as_of=lst.get("as_of"), symbols_list=symbols)
+    _receipt_lib().write_lane_receipt(HOT_LANE_ID, ok=not failed, exit_code=int(failed), started_at=started,
+                                      script="finviz_enrichment.py --scalp-hot", summary=stats)
+    print(json.dumps({"lane": HOT_LANE_ID, "status": "FAILED" if failed else "OK", **stats}, default=str))
+    return 1 if failed else 0
+
+
 def get_enriched(symbol: str, project_root: str = ".") -> Dict:
     """Get enriched data for a single ticker from cache."""
     cache = load_cache(Path(project_root))
@@ -858,6 +1020,8 @@ def dry_run_plan(symbols: List[str], project_root: str = ".") -> Dict[str, Any]:
 def main() -> int:
     import sys
     dry_run = "--dry-run" in sys.argv
+    if "--scalp-hot" in sys.argv:
+        return main_scalp_hot(dry_run)
     _UNIVERSE_ERRORS.clear()  # explicit argv skips default_universe_symbols(); never carry a stale error
     if dry_run:
         sys.argv = [a for a in sys.argv if a != "--dry-run"]
