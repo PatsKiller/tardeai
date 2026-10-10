@@ -4261,6 +4261,13 @@ GATES = [
         ["tests/test_lane_registry_generic_workflows_20261010.py"],
     ),
     (
+        # Stop push-from-cron (2026-10-10, AGENTS §0 rule 4): coder_dispatch (L556) and backup_generated_docs.sh
+        # (L541) are local-only by default; a push needs an operator flag AND TRADEAI_REMOTE_PUSH_AUTHORIZED=1,
+        # and a --from-queue drain never pushes. git shimmed; the remote is a throwaway local bare repo.
+        "stop_cron_pushes_20261010",
+        ["tests/test_stop_cron_pushes_20261010.py"],
+    ),
+    (
         # Alpha Vantage phantom spend (API overlap Q5, 2026-10-10): _fetch_alpha_vantage checks the
         # ENABLE_ALPHA_VANTAGE_CATALYST flag and key before api_budget.spend(), and spend() checks the cap
         # before incrementing (refusals are not counted). Hermetic fakes.
