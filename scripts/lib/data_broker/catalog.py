@@ -35,6 +35,39 @@ PROJECTIONS: list[dict[str, Any]] = [
         "provider_calls": "none_on_cache_hit",
     },
     {
+        "id": "finviz_enrichment_snapshot",
+        "module": "lib.data_broker.finviz_enrichment_snapshot",
+        "entrypoints": ["get_enrichment_batch", "get_enrichment"],
+        "http": [],
+        "domain": "finviz_enrichment",
+        "authority_domain": None,  # PROPOSED registry row (operator §17); see the module docstring
+        "description": "Finviz six-view enrichment per symbol (rsi/float/rvol/atr/valuation/performance) "
+                       "from data/state/ticker_enrichment_cache.json, single writer scripts/finviz_enrichment.py; "
+                       "per-symbol as_of/age/stale, never fetches",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["directive_promotion (watch directives servicer, cron L442)"],
+    },
+    {
+        "id": "scalp_list",
+        "module": "lib.data_broker.scalp_list",
+        "entrypoints": ["get_scalp_list", "get_scalp_enrichment", "freshness_report"],
+        "http": [],
+        "domain": "scalp_list",
+        "authority_domain": None,  # PROPOSED registry row (operator decision D.5, §17); see the module docstring
+        "description": "Momentum-scalp list: the fresher of L1050's scalp_universe_latest.json (09:30-16:00) and the "
+                       "hot-tier premarket screener membership (06:00-09:30, 2-min refresh receipt); hot enrichment "
+                       "stamps for the list's names; the four hot-tier freshness SLOs. Never fetches, never writes",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["social_scalp_scanner (L246 --on-list-advance)",
+                      "hermes_momentum_catalyst_researcher (L708 --on-list-advance)",
+                      "run_finviz_momentum_scalp_scan (L636 proposal-stage trigger)",
+                      "finviz_enrichment --scalp-hot", "social_ingest --scalp-list", "scalp_hot_tier_report"],
+    },
+    {
         "id": "quote_batch",
         "module": "lib.data_broker.quote_batch",
         "entrypoints": ["quote_row_from_broker"],

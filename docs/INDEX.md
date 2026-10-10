@@ -84,7 +84,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
 | `docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md` | Stop Monitoring & Adjustment Protocol | review_required | OK | `8196359bfabe` |
 | `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | OK | `362afe5ab3ac` |
-| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `927fb91f6b5e` |
+| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `f6f53e22fa0a` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `2e6811adec59` |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `f11284d3d3c3` |
@@ -760,6 +760,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/REPLAY_INTEGRITY_2026-07-15.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `ffa7ae34ab5f` |
 | `docs/audits/REPLAY_INTEGRITY_LATEST.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `eda2fd4b85bb` |
 | `docs/audits/REPLAY_SCALE_FIX_2026-06-27.md` | Replay price-scale fix — 2026-06-27 | review_required | OK | `47f67ee8a8ab` |
+| `docs/audits/SEC_FORM4_DUPLICATES_2026-10-10.md` | sec_form4 duplicate rows: read-only report and a proposed archive (operator decision) | review_required | OK | `545f4a96afa5` |
 | `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md` | Single-letter ticker `S` — link bleed / research-first / stale quotes | review_required | OK | `cf0d049ff044` |
 | `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md` | STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01 | review_required | OK | `f243325fcec6` |
 | `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md` | Stop Management System Discovery — 2026-05-23 | review_required | OK | `05cb7b189dc7` |
