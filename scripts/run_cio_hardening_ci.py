@@ -1174,6 +1174,13 @@ GATES = [
         "n8n_import_guard_20261010",
         ["tests/test_n8n_import_guard_20261010.py"],
     ),
+    # Iris (operator 2026-10-09 "fix"): --freshness remediation runs an allowlisted argv via venv_python (was a
+    # shell string, exit 127 in every release) and exits non-zero on failure; proposals de-duplicated (4,058
+    # pending retire_channel rows were 32 channels); weekly scan --dry-run (no LLM, no writes) for the n8n shadow.
+    (
+        "iris_fixes_20261009",
+        ["tests/test_iris_fixes_20261009.py"],
+    ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
     (

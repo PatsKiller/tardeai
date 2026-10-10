@@ -11,6 +11,10 @@ on a sane, conservative policy so discovery actually closes:
      (apply_proposal has no branch for them) and don't discriminate by confidence, so an
      unbounded backlog is pure noise; expiring is reversible (status flag) and they
      re-surface if still relevant.
+  0. SUPERSEDE   duplicate pending proposals (same type, target and proposed state): the weekly scan
+     re-created each finding every run (2026-10-09: 4,058 pending retire_channel rows were 32
+     channels). The newest copy stays pending; older copies get status=superseded with a note naming
+     the kept id. A status flag, never a delete, so it is reversible.
   3. REVIEW      add_channel / retire_channel stay pending — they change the source set,
      so a human approves them (via Telegram /approve_proposal as today).
 
@@ -31,6 +35,31 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [iris-curator] %(mes
 log = logging.getLogger()
 
 
+_DUPLICATES_CTE = """WITH ranked AS (
+        SELECT id,
+               first_value(id) OVER w AS keep_id,
+               row_number() OVER w AS rn
+        FROM iris_taxonomy_proposals
+        WHERE status='pending'
+        WINDOW w AS (PARTITION BY proposal_type, target, proposed_state ORDER BY created_at DESC, id DESC)
+    )"""
+
+
+def supersede_duplicates(cur, apply):
+    """Count (and with apply, flag) pending proposals that duplicate a newer pending one. Returns the count."""
+    cur.execute(_DUPLICATES_CTE + " SELECT COUNT(*) FROM ranked WHERE rn > 1")
+    n = cur.fetchone()[0]
+    if apply and n:
+        cur.execute(_DUPLICATES_CTE + """
+            UPDATE iris_taxonomy_proposals p
+            SET status='superseded', reviewed_by='iris_curator', reviewed_at=NOW(),
+                review_notes='superseded: duplicate of newer pending proposal #' || ranked.keep_id
+            FROM ranked
+            WHERE p.id = ranked.id AND ranked.rn > 1 AND p.status='pending'""")
+        n = cur.rowcount
+    return n
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
@@ -40,6 +69,11 @@ def main():
 
     from db_adapter import get_connection
     conn = get_connection(); cur = conn.cursor()
+
+    # 0. Supersede duplicate pending proposals (keep the newest of each)
+    superseded = supersede_duplicates(cur, args.apply)
+    if args.apply:
+        conn.commit()
 
     # 1. Auto-apply high-confidence reclassify
     cur.execute("""SELECT id FROM iris_taxonomy_proposals
@@ -81,11 +115,12 @@ def main():
     conn.close()
 
     mode = "APPLIED" if args.apply else "DRY-RUN"
+    log.info("[%s] duplicate pending proposals superseded: %d", mode, superseded)
     log.info("[%s] reclassify auto-apply: %d eligible%s", mode, len(reclass_ids),
              f", {applied} applied" if args.apply else "")
     log.info("[%s] stale discovery to expire (>%dd): %d", mode, args.discovery_age_days, expire_n)
     log.info("[%s] left for human review: %s", mode, ", ".join(f"{t}={n}" for t, n in review) or "none")
-    log.info("[%s] pending after curation: %d", mode, still_pending if args.apply else "(unchanged in dry-run)")
+    log.info("[%s] pending after curation: %s", mode, still_pending if args.apply else "(unchanged in dry-run)")
     if not args.apply:
         log.info("Dry-run — re-run with --apply to write.")
 
