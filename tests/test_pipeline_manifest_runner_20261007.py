@@ -241,6 +241,9 @@ def test_committed_runners_dry_run_print_plan_only(tmp_path):
     env = dict(os.environ)
     env.pop("ALPACA_MODE", None)
     env.pop("LIVE_TRADING_ENABLED", None)
+    # Pin a weekday: CI runs in UTC, so from 00:00Z Friday evening ET it is Saturday and every
+    # dow=1-5 step is skipped_dow (no "[DRY_RUN] would run"); main went red at 00:09Z 2026-10-10.
+    env["PIPELINE_TODAY_DOW"] = "3"
     for runner, extra in ((RUNNERS[0], ["--manifest", str(MANIFESTS["after_close"]), "--stage", "close-capture"]),
                           (RUNNERS[1], ["--manifest", str(MANIFESTS["premarket"])]),
                           (RUNNERS[2], ["--manifest", str(MANIFESTS["hermes_overnight"]), "--stage", "night"])):
