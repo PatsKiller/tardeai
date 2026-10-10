@@ -13,7 +13,18 @@ Deterministic normalization (→ stored as a fraction):
   Cross-check: when BOTH exist, netExpenseRatio/100 should ≈ annualReportExpenseRatio (within 20%);
   disagreement is flagged. Sanity: 0 < er <= 0.025 (2.5%); anything outside is flagged, not written.
 
-Read-only to the broker. Targets held fund/ETF symbols by default (or --symbols / --all-funds).
+Read-only to the broker. Targets held fund/ETF symbols by default (or --symbols).
+
+Lane ``validate-expense-ratios`` (cron L550, ``--apply``). Three modes:
+  * ``--dry-run`` (wins over ``--apply``): READ ONLY session, SELECTs only -- the target symbols and their
+    stored expense_ratio; no yfinance request, no write, no receipt. Prints what an --apply run would check.
+  * no ``--apply`` (the original preview, unchanged): READ ONLY session, fetches yfinance (free) and prints
+    the would-be corrections; no write, no receipt.
+  * ``--apply``: writes corrections and ``<state_root>/data/runtime/validate-expense-ratios_last.json``
+    (LaneRunReceipt@v1; ``ok_at`` only on success).
+Exit codes: 0 = ran (no change, flagged symbols, zero target symbols are findings); 1 = the run failed:
+crash / DB unavailable (failed receipt on --apply, exception re-raised), or symbols existed and every
+yfinance fetch raised (nothing could be fetched when work existed); 2 = usage error.
 """
 from __future__ import annotations
 
@@ -30,6 +41,15 @@ if HERE not in sys.path:
 from lib.writers.symbol_profiles_writer import EXPENSE_RATIO_MAX, upsert_profile  # noqa: E402
 
 SANITY_MAX = EXPENSE_RATIO_MAX   # 2.5% — above this for an ETF/fund is almost certainly mis-scaled/bad data
+LANE_ID = "validate-expense-ratios"
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.validate_expense_ratios
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _conn():
@@ -69,17 +89,35 @@ def _authoritative_er(info: dict):
     return (None, "none", "no expense-ratio field on yfinance")
 
 
+def _stored_ratios(cur, syms):
+    cur.execute("SELECT upper(symbol), expense_ratio FROM symbol_profiles WHERE upper(symbol) = ANY(%s)", (syms,))
+    return {r[0]: (float(r[1]) if r[1] is not None else None) for r in cur.fetchall()}
+
+
+def preview(symbols=None) -> dict:
+    """--dry-run (AGENTS.md §6): READ ONLY session, SELECTs only; no yfinance, no upsert, no commit."""
+    _receipt_lib().enforce_readonly(_conn())  # db_adapter's connection is thread-local: one session
+    syms = symbols or _held_fund_etf_symbols()
+    before = _stored_ratios(_conn().cursor(), syms)
+    return {"symbols": len(syms),
+            "stored_pct": {s: (round(before[s] * 100, 4) if before.get(s) is not None else None) for s in syms},
+            "missing_ratio": sorted(s for s in syms if before.get(s) is None)}
+
+
 def run(symbols=None, apply=False):
+    if not apply:
+        _receipt_lib().enforce_readonly(_conn())  # preview: the session cannot write
     syms = symbols or _held_fund_etf_symbols()
     conn = _conn(); cur = conn.cursor()
-    cur.execute("SELECT upper(symbol), expense_ratio FROM symbol_profiles WHERE upper(symbol) = ANY(%s)", (syms,))
-    before = {r[0]: (float(r[1]) if r[1] is not None else None) for r in cur.fetchall()}
+    before = _stored_ratios(cur, syms)
     import yfinance as yf, time as _t
     changes, flags = [], []
+    fetch_errors = 0
     for s in syms:
         try:
             info = yf.Ticker(s).info or {}
         except Exception as e:
+            fetch_errors += 1
             flags.append({"symbol": s, "issue": f"yfinance error: {str(e)[:60]}"}); continue
         er, conf, detail = _authoritative_er(info)
         old = before.get(s)
@@ -103,21 +141,50 @@ def run(symbols=None, apply=False):
         _t.sleep(0.5)
     if apply:
         conn.commit()
-    return {"ok": True, "applied": apply, "symbols": len(syms),
+    return {"ok": True, "applied": apply, "symbols": len(syms), "fetch_errors": fetch_errors,
             "changed": changes, "flagged": flags,
             "note": "expense_ratio stored as a fraction; FRACTION field (annualReportExpenseRatio) preferred, "
                     "else percent/100; cross-checked; >2.5% rejected as mis-scaled."}
 
 
-def main():
+def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write corrections (else dry-run preview)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="SELECTs only (READ ONLY): no yfinance, no write, no receipt; wins over --apply")
     ap.add_argument("--symbols", help="comma-separated symbols (default: held funds/ETFs)")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     syms = [x.strip().upper() for x in a.symbols.split(",")] if a.symbols else None
-    print(json.dumps(run(symbols=syms, apply=a.apply), indent=2, default=str))
+    lr = _receipt_lib()
+    if a.dry_run:
+        # Structural (AGENTS.md §6): run() -- yfinance, upsert_profile, commit -- is not reachable from here.
+        plan = preview(syms)
+        print(json.dumps(plan, indent=2, default=str))
+        lr.dry_run_report(LANE_ID, {"symbols": plan["symbols"], "missing_ratio": len(plan["missing_ratio"]),
+                                    "apply_requested": a.apply},
+                          would_write=[f"symbol_profiles.expense_ratio (<= {plan['symbols']} rows, changed only)"])
+        return 0
+    if not a.apply:
+        res = run(symbols=syms, apply=False)
+        print(json.dumps(res, indent=2, default=str))
+        return 1 if (res["symbols"] and res["fetch_errors"] >= res["symbols"]) else 0
+    started = lr.now_iso()
+    try:
+        res = run(symbols=syms, apply=True)
+    except Exception as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="validate_expense_ratios.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    print(json.dumps(res, indent=2, default=str))
+    failed = bool(res["symbols"]) and res["fetch_errors"] >= res["symbols"]
+    rc = 1 if failed else 0
+    lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                          script="validate_expense_ratios.py",
+                          summary={"symbols": res["symbols"], "changed": len(res["changed"]),
+                                   "flagged": len(res["flagged"]), "fetch_errors": res["fetch_errors"]})
+    return rc
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

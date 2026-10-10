@@ -8,6 +8,19 @@ Usage:
     python3 scripts/sec_data_ingest.py --test
     python3 scripts/sec_data_ingest.py --form4 [--symbol SYMBOL]
     python3 scripts/sec_data_ingest.py --all
+    python3 scripts/sec_data_ingest.py --all --dry-run
+
+Lane ``sec-data-ingest`` (cron L150, ``--all``). ``--dry-run`` wins over every mode: it never enters
+PipelineRun (no pipeline_runs row) and makes no SEC request (data.sec.gov is free but rate-limited, so
+the dry run reports the work list instead); it opens a READ ONLY session, reads the tracked-symbol
+universe with the same query as a real run, and prints the symbols a real run would scan and the
+sec_form4 rows already stored for them. No receipt.
+
+A real ``--all`` run writes ``<state_root>/data/runtime/sec-data-ingest_last.json`` (LaneRunReceipt@v1;
+``ok_at`` only on success; ``--form4`` / ``--test`` are manual modes and write no lane receipt).
+Exit codes: 0 = ran (symbols with no recent Form 4, or zero new filings, are findings); 1 = the run
+failed: crash / DB unavailable (failed receipt, exception re-raised), every scanned symbol's SEC fetch
+errored, or every attempted sec_form4 insert errored; 2 = usage error (no mode given).
 """
 import json, os, sys, time
 from datetime import datetime, date
@@ -29,6 +42,18 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 SEC_BASE = "https://efts.sec.gov/LATEST/search-index?q="
 SEC_EDGAR = "https://data.sec.gov"
 SEC_HEADERS = {"User-Agent": "TradeAI john@jwwhiting.com", "Accept": "application/json"}
+LANE_ID = "sec-data-ingest"
+SYMBOL_CAP = 15  # rate limit protection
+#: SEC request errors seen in this process (each failed request appends; ingest_form4 diffs the length)
+_FETCH_ERRORS: list = []
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.sec_data_ingest
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _get_conn():
@@ -49,6 +74,7 @@ def _sec_get(url: str) -> dict:
             return json.loads(resp.read())
     except Exception as e:
         print(f"  [sec] Error: {e}")
+        _FETCH_ERRORS.append(f"{url}: {type(e).__name__}")
         return {}
 
 
@@ -66,8 +92,8 @@ def _get_cik(symbol: str) -> str:
             for entry in data.values():
                 if entry.get("ticker", "").upper() == symbol.upper():
                     return str(entry["cik_str"]).zfill(10)
-    except Exception:
-        pass
+    except Exception as e:
+        _FETCH_ERRORS.append(f"company_tickers.json: {type(e).__name__}")
     return ""
 
 
@@ -111,21 +137,47 @@ def fetch_form4(symbol: str, limit: int = 10) -> list:
     return results
 
 
+def _tracked_symbols(conn) -> list:
+    """Active strategy-classified symbols that can have SEC filings (read-only SELECT)."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
+    symbols = [r["symbol"] for r in cur.fetchall()]
+    # Filter out mutual funds / non-SEC symbols
+    return [s for s in symbols if "-" not in s and len(s) <= 5]
+
+
+def preview_form4(symbols: list = None) -> dict:
+    """Dry run (AGENTS.md §6): READ ONLY session, SELECTs only; no SEC request, no INSERT."""
+    conn = _get_conn()
+    try:
+        _receipt_lib().enforce_readonly(conn)
+        if not symbols:
+            symbols = _tracked_symbols(conn)
+        batch = symbols[:SYMBOL_CAP]
+        cur = conn.cursor()
+        cur.execute("SELECT symbol, count(*), max(filing_date) FROM sec_form4 WHERE symbol = ANY(%s) GROUP BY symbol",
+                    (batch,))
+        stored = {r[0]: {"rows": int(r[1]), "latest_filing": str(r[2])} for r in cur.fetchall()}
+    finally:
+        conn.close()
+    return {"symbols_total": len(symbols), "would_scan": batch, "stored": stored}
+
+
 def ingest_form4(symbols: list = None, limit: int = 5) -> dict:
     """Ingest Form 4 data for portfolio symbols."""
     if not symbols:
-        import psycopg2.extras
         conn = _get_conn()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
-        symbols = [r["symbol"] for r in cur.fetchall()]
+        symbols = _tracked_symbols(conn)
         conn.close()
-        # Filter out mutual funds / non-SEC symbols
-        symbols = [s for s in symbols if "-" not in s and len(s) <= 5]
 
     total_new = 0
-    for sym in symbols[:15]:  # Rate limit protection
+    fetch_failed = insert_attempts = insert_errors = 0
+    for sym in symbols[:SYMBOL_CAP]:  # Rate limit protection
+        errs_before = len(_FETCH_ERRORS)
         filings = fetch_form4(sym, limit=limit)
+        if len(_FETCH_ERRORS) > errs_before:
+            fetch_failed += 1
         if not filings:
             continue
 
@@ -134,6 +186,7 @@ def ingest_form4(symbols: list = None, limit: int = 5) -> dict:
         for f in filings:
             from content_scoring import tag_content
             tags = tag_content(text=f"insider trading {sym} {f.get('transaction_type','')}", title=f"Form 4: {sym}")
+            insert_attempts += 1
             try:
                 cur.execute("""
                     INSERT INTO sec_form4 (symbol, filer_name, filer_relation, transaction_type,
@@ -145,13 +198,15 @@ def ingest_form4(symbols: list = None, limit: int = 5) -> dict:
                       json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"])))
                 total_new += cur.rowcount
             except Exception:
+                insert_errors += 1
                 conn.rollback()
 
         conn.commit()
         conn.close()
         print(f"  [sec] {sym}: {len(filings)} Form 4 filings")
 
-    return {"symbols_scanned": len(symbols[:15]), "new_filings": total_new}
+    return {"symbols_scanned": len(symbols[:SYMBOL_CAP]), "new_filings": total_new,
+            "fetch_failed": fetch_failed, "insert_errors": insert_errors, "insert_attempts": insert_attempts}
 
 
 def get_sec_intel(symbol: str) -> str:
@@ -222,21 +277,69 @@ def test():
     print("\n=== Test Complete ===")
 
 
-if __name__ == "__main__":
-    with PipelineRun("sec_data_ingest") as _run:
-        if "--test" in sys.argv:
-            test()
-        elif "--form4" in sys.argv:
-            sym = None
-            if "--symbol" in sys.argv:
-                idx = sys.argv.index("--symbol")
-                if idx + 1 < len(sys.argv):
-                    sym = [sys.argv[idx + 1].upper()]
-            result = ingest_form4(sym)
-            print(json.dumps(result, indent=2))
-        elif "--all" in sys.argv:
-            result = ingest_form4()
-            print(json.dumps(result, indent=2))
-        else:
-            print("Usage: --test | --form4 [--symbol V] | --all")
+def dry_run(argv) -> int:
+    sym = None
+    if "--form4" in argv and "--symbol" in argv:
+        idx = argv.index("--symbol")
+        if idx + 1 < len(argv):
+            sym = [argv[idx + 1].upper()]
+    plan = preview_form4(sym)
+    for s_ in plan["would_scan"]:
+        have = plan["stored"].get(s_)
+        print(f"  [sec] would scan {s_}: stored sec_form4 rows={have['rows'] if have else 0}"
+              + (f" latest={have['latest_filing']}" if have else ""))
+    n = len(plan["would_scan"])
+    _receipt_lib().dry_run_report(
+        LANE_ID, {"symbols_total": plan["symbols_total"], "would_scan": n,
+                  "symbols_with_stored_filings": len(plan["stored"]),
+                  "sec_requests_planned": 2 * n},
+        would_write=[f"sec_form4 INSERT ... ON CONFLICT DO NOTHING (<= {5 * n} rows)",
+                     "pipeline_runs row (PipelineRun)"])
+    return 0
 
+
+def run_all() -> int:
+    """The lane (--all): ingest_form4() + LaneRunReceipt@v1 + honest exit code."""
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    try:
+        result = ingest_form4()
+    except Exception as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="sec_data_ingest.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    print(json.dumps(result, indent=2))
+    scanned = result["symbols_scanned"]
+    failed = (scanned > 0 and result["fetch_failed"] >= scanned) or (
+        result["insert_attempts"] > 0 and result["insert_errors"] >= result["insert_attempts"])
+    rc = 1 if failed else 0
+    lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                          script="sec_data_ingest.py", summary=result)
+    return rc
+
+
+def main(argv) -> int:
+    if "--test" in argv:
+        test()
+    elif "--form4" in argv:
+        sym = None
+        if "--symbol" in argv:
+            idx = argv.index("--symbol")
+            if idx + 1 < len(argv):
+                sym = [argv[idx + 1].upper()]
+        result = ingest_form4(sym)
+        print(json.dumps(result, indent=2))
+    elif "--all" in argv:
+        return run_all()
+    else:
+        print("Usage: --test | --form4 [--symbol V] | --all  [--dry-run]")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    if "--dry-run" in sys.argv:
+        # Before PipelineRun: a dry run records no pipeline_runs row and cannot reach ingest_form4().
+        sys.exit(dry_run(sys.argv[1:]))
+    with PipelineRun("sec_data_ingest") as _run:
+        sys.exit(main(sys.argv[1:]))

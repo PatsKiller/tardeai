@@ -35,7 +35,22 @@ the engine would read. ``--apply`` writes.
 Usage:
     python3 scripts/drain_cio_stance_classification.py            # dry run
     python3 scripts/drain_cio_stance_classification.py --apply
+    python3 scripts/drain_cio_stance_classification.py --apply --dry-run   # dry run (wins)
     python3 scripts/drain_cio_stance_classification.py --symbol STLD
+
+Lane cio-stance-classification-drain (cron L982, ``--apply``).
+
+--dry-run wins over --apply: ``apply`` is computed once as ``args.apply and not args.dry_run``; with it
+False, write_classification and the receipts-jsonl append are unreachable, the rule engine runs with
+``_persist_evaluation`` replaced by a no-op, and the drain's own session is READ ONLY at the server
+(lane_last_receipt.enforce_readonly). A dry run prints one DRY-RUN report line and never writes the lane
+receipt.
+
+A real (--apply) run writes <state_root>/data/runtime/cio-stance-classification-drain_last.json
+(LaneRunReceipt@v1: pending / applied / per-status counts; ok_at only on success). Exit codes: 0 = ran
+(pending=0 is 0; some symbols erroring while others drained is 0 -- one bad symbol never stops the
+drain); 1 = the run failed: a crash (receipt ``failed``, error re-raised), or requests were pending and
+EVERY one errored (e.g. classifier_inputs_unavailable, DB down); 2 = usage error.
 """
 
 from __future__ import annotations
@@ -64,6 +79,15 @@ DEFAULT_MIN_CONFIDENCE = 0.6
 DEFAULT_MAX_PER_RUN = 50
 
 TERMINAL = frozenset({"applied", "already_classified", "no_deterministic_match", "invalid_strategy_type"})
+LANE_ID = "cio-stance-classification-drain"
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.drain_cio_stance_classification
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _env_float(name: str, default: float) -> float:
@@ -323,6 +347,8 @@ def run(
     own = conn is None and bool(todo)
     if own:
         conn = _connect()
+        if not apply:
+            _receipt_lib().enforce_readonly(conn)
     results = []
     try:
         for req in todo:
@@ -349,25 +375,77 @@ def run(
     return {"schema": SCHEMA, "apply": apply, "pending": len(todo), "counts": counts, "results": results}
 
 
+def outcome(report: dict[str, Any]) -> dict[str, Any]:
+    """Receipt summary + the exit-code rule (module docstring): fail only when every pending request errored."""
+    counts = report.get("counts") or {}
+    errors = sum(n for st, n in counts.items() if str(st).startswith("error"))
+    clean = {st: n for st, n in counts.items() if not str(st).startswith("error")}
+    pending = int(report.get("pending") or 0)
+    return {
+        "pending": pending,
+        "applied": int(clean.get("applied", 0)),
+        "counts": clean,
+        "errors": errors,
+        "failed": pending > 0 and errors == pending,
+    }
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--apply", action="store_true", help="write (default: dry run)")
+    ap.add_argument("--dry-run", action="store_true", help="report only; wins over --apply")
     ap.add_argument("--symbol", action="append", help="limit to these symbols (repeatable)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    apply = bool(args.apply and not args.dry_run)  # AGENTS.md §6: the only value passed to run()
     only = {s.upper() for s in args.symbol} if args.symbol else None
-    report = run(apply=args.apply, only=only)
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        report = run(apply=apply, only=only)
+    except Exception as exc:
+        if apply:
+            _receipt_lib().write_lane_receipt(
+                LANE_ID,
+                ok=False,
+                exit_code=1,
+                started_at=started,
+                script="drain_cio_stance_classification.py",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        raise
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
-        print(f"[{'APPLY' if args.apply else 'DRY-RUN'}] pending={report['pending']} counts={report['counts']}")
+        print(f"[{'APPLY' if apply else 'DRY-RUN'}] pending={report['pending']} counts={report['counts']}")
         for r in report["results"]:
             ev = r.get("rule_evaluation") or {}
             print(
                 f"  {r['symbol']:<6} {r['status']:<24} type={r.get('strategy_type') or r.get('prior_strategy_type')}"
                 f" baseline={ev.get('baseline_action')}"
             )
-    return 0
+    res = outcome(report)
+    rc = 1 if res.pop("failed") else 0
+    if not apply:
+        would = [r["symbol"] for r in report["results"] if r.get("status") == "would_apply"]
+        _receipt_lib().dry_run_report(
+            LANE_ID,
+            {**res, "would_apply": would, "exit_would_be": rc},
+            would_write=[
+                "agent_classification_suggestions + ticker_strategy_classifications + ticker_classification_history"
+                " + strategy_rule_evaluations x would_apply",
+                "cio_stance_classification_receipts.jsonl (append) x pending",
+            ],
+        )
+        return rc
+    _receipt_lib().write_lane_receipt(
+        LANE_ID,
+        ok=rc == 0,
+        exit_code=rc,
+        started_at=started,
+        script="drain_cio_stance_classification.py",
+        summary=res,
+    )
+    return rc
 
 
 if __name__ == "__main__":

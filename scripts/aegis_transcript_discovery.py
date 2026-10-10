@@ -8,7 +8,21 @@ Sources:
 - Existing article_index from pipeline (internal enrichment)
 
 All outputs marked model='aegis', source='aegis:transcript' or 'aegis:discovery'.
-Entry point: main()
+Entry point: main() (returns a dict; aegis_overnight.py calls it) / cli() for the cron lane.
+
+Usage (cron L291, lane aegis-transcript-discovery):
+  python3 scripts/aegis_transcript_discovery.py [--dry-run]
+
+--dry-run (refactor wave 3, 2026-10-10) puts the db_adapter session in READ ONLY, resolves the universe and runs
+the internal reads (youtube_transcripts corpus, article_index), then prints a DRY-RUN report and returns: no
+Brave query and no YouTube transcript API call (network=False; it reports what WOULD be queried when
+AEGIS_BRAVE_ENABLED=1), never calls persist_transcripts/persist_discovery/_db_write, and writes no receipt.
+
+Exit codes (cli): 0 = ran (zero records is a finding, still 0); 1 = the run failed: Postgres unavailable
+(SELECT 1 probe), or there were records to persist and EVERY write failed. A single failed write or a Brave/network
+failure is a soft failure (logged, exit 0; the DB corpus remains the durable path). 2 = usage error (argparse).
+A real run writes <state_root>/data/runtime/aegis-transcript-discovery_last.json (LaneRunReceipt@v1; ok_at only on
+success); a crash writes a failed receipt and re-raises.
 """
 from __future__ import annotations
 import json
@@ -38,6 +52,7 @@ if _env_path.exists():
 AGENT = "aegis"
 RUN_ID = f"aegis-transcript-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 BRAVE_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
+LANE_ID = "aegis-transcript-discovery"
 
 def _governed_brave_web(query: str, *, count: int = 3, freshness: str = "pw"):
     """Lane C chokepoint — no direct Brave HTTP from this module."""
@@ -106,6 +121,31 @@ def _db_query(sql, params=None, fetch="all"):
         return None
 
 
+def _db_available() -> bool:
+    """Postgres reachable through db_adapter (``SELECT 1``). False = every read and persist would fail."""
+    return bool(_db_query("SELECT 1 AS ok", fetch="one"))
+
+
+def _enforce_readonly_db() -> bool:
+    """Dry run: put this thread's db_adapter session in READ ONLY at the server (AGENTS.md §6)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.lane_last_receipt import enforce_readonly
+
+        conn = _get_conn()
+        if conn is None:
+            return False
+        enforce_readonly(conn)
+        return True
+    except Exception as e:
+        print(f"  [aegis-td] READ ONLY session not established: {type(e).__name__}")
+        return False
+
+
+def _brave_enabled() -> bool:
+    return os.getenv("AEGIS_BRAVE_ENABLED", "0").lower() in ("1", "true", "yes")
+
+
 def _stance_and_themes(title: str, description: str, body: str = "") -> tuple[str, list]:
     text_lower = (title + " " + description + " " + body[:500]).lower()
     bullish = sum(1 for w in ("bull", "buy", "upside", "breakout", "growth") if w in text_lower)
@@ -170,8 +210,10 @@ def fetch_db_youtube_transcripts(symbols: list[str], max_per_symbol: int = 2,
 
 # ── D1: YouTube transcript ingestion (Brave-assisted, DB-first) ───────────
 
-def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> list[dict]:
+def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1, network: bool = True) -> list[dict]:
     """Prefer DB transcripts; optionally enrich via Brave + youtube_transcript_api.
+
+    network=False (the --dry-run path) returns the DB corpus only: no Brave query, no YouTube API call.
 
     Brave network failures are logged and skipped — never invents rows.
     Brave live discovery is OFF by default (Wave 3 2026-09-01) — set
@@ -183,6 +225,9 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1) -> li
     records = fetch_db_youtube_transcripts(symbols, max_per_symbol=max(max_per_symbol, 2))
     if records:
         print(f"  [youtube] DB corpus: {len(records)} symbol-related transcripts")
+    if not network:
+        print("  [youtube] network=False — DB corpus only (no Brave / YouTube API request)")
+        return records
 
     if os.getenv("AEGIS_BRAVE_ENABLED", "0").lower() not in ("1", "true", "yes"):
         print("  [youtube] Brave discovery retired default — DB path only; "
@@ -451,8 +496,13 @@ def persist_discovery(records: list[dict]) -> int:
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-def main():
-    print(f"[aegis-transcript] Starting — {RUN_ID}")
+def main(dry_run: bool = False):
+    print(f"[aegis-transcript] Starting — {RUN_ID}" + (" (DRY RUN)" if dry_run else ""))
+    readonly = _enforce_readonly_db() if dry_run else False
+    if not _db_available():
+        print("  [aegis-td] Postgres unavailable — nothing can be read or persisted")
+        return {"transcripts": 0, "discovery": 0, "youtube": 0, "articles": 0, "db_ok": False,
+                "error": "db_unavailable"}
 
     from aegis_nightly_ingestion import resolve_universe
     universe = resolve_universe()
@@ -463,8 +513,8 @@ def main():
     ))
     print(f"  Universe: {len(symbols)} symbols")
 
-    # D1: YouTube transcripts (DB preferred, Brave optional)
-    yt_records = fetch_youtube_transcripts(priority)
+    # D1: YouTube transcripts (DB preferred, Brave optional; the dry run never touches the network)
+    yt_records = fetch_youtube_transcripts(priority, network=not dry_run)
     print(f"  YouTube: {len(yt_records)} transcript records")
 
     # Internal article enrichment (Hermes-style local fallback)
@@ -472,6 +522,19 @@ def main():
     print(f"  Article index: {len(article_records)} records")
 
     all_transcripts = yt_records + article_records
+    if dry_run:
+        brave_on = _brave_enabled() and bool(BRAVE_KEY)
+        from lib.lane_last_receipt import dry_run_report
+        summary = {"universe": len(symbols), "youtube_db": len(yt_records), "articles": len(article_records),
+                   "would_write_transcripts": len(all_transcripts),
+                   "would_query_brave": (min(len(priority), 12) + min(len(priority), 10) + len(PORTFOLIO_THEMES))
+                   if brave_on else 0,
+                   "brave_enabled": _brave_enabled(), "readonly_session": readonly, "run_id": RUN_ID}
+        dry_run_report(LANE_ID, summary, would_write=[
+            f"transcript_intel_history: <= {len(all_transcripts)} rows (run_id={RUN_ID}, ON CONFLICT DO NOTHING)",
+            "aegis_discovery_index: 0 rows unless AEGIS_BRAVE_ENABLED=1"])
+        return {**summary, "dry_run": True, "transcripts": 0, "discovery": 0}
+
     t_written = persist_transcripts(all_transcripts)
     print(f"  Transcripts persisted: {t_written}")
 
@@ -481,13 +544,47 @@ def main():
     print(f"  Discovery: {len(discovery)} found, {d_written} persisted")
 
     print(f"[aegis-transcript] Complete — {datetime.now().isoformat()}")
-    return {
+    result = {
         "transcripts": t_written,
         "discovery": d_written,
         "youtube": len(yt_records),
         "articles": len(article_records),
+        "to_write": len(all_transcripts) + len(discovery),
+        "db_ok": True,
     }
+    if result["to_write"] and t_written + d_written == 0:
+        result["error"] = "all_writes_failed"
+    return result
+
+
+def cli(argv=None) -> int:
+    """Cron entry: --dry-run, honest exit code, LaneRunReceipt@v1 on real runs only (see module docstring)."""
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Aegis transcript + discovery ingestion (cron L291)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="DB reads + report; no Brave/YouTube request, no INSERT, no receipt")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        result = main(dry_run=True)
+        return 1 if result.get("error") else 0
+
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        result = main()
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                           script="aegis_transcript_discovery.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    failed = bool(result.get("error"))
+    write_lane_receipt(LANE_ID, ok=not failed, exit_code=1 if failed else 0, started_at=started,
+                       script="aegis_transcript_discovery.py",
+                       summary={k: result.get(k) for k in ("transcripts", "discovery", "youtube", "articles",
+                                                           "to_write", "error")},
+                       error=result.get("error"))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())
