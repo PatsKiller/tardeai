@@ -116,11 +116,19 @@ cron processes.
 The decision returns the first refusal that applies, checked in this order:
 `LOCAL_CEILING`, `MONTH_LINE:<line>`, `POOL_MONTH_SHARE`, `DAILY_PACE`, `POOL_DAY_SHARE`.
 
-**The request ceiling also still binds.** `providers.brave.budget` in the registry allows 120 requests a day and 1,500
-a month, with 200 held back for on-demand callers. That is the anti-runaway breaker, and it was **not raised**. Until
-the operator raises it, routed non-operator pools stop at 1,300 requests a month, which is **$6.50 gross**. Reaching
-the $15 target needs a monthly budget of at least 3,000 (3,600 matches $18) and a daily budget of at least 140. That
-is an operator decision (§17, funding a data plan).
+**The request breaker no longer binds below the dollar lines.** It was raised by operator approval on 2026-10-10
+(~18:40 ET, "Yes, from one to six", item 3). The approval record is in `providers.brave.budget._amended`.
+
+| | before | after |
+|---|---|---|
+| daily | 120 | 300 |
+| monthly | 1,500 | 3,600 (= $18, the local ceiling) |
+| on-demand reserve | 200 | 200, unchanged |
+
+- Routed non-operator pools can now reach 3,400 requests, which is $17. The dollar lines therefore bind first:
+  $12 for background pools and $15 for scalps.
+- Before the raise, those pools stopped at 1,300 requests, $6.50.
+- The 300-a-day breaker still catches a loop bug at $1.50 a day.
 
 **Per-caller hardcoded caps** (`CALLER_DAILY_CAPS`: 25 a day by default, `hermes_cio_research` 10) do not apply to
 routed callers. Routed callers are named `route.<pool>`, and the pools govern them. The legacy map stays for callers
@@ -142,8 +150,8 @@ that are still unrouted.
 - **scalp_priority** is at most 5 names per cycle, each re-asked no more than every 30 minutes, 04:00–16:00 ET. The
   worst case is about 120 paid requests a day, which hits the 120-a-day breaker. If 20–40 a day go paid, that is
   about $2–4 a month.
-- **Expected total: $3–7 gross ($0–2 net) a month.** The registry breaker bounds it at $6.50 gross until it is raised;
-  after that, the policy bounds it at $18.
+- **Expected total: $3–7 gross ($0–2 net) a month.** The policy bounds it at $18. The registry breaker was raised to 3,600 a month on 2026-10-10, so it no longer binds
+  first.
 
 ## 4. "About to fire": the scalp-priority definition
 
@@ -232,8 +240,13 @@ The free lane's lists are policy data:
 The validator refuses any list that names `braveapi`, `brave` or `brave.news`. `free_search` applies the list to
 **every** caller, legacy callers included. A fallback copy is pinned equal to the policy by a test.
 
-**Not done; the operator decides.** Disabling `braveapi` in the SearXNG pool itself is a host configuration change
-through `install_searxng_config.sh`.
+**Disabling `braveapi` in the pool itself** was approved by the operator on 2026-10-10 (~18:40 ET, item 1).
+
+- **Prepared, dry run only.** The packet is `~/n8n-maturity-verification/packets/searxng-braveapi-off/`. It makes a
+  one-line change in the live `settings.yml`, with a drift-refusing apply, a backup, a restart, verification and a
+  rollback. The apply needs a config-write grant.
+- **Installer.** `scripts/install_searxng_config.sh` no longer re-enables braveapi on reinstall unless
+  `SEARXNG_ENABLE_BRAVEAPI=1` is set.
 
 ## 7. Receipts, metrics, health
 
@@ -291,9 +304,13 @@ This was reproduced against a temp state root: the test wrote a ledger there.
 **Fix.** An autouse fixture gives that file a temp state root and stubs the web gather offline, and a regression test
 pins it.
 
-**The existing future-dated rows were not cleaned** (§0 rule 5: never auto-remediate). `monthly:2026-11` and
-`2026-12` hold 0 Brave requests and 2 searxng units, so they pre-spend nothing material. Archiving them is an
-operator-approved ledger edit.
+**Archiving the existing future-dated rows** was approved by the operator on 2026-10-10 (item 2).
+
+- **Prepared, dry run only.** The packet is `~/n8n-maturity-verification/packets/search-budget-archive/`.
+- **How it works.** It copies the whole ledger to an archive with a sha256 manifest, then rewrites the ledger
+  without the 33 future keys. The rewrite is compare-and-set on the file sha and runs under the ledger flock. The
+  packet also has receipts and a rollback.
+- The apply needs release-write.
 
 ## 9. What turns it on, and the approvals it needs
 
@@ -307,10 +324,8 @@ Everything below is the operator's to grant. None of it was done here.
 3. **The paid tier also needs `BRAVE_ROUTER_LIVE=1`** on that lane. Without it the engine answers free-only and
    records `PAID_NOT_ARMED`.
 4. Optional:
-   - raise `providers.brave.budget` (monthly ≥ 3,000, daily ≥ 140) so the dollar policy, not the request breaker,
-     binds;
    - grant `alpha_vantage` scope `news_sentiment` (Agent U's proposal);
    - host a financial Goggle and set `goggles.financial`;
-   - disable `braveapi` in the SearXNG pool;
+   - apply the approved `searxng-braveapi-off` packet (config-write grant);
    - schedule `search_spend_report.py --write` (for example hourly) so the P2 alert has a receipt to read.
-5. Archive the future-dated ledger keys (§8).
+5. Apply the approved `search-budget-archive` packet (§8; release-write grant).

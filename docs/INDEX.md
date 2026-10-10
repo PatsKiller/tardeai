@@ -1429,7 +1429,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
 | `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `a0b63667851f` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
-| `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `c6fa8a751752` |
+| `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |

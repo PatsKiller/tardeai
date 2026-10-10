@@ -208,9 +208,18 @@
         "scope": "may supply: web_search"
       },
       "budget": {
-        "daily": 120,
-        "monthly": 1500,
+        "daily": 300,
+        "monthly": 3600,
         "monthly_reserve_for_on_demand": 200,
+        "_amended": {
+          "from": {"daily": 120, "monthly": 1500},
+          "to": {"daily": 300, "monthly": 3600},
+          "approved_by": "operator",
+          "approved_on": "2026-10-10",
+          "reference": "operator to coordinator, 2026-10-10 ~18:40 ET, approving the search-routing-engine follow-ups: \"Yes, from one to six\" (item 3: raise the Brave request breaker to monthly >= 3,000, daily >= 140, keep the on-demand reserve, so the dollar caps bind); branch n8nmat/search-routing-engine",
+          "scope": "request-count circuit breaker only. 3,600/month x $0.005 = $18.00 = the local ceiling in config/search_routing_policy.json; 300/day bounds a loop bug at $1.50/day (~2.2x the $0.68/day paced base). Money is bounded by the dollar policy (pools, shares, pacing, $12/$15/$18 lines), not by this number.",
+          "operator_context": "I have $20 maximum a month on Brave already, trying not to use it all (2026-10-10 ~18:03 ET)"
+        },
         "ledger": "data/runtime/search_budget.json",
         "receipts": "denial_receipts in the same ledger; overflow -> data/runtime/search_budget_receipts_archive.jsonl"
       },
