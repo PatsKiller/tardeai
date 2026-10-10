@@ -3676,6 +3676,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_HEALTH_CONTRACTS (2026-10-10, operator ~16:45 ET): every n8n lane / generic workflow / host
+        # monitor has an N8nHealthContract@v1 in config/n8n_health_contracts.json (purpose, connects_to, healthy /
+        # degraded / failed, baseline, alerting, remediation); scripts/check_n8n_health_contracts.py fails a lane that
+        # enters shadow/canary/cutover without one, and canary/cutover need a REVIEWED contract. Hermetic: tmp ledger.
+        "n8n_health_contracts_20261010",
+        [
+            "tests/test_n8n_health_contracts_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
         # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
         # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
