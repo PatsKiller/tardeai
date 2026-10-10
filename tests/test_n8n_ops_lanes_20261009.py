@@ -480,7 +480,7 @@ def test_run_drill_creates_restores_compares_then_drops_only_its_database():
         count_fn=lambda params, name, tables: [{**t, "restored_rows": 5} for t in tables],
     )
     ddl = [t for _db, t, _p in log if t.startswith(("CREATE", "DROP"))]
-    assert ddl == ['CREATE DATABASE "restore_drill_20261101"', 'DROP DATABASE "restore_drill_20261101"']
+    assert ddl == ['CREATE DATABASE "restore_drill_20261101" TEMPLATE "restore_drill_template"', 'DROP DATABASE "restore_drill_20261101"']
     assert all(db == "postgres" for db, t, _p in log if t.startswith(("CREATE", "DROP")))
     assert restored == ["restore_drill_20261101"] and result["dropped"] is True
     assert rd.findings_for(_plan(), result) == []
@@ -522,7 +522,9 @@ def test_dry_run_prints_the_plan_and_never_creates(tmp_path, monkeypatch, capsys
     called = []
     monkeypatch.setattr(rd, "run_drill", lambda *a, **k: called.append(1))
     plan = dict(_plan(), dump_bytes=1, live_size_bytes=1 << 30, excluded_schemas_bytes=0, existing_drill_databases=[],
-                disk_guard=rd.disk_guard(1 << 30, 100 << 30, CFG["restore_drill"]), drill_role={"user": "x", "createdb": False})
+                disk_guard=rd.disk_guard(1 << 30, 100 << 30, CFG["restore_drill"]),
+                drill_role=rd.role_verdict("x", None, live_user="trade_ai"), template_db={"name": "restore_drill_template", "present": False},
+                tables_to_compare=[dict(t, key=True) for t in _plan()["tables_to_compare"]])
     monkeypatch.setattr(rd, "plan", lambda *a, **k: plan)
     receipt = tmp_path / "r.json"
     assert rd.main(["--dry-run", "--receipt", str(receipt)]) == 0

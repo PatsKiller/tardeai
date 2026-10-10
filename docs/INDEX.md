@@ -1455,7 +1455,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |
 | `docs/implementation/n8n-parallel/21-agent2-w2-n6-20261008.md` | Agent 2 W2 — N6 schedules and explicit activation blockers | review_required | OK | `5fd263547725` |
 | `docs/implementation/n8n-parallel/23-n6-retained-20261009.md` | N6 retained on current schedulers by policy — program scope 65 lanes | review_required | OK | `3fbeaeccacb0` |
-| `docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md` | Ops lanes 2026-10-09 — storage-watch, backup-verify, trade-ai-restore-drill (tranche N7) | review_required | OK | `e136f2e0d04a` |
+| `docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md` | Ops lanes 2026-10-09 — storage-watch, backup-verify, trade-ai-restore-drill (tranche N7) | review_required | OK | `f0a0afd5df78` |
 | `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md` | trade-ai-scalp-live as an n8n-driven lane — 2026-10-09 | review_required | MISSING HEADER | `591a2ff81d71` |
 | `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `9d5cc13f4722` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |

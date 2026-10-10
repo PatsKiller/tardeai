@@ -77,6 +77,23 @@
     "row_tolerance_abs": 1000,
     "restore_timeout_s": 14400,
     "role_user_env": "TRADEAI_RESTORE_DRILL_DB_USER",
-    "role_password_env": "TRADEAI_RESTORE_DRILL_DB_PASSWORD"
+    "role_password_env": "TRADEAI_RESTORE_DRILL_DB_PASSWORD",
+    "role_credentials_file": "~/.config/tradeai/restore_drill_db.env",
+    "template_db": "restore_drill_template",
+    "key_tables": [
+      "public.paper_trade_proposals",
+      "public.paper_trades",
+      "public.trade_closed",
+      "public.trade_transactions",
+      "public.watchlist_items",
+      "public.watch_directives",
+      "public.broker_accounts",
+      "public.cio_decisions"
+    ],
+    "prescan_timeout_s": 3600,
+    "tolerated_error_regexes": [
+      "ERROR:\\s+must be owner of extension [A-Za-z0-9_-]+$"
+    ],
+    "psql_restrict_min_versions": {"13": 22, "14": 19, "15": 14, "16": 10, "17": 6, "18": 0}
   }
 }
