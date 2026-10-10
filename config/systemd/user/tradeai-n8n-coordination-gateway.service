@@ -21,7 +21,7 @@ WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 EnvironmentFile=-%t/tradeai/env
 EnvironmentFile=-%h/.config/tradeai/n8n-gateway.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
-Environment="TRADEAI_N8N_GATEWAY_EXTRA_LANES=incident-fanin research-intake"
+Environment="TRADEAI_N8N_GATEWAY_EXTRA_LANES=incident-fanin research-intake n8n-workflow-error"
 ExecStart=/bin/bash %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_coordination_gateway_run.sh
 Restart=on-failure
 RestartSec=10
