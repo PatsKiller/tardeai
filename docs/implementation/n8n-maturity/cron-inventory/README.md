@@ -33,3 +33,4 @@ that record. It is updated **every time a job is retired, consolidated or cut ov
 | 2026-10-09 22:54 | Baseline inventory (676 units; 560 active) | all | builder run; enrichment S1–S6 |
 | 2026-10-09 22:30 | maturity-remeasure: n8n live workflow e18d7849b4142927 unpublished (operator option b); cron L1000 single scheduler | cron:L1000, n8n:e18d7849b4142927 | grant 26b8747d6cc949bb |
 | 2026-10-09 22:55 | 16 RELAY_HOST shadow workflows archived (V8 F1) | 16 n8n rows | grant ee4dfdf11479cd3c; operator-run packets/archive-16.sh |
+| 2026-10-10 09:47 | Retire batch 1 applied: 17 cron lines commented `# RETIRED`, 16 timers/services disabled (steph/morgan/alex kept); inventory rebuilt (95 Retired) | 33 units (#1638 registry) | cron grant e823cbea72948774; crontab backup n8n_cutover/crontab-before-retire-batch1-20261010T134726Z.txt; check_lane_registry clean rc 0; check_expected_services no new non-OK |
