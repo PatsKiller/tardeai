@@ -522,7 +522,8 @@ def discover_all(*, cron_text: Optional[str] = None,
 # way: one discovery row per active workflow, keyed by its id. It is declared when a registry row names
 # that id as scheduler.expression (kind n8n) or when the id is one the workflow generator emitted
 # (docs/implementation/n8n-parallel/workflows/generated/INDEX.json, live and shadow ids — the allowlist
-# of known ids). Anything else is UNDECLARED_N8N_WORKFLOW and fails `check_lane_registry --fail-on-new`.
+# of known ids) or one of the six generic workflows (docs/implementation/n8n-maturity/workflows/INDEX.json,
+# AGENTS.md §23.11). Anything else is UNDECLARED_N8N_WORKFLOW and fails `check_lane_registry --fail-on-new`.
 # The live read is a single SELECT through `docker exec` (scripts/lib/n8n_live_inventory.py); CI reads
 # the committed snapshot instead. The lane monitor reads live only when TRADEAI_LANE_REGISTRY_N8N=1.
 
@@ -546,12 +547,33 @@ def discover_n8n_snapshot(path: Optional[Path] = None) -> list[dict[str, Any]]:
     return inv.discover_n8n(inv.load_active_snapshot(path))
 
 
-def n8n_known_workflow_ids(index_path: Optional[Path] = None) -> dict[str, str]:
+#: The six generic workflows of AGENTS.md §23.11 (dispatcher, event router, heartbeat watcher, incident router,
+#: digest scheduler, approval router). They schedule no lane of their own, so no registry row names them; their
+#: committed INDEX (generator `n8n_workflow_templates.py build-generic`) is what declares them. 2026-10-10 (W0
+#: import packet dry run): without this, activating them under their `cron` grant turned the host gate
+#: `check_lane_registry --n8n-live --fail-on-new` red with six UNDECLARED_N8N_WORKFLOW.
+GENERIC_WORKFLOW_INDEX = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows" / "INDEX.json"
+
+
+def n8n_generic_workflow_ids(path: Optional[Path] = None) -> dict[str, str]:
+    """{workflow id: "generic:<kind>"} for the six generic workflows. A missing or unreadable INDEX raises
+    (check_lane_registry reports CANNOT RUN, never clean)."""
+    doc = json.loads(Path(path or GENERIC_WORKFLOW_INDEX).read_text(encoding="utf-8"))
+    if doc.get("schema") != "N8nGenericWorkflowSet@v1":
+        raise ValueError(f"generic workflow INDEX schema {doc.get('schema')!r}")
+    return {str(w["id"]): f"generic:{w.get('kind') or '?'}" for w in doc.get("workflows") or [] if w.get("id")}
+
+
+def n8n_known_workflow_ids(index_path: Optional[Path] = None,
+                           generic_index_path: Optional[Path] = None) -> dict[str, str]:
+    """Per-lane generated INDEX ids (live + shadow) plus the six generic workflow ids."""
     try:
         from scripts.lib import n8n_live_inventory as inv
     except ImportError:
         from lib import n8n_live_inventory as inv  # type: ignore
-    return inv.known_workflow_ids(path=index_path)
+    out = inv.known_workflow_ids(path=index_path)
+    out.update(n8n_generic_workflow_ids(generic_index_path))
+    return out
 
 
 # ── evaluating one lane ────────────────────────────────────────────────────
