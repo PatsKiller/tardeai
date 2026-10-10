@@ -1,4 +1,5 @@
-"""Dispatcher shadow wave D3 (R1 classes ingest / learn), 2026-10-10 — staged inert until AGENTS.md 4.4.0 is ACTIVE.
+"""Dispatcher shadow wave D3 (R1 classes ingest / learn), 2026-10-10 — staged inert, activated 2026-10-10 once
+AGENTS.md 4.4.0 was ACTIVE (APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe; flock packet installed, cron grant 08c0bb77ec898136).
 
 COVERS = ["config/lane_registry.json", "config/n8n_run_allowlist.json"]
 
@@ -73,8 +74,10 @@ FLOCK_ADDED = {"agent-outcome-linker", "agent-calibration-engine", "update-agent
 
 
 def _activate(row: dict) -> dict:
-    """The post-ratification registry edit: apply r1_pending and drop it."""
+    """The post-ratification registry edit: apply r1_pending and drop it (identity on an activated row)."""
     out = copy.deepcopy(row)
+    if "r1_pending" not in out:
+        return out
     pend = out.pop("r1_pending")
     out["scheduler"].update(pend["scheduler"])
     out["output_signal"] = pend["output_signal"]
@@ -86,34 +89,34 @@ def _admit(row: dict, shape: str) -> tuple[bool, str]:
     return LD.r1_class_admission(row, ALLOW[row["lane_id"]], shadow_shape_status=shape)
 
 
-# ----------------------------------------------------------------------------------------- the staged rows
+# ------------------------------------------------- the activated rows (AGENTS 4.4.0 ACTIVE, activate_wave3.py)
 
 
 def test_wave3_is_19_lanes_and_only_r1_classes():
     assert len(WAVE3) == 19
     assert {k for _l, k in WAVE3.values()} == {"ingest", "learn"}
-    staged = sorted(r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r)
-    assert staged == sorted(WAVE3)
+    assert [r["lane_id"] for r in REGISTRY["lanes"] if "r1_pending" in r] == []  # activated 2026-10-10
+    d3 = sorted(r["lane_id"] for r in REGISTRY["lanes"] if (r.get("scheduler") or {}).get("wave") == "D3")
+    assert d3 == sorted(WAVE3)
 
 
 @pytest.mark.parametrize("lane", sorted(WAVE3))
-def test_staged_row_is_inert_now(lane):
+def test_row_is_a_shadow_cron_row_admitted_by_the_r1_gate(lane):
     row = ROWS[lane]
-    assert "dispatch" not in row, lane
-    assert LD.dispatch_mode(row) == "off"
-    assert "stage" not in row["scheduler"] and row["scheduler"]["kind"] == "cron"
+    assert LD.R1_SHADOW_SHAPE_STATUS == "ACTIVE"
+    assert row["scheduler"]["kind"] == "cron" and row["scheduler"]["stage"] == "shadow"
     assert row["state"] == "ACTIVE"
+    assert LD.dispatch_mode(row) == "dry_run"
     assert LD.validate_dispatch_block(row) == []
-    assert LD.r1_class_admission(row)[1] == "no_dispatch_block"
+    assert LD.r1_class_admission(row) == (True, f"r1_admitted:{WAVE3[lane][1]}")
 
 
 @pytest.mark.parametrize("lane", sorted(WAVE3))
-def test_staged_block_shape(lane):
+def test_dispatch_block_shape(lane):
     lno, klass = WAVE3[lane]
     row = ROWS[lane]
-    pend = row["r1_pending"]
-    assert pend["inventory"] == f"cron:{lno}"
-    assert "4.4.0" in pend["requires"] and "R1_SHADOW_SHAPE_STATUS" in pend["requires"]
+    pend = row
+    assert lno.startswith("L")
     d = pend["dispatch"]
     assert d["mode"] == "dry_run" and d["class"] == klass and d["retry_policy"] == "none"
     assert d["cron"] == [row["scheduler"]["expression"]]
@@ -129,7 +132,7 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
     assert e["live_arg"] is None
     assert e["dry_run_arg"] == ["--dry-run"]
     assert not any(t.startswith("--apply") for t in e["command"])
-    assert e["output_signal"] == ROWS[lane]["r1_pending"]["output_signal"]["path"]
+    assert e["output_signal"] == ROWS[lane]["output_signal"]["path"]
     for name in e["env_names"]:
         assert not any(f in name.upper() for f in LD.BROKER_CREDENTIAL_ENV_FRAGMENTS), (lane, name)
     assert LD.forbidden_text_hits(" ".join(e["command"] + e["dry_run_arg"])) == []
@@ -140,7 +143,7 @@ def test_allowlist_lock_is_the_cron_line_lock(lane):
     """The staged command_text is the live cron command (plus the packet's flock for the three FLOCK_ADDED lanes);
     its flock lock is the allowlist lock, as the canary step will require (r1_canary_lock_matches)."""
     e = ALLOW[lane]
-    text = ROWS[lane]["r1_pending"]["scheduler"]["command_text"]
+    text = ROWS[lane]["scheduler"]["command_text"]
     if e["lock_kind"] == "flock":
         assert LD.cron_flock_locks(text) == [e["lock"]], (lane, text)
     else:  # catalyst-momentum-engine-overnight: scripts/safe_flock.sh <lock> (needs lock_kind flock before canary)
@@ -215,12 +218,8 @@ def _sweep(rows, allow, days=7):
     return emitted, errors
 
 
-def test_compute_due_week_sweep_staged_vs_activated(monkeypatch):
-    staged = [ROWS[x] for x in WAVE3]
-    emitted, errors = _sweep(staged, ALLOW, days=1)
-    assert emitted == {} and errors == set()  # staged: nothing emitted, nothing refused
-
-    activated = [_activate(r) for r in staged]
+def test_compute_due_week_sweep_proposed_vs_active(monkeypatch):
+    activated = [_activate(ROWS[x]) for x in WAVE3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     emitted, errors = _sweep(activated, ALLOW, days=1)
     assert emitted == {} and {c for _l, c in errors} == {"class_not_permitted"}
