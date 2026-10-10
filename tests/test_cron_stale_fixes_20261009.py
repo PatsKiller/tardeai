@@ -200,3 +200,95 @@ def test_book_level_checkpoints_are_never_price_resolvable():
     assert row["class"] == o.CLASS_NEVER and row["action"] == "expire"
     aapl = dict(cp, subject_id="AAPL")
     assert o.price_resolvable(aapl) == (True, None)
+
+
+# ── schwab stream: session window + quote dedupe + receipt (operator "fix", 2026-10-09 evening) ───────────────
+def _et(h, m, day=9):
+    from zoneinfo import ZoneInfo
+
+    return dt.datetime(2026, 10, day, h, m, tzinfo=ZoneInfo("America/New_York"))
+
+
+def test_stream_session_window_stops_at_the_close(monkeypatch):
+    import schwab_stream_daemon as d
+
+    monkeypatch.delenv("STREAM_SESSIONS", raising=False)
+    assert d._in_session(_et(9, 31)) and d._in_session(_et(15, 59))
+    assert not d._in_session(_et(16, 0)) and not d._in_session(_et(18, 30)) and not d._in_session(_et(9, 0))
+    assert not d._in_session(_et(12, 0, day=10))                               # Saturday
+    assert not d._in_session(dt.datetime(2026, 11, 27, 13, 30, tzinfo=_et(9, 31).tzinfo))  # early close 13:00
+    monkeypatch.setenv("STREAM_SESSIONS", "regular, afterhours")              # config opt-in to post-market
+    assert d._in_session(_et(18, 30)) and not d._in_session(_et(20, 30))
+
+
+def test_stream_schwab_isopen_only_vetoes(monkeypatch):
+    import schwab_stream_daemon as d
+
+    monkeypatch.delenv("STREAM_SESSIONS", raising=False)
+    monkeypatch.setattr(d, "_schwab_is_open", lambda: True)                    # whole-day flag true after close
+    assert d._market_open(_et(10, 0)) and not d._market_open(_et(17, 0))
+    monkeypatch.setattr(d, "_schwab_is_open", lambda: False)
+    assert not d._market_open(_et(10, 0))
+
+
+class _Cur:
+    def __init__(self):
+        self.rows = []
+
+    def execute(self, sql, params=None):
+        self.rows.append((sql.split("INTO")[1].split()[0], params))
+
+
+class _Conn:
+    def __init__(self):
+        self.c = _Cur()
+
+    def cursor(self):
+        return self.c
+
+    def commit(self):
+        pass
+
+
+def test_stream_unchanged_quote_is_not_reinserted():
+    import schwab_stream_daemon as d
+
+    cap, conn = d.Capture(), _Conn()
+    cap.on_l1({"content": [{"key": "AAPL", "LAST_PRICE": 1.0, "BID_PRICE": 0.9, "ASK_PRICE": 1.1}]})
+    cap.flush(conn)
+    cap.flush(conn)                                                            # nothing changed → skipped
+    cap.on_l1({"content": [{"key": "AAPL", "LAST_PRICE": 1.0}]})               # same values re-sent → skipped
+    cap.flush(conn)
+    cap.on_l1({"content": [{"key": "AAPL", "BID_PRICE": 0.95}]})               # changed → written
+    cap.flush(conn)
+    quotes = [r for r in conn.c.rows if r[0] == "schwab_stream_quotes"]
+    assert len(quotes) == 2 and cap.q_writes == 2 and cap.q_skipped == 2
+
+
+def test_stream_receipt_latest_and_run_log(tmp_path):
+    import json as _json
+
+    import schwab_stream_daemon as d
+
+    rec = {"pid": 1, "status": "running", "heartbeats": 0}
+    d._write_receipt(rec, dirpath=tmp_path)
+    d._write_receipt({**rec, "heartbeats": 1}, dirpath=tmp_path)                # heartbeat: latest only
+    d._write_receipt({**rec, "status": "stopped", "stop_reason": "session_end"}, final=True, dirpath=tmp_path)
+    latest = _json.loads((tmp_path / "schwab_stream_receipt.json").read_text(encoding="utf-8"))
+    assert latest["stop_reason"] == "session_end" and latest["updated_at"]
+    lines = (tmp_path / "schwab_stream_runs.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [_json.loads(x)["status"] for x in lines] == ["running", "stopped"]
+    d._write_receipt(rec, dirpath=tmp_path / "f" / "x\0bad")                    # never raises
+
+
+def test_stream_run_outside_session_exits_with_receipt(monkeypatch, tmp_path):
+    import asyncio
+    import json as _json
+
+    import schwab_stream_daemon as d
+
+    monkeypatch.setenv("STREAM_RECEIPT_DIR", str(tmp_path))
+    monkeypatch.setattr(d, "KILL_FILE", tmp_path / "nope")
+    monkeypatch.setattr(d, "_market_open", lambda now=None: False)
+    assert asyncio.run(d.run()) == 0
+    assert _json.loads((tmp_path / "schwab_stream_receipt.json").read_text(encoding="utf-8"))["stop_reason"] == "outside_session"
