@@ -4,7 +4,7 @@ Since #1663/#1664 the relay's POST /event writes one gateway event per failed n8
 `n8n-workflow-error` into the coordination ledger (`receipts` rows, key `wferr-<workflow_id>-<execution_id>`), but
 nothing read them: n8n workflow errors reached neither the SIEM (n8n:<lane> rows via scripts/n8n_siem_bridge.py) nor
 Telegram. The fan-in now maps them to incidents: dedupe by idempotency key, one grouped incident per workflow, P1
-only for the dispatcher, otherwise the health contract (clamped to P2) or P2/WARN. The existing notifier routes it;
+for the dispatcher, incident router and heartbeat watcher, otherwise P2/WARN unless a health contract raises it. The existing notifier routes it;
 nothing here sends.
 
 Hermetic: synthetic ledgers (the real CoordinationLedger schema) and relay logs under tmp_path; pure notifier and
@@ -192,38 +192,50 @@ def test_key_split(key, expected):
     assert fanin._wferr_split(key) == expected
 
 
-def test_severity_follows_the_health_contract_but_p1_stays_the_dispatchers(env, monkeypatch):
+def test_severity_p1_for_the_alerting_path_and_contracts_only_raise(env, monkeypatch):
+    """Operator 2026-10-10 ("Yes to everything"): dispatcher, incident router and heartbeat watcher are P1; any other
+    workflow is P2 unless its health contract raises it (never above P1, never below P2)."""
     contracts = env / "contracts.json"
     contracts.write_text(json.dumps({"schema": "N8nHealthContracts@v1", "contracts": [
-        {"id": "tradeai-incident-router", "kind": "generic_workflow",
-         "alerting": {"failed": {"siem_severity": "CRITICAL", "notifier_priority": "P1"}}},
+        {"id": "tradeai-event-router", "kind": "generic_workflow",
+         "alerting": {"failed": {"siem_severity": "URGENT", "notifier_priority": "P1"}}},
+        {"id": "tradeai-digest-scheduler", "kind": "generic_workflow",
+         "alerting": {"failed": {"notifier_priority": "P0"}}},
         {"id": "tradeai-approval-router", "kind": "generic_workflow",
          "alerting": {"failed": {"notifier_priority": "P3"}}},
         {"id": "tradeai-dispatcher", "kind": "generic_workflow",
          "alerting": {"failed": {"notifier_priority": "P3"}}},
+        {"id": "tradeai-incident-router", "kind": "generic_workflow",
+         "alerting": {"failed": {"notifier_priority": "P2"}}},
     ]}))
     monkeypatch.setattr(fanin, "HEALTH_CONTRACTS_PATH", contracts)
-    assert fanin._wferr_severity("tradeai-incident-router") == ("P2", "contract:P1->P2")
-    assert fanin._wferr_severity("tradeai-approval-router") == ("P3", "contract:P3")
+    assert fanin._wferr_severity("tradeai-event-router") == ("P1", "contract:P1")
+    assert fanin._wferr_severity("tradeai-digest-scheduler") == ("P1", "contract:P0->P1")       # ceiling P1
+    assert fanin._wferr_severity("tradeai-approval-router") == ("P2", "contract:P3->P2")        # never lowered
     assert fanin._wferr_severity("tradeai-dispatcher") == ("P1", "dispatcher")
-    assert fanin._wferr_severity("tradeai-event-router") == ("P2", "default:WARN")
+    assert fanin._wferr_severity("tradeai-incident-router") == ("P1", "alert_path")
+    assert fanin._wferr_severity("tradeai-heartbeat-watcher") == ("P1", "alert_path")
+    assert fanin._wferr_severity("some-other-workflow") == ("P2", "default:WARN")
     monkeypatch.setattr(fanin, "HEALTH_CONTRACTS_PATH", env / "missing.json")
-    assert fanin._wferr_severity("tradeai-incident-router") == ("P2", "default:WARN")
+    assert fanin._wferr_severity("tradeai-event-router") == ("P2", "default:WARN")
+    assert fanin._wferr_severity("tradeai-incident-router") == ("P1", "alert_path")
 
 
 def test_main_contract_file_is_absent_so_the_default_is_warn():
-    """The operator rule reads the contract only 'if config/n8n_health_contracts.json exists on main'. It does not
-    (measured 2026-10-10 on 7df77950a); when it lands, test_severity_follows_the_health_contract covers it."""
+    """The contract is read only 'if config/n8n_health_contracts.json exists on main'. It does not (measured
+    2026-10-10 on 590f797b1); when it lands, the contract test above governs."""
     if fanin.HEALTH_CONTRACTS_PATH.exists():
         pytest.skip("health contracts present: the contract test governs")
-    assert fanin._wferr_severity("tradeai-incident-router") == ("P2", "default:WARN")
+    assert fanin._wferr_severity("tradeai-event-router") == ("P2", "default:WARN")
+    assert {w: fanin._wferr_severity(w)[0] for w in fanin.WFERR_P1_WORKFLOWS} == {
+        "tradeai-dispatcher": "P1", "tradeai-incident-router": "P1", "tradeai-heartbeat-watcher": "P1"}
 
 
 # ── the fan-in run carries it; the notifier and the SIEM bridge route it ────────────────────────────
 
 def _quiet_other_sources(monkeypatch):
     for var in ("TRADEAI_FANIN_LANE_REGISTRY", "TRADEAI_FANIN_RUNS", "TRADEAI_FANIN_RELAY", "TRADEAI_FANIN_DLQ",
-                "TRADEAI_FANIN_GOVERNANCE", "TRADEAI_FANIN_DIAGNOSIS"):
+                "TRADEAI_FANIN_GOVERNANCE", "TRADEAI_FANIN_DIAGNOSIS", "TRADEAI_ALERT_PATH_WATCH"):
         monkeypatch.setenv(var, "0")
     monkeypatch.setattr(fanin, "_outbox_findings", lambda now: [])
     monkeypatch.setattr(fanin, "_scalp_lane_findings", lambda root, now: [])

@@ -3721,6 +3721,10 @@ GATES = [
             # wferr-<wf>-<exec>): one incident per workflow, P1 only for the dispatcher, else contract/P2 (WARN);
             # notifier plan + SIEM n8n:<workflow> row from the same rows. Hermetic: tmp_path ledgers and relay logs.
             "tests/test_n8n_incident_fanin_workflow_error_20261010.py",
+            # 2026-10-10 operator "Yes to everything": host-side alert-path watch (relay log only) — P1 when the
+            # incident router errors or stops, or n8n's schedule stops; the notifier (host cron) sends it even with a
+            # stale fan-in, without declaring fan-in recoveries; the relay logs the /due lane filter for attribution.
+            "tests/test_n8n_alert_path_watch_20261010.py",
         ],
     ),
     (

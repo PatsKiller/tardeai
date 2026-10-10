@@ -288,8 +288,13 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     out.extend(_diagnosis_findings(root, now))
     # 3l. n8n workflow errors (gap 11, 2026-10-10): the relay's POST /event writes one gateway event per failed n8n
     # execution on lane n8n-workflow-error (#1663/#1664); nothing read them. One incident per workflow (P1 for the
-    # dispatcher, else the health contract or P2/WARN) while an error is inside the window. See _workflow_error_findings.
+    # dispatcher / incident router / heartbeat watcher, else P2/WARN or a higher health contract) while an error is
+    # inside the window. See _workflow_error_findings.
     out.extend(_workflow_error_findings(root, now))
+    # 3m. the alerting path itself (operator 2026-10-10): incident-router errors / stall and n8n schedule stall from the
+    # relay log (scripts/lib/n8n_alert_path_watch.py). The notifier runs the same check from host cron, so the P1 does
+    # not depend on this n8n-dispatched fan-in; here it feeds the SIEM row.
+    out.extend(_alert_path_findings(root, now))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -696,7 +701,8 @@ WFERR_LANE = "n8n-workflow-error"                   # scripts/n8n_run_relay.py E
 WFERR_PREFIX = "wferr-"                             # relay idempotency key: wferr-<workflow_id>-<execution_id>
 WFERR_RELAY_LOG_REL = "data/runtime/n8n_relay/relay_log.jsonl"
 WFERR_DEFAULT_WINDOW_MIN = 60                       # an incident stays open while an error is this recent
-WFERR_P1_WORKFLOWS = frozenset({"tradeai-dispatcher"})   # operator 2026-10-10: P1 only for the dispatcher
+# Operator 2026-10-10 ("Yes to everything"): the dispatcher and the alerting path itself are P1.
+WFERR_P1_WORKFLOWS = frozenset({"tradeai-dispatcher", "tradeai-incident-router", "tradeai-heartbeat-watcher"})
 HEALTH_CONTRACTS_PATH = ROOT / "config" / "n8n_health_contracts.json"
 
 
@@ -734,19 +740,19 @@ def _wferr_ledger_rows(path: Path) -> list[dict[str, Any]] | None:
 
 
 def _wferr_severity(workflow_id: str) -> tuple[str, str]:
-    """(fan-in severity, basis). The dispatcher is P1. Any other workflow takes its health contract's failed
-    notifier_priority when config/n8n_health_contracts.json carries one, clamped to P2 (P1 is the dispatcher's
-    alone), else P2 — WARN in the SIEM bridge's PRIORITY_SEVERITY."""
+    """(fan-in severity, basis). The dispatcher, incident router and heartbeat watcher are P1. Any other workflow is
+    P2 (WARN in the SIEM bridge), which its health contract's failed notifier_priority (config/n8n_health_contracts.json,
+    when present) may raise to P1 but never lower: a contract is a floor-raiser, not a mute."""
     if workflow_id in WFERR_P1_WORKFLOWS:
-        return "P1", "dispatcher"
+        return "P1", "alert_path" if workflow_id != "tradeai-dispatcher" else "dispatcher"
     doc = _load(HEALTH_CONTRACTS_PATH)
     for c in (doc or {}).get("contracts") or []:
         if isinstance(c, dict) and c.get("id") == workflow_id:
             prio = str(((c.get("alerting") or {}).get("failed") or {}).get("notifier_priority") or "").upper()
-            if prio in ("P1", "P2"):
-                return "P2", (f"contract:{prio}->P2" if prio == "P1" else "contract:P2")
-            if prio == "P3":
-                return "P3", "contract:P3"
+            if prio in ("P0", "P1"):
+                return "P1", f"contract:{prio}->P1" if prio == "P0" else "contract:P1"
+            if prio:
+                return "P2", f"contract:{prio}->P2" if prio != "P2" else "contract:P2"
     return "P2", "default:WARN"
 
 
@@ -824,6 +830,16 @@ def _workflow_error_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                       "event_keys": [e["key"] for e in evs]})
     NOTES[key] = (f"ledger:{ledger_note}:relay_log_rows={relay_rows}:events={len(events)}:"
                   f"in_window={sum(len(v) for v in by_wf.values())}:workflows={len(by_wf)}:window_min={window_min:g}")
+    return found
+
+
+def _alert_path_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib.n8n_alert_path_watch import findings
+        found, note = findings(root, now)
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        found, note = [], f"unavailable:{type(exc).__name__}"
+    NOTES["alert_path_source"] = note
     return found
 
 
