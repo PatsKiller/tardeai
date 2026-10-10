@@ -5,7 +5,21 @@ Resolves the tracked symbol universe, then ingests market/technical/company data
 using source priority: internal → Finviz → Yahoo.
 
 All outputs marked model='aegis', stored in aegis_symbol_snapshot_nightly.
-Entry point: main()
+Entry point: main() (returns a dict; aegis_overnight.py calls it) / cli() for the cron lane.
+
+Usage (cron L308, lane aegis-nightly-ingestion):
+  python3 scripts/aegis_nightly_ingestion.py [--dry-run]
+
+--dry-run (refactor wave 3, 2026-10-10) puts the db_adapter session in READ ONLY, resolves the
+universe (holdings/watchlist files + stopped_out_watch/action_queue SELECTs), reads the Finviz enrichment cache
+and builds every snapshot row, then prints a DRY-RUN report and returns: it never calls _db_write (no INSERT),
+makes no Yahoo request (it reports how many symbols WOULD need the Yahoo fallback) and writes no receipt.
+
+Exit codes (cli): 0 = ran (an empty universe is a finding, still 0); 1 = the run failed: Postgres unavailable
+(the SELECT 1 probe fails -- every write would fail), or the universe was non-empty and EVERY snapshot write
+failed. A single failed symbol write is a soft failure (logged, counted, exit 0). 2 = usage error (argparse).
+A real run writes <state_root>/data/runtime/aegis-nightly-ingestion_last.json (LaneRunReceipt@v1; ok_at only on
+success); a crash writes a failed receipt and re-raises.
 """
 from __future__ import annotations
 import json
@@ -58,6 +72,7 @@ if _env_path.exists():
 
 AGENT = "aegis"
 RUN_ID = f"aegis-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+LANE_ID = "aegis-nightly-ingestion"
 
 
 def _load_json(path: Path):
@@ -89,6 +104,27 @@ def _db_query(sql, params=None, fetch="all"):
         return _execute(sql, params, fetch=fetch)
     except Exception:
         return None
+
+
+def _db_available() -> bool:
+    """Postgres reachable through db_adapter (``SELECT 1``). False = every read/write in this lane degrades."""
+    return bool(_db_query("SELECT 1 AS ok", fetch="one"))
+
+
+def _enforce_readonly_db() -> bool:
+    """Dry run: put this thread's db_adapter session in READ ONLY at the server (AGENTS.md §6)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.lane_last_receipt import enforce_readonly
+
+        conn = _get_conn()
+        if conn is None:
+            return False
+        enforce_readonly(conn)
+        return True
+    except Exception as e:
+        print(f"  [aegis] READ ONLY session not established: {type(e).__name__}")
+        return False
 
 
 # ── D1: Universe resolver ────────────────────────────────────────────────
@@ -226,8 +262,8 @@ def fetch_yahoo_batch(symbols: list[str], finviz_data: dict) -> dict[str, dict]:
 
 # ── D4: Merge + persist ──────────────────────────────────────────────────
 
-def merge_and_persist(universe: list[dict], finviz_data: dict, yahoo_data: dict):
-    """Merge sources and write to aegis_symbol_snapshot_nightly."""
+def build_snapshot_rows(universe: list[dict], finviz_data: dict, yahoo_data: dict) -> list[dict]:
+    """Merge sources into one aegis_symbol_snapshot_nightly row per universe symbol. Pure: writes nothing."""
     # Also get internal state (technical_snapshot, holdings)
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     h = _load_json(STATE_DIR / "holdings.json") or {}
@@ -237,7 +273,7 @@ def merge_and_persist(universe: list[dict], finviz_data: dict, yahoo_data: dict)
         if s:
             price_map[s] = {"price": p.get("price"), "market_value": p.get("market_value")}
 
-    written = 0
+    rows = []
     for item in universe:
         sym = item["symbol"]
         reasons = item["reasons"]
@@ -289,7 +325,18 @@ def merge_and_persist(universe: list[dict], finviz_data: dict, yahoo_data: dict)
 
         field_count = sum(1 for v in merged.values() if v is not None)
         confidence = min(field_count / 15, 1.0)
+        rows.append({"symbol": sym, "reasons": reasons, "primary": primary, "sources_used": sources_used,
+                     "merged": merged, "field_count": field_count, "confidence": confidence})
+    return rows
 
+
+def merge_and_persist(universe: list[dict], finviz_data: dict, yahoo_data: dict):
+    """Merge sources and write to aegis_symbol_snapshot_nightly."""
+    written = 0
+    for row in build_snapshot_rows(universe, finviz_data, yahoo_data):
+        sym, reasons, primary = row["symbol"], row["reasons"], row["primary"]
+        sources_used, merged = row["sources_used"], row["merged"]
+        field_count, confidence = row["field_count"], row["confidence"]
         ok = _db_write(
             """INSERT INTO aegis_symbol_snapshot_nightly
                (run_id, symbol, universe_reason, primary_source, sources_used,
@@ -319,8 +366,14 @@ def merge_and_persist(universe: list[dict], finviz_data: dict, yahoo_data: dict)
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-def main():
-    print(f"[aegis-ingestion] Nightly delta ingestion starting — {RUN_ID}")
+def main(dry_run: bool = False):
+    print(f"[aegis-ingestion] Nightly delta ingestion starting — {RUN_ID}" + (" (DRY RUN)" if dry_run else ""))
+    readonly = _enforce_readonly_db() if dry_run else False
+    if not _db_available():
+        # Every snapshot write (and the recovery/approval universe reads) would fail: a failed run, not a quiet 0.
+        print("  [aegis] Postgres unavailable — nothing can be persisted")
+        return {"universe": 0, "finviz": 0, "yahoo": 0, "written": 0, "run_id": RUN_ID,
+                "db_ok": False, "error": "db_unavailable"}
 
     # D1: Resolve universe
     universe = resolve_universe()
@@ -331,6 +384,19 @@ def main():
     finviz_data = fetch_finviz_batch(symbols)
     print(f"  Finviz: {len(finviz_data)} symbols with data")
 
+    if dry_run:
+        # No Yahoo request (rate-limited external fetch) and no _db_write: report, then return.
+        need_yahoo = [s for s in symbols if not finviz_data.get(s) or finviz_data[s].get("price") is None
+                      or finviz_data[s].get("rsi") is None]
+        rows = build_snapshot_rows(universe, finviz_data, {})
+        from lib.lane_last_receipt import dry_run_report
+        summary = {"universe": len(universe), "finviz": len(finviz_data), "would_fetch_yahoo": len(need_yahoo),
+                   "would_write_rows": len(rows), "rows_without_price_pre_yahoo":
+                   sum(1 for r in rows if r["merged"]["price"] is None), "readonly_session": readonly,
+                   "run_id": RUN_ID}
+        dry_run_report(LANE_ID, summary, would_write=[f"aegis_symbol_snapshot_nightly: {len(rows)} rows (run_id={RUN_ID})"])
+        return {**summary, "dry_run": True, "written": 0}
+
     # D3: Yahoo fallback
     yahoo_data = fetch_yahoo_batch(symbols, finviz_data)
     print(f"  Yahoo: {len(yahoo_data)} symbols enriched")
@@ -340,8 +406,39 @@ def main():
     print(f"  Persisted: {written}/{len(universe)} symbol snapshots")
 
     print(f"[aegis-ingestion] Complete — {datetime.now().isoformat()}")
-    return {"universe": len(universe), "finviz": len(finviz_data), "yahoo": len(yahoo_data), "written": written, "run_id": RUN_ID}
+    result = {"universe": len(universe), "finviz": len(finviz_data), "yahoo": len(yahoo_data), "written": written, "run_id": RUN_ID, "db_ok": True}
+    if universe and written == 0:
+        result["error"] = "all_writes_failed"
+    return result
+
+
+def cli(argv=None) -> int:
+    """Cron entry: --dry-run, honest exit code, LaneRunReceipt@v1 on real runs only (see module docstring)."""
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Aegis nightly delta ingestion (cron L308)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="read + build rows + report; no INSERT, no Yahoo fetch, no receipt")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        result = main(dry_run=True)
+        return 1 if result.get("error") else 0
+
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        result = main()
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="aegis_nightly_ingestion.py",
+                           error=f"{type(exc).__name__}: {exc}")
+        raise
+    failed = bool(result.get("error"))
+    write_lane_receipt(LANE_ID, ok=not failed, exit_code=1 if failed else 0, started_at=started,
+                       script="aegis_nightly_ingestion.py",
+                       summary={k: result.get(k) for k in ("universe", "finviz", "yahoo", "written", "run_id", "error")},
+                       error=result.get("error"))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())

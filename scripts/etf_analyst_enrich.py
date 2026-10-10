@@ -9,6 +9,18 @@ produce TWO honest signals and store them in symbol_profiles:
      basket. For inverse ETFs the sign is flipped (short exposure).
 
 Read-only re: trading. Bounded + polite (yfinance). Run after classify_instruments.py.
+
+Lane ``etf-analyst-enrich`` (cron L505). ``--dry-run`` opens a READ ONLY session and runs only SELECTs: the
+ETF/fund rows, how many constituents already have analyst history, and whether the two analyst columns
+exist. It returns before the per-run ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` (DDL stays on the real
+path only; moving it to a migration is a follow-up), before any yfinance request and before any
+symbol_profiles / yahoo_analyst_targets_history write. No receipt.
+
+A real run writes ``<state_root>/data/runtime/etf-analyst-enrich_last.json`` (LaneRunReceipt@v1; ``ok_at``
+only on success). Exit codes: 0 = ran (ETFs without holdings data, or no constituent needing a fetch, are
+findings); 1 = the run failed: crash / DB unavailable (failed receipt, exception re-raised), yfinance
+unavailable, ETF/fund rows existed but pass 1 got no holdings and no direct target for any of them, or
+constituents needed a fetch and 0 were fetched; 2 = usage error.
 """
 import json
 import sys
@@ -18,6 +30,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
 from db_adapter import _get_conn
 from lib.writers.symbol_profiles_writer import upsert_profile
+
+LANE_ID = "etf-analyst-enrich"
+ETF_CAP = 45
+CONSTITUENT_CAP = 120
+_ETF_SQL = """SELECT upper(symbol), instrument_type, direction_hint FROM symbol_profiles
+                   WHERE instrument_type IN ('etf','inverse_etf','fund')"""
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.etf_analyst_enrich
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _holding_upsides(cur, symbols):
@@ -34,14 +60,34 @@ def _holding_upsides(cur, symbols):
     return out
 
 
-def main():
+def preview() -> dict:
+    """Dry run (AGENTS.md §6): READ ONLY session, SELECTs only -- no DDL, no yfinance, no write."""
+    conn = _get_conn()
+    _receipt_lib().enforce_readonly(conn)
+    cur = conn.cursor()
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_name = 'symbol_profiles'
+                     AND column_name IN ('analyst_look_through_pct', 'analyst_basis')""")
+    have_cols = sorted(r[0] for r in cur.fetchall())
+    cur.execute(_ETF_SQL)
+    etfs = cur.fetchall()
+    cur.execute("SELECT count(DISTINCT upper(symbol)) FROM yahoo_analyst_targets_history")
+    with_history = int((cur.fetchone() or (0,))[0] or 0)
+    conn.rollback()
+    batch = [r[0] for r in etfs[:ETF_CAP]]
+    return {"etfs_funds": len(etfs), "would_fetch_etfs": len(batch), "first_etfs": batch[:10],
+            "symbols_with_analyst_history": with_history, "constituent_fetch_cap": CONSTITUENT_CAP,
+            "analyst_columns_present": have_cols,
+            "would_run_ddl": len(have_cols) < 2}
+
+
+def enrich():
     conn = _get_conn()
     cur = conn.cursor()
     cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS analyst_look_through_pct numeric")
     cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS analyst_basis text")
     conn.commit()
-    cur.execute("""SELECT upper(symbol), instrument_type, direction_hint FROM symbol_profiles
-                   WHERE instrument_type IN ('etf','inverse_etf','fund')""")
+    cur.execute(_ETF_SQL)
     etfs = cur.fetchall()
     try:
         import yfinance as yf
@@ -49,11 +95,11 @@ def main():
         from db_adapter import save_yahoo_analyst_targets_history
     except Exception as e:
         print("yfinance unavailable:", e)
-        return 1
+        return {"ok": False, "error": f"yfinance unavailable: {type(e).__name__}", "etfs_funds": len(etfs)}
 
     # Pass 1: top holdings + weights per ETF (and direct provider target if any).
     etf_holdings, direct_up = {}, {}
-    for sym, itype, direction in etfs[:45]:
+    for sym, itype, direction in etfs[:ETF_CAP]:
         _t.sleep(0.8)
         try:
             tk = yf.Ticker(sym)
@@ -76,7 +122,7 @@ def main():
     import datetime
     ds = datetime.datetime.now().strftime("%Y-%m-%d")
     fetched = 0
-    for s in need[:120]:
+    for s in need[:CONSTITUENT_CAP]:
         _t.sleep(0.8)
         try:
             info = yf.Ticker(s).info
@@ -114,9 +160,49 @@ def main():
         if final is not None:
             done += 1
     conn.commit()
-    print(json.dumps({"ok": True, "etfs_funds": len(etfs), "etfs_with_holdings": len(etf_holdings),
-                      "constituents_fetched": fetched, "with_analyst_view": done}, indent=2))
-    return 0
+    res = {"ok": True, "etfs_funds": len(etfs), "etfs_with_holdings": len(etf_holdings),
+           "etfs_with_direct_target": len(direct_up), "constituents_needed": len(need[:CONSTITUENT_CAP]),
+           "constituents_fetched": fetched, "with_analyst_view": done}
+    print(json.dumps(res, indent=2))
+    return res
+
+
+def run_failed(res: dict) -> bool:
+    """Honest exit (see module docstring)."""
+    if not res.get("ok"):
+        return True
+    pass1_empty = res["etfs_funds"] > 0 and not res["etfs_with_holdings"] and not res["etfs_with_direct_target"]
+    nothing_fetched = res["constituents_needed"] > 0 and res["constituents_fetched"] == 0
+    return pass1_empty or nothing_fetched
+
+
+def main(argv=None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="ETF/fund analyst look-through into symbol_profiles.")
+    ap.add_argument("--dry-run", action="store_true", help="SELECTs only (READ ONLY); no DDL, fetch or write")
+    a = ap.parse_args(argv)
+    lr = _receipt_lib()
+    if a.dry_run:
+        # Structural (AGENTS.md §6): enrich() -- DDL, yfinance, upserts -- is not reachable from this branch.
+        plan = preview()
+        lr.dry_run_report(
+            LANE_ID, plan,
+            would_write=([] if not plan["would_run_ddl"] else ["ALTER TABLE symbol_profiles ADD COLUMN (analyst cols)"])
+            + [f"symbol_profiles analyst_look_through_pct/analyst_basis (<= {plan['would_fetch_etfs']} rows)",
+               f"yahoo_analyst_targets_history (<= {CONSTITUENT_CAP} constituent rows)"])
+        return 0
+    started = lr.now_iso()
+    try:
+        res = enrich()
+    except Exception as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="etf_analyst_enrich.py",
+                              error=f"{type(exc).__name__}: {exc}")
+        raise
+    failed = run_failed(res)
+    rc = 1 if failed else 0
+    lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started, script="etf_analyst_enrich.py",
+                          summary={k: v for k, v in res.items() if k != "ok"})
+    return rc
 
 
 if __name__ == "__main__":

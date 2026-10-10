@@ -3991,6 +3991,8 @@ GATES = [
             "tests/test_registry_signals_r1_20261009.py",
             # registry-ops-crons 2026-10-09: incident-notifier + P16/P18 host-cron rows, PAUSED pending install.
             "tests/test_registry_ops_crons_20261009.py",
+            # siem-diagnoser-schedule 2026-10-10: n8n-siem-bridge + n8n-failure-diagnosis host-cron rows, PAUSED pending install.
+            "tests/test_registry_siem_diagnoser_crons_20261010.py",
         ],
     ),
     (
@@ -4103,6 +4105,46 @@ GATES = [
             "tests/test_refactor_w2_catalysts_20261010.py",
             "tests/test_refactor_w2_backtests_20261010.py",
             "tests/test_refactor_w2_portfolio_reports_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W3_BUCKET_X1 — 2026-10-10 cron -> n8n refactor wave 3, bucket X1 (ingest: cron L142 L150 L243 L244 L248 L216 L505 L520 L550 — finviz_enrichment, sec_data_ingest, social_ingest, fred_data_ingest, sync_dividend_data, etf_*_enrich, validate_expense_ratios):
+        # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
+        # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
+        # exit codes. Hermetic: fake connections/modules, TRADEAI_STATE_ROOT = tmp. Listing them schedules nothing.
+        "refactor_w3_bucket_x1_20261010",
+        [
+            "tests/test_refactor_w3_ingest_lanes_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W3_BUCKET_X2 — 2026-10-10 cron -> n8n refactor wave 3, bucket X2 (cron L289 L291 L308 L684 L685 L686 L832 L835 — aegis_*, hermes_* discovery, hermes_discovery_scorecard, siem_to_hermes_backlog):
+        # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
+        # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
+        # exit codes. Hermetic: fake connections/modules, TRADEAI_STATE_ROOT = tmp. Listing them schedules nothing.
+        "refactor_w3_bucket_x2_20261010",
+        [
+            "tests/test_refactor_w3_hermes_aegis_lanes_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W3_BUCKET_X3 — 2026-10-10 cron -> n8n refactor wave 3, bucket X3 (cron L858-L863 L876 L218 L275 — discovery chain, lesson candidates, decision outcomes, agent outcome scorer):
+        # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
+        # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
+        # exit codes. Hermetic: fake connections/modules, TRADEAI_STATE_ROOT = tmp. Listing them schedules nothing.
+        "refactor_w3_bucket_x3_20261010",
+        [
+            "tests/test_refactor_w3_discovery_learning_lanes_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W3_BUCKET_X4 — 2026-10-10 cron -> n8n refactor wave 3, bucket X4 (cron L184 L185 L186 L197 L252 L457 L926 L982 L908 — llm_intelligence_enrichment, feedback loop, rag_indexer, journal review, identity sweep, CIO stance drain, draft-plan hygiene):
+        # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
+        # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
+        # exit codes. Hermetic: fake connections/modules, TRADEAI_STATE_ROOT = tmp. Listing them schedules nothing.
+        "refactor_w3_bucket_x4_20261010",
+        [
+            "tests/test_refactor_w3_llm_cio_lanes_20261010.py",
         ],
     ),
     (

@@ -8,6 +8,20 @@ CLI:
   python3 scripts/rag_indexer.py --source all --hours 2
   python3 scripts/rag_indexer.py --backfill
   python3 scripts/rag_indexer.py --source agent_result,cio_decision --hours 8
+  python3 scripts/rag_indexer.py --dry-run
+
+Lane rag-indexer (cron L252, behind llm_priority_guard.sh and `timeout 5m`; neither is changed here).
+
+--dry-run (AGENTS.md §6): selects the rows and builds the embed texts, then `continue`s BEFORE
+embed_text (no embedding call), before the INSERT and before the IER write-back; the session is READ
+ONLY at the server (lane_last_receipt.enforce_readonly) and no pipeline_registry run is recorded. It
+prints the RAG_INDEXER_SUMMARY line (dry_run=true) plus one DRY-RUN report line; no receipt.
+
+A real run writes <state_root>/data/runtime/rag-indexer_last.json (LaneRunReceipt@v1, built from the
+RAG_INDEXER_SUMMARY counts; ok_at only on success). Exit codes: 0 = ran (nothing new to index is 0;
+some sources failing while others ran is 0, the failures are in the receipt); 1 = the run failed: the
+DB connection could not be opened, EVERY source errored, or rows needed embedding and not one could be
+embedded (embedder down); 2 = usage error (unknown --source).
 """
 import argparse, logging, sys, json
 from pathlib import Path
@@ -18,6 +32,16 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from rag_retrieval import embed_text
 
 logger = logging.getLogger(__name__)
+
+LANE_ID = "rag-indexer"
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.rag_indexer
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 # ── fused_signal embed text (storage audit 2026-10-09 #1) ─────────────────────
 # The old text was symbol||' signal '||direction||' severity:'||severity. signal_fusion.py never
@@ -342,6 +366,7 @@ def index_source(source_type, hours_back=None, backfill=False, conn=None, dry_ru
 
     except Exception as e:
         logger.error(f"index_source failed for {source_type}: {e}")
+        st["error"] = type(e).__name__
         conn.rollback()
         return 0, 0
     finally:
@@ -353,7 +378,20 @@ def index_source(source_type, hours_back=None, backfill=False, conn=None, dry_ru
 EMBED_MODEL = "nomic-embed-text"
 
 
-def main(argv=None):
+def run_failed(summary: dict) -> bool:
+    """The exit-code rule (module docstring): every source errored, or work existed and nothing embedded."""
+    if not summary:
+        return False
+    if all(st.get("error") for st in summary.values()):
+        return True
+    embed_failed = sum(int(st.get("embed_failed") or 0) for st in summary.values())
+    indexed = sum(int(st.get("indexed") or 0) for st in summary.values())
+    return embed_failed > 0 and indexed == 0
+
+
+def main(argv=None) -> int:
+    from datetime import datetime, timezone
+
     parser = argparse.ArgumentParser(description="RAG Indexer — embed all intelligence sources")
     parser.add_argument("--source", default="all", help="Comma-separated source types or 'all'")
     parser.add_argument("--hours", type=int, default=None, help="Only index items from last N hours")
@@ -362,16 +400,30 @@ def main(argv=None):
                         help="Select and build texts, report counts; no embedding call, no write")
     args = parser.parse_args(argv)
 
-    sources = list(SOURCE_CONFIGS.keys()) if args.source == "all" else args.source.split(",")
-    conn = _get_conn()
+    sources = list(SOURCE_CONFIGS.keys()) if args.source == "all" else [x.strip() for x in args.source.split(",")]
+    unknown = [x for x in sources if x not in SOURCE_CONFIGS]
+    if unknown:
+        print(f"unknown --source {unknown}; known: {sorted(SOURCE_CONFIGS)}", file=sys.stderr)
+        return 2
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        conn = _get_conn()
+    except Exception as exc:
+        logger.error(f"RAG indexer: DB connection failed: {type(exc).__name__}")
+        if not args.dry_run:
+            _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                              script="rag_indexer.py", error=f"{type(exc).__name__}: db connect")
+        raise
+    if args.dry_run:
+        _receipt_lib().enforce_readonly(conn)
 
     total = 0
     summary = {}
     for st in sources:
         stats = {}
-        n, s = index_source(st.strip(), hours_back=args.hours, backfill=args.backfill, conn=conn,
+        n, s = index_source(st, hours_back=args.hours, backfill=args.backfill, conn=conn,
                             dry_run=args.dry_run, stats=stats)
-        summary[st.strip()] = stats
+        summary[st] = stats
         total += n
 
     conn.close()
@@ -379,7 +431,21 @@ def main(argv=None):
     # One machine-readable line per run: the skip count is recorded, not just logged in prose.
     print("RAG_INDEXER_SUMMARY " + json.dumps({"dry_run": args.dry_run, "total": total, "sources": summary},
                                               default=str, sort_keys=True), flush=True)
-    return summary
+    failed = run_failed(summary)
+    rc = 1 if failed else 0
+    compact = {k: {f: v.get(f) for f in ("selected", "indexed", "embed_failed", "skipped_empty", "error")
+                   if v.get(f) is not None} for k, v in summary.items()}
+    errors = sorted(k for k, v in summary.items() if v.get("error"))
+    if args.dry_run:
+        _receipt_lib().dry_run_report(LANE_ID, {"would_index": total, "sources": compact,
+                                                "source_errors": errors, "exit_would_be": rc},
+                                      would_write=[f"content_embeddings (insert, {EMBED_MODEL}) x would_index",
+                                                   "intelligence entity rag_last_indexed (upsert)"])
+        return rc
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                                      script="rag_indexer.py",
+                                      summary={"total": total, "sources": compact, "source_errors": errors})
+    return rc
 
 
 if __name__ == "__main__":
@@ -392,9 +458,13 @@ if __name__ == "__main__":
     except Exception:
         pass
     try:
-        main()
+        _rc = main()
         try:
-            if _run_id: run_complete(_run_id)
+            if _run_id:
+                if _rc == 0:
+                    run_complete(_run_id)
+                else:
+                    run_fail(_run_id, f"rc={_rc}")
         except Exception:
             pass
     except Exception as _e:
@@ -403,3 +473,4 @@ if __name__ == "__main__":
         except Exception:
             pass
         raise
+    sys.exit(_rc)

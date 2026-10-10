@@ -5839,6 +5839,62 @@
       "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because a sender (SYSTEM ops family): AGENTS.md §23.3 keeps senders off n8n."
     },
     {
+      "lane_id": "n8n-siem-bridge",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "1-59/5 * * * *",
+        "match": "scripts/n8n_siem_bridge.py --apply",
+        "install_line": "1-59/5 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_siem_bridge.lock timeout -k 30 120 $PY scripts/n8n_siem_bridge.py --apply >> logs/n8n_siem_bridge.log 2>&1  # TRADEAI_LANE n8n-siem-bridge"
+      },
+      "expected_cadence_hours": 0.1,
+      "state": "PAUSED",
+      "state_since": "2026-10-10",
+      "state_reason": "APPROVED, PENDING INSTALL (2026-10-10, branch n8nmat/siem-diagnoser-schedule): declared PAUSED so the row exists before the line does (same pattern as incident-notifier, tests/test_registry_ops_crons_20261009.py): PAUSED+line-absent is ALIGNED and PAUSED+line-present is no conflict for check_lane_registry --state-drift; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in's diagnoser liveness (receipt missing/stale/blind) arms only on ACTIVE. Installing scheduler.install_line verbatim is operator-only (AGENTS.md §17, §9.3): a `cron` grant, packet ~/n8n-maturity-verification/packets/siem-diagnoser-schedule (install.sh cmp-checks the crontab against the dry run); then a registry PR flips state to ACTIVE. Host cron, not an n8n dispatcher row: the bridge is the SIEM's view of n8n, so it must not depend on n8n being up (n8n-down is caught by L4; siem-evidence/SCHEDULING.md had proposed a dispatcher row; operator choice). Runs 1 min after the fan-in's */5.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/n8n_siem_bridge_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_siem_bridge_20261010.py (PR #1640); exact cron-form --dry-run 2026-10-10T15:48Z from the pinned release af292381c: would insert 144 rows (CRITICAL 2, WARN 55, INFO 87), 0 n8n rows in system_health_events before and after, receipt absent before and after (packet evidence/).",
+      "review_by": "2026-10-17",
+      "severity": "High",
+      "remediation": "Bridge stale or failing: the Command Center SIEM is blind to n8n. Read data/runtime/n8n_siem_bridge_last.json source_notes/applied.errors, run scripts/n8n_siem_bridge.py --dry-run, fix the unavailable source.",
+      "note": "REMEDIATION_PLAN §5 L2/L7. Single writer of system_health_events rows component n8n:<lane> (insert/update/resolve, one transaction); folds the diagnoser's N8nLaneDiagnosis@v1 records into its rows (§6 R3). Sends nothing. Exit 0 all sources read and writes landed, 1 otherwise; ok_at advances only on success.",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "recommendation_note": "2026-10-10 siem-diagnoser-schedule: hand-set (new line, no rationalization item); host cron so the SIEM view of n8n survives an n8n outage."
+    },
+    {
+      "lane_id": "n8n-failure-diagnosis",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "3-59/15 * * * *",
+        "match": "scripts/n8n_failure_diagnosis.py --apply",
+        "install_line": "3-59/15 * * * * cd $PROJ && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state bash $PROJ/scripts/run_with_deepseek_offpeak.sh --scheduled --defer-in-process -- bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_n8n_failure_diagnosis.lock timeout -k 30 600 $PY scripts/n8n_failure_diagnosis.py --apply --max-incidents 3 >> logs/n8n_failure_diagnosis.log 2>&1  # TRADEAI_LANE n8n-failure-diagnosis"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "PAUSED",
+      "state_since": "2026-10-10",
+      "state_reason": "APPROVED, PENDING INSTALL (2026-10-10, branch n8nmat/siem-diagnoser-schedule): declared PAUSED so the row exists before the line does (same pattern as incident-notifier, tests/test_registry_ops_crons_20261009.py): PAUSED+line-absent is ALIGNED and PAUSED+line-present is no conflict for check_lane_registry --state-drift; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in's diagnoser liveness (receipt missing/stale/blind) arms only on ACTIVE. Installing scheduler.install_line verbatim is operator-only (AGENTS.md §17, §9.3): a `cron` grant, packet ~/n8n-maturity-verification/packets/siem-diagnoser-schedule (install.sh cmp-checks the crontab against the dry run); then a registry PR flips state to ACTIVE. Host cron, not an n8n dispatcher row: with executor v1 (workers 1) a dispatcher row could hold the only worker for up to 600 s (llm-remediation/PROPOSED_ROWS.md §2, 'a cron line is the safer choice'). Runs 2 min after the bridge's :01/:16/:31/:46 pass. Wrapped in run_with_deepseek_offpeak.sh --scheduled --defer-in-process (PR #1652, 2c2b5a38a; must be promoted before install — install.sh refuses otherwise): out of window the wrapper runs the lane with LLM_DEFER_OFFPEAK=1 instead of PEAK_SKIP, lib/llm_deferral defers the paid call in process and the receipt counts it 'deferred' (not 'blind'), so the fan-in's 45-min receipt_stale P1 does not fire every night; fail-closed PEAK_SKIP if llm_deferral cannot load.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/n8n_failure_diagnosis_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_llm_remediation_20261010.py (PR #1645); exact cron-form --dry-run 2026-10-10T15:48Z from af292381c: ok true, model_calls 0, open n8n rows 0 (bridge not yet applying); first-cycle preview against the bridge's would-insert rows: 5 eligible, projected <= $0.0018 each, no paid call; R6 sandbox harness (packet r6_harness.py) proved failure -> SIEM row -> diagnosis -> P1 escalation -> notifier DRY_RUN would_send. v2 2026-10-10T16:37Z (wrapper from 2c2b5a38a in a scratch pinned dir): in-window and out-of-window (TRADEAI_OFFPEAK_NOW_UTC Tue 08:30 ET -> PEAK_DEFER_IN_PROCESS) exact-form dry runs exit 0, nothing written live; sandbox --apply out of window: ok true, deferred 1, model_called 0, consecutive_blind 0, P2 deferred_offpeak escalation only.",
+      "review_by": "2026-10-17",
+      "severity": "High",
+      "remediation": "Diagnoser down or blind: the fan-in raises P1 (source n8n_failure_diagnosis). Check the governed bridge /health (127.0.0.1:8766), the process caps ($0.05/call, $0.10/day) and the receipt's source_notes; incidents still reach the SIEM and the notifier without a diagnosis.",
+      "note": "REMEDIATION_PLAN §6 R1-R5 (operator decisions 2026-10-09 23:38 ET). Process n8n_lane_failure_diagnosis via the governed bridge (grok OAuth -> chatgpt OAuth -> deepseek); executes only auto catalogue actions (dry-run reruns via coordination/run, orphan reap); writes only its own store + receipt; never system_health_events, never sends.",
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "recommendation_note": "2026-10-10 siem-diagnoser-schedule: hand-set (new line); governed-LLM class is dispatcher-eligible (§23.18) but executor v1 has one worker."
+    },
+    {
       "lane_id": "n8n-lab-backup",
       "owner": "platform",
       "scheduler": {

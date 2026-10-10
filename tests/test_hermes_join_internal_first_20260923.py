@@ -361,7 +361,23 @@ def test_sentinel_one_spaced_and_lowercase_bind_guid(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_SCHWAB_INSTRUMENT_EVIDENCE", str(inst))
     monkeypatch.setenv("TRADEAI_HOUSE_NAMES_DB", "0")
     monkeypatch.delenv("TRADEAI_IPO_LOCKUPS", raising=False)
-    cni.refresh()
+
+    # tag_inbound imports the index as `lib.company_name_index` (scripts/ on
+    # sys.path) while this test imports `scripts.lib.company_name_index`: two
+    # module objects, two lru_caches. A prior test that tagged text built the
+    # `lib.` cache from the real (absent-in-CI) sweep, and refreshing only `cni`
+    # left tag_inbound reading that stale empty index (CI chunk failure
+    # 2026-10-10). Refresh every loaded alias, before and after.
+    import importlib
+
+    def _refresh_all_aliases():
+        importlib.import_module("lib.company_name_index")
+        for name in ("lib.company_name_index", "scripts.lib.company_name_index"):
+            mod = sys.modules.get(name)
+            if mod is not None:
+                mod.refresh()
+
+    _refresh_all_aliases()
 
     hit = resolve_name("Sentinel One")
     assert hit is not None, "compacted brand must resolve"
@@ -396,4 +412,4 @@ def test_sentinel_one_spaced_and_lowercase_bind_guid(tmp_path, monkeypatch):
     assert any(r["symbol"] == "S" and r.get("subject_guid") for r in tag["resolved"]), tag
     # Must not also bind Perspective Therapeutics (CATX) from the word "perspective"
     assert not any(r["symbol"] == "CATX" for r in tag["resolved"])
-    cni.refresh()
+    _refresh_all_aliases()

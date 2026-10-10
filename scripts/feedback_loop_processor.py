@@ -11,6 +11,18 @@ Runs daily. Connects:
 Usage:
     .venv/bin/python scripts/feedback_loop_processor.py
     .venv/bin/python scripts/feedback_loop_processor.py --dry-run
+
+Lane feedback-loop-processor (cron L197).
+
+--dry-run (AGENTS.md §6): every step runs its SELECTs and counts what it would link/feed/score/
+snapshot/track/log; each INSERT/UPDATE/commit sits behind ``if not dry_run`` and, as defence in depth,
+the session is READ ONLY at the server (lane_last_receipt.enforce_readonly), so a write that were
+reached would be refused by PostgreSQL. It prints one DRY-RUN report line and never writes the receipt.
+
+A real run writes <state_root>/data/runtime/feedback-loop-processor_last.json (LaneRunReceipt@v1; ok_at
+only on success). Exit codes: 0 = all six steps ran (zero rows in every step is a finding, still 0);
+1 = the run failed: DB connection failed or a step raised (the steps share one transaction per step,
+so a step error aborts the run, as before; the receipt is written ``failed`` and the error re-raised).
 """
 import argparse
 import json
@@ -25,6 +37,16 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
+
+LANE_ID = "feedback-loop-processor"
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.feedback_loop_processor
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _f(v):
@@ -476,38 +498,67 @@ def detect_recovery_outcomes(conn, dry_run=False):
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-def main():
+STEPS = (
+    ("proposal_chains_linked", "Proposal chains linked", link_proposal_outcomes),
+    ("outcomes_fed", "Outcomes fed to agents", feed_outcomes_to_agents),
+    ("alerts_scored", "Alerts scored", score_alert_effectiveness),
+    ("strategy_snapshots", "Strategy snapshots", snapshot_strategy_performance),
+    ("agent_samples_tracked", "Agent samples tracked", track_agent_samples),
+    ("recovery_outcomes_logged", "Recovery outcomes logged", detect_recovery_outcomes),
+)
+WOULD_WRITE = [
+    "proposal_outcome_chain (upsert) x proposal_chains_linked",
+    "proposal_outcome_chain (update) + agent_recommendation_outcomes (insert) x outcomes_fed",
+    "alert_effectiveness (insert) x alerts_scored",
+    "strategy_performance_snapshots (insert) x strategy_snapshots",
+    "agent_sample_tracking (insert) x agent_samples_tracked",
+    "recovery_outcome_log (insert) x recovery_outcomes_logged",
+]
+
+
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Feedback Loop Processor")
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("--dry-run", action="store_true",
+                        help="SELECT and count only (READ ONLY session); no write, no receipt")
+    args = parser.parse_args(argv)
 
+    started = datetime.now().astimezone().isoformat()
     print(f"[feedback_loop] Starting — {datetime.now().isoformat()}")
-    conn = _get_conn()
-
+    counts: dict = {}
+    conn = None
     try:
-        linked = link_proposal_outcomes(conn, dry_run=args.dry_run)
-        print(f"  Proposal chains linked: {linked}")
-
-        fed = feed_outcomes_to_agents(conn, dry_run=args.dry_run)
-        print(f"  Outcomes fed to agents: {fed}")
-
-        scored = score_alert_effectiveness(conn, dry_run=args.dry_run)
-        print(f"  Alerts scored: {scored}")
-
-        snaps = snapshot_strategy_performance(conn, dry_run=args.dry_run)
-        print(f"  Strategy snapshots: {snaps}")
-
-        tracked = track_agent_samples(conn, dry_run=args.dry_run)
-        print(f"  Agent samples tracked: {tracked}")
-
-        recovery = detect_recovery_outcomes(conn, dry_run=args.dry_run)
-        print(f"  Recovery outcomes logged: {recovery}")
-
+        conn = _get_conn()
+        if args.dry_run:
+            _receipt_lib().enforce_readonly(conn)
+        for key, label, fn in STEPS:
+            counts[key] = fn(conn, dry_run=args.dry_run)
+            print(f"  {label}{' (would)' if args.dry_run else ''}: {counts[key]}")
+    except Exception as exc:
+        print(f"[feedback_loop] FAILED: {type(exc).__name__}: {exc}")
+        if args.dry_run:
+            _receipt_lib().dry_run_report(LANE_ID, {**counts, "error": type(exc).__name__, "exit_would_be": 1},
+                                          would_write=WOULD_WRITE)
+            return 1
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="feedback_loop_processor.py", summary=counts,
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
     finally:
-        conn.close()
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
+    if args.dry_run:
+        _receipt_lib().dry_run_report(LANE_ID, counts, would_write=WOULD_WRITE)
+        print(f"[feedback_loop] DRY-RUN complete — {datetime.now().isoformat()}")
+        return 0
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                                      script="feedback_loop_processor.py", summary=counts)
     print(f"[feedback_loop] Complete — {datetime.now().isoformat()}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

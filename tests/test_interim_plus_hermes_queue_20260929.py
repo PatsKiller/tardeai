@@ -69,7 +69,7 @@ def test_partial_with_eta_is_both_answered_and_queued(monkeypatch):
         [{"domain": "hermes_research", "symbol": "NFLX", "reason": "no promoted research"}],
         intent={"symbols": ["NFLX"]},
         text="how is nexflix as a long position",
-        chat_id="8797974247",
+        chat_id="100000001",
         pending_id="opr_testnflx001",
     )
     assert out["answered"], "thin interim must still surface as answered"

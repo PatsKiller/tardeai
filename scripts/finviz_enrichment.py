@@ -42,6 +42,19 @@ USAGE:
   # Get single ticker from cache
   mamo = get_enriched('MAMO', project_root='.')
   print(mamo['rsi'], mamo['float_m'], mamo['rvol'])
+
+LANE (cron L142, ``finviz-enrichment``): ``python scripts/finviz_enrichment.py [SYMBOL ...] [--dry-run]``.
+``--dry-run`` resolves the same universe as a real run (watchlist_items through a READ ONLY session +
+holdings.json), reads the cache file without creating its directory, and prints which tickers are stale,
+the views and the Finviz Elite export request count a real run would spend. It returns before
+pipeline_registry.run_start, before any Finviz request (paid, rate-limited: never called by a dry run),
+before save_cache and before the intelligence-entity write-back. It reads no Finviz credential. No receipt.
+
+A real run writes ``<state_root>/data/runtime/finviz-enrichment_last.json`` (LaneRunReceipt@v1; ``ok_at``
+only on success). Exit codes: 0 = ran (all tickers fresh in cache, an empty universe, or some views /
+batches failing while others returned data are findings); 1 = the run failed: crash (failed receipt,
+exception re-raised), the watchlist universe query failed (DB unavailable), or tickers were stale and no
+view returned any ticker (no auth, HTTP errors, throttle: nothing could be fetched when work existed).
 """
 from __future__ import annotations
 
@@ -62,6 +75,19 @@ CACHE_TTL_HOURS = 6          # refresh if older than 6 hours
 BATCH_SIZE = 20              # Finviz max tickers per export request
 REQUEST_DELAY = 0.5          # seconds between requests
 FINVIZ_EXPORT = "https://elite.finviz.com/export"
+LANE_ID = "finviz-enrichment"
+#: per-run measurements of the last enrich_tickers() call (read by main() for the receipt / exit code)
+_RUN_STATS: Dict[str, Any] = {}
+#: universe read failures seen by the last default_universe_symbols() call
+_UNIVERSE_ERRORS: List[str] = []
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.finviz_enrichment
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 # Views to pull and their column mappings.
 #
@@ -315,6 +341,28 @@ def save_cache(cache: Dict[str, Any], root: Path = Path(".")) -> None:
     _cache_path(root).write_text(json.dumps(cache, indent=2, default=str))
 
 
+def _read_cache_readonly(root: Path) -> Dict[str, Any]:
+    """load_cache() without _cache_path()'s mkdir -- the dry run creates nothing."""
+    path = root / CACHE_FILE
+    try:
+        return json.loads(path.read_text()) if path.is_file() else {}
+    except Exception:
+        return {}
+
+
+def _default_views(skip_fundamentals: bool = False) -> List[int]:
+    views = [111, 121, 131, 141, 171]  # 121=valuation/EPS, skip 161 (fundamentals slow)
+    if not skip_fundamentals:
+        views.append(161)
+    return views
+
+
+def _stale_symbols(symbols: List[str], cache: Dict[str, Any], force_refresh: bool = False) -> List[str]:
+    """Tickers that need refreshing: missing from the cache or older than CACHE_TTL_HOURS."""
+    return [s for s in symbols
+            if force_refresh or s not in cache or _is_stale(cache.get(s, {}))]
+
+
 def _is_stale(record: Dict) -> bool:
     """Check if a cache record is stale."""
     cached_at = record.get("cached_at")
@@ -456,13 +504,12 @@ def enrich_tickers(
     cache = load_cache(root)
 
     if views is None:
-        views = [111, 121, 131, 141, 171]  # 121=valuation/EPS, skip 161 (fundamentals slow)
-        if not skip_fundamentals:
-            views.append(161)
+        views = _default_views(skip_fundamentals)
 
     # Find tickers that need refreshing
-    stale = [s for s in symbols
-             if force_refresh or s not in cache or _is_stale(cache.get(s, {}))]
+    stale = _stale_symbols(symbols, cache, force_refresh)
+    _RUN_STATS.clear()
+    _RUN_STATS.update({"symbols": len(symbols), "stale": len(stale), "views": {}})
 
     if stale:
         print(f"  [finviz-enrich] Fetching {len(stale)} tickers "
@@ -473,6 +520,7 @@ def enrich_tickers(
         for v in views:
             vr = _fetch_view(stale, v, root)
             view_results[v] = vr
+            _RUN_STATS["views"][v] = len(vr)
             print(f"  [finviz-enrich] v={v}: {len(vr)} tickers")
 
         # Merge all views per ticker
@@ -659,7 +707,8 @@ def print_enriched(symbol: str, project_root: str = ".") -> None:
 DEFAULT_UNIVERSE_CAP = 200  # matches WATCHLIST_TOP_N (scripts/lib/watchlist_priority.py)
 
 
-def default_universe_symbols(project_root: str = ".", *, cap: int = DEFAULT_UNIVERSE_CAP) -> list:
+def default_universe_symbols(project_root: str = ".", *, cap: int = DEFAULT_UNIVERSE_CAP,
+                             readonly: bool = False) -> list:
     """Audit finding M4: the two finviz_enrichment.py cron entries (07:10,
     formerly also 13:00) invoke this script bare, no argv — which silently
     fell through to a hardcoded 4-symbol demo list (MAMO/ACHV/V/SCHD) every
@@ -678,9 +727,12 @@ def default_universe_symbols(project_root: str = ".", *, cap: int = DEFAULT_UNIV
 
     Best-effort: a DB error returns an empty list rather than raising, so a
     cron failure here degrades to "nothing enriched this run," not a crash.
+    The failure is recorded in _UNIVERSE_ERRORS (the lane exits 1 on it).
+    ``readonly=True`` (the dry run) puts the session in READ ONLY at the server.
     """
     root = Path(project_root)
     symbols: set = set()
+    _UNIVERSE_ERRORS.clear()
     try:
         import psycopg2
         pw = ""
@@ -690,6 +742,8 @@ def default_universe_symbols(project_root: str = ".", *, cap: int = DEFAULT_UNIV
                 if line.startswith("DB_PASSWORD="):
                     pw = line.split("=", 1)[1].strip()
         conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+        if readonly:
+            _receipt_lib().enforce_readonly(conn)
         cur = conn.cursor()
         cur.execute("""SELECT symbol FROM watchlist_items
                        WHERE status = 'active' AND symbol IS NOT NULL
@@ -700,6 +754,7 @@ def default_universe_symbols(project_root: str = ".", *, cap: int = DEFAULT_UNIV
         conn.close()
     except Exception as exc:
         print(f"  [finviz-enrich] watchlist symbol query failed (non-fatal): {exc}")
+        _UNIVERSE_ERRORS.append(f"watchlist_items: {type(exc).__name__}")
 
     try:
         holdings_path = root / "data" / "portfolios" / "state" / "holdings.json"
@@ -715,15 +770,46 @@ def default_universe_symbols(project_root: str = ".", *, cap: int = DEFAULT_UNIV
     return sorted(symbols)
 
 
-if __name__ == "__main__":
+def dry_run_plan(symbols: List[str], project_root: str = ".") -> Dict[str, Any]:
+    """What a real run would fetch and write. Reads the cache file only; no request, no write."""
+    root = Path(project_root)
+    cache = _read_cache_readonly(root)
+    views = _default_views()
+    stale = _stale_symbols(symbols, cache)
+    batches = -(-len(stale) // BATCH_SIZE)
+    return {"symbols": len(symbols), "stale": len(stale), "fresh_in_cache": len(symbols) - len(stale),
+            "cache_file": str(root / CACHE_FILE), "cache_exists": (root / CACHE_FILE).is_file(),
+            "cache_tickers": len(cache), "views": views,
+            "finviz_export_requests": batches * len(views), "stale_first": stale[:10],
+            "universe_errors": list(_UNIVERSE_ERRORS)}
+
+
+def main() -> int:
     import sys
-    symbols = sys.argv[1:] if len(sys.argv) > 1 else default_universe_symbols(".")
+    dry_run = "--dry-run" in sys.argv
+    _UNIVERSE_ERRORS.clear()  # explicit argv skips default_universe_symbols(); never carry a stale error
+    if dry_run:
+        sys.argv = [a for a in sys.argv if a != "--dry-run"]
+    symbols = sys.argv[1:] if len(sys.argv) > 1 else default_universe_symbols(".", readonly=dry_run)
+    if dry_run:
+        # Structural (AGENTS.md §6): returns before run_start, enrich_tickers, save_cache and the IER write-back.
+        plan = dry_run_plan(symbols, ".")
+        _receipt_lib().dry_run_report(
+            LANE_ID, plan,
+            would_write=[f"{plan['cache_file']} ({plan['stale']} tickers refreshed)",
+                         f"intelligence entities 'market' upsert (<= {plan['stale']}, tickers with a price)",
+                         "pipeline_runs row (run_start)"])
+        return 1 if _UNIVERSE_ERRORS else 0
     if not symbols:
         print("No symbols to enrich (empty argv and empty default universe) — nothing to do.")
-        sys.exit(0)
+        failed = bool(_UNIVERSE_ERRORS)
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=not failed, exit_code=int(failed), script="finviz_enrichment.py",
+                                          summary={"symbols": 0, "universe_errors": list(_UNIVERSE_ERRORS)})
+        return 1 if failed else 0
     print(f"Running finviz_enrichment.py for {len(symbols)} symbol(s)"
           + (f": {symbols}" if len(symbols) <= 10 else f" (first 10: {symbols[:10]})"))
 
+    started = _receipt_lib().now_iso()
     _run_id = None
     try:
         from pipeline_registry import run_start, run_complete, run_fail
@@ -732,6 +818,7 @@ if __name__ == "__main__":
         pass
 
     try:
+        _RUN_STATS.clear()
         results = enrich_tickers(symbols, project_root=".")
         _enriched = sum(1 for v in results.values() if v) if isinstance(results, dict) else len(symbols)
         for sym in symbols:
@@ -745,4 +832,23 @@ if __name__ == "__main__":
             if _run_id: run_fail(_run_id, str(_e))
         except Exception:
             pass
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="finviz_enrichment.py", error=f"{type(_e).__name__}: {_e}")
         raise
+    stale = int(_RUN_STATS.get("stale") or 0)
+    view_counts = dict(_RUN_STATS.get("views") or {})
+    nothing_fetched = stale > 0 and not any(view_counts.values())
+    failed = nothing_fetched or bool(_UNIVERSE_ERRORS)
+    rc = 1 if failed else 0
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                                      script="finviz_enrichment.py",
+                                      summary={"symbols": len(symbols), "stale": stale,
+                                               "views": {str(k): v for k, v in view_counts.items()},
+                                               "nothing_fetched": nothing_fetched,
+                                               "universe_errors": list(_UNIVERSE_ERRORS)})
+    return rc
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
