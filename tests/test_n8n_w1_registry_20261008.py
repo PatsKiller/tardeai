@@ -39,6 +39,8 @@ NEW = {
     "sync-memory-to-drive",
     "commit-hermes-daily",
 }
+#: Rows of NEW retired by retire batch 1 (2026-10-09) -> inventory id (n8n-maturity cron inventory).
+RETIRED_BATCH_1 = {"commit-hermes-daily": "cron:L518"}
 
 
 def test_registry_has_all_21_observed_cron_lanes_without_serialisation_churn():
@@ -53,8 +55,13 @@ def test_registry_has_all_21_observed_cron_lanes_without_serialisation_churn():
         assert row["scheduler"]["kind"] == "cron"
         assert len(row["scheduler"]["expression"].split()) == 5
         assert row["scheduler"]["match"]
-        assert row["state"] == "ACTIVE"
-        assert row["state_since"] == "2026-10-08"
+        if lane in RETIRED_BATCH_1:
+            # Operator-approved retire batch 1 (2026-10-09): retired, not removed; the row keeps declaring the line.
+            assert row["state"] == "RETIRED" and row["state_since"] == "2026-10-09", lane
+            assert row["inventory_id"] == RETIRED_BATCH_1[lane] and row["reason_confidence"] == "ESTABLISHED", lane
+        else:
+            assert row["state"] == "ACTIVE"
+            assert row["state_since"] == "2026-10-08"
         assert "Observed crontab" in row["note"]
         if row["output_signal"]["kind"] == "none":
             assert "NO_SIGNAL" in row["note"]

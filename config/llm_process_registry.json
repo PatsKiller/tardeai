@@ -174,7 +174,7 @@
       "name": "Cloud Consensus Verdict",
       "category": "Trading",
       "lane_policy": "ensemble",
-      "description": "Requires both lanes for CLOUD_APPROVE"
+      "description": "Requires both lanes for CLOUD_APPROVE. RETIRED 2026-10-09 (retire batch 1, inventory cron:L687): the scheduled cloud_consensus_verdict.py --run line is removed; it never wrote a verdict."
     },
     {
       "id": "cloud_review",

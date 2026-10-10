@@ -616,13 +616,15 @@
    "evidence_source": {
     "kind": "log",
     "base": "state",
-    "path": "logs/hermes_backlog_drain_nightly.log",
-    "line_regex": "Done in|No drainable",
-    "undated_tail_lines": 200
+    "path": "logs/hermes_coordinator.log",
+    "ts_regex": "^(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d)",
+    "tz": "America/New_York",
+    "line_regex": "backlog_drain: ",
+    "note": "2026-10-10 retire batch 1 (inventory cron:L748): the nightly 02:20 hermes-backlog-drain cron line (logs/hermes_backlog_drain_nightly.log) is retired; hermes_coordinator.py:163 runs the same drain every 15 min and logs its last stdout line here."
    },
    "success_predicate": {
-    "description": "backlog items drained",
-    "regex": "Done in .*: [1-9]\\d* drained",
+    "description": "backlog items drained (coordinator tick)",
+    "regex": "backlog_drain: ok .*Done in .*: [1-9]\\d* drained",
     "min_count": 1
    },
    "expected": "RAN_NOT_HEALED (0 drained every run)",

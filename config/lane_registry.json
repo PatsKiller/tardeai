@@ -2,7 +2,7 @@
   "schema": "LaneRegistry@v1",
   "authority": "READ_ONLY_ADVISORY",
   "seeded_at": "2026-08-30",
-  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink — the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours → holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00. 2026-10-07: cron consolidation ranks 3-4 + tranche C install; 15 baseline entries pruned with their crontab deletion (the 9 absorbed lines that live in the 2026-09-28 inherited tranche stay in that pinned record and are named in the health-tick / platform-maintenance-* state_reason).",
+  "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink — the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours → holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00. 2026-10-07: cron consolidation ranks 3-4 + tranche C install; 15 baseline entries pruned with their crontab deletion (the 9 absorbed lines that live in the 2026-09-28 inherited tranche stay in that pinned record and are named in the health-tick / platform-maintenance-* state_reason). 2026-10-09 retire batch 1 (operator approval 23:10 ET): 32 lanes RETIRED (16 crontab lines, 16 user timers; inventory ids and evidence in each row); opening-intelligence keeps its row and drops the 30 3 schedule (L789).",
   "lanes": [
     {
       "lane_id": "dof-run-pipeline",
@@ -822,12 +822,12 @@
         "match": "scripts/commit_hermes_daily.sh"
       },
       "expected_cadence_hours": 24,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "none"
       },
       "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/commit_hermes_daily.sh git add/commit/push origin main; may reset index and sync Drive. NO_SIGNAL: prints only; not allowlisted and never executed in this change.",
-      "state_since": "2026-10-08",
+      "state_since": "2026-10-09",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P06",
       "rationalization": {
@@ -839,7 +839,13 @@
         "f_recommendation": "CONSOLIDATE into P06 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      }
+      },
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L518: Never runs because of a peak-hours skip. If it did run it would `git push origin main` (conflicts with §0 rails 3-4). L541 already snapshots all 4 docs/hermes paths it covers. Step commit_hermes_daily moved from config/pipelines/hermes_overnight.json stages.close to excluded (a pipeline cutover must not resurrect a job that would git push origin main).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "commit_hermes_daily.log 20 PEAK_SKIP + 2 OFFPEAK 'no hermes changes'; commit_hermes_daily.sh:3-4 scope docs/hermes/{backlog_health,embedding_promotion_reviews,librarian_loop_dryruns,observations}, :42 'git push origin main'; linux_launchers/backup_generated_docs.sh:39-49 PATHS includes all four (L541 line verified: '50 23 * * * ... backup_generated_docs.sh'). Follow-up: config/pipelines/hermes_overnight.json stage 'close' step id commit_hermes_daily (dry-run shadow L1043) must be dropped so a pipeline cutover cannot resurrect it. registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "cron:L518",
+      "retire_batch": "retire-batch-1",
+      "superseded_by": "backup-generated-docs"
     },
     {
       "lane_id": "hermes-universe-history-retention",
@@ -4148,7 +4154,7 @@
         3,
         4
       ],
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/organic_stance_hold_observe.json"
@@ -4165,7 +4171,13 @@
         "f_recommendation": "ELIMINATE after observation window",
         "event_driven_candidate": false,
         "f_evidence": "observation lane"
-      }
+      },
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-stance-organic-observe.timer: Only reader of organic_stance_hold_observe.json is its own writer path; gap already proven (observed:true). Both stance-organic timers start the same tradeai-stance-organic-observe.service; disable both timers in the same step.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "grep served+dev scripts/apps/config/n8n/skills for organic_stance_hold: only report_organic_stance_hold.py and lib/cio_telegram_stance_gate.py:674-708 write_organic_observe_receipt (writer, targets ~/.local/state/tradeai/ + persistent data/runtime/); file mtime 2026-10-09 09:05. Both timers start the SAME tradeai-stance-organic-observe.service (early timer Unit=); disable BOTH timers in the same step. Lane tradeai-stance-organic-observe ACTIVE output_signal file_mtime data/runtime/organic_stance_hold_observe.json. Runs from DEV tree; not broker/stop/secret. not in config/expected_services.json (no expected-services alarm) |  | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write without --heal (shadow; L1 restart only for ACTIVE lanes and only restarts the .service once, never enables the timer); agent-runtime-health is read-only (authority.service_control=false) | Sequence: land registry PR marking lane RETIRED (and drop from expected_services.json if listed) with/just before disable; unit files stay on disk (rail 6).",
+      "inventory_id": "timer:tradeai-stance-organic-observe.timer",
+      "retire_batch": "retire-batch-1"
     },
     {
       "lane_id": "tradeai-stance-organic-observe-early",
@@ -4182,7 +4194,7 @@
         3,
         4
       ],
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/organic_stance_hold_observe.json"
@@ -4199,7 +4211,13 @@
         "f_recommendation": "ELIMINATE after observation window",
         "event_driven_candidate": false,
         "f_evidence": "observation lane"
-      }
+      },
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-stance-organic-observe-early.timer: Only reader of organic_stance_hold_observe.json is its own writer path; gap already proven (observed:true). Both stance-organic timers start the same tradeai-stance-organic-observe.service; disable both timers in the same step.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "grep served+dev scripts/apps/config/n8n/skills for organic_stance_hold: only report_organic_stance_hold.py and lib/cio_telegram_stance_gate.py:674-708 write_organic_observe_receipt (writer, targets ~/.local/state/tradeai/ + persistent data/runtime/); file mtime 2026-10-09 09:05. Both timers start the SAME tradeai-stance-organic-observe.service (early timer Unit=); disable BOTH timers in the same step. Lane tradeai-stance-organic-observe-early ACTIVE output_signal file_mtime data/runtime/organic_stance_hold_observe.json. Runs from DEV tree; not broker/stop/secret. not in config/expected_services.json (no expected-services alarm) |  | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write without --heal (shadow; L1 restart only for ACTIVE lanes and only restarts the .service once, never enables the timer); agent-runtime-health is read-only (authority.service_control=false) | Sequence: land registry PR marking lane RETIRED (and drop from expected_services.json if listed) with/just before disable; unit files stay on disk (rail 6).",
+      "inventory_id": "timer:tradeai-stance-organic-observe-early.timer",
+      "retire_batch": "retire-batch-1"
     },
     {
       "lane_id": "code-mirror-drive-sync",
@@ -6941,6 +6959,1442 @@
       "recommendation_note": "2026-10-09 registry-ops-crons: hand-set (no rationalization item exists for this new line, so reconcile_lane_registry leaves it untouched); KEEP_ON_CRON makes the row never dispatch-eligible (lane_dispatch._keep_on_cron) because its command carries the gateway FORBIDDEN_ROUTE_TOKENS token 'grant' and it audits n8n activations."
     },
     {
+      "lane_id": "run-automated-trade-proposal-revalidation",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 9-15 * * 1-5",
+        "match": "scripts/run_automated_trade_proposal_revalidation.py"
+      },
+      "expected_cadence_hours": 65.5,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atp2_proposal_revalidation_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L125",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "pipeline_excluded_gate",
+        "token": "market_day_gate.sh",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L125: Read-only report: --apply ignored, only SELECTs (_q at :54,:76; refresh_quotes off); output only to its own log; no reader beyond lane signal + job_schedule_audit classifier",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; grep served b7dbe6e60-main-exact-phase2-20261009-210323 scripts/apps: only crontab backups, job_schedule_audit.py:41 (regex classifier), lane_registry; no PipelineRun. (d) lane run-automated-trade-proposal-revalidation is sole writer of logs/atp2_proposal_revalidation_cron.log -> supervisor NO_OUTPUT breach (L4 page after 3h) until row marked RETIRED",
+      "inventory_id": "cron:L125",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "run-scheduled-atp2-research-cycle-evening",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 20 * * 1-5",
+        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle evening"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atp2_research_cycle_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L151",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L151: Report-only; INSERT target research_cycle_runs does not exist (SELECT: relation does not exist) so nothing durable; no reader",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; grep served tree+apps: research_cycle_runs only in writer; pipeline_runs key atp2_research_evening not in pipeline-health-master STAGE_REGISTRY; (d) all 5 atp2 lanes share logs/atp2_research_cycle_cron.log and all 5 are in R1 -> retire together and mark all 5 RETIRED or each breaches NO_OUTPUT",
+      "inventory_id": "cron:L151",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "run-scheduled-atp2-research-cycle-at-0-4",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 4 * * 1-5",
+        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle premarket_4am"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atp2_research_cycle_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L157",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L157: Never runs: off-peak wrapper PEAK_SKIPs at 04:00 ET; 0 'premarket_4am' entries in atp2_research_cycle_cron.log",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; grep -c premarket_4am logs/atp2_research_cycle_cron.log = 0; (d) shares atp2 log with L151/L169/L189/L214 (all R1) -> mark RETIRED together",
+      "inventory_id": "cron:L157",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "run-scheduled-atp2-research-cycle-at-0-9",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 9 * * 1-5",
+        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle premarket_9am"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atp2_research_cycle_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L169",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L169: Report-only, research_cycle_runs table absent, no reader",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; same evidence as L151; (d) shared atp2 log, retire with other 4 atp2 lanes",
+      "inventory_id": "cron:L169",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "run-scheduled-stale-proposal-sweeper-report",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 16 * * 1-5",
+        "match": "scripts/run_scheduled_stale_proposal_sweeper.sh --report-only"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/stale_proposal_sweeper.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L170",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE → one sweep in P07 (drop --dry-run 10 min before --apply, drop --report-only)",
+        "event_driven_candidate": false,
+        "f_evidence": "3 lines (08:15 dry-run, 08:25 apply, 16:10 report-only) + cleanup_stale_proposals.py 10:00 does the same job"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L170: Report-only duplicate; report_phase6_stale_proposals.py writes nothing without --output-*; no API/UI reader Step stale_proposal_sweeper_report moved from config/pipelines/after_close.json stages.close-capture to excluded (it ran only under the --dry-run pipeline line). run-scheduled-stale-proposal-sweeper-at-25-8 (--apply) is unaffected.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; after_close.json close-capture step stale_proposal_sweeper_report runs only via --dry-run pipeline cron (L1036) -> remove step in same PR; (d) log shared with run-scheduled-stale-proposal-sweeper-at-25-8 (L188 apply, stays) so no breach but row must be RETIRED; L188 apply unaffected (independent flock)",
+      "inventory_id": "cron:L170",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "run-scheduled-stale-proposal-sweeper-dry",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 8 * * 1-5",
+        "match": "scripts/run_scheduled_stale_proposal_sweeper.sh --dry-run"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/stale_proposal_sweeper.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L181",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE → one sweep in P07 (drop --dry-run 10 min before --apply, drop --report-only)",
+        "event_driven_candidate": false,
+        "f_evidence": "3 lines (08:15 dry-run, 08:25 apply, 16:10 report-only) + cleanup_stale_proposals.py 10:00 does the same job"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L181: Dry-run before L188 apply; apply does not read dry-run output; only writes dry_run=true audit rows read only by report_phase6 (L170, also retired)",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; sweep_stale_paper_proposals.py:85,112 (UPDATE only if not dry_run; audit row with dry_run flag); SELECT paper_proposal_stale_sweep_audit 14d: dry_run=t 1 row, f 1 row; readers of that table: writer, create_schema, report_phase6 only; (d) log shared with L188 lane -> no breach; mark RETIRED",
+      "inventory_id": "cron:L181",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "run-scheduled-stale-proposal-sweeper-at-25-8",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 8 * * 1-5",
+        "match": "scripts/run_scheduled_stale_proposal_sweeper.sh --apply"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/stale_proposal_sweeper.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L188",
+        "pipeline": "P07",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P07",
+        "f_recommendation": "CONSOLIDATE → one sweep in P07 (drop --dry-run 10 min before --apply, drop --report-only)",
+        "event_driven_candidate": false,
+        "f_evidence": "3 lines (08:15 dry-run, 08:25 apply, 16:10 report-only) + cleanup_stale_proposals.py 10:00 does the same job"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: id pinned. Its sibling row became hand-written (retired / schedule changed), and the generator disambiguates generated ids against hand-written ones, so left generated this row would be renamed on the next reconcile run (lane_id is the key for SLA rows, breaches and superseded_by)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "run-scheduled-atp2-research-cycle-overnight",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 0 * * 2-6",
+        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle overnight"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atp2_research_cycle_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L189",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L189: Report-only, research_cycle_runs table absent, no reader",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; same evidence as L151; (d) shared atp2 log, retire with other 4",
+      "inventory_id": "cron:L189",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "rebalance-verifier",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 10 * * 0",
+        "match": "scripts/rebalance_verifier.py"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/rebalance_verifier.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L190",
+        "pipeline": "P13",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P13",
+        "f_recommendation": "CONSOLIDATE-into P13",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L190: Produces nothing: ANTHROPIC_API_KEY not in cron env (script has no load_dotenv), every run 'skipped no_api_key'; only 1 gemma3_monthly row (2026-05-13) ever exists to verify",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; rebalance_verifier.log last 2026-10-04 skipped/no_api_key; SELECT rebalance_analysis_results: gemma3_monthly 1 row, max verified_at NULL; api_v2.py:14939 _get_deep_rebalance_analysis displays verification_passed/ssdi_irmaa_flags (always NULL - unchanged by retirement); portfolio_alerts.py:313 imports verify_daily_rebalance_orders (module stays). (d) sole writer of rebalance_verifier.log -> breach until RETIRED",
+      "inventory_id": "cron:L190",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "run-scheduled-atp2-research-cycle-eod",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 16 * * 1-5",
+        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle eod"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/atp2_research_cycle_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L214",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L214: Report-only, research_cycle_runs absent, no reader Step atp2_research_eod moved from config/pipelines/after_close.json stages.close-capture to excluded (it ran only under the --dry-run pipeline line).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "(a) no cron_line/remediate_cmd entry in job_coverage_monitor.REGISTRY so cron_self_heal cannot re-add; (b) not in health_agent auto-restore (only process_watchlist_agent_jobs.py lines) and no supervisor L1/L2 (cron lane, SLA alternate=None); (c) not broker/order/stop/secret; after_close.json close-capture step atp2_research_eod (manifest cron_line 225 stale) is executed only by --dry-run pipeline (crontab L1036) -> remove step in same PR; (d) shared atp2 log",
+      "inventory_id": "cron:L214",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "rerun-cio-dual-consensus",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 21 * * *",
+        "match": "scripts/rerun_cio_dual_consensus.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/cio_dual_rerun.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L507",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L507: Backfill has nothing to do: producers already set models_agree on new rows.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "SELECT watchlist_final_synthesis: models_agree IS NULL = 0 of 880; 278 rows created in last 14d (latest 2026-10-09 20:15) yet cio_dual_rerun.log 13/13 nightly runs '\"processed\": 0' (latest 21:30 10-09 after the 20:15 inserts) => producer sets models_agree; only output is a suppressed '0 names' Telegram. No other reader of its log. Not broker. Weekly re-check of NULL count after commenting is cheap insurance. registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "cron:L507",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "claude-challenger-curator",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 17 * * 0",
+        "match": "scripts/claude_challenger_curator.py"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/claude_challenger.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L588",
+        "pipeline": "P14",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE-into P14",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L588: Has failed every run since 2026-08-23 (HTTP 400, Anthropic credits). Nothing downstream gets new data, so commenting it loses nothing. Restoring credits later is a separate operator decision.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "claude_challenger.log: 2 runs, both 'HTTP Error 400: Bad Request', last 2026-10-04 17:00; historical output SELECT: research_sources notes 'claude_source_challenger%' 141 rows, incubator_events reason_codes ? 'claude_challenger' 1000 rows, both max 2026-08-23 17:06 (no rows since). No other caller (grep served tree: only crontab_backup + lane_registry). Not broker. registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "cron:L588",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "momentum-scalp-validation-fast-path",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/2 6-11 * * 1-5",
+        "match": "scripts/momentum_scalp_validation_fast_path.py"
+      },
+      "expected_cadence_hours": 66.03,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/momentum_scalp_validation_fast_path.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Unused",
+      "recommendation": "R0_ELIMINATE",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L633",
+        "pipeline": "P02",
+        "value_class": "Unused",
+        "recommendation": "R0_ELIMINATE",
+        "f_recommendation": "ELIMINATE (dry-run every 2 min writes nothing)",
+        "event_driven_candidate": false,
+        "f_evidence": "crontab L633 `*/2 6-11 … --dry-run` = 150 no-op runs/day"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L633: Runs as --dry-run only and has never had a candidate. Nothing reads its log. L636 already does the real fast-path handoff.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "grep served tree for 'momentum_scalp_validation_fast_path.log': only config/lane_registry.json:14123 + docs/_evidence; importers (scalp_lifecycle_funnel_report.py:107, momentum_scalp_validation_ops_report.py:36, early_lane_runner.py:253) use the module, not this cron; L636 verified '... run_finviz_momentum_scalp_scan.py ... --run-validation-fast-path'; log 1800/1800 would_submit_validation=0. Broker-adjacent module but this line is --dry-run (no submit); commenting a crontab line touches no broker code. registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "cron:L633",
+      "retire_batch": "retire-batch-1",
+      "superseded_by": "finviz-momentum-scalp-early-lane"
+    },
+    {
+      "lane_id": "cloud-consensus-verdict",
+      "owner": "proposals",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 9-16 * * 1-5",
+        "match": "scripts/cloud_consensus_verdict.py"
+      },
+      "expected_cadence_hours": 64.5,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/cloud_consensus_verdict.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P07",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L687",
+        "pipeline": "P07",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P07",
+        "f_recommendation": "CONSOLIDATE-into P07",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L687: Has never written a verdict. The API/UI readers already return empty, so retiring changes nothing they show. config/cloud_consensus_policy.json set enabled=false and config/llm_process_registry.json description marked retired in the same change.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "SELECT cloud_consensus_verdicts: 0 rows ever (max created_at NULL) since 2026-07-05 install; log 160/160 '\"scored\": 0' fail-closed 'no destination account'; readers api_v2.py:25302-25309, :25655-25667 (/api/v2/proposals/cloud-consensus), apps/.../lib/cloudLlmRun.ts:32 return empty either way. Advisory only, not broker. Owner confirmation = operator's batch approval; also update config/llm_process_registry.json + cloud_consensus_policy.json references in the registry PR. registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "cron:L687",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "hermes-backlog-drain",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 2 * * *",
+        "match": "scripts/hermes_backlog_drain.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_backlog_drain_nightly.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L748",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L748: Redundant: hermes_coordinator (L374, every 15 min) runs the same drain every tick. The nightly line always finds nothing to drain. config/self_healing_mechanisms.json hermes_backlog_drain repointed to logs/hermes_coordinator.log; step backlog_drain moved from config/pipelines/hermes_overnight.json stages.night to excluded.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "hermes_coordinator.py:163 run_script('backlog_drain', hermes_backlog_drain.py --apply ...); crontab L374 '*/15 * * * * ... hermes_coordinator.py' (coordinator is in job_coverage_monitor REGISTRY); nightly log all 'No drainable backlog targets'. Follow-ups: config/self_healing_mechanisms.json id hermes_backlog_drain reads logs/hermes_backlog_drain_nightly.log (audit report evidence only, will go stale -> repoint to coordinator log); hermes_overnight.json 'night' stage step (dry-run L1042) to drop. registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "cron:L748",
+      "retire_batch": "retire-batch-1",
+      "superseded_by": "hermes-coordinator"
+    },
+    {
+      "lane_id": "opening-intelligence",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 7 * * 1-5",
+        "match": "scripts/opening_intelligence.py --persist >>",
+        "schedules": [
+          "0 7 * * 1-5"
+        ]
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/opening_intelligence/latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L789",
+        "pipeline": "P14",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE-into P14",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "schedule_change": {
+        "date": "2026-10-09",
+        "inventory_id": "cron:L789",
+        "removed_schedule": "30 3 * * 1-5",
+        "reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv): the 03:30 line (L789) PEAK_SKIPs every weekday under run_with_deepseek_offpeak.sh; the 07:00 line (L790, this row) and opening-intelligence-render (L791, 09:15) keep latest.json fresh. Row stays ACTIVE because it also declares L790; expected_cadence_hours 68.5 -> 72.0 (Fri 07:00 -> Mon 07:00)."
+      }
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 9 * * 1-5",
+        "match": "scripts/opening_intelligence.py --persist --render"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/opening_intelligence/latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L791",
+        "pipeline": "P14",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE-into P14",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: id pinned. Its sibling row became hand-written (retired / schedule changed), and the generator disambiguates generated ids against hand-written ones, so left generated this row would be renamed on the next reconcile run (lane_id is the key for SLA rows, breaches and superseded_by)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "hermes-research-agenda-at-45-7",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 7 * * *",
+        "match": "scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 07:30"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes_agenda_last_run.json",
+        "key": "last_apply_ts",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/hermes_research_agenda.py:35 STATE_FILE written at :532 on every --apply run (last_apply_ts); host mtime 2026-10-09T07:45:01"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L821",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: id pinned. Its sibling row became hand-written (retired / schedule changed), and the generator disambiguates generated ids against hand-written ones, so left generated this row would be renamed on the next reconcile run (lane_id is the key for SLA rows, breaches and superseded_by)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "hermes-research-agenda-at-15-18",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 18 * * 1-5",
+        "match": "scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 16:45"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes_agenda_last_run.json",
+        "key": "last_apply_ts",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/hermes_research_agenda.py:35 STATE_FILE written at :532 on every --apply run (last_apply_ts); host mtime 2026-10-09T07:45:01"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L822",
+        "pipeline": "P10",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "CONSOLIDATE-into P10",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L822: Always refused by the script's 12h cadence gate. L821 (07:45 daily, the same command) does the work.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "hermes_agenda.log: 10x 'cadence_gate: 10.5h since last (min 12h)', status sequence alternates ok(07:45)/blocked(18:15); L821 verified identical command; after_close.json lists it only under excluded (line 1557-1559); separate registry lane hermes-research-agenda-at-45-7 stays ACTIVE (shared output_signal hermes_agenda_last_run.json). registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "cron:L822",
+      "retire_batch": "retire-batch-1",
+      "superseded_by": "hermes-research-agenda-at-45-7"
+    },
+    {
+      "lane_id": "hermes-advisory-cache-worker",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-advisory-cache-worker.timer"
+      },
+      "expected_cadence_hours": 10.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_advisory_cache_worker.log",
+        "evidence": "SYSTEMD_STDOUT_APPEND"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "hermes-advisory-cache-worker.timer",
+        "pipeline": "P14",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE → P14/P10 loop",
+        "event_driven_candidate": false,
+        "f_evidence": "CIO/persona/LLM loop; Unverified consumer"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "hermes-advisory-cache-worker.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/hermes_advisory_cache_worker.py --apply --max-events 5",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:hermes-advisory-cache-worker.timer: Has never refreshed a cache section. Events it leaves pending stay well under the queue-jam alarm and are purged by self_tune.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "SELECT hermes_advisory_events: only status 'skipped' 2524 (0 completed ever); llm_intelligence_cache hermes_* newest 2026-06-01; enqueue rate 7 in 8d; status readers: hermes_pipeline_health.py:64-71 alarms only if pending>=200 AND completed==0 (unreachable at 7/wk with self_tune purge), hermes_autonomous_self_tune.py:188-191 (L577) purges pending >7d, api_v2.py:31901 counts (cosmetic: pending instead of skipped); run_hermes_advisory_pipeline.sh:7 lists it but is not scheduled (no crontab/systemd ref). Disable = systemctl --user disable --now (operator step). registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "timer:hermes-advisory-cache-worker.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "hermes-source-discovery-dryrun",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-source-discovery-dryrun.timer"
+      },
+      "expected_cadence_hours": 20.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Experimental",
+      "recommendation": "R0_ELIMINATE",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "hermes-source-discovery-dryrun.timer",
+        "pipeline": "P14",
+        "value_class": "Experimental",
+        "recommendation": "R0_ELIMINATE",
+        "f_recommendation": "ELIMINATE or promote",
+        "event_driven_candidate": false,
+        "f_evidence": "dry-run discovery"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "hermes-source-discovery-dryrun.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_scheduled_source_discovery_dryrun.py",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:hermes-source-discovery-dryrun.timer: File-only dry-run with no DB writes. It has had no backlog, and nothing reads its output.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "journalctl --user -u hermes-source-discovery-dryrun.service --since -9d: 9x 'No backlog items for discovery.' (early return, hermes_scheduled_source_discovery_dryrun.py:39-40, writes nothing); docstring :1-5 'No DB writes'; output dir docs/hermes/source_discovery_dryruns newest file mtime 2026-08-31; grep served tree: only audit_hermes_identities.py:13 (identity label map) + lane_registry. registry PR must set lane state RETIRED (supervisor_breach_detector only evaluates state==ACTIVE; no intelligence.sla row exists for this lane); not in job_coverage_monitor REGISTRY so cron_self_heal will not re-add; health_agent auto-restore only targets process_watchlist_agent_jobs.py",
+      "inventory_id": "timer:hermes-source-discovery-dryrun.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "high-llm-execution-worker",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "high-llm-execution-worker.timer"
+      },
+      "expected_cadence_hours": 20.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P14",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "high-llm-execution-worker.timer",
+        "pipeline": "P14",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE → P14/P10 loop",
+        "event_driven_candidate": false,
+        "f_evidence": "CIO/persona/LLM loop; Unverified consumer"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "high-llm-execution-worker.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/high_llm_execution_worker.py --apply --max-jobs 3",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:high-llm-execution-worker.timer: Queue has no live producer and worker with --apply only picks status='approved' (0 rows); output table has no new rows since 2026-06-01.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "SELECT high_llm_job_queue: queued_for_review 12 / dry_run_candidate 4 / completed 2 / failed 4, newest created 2026-06-01, 0 rows in 30 d, 0 'approved'; high_llm_job_results 2 rows newest 2026-06-01. Producers deep_overnight_high_llm_enqueue / hermes_high_llm_enqueue only via crontab L144/L155 '# PHASE102-RETIRED' (commented). Readers: api_v2.py L31909/L32324/L33369 read the static queue table (unaffected). Lane high-llm-execution-worker ACTIVE, output_signal none. Not broker/stop/secret lane (advisory gemma3:12b). not in config/expected_services.json (no expected-services alarm) |  | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write without --heal (shadow; L1 restart only for ACTIVE lanes and only restarts the .service once, never enables the timer); agent-runtime-health is read-only (authority.service_control=false) | Sequence: land registry PR marking lane RETIRED (and drop from expected_services.json if listed) with/just before disable; unit files stay on disk (rail 6).",
+      "inventory_id": "timer:high-llm-execution-worker.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-advisory-shadow-session",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-advisory-shadow-session.timer"
+      },
+      "expected_cadence_hours": 68.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/advisory_shadow/sessions.jsonl",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/lib/advisory/shadow_session.py:28 SESSIONS_PATH appended by run_shadow_session (:217) per --once run (scoreboard.json :286 also rewritten); dev-tree data/runtime symlinks to state root; host mtime 2026-10-09T09:28:40 (timer Mon..Fri 09:15)"
+      },
+      "value_class": "Experimental",
+      "recommendation": "R0_ELIMINATE",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-advisory-shadow-session.timer",
+        "pipeline": "P14",
+        "value_class": "Experimental",
+        "recommendation": "R0_ELIMINATE",
+        "f_recommendation": "ELIMINATE (or fix)",
+        "event_driven_candidate": false,
+        "f_evidence": "journal since 10-08: 0 ok / 2 failed; unit FAILED"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-advisory-shadow-session.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_shadow_session.py --once",
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-advisory-shadow-session.timer: Failing every run (pass=False), no external reader of its outputs besides the Advisory promotion gate, which is frozen NOT_PROMOTED; retiring ends the (already stalled) promotion path.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "data/runtime/advisory_shadow/: PROMOTION.json NOT_PROMOTED unchanged since 2026-08-11; scoreboard consecutive_passes 0; sessions.jsonl last 3 rows validation_ok=false. Readers: lib/advisory/promotion_gate.py, advisory_promotion.py (not scheduled: no crontab/unit hit), morning_command_digest.py:111/134 + api_v3_advisory.py:865 read PROMOTION.json only. darwin_scorecards/sentinel_reviews readers (cio_gate_measurement_bridge, api_v3_cio) read data/cio/, not this dir. Lane tradeai-advisory-shadow-session ACTIVE, output_signal file_mtime sessions.jsonl. Runs from DEV tree, no broker/secret. | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write without --heal (shadow; L1 restart only for ACTIVE lanes and only restarts the .service once, never enables the timer); agent-runtime-health is read-only (authority.service_control=fa...",
+      "inventory_id": "timer:tradeai-advisory-shadow-session.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-aegis",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@aegis.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@aegis.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@aegis.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent aegis --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@aegis.timer: No-op runner: state=DESIGNED enabled=False; 0 queued items in 14 d.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last aegis intake row ever: 2026-09-22. journal last line: state=DESIGNED enabled=False. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@aegis.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Aegis real work is aegis-overnight.timer, aegis-surveillance.timer and crontab L289/L291/L306/L308/L888 - unaffected. Lane tradeai-agent-runtime-aegis ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (t...",
+      "inventory_id": "timer:tradeai-agent-runtime@aegis.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-argus",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@argus.timer"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@argus.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@argus.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent argus --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@argus.timer: 0 COMPLETED ever in 14 d; every leased job refused stale. Producer still enqueues sweep:argus (trigger_sources.py:518-519) but caps at max_queue_depth=64 (trigger_producer.py:108) so the orphan queue is bounded; follow-up: drop the argus sweep from the producer in the registry PR. FOLLOW-UP (not in this PR): scripts/agent_runtime/trigger_sources.py SWEEP_AGENTS still lists 'argus' (sweep:argus), so tradeai-agent-runtime-producer keeps enqueueing sweep jobs nobody consumes once this timer is disabled; bounded by trigger_producer max_queue_depth=64. Drop the entry in a separate producer change.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake 14 d for argus: 5312 REFUSED_STALE + 56 QUEUED, 0 COMPLETED (readonly SELECT). journal last: dispatch summary total 8 REFUSED_STALE 8. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@argus.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Lane tradeai-agent-runtime-argus ACTIVE output_signal none. | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write without --heal (shadow; L1 restart only for ACTIVE lanes and only restarts the .service once, never enables the timer); agent-runtime-health is read-only (authority.service_control=false) | Sequence: land registry PR marking lane RETIRED (and...",
+      "inventory_id": "timer:tradeai-agent-runtime@argus.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-darwin",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@darwin.timer"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@darwin.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@darwin.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent darwin --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@darwin.timer: 0 COMPLETED ever in 14 d; every leased job refused stale. Producer still enqueues sweep:darwin (trigger_sources.py:518-519) but caps at max_queue_depth=64 (trigger_producer.py:108) so the orphan queue is bounded; follow-up: drop the darwin sweep from the producer in the registry PR. FOLLOW-UP (not in this PR): scripts/agent_runtime/trigger_sources.py SWEEP_AGENTS still lists 'darwin' (sweep:darwin), so tradeai-agent-runtime-producer keeps enqueueing sweep jobs nobody consumes once this timer is disabled; bounded by trigger_producer max_queue_depth=64. Drop the entry in a separate producer change.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake 14 d for darwin: 2632 REFUSED_STALE + 56 QUEUED, 0 COMPLETED (readonly SELECT). journal last: dispatch summary total 8 REFUSED_STALE 8. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@darwin.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Lane tradeai-agent-runtime-darwin ACTIVE output_signal none. | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write without --heal (shadow; L1 restart only for ACTIVE lanes and only restarts the .service once, never enables the timer); agent-runtime-health is read-only (authority.service_control=false) | Sequence: land registry PR marking lane RETIRED (...",
+      "inventory_id": "timer:tradeai-agent-runtime@darwin.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-iris",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@iris.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@iris.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@iris.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent iris --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@iris.timer: No-op runner: dispatch total 0; 0 queued items in 14 d.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last iris intake row ever: 2026-07-31. journal last line: dispatch total 0. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@iris.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Iris real work: crontab L391/L777/L778/L779 - unaffected. Lane tradeai-agent-runtime-iris ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detecto...",
+      "inventory_id": "timer:tradeai-agent-runtime@iris.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-maria",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@maria.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@maria.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@maria.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent maria --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@maria.timer: No-op runner: state=DESIGNED enabled=False; 0 queued items in 14 d.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last maria intake row ever: 2026-09-15. journal last line: state=DESIGNED enabled=False. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@maria.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Maria real work: crontab L827 watch_review_maria - unaffected. Lane tradeai-agent-runtime-maria ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; super...",
+      "inventory_id": "timer:tradeai-agent-runtime@maria.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-reflection",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@reflection.timer"
+      },
+      "expected_cadence_hours": 68.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@reflection.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@reflection.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent reflection --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@reflection.timer: No-op runner: dispatch total 0 (SHADOW enabled, intake 0); 0 queued items in 14 d.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last reflection intake row ever: never. journal last line: dispatch total 0 (SHADOW enabled, intake 0). Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@reflection.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. tradeai-cio-nightly-reflection.timer is a separate unit - unaffected. Lane tradeai-agent-runtime-reflection ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_...",
+      "inventory_id": "timer:tradeai-agent-runtime@reflection.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-risk-agent",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@risk_agent.timer"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@risk_agent.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@risk_agent.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent risk_agent --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@risk_agent.timer: No-op runner: state=DESIGNED enabled=False; 0 queued items in 14 d. Note: SWEEP_AGENTS also lists risk_agent (sweep:risk); same bounded-orphan follow-up as argus/darwin.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last risk_agent intake row ever: 2026-09-16. journal last line: state=DESIGNED enabled=False. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@risk_agent.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Holdings risk opinions come from the watchlist agent-jobs processor, not this runner. Lane tradeai-agent-runtime-risk-agent ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched);...",
+      "inventory_id": "timer:tradeai-agent-runtime@risk_agent.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-sentinel",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@sentinel.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@sentinel.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@sentinel.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent sentinel --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@sentinel.timer: No-op runner: dispatch total 0 (SHADOW enabled, intake 0); 0 queued items in 14 d.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last sentinel intake row ever: 2026-09-15. journal last line: dispatch total 0 (SHADOW enabled, intake 0). Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@sentinel.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Lane tradeai-agent-runtime-sentinel ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write with...",
+      "inventory_id": "timer:tradeai-agent-runtime@sentinel.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-tax-agent",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@tax_agent.timer"
+      },
+      "expected_cadence_hours": 68.0,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@tax_agent.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@tax_agent.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent tax_agent --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@tax_agent.timer: No-op runner: agent=ledger state=DESIGNED enabled=False; 0 queued items in 14 d. Note: SWEEP_AGENTS also lists tax_agent (sweep:tax); same bounded-orphan follow-up as argus/darwin.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last tax_agent intake row ever: 2026-07-31. journal last line: agent=ledger state=DESIGNED enabled=False. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@tax_agent.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. tradeai-tax-lots-rebuild.timer is separate - unaffected. Lane tradeai-agent-runtime-tax-agent ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is ...",
+      "inventory_id": "timer:tradeai-agent-runtime@tax_agent.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-vega",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@vega.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "PIPELINE:P15",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "tradeai-agent-runtime@vega.timer",
+        "pipeline": "P15",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P15",
+        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
+        "event_driven_candidate": false,
+        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
+      },
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-09",
+        "why": "retire batch 1: a generated row is re-derived ACTIVE from the scheduler snapshot on every reconcile run (and R0 generated rows must stay ACTIVE), so the operator-approved retirement/schedule change is carried as a hand-written row the generator keeps"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "enabled",
+      "service": "tradeai-agent-runtime@vega.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent vega --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-09",
+      "state_reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory timer:tradeai-agent-runtime@vega.timer: No-op runner: state=DESIGNED enabled=False; 0 queued items in 14 d.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "trigger_intake (agentic_runtime, READ DSN, readonly SELECT 2026-10-09 23:0x ET): 0 rows enqueued in last 14 d; currently 0 QUEUED/LEASED; data/cio/agent_handoff_queue.jsonl untouched since 2026-08-08 (3 rows, none addressed); last vega intake row ever: 2026-09-15. journal last line: state=DESIGNED enabled=False. Per-instance timer file ~/.config/systemd/user/tradeai-agent-runtime@vega.timer (own copy, not a template link); disabling removes only its timers.target.wants symlink. Shared tradeai-agent-runtime@.service + drop-ins untouched, so steph/morgan/alex (NOT in R3) keep running. Persona real work runs on separate schedulers. Lane tradeai-agent-runtime-vega ACTIVE output_signal none (journal line has no consumer: lane signal none). | config/expected_services.json lists it -> check_expected_services would report DISABLED (P1 finding) unless lane row is RETIRED/PAUSED (apply_lane_states -> RETIRED_OK) or the unit is removed from the manifest; it only reports, never re-enables | No re-enabler: health_agent only scans systemctl --failed + crontab containment (timers untouched); cron_self_heal is crontab-only; supervisor_breach_detector runs --write without --heal (shadow; L1 rest...",
+      "inventory_id": "timer:tradeai-agent-runtime@vega.timer",
+      "retire_batch": "retire-batch-1"
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -7003,43 +8457,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-automated-trade-proposal-revalidation",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 9-15 * * 1-5",
-        "match": "scripts/run_automated_trade_proposal_revalidation.py"
-      },
-      "expected_cadence_hours": 65.5,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/atp2_proposal_revalidation_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L125",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "pipeline_excluded_gate",
-        "token": "market_day_gate.sh",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-pending",
@@ -7502,38 +8919,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "run-scheduled-atp2-research-cycle-evening",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 20 * * 1-5",
-        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle evening"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/atp2_research_cycle_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L151",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "auto-research",
       "owner": "research",
       "scheduler": {
@@ -7591,38 +8976,6 @@
         "f_recommendation": "REDESIGN → P16 retention (inline python with DB password parse in crontab)",
         "event_driven_candidate": false,
         "f_evidence": "inline SQL in crontab"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-scheduled-atp2-research-cycle-at-0-4",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 4 * * 1-5",
-        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle premarket_4am"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/atp2_research_cycle_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L157",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -7863,70 +9216,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "run-scheduled-atp2-research-cycle-at-0-9",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 9 * * 1-5",
-        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle premarket_9am"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/atp2_research_cycle_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L169",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-scheduled-stale-proposal-sweeper-report",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "10 16 * * 1-5",
-        "match": "scripts/run_scheduled_stale_proposal_sweeper.sh --report-only"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/stale_proposal_sweeper.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L170",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE → one sweep in P07 (drop --dry-run 10 min before --apply, drop --report-only)",
-        "event_driven_candidate": false,
-        "f_evidence": "3 lines (08:15 dry-run, 08:25 apply, 16:10 report-only) + cleanup_stale_proposals.py 10:00 does the same job"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "agent-router-cron-full",
       "owner": "agents",
       "scheduler": {
@@ -8029,38 +9318,6 @@
         "f_recommendation": "CONSOLIDATE → P12 health plane (one check registry, one receipt, one incident router)",
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-scheduled-stale-proposal-sweeper-dry",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 8 * * 1-5",
-        "match": "scripts/run_scheduled_stale_proposal_sweeper.sh --dry-run"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/stale_proposal_sweeper.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L181",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE → one sweep in P07 (drop --dry-run 10 min before --apply, drop --report-only)",
-        "event_driven_candidate": false,
-        "f_evidence": "3 lines (08:15 dry-run, 08:25 apply, 16:10 report-only) + cleanup_stale_proposals.py 10:00 does the same job"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -8180,102 +9437,6 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
-    },
-    {
-      "lane_id": "run-scheduled-stale-proposal-sweeper-at-25-8",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "25 8 * * 1-5",
-        "match": "scripts/run_scheduled_stale_proposal_sweeper.sh --apply"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/stale_proposal_sweeper.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L188",
-        "pipeline": "P07",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P07",
-        "f_recommendation": "CONSOLIDATE → one sweep in P07 (drop --dry-run 10 min before --apply, drop --report-only)",
-        "event_driven_candidate": false,
-        "f_evidence": "3 lines (08:15 dry-run, 08:25 apply, 16:10 report-only) + cleanup_stale_proposals.py 10:00 does the same job"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-scheduled-atp2-research-cycle-overnight",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 0 * * 2-6",
-        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle overnight"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/atp2_research_cycle_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L189",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "rebalance-verifier",
-      "owner": "learning",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 10 * * 0",
-        "match": "scripts/rebalance_verifier.py"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/rebalance_verifier.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P13",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L190",
-        "pipeline": "P13",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P13",
-        "f_recommendation": "CONSOLIDATE-into P13",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "run-scheduled-watchpool-alerts-diagnostic",
@@ -8785,38 +9946,6 @@
         "value_class": "Duplicated",
         "recommendation": "MERGE_INTO:P14",
         "f_recommendation": "CONSOLIDATE into P14 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "run-scheduled-atp2-research-cycle-eod",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "5 16 * * 1-5",
-        "match": "scripts/run_scheduled_atp2_research_cycle.sh --cycle eod"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/atp2_research_cycle_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L214",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
@@ -12545,38 +13674,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "rerun-cio-dual-consensus",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 21 * * *",
-        "match": "scripts/rerun_cio_dual_consensus.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/cio_dual_rerun.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L507",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "build-symbol-profiles-watchlist",
       "owner": "portfolio",
       "scheduler": {
@@ -13428,38 +14525,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "claude-challenger-curator",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 17 * * 0",
-        "match": "scripts/claude_challenger_curator.py"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/claude_challenger.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L588",
-        "pipeline": "P14",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "CONSOLIDATE-into P14",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "register-analyst-sources",
       "owner": "research",
       "scheduler": {
@@ -14109,38 +15174,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "momentum-scalp-validation-fast-path",
-      "owner": "scalp",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/2 6-11 * * 1-5",
-        "match": "scripts/momentum_scalp_validation_fast_path.py"
-      },
-      "expected_cadence_hours": 66.03,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/momentum_scalp_validation_fast_path.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Unused",
-      "recommendation": "R0_ELIMINATE",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L633",
-        "pipeline": "P02",
-        "value_class": "Unused",
-        "recommendation": "R0_ELIMINATE",
-        "f_recommendation": "ELIMINATE (dry-run every 2 min writes nothing)",
-        "event_driven_candidate": false,
-        "f_evidence": "crontab L633 `*/2 6-11 … --dry-run` = 150 no-op runs/day"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "run-sec-form4-momentum-context",
       "owner": "research",
       "scheduler": {
@@ -14690,38 +15723,6 @@
         "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "cloud-consensus-verdict",
-      "owner": "proposals",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 9-16 * * 1-5",
-        "match": "scripts/cloud_consensus_verdict.py"
-      },
-      "expected_cadence_hours": 64.5,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/cloud_consensus_verdict.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P07",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L687",
-        "pipeline": "P07",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P07",
-        "f_recommendation": "CONSOLIDATE-into P07",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -15471,38 +16472,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "hermes-backlog-drain",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "20 2 * * *",
-        "match": "scripts/hermes_backlog_drain.py"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_backlog_drain_nightly.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L748",
-        "pipeline": "P10",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P10",
-        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
-        "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "sector-rs-daily",
       "owner": "portfolio",
       "scheduler": {
@@ -16163,84 +17132,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "opening-intelligence",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 3 * * 1-5 + 0 7 * * 1-5",
-        "match": "scripts/opening_intelligence.py --persist >>",
-        "schedules": [
-          "30 3 * * 1-5",
-          "0 7 * * 1-5"
-        ]
-      },
-      "expected_cadence_hours": 68.5,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/opening_intelligence/latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L789",
-        "pipeline": "P14",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "CONSOLIDATE-into P14",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line",
-        "f_ids": [
-          "L789",
-          "L790"
-        ],
-        "f_recommendations": [
-          "PIPELINE:P14",
-          "MERGE_INTO:P14"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "opening-intelligence-render",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 9 * * 1-5",
-        "match": "scripts/opening_intelligence.py --persist --render"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/opening_intelligence/latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L791",
-        "pipeline": "P14",
-        "value_class": "Operationally Important",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "CONSOLIDATE-into P14",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
       "lane_id": "shadow-batch-generator-at-15-9",
       "owner": "proposals",
       "scheduler": {
@@ -16480,74 +17371,6 @@
         "token": "moomoo",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       }
-    },
-    {
-      "lane_id": "hermes-research-agenda-at-45-7",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "45 7 * * *",
-        "match": "scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 07:30"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/hermes_agenda_last_run.json",
-        "key": "last_apply_ts",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_research_agenda.py:35 STATE_FILE written at :532 on every --apply run (last_apply_ts); host mtime 2026-10-09T07:45:01"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L821",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "hermes-research-agenda-at-15-18",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "15 18 * * 1-5",
-        "match": "scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 16:45"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/hermes_agenda_last_run.json",
-        "key": "last_apply_ts",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_research_agenda.py:35 STATE_FILE written at :532 on every --apply run (last_apply_ts); host mtime 2026-10-09T07:45:01"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P10",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L822",
-        "pipeline": "P10",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P10",
-        "f_recommendation": "CONSOLIDATE-into P10",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
       "lane_id": "hermes-cross-source-synthesizer",
@@ -17346,39 +18169,6 @@
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/db_retention.py"
     },
     {
-      "lane_id": "hermes-advisory-cache-worker",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "hermes-advisory-cache-worker.timer"
-      },
-      "expected_cadence_hours": 10.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_advisory_cache_worker.log",
-        "evidence": "SYSTEMD_STDOUT_APPEND"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "hermes-advisory-cache-worker.timer",
-        "pipeline": "P14",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "CONSOLIDATE → P14/P10 loop",
-        "event_driven_candidate": false,
-        "f_evidence": "CIO/persona/LLM loop; Unverified consumer"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "hermes-advisory-cache-worker.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/hermes_advisory_cache_worker.py --apply --max-events 5"
-    },
-    {
       "lane_id": "hermes-backlog-health-check",
       "owner": "hermes",
       "scheduler": {
@@ -17583,78 +18373,6 @@
       "service": "hermes-shadow-scorer.service",
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/strategy_learning_shadow_scorer.py --json-out data/learning/shadow_scores/_shadow_scores.json"
-    },
-    {
-      "lane_id": "hermes-source-discovery-dryrun",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "hermes-source-discovery-dryrun.timer"
-      },
-      "expected_cadence_hours": 20.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Experimental",
-      "recommendation": "R0_ELIMINATE",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "hermes-source-discovery-dryrun.timer",
-        "pipeline": "P14",
-        "value_class": "Experimental",
-        "recommendation": "R0_ELIMINATE",
-        "f_recommendation": "ELIMINATE or promote",
-        "event_driven_candidate": false,
-        "f_evidence": "dry-run discovery"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "hermes-source-discovery-dryrun.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_scheduled_source_discovery_dryrun.py",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "high-llm-execution-worker",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "high-llm-execution-worker.timer"
-      },
-      "expected_cadence_hours": 20.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P14",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "high-llm-execution-worker.timer",
-        "pipeline": "P14",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "CONSOLIDATE → P14/P10 loop",
-        "event_driven_candidate": false,
-        "f_evidence": "CIO/persona/LLM loop; Unverified consumer"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "high-llm-execution-worker.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/high_llm_execution_worker.py --apply --max-jobs 3",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
     },
     {
       "lane_id": "launchpadlib-cache-clean",
@@ -17924,40 +18642,6 @@
       }
     },
     {
-      "lane_id": "tradeai-advisory-shadow-session",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-advisory-shadow-session.timer"
-      },
-      "expected_cadence_hours": 68.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/advisory_shadow/sessions.jsonl",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/lib/advisory/shadow_session.py:28 SESSIONS_PATH appended by run_shadow_session (:217) per --once run (scoreboard.json :286 also rewritten); dev-tree data/runtime symlinks to state root; host mtime 2026-10-09T09:28:40 (timer Mon..Fri 09:15)"
-      },
-      "value_class": "Experimental",
-      "recommendation": "R0_ELIMINATE",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-advisory-shadow-session.timer",
-        "pipeline": "P14",
-        "value_class": "Experimental",
-        "recommendation": "R0_ELIMINATE",
-        "f_recommendation": "ELIMINATE (or fix)",
-        "event_driven_candidate": false,
-        "f_evidence": "journal since 10-08: 0 ok / 2 failed; unit FAILED"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-advisory-shadow-session.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_shadow_session.py --once"
-    },
-    {
       "lane_id": "tradeai-agent-runtime-producer",
       "owner": "portfolio",
       "scheduler": {
@@ -17991,42 +18675,6 @@
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.trigger_producer --json"
     },
     {
-      "lane_id": "tradeai-agent-runtime-aegis",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@aegis.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@aegis.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@aegis.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent aegis --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
       "lane_id": "tradeai-agent-runtime-alex",
       "owner": "agents",
       "scheduler": {
@@ -18058,42 +18706,6 @@
       "service": "tradeai-agent-runtime@alex.service",
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent alex --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-argus",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@argus.timer"
-      },
-      "expected_cadence_hours": 0.5,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@argus.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@argus.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent argus --once --max-batch 8",
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
@@ -18187,42 +18799,6 @@
       ]
     },
     {
-      "lane_id": "tradeai-agent-runtime-darwin",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@darwin.timer"
-      },
-      "expected_cadence_hours": 1.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@darwin.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@darwin.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent darwin --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
       "lane_id": "tradeai-agent-runtime-hermes",
       "owner": "platform",
       "scheduler": {
@@ -18262,78 +18838,6 @@
       "service": "tradeai-agent-runtime@hermes.service",
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent hermes --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-iris",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@iris.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@iris.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@iris.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent iris --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-maria",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@maria.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@maria.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@maria.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent maria --once --max-batch 8",
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
@@ -18419,114 +18923,6 @@
       ]
     },
     {
-      "lane_id": "tradeai-agent-runtime-reflection",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@reflection.timer"
-      },
-      "expected_cadence_hours": 68.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@reflection.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@reflection.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent reflection --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-risk-agent",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@risk_agent.timer"
-      },
-      "expected_cadence_hours": 0.5,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@risk_agent.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@risk_agent.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent risk_agent --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-sentinel",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@sentinel.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@sentinel.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@sentinel.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent sentinel --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
       "lane_id": "tradeai-agent-runtime-steph",
       "owner": "agents",
       "scheduler": {
@@ -18558,78 +18954,6 @@
       "service": "tradeai-agent-runtime@steph.service",
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent steph --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-tax-agent",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@tax_agent.timer"
-      },
-      "expected_cadence_hours": 68.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@tax_agent.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@tax_agent.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent tax_agent --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-vega",
-      "owner": "agents",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@vega.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "PIPELINE:P15",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "tradeai-agent-runtime@vega.timer",
-        "pipeline": "P15",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P15",
-        "f_recommendation": "CONSOLIDATE → P15 one persona dispatcher (13 timers → 1)",
-        "event_driven_candidate": false,
-        "f_evidence": "13 per-persona timers; Unverified that each persona output is read"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "tradeai-agent-runtime@vega.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent vega --once --max-batch 8",
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]

@@ -1769,6 +1769,8 @@ GATES = [
         [
             "tests/test_lane_registry.py",
             "tests/test_lane_state_drift_20261007.py",
+            # Retire batch 1 (2026-10-09): 32 RETIRED rows + opening-intelligence schedule, pipelines, services.
+            "tests/test_retire_batch_1_20261009.py",
             "tests/test_report_lane_fire_ledger_20261007.py",
             "tests/test_lane_portfolio_repricer.py",
             # Day P/L for shares traded today (fills) + basis rebase on trade-sized share change.
