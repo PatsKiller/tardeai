@@ -1195,7 +1195,9 @@ GATES = [
     # catalogue from the inventory, governed diagnosis (n8n_lane_failure_diagnosis), bounded actions, selftest lane.
     (
         "n8n_llm_remediation_20261010",
-        ["tests/test_n8n_llm_remediation_20261010.py"],
+        ["tests/test_n8n_llm_remediation_20261010.py",
+         # 2026-10-10 optional: trade-ai-scalp-live excluded from the LLM diagnosis catalogue (operator decision pending).
+         "tests/test_n8n_diagnosis_exclude_scalp_20261010.py"],
     ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
