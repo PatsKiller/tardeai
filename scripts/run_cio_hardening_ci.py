@@ -4134,6 +4134,19 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):
+        # registry rows finviz_enrichment / scalp_list / social_posts / yfinance_info_snapshot with the operator's
+        # grant; StockTwits rate limit; latest_quote projection; quote-only get_best_quote (stored first, first
+        # fresh provider, never the fan-out; legacy mode unchanged for execution-readiness callers); the Data
+        # Broker's dead fallback revived bounded; yfinance_info_snapshot single writer; enrichment-cache merge tool
+        # (dry run read-only; apply through the single writer, archive + tripwire + alias). Hermetic: fake DB,
+        # stub providers, tmp_path stores. Listing it schedules nothing.
+        "broker_domains_q1_20261010",
+        [
+            "tests/test_broker_domains_q1_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: REFACTOR_W3_BUCKET_X1 — 2026-10-10 cron -> n8n refactor wave 3, bucket X1 (ingest: cron L142 L150 L243 L244 L248 L216 L505 L520 L550 — finviz_enrichment, sec_data_ingest, social_ingest, fred_data_ingest, sync_dividend_data, etf_*_enrich, validate_expense_ratios):
         # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
         # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
