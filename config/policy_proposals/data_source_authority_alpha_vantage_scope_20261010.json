@@ -2,7 +2,7 @@
   "schema": "DataSourceAuthorityProposal@v1",
   "authority": "READ_ONLY_ADVISORY",
   "created": "2026-10-10",
-  "status": "PROPOSED — nothing here is in config/data_source_authority.json. Adding or widening a source is operator-only (AGENTS.md §7A, §17). On approval an agent copies each row in, replaces every PENDING_OPERATOR value with the grant (approved_by: operator, approved_on, reference), re-renders AGENTS.md §7A and docs/SOURCE_OF_TRUTH.md with scripts/render_source_of_truth.py, and runs check_data_source_authority.py.",
+  "status": "APPLIED 2026-10-10 to config/data_source_authority.json: A1, A2, A3, B1, B2 (operator ~18:40 ET, verbatim \"Yes, from one to six\"). N1 NOT applied — NewsAPI stays retired.",
   "operator_direction": {
     "quote": "let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense",
     "on": "2026-10-10",
@@ -17,15 +17,29 @@
       "kind": "provider_amend",
       "path": "providers.alpha_vantage",
       "set": {
-        "supplies": ["fundamentals", "earnings_calendar", "news_sentiment"],
+        "supplies": [
+          "fundamentals",
+          "earnings_calendar",
+          "news_sentiment"
+        ],
         "owner": "scripts/lib/alpha_vantage_owner.py",
         "budget": {
           "daily": 23,
           "provider_daily": 25,
           "per_minute": 5,
           "min_spacing_s": 12,
-          "count_days": ["UTC", "America/New_York"],
-          "allotments": {"earnings_calendar": 1, "news_sentiment_window": 14, "fundamentals_overview": 5, "scalp_float": 2, "key_check": 1, "top_movers": 0},
+          "count_days": [
+            "UTC",
+            "America/New_York"
+          ],
+          "allotments": {
+            "earnings_calendar": 1,
+            "news_sentiment_window": 14,
+            "fundamentals_overview": 5,
+            "scalp_float": 2,
+            "key_check": 1,
+            "top_movers": 0
+          },
           "ledger": "data/runtime/alpha_vantage/budget_ledger.json",
           "receipts": "data/runtime/alpha_vantage/receipts_YYYYMM.jsonl",
           "config": "config/alpha_vantage_owner.json"
@@ -37,7 +51,13 @@
           "scope": "may supply: fundamentals, earnings_calendar, news_sentiment (all calls through scripts/lib/alpha_vantage_owner.py; <= 23 requests/day)"
         }
       },
-      "replaces": {"supplies": ["fundamentals"], "approval.scope": "may supply: fundamentals"}
+      "replaces": {
+        "supplies": [
+          "fundamentals"
+        ],
+        "approval.scope": "may supply: fundamentals"
+      },
+      "applied": true
     },
     {
       "id": "A2",
@@ -52,22 +72,41 @@
           "reference": "PENDING_OPERATOR",
           "scope": "authoritative answer for earnings_calendar (report date, pre/post-market timing, consensus estimate, whole US market, 3-month horizon): store runtime/alpha_vantage/earnings_calendar_latest.json via projection earnings_calendar; primary provider alpha_vantage"
         },
-        "store": {"file": "runtime/alpha_vantage/earnings_calendar_latest.json"},
+        "store": {
+          "file": "runtime/alpha_vantage/earnings_calendar_latest.json"
+        },
         "writer": "scripts/alpha_vantage_owner.py",
         "cadence": "06:05 ET daily (1 EARNINGS_CALENDAR call) — once a cron/n8n grant schedules it",
         "stale_after_hours": 26,
         "projection": "earnings_calendar",
-        "required_fields": ["symbol", "report_date", "time_of_day"],
+        "required_fields": [
+          "symbol",
+          "report_date",
+          "time_of_day"
+        ],
         "primary_provider": "alpha_vantage",
         "backup": [],
-        "retired": ["fmp"],
+        "retired": [
+          "fmp"
+        ],
         "no_coverage": "say_so",
         "on_gap": [
-          {"vector": "refresh_producer", "cost_class": "metered", "max_per_day": 1, "expected_seconds": 30},
-          {"vector": "operator_ask", "cost_class": "free", "max_per_day": 1, "expected_seconds": 7200}
+          {
+            "vector": "refresh_producer",
+            "cost_class": "metered",
+            "max_per_day": 1,
+            "expected_seconds": 30
+          },
+          {
+            "vector": "operator_ask",
+            "cost_class": "free",
+            "max_per_day": 1,
+            "expected_seconds": 7200
+          }
         ],
         "_why": "symbol_profiles has next_earnings_date for 1,260 of 3,337 profiles (1,037 in the future) and no report timing at all (read-only query 2026-10-10). One call covers the market with timing and estimate. Not a backup of earnings_date (yfinance): it answers a wider question (time of day, estimate); see B1 for the same-question backup."
-      }
+      },
+      "applied": true
     },
     {
       "id": "A3",
@@ -82,39 +121,71 @@
           "reference": "PENDING_OPERATOR",
           "scope": "authoritative answer for news_sentiment (per-ticker relevance-weighted sentiment over 72 h): store runtime/alpha_vantage/news_sentiment_latest.json via projection news_sentiment; primary provider alpha_vantage"
         },
-        "store": {"file": "runtime/alpha_vantage/news_sentiment_latest.json"},
+        "store": {
+          "file": "runtime/alpha_vantage/news_sentiment_latest.json"
+        },
         "writer": "scripts/alpha_vantage_owner.py",
         "cadence": "14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET — once a cron/n8n grant schedules them",
         "stale_after_hours": 3,
         "stale_after_hours_closed": 13,
         "projection": "news_sentiment",
-        "required_fields": ["ticker", "weighted_score", "articles", "as_of"],
+        "required_fields": [
+          "ticker",
+          "weighted_score",
+          "articles",
+          "as_of"
+        ],
         "primary_provider": "alpha_vantage",
         "backup": [],
-        "retired": ["newsapi", "finnhub", "polygon", "fmp"],
+        "retired": [
+          "newsapi",
+          "finnhub",
+          "polygon",
+          "fmp"
+        ],
         "no_coverage": "say_so",
         "on_gap": [
-          {"vector": "refresh_producer", "cost_class": "metered", "max_per_day": 2, "expected_seconds": 30},
-          {"vector": "operator_ask", "cost_class": "free", "max_per_day": 1, "expected_seconds": 7200}
+          {
+            "vector": "refresh_producer",
+            "cost_class": "metered",
+            "max_per_day": 2,
+            "expected_seconds": 30
+          },
+          {
+            "vector": "operator_ask",
+            "cost_class": "free",
+            "max_per_day": 1,
+            "expected_seconds": 7200
+          }
         ],
         "_why": "0 of 7,492 news_articles rows from the last 3 days carry a sentiment_score (read-only query 2026-10-10). No other provider in the registry answers per-ticker sentiment, so there is no same-question backup; when the budget is spent the answer is say_so."
-      }
+      },
+      "applied": true
     },
     {
       "id": "B1",
       "decision": "OPTIONAL — same-question backup",
       "kind": "domain_amend",
       "path": "domains[earnings_date].backup",
-      "set": ["alpha_vantage"],
-      "why": "earnings_date (yfinance, symbol_profiles) has no backup and resolves to UNKNOWN, which blocks the options gate. The owner's calendar answers the same question (next report date). Needs a reader change in scripts/earnings_enrich.py (still the single writer) — not built."
+      "set": [
+        "alpha_vantage"
+      ],
+      "why": "earnings_date (yfinance, symbol_profiles) has no backup and resolves to UNKNOWN, which blocks the options gate. The owner's calendar answers the same question (next report date). Needs a reader change in scripts/earnings_enrich.py (still the single writer) — not built.",
+      "applied": true
     },
     {
       "id": "B2",
       "decision": "OPTIONAL — fills the dead NewsAPI slot",
       "kind": "domain_amend",
       "path": "domains[catalyst_news].backup",
-      "set": ["yahoo", "brave", "searxng", "alpha_vantage"],
-      "why": "catalyst_news lost four slots on 2026-09-13 (finnhub, newsapi, polygon, fmp). Alpha Vantage articles answer the same question (headlines per symbol) at zero marginal requests once A3 runs; catalyst_enrichment already reads them through the news_sentiment projection when ENABLE_ALPHA_VANTAGE_CATALYST=true."
+      "set": [
+        "yahoo",
+        "brave",
+        "searxng",
+        "alpha_vantage"
+      ],
+      "why": "catalyst_news lost four slots on 2026-09-13 (finnhub, newsapi, polygon, fmp). Alpha Vantage articles answer the same question (headlines per symbol) at zero marginal requests once A3 runs; catalyst_enrichment already reads them through the news_sentiment projection when ENABLE_ALPHA_VANTAGE_CATALYST=true.",
+      "applied": true
     },
     {
       "id": "N1",
@@ -123,7 +194,9 @@
       "path": "providers.newsapi",
       "set": {
         "status": "active",
-        "supplies": ["catalyst_news"],
+        "supplies": [
+          "catalyst_news"
+        ],
         "approval": {
           "approved_by": "PENDING_OPERATOR",
           "approved_on": "PENDING_OPERATOR",
@@ -131,7 +204,8 @@
           "scope": "may supply: catalyst_news (developer plan: 100 requests/day, articles delayed 24 h, development use only)"
         }
       },
-      "why_not": "Live test 2026-10-10 21:44 UTC (2 calls, key in header): both HTTP 200 status ok, but the newest article on /v2/everything sorted by publishedAt was 24.01 h old (18,295 results for 'Apple') and on /v2/top-headlines 25.14 h old — the developer plan's 24-hour delay. catalyst_news goes stale after 18 h, so every NewsAPI article would be stale on arrival. NewsAPI's developer plan is also for development, not production [DOC-CLAIM: newsapi.org/pricing, not fetched today]. Replace the slot with B2 (Alpha Vantage) and the existing Brave/SearXNG search backup instead."
+      "why_not": "Live test 2026-10-10 21:44 UTC (2 calls, key in header): both HTTP 200 status ok, but the newest article on /v2/everything sorted by publishedAt was 24.01 h old (18,295 results for 'Apple') and on /v2/top-headlines 25.14 h old — the developer plan's 24-hour delay. catalyst_news goes stale after 18 h, so every NewsAPI article would be stale on arrival. NewsAPI's developer plan is also for development, not production [DOC-CLAIM: newsapi.org/pricing, not fetched today]. Replace the slot with B2 (Alpha Vantage) and the existing Brave/SearXNG search backup instead.",
+      "applied": false
     }
   ]
 }

@@ -114,8 +114,21 @@ def test_scope_not_granted_is_refused_up_front(tmp_path):
     assert rec["outcome"] == "refused_scope_not_granted" and rec["counted"] is False
 
 
-def test_the_committed_registry_grants_fundamentals_only_today():
-    assert avo.granted_domains() == {"fundamentals"}
+def test_the_committed_registry_carries_the_operator_grant():
+    # Operator 2026-10-10 ~18:40 ET, "Yes, from one to six": proposal rows A1-A3, B1, B2 applied; N1 not.
+    assert avo.granted_domains() == {"fundamentals", "earnings_calendar", "news_sentiment", "news_feed", "earnings"}
+    assert json.loads((ROOT / "config" / "data_source_authority.json").read_text())["providers"]["alpha_vantage"]["health_window_hours"] == 192
+    reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
+    av = reg["providers"]["alpha_vantage"]
+    assert av["approval"]["approved_by"] == "operator" and "Yes, from one to six" in av["approval"]["reference"]
+    assert av["owner"] == "scripts/lib/alpha_vantage_owner.py" and av["budget"]["daily"] == 23
+    dom = {d["domain"]: d for d in reg["domains"]}
+    assert dom["earnings_date"]["backup"] == ["alpha_vantage"]
+    assert "alpha_vantage" in dom["catalyst_news"]["backup"]
+    assert reg["providers"]["newsapi"]["status"] == "retired"
+    for d in ("earnings_calendar", "news_sentiment"):
+        assert dom[d]["writer"] == "scripts/alpha_vantage_owner.py" and dom[d]["projection"] == d
+        assert "Yes, from one to six" in dom[d]["approval"]["reference"]
 
 
 @pytest.mark.parametrize("jobname,params,outcome", [
@@ -247,6 +260,15 @@ def test_scope_override_is_dry_run_only(tmp_path):
                               dry_run=False, scope_override={"news_sentiment"})
 
 
+def test_cli_dry_run_with_the_committed_grant_would_call_and_spends_zero(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("TRADEAI_AV_OWNER_DIR", str(tmp_path / "av"))
+    monkeypatch.setattr(avo, "_default_key", lambda: KEY)
+    assert job.main(["--job", "all"]) == 0
+    rep = json.loads(capsys.readouterr().out)
+    assert {j["outcome"] for j in rep["jobs"]} == {"dry_run_would_call"} and rep["requests_sent"] == 0
+    assert not (tmp_path / "av").exists()
+
+
 def test_cli_dry_run_preview_spends_zero_and_writes_zero(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("TRADEAI_AV_OWNER_DIR", str(tmp_path / "av"))
     monkeypatch.setattr(avo, "_default_key", lambda: KEY)
@@ -262,6 +284,7 @@ def test_cli_dry_run_preview_spends_zero_and_writes_zero(tmp_path, monkeypatch, 
 def test_cli_dry_run_without_the_grant_refuses_news_and_earnings(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("TRADEAI_AV_OWNER_DIR", str(tmp_path / "av"))
     monkeypatch.setattr(avo, "_default_key", lambda: KEY)
+    monkeypatch.setattr(avo, "REGISTRY_PATH", _registry(tmp_path, ("fundamentals",)))
     assert job.main(["--job", "all"]) == 0
     rep = json.loads(capsys.readouterr().out)
     assert {j["outcome"] for j in rep["jobs"]} == {"refused_scope_not_granted"} and rep["requests_sent"] == 0
@@ -379,6 +402,14 @@ def test_catalog_advertises_both_projections():
 # ── every former caller goes through the owner ───────────────────────────────
 
 
+def test_a_provider_health_window_overrides_the_domain_minimum():
+    from lib import data_source_health_view as dsv
+    reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
+    assert dsv.window_minutes_for("alpha_vantage", reg) == 192 * 60, "news_sentiment's 3 h must not decay the weekly lane's row"
+    del reg["providers"]["alpha_vantage"]["health_window_hours"]
+    assert dsv.window_minutes_for("alpha_vantage", reg) == 3 * 60
+
+
 def test_alphavantage_host_appears_only_in_the_owner():
     hits = []
     for p in (ROOT / "scripts").rglob("*.py"):
@@ -476,35 +507,16 @@ def test_validator_exception_text_never_carries_the_key(monkeypatch):
 # ── the registry proposal ────────────────────────────────────────────────────
 
 
-def _apply_proposal(fill: bool) -> dict:
-    reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
-    prop = json.loads((ROOT / "config" / "policy_proposals" / "data_source_authority_alpha_vantage_scope_20261010.json").read_text())
-    grant = {"approved_by": "operator", "approved_on": "2026-10-11", "reference": "test grant"}
-    for ch in prop["changes"]:
-        if ch["id"] == "A1":
-            new = copy.deepcopy(ch["set"])
-            if fill:
-                new["approval"].update(grant)
-            else:
-                new["approval"].update(approved_by="", approved_on="", reference="")
-            reg["providers"]["alpha_vantage"].update(new)
-        elif ch["id"] in ("A2", "A3"):
-            row = copy.deepcopy(ch["row"])
-            if fill:
-                row["approval"].update(grant)
-            else:
-                row["approval"].update(approved_by="", approved_on="", reference="")
-            reg["domains"].append(row)
-    return reg
-
-
-def test_proposal_rows_pass_the_gate_once_granted_and_fail_without_the_grant():
+def test_registry_with_the_grant_is_green_and_without_it_fails():
     import check_data_source_authority as gate
-    granted = _apply_proposal(fill=True)
-    assert gate.check_approvals(granted) == []
-    assert gate.check_domains(granted) == []
-    ungranted = _apply_proposal(fill=False)
-    names = {f["name"] for f in gate.check_approvals(ungranted)}
+    reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
+    assert gate.check_approvals(reg) == [] and gate.check_domains(reg) == []
+    stripped = copy.deepcopy(reg)
+    stripped["providers"]["alpha_vantage"]["approval"].update(approved_by="", approved_on="", reference="")
+    for d in stripped["domains"]:
+        if d["domain"] in ("earnings_calendar", "news_sentiment"):
+            d["approval"].update(approved_by="", approved_on="", reference="")
+    names = {f["name"] for f in gate.check_approvals(stripped)}
     assert names == {"alpha_vantage", "earnings_calendar", "news_sentiment"}
 
 
@@ -513,3 +525,4 @@ def test_proposal_records_the_operator_quote_and_does_not_recommend_unretiring_n
     assert prop["operator_direction"]["quote"] == CFG["operator_direction"]["quote"]
     n1 = next(c for c in prop["changes"] if c["id"] == "N1")
     assert n1["decision"].startswith("NOT RECOMMENDED") and re.search(r"24\.01 h", n1["why_not"])
+    assert n1["applied"] is False and all(c["applied"] for c in prop["changes"] if c["id"] != "N1")

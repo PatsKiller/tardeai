@@ -32,7 +32,8 @@ def test_web_search_backup_is_searxng_then_tavily():
 
 
 def test_catalyst_news_backup_is_yahoo_then_the_search_chain():
-    assert dsa.resolve_backup("catalyst_news") == ["yahoo", "brave", "searxng"]
+    # + alpha_vantage (B2, operator 2026-10-10 "Yes, from one to six"): supply tag news_feed answers catalyst_news.
+    assert dsa.resolve_backup("catalyst_news") == ["yahoo", "brave", "searxng", "alpha_vantage"]
 
 
 def test_web_search_spill_reasons():
@@ -123,7 +124,7 @@ def test_with_the_proposed_phase5_patch_the_live_chains_still_resolve():
         elif op["op"] == "set_provider_field":
             reg["providers"][op["provider"]][op["field"]] = op["value"]
     assert dsa.resolve_backup("web_search", registry=reg) == ["searxng", "tavily"]
-    assert dsa.resolve_backup("catalyst_news", registry=reg) == ["yahoo", "brave", "searxng"]
+    assert dsa.resolve_backup("catalyst_news", registry=reg) == ["yahoo", "brave", "searxng", "alpha_vantage"]
     assert dsa.resolve_backup("analyst_opinion", registry=reg) == ["yfinance_on_demand"]
 
 

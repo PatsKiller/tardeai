@@ -1,6 +1,7 @@
 # Alpha Vantage for the gaps, and the NewsAPI test
 
 **Status:** ACTIVE (the owner code is on branch `n8nmat/av-newsapi`, committed locally, not pushed and not deployed). The registry rows are PROPOSED and need the operator's approval.
+**Update 2026-10-10 ~18:40 ET:** the operator approved rows A1, A2, A3, B1 and B2 (verbatim "Yes, from one to six"). They are now in `config/data_source_authority.json` with that grant. N1 was not approved, so NewsAPI stays retired. Alpha Vantage also carries the supply tags `news_feed` and `earnings`, so the same-question backup check (§7A rule 5) accepts it for `catalyst_news` and `earnings_date`. `health_window_hours: 192` keeps the provider's health row on the weekly lane's window until the owner's jobs are scheduled.
 **as_of:** 2026-10-10 18:05 ET, host ms01-openclaw.
 **Measured at:** `origin/main` e8a4a6815 plus `n8nmat/quickwins-20261010` (a2ba0a2e8, which removed the phantom Alpha Vantage spend). Database figures come from read-only `SELECT`s (`set_session(readonly=True)`) against the live `trade_ai` database.
 **Operator asks (verbatim):** *"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense"* and *"on the news API, can you test it and fix it?"*
