@@ -541,11 +541,37 @@ Reply with ONLY a JSON array:
 
 
 # ── Proposal Management ─────────────────────────────────────────────
+def _find_pending_duplicate(cur, proposal_type, target, proposed_state):
+    """Id of a pending proposal with the same type, target and proposed state, else None (read-only)."""
+    cur.execute("""SELECT id FROM iris_taxonomy_proposals
+        WHERE status='pending' AND proposal_type=%s AND target=%s AND proposed_state = %s::jsonb
+        ORDER BY created_at DESC, id DESC LIMIT 1""",
+        (proposal_type, target, json.dumps(proposed_state)))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 def create_proposal(proposal_type, target, current_state, proposed_state,
                     reasoning, confidence, coverage_gap=None, validation=None):
-    """Store a taxonomy proposal for review."""
+    """Store a taxonomy proposal for review; returns its id (an identical pending one is reused)."""
+    return create_or_reuse_proposal(proposal_type, target, current_state, proposed_state,
+                                    reasoning, confidence, coverage_gap, validation)[0]
+
+
+def create_or_reuse_proposal(proposal_type, target, current_state, proposed_state,
+                             reasoning, confidence, coverage_gap=None, validation=None):
+    """Store a taxonomy proposal for review -> (id, created).
+
+    The weekly scan re-raised the same finding every run, and each run inserted a new row: on 2026-10-09
+    4,058 pending retire_channel rows were 32 channels (141 copies each). An identical pending proposal is
+    now reused instead of duplicated."""
     conn = _get_conn()
     cur = conn.cursor()
+    existing = _find_pending_duplicate(cur, proposal_type, target, proposed_state)
+    if existing is not None:
+        conn.close()
+        print(f"  [iris] Proposal already pending #{existing}: {proposal_type} — {target}")
+        return existing, False
     cur.execute("""INSERT INTO iris_taxonomy_proposals
         (proposal_type, target, current_state, proposed_state, reasoning,
          confidence, validation_results, coverage_gap, status)
@@ -557,7 +583,7 @@ def create_proposal(proposal_type, target, current_state, proposed_state,
     conn.commit()
     conn.close()
     print(f"  [iris] Created proposal #{pid}: {proposal_type} — {target}")
-    return pid
+    return pid, True
 
 
 def apply_proposal(proposal_id):
@@ -625,10 +651,13 @@ def log_run(run_type, channels_scanned=0, categories_analyzed=0, gaps_found=0,
 
 
 # ── Main Run Modes ───────────────────────────────────────────────────
-def run_weekly_scan():
-    """Full weekly scan: coverage → gaps → audit → proposals."""
+def run_weekly_scan(dry_run=False):
+    """Full weekly scan: coverage → gaps → audit → proposals.
+
+    dry_run: read-only. Coverage, gaps and the audit are SELECTs; the LLM calls (classify, suggest) are
+    skipped and counted, and no proposal or run-log row is written. This is the shadow stage's mode."""
     started = time.time()
-    print("[iris] Starting weekly taxonomy scan...")
+    print(f"[iris] Starting weekly taxonomy scan{' (DRY RUN: no LLM calls, no writes)' if dry_run else ''}...")
     errors = []
 
     # 1. Coverage analysis
@@ -653,80 +682,110 @@ def run_weekly_scan():
     for iss in issues:
         print(f"  [{iss['issue']}] {iss['channel']}: {iss['detail']}")
 
-    # 4. Generate proposals
+    # 4. Generate proposals (an identical pending proposal is reused, not duplicated)
     proposals_created = 0
+    would_create = 0
+    llm_calls_skipped = 0
 
     # Proposals for uncategorized channels
     for iss in issues:
         if iss["issue"] == "uncategorized":
+            if dry_run:
+                llm_calls_skipped += 1
+                would_create += 1
+                print(f"  [dry-run] would classify {iss['channel']} via LLM and propose a reclassify")
+                continue
             try:
                 classification = classify_channel_llm(iss["channel"])
                 cat = classification.get("category", "investment_general")
                 conf = classification.get("confidence", 0.5)
                 tags = AGENT_TAGS_MAP.get(cat, ["steph"])
-                create_proposal(
+                _, created = create_or_reuse_proposal(
                     "reclassify", iss["channel"],
                     {"category": None},
                     {"category": cat, "priority": "medium", "agent_tags": tags},
                     classification.get("reasoning", "LLM classification"),
                     conf, coverage_gap="uncategorized"
                 )
-                proposals_created += 1
+                proposals_created += int(created)
             except Exception as e:
                 errors.append(f"classify {iss['channel']}: {e}")
 
     # Proposals for critical gaps
     for gap in gaps:
         if gap["severity"] == "critical":
+            if dry_run:
+                llm_calls_skipped += 1
+                print(f"  [dry-run] would ask the LLM for up to 2 channels for gap: {gap['category']}")
+                continue
             try:
                 existing = coverage["categories"][gap["category"]].get("channels", [])
                 suggestions = suggest_channels_for_gap(gap["category"], existing)
                 for s in suggestions[:2]:  # max 2 per gap
                     cat = gap["category"]
                     tags = AGENT_TAGS_MAP.get(cat, ["steph"])
-                    create_proposal(
+                    _, created = create_or_reuse_proposal(
                         "add_channel", s.get("channel_name", "unknown"),
                         {},
                         {"category": cat, "priority": "medium", "agent_tags": tags},
                         s.get("reason", "Coverage gap fill"),
                         0.5, coverage_gap=gap["description"]
                     )
-                    proposals_created += 1
+                    proposals_created += int(created)
             except Exception as e:
                 errors.append(f"suggest for {gap['category']}: {e}")
 
     # Proposals for low-relevance channels
     for iss in issues:
         if iss["issue"] == "low_relevance":
-            create_proposal(
-                "retire_channel", iss["channel"],
-                {"active": True, "issue": iss["detail"]},
-                {"active": False},
-                f"Low relevance: {iss['detail']}",
-                0.6, coverage_gap="quality"
-            )
-            proposals_created += 1
+            if dry_run:
+                conn = _get_conn()
+                dup = _find_pending_duplicate(conn.cursor(), "retire_channel", iss["channel"], {"active": False})
+                conn.close()
+                if dup is None:
+                    would_create += 1
+                print(f"  [dry-run] retire_channel {iss['channel']}: "
+                      f"{'already pending #' + str(dup) if dup is not None else 'would create'}")
+                continue
+            try:
+                _, created = create_or_reuse_proposal(
+                    "retire_channel", iss["channel"],
+                    {"active": True, "issue": iss["detail"]},
+                    {"active": False},
+                    f"Low relevance: {iss['detail']}",
+                    0.6, coverage_gap="quality"
+                )
+                proposals_created += int(created)
+            except Exception as e:
+                errors.append(f"retire {iss['channel']}: {e}")
 
     elapsed = int(time.time() - started)
-    print(f"\n[iris] Scan complete in {elapsed}s — {proposals_created} proposals created")
-
-    log_run(
-        "weekly_scan",
-        channels_scanned=sum(len(d.get("channels", [])) for d in coverage["categories"].values() if "channels" in d),
-        categories_analyzed=len(TARGET_CATEGORIES),
-        gaps_found=len(gaps),
-        proposals_created=proposals_created,
-        coverage_score=coverage["overall_score"],
-        coverage_breakdown=coverage["categories"],
-        elapsed=elapsed,
-        errors=errors,
-    )
+    if dry_run:
+        print(f"\n[iris] DRY RUN complete in {elapsed}s — would create {would_create} proposals; "
+              f"{llm_calls_skipped} LLM calls skipped; nothing written")
+    else:
+        print(f"\n[iris] Scan complete in {elapsed}s — {proposals_created} proposals created")
+        log_run(
+            "weekly_scan",
+            channels_scanned=sum(len(d.get("channels", [])) for d in coverage["categories"].values() if "channels" in d),
+            categories_analyzed=len(TARGET_CATEGORIES),
+            gaps_found=len(gaps),
+            proposals_created=proposals_created,
+            coverage_score=coverage["overall_score"],
+            coverage_breakdown=coverage["categories"],
+            elapsed=elapsed,
+            errors=errors,
+        )
 
     return {
         "coverage": coverage,
         "gaps": gaps,
         "issues": issues,
         "proposals_created": proposals_created,
+        "would_create": would_create,
+        "llm_calls_skipped": llm_calls_skipped,
+        "errors": errors,
+        "dry_run": dry_run,
         "elapsed": elapsed,
     }
 
@@ -1941,11 +2000,53 @@ def run_discovery_mode(send_telegram=False):
     return {"candidates": len(candidates), "proposals_created": proposals_created}
 
 
-def run_freshness_validation():
+# A remediation from /api/v2/data-product-health is data, not a shell command: only
+# ".venv/bin/python scripts/<name>.py [plain args]" naming an existing repo script is run, as an argv.
+_REMEDIATION_RE = re.compile(r"^\.venv/bin/python (scripts/[A-Za-z0-9_]+\.py)((?: [A-Za-z0-9_=.,:-]+)*)$")
+
+
+def _remediation_argv(cmd):
+    """argv for a data-product remediation string, or None when it is not an allowed shape.
+
+    Releases ship no .venv, so `.venv/bin/python` resolves through venv_python (2026-10-09: every
+    --freshness run failed "exit 127: .venv/bin/python: not found" with cwd = the release)."""
+    if not isinstance(cmd, str):
+        return None
+    m = _REMEDIATION_RE.match(cmd.strip())
+    if not m:
+        return None
+    script = (PROJECT_ROOT / m.group(1)).resolve()
+    if script.parent != (PROJECT_ROOT / "scripts").resolve() or not script.is_file():
+        return None
+    return [venv_python(PROJECT_ROOT), str(script), *m.group(2).split()]
+
+
+def _run_remediation(argv, timeout):
+    """Run one remediation argv (no shell). True on exit 0."""
+    import subprocess
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=str(PROJECT_ROOT))
+    except subprocess.TimeoutExpired:
+        print(f"    ⏰ Timeout after {timeout}s")
+        return False
+    except Exception as e:
+        print(f"    ❌ Error: {e}")
+        return False
+    if result.returncode == 0:
+        print("    ✅ Success")
+        return True
+    print(f"    ❌ Failed (exit {result.returncode}): {(result.stderr or '')[:100]}")
+    return False
+
+
+def run_freshness_validation(dry_run=False):
     """Iris librarian duty: validate all data products and cron health.
-    Creates alerts for stale products, missed crons, and zero-output jobs."""
+    Creates alerts for stale products, missed crons, and zero-output jobs.
+
+    dry_run: report only — no remediation runs and no iris_run_log row. A remediation that fails, times
+    out or is refused is counted in `remediation_failed`, and the job exits non-zero (freshness_exit_code)."""
     import urllib.request
-    print("[iris] Running data freshness validation...")
+    print(f"[iris] Running data freshness validation{' (DRY RUN)' if dry_run else ''}...")
 
     try:
         # Check data product health via API
@@ -1986,51 +2087,62 @@ def run_freshness_validation():
         total_issues = len(stale) + (1 if critical > 0 else 0) + (1 if queued > 100 else 0) + (1 if stale_topics > 0 else 0)
         print(f"[iris] Freshness validation complete: {total_issues} issues found")
 
+        remediation_failed = 0
         # AUTO-REMEDIATE: run the remediation command for stale products
-        if stale:
-            import subprocess
-            for s in stale:
-                cmd = s.get("remediation")
-                if cmd and not s.get("weekend_market_closed"):
-                    print(f"  [auto-remediate] Running: {cmd}")
-                    try:
-                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120,
-                                                cwd=str(PROJECT_ROOT))
-                        if result.returncode == 0:
-                            print("    ✅ Success")
-                        else:
-                            print(f"    ❌ Failed (exit {result.returncode}): {result.stderr[:100]}")
-                    except subprocess.TimeoutExpired:
-                        print("    ⏰ Timeout after 120s")
-                    except Exception as e:
-                        print(f"    ❌ Error: {e}")
+        for s in stale:
+            cmd = s.get("remediation")
+            if not cmd:
+                continue
+            argv = _remediation_argv(cmd)
+            if argv is None:
+                print(f"  [auto-remediate] REFUSED (not an allowed remediation shape): {cmd}")
+                remediation_failed += 1
+                continue
+            if dry_run:
+                print(f"  [dry-run] would run: {' '.join(argv)}")
+                continue
+            print(f"  [auto-remediate] Running: {' '.join(argv)}")
+            if not _run_remediation(argv, timeout=120):
+                remediation_failed += 1
 
         # AUTO-REMEDIATE: drain agent queue if backlogged
         if queued > 100:
-            print(f"  [auto-remediate] Draining agent queue ({queued} queued)...")
-            try:
-                import subprocess
-                subprocess.run(
-                    [venv_python(PROJECT_ROOT), str(PROJECT_ROOT / "scripts/process_watchlist_agent_jobs.py"), "--limit", "5"],
-                    capture_output=True, text=True, timeout=180, cwd=str(PROJECT_ROOT))
-                print("    ✅ Drained 5 jobs")
-            except Exception as e:
-                print(f"    ❌ Drain error: {e}")
+            argv = [venv_python(PROJECT_ROOT), str(PROJECT_ROOT / "scripts/process_watchlist_agent_jobs.py"), "--limit", "5"]
+            if dry_run:
+                print(f"  [dry-run] would drain the agent queue: {' '.join(argv)}")
+            else:
+                print(f"  [auto-remediate] Draining agent queue ({queued} queued)...")
+                if not _run_remediation(argv, timeout=180):
+                    remediation_failed += 1
 
         # Log the run
-        log_run("freshness_validation", categories_analyzed=len(products), gaps_found=total_issues)
-        return {"issues": total_issues, "stale_products": len(stale), "critical_stages": critical, "queued_jobs": queued, "stale_topics": stale_topics}
+        if not dry_run:
+            log_run("freshness_validation", categories_analyzed=len(products), gaps_found=total_issues,
+                    errors=[f"{remediation_failed} remediation(s) failed"] if remediation_failed else None)
+        return {"issues": total_issues, "stale_products": len(stale), "critical_stages": critical,
+                "queued_jobs": queued, "stale_topics": stale_topics, "remediation_failed": remediation_failed,
+                "dry_run": dry_run}
 
     except Exception as e:
         print(f"[iris] Freshness validation error: {e}")
-        return {"error": str(e)}
+        return {"error": str(e), "remediation_failed": 0}
 
 
-if __name__ == "__main__":
+def freshness_exit_code(result):
+    """1 when the check could not run or a remediation failed; findings alone are not a failure."""
+    if not isinstance(result, dict) or result.get("error") or result.get("remediation_failed"):
+        return 1
+    return 0
+
+
+def main(argv=None):
     p = argparse.ArgumentParser(description="Iris taxonomy intelligence agent")
     p.add_argument("--gaps", action="store_true", help="Gap analysis only")
     p.add_argument("--audit", action="store_true", help="Channel audit only")
     p.add_argument("--freshness", action="store_true", help="Validate data product freshness and cron health")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Weekly scan / --freshness: no LLM calls, no remediation, no writes (--gaps and --audit "
+                        "are already read-only)")
     p.add_argument("--propose", type=str, help="Manual proposal description")
     p.add_argument("--status", action="store_true", help="Print current status")
     p.add_argument("--hygiene", action="store_true", help="Run weekly hygiene")
@@ -2039,10 +2151,10 @@ if __name__ == "__main__":
     p.add_argument("--library-audit-dry-run", action="store_true", help="Preview library audit")
     p.add_argument("--discovery", action="store_true", help="Discovery mode — find symbols in intel not on watchlist")
     p.add_argument("--telegram", action="store_true", help="Send results to Telegram")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     if args.freshness:
-        run_freshness_validation()
+        return freshness_exit_code(run_freshness_validation(dry_run=args.dry_run))
     elif args.discovery:
         run_discovery_mode(send_telegram=args.telegram)
     elif args.library_audit:
@@ -2063,4 +2175,10 @@ if __name__ == "__main__":
     elif args.propose:
         print(f"[iris] Manual proposal not yet implemented: {args.propose}")
     else:
-        run_weekly_scan()
+        res = run_weekly_scan(dry_run=args.dry_run)
+        return 1 if res.get("errors") else 0
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
