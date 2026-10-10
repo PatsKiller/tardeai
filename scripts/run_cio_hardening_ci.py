@@ -3704,6 +3704,14 @@ GATES = [
         ["tests/test_n8n_maturity_executor_v2_20261009.py"],
     ),
     (
+        # ANCHOR: N8N_EXECUTOR_ENV_ALLOWLIST — n8n maturity P7 (2026-10-09, supersedes #1561): per-lane child env
+        # allowlist (TRADEAI_EXECUTOR_ENV_ALLOWLIST off|report|enforce), one builder for the v1 drain and v2 workers,
+        # fail-closed on a missing env_names list or unknown mode, names-only receipts, enforced-lane drift guard.
+        # Hermetic: tmp_path ledgers/state, synthetic values, fake runners + one tiny real child.
+        "n8n_executor_env_allowlist_20261009",
+        ["tests/test_n8n_executor_env_allowlist_20261009.py"],
+    ),
+    (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
         # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
