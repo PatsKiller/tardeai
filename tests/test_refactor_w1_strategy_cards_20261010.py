@@ -19,6 +19,27 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# Required CI has no psycopg2 (these tests use fake connections only). Install a minimal stand-in ONLY when the real
+# driver is absent, so the dry-run safety tests still run in CI instead of being skipped by importorskip.
+try:  # pragma: no cover - depends on the environment
+    import psycopg2  # noqa: F401
+except ModuleNotFoundError:  # pragma: no cover
+    import types as _types
+
+    _pg = _types.ModuleType("psycopg2")
+    _pg_extras = _types.ModuleType("psycopg2.extras")
+    _pg_extras.RealDictCursor = object
+    _pg.extras = _pg_extras
+
+    def _no_connect(*_a, **_k):
+        raise RuntimeError("psycopg2 stub: tests must use fake connections")
+
+    _pg.connect = _no_connect
+    _pg.Error = Exception
+    _pg.OperationalError = Exception
+    sys.modules.setdefault("psycopg2", _pg)
+    sys.modules.setdefault("psycopg2.extras", _pg_extras)
+
 import materialize_watchlist_strategy_cards as mat  # noqa: E402
 
 COVERS = ["scripts/materialize_watchlist_strategy_cards.py"]
