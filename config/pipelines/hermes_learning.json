@@ -34,7 +34,8 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 02:50 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 02:50 ET Peak B",
+          "inv_id": "cron:L658"
         },
         {
           "id": "tag_engine",
@@ -60,7 +61,8 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:05 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:05 ET Peak B",
+          "inv_id": "cron:L668"
         },
         {
           "id": "outcome_feedback_agent",
@@ -86,7 +88,8 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:25 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:25 ET Peak B",
+          "inv_id": "cron:L662"
         },
         {
           "id": "outcome_learning",
@@ -112,7 +115,8 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B",
+          "inv_id": "cron:L452"
         },
         {
           "id": "score_history_retention",
@@ -141,7 +145,8 @@
             "run_with_deepseek_offpeak.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B",
+          "inv_id": "cron:L650"
         },
         {
           "id": "config_governor",
@@ -170,7 +175,8 @@
             "run_with_deepseek_offpeak.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:40 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:40 ET Peak B",
+          "inv_id": "cron:L671"
         }
       ]
     },
@@ -202,7 +208,8 @@
             "bound_source": "pam_group_max(upper)"
           },
           "note": "no wrapper on the cron line today (flock only)",
-          "cron_comment": "# Hermes self-learning auto-graft + self-purge (autonomous, no human touch)"
+          "cron_comment": "# Hermes self-learning auto-graft + self-purge (autonomous, no human touch)",
+          "inv_id": "cron:L577"
         }
       ]
     }
