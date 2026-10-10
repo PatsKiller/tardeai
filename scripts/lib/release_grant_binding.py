@@ -20,6 +20,17 @@ Binding rule (all must hold):
   * the grant's reason names THIS action's binding: the PR number ("#1229"),
     the target SHA (≥ 9 hex chars prefix) or the campaign id the action is run
     under — a generic campaign grant that names none of them is NOT a match
+  * SHA wins over PR (2026-10-09, due diligence B §2 / R2): when the grant's
+    reason names one or more commit SHAs, the target SHA MUST be one of them.
+    A PR match alone no longer binds such a grant — a train grant that lists
+    ten PRs and one SHA used to authorize ANY SHA for any of those ten PRs,
+    because ``--pr`` comes from ``TRADEAI_RELEASE_PR``, which the actor sets.
+    A grant that names no SHA keeps the PR match (``matched_by`` says
+    ``pr:#N`` without a ``sha:`` entry). A campaign match (the actor runs under
+    ``TRADEAI_RELEASE_CAMPAIGN`` and the grant names that campaign) still binds
+    on its own: campaign grants authorize a series of releases by design.
+    Hex values bound to a key (``remote_request_id=0e7f…``, ``chat=8797…``)
+    and all-digit runs are not treated as SHAs.
   * if a PENDING request exists for this exact PR/SHA, only a grant that
     settled THAT request (remote_request_id) or names the PR/SHA may satisfy
     it; an unrelated grant cannot "answer" a pending specific request
@@ -47,7 +58,10 @@ GRANTS_PATH = Path(os.environ.get("TRADEAI_GUARD_GRANTS_PATH", str(Path.home() /
 REQUESTS_PATH = Path(os.environ.get("TRADEAI_GUARD_REQUESTS_PATH", str(Path.home() / ".cursor/approvals/remote_requests.json")))
 
 _PR_RE = re.compile(r"(?:PR\s*)?#(\d{3,6})\b", re.IGNORECASE)
-_SHA_RE = re.compile(r"\b([0-9a-f]{9,40})\b")
+# A SHA the grant NAMES: a free-standing 9–40 hex run that is not the value of a
+# key=value pair (request ids, chat ids) and contains at least one a–f letter
+# (a 10-digit chat id or a dollar amount is not a commit).
+_NAMED_SHA_RE = re.compile(r"(?<![=0-9a-z_])([0-9a-f]{9,40})(?![0-9a-z_])")
 _ACTION_RE = re.compile(r"\b(prepare|promote|rollback|roll back|verify)\b", re.IGNORECASE)
 
 
@@ -113,6 +127,19 @@ def load_requests(path: Path = REQUESTS_PATH) -> list[dict[str, Any]]:
     return []
 
 
+def named_shas(reason: str) -> list[str]:
+    """The commit SHAs a grant/request text names (lower-case, in order, de-duplicated)."""
+    out: list[str] = []
+    for cand in _NAMED_SHA_RE.findall((reason or "").lower()):
+        if any(c in "abcdef" for c in cand) and cand not in out:
+            out.append(cand)
+    return out
+
+
+def _sha_matches(target: str, cand: str) -> bool:
+    return target.startswith(cand[:9]) or cand.startswith(target[:9])
+
+
 def _names_action(reason: str, act: ReleaseAction) -> list[str]:
     """Which of the action's binding facts the grant text names."""
     text = reason or ""
@@ -121,8 +148,8 @@ def _names_action(reason: str, act: ReleaseAction) -> list[str]:
         hit.append(f"pr:#{act.pr_number}")
     sha = (act.target_sha or "").lower()
     if sha and len(sha) >= 9:
-        for cand in _SHA_RE.findall(text.lower()):
-            if sha.startswith(cand[:9]) or cand.startswith(sha[:9]):
+        for cand in named_shas(text):
+            if _sha_matches(sha, cand):
                 hit.append(f"sha:{cand[:12]}")
                 break
     if act.campaign and act.campaign.lower() in text.lower():
@@ -190,6 +217,17 @@ def decide(act: ReleaseAction, *, grants: Iterable[Mapping[str, Any]],
             refused.append({"grant_id": gid, "why": "grant names neither this PR, this SHA nor this campaign",
                             "reason": reason[:160]})
             continue
+        listed_shas = named_shas(reason)
+        campaign_bound = any(m.startswith("campaign:") for m in named)
+        if listed_shas and not campaign_bound and not any(m.startswith("sha:") for m in named):
+            # SHA wins over PR: the grant names the commit(s) it approves and
+            # this is not one of them. A PR (or settled-request) match cannot
+            # widen it to another SHA.
+            refused.append({"grant_id": gid, "why": "grant names SHA(s) "
+                            + ", ".join(c[:12] for c in listed_shas[:5])
+                            + f"; target {act.target_sha[:12]} is not one of them (a PR match alone does not bind)",
+                            "reason": reason[:160]})
+            continue
         if pend and not settled_pending and not any(m.startswith(("pr:", "sha:")) for m in named):
             # A specific request for THIS release is pending; a campaign-only
             # match cannot answer it.
@@ -211,4 +249,4 @@ def decide_from_disk(act: ReleaseAction, *, grants_path: Path = GRANTS_PATH,
 
 
 __all__ = ["SCHEMA", "TIER", "ACTIONS", "ReleaseAction", "Verdict", "decide", "decide_from_disk",
-           "load_grants", "load_requests", "pending_requests_for"]
+           "load_grants", "load_requests", "named_shas", "pending_requests_for"]
