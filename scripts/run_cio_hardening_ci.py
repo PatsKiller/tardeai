@@ -1181,6 +1181,12 @@ GATES = [
         "iris_fixes_20261009",
         ["tests/test_iris_fixes_20261009.py"],
     ),
+    # n8n -> Command Center SIEM bridge (REMEDIATION_PLAN §5 L2/L7, operator 2026-10-09 23:20 ET): ledger runs + fan-in
+    # incidents become one deduped system_health_events row per n8n:<lane>|kind; inbox accepts CRITICAL/URGENT.
+    (
+        "n8n_siem_bridge_20261010",
+        ["tests/test_n8n_siem_bridge_20261010.py"],
+    ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
     (

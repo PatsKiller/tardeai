@@ -32607,7 +32607,8 @@ def _inbox():
     )
     siem = (
         _db_query("""SELECT component, event_type, severity, message, created_at FROM system_health_events
-                        WHERE severity IN ('P0','P1') AND created_at > NOW() - INTERVAL '24 hours'
+                        WHERE UPPER(severity) IN ('P0','P1','CRITICAL','URGENT')
+                          AND created_at > NOW() - INTERVAL '24 hours'
                           AND COALESCE(lifecycle_state,'active') <> 'resolved'
                         ORDER BY created_at DESC LIMIT 15""")
         or []
@@ -32648,12 +32649,17 @@ def _inbox():
                 "proposal_id": p.get("id"),
             }
         )
+    # The table stores the writers' vocabulary (CRITICAL/URGENT/WARN/INFO; legacy rows P0/P1). The filter
+    # above selected only P0/P1, so the 284 CRITICAL rows of 2026-10-03..09 never reached the inbox
+    # (REMEDIATION_PLAN §5 L7). Normalise to the inbox's P0/P1 so the UI colours and P0 counts hold.
+    _siem_pri = {"CRITICAL": "P0", "URGENT": "P1", "P0": "P0", "P1": "P1"}
     for ev in siem:
         items.append(
             {
                 "type": "siem",
                 "symbol": None,
-                "priority": ev.get("severity") or "P1",
+                "priority": _siem_pri.get(str(ev.get("severity") or "").upper(), "P1"),
+                "severity": ev.get("severity"),
                 "detail": f"{ev.get('component') or 'system'} — {ev.get('event_type') or 'alert'}",
                 "source": "siem",
                 "at": _json_clean(ev.get("created_at")),
@@ -32964,8 +32970,14 @@ def _system_siem_dashboard():
                 ),
             }
         )
+    # n8n bridge rows (component "n8n:<lane>", scripts/n8n_siem_bridge.py) carry a typed event_type and a
+    # registry/fan-in severity; prose classification would demote a CRITICAL lane failure to SYSTEM_HEALTH P3.
+    _n8n_sev = {"CRITICAL": "P0", "URGENT": "P1", "WARN": "P2", "INFO": "P3"}
     for r in she_rows:
         etype, esev = _classify((r.get("message") or "") + " " + (r.get("event_type") or ""))
+        if str(r.get("component") or "").startswith("n8n:"):
+            etype = r.get("event_type") or etype
+            esev = _n8n_sev.get(str(r.get("severity") or "").upper(), esev)
         events.append(
             {
                 "id": f"she-{r['id']}",
