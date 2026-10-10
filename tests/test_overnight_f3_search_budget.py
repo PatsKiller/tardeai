@@ -450,5 +450,7 @@ def test_the_alarm_sensor_reads_the_binding_ledger():
 
     st = b.get_budget_status()
     assert "search_budget.json" in st["source"]
-    assert st["monthly_limit"] == sb.DEFAULT_LIMITS["brave"]["monthly"]
-    assert st["daily_limit"] == sb.DEFAULT_LIMITS["brave"]["daily"]
+    # The binding ceiling is search_budget.limits (registry over DEFAULT_LIMITS; the registry raised brave
+    # to 300/day, 3,600/month on 2026-10-10 by operator approval).
+    assert st["monthly_limit"] == sb.limits("brave")["monthly"]
+    assert st["daily_limit"] == sb.limits("brave")["daily"]

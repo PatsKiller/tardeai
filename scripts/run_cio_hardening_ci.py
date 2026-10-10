@@ -4332,6 +4332,16 @@ GATES = [
         "desk_loop_pending_drain_20261010",
         ["tests/test_desk_loop_pending_drain_20261010.py"],
     ),
+    (
+        # Search source routing engine (operator 2026-10-10: $20/month Brave, scalps about to fire first, a
+        # mature engine with rules for which source answers what). Policy validator, table-driven routing
+        # decisions, dollar budget math (pools, shares, pacing, $12/$15/$18 lines), the scalp-priority
+        # classifier, the shared cache, dry run proved at 0 Brave requests, the free lane never naming a Brave
+        # engine, the fan-in P2 source, the rerouted callers; plus the heartbeat fixture that leaked into the
+        # production search ledger. Hermetic.
+        "search_routing_engine_20261010",
+        ["tests/test_search_routing_engine_20261010.py"],
+    ),
 ]
 
 

@@ -109,15 +109,55 @@ def _categories(kind: str) -> str:
     return "news" if str(kind or "").strip().lower() == "news" else "general"
 
 
+#: The free lane's engine allowlist when config/search_routing_policy.json cannot be
+#: read. Kept EQUAL to the policy's ``free_lane.searxng.engines`` (pinned by
+#: tests/test_search_routing_engine_20261010.py). Measured 2026-10-10: SearXNG's
+#: ``general`` category includes ``braveapi`` — the PAID Brave API keyed into the
+#: instance — so ``categories=general`` silently spent one uncounted Brave request per
+#: "free" question. Naming the engines (never a Brave one) closes that path.
+DEFAULT_FREE_ENGINES: dict[str, list[str]] = {
+    "general": ["bing", "seznam", "yandex", "yep", "wikipedia"],
+    "news": ["bing news", "duckduckgo news", "reuters", "yahoo news", "google news", "wikinews"],
+}
+NEVER_ENGINES = frozenset({"braveapi", "brave", "brave.news"})
+
+
+def free_engines(categories: str) -> Optional[list[str]]:
+    """Engine allowlist for a SearXNG category, from the routing policy (or the pinned
+    fallback). None only when the policy explicitly sets enforce_engine_allowlist=false."""
+    key = "news" if categories == "news" else "general"
+    try:
+        try:
+            from scripts.lib.search_routing_policy import POLICY_PATH
+        except ImportError:  # pragma: no cover
+            from lib.search_routing_policy import POLICY_PATH  # type: ignore
+        import json as _json
+
+        doc = _json.loads(Path(POLICY_PATH).read_text(encoding="utf-8"))
+        sx = ((doc.get("free_lane") or {}).get("searxng") or {})
+        if sx.get("enforce_engine_allowlist") is False:
+            return None
+        lst = (sx.get("engines") or {}).get("news" if key == "news" else "web") or []
+        never = set(sx.get("never_engines") or []) | NEVER_ENGINES
+        lst = [e for e in lst if e not in never]
+        if lst:
+            return lst
+    except Exception:  # noqa: BLE001 — an unreadable policy falls back to the pinned list, never to "all"
+        pass
+    return list(DEFAULT_FREE_ENGINES[key])
+
+
 def _default_transport(query: str, *, categories: str, limit: int,
-                       timeout: float) -> list[dict[str, Any]]:
+                       timeout: float, engines: Optional[list[str]] = None) -> list[dict[str, Any]]:
     """The shared client only. Five bespoke SearXNG clients already bypass the
-    ledger, which is why free usage is unobservable today; this adds no sixth."""
+    ledger, which is why free usage is unobservable today; this adds no sixth.
+    Always names its engines (see ``free_engines``) so no Brave engine is asked."""
     try:
         from scripts.lib.searxng_client import searx_search
     except ImportError:  # pragma: no cover - dual-import shape, see AGENTS
         from lib.searxng_client import searx_search  # type: ignore
-    return searx_search(query, categories=categories, limit=limit, timeout=timeout)
+    eng = engines if engines is not None else free_engines(categories)
+    return searx_search(query, categories=categories, limit=limit, timeout=timeout, engines=eng)
 
 
 def _budget():
@@ -151,14 +191,17 @@ def _normalise(hits: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]
         if not url:
             continue
         body = h.get("snippet") or h.get("content") or h.get("description") or ""
-        out.append({
+        row = {
             "title": str(h.get("title") or "")[:400],
             "url": url,
             "description": str(body)[:4000],
             "snippet": str(body)[:4000],
             "domain": str(h.get("domain") or ""),
             "engine": PROVIDER,
-        })
+        }
+        if h.get("published"):
+            row["published_at"] = str(h.get("published"))
+        out.append(row)
         if len(out) >= limit:
             break
     return out
@@ -167,7 +210,8 @@ def _normalise(hits: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]
 def search(query: str, *, caller: str = "default", kind: str = "web",
            count: int = 3, timeout: float = 12.0,
            root: Optional[Path] = None,
-           transport: Optional[Transport] = None) -> FreeSearchResponse:
+           transport: Optional[Transport] = None,
+           engines: Optional[Mapping[str, list[str]]] = None) -> FreeSearchResponse:
     """Ask the free provider, one budgeted request at a time.
 
     Returns a refusal rather than raising: a caller reaching here has already
@@ -197,7 +241,12 @@ def search(query: str, *, caller: str = "default", kind: str = "web",
                                       units=units)
         units += 1
         try:
-            hits = tx(q, categories=categories, limit=limit, timeout=timeout)
+            if engines is not None:
+                # The routing engine names the engines per kind (news / web).
+                eng = list(engines.get("news" if categories == "news" else "web") or []) or None
+                hits = tx(q, categories=categories, limit=limit, timeout=timeout, engines=eng)
+            else:
+                hits = tx(q, categories=categories, limit=limit, timeout=timeout)
         except Exception as exc:  # noqa: BLE001 - a call that never happened is refunded
             sb.refund(PROVIDER, caller=caller, root=root)
             units -= 1
