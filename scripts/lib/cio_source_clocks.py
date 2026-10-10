@@ -485,10 +485,16 @@ def _cron_field(spec: str, lo: int, hi: int) -> Optional[set[int]]:
 
 
 def next_cron_fire(expression: str, now: datetime, *, tz: ZoneInfo = CRON_TZ) -> Optional[datetime]:
-    """Next fire of a 5-field cron expression (leading tokens of ``expression``)."""
-    tokens = str(expression or "").split()
-    if len(tokens) < 5:
+    """Next fire of a cron expression: its 5 schedule fields via the shared ``cron_schedule.cron_fields``
+    extractor (command text after the schedule ignored, ``@`` aliases and month/weekday names mapped)."""
+    if __package__:
+        from .cron_schedule import REBOOT, cron_fields
+    else:  # top-level import with scripts/lib on sys.path
+        from cron_schedule import REBOOT, cron_fields  # type: ignore
+    fields = cron_fields(expression)
+    if not fields or fields == REBOOT:
         return None
+    tokens = fields.split()
     try:
         minutes = _cron_field(tokens[0], 0, 59)
         hours = _cron_field(tokens[1], 0, 23)
@@ -577,7 +583,9 @@ def next_scheduled_run(
         kind, expr = sched.get("kind"), str(sched.get("expression") or "")
         fire: Optional[datetime] = None
         if kind == "cron":
-            fire = next_cron_fire(expr, now)
+            # a multi-line lane stores its schedules joined by " + ": the soonest next fire of any of them
+            parts = [f for f in (next_cron_fire(p, now) for p in expr.split(" + ")) if f is not None]
+            fire = min(parts) if parts else None
             if fire is None:
                 reasons.append(f"{lane_id}: cron expression not parseable")
         elif kind == "systemd":

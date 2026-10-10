@@ -9642,10 +9642,11 @@
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/topic_curator_latest.json",
+        "kind": "json_key",
+        "path": "data/runtime/topic_curator_ensemble_latest.json",
+        "key": "ok_at",
         "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/topic_curator.py:52,683 main() always calls _write_desk_projection -> data/runtime/topic_curator_latest.json (generated_at); shared by both curator lanes; host mtime 2026-10-09T13:34:56"
+        "evidence_ref": "scripts/topic_curator.py ensemble_rescue() -> _write_ensemble_receipt (ENSEMBLE_RECEIPT) every --ensemble run; ok_at advances only on status ok (an error run keeps the previous ok_at and exits non-zero); own signal since the 2026-10-09 breach triage"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -12028,9 +12029,11 @@
       "expected_cadence_hours": 64.17,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/stop_health_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/stop_health_last.json",
+        "key": "ok_at",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/stop_health_check.py main() -> _write_heartbeat (HEARTBEAT_FILE) every run incl. --quiet; ok_at advances only on a successful run (a failed run keeps the previous ok_at); 2026-10-09 breach triage: --quiet left logs/stop_health_cron.log unchanged on clean runs"
       },
       "value_class": "Technical Debt",
       "recommendation": "KEEP_ON_CRON",

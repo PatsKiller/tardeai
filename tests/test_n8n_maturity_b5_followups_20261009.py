@@ -163,12 +163,12 @@ def test_fall_back_fold_fires_once_on_the_first_instant():
     assert deadline == datetime(2026, 11, 1, 5, 30, tzinfo=timezone.utc)
 
 
-def test_names_and_aliases_keep_the_legacy_parser():
+def test_names_and_aliases_are_normalised_for_the_dst_safe_parser():
     now = datetime(2026, 10, 9, 16, 0, tzinfo=timezone.utc)      # Fri 12:00 EDT
     deadline, basis = sbd._expected_since(_cron_lane("0 9 * * mon-fri"), now)
-    assert basis.startswith("cron:") and deadline == datetime(2026, 10, 9, 13, 0, tzinfo=timezone.utc)
+    assert basis == "cron:0 9 * * 1-5" and deadline == datetime(2026, 10, 9, 13, 0, tzinfo=timezone.utc)
     deadline, basis = sbd._expected_since(_cron_lane("@daily"), now)
-    assert basis == "cron:@daily" and deadline == datetime(2026, 10, 9, 4, 0, tzinfo=timezone.utc)
+    assert basis == "cron:0 0 * * *" and deadline == datetime(2026, 10, 9, 4, 0, tzinfo=timezone.utc)
 
 
 def test_no_fire_inside_the_lookback_is_unknown_and_falls_to_the_cadence_rule(monkeypatch):
@@ -176,6 +176,83 @@ def test_no_fire_inside_the_lookback_is_unknown_and_falls_to_the_cadence_rule(mo
     now = datetime(2026, 10, 9, 16, 0, tzinfo=timezone.utc)
     deadline, basis = sbd._expected_since(_cron_lane("0 0 1 1 *"), now)
     assert basis == "cadence:24h×3"
+
+
+# 2b. registry rows carry the command after the 5 cron fields (88 of 112 ACTIVE cron lanes, 2026-10-09):
+# _expected_since must feed only the schedule to cron_schedule. Rows below are verbatim from config/lane_registry.json.
+
+CIO_DRAIN = {"lane_id": "cio-stance-classification-drain", "state": "ACTIVE", "scheduler": {"kind": "cron", "expression": "20 7,19 * * 1-5 drain_cio_stance_classification.py --apply", "match": "drain_cio_stance_classification.py"}, "expected_cadence_hours": 24.0, "output_signal": {"kind": "file_mtime", "path": "/home/johnclaw/.local/state/tradeai/cio_stance_classification_receipts.jsonl"}}
+REPRICER = {"lane_id": "portfolio-repricer", "state": "ACTIVE", "scheduler": {"kind": "cron", "expression": "*/15 9-16 * * 1-5 portfolio_repricer.py", "match": "portfolio_repricer.py"}, "expected_cadence_hours": 0.25, "active_days": [0, 1, 2, 3, 4], "output_signal": {"kind": "file_mtime", "path": "data/portfolios/state/holdings.json"}}
+SECTOR = {"lane_id": "sector-momentum-engine", "state": "ACTIVE", "scheduler": {"kind": "cron", "expression": "25 17 * * 1-5 sector_momentum_engine.py", "match": "sector_momentum_engine.py"}, "expected_cadence_hours": 24, "output_signal": {"kind": "file_mtime", "path": "data/runtime/sector_momentum_latest.json"}}
+
+
+def _utc(*a):
+    return datetime(*a, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("expr, fields", [
+    ("20 7,19 * * 1-5 drain_cio_stance_classification.py --apply", "20 7,19 * * 1-5"),
+    ("*/15 9-16 * * 1-5 portfolio_repricer.py", "*/15 9-16 * * 1-5"),
+    ("15 7 * * 1-5 portfolio_orchestrator.py (AI Analyst stage)", "15 7 * * 1-5"),
+    ("30 2 * * *", "30 2 * * *"),
+    ("0 9 * JAN-MAR Mon-Fri run.sh", "0 9 * 1-3 1-5"),
+    ("@daily run.sh", "0 0 * * *"),
+    ("@midnight", "0 0 * * *"),
+    ("@hourly x", "0 * * * *"),
+    ("@weekly", "0 0 * * 0"),
+    ("@monthly", "0 0 1 * *"),
+    ("@yearly", "0 0 1 1 *"),
+    ("@annually", "0 0 1 1 *"),
+    ("@REBOOT start_daemon.sh", "@reboot"),
+    ("@sometimes x", None),
+    ("0 9 * *", None),
+    ("", None),
+])
+def test_cron_fields(expr, fields):
+    assert sbd._cron_fields(expr) == fields
+
+
+def test_command_text_row_uses_dst_safe_parser_with_the_market_schedule():
+    # Fri 2026-10-09 20:00Z = 16:00 EDT: 19:20 EDT has not fired yet, so the last fire is 07:20 EDT = 11:20Z.
+    deadline, basis = sbd._expected_since(CIO_DRAIN, _utc(2026, 10, 9, 20, 0))
+    assert basis == "cron:20 7,19 * * 1-5"
+    assert deadline == _utc(2026, 10, 9, 11, 20)
+
+
+def test_command_text_row_is_not_judged_over_the_weekend():
+    # Sun 2026-10-11 18:00Z: the last weekday fire is Fri 16:45 EDT; the old fallback was now - 3x0.25h.
+    deadline, basis = sbd._expected_since(REPRICER, _utc(2026, 10, 11, 18, 0))
+    assert basis == "cron:*/15 9-16 * * 1-5"
+    assert deadline == _utc(2026, 10, 9, 20, 45)
+
+
+def test_command_text_row_across_fall_back():
+    # Mon 2026-11-02 23:00Z = 18:00 EST: 17:25 EST fire = 22:25Z (EST offset after 11-01).
+    deadline, _ = sbd._expected_since(SECTOR, _utc(2026, 11, 2, 23, 0))
+    assert deadline == _utc(2026, 11, 2, 22, 25)
+    # Fri 2026-10-30 23:00Z = 19:00 EDT: 17:25 EDT = 21:25Z.
+    deadline, _ = sbd._expected_since(SECTOR, _utc(2026, 10, 30, 23, 0))
+    assert deadline == _utc(2026, 10, 30, 21, 25)
+
+
+def test_reboot_lane_has_no_cron_deadline_and_uses_the_cadence_rule():
+    lane = {"lane_id": "d", "scheduler": {"kind": "cron", "expression": "@reboot start.sh"}, "expected_cadence_hours": 1}
+    now = _utc(2026, 10, 9, 16, 0)
+    deadline, basis = sbd._expected_since(lane, now)
+    assert basis == "cadence:1h×3" and deadline == _utc(2026, 10, 9, 13, 0)
+    lane.pop("expected_cadence_hours")
+    assert sbd._expected_since(lane, now) == (None, "no_cadence")
+
+
+def test_detect_flags_a_missed_weekday_fire_on_a_command_text_row():
+    now = _utc(2026, 10, 9, 20, 0)
+    rows = sbd.detect(lanes=[CIO_DRAIN], sla_by_lane={CIO_DRAIN["lane_id"]: {"max_run_s": 900}}, heartbeats={},
+                      observe=lambda sig: {"last_output_at": "2026-10-08T23:30:00+00:00", "readable": True}, now=now)
+    assert [r["kind"] for r in rows] == ["NO_OUTPUT"]
+    assert rows[0]["evidence"]["basis"] == "cron:20 7,19 * * 1-5"
+    rows = sbd.detect(lanes=[CIO_DRAIN], sla_by_lane={CIO_DRAIN["lane_id"]: {"max_run_s": 900}}, heartbeats={},
+                      observe=lambda sig: {"last_output_at": "2026-10-09T11:25:00+00:00", "readable": True}, now=now)
+    assert rows == []
 
 
 # ── 3. fan-in DLQ + breakers ─────────────────────────────────────────────────────────────────────────────

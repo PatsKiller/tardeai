@@ -429,8 +429,22 @@ def _cron_matches(lane: dict[str, Any], entry: dict[str, Any]) -> bool:
     if not marker or marker not in entry.get("command", ""):
         return False
     # Multi-stage lanes sharing a runner are distinguished by their declared stage/cadence.
+    # Compare schedules, not text: a registry expression may carry the command after its 5 fields.
+    # A multi-line lane stores its schedules joined by " + "; the entry matches when it is one of them.
     expr = str(lane.get("scheduler", {}).get("expression") or "")
-    return expr == entry.get("expression") if expr and cron_last_fire.parse(expr) else True
+    schedules = [f for f in cron_last_fire.cron_schedules(expr) if cron_last_fire.parse(f)]
+    if not schedules:
+        return True
+    if cron_last_fire.cron_fields(str(entry.get("expression") or "")) in schedules:
+        return True
+    # Fallback (review of #1623) = the pre-#1623 rule: a row whose expression is a bare schedule (exactly 5 fields
+    # or one @alias) is matched strictly - that is how multi-stage lanes sharing a runner stay apart. A row whose
+    # expression carries command text or " + " was never compared, so a marker-matching line stays attached to
+    # it (e.g. portfolio-repricer's second `10 16 * * 1-5` line) instead of turning into an unregistered cron
+    # until the registry lists every line of the lane.
+    tokens = expr.split()
+    bare = len(tokens) == 5 or (len(tokens) == 1 and tokens[0].startswith("@"))
+    return not bare
 
 
 def cron_collides(a: dict[str, Any], b: dict[str, Any], now: datetime) -> bool:

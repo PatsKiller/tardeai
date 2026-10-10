@@ -3638,6 +3638,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: BREACH_TRIAGE_CODE (2026-10-09 breach triage): one shared cron extractor (cron_schedule.cron_fields /
+        # cron_schedules) for detector, cron_last_fire, job coverage, scheduler operations and source clocks;
+        # symbol-cards timeout + retry from config; topic curator ensemble without a DB connection across LLM calls
+        # plus its own receipt; stop health per-run heartbeat. Hermetic: tmp_path outputs, fake DB, no network.
+        "breach_triage_code_20261009",
+        [
+            "tests/test_breach_triage_code_20261009.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_AGENT_GATE_GOVERNANCE — 2026-10-09 AGENTS.md 3.0.0 §23.10 preconditions before any n8n
         # Agent node: P16 activation attribution (n8n publish evidence vs guard grants naming the workflow id),
         # P17 registry-first (active n8n workflows are a lane-registry discovery source; UNDECLARED_N8N_WORKFLOW

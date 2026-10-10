@@ -162,15 +162,15 @@ def _timer_active(unit):
 
 def _cron_exprs(match, cron_lines):
     """The schedule expressions of the active crontab lines that run this job."""
+    from lib.cron_schedule import REBOOT, cron_fields  # the shared 5-field extractor
+
     out = []
     for ln in cron_lines:
         if match not in ln:
             continue
-        parts = ln.split()
-        if parts and parts[0].startswith("@"):
-            out.append(parts[0])
-        elif len(parts) >= 5:
-            out.append(" ".join(parts[:5]))
+        fields = cron_fields(ln)
+        if fields and fields != REBOOT:
+            out.append(fields)
     return out
 
 
