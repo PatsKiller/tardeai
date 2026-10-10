@@ -6,6 +6,7 @@ Reads overnight social mentions → Finviz lookup → 6-pillar score → Telegra
 
 Schedule: 6:00 AM every 30 min until 10:00 AM, then hourly until 4:00 PM M-F.
 Triggered by cron — each run is stateless (dedup via scalp_scan_results table).
+``--on-list-advance``: scalp hot tier event trigger (see main()); without it the behaviour is unchanged.
 """
 
 import csv, io, json, logging, os, sys, time, uuid
@@ -1137,5 +1138,23 @@ def run_scan():
     conn.close()
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
+    """``--on-list-advance`` (scalp hot tier, operator decision (4) 2026-10-10): run only when the scalp list's as_of
+    advanced (lib/scalp_list_trigger, consumer social-scalp-scanner); with SCALP_HOT_TIER off it fires on the legacy
+    0,30 slots. The gate reads only; nothing in the scan, its GO de-dup or its sends changes. No flag: as before."""
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if "--on-list-advance" not in argv:
+        run_scan()
+        return 0
+    from lib import scalp_list_trigger as _trig
+
+    gate = _trig.gate_main("social-scalp-scanner")
+    if not gate["decision"]["fire"]:
+        return 0
     run_scan()
+    _trig.commit("social-scalp-scanner", gate["list_env"], decision=gate["decision"]["decision"])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

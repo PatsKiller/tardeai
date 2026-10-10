@@ -2923,7 +2923,7 @@
         "file": "trade_ai/scalp_universe_latest.json"
       },
       "writer": "scripts/run_trade_ai_scalp_live.py",
-      "cadence": "*/5 09:30-16:00 Mon-Fri (cron L1050, §23.3 lane; unchanged). The 06:00-09:30 hot tier (§D.4) was not adopted.",
+      "cadence": "*/5 09:30-16:00 Mon-Fri (cron L1050, §23.3 lane; unchanged). Premarket 06:00-09:30 hot tier (operator decision §D.4, PR #1671) is code-complete with its knob OFF by default.",
       "stale_after_hours": 0.25,
       "stale_after_hours_closed": 72,
       "projection": "scalp_list",
@@ -2943,7 +2943,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "write_projection(): temp file + replace under the canonical state root (production_state_root). No refresh_producer vector: the writer is the live scalp lane and nothing may trigger it out of band (§23.3). data/trade_ai is not in served_from.linked_dirs; both trees resolve it through production_state_root.",
+      "_writer_note": "Store of record: data/trade_ai/scalp_universe_latest.json, written only by run_trade_ai_scalp_live.write_projection (temp file + replace under production_state_root). The projection (lib.data_broker.scalp_list, PR #1671) also reads the hot-tier refresh receipt data/runtime/momentum_scalp_refresh_receipt.json (single writer momentum_scalp_early_lane_runner.py) + screener_symbol_membership (single writer finviz_screener_runner.py) and returns the fresher list. No refresh_producer vector here: nothing may trigger the live scalp lane out of band (§23.3). data/trade_ai is not in served_from.linked_dirs.",
       "provider_health_window": false,
       "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
     },

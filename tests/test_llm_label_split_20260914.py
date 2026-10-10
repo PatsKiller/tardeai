@@ -126,7 +126,11 @@ def test_each_caller_names_itself(path, needle):
 
 def test_the_operator_desk_loop_names_all_three_of_its_calls():
     src = (ROOT / "scripts" / "lib" / "cio_operator_desk_loop.py").read_text(encoding="utf-8")
-    assert src.count('task_type="operator_reply"') == 3
+    # 2026-10-10 (cost-cap backoff): the three calls (intent, freeform, subject) go through one wrapper,
+    # _operator_reply_llm, which is the single place that names the label.
+    assert src.count('task_type="operator_reply"') == 1
+    assert src.count("call_governed_llm(") == 1
+    assert src.count("_operator_reply_llm(") - src.count("def _operator_reply_llm(") == 3
 
 
 def test_chat_json_passes_task_type_and_still_rejects_local_options(monkeypatch):

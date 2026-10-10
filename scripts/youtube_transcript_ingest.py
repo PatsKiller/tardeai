@@ -494,6 +494,100 @@ def extract_channel_id(url_or_id: str) -> str:
     return url_or_id  # Return as-is, might be a channel ID
 
 
+# ── Resolved channel-id cache (2026-10-10, API overlap Q9) ─────────────────
+# ~30 tracked channels are stored with a slug in youtube_channels.channel_id (e.g. "ben_felix") and a
+# /@handle, /c/Name or /user/Name URL. Without a UC... id every run fell back to search.list (100 units
+# each): ~3,000 units a run, ~15.2k a week, with rate_limited:true on 48 of 87 runs. The UC id is now
+# resolved once with channels.list (1 unit: forHandle / forUsername) and cached in the durable runtime
+# dir, so later runs list the uploads playlist instead. A failed lookup is cached for
+# CHANNEL_ID_NEGATIVE_TTL_DAYS and the lane falls back to search exactly as before.
+CHANNEL_ID_CACHE_NAME = "youtube_channel_id_cache.json"
+CHANNEL_ID_NEGATIVE_TTL_DAYS = 7
+
+
+def _channel_id_cache_path() -> Path:
+    try:
+        from lib.lane_last_receipt import runtime_dir
+    except ImportError:  # imported as scripts.youtube_transcript_ingest
+        from scripts.lib.lane_last_receipt import runtime_dir
+    return runtime_dir() / CHANNEL_ID_CACHE_NAME
+
+
+def _load_channel_id_cache() -> dict:
+    try:
+        data = json.loads(_channel_id_cache_path().read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_channel_id_cache(cache: dict) -> None:
+    try:
+        path = _channel_id_cache_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cache, indent=2, sort_keys=True))
+        os.replace(tmp, path)
+    except Exception as e:
+        print(f"[yt] channel-id cache not saved: {type(e).__name__}")
+
+
+def _channel_lookup_query(channel_url: str) -> str | None:
+    """channels.list query for a channel URL: forHandle for /@handle and /c/Name, forUsername for /user/."""
+    m = re.search(r"youtube\.com/@([A-Za-z0-9_.-]+)", channel_url or "")
+    if m:
+        return "forHandle=" + urllib.parse.quote(m.group(1))
+    m = re.search(r"youtube\.com/c/([A-Za-z0-9_.-]+)", channel_url or "")
+    if m:
+        return "forHandle=" + urllib.parse.quote(m.group(1))
+    m = re.search(r"youtube\.com/user/([A-Za-z0-9_.-]+)", channel_url or "")
+    if m:
+        return "forUsername=" + urllib.parse.quote(m.group(1))
+    return None
+
+
+def resolve_cached_channel_id(cache_key: str, channel_url: str, *, quota: QuotaBudget | None = None) -> str:
+    """UC... id for a tracked channel without one: cache first, else one channels.list lookup (1 unit)."""
+    if not cache_key:
+        return ""
+    m = re.search(r"youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})", channel_url or "")
+    if m:
+        return m.group(1)
+    cache = _load_channel_id_cache()
+    hit = cache.get(cache_key) or {}
+    if _is_usable_channel_id(hit.get("channel_id")):
+        return hit["channel_id"]
+    if hit.get("unresolved_at"):
+        try:
+            age = datetime.now() - datetime.fromisoformat(hit["unresolved_at"])
+            if age.days < CHANNEL_ID_NEGATIVE_TTL_DAYS:
+                return ""
+        except ValueError:
+            pass
+    query = _channel_lookup_query(channel_url)
+    api_key = _get_youtube_api_key()
+    if not query or not api_key:
+        return ""
+    if quota is not None and not quota.charge(COST_CHANNELS_LIST):
+        return ""
+    resolved, title = "", ""
+    try:
+        url = f"https://www.googleapis.com/youtube/v3/channels?part=id,snippet&{query}&key={api_key}"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            items = json.loads(resp.read()).get("items") or []
+        if items and _is_usable_channel_id(items[0].get("id")):
+            resolved = items[0]["id"]
+            title = ((items[0].get("snippet") or {}).get("title") or "")[:120]
+    except Exception as e:
+        print(f"[yt] channel-id lookup failed for {cache_key}: {type(e).__name__}")
+        return ""  # transient: do not cache, retry next run
+    now = datetime.now().isoformat(timespec="seconds")
+    cache[cache_key] = ({"channel_id": resolved, "title": title, "resolved_at": now, "via": query.split("=")[0]}
+                        if resolved else {"unresolved_at": now, "via": query.split("=")[0]})
+    _save_channel_id_cache(cache)
+    return resolved
+
+
 def get_channel_info(channel_id: str) -> dict:
     """Get channel name and uploads playlist ID."""
     api_key = _get_youtube_api_key()
@@ -725,6 +819,9 @@ def fetch_channel_videos(
         usable_channel_id = db_channel_id
     elif _is_usable_channel_id(channel_id_or_name):
         usable_channel_id = channel_id_or_name
+    elif ch and not quota.exhausted:
+        usable_channel_id = resolve_cached_channel_id(
+            db_channel_id or channel_name, ch.get("channel_url") or "", quota=quota)
     else:
         usable_channel_id = ""
 
@@ -801,9 +898,10 @@ def fetch_channel_videos(
         cur = conn.cursor()
         if ch:
             if usable_channel_id:
+                # The row's own key: a resolved UC id is cached, not written over a slug channel_id.
                 cur.execute(
                     "UPDATE youtube_channels SET last_checked=NOW() WHERE channel_id=%s",
-                    (usable_channel_id,),
+                    (db_channel_id or usable_channel_id,),
                 )
             else:
                 cur.execute(

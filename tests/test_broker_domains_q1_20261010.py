@@ -4,7 +4,7 @@
 quote first, providers only on stale, first fresh answer wins, never the fan-out — and the Data
 Broker's dead fallback revived without a fan-out; (7) the latest_quote projection; (3) the
 enrichment-cache merge tool (dry run read-only, apply through the single writer, archive + alias);
-(13) yfinance_info_snapshot single writer and projection; scalp_list / social_feed projections.
+(13) yfinance_info_snapshot single writer and projection; social_feed projection; scalp_list registration.
 
 Hermetic: fake db_query callables, tmp_path stores, stub providers. No network, no DB.
 """
@@ -423,48 +423,14 @@ def test_yf_projection_module_never_imports_yfinance():
 # ── (5) scalp_list + social_feed projections ─────────────────────────────────
 
 
-def _write_universe(tmp_path, as_of, rows):
-    p = tmp_path / "data" / "trade_ai" / "scalp_universe_latest.json"
-    p.parent.mkdir(parents=True)
-    p.write_text(
-        json.dumps(
-            {
-                "schema": "TradeAIScalpUniverse@v1",
-                "as_of": as_of,
-                "run_label": "scalp",
-                "writer": "run_trade_ai_scalp_live",
-                "rows": rows,
-            }
-        )
-    )
-    return p
+def test_scalp_list_projection_is_registered_and_market_data_only():
+    """The projection is main's hot-tier read model (PR #1671); this branch registers its domain (§D.5)."""
+    src = (ROOT / "scripts" / "lib" / "data_broker" / "scalp_list.py").read_text()
+    assert "PROPOSED_UNREGISTERED" not in src and '"registry_status": "REGISTERED"' in src
+    from lib.data_broker.catalog import PROJECTIONS
 
-
-def test_scalp_list_passes_market_fields_only(tmp_path):
-    from lib.data_broker.scalp_list import get_scalp_list
-
-    _write_universe(
-        tmp_path,
-        (NOW - timedelta(minutes=3)).isoformat(),
-        [
-            {"symbol": "abcd", "decision": "GO", "score": 91, "float_m": 4.2, "price": 3.1, "setup_class": "gap"},
-            {"symbol": "ABCD", "decision": "GO"},
-            {"symbol": ""},
-        ],
-    )
-    out = get_scalp_list(root=tmp_path, now=NOW)
-    assert out["symbols"] == ["ABCD"] and out["stale"] is False and out["provider_calls"] == 0
-    assert out["rows"][0] == {"symbol": "ABCD", "price": 3.1, "float_m": 4.2, "setup_class": "gap"}
-    assert "decision" not in out["rows"][0] and "score" not in out["rows"][0]
-
-
-def test_scalp_list_stale_and_absent(tmp_path):
-    from lib.data_broker.scalp_list import get_scalp_list
-
-    assert get_scalp_list(root=tmp_path, now=NOW)["gap"]["kind"] == "no_coverage"
-    _write_universe(tmp_path, (NOW - timedelta(hours=2)).isoformat(), [{"symbol": "X"}])
-    assert get_scalp_list(root=tmp_path, now=NOW)["stale"] is True
-    assert get_scalp_list(root=tmp_path, now=NOW, market_closed=True)["stale"] is False  # 72 h closed window
+    row = next(p for p in PROJECTIONS if p["id"] == "scalp_list")
+    assert row["authority_domain"] == "scalp_list" and row["provider_calls"] == 0
 
 
 def test_social_feed_groups_posts_per_symbol():

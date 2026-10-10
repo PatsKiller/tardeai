@@ -164,6 +164,38 @@ def preview_form4(symbols: list = None) -> dict:
     return {"symbols_total": len(symbols), "would_scan": batch, "stored": stored}
 
 
+# Dedupe on the filing itself (2026-10-10). The table's only unique key is (symbol, filer_name,
+# transaction_date, transaction_type), and this writer never sets transaction_date, so NULL never conflicted:
+# every run re-inserted the same filings (measured 7,960 rows for 530 distinct sec_url). A Form 4 is identified
+# by its accession URL, so a row is inserted only when no row for (symbol, sec_url) exists; a row without a URL
+# falls back to (symbol, filing_date, filer_name, transaction_type). No schema change: existing duplicates are
+# left in place for the operator (docs/audits/SEC_FORM4_DUPLICATES_2026-10-10.md).
+FORM4_INSERT_SQL = """
+    INSERT INTO sec_form4 (symbol, filer_name, filer_relation, transaction_type,
+        filing_date, sec_url, strategy_tags, agent_tags)
+    SELECT %(symbol)s, %(filer_name)s, %(filer_relation)s, %(transaction_type)s,
+        %(filing_date)s::date, %(sec_url)s, %(strategy_tags)s::jsonb, %(agent_tags)s::jsonb
+    WHERE NOT EXISTS (
+        SELECT 1 FROM sec_form4 x
+         WHERE x.symbol = %(symbol)s
+           AND coalesce(x.sec_url, '') = %(sec_url)s
+           AND (%(sec_url)s <> ''
+                OR (x.filing_date IS NOT DISTINCT FROM %(filing_date)s::date
+                    AND x.filer_name IS NOT DISTINCT FROM %(filer_name)s
+                    AND x.transaction_type IS NOT DISTINCT FROM %(transaction_type)s)))
+    ON CONFLICT DO NOTHING
+"""
+
+
+def _form4_insert_params(sym: str, f: dict, tags: dict) -> dict:
+    return {
+        "symbol": sym, "filer_name": f["filer_name"], "filer_relation": f["filer_relation"],
+        "transaction_type": f["transaction_type"], "filing_date": f["filing_date"] or None,
+        "sec_url": f["sec_url"] or "",
+        "strategy_tags": json.dumps(tags["strategy_tags"]), "agent_tags": json.dumps(tags["agent_tags"]),
+    }
+
+
 def ingest_form4(symbols: list = None, limit: int = 5) -> dict:
     """Ingest Form 4 data for portfolio symbols."""
     if not symbols:
@@ -188,14 +220,7 @@ def ingest_form4(symbols: list = None, limit: int = 5) -> dict:
             tags = tag_content(text=f"insider trading {sym} {f.get('transaction_type','')}", title=f"Form 4: {sym}")
             insert_attempts += 1
             try:
-                cur.execute("""
-                    INSERT INTO sec_form4 (symbol, filer_name, filer_relation, transaction_type,
-                        filing_date, sec_url, strategy_tags, agent_tags)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                """, (sym, f["filer_name"], f["filer_relation"], f["transaction_type"],
-                      f["filing_date"] or None, f["sec_url"],
-                      json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"])))
+                cur.execute(FORM4_INSERT_SQL, _form4_insert_params(sym, f, tags))
                 total_new += cur.rowcount
             except Exception:
                 insert_errors += 1
@@ -293,7 +318,7 @@ def dry_run(argv) -> int:
         LANE_ID, {"symbols_total": plan["symbols_total"], "would_scan": n,
                   "symbols_with_stored_filings": len(plan["stored"]),
                   "sec_requests_planned": 2 * n},
-        would_write=[f"sec_form4 INSERT ... ON CONFLICT DO NOTHING (<= {5 * n} rows)",
+        would_write=[f"sec_form4 INSERT ... WHERE NOT EXISTS (symbol, sec_url) (<= {5 * n} new rows)",
                      "pipeline_runs row (PipelineRun)"])
     return 0
 
