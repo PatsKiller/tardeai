@@ -88,8 +88,10 @@ def test_forbidden_tokens_derive_from_sources_of_truth():
     assert set(SECRET_KEYS) <= set(LD.FORBIDDEN_LANE_SUBSTRINGS)
     assert {"secret", "stop", "position", "guard", "deploy", "sender", "sm-render", "sm_render"} <= set(
         LD.FORBIDDEN_LANE_SUBSTRINGS)
-    # The gateway's matcher is imported, not copied.
-    assert LD._gateway_forbidden_token is GW.forbidden_route_token
+    # Every source token is a phrase of the one word-boundary matcher (operator ruling 2026-10-10, REMEDIATION_PLAN
+    # §7 ruling 2; tests/test_lane_dispatch_word_boundary_20261010.py), derived from the lists, not copied.
+    assert set(FORBIDDEN_ROUTE_TOKENS) | set(FORBIDDEN_COMMAND_TOKENS) | set(SECRET_KEYS) <= {
+        t for t, _ in LD._PHRASES}
 
 
 # ── parsing ──────────────────────────────────────────────────────────────────────────────────────
@@ -248,9 +250,16 @@ def test_forbidden_token_in_command_or_script_field():
     assert LD.dispatch_eligible(_row(script="scripts/sync_basis_from_broker.py"))[0] is False
 
 
-# Blocker 2 (review of #1595): the gateway refuses substrings, so eligibility must too.
+# Blocker 2 (review of #1595): glued compounds must block. Kept under the 2026-10-10 whole-word ruling by the
+# brand-substring and COMPOUND_PARTNERS rules; `reorder-watchlist` (a watchlist re-sort, re+order) is now allowed
+# by that ruling and is asserted allowed below.
 SUBSTRING_LANES = ["schwab-brokers-sync", "placeorders", "liveorders", "n8n-activation-grants",
-                   "trailingstop-manager", "positionsync", "schwab-token-refresh", "reorder-watchlist"]
+                   "trailingstop-manager", "positionsync", "schwab-token-refresh"]
+
+
+def test_reorder_watchlist_is_allowed_under_the_word_boundary_ruling():
+    row = _row(lane_id="reorder-watchlist", expression="0 7 * * 1-5 $PY scripts/report.py", match="scripts/report.py")
+    assert LD.forbidden_hits(row, allowlist_argv={}) == []
 
 
 @pytest.mark.parametrize("lane_id", SUBSTRING_LANES)

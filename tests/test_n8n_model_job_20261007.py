@@ -125,7 +125,9 @@ def test_task_type_is_derived_from_the_process_server_side(tmp_path):
     """Defect 3 (2026-10-08): the gateway sent task type `model_job` for every job, so the bridge selected the digest
     process regardless of job.process_id. run_model_job now derives it from PROCESS_TASK_TYPE."""
     root = _root(tmp_path)
-    assert M.PROCESS_TASK_TYPE == {"n8n_material_digest_draft": "model_job", "n8n_ops_summary_draft": "ops_summary"}
+    assert M.PROCESS_TASK_TYPE == {"n8n_material_digest_draft": "model_job", "n8n_ops_summary_draft": "ops_summary",
+                                   # 2026-10-10 (REMEDIATION_PLAN §6): lane failure diagnosis
+                                   "n8n_lane_failure_diagnosis": "lane_failure_diagnosis"}
     call = _ok_call()
     r = M.run_model_job(_job(root), governed_call=call, now=NOW, root=root, schemas=SCHEMAS)
     assert r["state"] == "ARTIFACT_WRITTEN" and r["task_type"] == "model_job" and call.seen[-1]["task_type"] == "model_job"
@@ -172,9 +174,11 @@ def test_build_messages_without_a_template_is_byte_identical_to_the_2026_10_07_p
 def test_templates_render_server_side_and_reproduce_the_inline_prompt_for_both_processes():
     templates = M.load_templates()
     assert "_invalid" not in templates, templates.get("_invalid")
-    assert sorted(templates) == ["material_digest_draft.v1", "ops_summary_draft.v1"]
-    for t in templates.values():
-        assert t["schema"] == M.TEMPLATE_SCHEMA and t["version"] == 1 and t["max_artifact_bytes"] == 60_000
+    # 2026-10-10: + lane_failure_diagnosis.v1 (REMEDIATION_PLAN §6; its own prompt, tested in test_n8n_llm_remediation_20261010)
+    assert sorted(templates) == ["lane_failure_diagnosis.v1", "material_digest_draft.v1", "ops_summary_draft.v1"]
+    for tid_, t in templates.items():
+        cap = 24_000 if tid_ == "lane_failure_diagnosis.v1" else 60_000   # the diagnosis pack is bounded tighter
+        assert t["schema"] == M.TEMPLATE_SCHEMA and t["version"] == 1 and t["max_artifact_bytes"] == cap
         assert "{{artifact}}" in t["user_template"] and "{{schema_keys}}" in t["system"]
     artifact = {"sha256": "e" * 64, "body": {"k": "{{artifact}} {{schema_keys}}"}}   # placeholders inside data must NOT expand
     for process_id, schema_id in (("n8n_material_digest_draft", "material_change_digest_draft/v1"),

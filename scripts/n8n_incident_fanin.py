@@ -270,6 +270,10 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     # 3j. n8n governance checks (AGENTS.md 3.0.0 §23.10 P16/P18, 2026-10-09): host-side cron receipts of
     # scripts/check_n8n_activation_grants.py and scripts/check_n8n_workflow_drift.py. See _governance_findings.
     out.extend(_governance_findings(root, now, prev))
+    # 3k. LLM failure diagnosis (REMEDIATION_PLAN §6 R4/R5, 2026-10-10): the diagnoser's escalations (P1 low confidence,
+    # refused action or failed remediation; P2 suggestion / approval) and its own liveness (a stale, failed or
+    # blind diagnoser is a P1). The diagnoser never sends; the incident notifier carries these. See _diagnosis_findings.
+    out.extend(_diagnosis_findings(root, now))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -599,6 +603,75 @@ def _governance_findings(root: Path, now: datetime, prev: dict[str, Any] | None 
                               "detail": (f"{NOTES[key]} (lane {lane_id} scheduled={'yes' if scheduled else 'unknown/no'}, "
                                          f"previous run unavailable={'yes' if repeated else 'no'})")[:160],
                               "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
+    return found
+
+
+DIAGNOSIS_SOURCE = "n8n_failure_diagnosis"
+DIAGNOSIS_RECEIPT_REL = "data/runtime/n8n_failure_diagnosis_last.json"
+DIAGNOSIS_LANE = "n8n-failure-diagnosis"
+DIAGNOSIS_DEFAULT_CADENCE_H = 5 / 60
+DIAGNOSIS_STALE_FACTOR = 3.0
+DIAGNOSIS_BLIND_CYCLES = 2
+
+
+def _diagnosis_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """The diagnoser's receipt (scripts/n8n_failure_diagnosis.py). Escalations are passed through at the priority the
+    diagnoser chose (P1/P2), one item per incident key, until the diagnoser drops them (its SIEM row closed).
+    Liveness (R5), only once the lane is scheduled: receipt missing or older than 3x cadence, ok false, or
+    `consecutive_blind` >= 2 (eligible incidents, no model call, not deferred) is a P1. Escalations from a receipt
+    older than 24 h are not passed through (the stale receipt is the finding). TRADEAI_FANIN_DIAGNOSIS=0 opts out."""
+    key = "diagnosis_source"
+    NOTES.pop(key, None)
+    if os.environ.get("TRADEAI_FANIN_DIAGNOSIS", "1") == "0":
+        NOTES[key] = "unavailable:RuntimeError:disabled_by_env"
+        return []
+    found: list[dict[str, Any]] = []
+    day0 = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    try:
+        row = _governance_lane(DIAGNOSIS_LANE) or {}
+    except Exception as exc:  # noqa: BLE001 — a broken registry read is a note, never a crash
+        row = {}
+        NOTES[key] = f"registry_unavailable:{type(exc).__name__}"
+    sched = row.get("scheduler") or {}
+    # A shadow-stage dispatcher row runs the diagnoser with --dry-run, which writes no receipt: liveness starts at
+    # canary/cutover (or a cron/systemd line), never while it is only shadowed.
+    scheduled = (row.get("state") == "ACTIVE" and sched.get("kind") not in (None, "", "none")
+                 and sched.get("stage") != "shadow")
+    cadence = float(row.get("expected_cadence_hours") or DIAGNOSIS_DEFAULT_CADENCE_H)
+    doc = _load(root / DIAGNOSIS_RECEIPT_REL)
+    base = {"source": DIAGNOSIS_SOURCE, "artifact_rel": DIAGNOSIS_RECEIPT_REL, "store": "data/runtime"}
+    if not doc:
+        if scheduled:
+            found.append({**base, "item": "diagnoser:receipt_missing", "severity": "P1",
+                          "detail": f"lane {DIAGNOSIS_LANE} is scheduled but its receipt is missing", "detected_at": day0})
+        NOTES.setdefault(key, f"ok:no_receipt:scheduled={'yes' if scheduled else 'no'}")
+        return found
+    age_h = (now - _stable(doc.get("as_of"), now)).total_seconds() / 3600 if doc.get("as_of") else None
+    if scheduled:
+        if age_h is None or age_h > DIAGNOSIS_STALE_FACTOR * cadence:
+            found.append({**base, "item": "diagnoser:receipt_stale", "severity": "P1",
+                          "detail": f"age_h={None if age_h is None else round(age_h, 2)} > {DIAGNOSIS_STALE_FACTOR}x "
+                                    f"cadence {round(cadence, 3)}h", "detected_at": day0})
+        if doc.get("ok") is False:
+            found.append({**base, "item": "diagnoser:cycle_not_ok", "severity": "P1",
+                          "detail": f"source_notes={json.dumps(doc.get('source_notes') or {})[:120]}",
+                          "detected_at": day0})
+        if int(doc.get("consecutive_blind") or 0) >= DIAGNOSIS_BLIND_CYCLES:
+            found.append({**base, "item": "diagnoser:blind", "severity": "P1",
+                          "detail": f"{doc.get('consecutive_blind')} cycles with eligible incidents and no diagnosis",
+                          "detected_at": day0})
+    passed = 0
+    if age_h is not None and age_h <= 24:
+        for e in doc.get("escalations") or []:
+            sev = str(e.get("priority") or "P2")
+            if sev not in ("P1", "P2"):
+                continue
+            found.append({**base, "item": f"escalate:{e.get('lane')}/{e.get('key')}", "severity": sev,
+                          "detail": str(e.get("detail") or e.get("reason") or "")[:160],
+                          "detected_at": e.get("at") or doc.get("as_of")})
+            passed += 1
+    NOTES[key] = (f"ok:escalations={passed}:age_h={None if age_h is None else round(age_h, 2)}:"
+                  f"scheduled={'yes' if scheduled else 'no'}")
     return found
 
 

@@ -367,6 +367,87 @@ def test_timestamp_only_change_is_skipped_but_severity_change_updates_in_place()
     assert not p["insert"]
 
 
+def _diag_line(key, *, siem_id, kind="diagnosis", **kw):
+    rec = {"schema": B.DIAGNOSIS_SCHEMA, "kind": kind, "incident_key": key, "siem_id": siem_id,
+           "at": "2026-10-10T04:01:00+00:00"}
+    if kind == "diagnosis":
+        rec.update(cause="lane-b exited 1 on a refused DB connection", confidence=0.85, action_id="rerun_dry_run",
+                   outcome="requested:dry_run:rem-x-dry_run", provider="grok", model_id="grok-fast", cost_usd=0.0012,
+                   latency_ms=900, citations=["siem:1", "run:n8n-wf-wfB-1"])
+    rec.update(kw)
+    return json.dumps(rec) + "\n"
+
+
+def test_bridge_folds_a_diagnosis_into_the_right_row_once_and_rerun_is_idempotent(env):
+    """2026-10-10 (§9.4 one writer): the diagnoser writes data/runtime/n8n_diagnoses/diagnoses.jsonl; the bridge
+    folds the record into the n8n:<lane> row whose incident key it names — and into no other row — exactly once."""
+    env["setup"]([run_row(1, "lane-a", "RUN_FAILED", minutes_ago=6, wf="wfA"),
+                  run_row(2, "lane-b", "RUN_FAILED", minutes_ago=5, wf="wfB")], fanin_doc([]))
+    db = FakeDB()
+    assert env["run"](db, "--apply") == 0
+    rows = {r["component"]: r for r in db.rows}
+    a, b = rows["n8n:lane-a"], rows["n8n:lane-b"]
+    msg_a = a["message"]
+    store = env["state"] / B.DIAGNOSES_REL
+    store.parent.mkdir(parents=True, exist_ok=True)
+    key_b = B.incident_key(b["id"], b["severity"], b["message"])
+    store.write_text(_diag_line(key_b, siem_id=b["id"]) + "not json\n"
+                     + _diag_line("siem999-000000000000", siem_id=999))      # a stale incident: ignored
+    n_sql = len(db.sql)
+    assert env["run"](db, "--apply") == 0
+    writes = [q for q in db.sql[n_sql:] if q.lstrip().upper().startswith(("INSERT", "UPDATE"))]
+    assert len(writes) == 1 and len(db.rows) == 2                             # one UPDATE, onto lane-b only
+    assert a["message"] == msg_a
+    assert B.DIAG_MARKER in b["message"] and "action=rerun_dry_run" in b["message"]
+    assert 'cause="lane-b exited 1 on a refused DB connection"' in b["message"]
+    assert "model=grok/grok-fast" in b["message"] and "cost_usd=0.0012" in b["message"]
+    assert f"key={key_b}" in b["message"] and "cites=siem:1,run:n8n-wf-wfB-1" in b["message"]
+    assert b["action_taken"].startswith("n8n_siem_bridge: diagnosis folded (n8n_failure_diagnosis: rerun_dry_run")
+    assert B.strip_diagnosis(b["message"]) in b["message"] and B.incident_key(b["id"], b["severity"], b["message"]) == key_b
+    rec = json.loads((env["state"] / B.RECEIPT_REL).read_text())
+    assert rec["diagnoses_folded"] == 1 and rec["source_notes"]["diagnoses"] == "diagnoses:ok:2:bad_lines=1"
+    # idempotent: the same store again writes nothing
+    folded, n_sql = b["message"], len(db.sql)
+    assert env["run"](db, "--apply") == 0
+    assert not [q for q in db.sql[n_sql:] if q.lstrip().upper().startswith(("INSERT", "UPDATE"))]
+    assert b["message"] == folded
+    # a remediation step for the same incident is one more fold, then idempotent again
+    with store.open("a") as fh:
+        fh.write(_diag_line(key_b, siem_id=b["id"], kind="remediation", outcome="remediated"))
+    assert env["run"](db, "--apply") == 0
+    assert b["message"].endswith("remediation=remediated") and B.DIAG_MARKER in b["message"]
+    n_sql = len(db.sql)
+    assert env["run"](db, "--apply") == 0
+    assert not [q for q in db.sql[n_sql:] if q.lstrip().upper().startswith(("INSERT", "UPDATE"))]
+
+
+def test_changed_finding_drops_the_old_diagnosis_and_unreadable_store_keeps_it():
+    def plan_for(detail, rows, diagnoses):
+        f = B._finding("lane-b", "RUN_FAILED", priority="P2", source="ledger", detail=detail,
+                       detected_at="2026-10-10T03:00:00+00:00", registry={}, workflow_id=None, execution_id=None,
+                       run_id=None)
+        return B.plan(B.merge([f]), rows, env="release:r", good_lanes=set(), ledger_ok=True, fanin_ok=True,
+                      diagnoses=diagnoses), B.message(f, "release:r")
+
+    _, base = plan_for("exit=1", [], {})
+    row = {"id": 4, "component": "n8n:lane-b", "event_type": "RUN_FAILED", "severity": "WARN", "message": base,
+           "lifecycle_state": "active"}
+    key = B.incident_key(4, "WARN", base)
+    diags = {key: {"diagnosis": json.loads(_diag_line(key, siem_id=4)), "remediation": None}}
+    p, _ = plan_for("exit=1", [row], diags)
+    row["message"] = p["update"][0]["message"]
+    assert B.DIAG_MARKER in row["message"]
+    # the store unreadable (None): an unchanged finding keeps the suffix it shows (skip, no erase)
+    p, _ = plan_for("exit=1", [row], None)
+    assert [r["id"] for r in p["skip"]] == [4]
+    # the finding changed: new evidence, new key -> the row is rewritten without the old diagnosis
+    p, _ = plan_for("exit=2", [row], diags)
+    assert B.DIAG_MARKER not in p["update"][0]["message"] and p["update"][0]["diagnosis_folded"] is None
+    # the workaround is gone: stable_text compares the whole message, suffix included
+    assert B.stable_text(row["message"]) != B.stable_text(base) and B.finding_text(row["message"]) == B.finding_text(base)
+    assert B.read_diagnoses(Path("/nonexistent/diagnoses.jsonl")) == ({}, "diagnoses:none")
+
+
 def test_acknowledged_row_counts_as_open_and_is_not_duplicated():
     f = B.merge(
         [

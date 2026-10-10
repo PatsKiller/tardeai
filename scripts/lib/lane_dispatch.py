@@ -9,15 +9,23 @@ Inert by default. A row with no `dispatch` block is mode "off": the dispatcher n
 block is also "off" for `dispatch_mode` (fail closed) and is reported by `validate_dispatch_block` and by
 scripts/check_lane_registry.py.
 
-FORBIDDEN-TOKEN RULE (AGENTS.md §0 rails 1-2, §23.3). Broker, order, stop, positions, secret, guard, deploy and
-sender lanes are never dispatch-eligible, whatever their dispatch block says. The tokens are derived from the
-existing sources of truth, not a parallel list:
-  * scripts/lib/n8n_coordination_gateway.forbidden_route_token — the gateway's own matcher over
-    FORBIDDEN_ROUTE_TOKENS (whole tokens AND substrings), run on the raw and the fully collapsed text;
-  * n8n_coordination_gateway.SECRET_KEYS (token, password, ...) — substrings;
-  * scripts/pipelines/pipeline_manifest.FORBIDDEN_COMMAND_TOKENS — script names, substrings;
-  * EXTRA_FORBIDDEN_SUBSTRINGS below — stop/positions, guard, deploy, sender, sm-render and broker/execution
-    names, which neither list spells out.
+FORBIDDEN-TOKEN RULE (AGENTS.md §0 rails 1-2, §23.3, §23.14). Broker, order, stop, positions, secret, guard,
+deploy and sender lanes are never dispatch-eligible, whatever their dispatch block says. The tokens are derived
+from the existing sources of truth, not a parallel list: n8n_coordination_gateway.FORBIDDEN_ROUTE_TOKENS and
+SECRET_KEYS, scripts/pipelines/pipeline_manifest.FORBIDDEN_COMMAND_TOKENS, and EXTRA_FORBIDDEN_WORDS below
+(stop/positions, guard, deploy, sender, sm-render, submit and the broker/execution names neither list spells out).
+
+WHOLE-WORD / PATH-SEGMENT MATCHING (operator ruling 2026-10-10 ~00:20 ET, n8n-maturity REMEDIATION_PLAN §7
+ruling 2; tests/test_lane_dispatch_word_boundary_20261010.py). The text is split on every non-alphanumeric
+(space, _ - / . = : and quotes), so argv words, path segments, flags and env assignments (NAME=value) are all
+words. A forbidden word matches a text word that IS the word or an inflection of it (orders, stops, sizing,
+promotion, deployment — _word_forms); a multi-word token (two_factor, place_order, api_key) matches as
+contiguous words or as its joined form. Three rules keep the compound cases the substring matcher caught:
+broker brand names and other DISTINCTIVE_SUBSTRINGS, and the pipeline_manifest script names, still match as
+substrings of the separator-collapsed text; and a COMPOUND_PARTNERS word glued to a forbidden word
+(liveorders, trailingstop, positionsync) matches. What no longer matches is a forbidden word buried inside an
+unrelated word or across a separator: topic / hermes_top20 (stop), synthesizer (size), redeploy (deploy),
+recorder (order), stoplights. The gateway's own HTTP route matcher (forbidden_route_token) is unchanged.
 They are matched against the lane_id, every string in `scheduler` (or the whole string when `scheduler` is a
 plain string), exec_start/service, command/script, and the lane's real argv in config/n8n_run_allowlist.json.
 A row marked `stay_on_cron` or recommendation KEEP_ON_CRON (B1 reconcile, PR #1597), or with
@@ -45,13 +53,11 @@ try:
     from scripts.lib import cron_schedule as _cron
     from scripts.lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS as _ROUTE_TOKENS
     from scripts.lib.n8n_coordination_gateway import SECRET_KEYS as _SECRET_WORDS
-    from scripts.lib.n8n_coordination_gateway import forbidden_route_token as _gateway_forbidden_token
     from scripts.pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS as _COMMAND_TOKENS
 except ImportError:                                        # imported as lib.lane_dispatch
     from lib import cron_schedule as _cron  # type: ignore
     from lib.n8n_coordination_gateway import FORBIDDEN_ROUTE_TOKENS as _ROUTE_TOKENS  # type: ignore
     from lib.n8n_coordination_gateway import SECRET_KEYS as _SECRET_WORDS  # type: ignore
-    from lib.n8n_coordination_gateway import forbidden_route_token as _gateway_forbidden_token  # type: ignore
     from pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS as _COMMAND_TOKENS  # type: ignore
 
 DISPATCH_MODES = ("off", "dry_run", "live")
@@ -95,19 +101,41 @@ ISSUE_AFTER_UNKNOWN_LANE = "after_unknown_lane"
 ISSUE_BAD_BLOCK = "bad_block"
 ISSUE_FORBIDDEN_LANE = "forbidden_lane"
 
-#: Words neither source list spells out, matched as SUBSTRINGS (like the gateway): secret renderers, stops and
-#: positions, guard, deploy, senders, and the broker/execution names (schwab, alpaca, snaptrade, moomoo, ibkr,
-#: paper, executor) that AGENTS §0 rails 1-2 and the allowlist's `never` list keep off n8n.
-EXTRA_FORBIDDEN_SUBSTRINGS = (
+#: Words neither source list spells out: secret renderers, stops and positions, guard, deploy, senders, order
+#: submission (submit — e.g. MOMENTUM_SCALP_VALIDATION_SUBMIT=1, --submit-validation), and the broker/execution
+#: names (schwab, alpaca, snaptrade, moomoo, ibkr, paper, executor) that AGENTS §0 rails 1-2 and the allowlist's
+#: `never` list keep off n8n.
+EXTRA_FORBIDDEN_WORDS = (
     "secret", "stop", "position", "guard", "deploy", "sender", "sm-render", "sm_render", "smrender",
-    "schwab", "alpaca", "snaptrade", "moomoo", "ibkr", "paper", "executor",
+    "schwab", "alpaca", "snaptrade", "moomoo", "ibkr", "paper", "executor", "submit",
     # 4.3.0 (R1): secret renderers the 4.1.0 policy test names but this list missed (render_env.py was eligible).
     "render_env", "rotation_daemon", "bitwarden",
 )
-#: Kept for callers/tests of the first cut; the gateway's route tokens (its matcher also does substrings).
+#: Name kept for callers of the first cut (it is now matched by word, not substring).
+EXTRA_FORBIDDEN_SUBSTRINGS = EXTRA_FORBIDDEN_WORDS
+#: The gateway's route tokens.
 FORBIDDEN_LANE_TOKENS = frozenset(_ROUTE_TOKENS)
-#: Substring set: pipeline_manifest's excluded scripts, the gateway's secret words, and the extras.
-FORBIDDEN_LANE_SUBSTRINGS = tuple(_COMMAND_TOKENS) + tuple(sorted(_SECRET_WORDS)) + EXTRA_FORBIDDEN_SUBSTRINGS
+#: pipeline_manifest's excluded scripts, the gateway's secret words, and the extras.
+FORBIDDEN_LANE_SUBSTRINGS = tuple(_COMMAND_TOKENS) + tuple(sorted(_SECRET_WORDS)) + EXTRA_FORBIDDEN_WORDS
+#: Every forbidden token, in report order: route tokens, then script names / secret words / extras.
+FORBIDDEN_TOKENS_ALL = tuple(sorted(_ROUTE_TOKENS)) + FORBIDDEN_LANE_SUBSTRINGS
+#: Names no ordinary word contains: still matched as substrings of the separator-collapsed text, so
+#: `schwabbrokers`, `placeorders`, `twofactor` and `brokerstop` keep blocking.
+DISTINCTIVE_SUBSTRINGS = ("schwab", "alpaca", "snaptrade", "moomoo", "ibkr", "broker", "totp", "twofactor",
+                          "placeorder", "smrender", "liveflag", "brokertruth")
+#: Words that, glued directly to a forbidden word with no separator, still name the forbidden thing
+#: (liveorders, trailingstop, positionsync, stopmanager). Explicit and small on purpose: `re`+deploy,
+#: `rec`+order(er), stop+`lights` and synthe+`sizer` are not in it.
+COMPOUND_PARTNERS = frozenset({
+    "live", "place", "trail", "trailing", "sync", "cancel", "manager", "mgr", "limit", "hard", "auto", "smart",
+    "worker", "runner", "daemon", "reconcile", "reconciler", "supervisor", "refresh", "replace", "modify",
+    "bracket", "oco", "loss", "route", "router", "submit", "send", "write", "writer", "render", "sizer",
+})
+_WORD_SUFFIXES = ("", "s", "es", "ed", "d", "er", "ers", "r", "rs", "ing", "ion", "ions", "ment", "ments",
+                  "or", "ors", "age", "ages")
+_E_DROP_SUFFIXES = ("ing", "ion", "ions", "or", "ors", "ed", "er", "ers")
+_DOUBLING = re.compile(r"[^aeiou][aeiou][bdgkmnprt]$")
+_FILE_EXTS = frozenset({"py", "sh"})
 #: Registry markers (B1 reconcile, PR #1597) that pin a lane to cron/systemd whatever its dispatch block says.
 KEEP_ON_CRON = "KEEP_ON_CRON"
 DEFAULT_RUN_ALLOWLIST = Path(__file__).resolve().parents[2] / "config" / "n8n_run_allowlist.json"
@@ -413,25 +441,86 @@ def _command_fields(row: Mapping[str, Any], allowlist_argv: Optional[Mapping[str
     return [(name, str(v).lower()) for name, v in fields if v]
 
 
+def _words(text: str) -> list[str]:
+    return [w for w in _TOKEN_SPLIT.split(text.lower()) if w]
+
+
+def _word_forms(word: str) -> frozenset[str]:
+    """`word` and its inflections: orders, stops/stopped, positions, sizing, promotion, deployment."""
+    out = {word + s for s in _WORD_SUFFIXES}
+    if word.endswith("e"):
+        out |= {word[:-1] + s for s in _E_DROP_SUFFIXES}
+    if _DOUBLING.search(word):
+        out |= {word + word[-1] + s for s in ("ed", "er", "ers", "ing")}
+    return frozenset(out)
+
+
+def _phrase(token: str) -> tuple[str, ...]:
+    """A forbidden token as words, a trailing file extension dropped (positions_sync.py -> positions, sync)."""
+    words = _words(token)
+    while len(words) > 1 and words[-1] in _FILE_EXTS:
+        words = words[:-1]
+    return tuple(words)
+
+
+#: (reported token, its words) for every forbidden token.
+_PHRASES = tuple((tok, _phrase(tok)) for tok in FORBIDDEN_TOKENS_ALL if _phrase(tok))
+#: pipeline_manifest script names, collapsed (schwab_position_sync.py -> schwabpositionsync): substrings.
+_SCRIPT_SUBSTRINGS = tuple((tok, "".join(_phrase(tok))) for tok in _COMMAND_TOKENS if _phrase(tok))
+
+
+def _compound_hit(word: str, forms: frozenset[str]) -> bool:
+    """`word` is a forbidden form glued to a COMPOUND_PARTNERS word, either way round (liveorders, positionsync)."""
+    for f in forms:
+        if len(f) < 3 or len(word) <= len(f):
+            continue
+        if word.startswith(f) and word[len(f):] in COMPOUND_PARTNERS:
+            return True
+        if word.endswith(f) and word[: -len(f)] in COMPOUND_PARTNERS:
+            return True
+    return False
+
+
+def forbidden_text_hits(text: str) -> list[str]:
+    """Every forbidden token in `text` under whole-word / path-segment matching (module docstring), in
+    FORBIDDEN_TOKENS_ALL order then the substring rules. [] when clean. The one matcher behind
+    forbidden_hits / dispatch_eligible and the §23.14 test mirror."""
+    words = _words(text or "")
+    if not words:
+        return []
+    squashed = "".join(words)
+    hits: list[str] = []
+    for tok, phrase in _PHRASES:
+        last = _word_forms(phrase[-1])
+        joined = _word_forms("".join(phrase))
+        n = len(phrase)
+        found = any(w in joined or _compound_hit(w, joined) for w in words)
+        if not found and n > 1:
+            found = any(tuple(words[i:i + n - 1]) == phrase[:-1] and words[i + n - 1] in last
+                        for i in range(len(words) - n + 1))
+        if found and tok not in hits:
+            hits.append(tok)
+    for tok, sub in _SCRIPT_SUBSTRINGS:
+        if sub in squashed and tok not in hits:
+            hits.append(tok)
+    for sub in DISTINCTIVE_SUBSTRINGS:
+        if sub in squashed and sub not in hits:
+            hits.append(sub)
+    return hits
+
+
 def forbidden_hits(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None
                    ) -> list[tuple[str, str]]:
     """Every (token, field) of the forbidden-token rule that this row trips, in a stable order.
 
-    At least as strict as the gateway: its own matcher (whole tokens + substrings of the '-'/'/'-collapsed
-    text) runs on the raw text AND on the text with every non-alphanumeric removed, so `placeorders`,
-    `positionsync`, `two_factor` and `bash -c '...'` wrappers all match. Substring lists match the raw text and
-    the fully collapsed text."""
+    Whole-word / path-segment matching (forbidden_text_hits): argv words, path segments, flags and env
+    assignments are each compared, so `topic_curator` no longer trips `stop` while `positions_sync.py`,
+    `placeorders`, `two_factor`, `MOMENTUM_SCALP_VALIDATION_SUBMIT=1` and `bash -c '...'` wrappers all match."""
     hits: list[tuple[str, str]] = []
     for field, text in _command_fields(row, allowlist_argv):
-        squashed = re.sub(r"[^a-z0-9]+", "", text)
-        for variant in (text, squashed):
-            tok = _gateway_forbidden_token(variant)
-            if tok is not None and (tok, field) not in hits:
+        for tok in forbidden_text_hits(text):
+            if (tok, field) not in hits:
                 hits.append((tok, field))
-        for sub in FORBIDDEN_LANE_SUBSTRINGS:
-            s = sub.lower()
-            if (s in text or re.sub(r"[^a-z0-9]+", "", s) in squashed) and (sub, field) not in hits:
-                hits.append((sub, field))
     return hits
 
 

@@ -396,7 +396,8 @@ PROJECTIONS: list[dict[str, Any]] = [
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",
-        "consumers": ["Opportunity modal chart"],
+        # watchlist_entry_planner: yfinance-fallback bars (L473/L474), operator ruling 2026-10-10 — no broker keys.
+        "consumers": ["Opportunity modal chart", "watchlist_entry_planner (bars fallback)"],
     },
     {
         "id": "positions_context",

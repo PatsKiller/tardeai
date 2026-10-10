@@ -68,49 +68,47 @@ OUTPUT (strict JSON):
                "suggested_entry": <number>, "sizing_rationale": "<max 25 words>"}}}}"""
 
 
-def _alpaca_creds():
-    """ALPACA_API_KEY / ALPACA_SECRET_KEY from env, falling back to the repo .env."""
-    import os
-    k, s = os.getenv("ALPACA_API_KEY", ""), os.getenv("ALPACA_SECRET_KEY", "")
-    if k and s:
-        return k, s
-    try:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-            if line.startswith("ALPACA_API_KEY=") and not k:
-                k = line.split("=", 1)[1].strip()
-            elif line.startswith("ALPACA_SECRET_KEY=") and not s:
-                s = line.split("=", 1)[1].strip()
-    except Exception:
-        pass
-    return k, s
+#: Daily candles are stamped at the bar's date, so the broker envelope's 26 h `technicals` window calls every
+#: pre-close read stale. A last candle older than this (a long weekend + one missed load) is refused instead.
+BROKER_BARS_MAX_AGE_HOURS = 120.0
 
 
-def _bars_alpaca(symbol, days=70):
-    """Daily OHLC from the Alpaca data API (IEX feed — works on paper keys, NOT rate-limited like
-    yfinance). Fallback bars source so entry plans keep generating when Yahoo is throttled."""
-    import requests
-    from datetime import datetime, timedelta, timezone
-    k, s = _alpaca_creds()
-    if not (k and s):
-        return None
-    start = (datetime.now(timezone.utc) - timedelta(days=max(days, 70) * 2 + 20)).date().isoformat()
+def _broker_db_query():
+    """The Data Broker's db_query over the lane's existing DB session (db_adapter._execute). No credentials of
+    any provider are read in this process."""
+    from db_adapter import _execute
+
+    def _q(sql, params=None, fetch="all"):
+        return _execute(sql, params, fetch=fetch)
+    return _q
+
+
+def _bars_data_broker(symbol, days=70):
+    """Daily OHLC from the host Data Broker (lib.data_broker.ohlc_bars.get_daily_ohlc — market_ohlcv_bars,
+    read-only, zero provider calls). Fallback bars source so entry plans keep generating when Yahoo is
+    throttled. Operator ruling 2026-10-10 (n8n-maturity REMEDIATION_PLAN §7 ruling 3): this lane fetches bars
+    through the host data broker and holds no broker credentials — it replaced a direct market-data call that
+    read broker API keys from this process's env / the repo env file. Candles only (the planner needs
+    high/low for ATR and swings), last candle <= BROKER_BARS_MAX_AGE_HOURS old, >= 50 bars; else None."""
     try:
-        r = requests.get(
-            f"https://data.alpaca.markets/v2/stocks/{symbol}/bars",
-            params={"timeframe": "1Day", "start": start, "limit": 500, "adjustment": "raw", "feed": "iex"},
-            headers={"APCA-API-KEY-ID": k, "APCA-API-SECRET-KEY": s}, timeout=15)
-        if r.status_code != 200:
-            return None
-        bars = [{"high": float(b["h"]), "low": float(b["l"]), "close": float(b["c"])}
-                for b in (r.json().get("bars") or [])]
-        return bars[-days:] if len(bars) >= 50 else None
+        from lib.data_broker.ohlc_bars import get_daily_ohlc
+    except ImportError:  # pragma: no cover - imported as scripts.watchlist_entry_planner
+        from scripts.lib.data_broker.ohlc_bars import get_daily_ohlc  # type: ignore
+    try:
+        res = get_daily_ohlc(_broker_db_query(), symbol, days=max(days, 70) * 2 + 20)
     except Exception:
         return None
+    age = res.get("age_hours")
+    if not res.get("ok") or res.get("kind") != "candles" or age is None or age > BROKER_BARS_MAX_AGE_HOURS:
+        return None
+    bars = [{"high": b["high"], "low": b["low"], "close": b["close"]} for b in res.get("bars") or []
+            if b.get("high") is not None and b.get("low") is not None and b.get("close") is not None]
+    return bars[-days:] if len(bars) >= 50 else None
 
 
 def _bars(symbol, days=70):
-    """yfinance first; on rate-limit/empty, fall back to Alpaca (IEX). Either returns the last `days`
-    of {high,low,close} (≥50 bars) or None."""
+    """yfinance first; on rate-limit/empty, fall back to the host Data Broker (market_ohlcv_bars). Either
+    returns the last `days` of {high,low,close} (≥50 bars) or None."""
     try:
         import yfinance as yf
         h = yf.Ticker(symbol).history(period="1y")
@@ -120,7 +118,7 @@ def _bars(symbol, days=70):
             return bars[-days:]
     except Exception:
         pass
-    return _bars_alpaca(symbol, days)
+    return _bars_data_broker(symbol, days)
 
 
 def _tech(bars):

@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts import check_n8n_activation_grants as GRANTS  # noqa: E402
+from scripts.lib import lane_dispatch as LD  # noqa: E402
 from scripts.lib import n8n_coordination_gateway as G  # noqa: E402
 from scripts.pipelines import pipeline_manifest as PM  # noqa: E402
 
@@ -336,17 +337,13 @@ SENDER_OR_INGEST_TOKENS = (
 )
 
 
-def _route_forbidden(token: str) -> str | None:
-    """The gateway's FORBIDDEN_ROUTE_TOKENS test applied to an argv token (as tests/test_n8n_run_allowlist_20261008.py)."""
-    text = token.strip().lower()
-    for tok in (t for t in re.split(r"[^a-z0-9]+", text) if t):
-        if tok in G.FORBIDDEN_ROUTE_TOKENS:
-            return tok
-    collapsed = text.replace("-", "").replace("/", "")
-    for tok in G.FORBIDDEN_ROUTE_TOKENS:
-        if tok in collapsed and tok != "title":
-            return tok
-    return None
+def _forbidden_words(text: str) -> list[str]:
+    """FORBIDDEN_COMMAND_TOKENS + FORBIDDEN_ROUTE_TOKENS (+ SECRET_KEYS and the dispatcher extras) under the
+    whole-word / path-segment matcher of scripts/lib/lane_dispatch.forbidden_text_hits — operator ruling
+    2026-10-10 ~00:20 ET (n8n-maturity REMEDIATION_PLAN §7 ruling 2). Words, path segments, flags and env
+    assignments are compared, not substrings: `topic` no longer trips `stop`. The safety matrix proving every
+    real broker/order/stop/secret lane still blocks is tests/test_lane_dispatch_word_boundary_20261010.py."""
+    return LD.forbidden_text_hits(text)
 
 
 def _is_service_daemon(scheduler: dict | None) -> bool:
@@ -367,13 +364,13 @@ def dispatcher_eligible(entry: dict, registry_row: dict | None = None) -> tuple[
             return False, f"daemon flag {tok}"
     if _is_service_daemon((registry_row or {}).get("scheduler")) or "Restart=always" in str(entry.get("source", "")):
         return False, "systemd service lane (daemon)"
-    for tok in argv:
-        for forbidden in PM.FORBIDDEN_COMMAND_TOKENS:
-            if forbidden in tok:
-                return False, f"broker/order token {forbidden} (FORBIDDEN_COMMAND_TOKENS)"
-        hit = _route_forbidden(tok)
-        if hit:
-            return False, f"route token {hit} (FORBIDDEN_ROUTE_TOKENS)"
+    for tok in [*argv, " ".join(argv)]:
+        hits = _forbidden_words(tok)
+        command_hits = [h for h in hits if h in PM.FORBIDDEN_COMMAND_TOKENS]
+        if command_hits:
+            return False, f"broker/order token {command_hits} (FORBIDDEN_COMMAND_TOKENS)"
+        if hits:
+            return False, f"forbidden token {hits} (FORBIDDEN_ROUTE_TOKENS / SECRET_KEYS / dispatcher extras)"
         low = tok.lower()
         for secret in SECRET_TOKENS:
             if secret.strip() in low:
@@ -464,6 +461,12 @@ def _entry(lane_id: str, command: list[str], dry=("--dry-run",), live=(), **kw) 
         (_entry("ingest", ["$PY", "scripts/finviz_ingestion.py"]), None, "ingest"),
         (_entry("by-analogy", ["$PY", "scripts/run_trade_ai_scalp_live.py"]), None, SCALP_EXCEPTION),
         (_entry("grant-maker", ["$PY", "scripts/issue_grant.py"]), None, "grant"),
+        (
+            _entry("env-submit", ["env", "MOMENTUM_SCALP_VALIDATION_SUBMIT=1", "$PY", "scripts/auto_proposal_generator.py"]),
+            None,
+            "submit",
+        ),
+        (_entry("flag-submit", ["$PY", "scripts/report.py", "--submit-validation"]), None, "submit"),
     ],
     ids=lambda v: v if isinstance(v, str) else None,
 )
@@ -487,6 +490,16 @@ def test_the_scalp_exception_is_accepted_only_while_it_meets_the_4_0_0_condition
 
 def test_a_plain_report_lane_is_eligible():
     assert dispatcher_eligible(_entry("ok", ["$PY", "scripts/storage_watch.py"], live=("--write",))) == (True, "ok")
+
+
+@pytest.mark.parametrize(
+    "script",
+    ["scripts/topic_curator.py", "scripts/hermes_top20_external_intel.py", "scripts/hermes_synthesizer.py",
+     "scripts/cash_redeploy_planner.py", "scripts/defense_inverse_stoplights.py"],
+)
+def test_word_boundary_ruling_false_positives_pass_the_token_test(script):
+    """Operator ruling 2026-10-10 (REMEDIATION_PLAN §7 ruling 2): whole words, not substrings."""
+    assert dispatcher_eligible(_entry("fp", ["$PY", script], live=("--apply",))) == (True, "ok")
 
 
 # ---------------------------------------------------------------- read-only guard carve-out (4.1.0)
