@@ -42,19 +42,31 @@ def _ensure(cur):
         calls INT NOT NULL DEFAULT 0, PRIMARY KEY (provider, day))""")
 
 
+_EXHAUSTED_LOGGED: set = set()
+
+
 def spend(provider: str, n: int = 1) -> bool:
-    """Record n calls. Returns True if within budget, False if exhausted (caller should skip)."""
+    """Record n calls if they fit the cap. Returns True if within budget, False if exhausted (caller skips).
+
+    The cap is checked BEFORE the ledger is incremented (2026-10-10): a refused call is not recorded, so
+    `calls` counts permitted requests only and can never read above the cap ("exhausted 23/22" was the
+    old increment-then-compare shape counting refusals as spend).
+    """
     try:
+        cap = _cap(provider)
         conn = _conn(); cur = conn.cursor()
         _ensure(cur)
-        cur.execute("""INSERT INTO api_budget_ledger (provider, day, calls) VALUES (%s, CURRENT_DATE, %s)
-                       ON CONFLICT (provider, day) DO UPDATE SET calls = api_budget_ledger.calls + %s
-                       RETURNING calls""", (provider, n, n))
-        calls = cur.fetchone()[0]
+        cur.execute("""INSERT INTO api_budget_ledger (provider, day, calls)
+                       SELECT %s, CURRENT_DATE, %s WHERE %s <= %s
+                       ON CONFLICT (provider, day) DO UPDATE SET calls = api_budget_ledger.calls + EXCLUDED.calls
+                       WHERE api_budget_ledger.calls + EXCLUDED.calls <= %s
+                       RETURNING calls""", (provider, n, n, cap, cap))
+        row = cur.fetchone()
         conn.commit()
-        if calls > _cap(provider):
-            if calls - n <= _cap(provider):   # log once at the crossing
-                print(f"  [api-budget] {provider} daily budget exhausted ({calls}/{_cap(provider)}) — skipping further calls")
+        if row is None:
+            if provider not in _EXHAUSTED_LOGGED:   # log once per process
+                _EXHAUSTED_LOGGED.add(provider)
+                print(f"  [api-budget] {provider} daily budget exhausted (cap {cap}) — skipping further calls")
             return False
         return True
     except Exception:
