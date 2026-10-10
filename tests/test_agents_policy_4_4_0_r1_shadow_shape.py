@@ -1,4 +1,4 @@
-"""AGENTS.md 4.4.0 — the R1 shadow row may be a cron row (§23.11, §23.18 (c)); PROPOSED 2026-10-10.
+"""AGENTS.md 4.4.0 — the R1 shadow and canary rows may be cron rows (§23.11, §23.18 (c)); PROPOSED 2026-10-10.
 
 The failure this guards against (Agent A, 2026-10-10): a §23.11 dispatcher row (`kind: n8n`, `expression:
 "dispatcher"`) fails CRON_PRESENT_WHILE_SCHEDULER_N8N and the inactive-n8n-row check while its cron line is live, so
@@ -9,8 +9,10 @@ What this amendment may and may not do, pinned here:
 * the code cannot run ahead of the vote: `lane_dispatch.R1_SHADOW_SHAPE_STATUS` equals the 4.4.0 row status;
 * §0, §2, §2A, §7A, §17 and §23.14 are byte-identical to the 4.3.0 base (`af292381c`);
 * the allowlist `never` list's never-under-any-class sentence is word for word, and the scalp sentence stays;
-* §23.11 and §23.18 (c) say exactly what the code admits: the cron row at `shadow` only, `dispatch.mode` dry_run,
-  a null `live_arg`; canary and cutover keep the dispatcher row; `tradeai-dispatcher` is refused as an expression;
+* §23.11 and §23.18 (c) say exactly what the code admits: the cron row at `shadow` (`dispatch.mode` dry_run, a
+  null `live_arg`) and at `canary` (operator ruling 2026-10-10 ~14:00 ET: mode live, `live_arg` set, the allowlist
+  flock lock equal to the cron line's lock); cutover keeps the dispatcher row; `tradeai-dispatcher` is refused as
+  an expression;
 * every new bullet cites its cause, and §23.7 records the replaced sentences.
 
 Works while 4.4.0 is PROPOSED and after the ratification edit (branches on the 4.4.0 row status).
@@ -150,7 +152,15 @@ def test_never_list_never_under_any_class_sentence_is_word_for_word():
     assert hashlib.sha256(head.encode("utf-8")).hexdigest() == NEVER_UNDER_ANY_CLASS_SHA256
     assert "Sole exception: trade-ai-scalp-live" in never
     f = _flat(never)
-    for frag in ("4.4.0", "shadow/canary/cutover", "dispatch.mode dry_run", "null live_arg", "R1_SHADOW_SHAPE_STATUS"):
+    for frag in (
+        "4.4.0",
+        "shadow/canary/cutover",
+        "dispatch.mode dry_run",
+        "null live_arg",
+        "at stage canary with dispatch.mode live",
+        "flock lock equal to the cron line's lock",
+        "R1_SHADOW_SHAPE_STATUS",
+    ):
         assert frag in f, frag
 
 
@@ -160,12 +170,14 @@ def test_never_list_never_under_any_class_sentence_is_word_for_word():
 def test_23_11_names_the_cron_shadow_row_and_the_dispatcher_name():
     f = _flat(_subsection("23.11"))
     for frag in (
-        "While its cron line is live, a lane in `shadow` may stay a cron row (4.4.0).",
+        "While its cron line is live, a lane in `shadow` or `canary` may stay a cron row (4.4.0).",
         '`scheduler.kind = "cron"`',
         '`scheduler.stage = "shadow"`',
         "mode `dry_run`",
         "it is a dispatcher row",
-        "Canary and cutover keep the dispatcher row above.",
+        "Cutover keeps the dispatcher row above.",
+        "a `dispatch` block in mode `live`",
+        "which must be the allowlist entry's lock",
         '`scheduler.expression = "dispatcher"` names that row',
         "`tradeai-dispatcher` is the dispatcher's n8n workflow id",
         "`_cutover.py --workflow-id`",
@@ -174,10 +186,11 @@ def test_23_11_names_the_cron_shadow_row_and_the_dispatcher_name():
         assert frag in f, frag
 
 
-def test_23_18_c_admits_the_cron_row_at_shadow_only():
+def test_23_18_c_admits_the_cron_row_at_shadow_and_canary_only():
     f = _flat(_subsection("23.18"))
-    assert "At `shadow` only, it may instead be the §23.11 cron row" in f
-    assert "whose allowlist `live_arg` is null" in f
+    assert "At `shadow` or `canary` only, it may instead be the §23.11 cron row" in f
+    assert 'At `shadow` it has `dispatch.mode = "dry_run"` and an allowlist `live_arg` of null' in f
+    assert "an allowlist lock equal to every `flock` lock in `scheduler.command_text`" in f
     assert "`R1_SHADOW_SHAPE_STATUS` is `ACTIVE`" in f
     assert "never the workflow id `tradeai-dispatcher`" in f
     assert "adds classes. It does not widen broker reach." in f  # 4.3.0 framing kept
