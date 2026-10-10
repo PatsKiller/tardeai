@@ -18,6 +18,9 @@ search, then prints what would be staged; write_research_rows, the auto_proposal
 last-run marker and the lane receipt are unreachable from it. A real run writes the per-band lane receipt
 <state_root>/data/runtime/catalyst-momentum-engine-<band>_last.json (ok_at only on success). Exit 1 when every
 candidate's catalyst search errored (search source down) — a run that found no catalyst is a finding, exit 0.
+Scalp hot tier (SCALP_HOT_TIER=1 + the search routing engine importable): search_catalyst goes through the routing
+engine (shared 20-min (subject, intent) cache with L708's identical "premarket catalyst" intent); the dry run passes
+dry_run=True to the engine. Knob off: the legacy SearXNG path, unchanged.
 """
 import os
 import sys
@@ -159,11 +162,26 @@ def main():
     return rc
 
 
-def _catalyst_search(search_catalyst, sym, band, cand):
-    """One catalyst search. With SEARCH_ROUTING_ENGINE=1 the candidate row (score, decision, rvol, gap_pct)
-    travels with the question so the routing engine can classify a scalp about to fire (2026-10-10);
-    otherwise the historic two-argument call, byte for byte."""
+def _search_kwargs(*, dry_run: bool) -> dict:
+    """Routing-engine kwargs for search_catalyst, only when the scalp hot tier's routed path is on (else the legacy
+    two-argument call, unchanged)."""
+    try:
+        from hermes_momentum_catalyst_researcher import _hot_research_on
+    except Exception:
+        return {}
+    return {"caller": "catalyst_momentum_engine", "dry_run": dry_run} if _hot_research_on() else {}
+
+
+def _catalyst_search(search_catalyst, sym, band, cand, *, dry_run: bool):
+    """One catalyst search, three paths (2026-10-10):
+    * scalp hot tier on (SCALP_HOT_TIER + routing engine importable): Q's routed call (``_search_kwargs``);
+    * else SEARCH_ROUTING_ENGINE=1: the candidate row travels with the question so the routing engine can
+      classify a scalp about to fire;
+    * else the historic two-argument call, byte for byte."""
     suffix = "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing"
+    kw = _search_kwargs(dry_run=dry_run)
+    if kw:
+        return search_catalyst(sym, suffix, **kw)
     try:
         from lib.search_router import engine_enabled
     except ImportError:  # pragma: no cover
@@ -184,7 +202,7 @@ def _dry_run(args) -> int:
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
-            sources, errored = _usable_sources(_catalyst_search(search_catalyst, sym, band, c))
+            sources, errored = _usable_sources(_catalyst_search(search_catalyst, sym, band, c, dry_run=True))
         except Exception:
             sources, errored = [], True
         search_errors += int(errored and not sources)
@@ -229,7 +247,7 @@ def _run(args, stats: dict) -> int:
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
-            sources = _catalyst_search(search_catalyst, sym, band, c)
+            sources = _catalyst_search(search_catalyst, sym, band, c, dry_run=False)
         except Exception as e:
             log.warning("  %s: catalyst search failed: %s", sym, e); search_errors += 1; continue
         sources, errored = _usable_sources(sources)

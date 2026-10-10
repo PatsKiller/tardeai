@@ -252,8 +252,9 @@ def test_route_search_dry_run_needs_no_flag_and_spends_nothing(tmp_path, policy)
                                      dry_run=True, policy=policy, root=tmp_path / "state", clock=lambda: RTH,
                                      paid_transport=paid, free_transport=Free(THIN), scalp_rows=([], None))
     assert out["ok"] is False and out["denied_reason"] == "DRY_RUN" and paid.requests == 0
-    assert out["decision"]["question_class"] == "scalp_priority" and out["decision"]["dry_run"] is True
-    assert set(out) == {"ok", "results", "provider", "cache_hit", "as_of", "decision", "denied_reason"}
+    assert out["route"]["question_class"] == "scalp_priority" and out["route"]["dry_run"] is True
+    assert out["decision"] == "DRY_RUN"
+    assert set(out) == {"ok", "results", "provider", "cache_hit", "as_of", "decision", "route", "denied_reason"}
 
 
 def test_route_search_shares_cache_on_subject_and_intent(tmp_path, policy, monkeypatch):
@@ -270,10 +271,23 @@ def test_route_search_shares_cache_on_subject_and_intent(tmp_path, policy, monke
     assert set(a["results"][0]) == {"title", "url", "content", "engine", "published"}
 
 
-def test_route_search_live_needs_the_engine_flag(tmp_path, policy):
-    out = search_router.route_search("q", request_class="scalp_research", caller="hermes_scalp_catalyst",
-                                     subject="ACME", intent="x", policy=policy, root=tmp_path / "state")
-    assert out["denied_reason"] == "ENGINE_DISABLED"
+def test_route_search_live_needs_the_engine_flag_or_the_hot_tier(tmp_path, policy, monkeypatch):
+    kw = dict(request_class="scalp_research", caller="hermes_scalp_catalyst", subject="ACME", intent="x",
+              policy=policy, root=tmp_path / "state", free_transport=Free(GOOD_NEWS), db_query=lambda *a, **k: [],
+              scalp_rows=([], None), clock=lambda: RTH)
+    monkeypatch.delenv("SCALP_HOT_TIER", raising=False)
+    assert search_router.route_search("ACME stock x", **kw)["denied_reason"] == "ENGINE_DISABLED"
+    monkeypatch.setenv("SCALP_HOT_TIER", "1")
+    out = search_router.route_search("ACME stock x", **kw)
+    assert out["ok"] and out["decision"] == "FREE_SUFFICIENT"
+
+
+def test_q_hot_tier_door_reaches_this_engine(tmp_path, monkeypatch):
+    from lib import scalp_research_route as qroute
+    qroute.set_engine_for_tests(None)
+    assert qroute.engine_available()
+    r = qroute.route("ACME", "premarket catalyst", caller="hermes_scalp_catalyst", priority=True, dry_run=True)
+    assert r["decision"] == "DRY_RUN" and r["results"] == [] and r["request_class"] == "scalp_priority"
 
 
 # ── 4. budget math ──────────────────────────────────────────────────────────

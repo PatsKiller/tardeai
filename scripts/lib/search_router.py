@@ -618,6 +618,13 @@ def route_query(query: str, *, caller: str, symbol: Optional[str] = None, kind: 
                                candidates=list(candidates or [])), **kw)
 
 
+def _hot_tier_on(env: Optional[Mapping[str, str]] = None) -> bool:
+    try:
+        return bool(_lib("scalp_hot_tier").enabled(env))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 #: Agent Q's request classes (branch n8nmat/scalp-hot-tier) -> the hint the engine verifies.
 _Q_CLASSES = {"scalp_priority": "scalp_priority", "scalp_research": None}
 
@@ -635,12 +642,14 @@ def route_search(query: str, *, request_class: str, caller: str, subject: str, i
     * the cache is keyed on (subject, intent) — L708 and L379 share entries; TTL = min(cache_ttl_s, class TTL).
     * ``dry_run=True`` reaches no provider, writes no ledger/receipt/cache: no budget can be spent.
     * ``time_range`` is advisory (the class quality rule sets freshness); ``categories`` "news" -> kind news.
-    Live calls need SEARCH_ROUTING_ENGINE=1 (else ``denied_reason=ENGINE_DISABLED``); a dry run plans without it.
+    Live calls need SEARCH_ROUTING_ENGINE=1 or the hot tier's SCALP_HOT_TIER=1 (else ``denied_reason=ENGINE_DISABLED``);
+    a dry run plans without either. ``decision`` is the engine's reason string; ``route`` carries the detail.
     """
     if request_class not in _Q_CLASSES:
         now = datetime.now(timezone.utc)
         return {"ok": False, "results": [], "provider": "", "cache_hit": False, "as_of": _iso(now),
-                "decision": {"request_class": request_class}, "denied_reason": "UNKNOWN_REQUEST_CLASS"}
+                "decision": "UNKNOWN_REQUEST_CLASS", "route": {"request_class": request_class},
+                "denied_reason": "UNKNOWN_REQUEST_CLASS"}
     kind = "news" if str(categories or "").lower() == "news" else "web"
     req = SearchRequest(query=query, caller=caller, symbol=subject or None, kind=kind, count=int(limit or 3),
                         priority_hint=_Q_CLASSES[request_class], cache_identity=(str(subject or ""), str(intent or "")),
@@ -649,6 +658,10 @@ def route_search(query: str, *, request_class: str, caller: str, subject: str, i
     kw["clock"] = clock
     if dry_run:
         kw.setdefault("enabled", True)   # a plan touches nothing, so it needs no flag
+    elif kw.get("enabled") is None and _hot_tier_on(env):
+        # SCALP_HOT_TIER=1 is the operator's opt-in to send the hot tier's research through this engine
+        # (scripts/lib/scalp_research_route.py has no other door); it enables only these calls.
+        kw["enabled"] = True
     resp = route(req, env=env, dry_run=dry_run, **kw)
     rows = [{"title": str(r.get("title") or ""), "url": str(r.get("url") or ""),
              "content": str(r.get("description") or r.get("snippet") or r.get("content") or "")[:500],
@@ -656,7 +669,8 @@ def route_search(query: str, *, request_class: str, caller: str, subject: str, i
              "published": str(r.get("published_at") or r.get("age") or "")} for r in resp.results]
     return {"ok": bool(resp.ok and rows), "results": rows, "provider": resp.provider, "cache_hit": resp.cache_hit,
             "as_of": _iso(clock()),
-            "decision": {"request_class": request_class, "question_class": resp.question_class, "pool": resp.pool,
+            "decision": resp.reason,
+            "route": {"request_class": request_class, "question_class": resp.question_class, "pool": resp.pool,
                          "tier": resp.tier, "reason": resp.reason, "cost_usd": resp.cost_usd,
                          "sufficient": resp.sufficient, "priority": resp.priority, "dry_run": resp.dry_run,
                          "plan": resp.plan if resp.dry_run else None},

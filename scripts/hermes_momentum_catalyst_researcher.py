@@ -3,6 +3,14 @@
 Hermes momentum catalyst researcher.
 Queries SearXNG for news catalysts on TradeAI momentum candidates.
 Writes advisory-only context — NOT a trade signal.
+
+SCALP HOT TIER (operator decision (4), 2026-10-10; inert unless SCALP_HOT_TIER=1, no kill file, AND the search routing
+engine is importable — lib/scalp_research_route): every search goes through the routing engine (request class
+scalp_priority / scalp_research, shared 20-min (subject, intent) cache in the engine) instead of SearXNG directly;
+``--source scalp`` researches only names new to the scalp list or whose last research today is older than 30 min;
+``--on-list-advance`` runs the lane only when the scalp list's as_of advanced (lib/scalp_list_trigger, consumer
+hermes-scalp-catalyst) and otherwise exits 0 with the gate decision. With the knob off (or no engine) the search path
+is the legacy one and ``--on-list-advance`` fires only on the legacy :25 slot.
 """
 import json
 import os
@@ -52,6 +60,38 @@ def classify_catalyst(text):
     return "news_momentum"
 
 
+def _hot_research_on():
+    """Hot-tier research path: knob on AND the routing engine importable (never a direct provider call)."""
+    try:
+        from lib import scalp_hot_tier as hot
+        from lib import scalp_research_route as route
+    except Exception:
+        return False
+    return hot.enabled() and route.engine_available()
+
+
+def _routed(symbol, query_suffix, *, caller, dry_run, priority):
+    from lib import scalp_research_route as route
+
+    r = route.route(symbol, query_suffix, caller=caller or "hermes_scalp_catalyst", priority=priority,
+                    dry_run=dry_run, limit=MAX_SOURCES_PER_TICKER)
+    if not r.get("ok"):
+        return [{"error": f"routing:{r.get('decision')}:{r.get('denied_reason') or ''}"[:100]}]
+    try:
+        from hermes_source_policy import filter_search_results
+        results = filter_search_results(r.get("results") or [])
+    except Exception:
+        results = r.get("results") or []
+    return [{
+        "title": x.get("title", ""),
+        "url": x.get("url", ""),
+        "content": (x.get("content") or x.get("snippet") or "")[:200],
+        "engine": x.get("engine") or r.get("provider") or "",
+        "published": x.get("published") or x.get("publishedDate", ""),
+        "routed": {"provider": r.get("provider"), "cache_hit": r.get("cache_hit"), "decision": r.get("decision")},
+    } for x in results[:MAX_SOURCES_PER_TICKER]]
+
+
 def _routed_search(symbol, query, candidate=None, caller="hermes_momentum_catalyst", intent=None):
     """Search routing engine path (2026-10-10), or None when SEARCH_ROUTING_ENGINE is off.
 
@@ -82,11 +122,15 @@ def _routed_search(symbol, query, candidate=None, caller="hermes_momentum_cataly
     return [{k: r.get(k, "") for k in ("title", "url", "content", "engine", "published")} for r in results]
 
 
-def search_catalyst(symbol, query_suffix="latest news", candidate=None, caller="hermes_momentum_catalyst"):
-    """Query SearXNG for a symbol's catalyst (or the search routing engine when SEARCH_ROUTING_ENGINE=1)."""
+def search_catalyst(symbol, query_suffix="latest news", *, caller=None, dry_run=False, priority=False,
+                    candidate=None):
+    """Query a symbol's catalyst. Hot tier on (+ routing engine): Q's routed path; else SEARCH_ROUTING_ENGINE=1:
+    the routing engine (class catalyst_confirmation, promotable to scalp_priority); else SearXNG, unchanged."""
+    if _hot_research_on():
+        return _routed(symbol, query_suffix, caller=caller, dry_run=dry_run, priority=priority)
     query = f"{symbol} stock {query_suffix}"
     try:
-        routed = _routed_search(symbol, query, candidate, caller, intent=query_suffix)
+        routed = _routed_search(symbol, query, candidate, caller or "hermes_momentum_catalyst", intent=query_suffix)
     except Exception as e:  # noqa: BLE001 — same contract as the SearXNG path: an error row, never a raise
         routed = [{"error": f"router:{type(e).__name__}"}]
     if routed is not None:
@@ -116,7 +160,7 @@ def search_catalyst(symbol, query_suffix="latest news", candidate=None, caller="
         return [{"error": str(e)[:100]}]
 
 
-def research_ticker(symbol):
+def research_ticker(symbol, *, dry_run=False, priority=False, caller=None):
     """Research a single ticker for catalysts."""
     queries = [
         "latest news",
@@ -127,7 +171,7 @@ def research_ticker(symbol):
     for q in queries:
         if len(all_sources) >= MAX_SOURCES_PER_TICKER:
             break
-        sources = search_catalyst(symbol, q)
+        sources = search_catalyst(symbol, q, caller=caller, dry_run=dry_run, priority=priority)
         for s in sources:
             if not s.get("error") and s.get("url") not in [x.get("url") for x in all_sources]:
                 all_sources.append(s)
@@ -160,7 +204,7 @@ def research_ticker(symbol):
     }
 
 
-def run(candidates, dry_run=True, output_path=None, merge=True, max_total_sources=None):
+def run(candidates, dry_run=True, output_path=None, merge=True, max_total_sources=None, priority=None):
     """Research all candidates. merge=True updates the day's JSONL by symbol instead of clobbering it,
     so the momentum and scalp lanes can share one file without overwriting each other."""
     cap = MAX_TOTAL_SOURCES if max_total_sources is None else max_total_sources
@@ -172,7 +216,8 @@ def run(candidates, dry_run=True, output_path=None, merge=True, max_total_source
             break
         sym = c["symbol"] if isinstance(c, dict) else c
         print(f"  Researching {sym}...", end=" ", flush=True)
-        result = research_ticker(sym)
+        result = research_ticker(sym, dry_run=dry_run, priority=sym in (priority or ()),
+                                 caller="hermes_scalp_catalyst")
         total_sources += result["source_count"]
         results.append(result)
         status = f"{result['catalyst_type']} ({result['source_count']} sources, conf {result['confidence']:.1f})"
@@ -230,6 +275,61 @@ def get_scalp_candidates(max_tickers=15):
     return syms
 
 
+def researched_today(output_path):
+    """{SYMBOL: last research_timestamp (naive local datetime)} from the day's JSONL. Read-only."""
+    out = {}
+    try:
+        lines = Path(output_path).read_text().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        try:
+            rec = json.loads(line)
+            ts = datetime.fromisoformat(str(rec.get("research_timestamp")))
+        except Exception:
+            continue
+        sym = str(rec.get("symbol") or "").upper()
+        if sym and (sym not in out or ts > out[sym]):
+            out[sym] = ts.replace(tzinfo=None) if ts.tzinfo is None else ts.astimezone().replace(tzinfo=None)
+    return out
+
+
+def select_hot_candidates(awaiting, scalp_candidates, list_symbols, researched, *, now=None,
+                          stale_min=30.0, cap=15):
+    """Names new to the list or last researched > stale_min ago, catalyst-awaiting first, then new list arrivals,
+    then the rest; capped. Pure."""
+    ref = now or datetime.now()
+    ordered = []
+    for s in list(awaiting) + [x for x in list_symbols if x not in researched] + list(scalp_candidates) + list(
+            list_symbols):
+        s = str(s).upper()
+        if s and s not in ordered:
+            ordered.append(s)
+    keep = [s for s in ordered
+            if s not in researched or (ref - researched[s]).total_seconds() / 60.0 > stale_min]
+    return keep[:cap]
+
+
+def get_awaiting_catalyst(max_tickers=15):
+    """Today's names blocked only on catalyst verification (the scalp_priority class). Read-only."""
+    import psycopg2
+    try:
+        conn = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
+                                dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
+                                password=os.getenv("DB_PASSWORD"))
+        cur = conn.cursor()
+        cur.execute("""SELECT symbol FROM scalp_scan_results
+                       WHERE scanned_at::date = current_date
+                         AND route_reason_codes::text LIKE '%%AWAITING_CATALYST_VERIFICATION%%'
+                       GROUP BY symbol ORDER BY max(score) DESC NULLS LAST LIMIT %s""", (max_tickers,))
+        syms = [r[0] for r in cur.fetchall()]
+        conn.close()
+        return syms
+    except Exception as e:
+        print(f"awaiting-catalyst read failed: {e}")
+        return []
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
@@ -238,9 +338,42 @@ if __name__ == "__main__":
     ap.add_argument("--max-tickers", type=int, default=5)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--dry-run", action="store_true", default=True)
+    ap.add_argument("--on-list-advance", action="store_true",
+                    help="scalp hot tier: run only when the scalp list's as_of advanced (event trigger)")
     args = ap.parse_args()
 
-    if args.source == "scalp":
+    today = datetime.now().strftime("%Y-%m-%d")
+    out = str(PROJECT_ROOT / f"data/hermes/momentum_catalysts/{today}_catalysts.jsonl")
+    hot_research = args.source == "scalp" and _hot_research_on()
+    gate = None
+    priority = []
+    if args.on_list_advance:
+        from lib import scalp_list_trigger as trig
+        from lib.data_broker import scalp_list as sl
+        try:
+            list_env = sl.get_scalp_list()
+        except Exception as e:
+            list_env = {"as_of": None, "symbols": [], "error": str(e)[:200]}
+        gate = {"list_env": list_env,
+                "decision": trig.decide("hermes-scalp-catalyst", list_env, hot_enabled=hot_research)}
+        print(json.dumps({"gate": "scalp_list_trigger", **gate["decision"]}, default=str))
+        if not gate["decision"]["fire"]:
+            sys.exit(0)
+
+    if args.source == "scalp" and hot_research:
+        from lib import scalp_hot_tier as hot
+        list_syms = list(((gate or {}).get("list_env") or {}).get("symbols") or [])
+        if gate is None:
+            from lib.data_broker import scalp_list as sl
+            list_syms = list(sl.get_scalp_list().get("symbols") or [])
+        priority = get_awaiting_catalyst(max_tickers=hot.RESEARCH_SYMBOL_CAP)
+        candidates = select_hot_candidates(priority, get_scalp_candidates(max_tickers=hot.RESEARCH_SYMBOL_CAP),
+                                           list_syms, researched_today(out), stale_min=hot.RESEARCH_STALE_MIN,
+                                           cap=hot.RESEARCH_SYMBOL_CAP)
+        _cap = 40
+        print(f"[hot-tier] {len(candidates)} names new to the list or > {hot.RESEARCH_STALE_MIN:g} min stale "
+              f"(priority {len(priority)}); search via routing engine")
+    elif args.source == "scalp":
         candidates = get_scalp_candidates(max_tickers=max(args.max_tickers, 15))
         _cap = 40  # cover ~15 scalp candidates × up to 3 sources
     else:
@@ -249,13 +382,16 @@ if __name__ == "__main__":
         _cap = None
     if not candidates:
         print(f"No {args.source} candidates found.")
+        if gate is not None and args.apply:
+            trig.commit("hermes-scalp-catalyst", gate["list_env"], decision=gate["decision"]["decision"])
         sys.exit(0)
 
     print(f"Researching {len(candidates)} {args.source} candidates...")
-    today = datetime.now().strftime("%Y-%m-%d")
-    out = str(PROJECT_ROOT / f"data/hermes/momentum_catalysts/{today}_catalysts.jsonl")
 
-    results = run(candidates, dry_run=not args.apply, output_path=out, merge=True, max_total_sources=_cap)
+    results = run(candidates, dry_run=not args.apply, output_path=out, merge=True, max_total_sources=_cap,
+                  priority=set(priority))
+    if gate is not None and args.apply:
+        trig.commit("hermes-scalp-catalyst", gate["list_env"], decision=gate["decision"]["decision"])
 
     print(f"\nResults: {len(results)} tickers")
     with_catalyst = sum(1 for r in results if r["catalyst_type"] != "no_clear_catalyst")

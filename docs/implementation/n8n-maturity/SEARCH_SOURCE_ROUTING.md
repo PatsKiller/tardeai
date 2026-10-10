@@ -197,6 +197,14 @@ route_search(query, *, request_class, caller, subject, intent, time_range="day",
 - `request_class` is either `scalp_priority` or `scalp_research`.
 - The cache is keyed on (subject, intent), so L708 and L379 share entries. The TTL is min(`cache_ttl_s`, class TTL).
 - `dry_run=True` reaches no provider and writes nothing. It works with the flag off.
+- `decision` is the engine's reason string (for example `FREE_SUFFICIENT`, `PAID_OK`, `DRY_RUN`); `route` carries
+  the class, pool, tier, cost and priority detail.
+- Live calls need `SEARCH_ROUTING_ENGINE=1` **or** Q's `SCALP_HOT_TIER=1`, which is the operator's opt-in for the hot
+  tier and enables only `route_search`.
+- After the merge with #1671, `search_catalyst` picks one of three paths, in order:
+  - with the hot tier on, Q's `scalp_research_route` calls `route_search`;
+  - otherwise, with `SEARCH_ROUTING_ENGINE=1`, the engine path, with the candidate row attached;
+  - otherwise, with both flags off, the legacy SearXNG call, byte for byte.
 
 ## 6. Finding: the "free" lane named a paid engine
 
