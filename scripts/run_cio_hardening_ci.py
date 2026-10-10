@@ -1168,6 +1168,12 @@ GATES = [
         "cron_venv_resolver_20261009",
         ["tests/test_cron_venv_resolver_20261009.py"],
     ),
+    # n8n pre-import guard (install audit V8 F3, 2026-10-10): premarket-data-pipeline-shadow was imported with the
+    # RELAY_HOST placeholder and a lane outside the run allowlist; manual run 1554 failed EAI_AGAIN relay_host.
+    (
+        "n8n_import_guard_20261010",
+        ["tests/test_n8n_import_guard_20261010.py"],
+    ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
     (

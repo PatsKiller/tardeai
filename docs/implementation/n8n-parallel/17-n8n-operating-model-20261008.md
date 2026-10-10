@@ -154,6 +154,9 @@ python3 scripts/n8n_workflow_templates.py --lanes all --check     # repo copy st
 ### 5.3 Import (N1: 18 files, all inactive)
 
 ```bash
+# Refuse the stage before it reaches n8n (2026-10-10, install audit V8 F3): no RELAY_HOST placeholder, every URL the
+# granted relay, nothing "active": true, every per-lane file's lane in config/n8n_run_allowlist.json, errorWorkflow ids known.
+python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://<GRANTED_HOST>:18092 || exit 1
 docker cp "$STAGE/." m8m-n8n:/tmp/tradeai-workflows/
 docker exec m8m-n8n n8n import:workflow --separate --input=/tmp/tradeai-workflows/
 docker exec m8m-n8n n8n list:workflow            # 18 new rows, active=false; ids match INDEX.json
