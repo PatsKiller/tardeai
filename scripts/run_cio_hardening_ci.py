@@ -4191,6 +4191,12 @@ GATES = [
         ["tests/test_finviz_view_contracts_timeout_20261010.py"],
     ),
     (
+        # Coordination gateway allows the relay POST /event lane n8n-workflow-error (RC8, W0 rollback
+        # 2026-10-10); existing extra lanes kept. Static unit-file check.
+        "gateway_workflow_error_lane_20261010",
+        ["tests/test_gateway_workflow_error_lane_20261010.py"],
+    ),
+    (
         # run_with_deepseek_offpeak.sh --scheduled --defer-in-process (2026-10-10): on PEAK_SKIP the wrapper exits
         # 0 with no receipt, so a lane with a receipt liveness check (n8n_failure_diagnosis.py, stale at 45 min)
         # would raise P1 nightly. Pins: without the flag behaviour is unchanged; with it, out of window the
