@@ -63,7 +63,6 @@ scripts/defense_engine_gap_checker.py 1
 scripts/defense_execution.py 1
 scripts/defense_weekly_paid_review.py 2
 scripts/eod_open_trade_alert.py 1
-scripts/finviz_health_check.py 1
 scripts/finviz_ingestion.py 2
 scripts/freshness_watchdog_heartbeat.py 1
 scripts/full_system_backup.py 1
@@ -86,7 +85,6 @@ scripts/lib/options_pipeline/paper_position_alerts.py 1
 scripts/moomoo/opend_health.py 1
 scripts/morning_digest.py 1
 scripts/nightly_integrity_sweep.py 1
-scripts/oauth_lane_keepalive.py 1
 scripts/options_lifecycle_alerts.py 1
 scripts/overnight_digest_telegram.py 1
 scripts/oversight_weekly_digest.py 1

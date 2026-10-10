@@ -14,14 +14,33 @@ Sources:
 - tos_trade_plans.json → trade_plan
 
 Usage:
-    python3 scripts/sync_watchlist_items_to_db.py [--json]
+    python3 scripts/sync_watchlist_items_to_db.py [--json] [--dry-run]
+
+--dry-run (refactor wave 1, 2026-10-10): reads the same JSON sources and reports the upserts a real run
+would make; it never opens a database connection, so no write is reachable (AGENTS.md §6). A real run
+writes data/runtime/sync_watchlist_items_to_db_last.json (LaneRunReceipt@v1, ok_at only on success).
 """
+
 import json, os, sys, uuid
 from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+
+def _state_dir() -> Path:
+    """The SERVED portfolio state dir (persistent root first), not a checkout copy (AGENTS.md §9.4)."""
+    try:
+        from lib.persistent_state_root import portfolio_state_write_targets
+
+        return portfolio_state_write_targets(PROJECT_ROOT)[0]
+    except Exception:  # noqa: BLE001 -- resolution layer unavailable: the code tree (old behaviour)
+        return PROJECT_ROOT / "data" / "portfolios" / "state"
+
+
+STATE_DIR = _state_dir()
+RECEIPT_NAME = "sync_watchlist_items_to_db"
 
 
 def _load(filename, default=None):
@@ -36,6 +55,7 @@ def _load(filename, default=None):
 
 def _get_conn():
     import psycopg2
+
     pw = os.environ.get("DB_PASSWORD", "")
     if not pw:
         env_path = PROJECT_ROOT / ".env"
@@ -46,9 +66,7 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
-def sync():
-    conn = _get_conn()
-    cur = conn.cursor()
+def sync(dry_run=False):
     now = datetime.now().isoformat()
 
     # Load all sources
@@ -110,16 +128,30 @@ def sync():
     for c in discovery_raw.get("candidates", []):
         sym = c.get("symbol", "")
         if sym:
-            discovered_items.append({"symbol": sym, "score": c.get("score"), "bucket": c.get("bucket"),
-                                     "asset_type": c.get("asset_type"), "payload": c})
+            discovered_items.append(
+                {
+                    "symbol": sym,
+                    "score": c.get("score"),
+                    "bucket": c.get("bucket"),
+                    "asset_type": c.get("asset_type"),
+                    "payload": c,
+                }
+            )
 
     # ── Source 3: AI Watchlist ──
     ai_wl_items = []
     for w in ai_watchlist_raw.get("watchlist", []):
         sym = w.get("symbol", "")
         if sym:
-            ai_wl_items.append({"symbol": sym, "score": w.get("score"), "bucket": w.get("bucket"),
-                                "asset_type": w.get("asset_type"), "payload": w})
+            ai_wl_items.append(
+                {
+                    "symbol": sym,
+                    "score": w.get("score"),
+                    "bucket": w.get("bucket"),
+                    "asset_type": w.get("asset_type"),
+                    "payload": w,
+                }
+            )
 
     # ── Source 4: Personal Watchlist ──
     personal_items = []
@@ -132,11 +164,10 @@ def sync():
     elif isinstance(watchlist_raw, dict):
         personal_items = list(watchlist_raw.keys())
 
-    # ── Upsert into DB ──
-    upserted = 0
+    # ── Plan the upserts (pure: JSON sources only) ──
+    planned = []
 
     def upsert(symbol, source, bucket=None, asset_type=None, score=None, payload=None):
-        nonlocal upserted
         cls = classifications.get(symbol, {})
         at = asset_type or cls.get("asset_type")
         bk = bucket
@@ -150,7 +181,9 @@ def sync():
             "personal_watchlist": "personal_watchlist",
         }.get(source, source)
 
-        cur.execute("""
+        planned.append(
+            (
+                """
             INSERT INTO watchlist_items (symbol, source, bucket, asset_type, status, score, backtest_score, backtest_data, trade_plan, source_payload, origin_system, last_seen_at, updated_at)
             VALUES (%s, %s, %s, %s, 'active', %s, %s, %s, %s, %s, %s, now(), now())
             ON CONFLICT (symbol, source, COALESCE(bucket, '__none__'))
@@ -164,54 +197,119 @@ def sync():
                 last_seen_at = now(),
                 updated_at = now(),
                 status = CASE WHEN watchlist_items.status = 'removed' THEN 'active' ELSE watchlist_items.status END
-        """, (symbol, source, bk, at, score, bt_score,
-              json.dumps(bt) if bt else '{}', json.dumps(tp) if tp else '{}',
-              json.dumps(payload) if payload else '{}', origin))
-        upserted += 1
+        """,
+                (
+                    symbol,
+                    source,
+                    bk,
+                    at,
+                    score,
+                    bt_score,
+                    json.dumps(bt) if bt else "{}",
+                    json.dumps(tp) if tp else "{}",
+                    json.dumps(payload) if payload else "{}",
+                    origin,
+                ),
+            )
+        )
 
     # Portfolio
     for sym in set(portfolio_items):
-        upsert(sym, 'portfolio')
+        upsert(sym, "portfolio")
 
     # AI Discovered
     for item in discovered_items:
-        upsert(item["symbol"], 'ai_discovered', bucket=item.get("bucket"),
-               asset_type=item.get("asset_type"), score=item.get("score"), payload=item.get("payload"))
+        upsert(
+            item["symbol"],
+            "ai_discovered",
+            bucket=item.get("bucket"),
+            asset_type=item.get("asset_type"),
+            score=item.get("score"),
+            payload=item.get("payload"),
+        )
 
     # AI Watchlist
     for item in ai_wl_items:
-        upsert(item["symbol"], 'ai_watchlist', bucket=item.get("bucket"),
-               asset_type=item.get("asset_type"), score=item.get("score"), payload=item.get("payload"))
+        upsert(
+            item["symbol"],
+            "ai_watchlist",
+            bucket=item.get("bucket"),
+            asset_type=item.get("asset_type"),
+            score=item.get("score"),
+            payload=item.get("payload"),
+        )
 
     # Personal Watchlist
     for sym in set(personal_items):
-        upsert(sym, 'personal_watchlist')
+        upsert(sym, "personal_watchlist")
 
-    # Log event
-    cur.execute("""
-        INSERT INTO watchlist_events (event_type, message, payload)
-        VALUES ('sync_complete', %s, %s)
-    """, (f"Synced {upserted} items at {now}",
-          json.dumps({"portfolio": len(set(portfolio_items)), "ai_discovered": len(discovered_items),
-                      "ai_watchlist": len(ai_wl_items), "personal": len(set(personal_items)),
-                      "total_upserted": upserted})))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return {
-        "upserted": upserted,
+    counts = {
+        "upserted": len(planned),
         "portfolio": len(set(portfolio_items)),
         "ai_discovered": len(discovered_items),
         "ai_watchlist": len(ai_wl_items),
         "personal_watchlist": len(set(personal_items)),
     }
+    if dry_run:
+        # Returns before a connection exists: nothing below is reachable from a dry run.
+        return {
+            **counts,
+            "mode": "dry_run",
+            "state_dir": str(STATE_DIR),
+            "would_write": {"watchlist_items": len(planned), "watchlist_events": 1},
+            "sample": sorted({p[1][0] for p in planned})[:25],
+        }
+
+    # ── Upsert into DB ──
+    conn = _get_conn()
+    cur = conn.cursor()
+    upserted = 0
+    for sql, params in planned:
+        cur.execute(sql, params)
+        upserted += 1
+
+    # Log event
+    cur.execute(
+        """
+        INSERT INTO watchlist_events (event_type, message, payload)
+        VALUES ('sync_complete', %s, %s)
+    """,
+        (
+            f"Synced {upserted} items at {now}",
+            json.dumps(
+                {
+                    "portfolio": len(set(portfolio_items)),
+                    "ai_discovered": len(discovered_items),
+                    "ai_watchlist": len(ai_wl_items),
+                    "personal": len(set(personal_items)),
+                    "total_upserted": upserted,
+                }
+            ),
+        ),
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return {**counts, "upserted": upserted}
 
 
-if __name__ == "__main__":
-    result = sync()
-    if "--json" in sys.argv:
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if "--dry-run" in argv:
+        print(json.dumps(sync(dry_run=True), indent=2))
+        return 0
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    started_at = now_iso()
+    try:
+        result = sync()
+    except Exception as exc:
+        write_receipt(RECEIPT_NAME, ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
+    write_receipt(RECEIPT_NAME, ok=True, started_at=started_at, summary=result)
+    if "--json" in argv:
         print(json.dumps(result, indent=2))
     else:
         print(f"[watchlist-sync] Upserted {result['upserted']} items")
@@ -219,3 +317,8 @@ if __name__ == "__main__":
         print(f"  AI Discovered: {result['ai_discovered']}")
         print(f"  AI Watchlist: {result['ai_watchlist']}")
         print(f"  Personal: {result['personal_watchlist']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

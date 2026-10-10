@@ -4,6 +4,17 @@
     python scripts/llm_spend_report.py --period daily            # yesterday, printed
     python scripts/llm_spend_report.py --period weekly --send    # last Mon–Sun, sent
     python scripts/llm_spend_report.py --period monthly --send   # last calendar month, sent
+    python scripts/llm_spend_report.py --period auto --dry-run   # every period due today (ET), nothing written
+    python scripts/llm_spend_report.py --period auto --prepare   # build + write the message artifact, NO send
+
+n8n refactor (2026-10-10, wave 1): ``--dry-run`` computes the report(s) and prints what a send or a
+prepare WOULD do, and returns before any ledger, receipt, artifact or send is reachable (AGENTS.md §6).
+``--prepare`` is the preparer half of the preparer/sender split: it writes
+``data/runtime/llm_spend_report_prepared_<period>.json`` (the message) and the lane receipt
+``data/runtime/llm_spend_report_prepare_last.json`` (``ok_at``), and never sends — the send stays the
+host chokepoint (``--send``, unchanged apart from ``ok_at`` on its receipt). ``--period auto`` = daily,
+plus weekly on Monday and monthly on the 1st (America/New_York). Ledger and receipts resolve under the
+persistent-state root, not the release directory.
 
 WHY
 ---
@@ -32,9 +43,11 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -42,10 +55,26 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lib import llm_spend  # noqa: E402
 
+
+def _runtime_dir() -> Path:
+    """data/runtime under the persistent-state root (a release's data/runtime is a symlink to it)."""
+    env = os.environ.get("TRADEAI_STATE_ROOT")
+    if env:
+        return Path(env) / "data" / "runtime"
+    from lib.lane_registry import state_root  # noqa: PLC0415
+
+    return state_root() / "data" / "runtime"
+
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 PERIOD_OF = {"daily": "yesterday", "weekly": "last_week", "monthly": "last_month"}
-LEDGER = PROJECT_ROOT / "data" / "runtime" / "llm_spend_report_sent.json"
-RECEIPT = PROJECT_ROOT / "data" / "runtime" / "llm_spend_report_last_{cadence}.json"
+PERIOD_CHOICES = sorted([*PERIOD_OF, "auto"])
+LEDGER = _runtime_dir() / "llm_spend_report_sent.json"
+RECEIPT = _runtime_dir() / "llm_spend_report_last_{cadence}.json"
+PREPARED = _runtime_dir() / "llm_spend_report_prepared_{cadence}.json"
+PREPARE_LANE = "llm_spend_report_prepare"
+PREPARE_RECEIPT = _runtime_dir() / f"{PREPARE_LANE}_last.json"
+ET = ZoneInfo("America/New_York")
 NO_CONSUMER_REASON = "scheduled operator report; Telegram is its consumer, the receipt its output"
 
 
@@ -134,22 +163,63 @@ def _load_ledger() -> dict:
         return {}
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--period", choices=sorted(PERIOD_OF), required=True)
-    ap.add_argument("--send", action="store_true", help="send to Telegram (default: dry run)")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
-    report = llm_spend.build_report(PERIOD_OF[args.period])
-    mtd = llm_spend.build_report("month") if args.period == "daily" else None
-    text = format_report(report, cadence=args.period, mtd=mtd)
-    key = f"{args.period}:{report['start_utc'][:10]}"
-    if args.json:
-        print(json.dumps(report, indent=2, default=str))
-    print(text)
-    if not args.send:
-        print(f"\n(dry run — not sent; ledger key {key})")
-        return 0
+def due_periods(now: datetime | None = None) -> list[str]:
+    """``--period auto``: daily every day, weekly on Monday, monthly on the 1st (America/New_York).
+
+    The same days the three crontab lines (5 7 * * * / 10 7 * * 1 / 15 7 1 * *) fire on.
+    """
+    local = (now or datetime.now(timezone.utc)).astimezone(ET)
+    out = ["daily"]
+    if local.weekday() == 0:
+        out.append("weekly")
+    if local.day == 1:
+        out.append("monthly")
+    return out
+
+
+def build(period: str) -> tuple[dict, str, str]:
+    """(report, text, ledger key) for one period. Read-only: SELECTs on the spend tables only."""
+    report = llm_spend.build_report(PERIOD_OF[period])
+    mtd = llm_spend.build_report("month") if period == "daily" else None
+    text = format_report(report, cadence=period, mtd=mtd)
+    return report, text, f"{period}:{report['start_utc'][:10]}"
+
+
+def dry_run(period: str, report: dict, text: str, key: str) -> int:
+    """What a send / prepare WOULD do. Writes nothing, sends nothing (the caller continues right after)."""
+    sent_at = _load_ledger().get(key)
+    plan = {
+        "mode": "dry_run",
+        "period": period,
+        "ledger_key": key,
+        "already_sent_at": sent_at,
+        "would_send": sent_at is None,
+        "would_write_prepared": str(PREPARED).format(cadence=period),
+        "would_write_receipt": str(RECEIPT).format(cadence=period),
+        "message_chars": len(text),
+        "usd": report["totals"]["usd"],
+    }
+    print(f"\n(dry run — nothing written, nothing sent) {json.dumps(plan, default=str)}")
+    return 0
+
+
+def prepare(period: str, report: dict, text: str, key: str) -> dict:
+    """Preparer half of the split: the message artifact the host sender delivers. No send."""
+    from lib.atomic_json_store import atomic_write_json  # noqa: PLC0415
+
+    sent_at = _load_ledger().get(key)
+    path = Path(str(PREPARED).format(cadence=period))
+    atomic_write_json(path, {
+        "schema": "LlmSpendReportMessage@v1", "built_at": datetime.now(timezone.utc).isoformat(),
+        "cadence": period, "key": key, "already_sent_at": sent_at, "text": text,
+        "usd": report["totals"]["usd"], "authority": AUTHORITY,
+    })
+    print(f"prepared {key} -> {path} (already_sent_at={sent_at})")
+    return {"period": period, "key": key, "path": str(path), "already_sent_at": sent_at}
+
+
+def send(period: str, report: dict, text: str, key: str) -> int:
+    """The host sender (unchanged): once per ledger key, then the per-cadence receipt (now with ok_at)."""
     ledger = _load_ledger()
     if key in ledger:
         print(f"already sent {key} at {ledger[key]}")
@@ -161,12 +231,57 @@ def main() -> int:
         ledger[key] = datetime.now(timezone.utc).isoformat()
         LEDGER.parent.mkdir(parents=True, exist_ok=True)
         LEDGER.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
-    receipt = Path(str(RECEIPT).format(cadence=args.period))
+    receipt = Path(str(RECEIPT).format(cadence=period))
     receipt.parent.mkdir(parents=True, exist_ok=True)
-    receipt.write_text(json.dumps({"schema": "LlmSpendReportRun@v1", "ran_at": datetime.now(timezone.utc).isoformat(),
-                                   "cadence": args.period, "key": key, "sent": ok, "usd": report["totals"]["usd"],
+    ran_at = datetime.now(timezone.utc).isoformat()
+    try:
+        prev_ok = json.loads(receipt.read_text(encoding="utf-8")).get("ok_at")
+    except (OSError, ValueError, AttributeError):
+        prev_ok = None
+    receipt.write_text(json.dumps({"schema": "LlmSpendReportRun@v1", "ran_at": ran_at,
+                                   "cadence": period, "key": key, "sent": ok, "usd": report["totals"]["usd"],
+                                   "ok_at": ran_at if ok else prev_ok,
                                    "authority": AUTHORITY}, indent=2), encoding="utf-8")
     return 0 if ok else 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--period", choices=PERIOD_CHOICES, required=True)
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--send", action="store_true", help="send to Telegram (default: print only)")
+    mode.add_argument("--prepare", action="store_true", help="write the message artifact + lane receipt; never send")
+    mode.add_argument("--dry-run", action="store_true", help="compute and report what would happen; write and send nothing")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+    periods = due_periods() if args.period == "auto" else [args.period]
+    started = datetime.now(timezone.utc).isoformat()
+    codes: list[int] = []
+    prepared: list[dict] = []
+    for period in periods:
+        report, text, key = build(period)
+        if args.json:
+            print(json.dumps(report, indent=2, default=str))
+        print(text)
+        if args.dry_run:
+            codes.append(dry_run(period, report, text, key))
+            continue  # AGENTS.md §6: prepare/send/receipt below are not reachable from a dry run
+        if args.prepare:
+            prepared.append(prepare(period, report, text, key))
+            codes.append(0)
+            continue
+        if not args.send:
+            print(f"\n(dry run — not sent; ledger key {key})")
+            codes.append(0)
+            continue
+        codes.append(send(period, report, text, key))
+    code = max(codes) if codes else 0
+    if args.prepare:
+        from lib.lane_last_receipt import write_lane_receipt  # noqa: PLC0415
+
+        write_lane_receipt(PREPARE_LANE, ok=code == 0, exit_code=code, started_at=started,
+                           summary={"periods": periods, "prepared": prepared}, path=PREPARE_RECEIPT)
+    return code
 
 
 if __name__ == "__main__":

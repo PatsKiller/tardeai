@@ -7,6 +7,19 @@ infer the cadence (JEPI monthly, SCHD quarterly, FCNTX annual…), estimate the 
 (clearly marked est), and total the trailing-12-month payout. Stored in symbol_profiles, surfaced on cards.
 
 Held funds/ETFs (or --symbols). Read-only to the broker.
+
+n8n refactor (2026-10-10, wave 1):
+- ``--dry-run`` (``--dry`` kept as an alias) computes every row from yfinance and prints it, and never
+  reaches a write: no DDL, no upsert, no commit, no receipt (AGENTS.md §6). It used to run the ALTER TABLE
+  in ``ensure_columns()`` first, so the "dry" run took an ACCESS EXCLUSIVE lock on symbol_profiles.
+- ``ensure_columns()`` now checks information_schema first and issues the ALTER only when a column is
+  missing. ALTER ... ADD COLUMN IF NOT EXISTS still needs the table lock on every run, which is the
+  ``LockNotAvailable`` failure in distributions_enrich.log (7 failures vs 6 successes). Moving the DDL to a
+  migration is a follow-up.
+- A real run writes ``<state_root>/data/runtime/distributions_enrich_last.json`` (LaneRunReceipt@v1,
+  ``ok_at`` on success). Exit 1 when every symbol failed to fetch (the source was down, nothing was
+  enriched); per-symbol errors alongside successes are findings.
+- holdings.json resolves on the persistent (served) state root, not the release checkout.
 """
 from __future__ import annotations
 
@@ -29,8 +42,23 @@ def _conn():
     return _get_conn()
 
 
+DIST_COLUMNS = ("last_distribution_date", "last_distribution_amount", "distribution_cadence",
+                "next_distribution_est", "ttm_distribution_amount", "distributions_updated_at")
+
+
+def missing_columns(cur) -> list[str]:
+    """DIST_COLUMNS not yet on symbol_profiles (a catalog read; takes no table lock)."""
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='symbol_profiles' "
+                "AND column_name = ANY(%s)", (list(DIST_COLUMNS),))
+    have = {r[0] for r in cur.fetchall()}
+    return [c for c in DIST_COLUMNS if c not in have]
+
+
 def ensure_columns():
     cur = _conn().cursor()
+    if not missing_columns(cur):
+        cur.connection.rollback()
+        return
     cur.execute("""ALTER TABLE symbol_profiles
         ADD COLUMN IF NOT EXISTS last_distribution_date date,
         ADD COLUMN IF NOT EXISTS last_distribution_amount numeric,
@@ -43,7 +71,7 @@ def ensure_columns():
 
 def _held_fund_etf_symbols():
     try:
-        h = json.loads((PROJ / "data" / "portfolios" / "state" / "holdings.json").read_text())
+        h = json.loads((_state_dir() / "holdings.json").read_text())
         rows = h.get("holdings") if isinstance(h, dict) else h
         syms = {(r.get("symbol") or "").upper() for r in rows if isinstance(r, dict) and r.get("symbol")}
     except Exception:
@@ -53,6 +81,14 @@ def _held_fund_etf_symbols():
     cur.execute("SELECT upper(symbol) FROM symbol_profiles WHERE instrument_type IN ('fund','etf','mutual_fund','inverse_etf') AND upper(symbol)=ANY(%s)",
                 (sorted(syms),))
     return sorted({r[0] for r in cur.fetchall()})
+
+
+def _state_dir() -> Path:
+    try:
+        from lib.persistent_state_root import resolve_durable_dir
+        return resolve_durable_dir("data/portfolios/state", PROJ)
+    except Exception:  # noqa: BLE001
+        return PROJ / "data" / "portfolios" / "state"
 
 
 def _cadence(days):
@@ -69,7 +105,8 @@ def _cadence(days):
 
 
 def run(symbols=None, apply=True):
-    ensure_columns()
+    if apply:
+        ensure_columns()  # DDL only on a real run; a dry run never reaches it
     syms = symbols or _held_fund_etf_symbols()
     import yfinance as yf, time as _t
     conn = _conn(); cur = conn.cursor()
@@ -122,11 +159,33 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols")
-    ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--dry", "--dry-run", dest="dry", action="store_true")
     a = ap.parse_args()
     syms = [x.strip().upper() for x in a.symbols.split(",")] if a.symbols else None
-    print(json.dumps(run(symbols=syms, apply=not a.dry), indent=2, default=str))
+    if a.dry:
+        res = run(symbols=syms, apply=False)
+        cur = _conn().cursor()
+        missing = missing_columns(cur)  # catalog SELECT only
+        cur.connection.rollback()
+        print(json.dumps(res, indent=2, default=str))
+        print(f"(dry run — nothing written; would upsert {sum(1 for r in res['results'] if 'last_distribution_date' in r)}"
+              f" symbol_profiles rows; would ALTER TABLE for missing columns: {missing or 'none'})")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        res = run(symbols=syms, apply=True)
+    except BaseException as exc:
+        write_lane_receipt("distributions_enrich", ok=False, exit_code=1, started_at=started,
+                           summary={"error": type(exc).__name__})
+        raise
+    print(json.dumps(res, indent=2, default=str))
+    errors = sum(1 for r in res["results"] if "error" in r)
+    code = 1 if res["symbols"] and errors == res["symbols"] else 0
+    write_lane_receipt("distributions_enrich", ok=code == 0, exit_code=code, started_at=started,
+                       summary={"symbols": res["symbols"], "updated": res["updated"], "errors": errors})
+    return code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

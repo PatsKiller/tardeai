@@ -10,6 +10,13 @@ Usage:
     .venv/bin/python scripts/data_gap_resolver.py --weekly-audit
     .venv/bin/python scripts/data_gap_resolver.py --dry-run
 
+--dry-run opens the DB session READ ONLY (Postgres refuses any write on it), reports what each
+gap would get, and writes no receipt. A real run writes
+``<state_root>/data/runtime/<lane_id>_last.json`` (LaneRunReceipt@v1, ok_at on success only),
+one lane per cadence: data-gap-resolver-at-0-10-16 / -pre / -weekly. Exit 1 when the run
+failed (an exception escaped, the chain step crashed, or every attempted gap raised); per-gap
+FAIL lines (the resolver could not help) are findings, not a failed run.
+
 Does NOT touch broker, holdings, execution, or trading behavior.
 """
 
@@ -46,6 +53,7 @@ _JOB_DEAD = ("failed", "expired", "superseded", "cancelled", "canceled")
 
 def get_db_connection():
     import psycopg2
+
     env_path = PROJ / ".env"
     env_vars = {}
     for line in env_path.read_text().splitlines():
@@ -67,35 +75,46 @@ def log(msg):
 
 # ── Resolution actions ───────────────────────────────────────────────
 
+
 def _resolve_missing_div_yield(symbol, conn):
     """Force re-snapshot of ticker to pick up dividend yield."""
     cur = conn.cursor()
     # Check if we already have div_yield somewhere
-    cur.execute("""
+    cur.execute(
+        """
         SELECT data->>'div_yield' FROM ticker_snapshot_daily
         WHERE symbol = %s ORDER BY snapshot_date DESC LIMIT 1
-    """, [symbol])
+    """,
+        [symbol],
+    )
     row = cur.fetchone()
-    if row and row[0] and row[0] not in ('', 'None', 'null'):
+    if row and row[0] and row[0] not in ("", "None", "null"):
         return True  # Already resolved
     # Queue enrichment agent job
     try:
         # Check if already queued
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id FROM watchlist_agent_jobs
             WHERE symbol = %s AND requested_agent = 'maria_research'
               AND submitted_from = 'gap_resolver' AND status IN ('queued', 'pending', 'processing')
-        """, [symbol])
+        """,
+            [symbol],
+        )
         existing = cur.fetchone()
         if existing:
             return (DISPATCHED, existing[0])  # already dispatched: track that job
         import hashlib
+
         job_id = f"gap_{symbol.lower()}_maria_{hashlib.md5(f'{symbol}:enrich:{datetime.now().date()}'.encode()).hexdigest()[:6]}"
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO watchlist_agent_jobs
                 (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, created_at)
             VALUES (%s, %s, 'maria_research', 'enrichment', 'data_gap: missing div_yield', 'queued', 1, 'gap_resolver', NOW())
-        """, [job_id, symbol])
+        """,
+            [job_id, symbol],
+        )
         conn.commit()
         return (DISPATCHED, job_id)
     except Exception:
@@ -119,21 +138,28 @@ def _resolve_missing_catalyst(symbol, conn):
     try:
         cur = conn.cursor()
         # Check if already queued
-        cur.execute("""
+        cur.execute(
+            """
             SELECT id FROM watchlist_agent_jobs
             WHERE symbol = %s AND requested_agent = 'maria_research'
               AND submitted_from = 'gap_resolver' AND status IN ('queued', 'pending', 'processing')
-        """, [symbol])
+        """,
+            [symbol],
+        )
         existing = cur.fetchone()
         if existing:
             return (DISPATCHED, existing[0])  # already queued: track that job
         import hashlib
+
         job_id = f"gap_{symbol.lower()}_catalyst_{hashlib.md5(f'{symbol}:catalyst:{datetime.now().date()}'.encode()).hexdigest()[:6]}"
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO watchlist_agent_jobs
                 (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, created_at)
             VALUES (%s, %s, 'maria_research', 'catalyst_research', 'data_gap: missing catalyst for recovery watch', 'queued', 1, 'gap_resolver', NOW())
-        """, [job_id, symbol])
+        """,
+            [job_id, symbol],
+        )
         conn.commit()
         return (DISPATCHED, job_id)
     except Exception:
@@ -145,22 +171,28 @@ def _resolve_missing_thesis(symbol, conn):
     """Recover original buy thesis from proposals or trade journal."""
     cur = conn.cursor()
     # Try paper_trade_proposals
-    cur.execute("""
+    cur.execute(
+        """
         SELECT setup_description, catalyst, strategy_prompt_context
         FROM paper_trade_proposals
         WHERE symbol = %s AND setup_description IS NOT NULL
         ORDER BY created_at DESC LIMIT 1
-    """, [symbol])
+    """,
+        [symbol],
+    )
     row = cur.fetchone()
     if row and any(row):
-        thesis = row[0] or row[2] or row[1] or ''
+        thesis = row[0] or row[2] or row[1] or ""
         if thesis:
             # Store recovered thesis in ticker_strategy_classifications notes
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE ticker_strategy_classifications
                 SET notes = COALESCE(notes, '') || E'\nRecovered thesis: ' || %s
                 WHERE symbol = %s AND active = true
-            """, [thesis[:500], symbol])
+            """,
+                [thesis[:500], symbol],
+            )
             conn.commit()
             return True
     return False
@@ -174,14 +206,17 @@ def _resolve_stale_news(symbol, conn):
 def _resolve_missing_setup(symbol, conn):
     """Reconstruct setup from paper_trades + proposals."""
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT pt.id, pp.setup_description, pp.catalyst,
                pp.proposed_entry, pp.proposed_stop
         FROM paper_trades pt
         LEFT JOIN paper_trade_proposals pp ON pp.paper_trade_id = pt.id
         WHERE pt.symbol = %s
         ORDER BY pt.created_at DESC LIMIT 1
-    """, [symbol])
+    """,
+        [symbol],
+    )
     row = cur.fetchone()
     if row and any(row[1:]):
         return True  # Data exists, gap may have been about format not absence
@@ -189,13 +224,13 @@ def _resolve_missing_setup(symbol, conn):
 
 
 GAP_RESOLVERS = {
-    'missing_div_yield': _resolve_missing_div_yield,
-    'missing_sector': _resolve_missing_sector,
-    'missing_market_data': _resolve_missing_market_data,
-    'missing_catalyst': _resolve_missing_catalyst,
-    'missing_thesis': _resolve_missing_thesis,
-    'stale_news': _resolve_stale_news,
-    'missing_setup_details': _resolve_missing_setup,
+    "missing_div_yield": _resolve_missing_div_yield,
+    "missing_sector": _resolve_missing_sector,
+    "missing_market_data": _resolve_missing_market_data,
+    "missing_catalyst": _resolve_missing_catalyst,
+    "missing_thesis": _resolve_missing_thesis,
+    "stale_news": _resolve_stale_news,
+    "missing_setup_details": _resolve_missing_setup,
 }
 
 #: gap_type → data_source_authority domain for the on_gap / quality-escalate chain.
@@ -297,9 +332,7 @@ def chain_resolve_open_gaps(conn, *, dry_run: bool = False, limit: int | None = 
     rows = cur.fetchall() or []
     synthetic = False
     if not rows:
-        held = _stale_held_catalyst_symbols(
-            conn, hours=CHAIN_STALE_NEWS_HOURS, limit=min(lim, CHAIN_STALE_HELD_LIMIT)
-        )
+        held = _stale_held_catalyst_symbols(conn, hours=CHAIN_STALE_NEWS_HOURS, limit=min(lim, CHAIN_STALE_HELD_LIMIT))
         if not held:
             log("Chain resolve: 0 catalyst-shaped open gaps")
             return 0
@@ -323,9 +356,7 @@ def chain_resolve_open_gaps(conn, *, dry_run: bool = False, limit: int | None = 
             continue
         sym = str(symbol).upper().strip()
         question = (
-            str(detail).strip()
-            if detail and str(detail).strip()
-            else f"what is the near-term catalyst for {sym}?"
+            str(detail).strip() if detail and str(detail).strip() else f"what is the near-term catalyst for {sym}?"
         )
         if dry_run:
             log(f"  [DRY chain] {sym}: {gap_type} -> would gap_resolver.resolve({domain})")
@@ -356,27 +387,33 @@ def chain_resolve_open_gaps(conn, *, dry_run: bool = False, limit: int | None = 
 def _requeue_source_job(gap_id, conn):
     """Re-queue the original job that flagged this gap with elevated priority."""
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT q.job_type, q.symbol, q.reason_codes, q.source_table, q.source_id
         FROM data_gap_registry g
         JOIN deep_overnight_llm_queue q ON q.id = g.source_job_id
         WHERE g.id = %s
-    """, [gap_id])
+    """,
+        [gap_id],
+    )
     row = cur.fetchone()
     if not row:
         return False
     job_type, symbol, reasons, src_table, src_id = row
     import hashlib
+
     new_hash = hashlib.md5(f"{job_type}:{symbol}:gap_resolved:{gap_id}".encode()).hexdigest()
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO deep_overnight_llm_queue
             (job_type, symbol, priority_tier, priority_score,
              reason_codes, input_hash, source_table, source_id,
              source_script, status)
         VALUES (%s, %s, 'P1', 80, %s, %s, %s, %s, 'gap_resolver', 'pending')
         ON CONFLICT DO NOTHING
-    """, [job_type, symbol, ['gap_resolved', f'gap_id:{gap_id}'],
-          new_hash, src_table, src_id])
+    """,
+        [job_type, symbol, ["gap_resolved", f"gap_id:{gap_id}"], new_hash, src_table, src_id],
+    )
     conn.commit()
     return cur.rowcount > 0
 
@@ -390,7 +427,8 @@ def verify_dispatched(conn, cur, dry_run=False, limit=200):
     reopens the gap with the failure recorded; after MAX_DISPATCH_ATTEMPTS
     failures the gap is abandoned with its reason instead of re-queued hourly.
     """
-    cur.execute("""
+    cur.execute(
+        """
         SELECT g.id, g.symbol, g.gap_type, g.resolution_data->>'job_id',
                j.status, j.result_id, COALESCE((g.resolution_data->>'attempts')::int, 0),
                COALESCE('UNGROUNDED_NUMBERS' = ANY(r.reason_codes), false)
@@ -400,23 +438,33 @@ def verify_dispatched(conn, cur, dry_run=False, limit=200):
         WHERE g.status = 'enriching' AND g.resolution_data ? 'job_id'
         ORDER BY g.id
         LIMIT %s
-    """, [limit])
+    """,
+        [limit],
+    )
     rows = cur.fetchall()
     resolved = reopened = abandoned = waiting = 0
     for gap_id, symbol, gap_type, job_id, job_status, result_id, attempts, ungrounded in rows:
-        if job_status == 'completed' and result_id and not ungrounded:
+        if job_status == "completed" and result_id and not ungrounded:
             if not dry_run:
-                mark_resolved(cur, gap_id, resolved_by='gap_resolver_v2', evidence={
-                    'job_id': job_id, 'result_id': result_id,
-                    'proof': 'agent job completed with a result row',
-                })
+                mark_resolved(
+                    cur,
+                    gap_id,
+                    resolved_by="gap_resolver_v2",
+                    evidence={
+                        "job_id": job_id,
+                        "result_id": result_id,
+                        "proof": "agent job completed with a result row",
+                    },
+                )
             resolved += 1
             log(f"  VERIFIED {symbol}: {gap_type} (job {job_id} -> {result_id})")
-        elif job_status is None or job_status in _JOB_DEAD or job_status == 'completed':
-            if job_status == 'completed' and result_id:
+        elif job_status is None or job_status in _JOB_DEAD or job_status == "completed":
+            if job_status == "completed" and result_id:
                 why = f"job {job_id} result {result_id} was demoted for unverified numbers"
             else:
-                why = f"job {job_id} {job_status or 'missing'}" + (" without a result row" if job_status == 'completed' else "")
+                why = f"job {job_id} {job_status or 'missing'}" + (
+                    " without a result row" if job_status == "completed" else ""
+                )
             if attempts + 1 >= MAX_DISPATCH_ATTEMPTS:
                 if not dry_run:
                     abandon(cur, gap_id, reason=f"{why}; {attempts + 1} failed attempts")
@@ -432,19 +480,51 @@ def verify_dispatched(conn, cur, dry_run=False, limit=200):
     if not dry_run:
         conn.commit()
     if rows:
-        log(f"Dispatched work: {resolved} verified, {reopened} reopened, {abandoned} abandoned, {waiting} still running")
+        log(
+            f"Dispatched work: {resolved} verified, {reopened} reopened, {abandoned} abandoned, {waiting} still running"
+        )
     return resolved, reopened, abandoned, waiting
 
 
+#: Lane id per cadence (config/lane_registry.json rows). The receipt is per lane so each row can
+#: carry its own output_signal.
+LANE_IDS = {
+    "hourly": "data-gap-resolver-at-0-10-16",
+    "pre_overnight": "data-gap-resolver-pre",
+    "weekly_audit": "data-gap-resolver-weekly",
+}
+
+
+def lane_id_for(pre_overnight=False, weekly_audit=False):
+    if weekly_audit:
+        return LANE_IDS["weekly_audit"]
+    if pre_overnight:
+        return LANE_IDS["pre_overnight"]
+    return LANE_IDS["hourly"]
+
+
 def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
-    """Main gap resolution loop."""
+    """Main gap resolution loop. Returns the run's counts (the receipt summary)."""
     conn = get_db_connection()
+    if dry_run:
+        # Structural, not a flag tested later: on a read-only session Postgres itself refuses
+        # every INSERT/UPDATE, so no branch below can reach a mutation (AGENTS.md §6).
+        conn.set_session(readonly=True)
     cur = conn.cursor()
-    verify_dispatched(conn, cur, dry_run=dry_run)
+    v_resolved, v_reopened, v_abandoned, v_waiting = verify_dispatched(conn, cur, dry_run=dry_run)
+    summary = {
+        "dry_run": bool(dry_run),
+        "mode": "weekly_audit" if weekly_audit else ("pre_overnight" if pre_overnight else "hourly"),
+        "verified": v_resolved,
+        "reopened": v_reopened,
+        "abandoned_dispatch": v_abandoned,
+        "still_running": v_waiting,
+    }
 
     # Get open gaps, high severity first
     limit = 100 if pre_overnight else 50
-    cur.execute("""
+    cur.execute(
+        """
         SELECT id, symbol, gap_type, gap_detail, source_job_id
         FROM data_gap_registry
         WHERE status = 'open'
@@ -452,20 +532,25 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
           CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
           detected_at ASC
         LIMIT %s
-    """, [limit])
+    """,
+        [limit],
+    )
     gaps = cur.fetchall()
     log(f"Found {len(gaps)} open gaps" + (" (pre-overnight sweep)" if pre_overnight else ""))
 
+    summary["open_gaps"] = len(gaps)
     if not gaps and not weekly_audit:
         # Still walk on_gap for catalyst-shaped opens (separate query) before exit.
         try:
-            chain_resolve_open_gaps(conn, dry_run=dry_run)
+            summary["chain_walked"] = chain_resolve_open_gaps(conn, dry_run=dry_run)
         except Exception as exc:  # noqa: BLE001
             log(f"Chain resolve skipped: {exc}")
+            summary["chain_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         conn.close()
-        return
+        summary.update(resolved=0, dispatched=0, failed=0, errors=0, skipped=0, attempted=0)
+        return summary
 
-    resolved, failed, skipped, dispatched = 0, 0, 0, 0
+    resolved, failed, skipped, dispatched, errors, attempted = 0, 0, 0, 0, 0, 0
     for gap_id, symbol, gap_type, detail, source_job_id in gaps:
         if not symbol:
             skipped += 1
@@ -474,7 +559,7 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
         resolver = GAP_RESOLVERS.get(gap_type)
         if not resolver:
             # For 'explicit' type gaps, try catalyst resolver as fallback
-            if gap_type == 'explicit':
+            if gap_type == "explicit":
                 resolver = _resolve_missing_catalyst
             else:
                 log(f"  SKIP {symbol}: no resolver for {gap_type}")
@@ -485,6 +570,8 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             log(f"  [DRY] {symbol}: {gap_type} -> would resolve")
             resolved += 1
             continue
+
+        attempted += 1
 
         # Mark enriching
         mark_enriching(cur, gap_id)
@@ -498,7 +585,7 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
                 dispatched += 1
                 log(f"  DISPATCHED {symbol}: {gap_type} -> job {success[1]} (enriching until it completes)")
             elif success:
-                mark_resolved(cur, gap_id, resolved_by='gap_resolver_v1')
+                mark_resolved(cur, gap_id, resolved_by="gap_resolver_v1")
                 conn.commit()
                 # Re-queue source job with enriched data
                 if source_job_id:
@@ -516,7 +603,9 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             reopen(cur, gap_id)
             conn.commit()
             failed += 1
+            errors += 1
             import traceback
+
             log(f"  ERROR {symbol}: {gap_type} — {e}")
             traceback.print_exc()
 
@@ -529,37 +618,91 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             ORDER BY detected_at ASC
         """)
         persistent = cur.fetchall()
+        summary["persistent_gaps_7d"] = len(persistent)
         if persistent:
             log(f"Persistent gaps (>7 days): {len(persistent)}")
             for sym, gt, det in persistent[:10]:
                 log(f"  {sym}: {gt} (since {det})")
-            # Mark as abandoned if > 30 days
-            abandoned = abandon_stale(cur, older_than_days=30)
-            if abandoned:
-                log(f"Abandoned {abandoned} gaps older than 30 days")
-            conn.commit()
+            if dry_run:
+                # Before 2026-10-10 --dry-run --weekly-audit still ran abandon_stale + commit.
+                cur.execute(
+                    "SELECT count(*) FROM data_gap_registry WHERE status = 'open' "
+                    "AND detected_at < NOW() - (%s * INTERVAL '1 day')",
+                    [30],
+                )
+                row = cur.fetchone()
+                would = int(row[0]) if row else 0
+                summary["would_abandon_30d"] = would
+                log(f"  [DRY] would abandon {would} gaps older than 30 days")
+            else:
+                # Mark as abandoned if > 30 days
+                abandoned = abandon_stale(cur, older_than_days=30)
+                summary["abandoned_30d"] = abandoned
+                if abandoned:
+                    log(f"Abandoned {abandoned} gaps older than 30 days")
+                conn.commit()
 
     # on_gap / quality-escalate after enrichment so FakeCursor hermetic sequences
     # (and live Maria dispatch) are not starved by an earlier SELECT.
     try:
-        chain_resolve_open_gaps(conn, dry_run=dry_run)
+        summary["chain_walked"] = chain_resolve_open_gaps(conn, dry_run=dry_run)
     except Exception as exc:  # noqa: BLE001 — enrichment path already finished
         log(f"Chain resolve skipped: {exc}")
+        summary["chain_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
 
     log(f"Done: {resolved} resolved, {dispatched} dispatched, {failed} failed, {skipped} skipped")
     conn.close()
+    summary.update(
+        resolved=resolved, dispatched=dispatched, failed=failed, errors=errors, skipped=skipped, attempted=attempted
+    )
+    return summary
 
 
-def main():
+def run_failed(summary):
+    """A failed RUN, as opposed to gaps the resolvers could not help (findings)."""
+    if summary.get("chain_error"):
+        return True
+    attempted = int(summary.get("attempted") or 0)
+    return attempted > 0 and int(summary.get("errors") or 0) >= attempted
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Resolve data gaps before overnight runs")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--pre-overnight", action="store_true", help="Pre-overnight sweep (higher limit)")
     parser.add_argument("--weekly-audit", action="store_true", help="Report persistent gaps")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    resolve_gaps(dry_run=args.dry_run, pre_overnight=args.pre_overnight,
-                 weekly_audit=args.weekly_audit)
+    from lib.lane_last_receipt import dry_run_report, now_iso, write_lane_receipt
+
+    lane_id = lane_id_for(pre_overnight=args.pre_overnight, weekly_audit=args.weekly_audit)
+    started = now_iso()
+    try:
+        summary = resolve_gaps(dry_run=args.dry_run, pre_overnight=args.pre_overnight, weekly_audit=args.weekly_audit)
+    except Exception as exc:  # noqa: BLE001 — recorded, then a non-zero exit (never swallowed)
+        import traceback
+
+        traceback.print_exc()
+        if args.dry_run:
+            return 1
+        write_lane_receipt(
+            lane_id,
+            ok=False,
+            started_at=started,
+            script="data_gap_resolver.py",
+            exit_code=1,
+            summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"},
+        )
+        return 1
+    code = 1 if run_failed(summary) else 0
+    if args.dry_run:
+        dry_run_report(lane_id, summary)
+        return code
+    write_lane_receipt(
+        lane_id, ok=code == 0, started_at=started, script="data_gap_resolver.py", exit_code=code, summary=summary
+    )
+    return code
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

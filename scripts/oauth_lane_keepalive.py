@@ -8,6 +8,17 @@ healthy goes stale/expired/offline, it sends a deduped Telegram alert with the o
 
 State: data/runtime/oauth_lane_status.json (per-lane status, last_ok, last_check, last_alert, consec_fail).
 Run from cron (daily keeps the rolling tokens alive). Advisory/ops only — no broker, no paid API.
+
+n8n refactor (2026-10-10, wave 1):
+- ``--dry-run``: reachability only. Grok/ChatGPT are probed with the proxies' read-only ``/health``
+  (lib.oauth_lane_status._probe_health), never a generate; local/hermes use the same read-only checks as
+  a real run. It prints what a real run would record and alert, and returns before the status file, the
+  Telegram send or the receipt are reachable (AGENTS.md §6).
+- Exit 1 when a lane that was healthy before (it has a ``last_ok``) is not ok now — the alert is deduped
+  to 12 h, so the exit code is the per-run signal. Exit 0 otherwise (never-set-up lanes are not failures).
+- A real run writes ``<state_root>/data/runtime/oauth_lane_keepalive_last.json`` (LaneRunReceipt@v1;
+  ``ok_at`` only on exit 0). The status file resolves under the persistent-state root, not the release.
+- The in-script Telegram send is UNCHANGED (moving it to the incident router is a follow-up).
 """
 import json
 import os
@@ -17,7 +28,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-STATUS_FILE = ROOT / "data" / "runtime" / "oauth_lane_status.json"
+
+
+def _runtime_dir() -> Path:
+    env = os.environ.get("TRADEAI_STATE_ROOT")
+    if env:
+        return Path(env) / "data" / "runtime"
+    try:
+        from lib.lane_registry import state_root
+        return state_root() / "data" / "runtime"
+    except Exception:  # noqa: BLE001
+        return ROOT / "data" / "runtime"
+
+
+STATUS_FILE = _runtime_dir() / "oauth_lane_status.json"
 ALERT_DEDUP_SEC = int(os.environ.get("OAUTH_LANE_ALERT_DEDUP_SEC", str(12 * 3600)))  # re-alert at most every 12h
 PING = "Reply with exactly: OK"
 
@@ -68,15 +92,24 @@ def _ping_lane(lane):
     return False, "unknown lane"
 
 
-def main():
-    lanes = (sys.argv[1].split(",") if len(sys.argv) > 1 else ["grok", "chatgpt", "hermes", "local"])
-    now = int(time.time())
-    state = _load_status()
-    alerts = []
-    out = {}
+def _reach_lane(lane):
+    """Dry-run probe: (ok, detail) WITHOUT a generate. Grok/ChatGPT: the proxy's read-only /health."""
+    if lane in ("grok", "chatgpt"):
+        try:
+            from lib.oauth_lane_status import _probe_health
+            snap = _probe_health(lane)
+            return bool(snap.get("ready")), f"/health: {snap.get('status')} (dry run: no generate, token not rolled)"
+        except Exception as e:  # noqa: BLE001
+            return False, f"/health probe failed: {str(e)[:100]}"
+    return _ping_lane(lane)  # local / hermes: already read-only (GET /api/tags, auth.json read)
+
+
+def _evaluate(lanes, state, now, probe):
+    """(alerts, per-lane records, regressions). Pure apart from ``probe``; shared by the real run and the dry run."""
+    alerts, out, regressions = [], {}, []
     for lane in lanes:
         prev = state.get(lane, {})
-        ok, detail = _ping_lane(lane)
+        ok, detail = probe(lane)
         rec = {"lane": lane, "ok": ok, "detail": detail, "last_check": now,
                "last_ok": now if ok else prev.get("last_ok"),
                "consec_fail": 0 if ok else int(prev.get("consec_fail", 0)) + 1,
@@ -89,8 +122,37 @@ def main():
         if should_alert:
             alerts.append(f"  • {lane.upper()}: {detail}\n    fix: {HINTS.get(lane, '')}")
             rec["last_alert"] = now
+        if not ok and was_ok:
+            regressions.append(lane)
         out[lane] = rec
-        state[lane] = rec
+    return alerts, out, regressions
+
+
+def dry_run(lanes):
+    """What a real run would record/alert, from reachability only. Writes nothing, sends nothing."""
+    now = int(time.time())
+    alerts, out, regressions = _evaluate(lanes, _load_status(), now, _reach_lane)
+    print(json.dumps({"mode": "dry_run", "checked": len(lanes), "ok": sum(1 for r in out.values() if r["ok"]),
+                      "would_alert": len(alerts), "would_alert_lines": alerts, "regressions": regressions,
+                      "would_exit": 1 if regressions else 0, "would_write": [str(STATUS_FILE)],
+                      "lanes": out}, indent=2, default=str))
+    print("(dry run — no generate, status file not written, nothing sent, no receipt)")
+    return 0
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    pos = [a for a in argv if not a.startswith("--")]
+    lanes = (pos[0].split(",") if pos else ["grok", "chatgpt", "hermes", "local"])
+    if "--dry-run" in argv:
+        return dry_run(lanes)  # AGENTS.md §6: generate, status write, send and receipt are below
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    now = int(time.time())
+    state = _load_status()
+    # Same evaluation as the dry run; only the probe differs (a real generate rolls the token).
+    alerts, out, regressions = _evaluate(lanes, state, now, _ping_lane)
+    state.update(out)
 
     _save_status(state)
 
@@ -105,9 +167,14 @@ def main():
             print("telegram send failed:", e)
 
     summary = {"checked": len(lanes), "ok": sum(1 for r in out.values() if r["ok"]),
-               "alerts_sent": len(alerts), "lanes": out}
+               "alerts_sent": len(alerts), "regressions": regressions, "lanes": out}
     print(json.dumps(summary, indent=2, default=str))
-    return 0
+    code = 1 if regressions else 0
+    write_lane_receipt("oauth_lane_keepalive", ok=code == 0, exit_code=code, started_at=started,
+                       summary={"checked": len(lanes), "ok": summary["ok"], "regressions": regressions,
+                                "alerts": len(alerts)},
+                       path=_runtime_dir() / "oauth_lane_keepalive_last.json")
+    return code
 
 
 if __name__ == "__main__":

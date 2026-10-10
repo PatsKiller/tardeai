@@ -12,6 +12,11 @@ anything if the live rate is ever not sane.
 USAGE
     python scripts/report_agent_number_grounding.py              # last 7 days
     python scripts/report_agent_number_grounding.py --days 14 --json
+    python scripts/report_agent_number_grounding.py --days 7 --check-slo --out X --dry-run
+
+--dry-run (refactor wave 1, 2026-10-10): same read-only query, report and SLO verdict; the --out
+receipt is NOT written (the would-be path is printed) and the exit is 0 whatever the verdict, so a
+shadow fire reports the verdict without failing on it. The live run is unchanged.
 
 Reading the output: a flagged share in low single digits per agent, with the
 top unsupported tokens being genuinely absent figures, is the check working. A
@@ -227,7 +232,7 @@ def rescore(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
     return out
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--json", action="store_true")
@@ -253,7 +258,12 @@ def main() -> int:
         action="store_true",
         help="re-run the current checker on stored rows that carry their supplied text (read-only)",
     )
-    args = ap.parse_args()
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="measure + print; never write --out, exit 0 (the verdict is reported, not enforced)",
+    )
+    args = ap.parse_args(argv)
     if args.rescore:
         print(json.dumps(rescore(fetch(args.days)), indent=2))
         return 0
@@ -263,7 +273,11 @@ def main() -> int:
     if args.check_slo:
         slo_eval = evaluate_slo(report, args.slo_config)
         report["slo"] = slo_eval
-    if args.out is not None:
+    would_write = None
+    if args.out is not None and args.dry_run:
+        # The write below is unreachable in a dry run (AGENTS.md §6).
+        would_write = args.out if args.out.is_absolute() else PROJ / args.out
+    elif args.out is not None:
         from datetime import datetime, timezone  # noqa: PLC0415
         report["measured_at"] = datetime.now(timezone.utc).isoformat()
         out_path = args.out if args.out.is_absolute() else PROJ / args.out
@@ -288,6 +302,10 @@ def main() -> int:
         if slo_eval is not None:
             detail = slo_eval.get("reason") or ", ".join(slo_eval.get("breaches") or ["ok"])
             print(f"SLO: {slo_eval['verdict']} ({detail})")
+    if args.dry_run:
+        print(f"DRY RUN: would write {would_write}" if would_write else "DRY RUN: no --out requested",
+              file=sys.stderr if args.json else sys.stdout)
+        return 0
     if args.check_slo and slo_eval is not None and not slo_eval.get("ok", True):
         return 1
     return 0

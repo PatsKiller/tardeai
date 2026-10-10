@@ -5,7 +5,12 @@ Combines: ticker_prices (DB), enrichment cache, stops, backtest, trade plans, ag
 into a single strategy card per symbol in watchlist_strategy_cards.
 
 Usage:
-    python3 scripts/materialize_watchlist_strategy_cards.py [--symbols JEPI SCHD] [--all] [--json]
+    python3 scripts/materialize_watchlist_strategy_cards.py [--symbols JEPI SCHD] [--all] [--json] [--dry-run]
+
+n8n refactor (2026-10-10, wave 1): ``--dry-run`` builds every card on a READ ONLY session and returns
+before the upsert is reachable (no INSERT, no commit, no receipt). A real run writes
+``<state_root>/data/runtime/materialize_watchlist_strategy_cards_last.json`` (LaneRunReceipt@v1;
+``ok_at`` on success; a crash writes status=failed and re-raises, exit 1).
 """
 import json, os, re, sys, math
 from datetime import datetime, date, timedelta
@@ -38,7 +43,36 @@ GROUND_TRUTH_CONTRADICTION = re.compile(
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+
+
+def _state_dir() -> Path:
+    """data/portfolios/state on the served (persistent) root; the checkout copy only when unprovisioned."""
+    try:
+        from lib.persistent_state_root import resolve_durable_dir
+        return resolve_durable_dir("data/portfolios/state", PROJECT_ROOT)
+    except Exception:  # noqa: BLE001
+        return PROJECT_ROOT / "data" / "portfolios" / "state"
+
+
+STATE_DIR = _state_dir()
+
+UPSERT_SQL = """
+            INSERT INTO watchlist_strategy_cards (symbol, strategy_type, latest_price, support, resistance,
+                ideal_entry, add_zone_low, add_zone_high, stop_loss, target_price, risk_reward,
+                time_horizon, position_size_note, account_fit, thesis, catalyst_summary,
+                technical_summary, risk_summary, confidence, needs_iteration, card, updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
+            ON CONFLICT (symbol) DO UPDATE SET
+                strategy_type=EXCLUDED.strategy_type, latest_price=EXCLUDED.latest_price,
+                support=EXCLUDED.support, resistance=EXCLUDED.resistance,
+                ideal_entry=EXCLUDED.ideal_entry, stop_loss=EXCLUDED.stop_loss,
+                target_price=EXCLUDED.target_price, risk_reward=EXCLUDED.risk_reward,
+                time_horizon=EXCLUDED.time_horizon, account_fit=EXCLUDED.account_fit,
+                thesis=EXCLUDED.thesis, technical_summary=EXCLUDED.technical_summary,
+                catalyst_summary=EXCLUDED.catalyst_summary,
+                confidence=EXCLUDED.confidence, needs_iteration=EXCLUDED.needs_iteration,
+                card=EXCLUDED.card, updated_at=now()
+        """
 
 
 def _load(f, default=None):
@@ -152,8 +186,11 @@ def load_catalysts(cur, symbols: list[str], days: int = 60) -> dict[str, list[di
     return out
 
 
-def materialize(symbols: list[str] | None = None):
+def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
     conn = _get_conn()
+    if dry_run:
+        # Structural guard: the session cannot write even if a write were reached.
+        conn.set_session(readonly=True)
     cur = conn.cursor()
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -294,6 +331,7 @@ def materialize(symbols: list[str] | None = None):
               f"agent rec(s) across {len(_suppressed)} symbol(s)")
 
     results = []
+    pending = []
     for sym in target:
         e = enrichment.get(sym, {}) if isinstance(enrichment.get(sym), dict) else {}
         stop_data = stops_by_sym.get(sym, {})
@@ -401,24 +439,8 @@ def materialize(symbols: list[str] | None = None):
 
         catalyst_summary, catalyst_items = summarize_catalysts(catalysts_by_sym.get(str(sym).upper(), []))
 
-        # Upsert
-        cur.execute("""
-            INSERT INTO watchlist_strategy_cards (symbol, strategy_type, latest_price, support, resistance,
-                ideal_entry, add_zone_low, add_zone_high, stop_loss, target_price, risk_reward,
-                time_horizon, position_size_note, account_fit, thesis, catalyst_summary,
-                technical_summary, risk_summary, confidence, needs_iteration, card, updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())
-            ON CONFLICT (symbol) DO UPDATE SET
-                strategy_type=EXCLUDED.strategy_type, latest_price=EXCLUDED.latest_price,
-                support=EXCLUDED.support, resistance=EXCLUDED.resistance,
-                ideal_entry=EXCLUDED.ideal_entry, stop_loss=EXCLUDED.stop_loss,
-                target_price=EXCLUDED.target_price, risk_reward=EXCLUDED.risk_reward,
-                time_horizon=EXCLUDED.time_horizon, account_fit=EXCLUDED.account_fit,
-                thesis=EXCLUDED.thesis, technical_summary=EXCLUDED.technical_summary,
-                catalyst_summary=EXCLUDED.catalyst_summary,
-                confidence=EXCLUDED.confidence, needs_iteration=EXCLUDED.needs_iteration,
-                card=EXCLUDED.card, updated_at=now()
-        """, (sym, strategy_type, latest_price, support, resistance,
+        # Upsert — queued here, written after the loop; a dry run never reaches the write (AGENTS.md §6).
+        pending.append((sym, strategy_type, latest_price, support, resistance,
               ideal_entry, support if support else None, resistance if resistance else None,
               stop_loss, target_price, risk_reward,
               "medium_term", "Standard position sizing", account_fit,
@@ -452,13 +474,22 @@ def materialize(symbols: list[str] | None = None):
                         "support": support, "resistance": resistance, "stop_loss": stop_loss,
                         "target_price": target_price, "risk_reward": risk_reward, "needs_iteration": needs_iter})
 
+    if dry_run:
+        conn.rollback()
+        conn.close()
+        print(f"[strategy-cards] DRY RUN: would upsert {len(pending)} cards into watchlist_strategy_cards "
+              f"(nothing written)")
+        return results
+
+    for params in pending:
+        cur.execute(UPSERT_SQL, params)
     conn.commit()
     conn.close()
     print(f"[strategy-cards] Materialized {len(results)} cards")
     return results
 
 
-if __name__ == "__main__":
+def cli():
     syms = None
     if "--symbols" in sys.argv:
         idx = sys.argv.index("--symbols")
@@ -466,9 +497,28 @@ if __name__ == "__main__":
     elif "--all" not in sys.argv:
         syms = None  # default: all active watchlist items
 
-    results = materialize(syms)
+    dry = "--dry-run" in sys.argv
+    if dry:
+        results = materialize(syms, dry_run=True)
+    else:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+        started = now_iso()
+        try:
+            results = materialize(syms)
+        except BaseException as exc:
+            write_lane_receipt("materialize_watchlist_strategy_cards", ok=False, exit_code=1, started_at=started,
+                               summary={"error": type(exc).__name__})
+            raise
+        write_lane_receipt("materialize_watchlist_strategy_cards", ok=True, exit_code=0, started_at=started,
+                           summary={"cards": len(results), "symbols_arg": syms})
     if "--json" in sys.argv:
         print(json.dumps(results, indent=2, default=str))
     else:
         for r in results[:10]:
             print(f"  {r['symbol']:>6} {r['strategy_type']:>16} price=${r['latest_price'] or '?':>8} sup=${r['support'] or '?':>8} res=${r['resistance'] or '?':>8} stop=${r['stop_loss'] or '?':>8} rr={r['risk_reward'] or '?'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(cli())

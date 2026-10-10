@@ -17,7 +17,17 @@ Status: NOT_SCHEDULED / STALE / NO_SIGNAL (warn) / OK.
 Usage:
     python3 scripts/job_coverage_monitor.py            # human-readable
     python3 scripts/job_coverage_monitor.py --json     # JSON
-Exit code: number of FAILs (NOT_SCHEDULED + STALE), capped at 250.
+    python3 scripts/job_coverage_monitor.py --dry-run  # same evaluation, no receipt written
+
+Exit code (n8n refactor 2026-10-10, wave 1): 0 when the monitor ran — STALE / NOT_SCHEDULED rows are
+FINDINGS, reported in the output and the receipt, not a failed run. 2 when the instrument is blind
+(``crontab -l`` could not be read, so every job would read NOT_SCHEDULED). It used to exit with the
+FAIL count, so a dispatcher could not tell "found 1 stale job" from "crashed". ``--exit-fail-count``
+keeps the old contract for a caller that wants it.
+
+The monitor itself is read-only (crontab -l, systemctl is-active, SELECTs, log mtimes). Its only write is
+the ScheduledJobReceipt@v1 receipt (data/runtime/job_coverage_monitor_last.json, ``ok_at`` on success);
+``--dry-run`` never enters the receipt wrapper (AGENTS.md §6).
 """
 import json
 import os
@@ -140,11 +150,22 @@ REGISTRY = [
 ]
 
 
+# Set by _crontab_lines() when `crontab -l` could not be read: the run is blind, not "nothing scheduled".
+CRONTAB_ERROR = None
+
+
 def _crontab_lines():
+    global CRONTAB_ERROR
     try:
-        out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10).stdout
-    except Exception:
+        cp = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10)
+    except Exception as exc:  # noqa: BLE001
+        CRONTAB_ERROR = type(exc).__name__
         return []
+    out = cp.stdout
+    if cp.returncode != 0 and not out.strip():
+        CRONTAB_ERROR = f"crontab -l exit {cp.returncode}: {(cp.stderr or '').strip()[:120]}"
+        return []
+    CRONTAB_ERROR = None
     return [ln for ln in out.splitlines() if ln.strip() and not ln.strip().startswith("#")]
 
 
@@ -198,7 +219,19 @@ def _log_bases():
     # Logs live in the served tree's logs/ (persistent-state), the dev tree's logs/ (launchers and
     # wrappers that cd there: options monitor, pullback screener, protection pipeline) or ~/logs.
     dev = Path(os.environ.get("TRADEAI_DEV_TREE") or Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild")
-    return (LOGS, dev / "logs", Path.home() / "logs")
+    bases = [LOGS]
+    try:  # the persistent logs root, so a run from a worktree / release reads the served logs too
+        from lib.persistent_state_root import logs_root
+        bases.append(logs_root(PROJECT_ROOT))
+    except Exception:  # noqa: BLE001
+        pass
+    bases += [dev / "logs", Path.home() / "logs"]
+    out, seen = [], set()
+    for b in bases:
+        if str(b) not in seen:
+            seen.add(str(b))
+            out.append(b)
+    return tuple(out)
 
 
 def _log_age_h(fname):
@@ -257,6 +290,7 @@ def evaluate():
 def main():
     results = evaluate()
     fails = [r for r in results if r["status"] in ("NOT_SCHEDULED", "STALE")]
+    blind = CRONTAB_ERROR
     if "--json" in sys.argv:
         print(json.dumps({"results": results,
                           "summary": {"total": len(results), "fail": len(fails),
@@ -267,10 +301,24 @@ def main():
         for r in sorted(results, key=lambda x: x["status"]):
             print(f"  {icon.get(r['status'],'?')} [{r['status']:13}] {r['job']:28} {r['detail']}")
         print(f"\n{len(fails)} FAIL ({sum(1 for r in results if r['status']=='OK')}/{len(results)} OK)")
-    return min(len(fails), 250)
+    if blind:
+        print(f"BLIND: crontab unreadable ({blind}) — NOT_SCHEDULED rows are not evidence", file=sys.stderr)
+        return 2
+    if "--exit-fail-count" in sys.argv:
+        return min(len(fails), 250)
+    return 0
+
+
+def cli():
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    if "--dry-run" in sys.argv:
+        # AGENTS.md §6: the receipt wrapper (the monitor's only write) is not reachable from a dry run.
+        code = main()
+        print("(dry run — receipt not written: data/runtime/job_coverage_monitor_last.json)")
+        return code
+    from lib.scheduled_job_receipt import run_with_receipt
+    return run_with_receipt(main, script="job_coverage_monitor", root=PROJECT_ROOT)
 
 
 if __name__ == "__main__":
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-    from lib.scheduled_job_receipt import run_with_receipt
-    sys.exit(run_with_receipt(main, script="job_coverage_monitor", root=PROJECT_ROOT))
+    sys.exit(cli())

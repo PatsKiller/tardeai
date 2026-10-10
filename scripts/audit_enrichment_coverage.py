@@ -13,20 +13,29 @@ Surfaces audited (per symbol; DIRECTIVE symbols held to the strictest bar):
   llm_curation— hermes_external_research within 14d (DIRECTIVE symbols only — the operator promise)
   protection  — protection_advisory within 7d (HELD real-account equities only)
 
-  python3 scripts/audit_enrichment_coverage.py [--alert] [--json]
+  python3 scripts/audit_enrichment_coverage.py [--alert] [--json] [--dry-run]
+
+--dry-run (refactor wave 1, 2026-10-10): runs the same read-only audit queries and prints the report,
+plus the alert it WOULD send; never sends, never writes the lane receipt. A real run (with or without
+--alert) writes data/runtime/audit-enrichment-coverage_last.json (LaneRunReceipt@v1; ok_at only on
+success) under the persistent-state root. Gaps are findings, not failure: exit 0 unless the audit
+itself fails.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+LANE_ID = "audit-enrichment-coverage"
 
-def run(alert=False, as_json=False):
+
+def run(alert=False, as_json=False, dry_run=False):
     from db_adapter import _get_conn
     import watch_universe as wu
     conn = _get_conn(); cur = conn.cursor()
@@ -95,6 +104,17 @@ def run(alert=False, as_json=False):
               "symbols_with_gaps": len(gaps), "directive_gaps": directive_gaps,
               "gaps": gaps[:60]}
     print(json.dumps(report, indent=None if as_json else 1, default=str))
+    if dry_run:
+        # Returns BEFORE _alert is reachable: a preview must not be able to send (AGENTS.md §6).
+        # With --json the report stays the only stdout line; the preview goes to stderr.
+        out = sys.stderr if as_json else sys.stdout
+        if alert and directive_gaps:
+            print(f"DRY RUN: would send alert ({len(directive_gaps)} directive gaps):", file=out)
+            print(_alert_message(directive_gaps), file=out)
+        else:
+            print("DRY RUN: no alert would be sent" + ("" if alert else " (--alert not set)"), file=out)
+        print("DRY RUN: nothing sent, no receipt written", file=out)
+        return report
     if alert and directive_gaps:
         _alert(directive_gaps)
     return report
@@ -105,15 +125,19 @@ def _table_exists(cur, name):
     return cur.fetchone() is not None
 
 
-def _alert(directive_gaps):
-    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+def _alert_message(directive_gaps):
     lines = [f"• {g['symbol']}: missing {', '.join(g['missing'])}" for g in directive_gaps[:12]]
-    msg = (
+    return (
         "⚠️ *ENRICHMENT COVERAGE GAPS — operator-directive symbols*\n"
         + "\n".join(lines)
         + "\n\nFix: the relevant fetcher skipped the canonical watch "
           "universe (scripts/watch_universe.py)."
     )
+
+
+def _alert(directive_gaps):
+    """Send via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
+    msg = _alert_message(directive_gaps)
     try:
         from telegram_alert import send_telegram
         ok = bool(send_telegram(msg))
@@ -136,9 +160,29 @@ def _alert(directive_gaps):
         pass
 
 
-if __name__ == "__main__":
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--alert", action="store_true")
     ap.add_argument("--json", action="store_true")
-    a = ap.parse_args()
-    run(alert=a.alert, as_json=a.json)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="audit + print the would-be alert; no send, no receipt")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        run(alert=a.alert, as_json=a.json, dry_run=True)
+        return 0
+    started = datetime.now(timezone.utc)
+    from lib.lane_last_receipt import write_lane_receipt
+    try:
+        report = run(alert=a.alert, as_json=a.json)
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                           summary={"error_type": type(exc).__name__})
+        raise
+    write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, summary={
+        "universe": report["universe"], "symbols_with_gaps": report["symbols_with_gaps"],
+        "directive_gaps": len(report["directive_gaps"]), "alert_requested": bool(a.alert)})
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

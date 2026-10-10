@@ -10,17 +10,27 @@ state_freshness_history.
 
 JSON files remain the fast current-state layer.
 Postgres becomes the trend/audit/history layer.
+
+--dry-run (refactor wave 1, 2026-10-10): runs the same read-only audit and prints the rows it would
+INSERT; never calls psql (no schema DDL, no INSERT, no SELECT), never writes the lane receipt.
+A real run writes data/runtime/write-state-freshness-history_last.json (LaneRunReceipt@v1; ok_at only
+on success) under the persistent-state root. The audit subprocess runs under the venv interpreter
+(lib.live_project_root.venv_python), not whatever `python3` is first on PATH.
 """
 
+import argparse
 import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = PROJECT_ROOT / ".env"
+LANE_ID = "write-state-freshness-history"
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
 def load_env():
@@ -126,8 +136,10 @@ def run_psql(sql_text):
 
 
 def get_audit():
+    from lib.live_project_root import venv_python
+
     proc = subprocess.run(
-        ["python3", "scripts/refresh_agent_context.py", "--mode", "audit", "--json"],
+        [venv_python(PROJECT_ROOT), "scripts/refresh_agent_context.py", "--mode", "audit", "--json"],
         cwd=PROJECT_ROOT,
         text=True,
         capture_output=True,
@@ -156,15 +168,15 @@ def sql_num(value):
     return str(value)
 
 
-def insert_audit(audit):
+def build_insert_sql(audit):
+    """Pure: (sql or None, row_count). The read-only half of insert_audit."""
     checked_at = audit.get("checked_at")
     run_mode = audit.get("mode", "audit")
     issues = audit.get("issues", [])
     files_checked = audit.get("files_checked", [])
 
     if not files_checked:
-        print("[state-db] No files_checked rows found.")
-        return 0
+        return None, 0
 
     values = []
     for row in files_checked:
@@ -194,9 +206,16 @@ def insert_audit(audit):
      source_script, agent_checked_at, file_size_bytes, metadata, issues)
     VALUES
     """ + ",\n".join(values) + ";\n"
+    return sql, len(values)
 
+
+def insert_audit(audit):
+    sql, n = build_insert_sql(audit)
+    if sql is None:
+        print("[state-db] No files_checked rows found.")
+        return 0
     run_psql(sql)
-    return len(values)
+    return n
 
 
 def verify_latest():
@@ -208,15 +227,49 @@ def verify_latest():
     return run_psql(sql)
 
 
-def main():
-    load_env()
-    require_db_env()
-    ensure_schema()
-    audit = get_audit()
-    inserted = insert_audit(audit)
-    print(f"[state-db] Inserted {inserted} freshness rows.")
-    print(verify_latest())
+def dry_run_report(audit):
+    """Print what a real run would write. Never reaches run_psql."""
+    sql, n = build_insert_sql(audit)
+    print(f"[state-db] DRY RUN: checked_at={audit.get('checked_at')} "
+          f"freshness_ok={audit.get('freshness_ok')} issues={len(audit.get('issues') or [])}")
+    for row in audit.get("files_checked") or []:
+        print(f"[state-db] DRY RUN: would insert state_file={row.get('file')} ok={row.get('ok')} "
+              f"age_hours={row.get('age_hours')} max_age_hours={row.get('max_age_hours')}")
+    print(f"[state-db] DRY RUN: would run ensure_schema (DDL) + INSERT {n} rows into "
+          f"state_freshness_history; nothing written, no receipt")
+    return n
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Append state freshness audit rows to Postgres")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="audit + print the rows; no psql call, no receipt")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        # Returns BEFORE ensure_schema / insert_audit / verify_latest are reachable (AGENTS.md §6).
+        dry_run_report(get_audit())
+        return 0
+
+    from lib.lane_last_receipt import write_lane_receipt
+
+    started = datetime.now(timezone.utc)
+    try:
+        load_env()
+        require_db_env()
+        ensure_schema()
+        audit = get_audit()
+        inserted = insert_audit(audit)
+        print(f"[state-db] Inserted {inserted} freshness rows.")
+        print(verify_latest())
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                           summary={"error_type": type(exc).__name__})
+        raise
+    write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, summary={
+        "inserted": inserted, "checked_at": audit.get("checked_at"),
+        "freshness_ok": audit.get("freshness_ok"), "issues": len(audit.get("issues") or [])})
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
