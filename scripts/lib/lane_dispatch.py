@@ -64,8 +64,29 @@ DISPATCH_MODES = ("off", "dry_run", "live")
 DISPATCH_CLASSES = ("monitor", "report", "hygiene", "pipeline", "heavy", "llm", "ingest", "send", "learn")
 #: Refused until AGENTS rules R1/R2 (E §3) are ratified (design 02 §2).
 RATIFICATION_GATED_CLASSES = frozenset({"llm", "ingest", "send", "learn"})
-#: The classes a dispatch block may carry today. Pass a wider set to validate_dispatch_block once R1/R2 land.
+#: The classes a dispatch block may carry before R1 (AGENTS 4.3.0) is ACTIVE; see permitted_classes_now().
 PERMITTED_CLASSES_PRE_R1 = frozenset(DISPATCH_CLASSES) - RATIFICATION_GATED_CLASSES
+
+# ── R1 (AGENTS.md 4.3.0 §23.18; operator rulings 2026-10-10 ~00:20 ET) ──────────────────────────
+#: The classes R1 admits — ingest writers, governed LLM jobs, learning/memory writers. `send` stays gated (R2).
+R1_ADMITTED_CLASSES = frozenset({"ingest", "llm", "learn"})
+#: Policy status of R1. "PROPOSED" until the operator ratifies AGENTS.md 4.3.0; only the ratifying edit flips it,
+#: and tests/test_agents_policy_4_3_0_r1_classes.py fails unless it matches the 4.3.0 version-history row.
+R1_POLICY_VERSION = "4.3.0"
+R1_STATUS = "PROPOSED"
+#: Classes a dispatch block may carry once R1 is ACTIVE (each R1 class still needs r1_class_admission).
+PERMITTED_CLASSES_R1 = PERMITTED_CLASSES_PRE_R1 | R1_ADMITTED_CLASSES
+#: The ladder stages an R1 row may be at (AGENTS §23.11/§23.12 scheduler.stage). Anything else is refused.
+R1_STAGES = frozenset({"shadow", "canary", "cutover"})
+#: The only route a governed LLM job may use for model calls (AGENTS §23.4, §9.2, §12; `cio-governed-bridge`).
+GOVERNED_LLM_ROUTE = "cio-governed-bridge"
+#: Ruling 3: no broker credential in an admitted lane's environment. Name fragments, matched on env_names.
+BROKER_CREDENTIAL_ENV_FRAGMENTS = ("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR", "FUTU", "TRADIER", "BROKER")
+#: argv tokens by which an LLM job would pick its own provider or model (§23.4: capability, never a provider).
+LLM_PROVIDER_ARGV_TOKENS = ("--model", "--provider", "--lane", "anthropic", "openai", "api_key", "--api-key")
+_RECEIPT_SIGNAL = re.compile(r"^data/runtime/[A-Za-z0-9._-]+_last\.json$")
+#: Long-running flags: an R1 lane is a scheduled run, never a daemon (AGENTS §23.14 "not a daemon").
+R1_DAEMON_ARGV_TOKENS = ("--daemon", "--loop", "--forever", "--watch", "--serve")
 DISPATCH_WAVES = ("W0", "W1", "W2", "W3", "W4", "W5")
 DISPATCH_TZ = "America/New_York"
 TRIGGER_SOURCES = ("run_done", "receipt", "cio_bus", "ledger_event", "outbox")
@@ -87,6 +108,8 @@ ISSUE_FORBIDDEN_LANE = "forbidden_lane"
 EXTRA_FORBIDDEN_WORDS = (
     "secret", "stop", "position", "guard", "deploy", "sender", "sm-render", "sm_render", "smrender",
     "schwab", "alpaca", "snaptrade", "moomoo", "ibkr", "paper", "executor", "submit",
+    # 4.3.0 (R1): secret renderers the 4.1.0 policy test names but this list missed (render_env.py was eligible).
+    "render_env", "rotation_daemon", "bitwarden",
 )
 #: Name kept for callers of the first cut (it is now matched by word, not substring).
 EXTRA_FORBIDDEN_SUBSTRINGS = EXTRA_FORBIDDEN_WORDS
@@ -117,6 +140,7 @@ _FILE_EXTS = frozenset({"py", "sh"})
 KEEP_ON_CRON = "KEEP_ON_CRON"
 DEFAULT_RUN_ALLOWLIST = Path(__file__).resolve().parents[2] / "config" / "n8n_run_allowlist.json"
 DEFAULT_POLICY_EXCEPTIONS = Path(__file__).resolve().parents[2] / "config" / "lane_dispatch_policy_exceptions.json"
+DEFAULT_LLM_PROCESS_REGISTRY = Path(__file__).resolve().parents[2] / "config" / "llm_process_registry.json"
 #: Safety ceiling on config/lane_dispatch_policy_exceptions.json: the only forbidden tokens a lane may ever be
 #: exempted from. market_day_gate.sh is a market-calendar gate, not a broker/order/stop/secret authority.
 EXEMPTIBLE_TOKENS = frozenset({"market_day_gate.sh"})
@@ -607,14 +631,144 @@ def dispatchable(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str
         row, allowlist_argv=allowlist_argv, exceptions=exceptions)[0]
 
 
+# ── R1 class admission (AGENTS.md 4.3.0 §23.18) ──────────────────────────────────────────────────
+
+def permitted_classes_now(status: Optional[str] = None) -> frozenset[str]:
+    """PERMITTED_CLASSES_PRE_R1 until R1 is ACTIVE, then PERMITTED_CLASSES_R1. `status` overrides R1_STATUS
+    (tests only)."""
+    return PERMITTED_CLASSES_R1 if (status or R1_STATUS) == "ACTIVE" else PERMITTED_CLASSES_PRE_R1
+
+
+_ENTRIES_CACHE: dict[str, dict[str, dict[str, Any]]] = {}
+
+
+def load_run_allowlist_entries(path: Optional[Path] = None) -> dict[str, dict[str, Any]]:
+    """lane_id -> the whole config/n8n_run_allowlist.json entry. Missing/malformed file -> {} (fail closed: an R1
+    row with no entry is refused)."""
+    p = Path(path) if path is not None else DEFAULT_RUN_ALLOWLIST
+    key = str(p)
+    if key not in _ENTRIES_CACHE:
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            doc = {}
+        lanes = doc.get("lanes") if isinstance(doc, dict) else None
+        _ENTRIES_CACHE[key] = {e["lane_id"]: e for e in (lanes if isinstance(lanes, list) else [])
+                               if isinstance(e, dict) and isinstance(e.get("lane_id"), str)}
+    return _ENTRIES_CACHE[key]
+
+
+def load_llm_process_ids(path: Optional[Path] = None) -> frozenset[str]:
+    """Registered process ids in config/llm_process_registry.json. Missing/malformed -> empty (fail closed)."""
+    p = Path(path) if path is not None else DEFAULT_LLM_PROCESS_REGISTRY
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return frozenset()
+    procs = doc.get("processes") if isinstance(doc, dict) else None
+    return frozenset(str(x["id"]) for x in (procs if isinstance(procs, list) else [])
+                     if isinstance(x, dict) and x.get("id"))
+
+
+def receipt_signal_path(row: Mapping[str, Any]) -> Optional[str]:
+    """The LaneRunReceipt@v1 path when the row's output_signal is that receipt (scripts/lib/lane_last_receipt.py:
+    json_key `ok_at` on data/runtime/<lane>_last.json), else None. A log-file mtime is not a receipt (§0 rail 8)."""
+    sig = row.get("output_signal")
+    if not isinstance(sig, dict) or sig.get("kind") != "json_key" or sig.get("key") != "ok_at":
+        return None
+    path = sig.get("path")
+    return path if isinstance(path, str) and _RECEIPT_SIGNAL.match(path) else None
+
+
+def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]] = None, *,
+                       status: Optional[str] = None, process_ids: Optional[Iterable[str]] = None,
+                       allowlist_argv: Optional[Mapping[str, str]] = None,
+                       exceptions: Optional[Mapping[str, frozenset[str]]] = None) -> tuple[bool, str]:
+    """AGENTS.md 4.3.0 §23.18: may this row's dispatch class run from the dispatcher? (ok, reason).
+
+    Classes outside R1_ADMITTED_CLASSES are answered by PERMITTED_CLASSES_PRE_R1 alone (`send` stays refused).
+    An R1 class (ingest / llm / learn) is admitted only when ALL hold:
+      * R1 is ACTIVE (R1_STATUS, flipped only by the ratifying edit);
+      * dispatch_eligible(row): the forbidden-token rule, stay-behind and KEEP_ON_CRON are never relaxed by a class;
+      * not a daemon: no R1_DAEMON_ARGV_TOKENS flag in the allowlist argv, no systemd service (non-timer) scheduler;
+      * scheduler.expression == "dispatcher" and scheduler.stage in {shadow, canary, cutover};
+      * an allowlist entry with a non-empty dry_run_arg (the shadow step needs a real dry run);
+      * output_signal is the LaneRunReceipt@v1 (json_key ok_at on data/runtime/<x>_last.json) and the allowlist
+        entry's output_signal is the same path;
+      * no broker credential name in the entry's env_names (ruling 3);
+      * llm only: entry.llm_route == {"via": "cio-governed-bridge", "process_id": <registered process>} and no argv
+        token that picks a provider or model (§23.4). The spend cap (§12) and deferral ride the bridge."""
+    lane = str(row.get("lane_id") or "?")
+    try:
+        block = parse_dispatch_block(row)
+    except DispatchBlockError as e:
+        return False, f"bad_block:{e.detail}"
+    if block is None:
+        return False, "no_dispatch_block"
+    klass = block.klass
+    if klass not in R1_ADMITTED_CLASSES:
+        return (True, "pre_r1_class") if klass in PERMITTED_CLASSES_PRE_R1 else (False, f"class_gated:{klass}")
+    if (status or R1_STATUS) != "ACTIVE":
+        return False, f"r1_not_ratified:{klass} (AGENTS {R1_POLICY_VERSION} is {status or R1_STATUS})"
+    ok, why = dispatch_eligible(row, allowlist_argv=allowlist_argv, exceptions=exceptions)
+    if not ok:
+        return False, f"ineligible:{why}"
+    sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
+    if sched.get("expression") != "dispatcher":
+        return False, "not_a_dispatcher_row"
+    if sched.get("stage") not in R1_STAGES:
+        return False, f"stage:{sched.get('stage')!r} not in shadow/canary/cutover"
+    if entry is None:
+        entry = load_run_allowlist_entries().get(lane)
+    if not isinstance(entry, Mapping):
+        return False, "not_allowlisted"
+    for key in ("command", "dry_run_arg", "live_arg"):
+        for tok in entry.get(key) or []:
+            if any(str(tok) == d or str(tok).startswith(d + "=") for d in R1_DAEMON_ARGV_TOKENS):
+                return False, f"daemon_flag:{tok}"
+    if any((".service" in str(v) and ".timer" not in str(v)) or "Restart=always" in str(v) for v in sched.values()):
+        return False, "systemd_service_lane"
+    dry = entry.get("dry_run_arg")
+    if not isinstance(dry, list) or not dry or not all(isinstance(t, str) and t for t in dry):
+        return False, "no_dry_run_arg"
+    receipt = receipt_signal_path(row)
+    if receipt is None:
+        return False, "output_signal_not_a_lane_receipt"
+    if entry.get("output_signal") != receipt:
+        return False, f"allowlist_output_signal_mismatch:{entry.get('output_signal')!r}"
+    for name in entry.get("env_names") or []:
+        up = str(name).upper()
+        if any(frag in up for frag in BROKER_CREDENTIAL_ENV_FRAGMENTS):
+            return False, f"broker_credential_env:{name}"
+    if klass == "llm":
+        route = entry.get("llm_route")
+        if not isinstance(route, Mapping) or route.get("via") != GOVERNED_LLM_ROUTE:
+            return False, f"llm_route_not_governed_bridge:{route!r}"
+        pid = route.get("process_id")
+        known = frozenset(process_ids) if process_ids is not None else load_llm_process_ids()
+        if not isinstance(pid, str) or pid not in known:
+            return False, f"llm_process_unregistered:{pid!r}"
+        for key in ("command", "dry_run_arg", "live_arg"):
+            for tok in entry.get(key) or []:
+                low = str(tok).lower()
+                hit = next((p for p in LLM_PROVIDER_ARGV_TOKENS if p in low), None)
+                if hit:
+                    return False, f"llm_argv_selects_provider:{hit}"
+    return True, f"r1_admitted:{klass}"
+
+
 # ── validation ───────────────────────────────────────────────────────────────────────────────────
 
 def validate_dispatch_block(row: Mapping[str, Any], *, known_lane_ids: Optional[Iterable[str]] = None,
                             retry_policy_names: Optional[Iterable[str]] = None,
-                            permitted_classes: Iterable[str] = PERMITTED_CLASSES_PRE_R1) -> list[DispatchIssue]:
+                            permitted_classes: Optional[Iterable[str]] = None) -> list[DispatchIssue]:
     """Every issue with the row's dispatch/watch blocks. [] when both are absent or clean.
 
-    known_lane_ids / retry_policy_names: None skips that cross-check (no policy file exists yet)."""
+    known_lane_ids / retry_policy_names: None skips that cross-check (no policy file exists yet).
+    permitted_classes: None = permitted_classes_now() (PRE_R1 until AGENTS 4.3.0 is ACTIVE). A wider set passed by
+    a caller never waives R1: an ingest/llm/learn block must also pass r1_class_admission (R1 ACTIVE included)."""
+    if permitted_classes is None:
+        permitted_classes = permitted_classes_now()
     lane = str(row.get("lane_id") or "?")
     issues: list[DispatchIssue] = []
     try:
@@ -633,6 +787,10 @@ def validate_dispatch_block(row: Mapping[str, Any], *, known_lane_ids: Optional[
         issues.append(DispatchIssue(lane, ISSUE_CLASS_NOT_PERMITTED,
                                     f"class {block.klass!r} is refused until AGENTS R1/R2 are ratified"
                                     if block.klass in RATIFICATION_GATED_CLASSES else f"class {block.klass!r}"))
+    elif block.klass in R1_ADMITTED_CLASSES:
+        ok, why = r1_class_admission(row)
+        if not ok:
+            issues.append(DispatchIssue(lane, ISSUE_CLASS_NOT_PERMITTED, f"class {block.klass!r} (R1): {why}"))
     if known_lane_ids is not None:
         known = set(known_lane_ids)
         for i, edge in enumerate(block.after):

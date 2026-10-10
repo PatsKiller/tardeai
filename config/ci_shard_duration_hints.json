@@ -45,6 +45,7 @@
   "tests/test_agents_policy_1_3_0_amendment.py": 0.5,
   "tests/test_agents_policy_3_0_0_amendment.py": 0.5,
   "tests/test_agents_policy_4_1_0_amendment.py": 0.5,
+  "tests/test_agents_policy_4_3_0_r1_classes.py": 0.6,
   "tests/test_agents_section_zero_parity.py": 0.6,
   "tests/test_agents_type_vocabulary.py": 0.7,
   "tests/test_ai_analyst_cache_fails_closed.py": 0.7,
