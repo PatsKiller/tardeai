@@ -367,7 +367,7 @@ def test_committed_disabled_units_are_all_unruled(inputs, committed):
                if r.get("generated_by") == R.GENERATOR_VERSION and r["scheduler"]["kind"] == "systemd"}
     disabled = [u["unit"] for u in inputs["units"]["timers"] + inputs["units"]["services"]
                 if str(u.get("enabled_state") or "") not in R.ENABLED_STATES and u["unit"] in by_unit]
-    assert len(disabled) >= 7
+    assert len(disabled) >= 3          # 7 until the 2026-10-10 persona ruling made 4 of them hand-curated RETIRED rows
     for u in disabled:
         r = by_unit[u]
         assert r["state"] == "ACTIVE" and r["status"] == R.STATUS_DISABLED_UNRULED, u

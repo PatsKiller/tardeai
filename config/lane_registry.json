@@ -8395,6 +8395,210 @@
       "retire_batch": "retire-batch-1"
     },
     {
+      "lane_id": "tradeai-agent-runtime-atlas",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@atlas.timer"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'atlas' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'atlas' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@atlas.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent atlas --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-10",
+      "state_reason": "AWAITING_OPERATOR_RULING (prepared 2026-10-10 registry-drift; do not merge before the operator rules and this marker is replaced by the ruling). Orphan persona timer: 'atlas' is not an agent in FLEET (scripts/agent_runtime/agents/definitions.py) nor AGENT_ALIASES, so every run was a no-op (\"no-work: unknown agent\", exit 0). Timer found disabled 2026-10-09 and still disabled 2026-10-10 (ActiveState=inactive UnitFileState=disabled LastTriggerUSec=); inventory timer:tradeai-agent-runtime@atlas.timer active=no, approval_status Pending review. Not in retire batch 1 (retire_batches.json R1-R3 do not list it). Who disabled the timer, and why, is not verified (CORRELATED). Unit files stay on disk (rail 6).",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'atlas' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09 | systemctl --user show 2026-10-10: ActiveState=inactive UnitFileState=disabled LastTriggerUSec=",
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-10",
+        "why": "a generated row is re-derived ACTIVE + DISABLED_UNRULED from the scheduler snapshot on every reconcile run; an operator ruling (RETIRED) is carried as a hand-written row the generator keeps (precedent: retire batch 1)"
+      },
+      "inventory_id": "timer:tradeai-agent-runtime@atlas.timer"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-concierge",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@concierge.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'concierge' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'concierge' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@concierge.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent concierge --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-10",
+      "state_reason": "AWAITING_OPERATOR_RULING (prepared 2026-10-10 registry-drift; do not merge before the operator rules and this marker is replaced by the ruling). Orphan persona timer: 'concierge' is not an agent in FLEET (scripts/agent_runtime/agents/definitions.py) nor AGENT_ALIASES, so every run was a no-op (\"no-work: unknown agent\", exit 0). Timer found disabled 2026-10-09 and still disabled 2026-10-10 (ActiveState=inactive UnitFileState=disabled LastTriggerUSec=); inventory timer:tradeai-agent-runtime@concierge.timer active=no, approval_status Pending review. Not in retire batch 1 (retire_batches.json R1-R3 do not list it). Who disabled the timer, and why, is not verified (CORRELATED). Unit files stay on disk (rail 6).",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'concierge' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09 | systemctl --user show 2026-10-10: ActiveState=inactive UnitFileState=disabled LastTriggerUSec=",
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-10",
+        "why": "a generated row is re-derived ACTIVE + DISABLED_UNRULED from the scheduler snapshot on every reconcile run; an operator ruling (RETIRED) is carried as a hand-written row the generator keeps (precedent: retire batch 1)"
+      },
+      "inventory_id": "timer:tradeai-agent-runtime@concierge.timer"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-hermes",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@hermes.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'hermes' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'hermes' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@hermes.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent hermes --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-10",
+      "state_reason": "AWAITING_OPERATOR_RULING (prepared 2026-10-10 registry-drift; do not merge before the operator rules and this marker is replaced by the ruling). Orphan persona timer: 'hermes' is not an agent in FLEET (scripts/agent_runtime/agents/definitions.py) nor AGENT_ALIASES, so every run was a no-op (\"no-work: unknown agent\", exit 0). Timer found disabled 2026-10-09 and still disabled 2026-10-10 (ActiveState=inactive UnitFileState=disabled LastTriggerUSec=); inventory timer:tradeai-agent-runtime@hermes.timer active=no, approval_status Pending review. Not in retire batch 1 (retire_batches.json R1-R3 do not list it). Who disabled the timer, and why, is not verified (CORRELATED). Unit files stay on disk (rail 6).",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'hermes' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09 | systemctl --user show 2026-10-10: ActiveState=inactive UnitFileState=disabled LastTriggerUSec=",
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-10",
+        "why": "a generated row is re-derived ACTIVE + DISABLED_UNRULED from the scheduler snapshot on every reconcile run; an operator ruling (RETIRED) is carried as a hand-written row the generator keeps (precedent: retire batch 1)"
+      },
+      "inventory_id": "timer:tradeai-agent-runtime@hermes.timer"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-pulse",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@pulse.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "RETIRED",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'pulse' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'pulse' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@pulse.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent pulse --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ],
+      "state_since": "2026-10-10",
+      "state_reason": "AWAITING_OPERATOR_RULING (prepared 2026-10-10 registry-drift; do not merge before the operator rules and this marker is replaced by the ruling). Orphan persona timer: 'pulse' is not an agent in FLEET (scripts/agent_runtime/agents/definitions.py) nor AGENT_ALIASES, so every run was a no-op (\"no-work: unknown agent\", exit 0). Timer found disabled 2026-10-09 and still disabled 2026-10-10 (ActiveState=inactive UnitFileState=disabled LastTriggerUSec=); inventory timer:tradeai-agent-runtime@pulse.timer active=no, approval_status Pending review. Not in retire batch 1 (retire_batches.json R1-R3 do not list it). Who disabled the timer, and why, is not verified (CORRELATED). Unit files stay on disk (rail 6).",
+      "reason_confidence": "CORRELATED",
+      "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'pulse' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09 | systemctl --user show 2026-10-10: ActiveState=inactive UnitFileState=disabled LastTriggerUSec=",
+      "hand_curated": {
+        "from": "reconcile_lane_registry@v1",
+        "on": "2026-10-10",
+        "why": "a generated row is re-derived ACTIVE + DISABLED_UNRULED from the scheduler snapshot on every reconcile run; an operator ruling (RETIRED) is carried as a hand-written row the generator keeps (precedent: retire batch 1)"
+      },
+      "inventory_id": "timer:tradeai-agent-runtime@pulse.timer"
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -18715,138 +18919,6 @@
       ]
     },
     {
-      "lane_id": "tradeai-agent-runtime-atlas",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@atlas.timer"
-      },
-      "expected_cadence_hours": 0.25,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'atlas' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'atlas' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@atlas.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent atlas --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-concierge",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@concierge.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'concierge' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'concierge' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@concierge.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent concierge --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-hermes",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@hermes.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'hermes' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'hermes' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@hermes.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent hermes --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
       "lane_id": "tradeai-agent-runtime-morgan",
       "owner": "agents",
       "scheduler": {
@@ -18878,50 +18950,6 @@
       "service": "tradeai-agent-runtime@morgan.service",
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent morgan --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-pulse",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@pulse.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'pulse' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'pulse' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@pulse.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent pulse --once --max-batch 8",
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]

@@ -68,9 +68,14 @@ def test_the_live_registry_retires_due_checkpoints():
     rows = ces.apply_lane_states([_row("tradeai-iris-taxonomy.timer", "DISABLED")], m)
     assert rows[0]["status"] == "DISABLED", rows[0]
     unruled = [r for r in reg["lanes"] if r.get("status") == "DISABLED_UNRULED"]
-    assert {r["lane_id"] for r in unruled} >= {
-        "tradeai-iris-taxonomy", "db-retention-timer", "systemd-tmpfiles-clean", "tradeai-agent-runtime-atlas",
-        "tradeai-agent-runtime-concierge", "tradeai-agent-runtime-hermes", "tradeai-agent-runtime-pulse"}
+    # 2026-10-10 persona ruling: the four orphan persona timers (atlas, concierge, hermes, pulse) are RETIRED
+    # by the operator's ruling (hand-curated rows); the other three stay unruled.
+    assert {r["lane_id"] for r in unruled} >= {"tradeai-iris-taxonomy", "db-retention-timer", "systemd-tmpfiles-clean"}
+    by_id = {r["lane_id"]: r for r in reg["lanes"]}
+    for a in ("atlas", "concierge", "hermes", "pulse"):
+        r = by_id[f"tradeai-agent-runtime-{a}"]
+        assert r["state"] == "RETIRED" and r.get("hand_curated") and not r.get("generated_by"), a
+        assert m[f"tradeai-agent-runtime@{a}.timer"][1] in ces.OFF_BY_DECISION, a
     for r in unruled:
         assert r["state"] not in ces.OFF_BY_DECISION and r["operator_decision_pending"] is True, r["lane_id"]
         assert (r.get("proposed_state") or {}).get("ruled", False) is False, r["lane_id"]
