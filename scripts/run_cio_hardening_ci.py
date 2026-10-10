@@ -3734,6 +3734,13 @@ GATES = [
             # AGENTS 4.4.0 is ACTIVE; refused while PROPOSED, admitted with the status flipped in-test; compute_due
             # week sweep; allowlist live_arg null, lock = cron lock, no broker credential. Hermetic: repo config.
             "tests/test_dispatch_shadow_wave3_r1_20261010.py",
+            # Gateway /due latency (W0 re-run 2026-10-10 ~17:14 ET, relay_gateway_unreachable under 3-4 concurrent
+            # /due at CPUQuota=20%): the precomputed / split-lookup / memoized forbidden-token matcher equals a
+            # verbatim copy of the old one on every served-registry text and a compound corpus; DueResponse@v1
+            # byte-identical with either matcher over 36 h + catch-up + DST fold; 3-4 concurrent cold due calls
+            # through the real gateway HTTP server under 2 s wall and a CPU budget that holds at the quota.
+            # Hermetic: tmp_path ledger, port 0, repo config read only.
+            "tests/test_gateway_due_latency_20261010.py",
         ],
     ),
     (
