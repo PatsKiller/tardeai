@@ -322,7 +322,7 @@ PR descriptions may summarize the complete local validation result.
 
 Merge authority: an agent does not merge without operator approval, except
 under a standing approval written into AGENTS.md. AGENTS.md 4.1.0 §23.13
-(PROPOSED) grants a standing 48 h merge approval for `n8nmat/*` PRs only when
+(ACTIVE, ratified 2026-10-09) grants a standing 48 h merge approval for `n8nmat/*` PRs only when
 all three hold:
 
 1. Agent A's review verdict for the exact head is recorded on the program

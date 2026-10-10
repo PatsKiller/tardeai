@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      4.1.0
+Policy-Version:      4.2.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-09
-Last-Reviewed:       2026-10-09T17:30:03-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-09T21:10:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          4.0.0
+Supersedes:          4.1.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -20,6 +20,24 @@ same day "n8n drives a governed lane (Recommended)". The 5-minute Trade-AI scalp
 ingest through the data broker, a `trade_ai_scans` writer and a `send_telegram` caller — may run in
 `live` mode from n8n under the conditions in §23.3; it is the only such lane, and the never-list
 is otherwise unchanged. MAJOR because it widens what the n8n actor may cause (version policy).
+
+**4.2.0 is PROPOSED (MAJOR) — n8n first for timed work; three named system lanes; an independent
+dead-man switch; an n8n error-handling baseline (§23.3, §23.15–§23.17).** The 4.1.0 text governs
+until the operator sends `APPROVE_AGENTS_POLICY_4_2_0 <pr> <sha>` (§20); nothing 4.2.0 adds grants
+anything before then. It records the operator's direction of 2026-10-09 ~21:00 ET, verbatim:
+"why whould we use a cron in n8n , for notifications, n8n is there to relplace cron jobs" and "we go n8n first for everything with timing cron only by my approval of your reccomendation". (1) Every new or moved timed job is scheduled by n8n through registry-driven
+dispatch (§23.11–§23.12) by default; a new host cron line, a new systemd timer, or a change to an
+existing cron line's schedule needs Agent A's written recommendation on the program board **and**
+the operator's explicit approval of that recommendation — a `cron` grant alone is not enough
+(§23.15, §9.3, §17). (2) n8n may dispatch three named system lanes — `incident-notifier`,
+`n8n-activation-grants` (P16) and `n8n-workflow-drift-check` (P18) — with the host executing and
+sending; every other sender stays forbidden (§23.3). (3) One host-side alarm that does not depend on
+n8n, the autonomy watchdog, must alert when n8n, the relay, the gateway or the incident notifier is
+silent beyond a configured window; it is the one sanctioned host-timer exception (§23.16). (4) Every
+n8n workflow sets an error workflow and failures reach the operator only through the host
+(§23.17). Broker, order, stop, secret and daemon lanes (§23.14) stay on host schedulers. MAJOR
+because §17 changes and the n8n actor may cause a sender lane to run (version policy). Nothing in
+§0, §2, §2A or §7A, and none of the broker, secret or delete rails, is weakened.
 
 **4.1.0 is ACTIVE (MAJOR) — registry-driven n8n dispatch, wave ladder, program push budget, 48 h
 merge approval (§23.11–§23.14).** Ratified by the operator 2026-10-09 (`APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079`, §20;
@@ -2480,6 +2498,11 @@ accumulates the divergence this document exists to remove.
   registry-row PR — by the operator, or under §23.13's standing approval — is the operator's
   decision for that lane**, and no separate grant is asked. *Cause (§20): one import and one grant
   per lane moved 4 lanes in two days against 438 cron lines (measured 2026-10-09).*
+- **n8n first (4.2.0, §23.15).** A new or moved timed job is scheduled by n8n by default. A new host
+  cron line, a new systemd timer, or a change to an existing cron line's schedule needs Agent A's
+  written recommendation on the program board, with its reason, **and** the operator's explicit
+  approval of that recommendation; a `cron` grant alone is not enough. *Cause (§20): operator
+  2026-10-09 ~21:00 ET, "we go n8n first for everything with timing cron only by my approval of your reccomendation".*
 - **Dry-run under the exact cron form**: by path, neutral cwd, from a **pinned release directory**,
   never `CURRENT`.
 - **Verify both schedulers** — cron and systemd.
@@ -3442,7 +3465,10 @@ without that being stated at the top of the report.
 Propose and stop.
 
 Collapsing the two holdings copies · changing what is ranked onto an operator surface · any new
-production cron or systemd entry · **what portfolio data may be sent to an external model
+production cron or systemd entry, **and any change to an existing cron line's schedule — each needs
+Agent A's written recommendation on the program board and the operator's explicit approval of that
+recommendation; a `cron` grant alone is not enough, and new timed work goes to n8n by default**
+(§23.15; PROPOSED in 4.2.0) · **what portfolio data may be sent to an external model
 provider** (§2A) · **whether to fund off-box backup of `persistent-state`** (§18) ·
 **weakening the behaviour rail in any form** — editing
 `BEHAVIOR_FIELDS`, altering or conditionalising the unconditional raise at
@@ -3913,7 +3939,10 @@ is recorded in §23.7; §23.10 still grants nothing until each precondition is m
 **4.0.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_4_0_0`**)** — §23.3 gains the one named
 live-lane exception `trade-ai-scalp-live`. **4.1.0 ACTIVE (ratified 2026-10-09,** `APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079`**)** —
 §23.11–§23.14 added; §23.2, §23.5, §9.3 and §17 sentences amended in place (§23.7); the replaced
-4.0.0 text is recorded in §23.7. Operator direction 2026-10-09:
+4.0.0 text is recorded in §23.7. **4.2.0 PROPOSED** — §23.15–§23.17 added and §23.3 gains a named
+exception for three system lanes; §9.3, §17 and §23.14 sentences amended in place (§23.7); until
+`APPROVE_AGENTS_POLICY_4_2_0 <pr> <sha>` the 4.1.0 text governs and nothing 4.2.0 adds grants
+anything. Operator direction 2026-10-09:
 n8n gets governed AI capability, never unrestricted AI access or provider credentials; no capability
 expands until a guardrail audit proves governance parity or better. Operator direction
 2026-10-08: *"make agents.md carve out just for n8n"*, after the three decisions of the same day —
@@ -4051,6 +4080,23 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   sender enters the allowlist by analogy. *Cause (§20): 2026-10-09 13:30–15:00 the cron-run scan
   stalled unseen for 90 minutes (cold catalyst cache, every run killed at 295 s); operator: "n8n drives
   a governed lane", then "APPROVE_AGENTS_POLICY_4_0_0".*
+- **Named exception (4.2.0) — three system lanes: `incident-notifier`, `n8n-activation-grants` (P16)
+  and `n8n-workflow-drift-check` (P18).** n8n may dispatch these three lanes, and no others of their
+  kind, under every condition below. **n8n triggers, the host executes:** the request goes through the
+  relay to `coordination/run` like any lane, and the executor runs the registry row's exact argv under
+  its existing lock and timeout, with the environment its registry `install_line` sets. **n8n holds no Telegram or broker credential**; the relay bearer
+  stays its only credential (§23.5). **`incident-notifier` sends only SYSTEM Telegram, only through
+  the host chokepoint `scripts/lib/autonomy_watchdog/telegram_system.py` `send_system`**; the message
+  text is produced on the host from the host's own incident store, never from anything n8n supplies;
+  de-duplication, quiet hours and the daily cap stay host-side in `scripts/incident_notifier.py`. The
+  two checkers are read-only and send nothing. `n8n-activation-grants` is admitted by exact lane id
+  although its argv and receipt carry the gateway token `grant`: the gateway admits that one id and
+  `FORBIDDEN_ROUTE_TOKENS` itself is unchanged. **All other senders remain forbidden**; the never-list
+  of the allowlist bullet holds for every other lane, and no sender enters the allowlist by analogy.
+  *Cause (§20): operator, 2026-10-09 ~21:00 ET: "why whould we use a cron in n8n , for notifications, n8n is there to relplace cron jobs" — the three lanes had been declared for host
+  cron install (PR #1625, rows PAUSED pending install) because the sender and the `grant` token kept
+  them off the dispatcher; the dependency on n8n that kept the checkers on cron is answered by the
+  dead-man switch in §23.16, not by a host schedule.*
 - **The gateway never spawns.** It validates the claim and writes a `RunRequested@v1` row to the
   ledger `runs` table and stops. `tradeai-n8n-run-executor.service` (own cgroup) runs the lane's
   existing runner under the lane's existing lock (`safe_flock.sh`, `market_day_gate.sh` where the
@@ -4161,7 +4207,7 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   `CRON_PRESENT_WHILE_SCHEDULER_N8N`; relay bearer failures; n8n `healthz` down > 10 min; any
   `RUN_REFUSED` row. Rollback target: under five minutes, by re-enabling the exact line.
 
-## 23.7 Sentences amended in place by 2.0.0, 3.0.0, 4.0.0 and 4.1.0 (§20: replaced, not accumulated)
+## 23.7 Sentences amended in place by 2.0.0, 3.0.0, 4.0.0, 4.1.0 and 4.2.0 (§20: replaced, not accumulated)
 
 2.0.0:
 
@@ -4228,6 +4274,21 @@ a process that was about to schedule 71 lanes was governed by nothing in this fi
   2026-10-09 16:40 ET); the allowlist `never` list's "guard" entry still blocks every guard write.
 - Version history 3.0.0 row: the activation event is the ratification merge #1552 (`377e9b536`);
   #1547 (`3b5c24856`) merged the proposed text (due-diligence audit E D3).
+
+4.2.0 (PROPOSED; the 4.1.0 text it replaces stays readable at `origin/main` `b7dbe6e60`):
+
+- §17 "any new production cron or systemd entry" now also covers a change to an existing cron
+  line's schedule, and needs Agent A's written recommendation and the operator's explicit approval of
+  it; a `cron` grant alone is not enough; new timed work goes to n8n by default.
+- §9.3 gains the "n8n first" bullet (§23.15).
+- §23.3 gains the named exception for `incident-notifier`, `n8n-activation-grants` and
+  `n8n-workflow-drift-check`; the scalp exception and the never-list are unchanged.
+- §23.14 "No other ingest writer or sender becomes dispatcher-eligible by analogy" gains the three
+  named system lanes; the read-only guard carve-out's "a sender stays off the dispatcher … until the
+  operator admits it by name" now records that 4.2.0 admits `incident-notifier` by name.
+- The "Host cron, not n8n" reasons in the `config/lane_registry.json` rows of the three lanes
+  (PR #1625) are superseded by §23.15 and §23.16 once ratified; the rows change by registry PR, not by
+  this amendment.
 
 No sentence in §0, §2, §2A, §2B or §7A is weakened; this section only names where n8n sits under them.
 
@@ -4456,7 +4517,9 @@ every merge needs the operator's per-PR word again.
   `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant), a grant naming the id of the workflow that
   fires it, and the cron line live as the fallback until 3 clean market days. The test checks those
   conditions for it instead of the token test. No other ingest writer or sender becomes
-  dispatcher-eligible by analogy. *Cause (§20): 4.0.0 admitted one lane by name after it stalled
+  dispatcher-eligible by analogy. **4.2.0 adds three system lanes by name, on their §23.3 4.2.0
+  terms** (`incident-notifier`, `n8n-activation-grants`, `n8n-workflow-drift-check`); none of them
+  is a broker, order, secret or daemon lane, and naming them makes no class. *Cause (§20): 4.0.0 admitted one lane by name after it stalled
   unseen for 90 minutes on 2026-10-09; dispatch must not turn that into a class.*
 - **Read-only guard carve-out — the approval router's lane may read guard state, never change it.**
   Operator decision recorded 2026-10-09 16:40 ET: the approval-router lane (`approval-escalate`,
@@ -4470,9 +4533,80 @@ every merge needs the operator's per-PR word again.
   `send_telegram` call, and a sender stays off the dispatcher under the sentence above until the
   operator admits it by name. *Cause (§20): on 2026-09-06 a pending guard request expired unseen, and
   on 2026-10-07 two approved grants expired unused; the allowlist's blanket "guard" entry blocked the
-  read that would have escalated both.*
+  read that would have escalated both.* The 4.2.0 named exception admits `incident-notifier` by name
+  on the §23.3 4.2.0 terms; the approval router's own escalation sender is not admitted by it.
 - **No amendment made inside a program window can change this; it needs a new MAJOR.** *Cause (§20):
   a time-boxed program has every incentive to widen what it may move.*
+
+## 23.15 n8n first for timed work (4.2.0)
+
+Operator direction 2026-10-09 ~21:00 ET, verbatim: "why whould we use a cron in n8n , for notifications, n8n is there to relplace cron jobs" and "we go n8n first for everything with timing cron only by my approval of your reccomendation".
+
+- **Every new or moved timed job is scheduled by n8n by default**, through registry-driven dispatch
+  (§23.11) and the wave ladder (§23.12): a `config/lane_registry.json` dispatcher row and a
+  `config/n8n_run_allowlist.json` entry in one reviewed PR. A job is timed if anything fires it on a
+  clock — a cron line, a systemd timer, a `sleep` loop, an n8n schedule. *Cause (§20): the operator's
+  words above, given when three new system lanes were declared for host cron install (PR #1625)
+  while the program's purpose is to move cron lines into n8n — 4 of 438 had moved (measured
+  2026-10-09).*
+- **A host scheduler entry needs a written recommendation and the operator's approval of it.** A new
+  host cron line, a new systemd timer, or a change to an existing cron line's schedule requires
+  (a) Agent A's written recommendation on the program board, naming the lane, the line or timer, and
+  the reason n8n cannot schedule it, **and** (b) the operator's explicit approval of that
+  recommendation, recorded on the board. A `cron` grant alone is not enough: the grant authorises the
+  install, the approved recommendation authorises choosing a host scheduler. An agent other than
+  Agent A asks Agent A, not the operator. *Cause (§20): operator, "we go n8n first for everything with timing cron only by my approval of your reccomendation"; PR #1625 declared three
+  host-cron rows for which a `cron` grant was the only gate.*
+- **Existing cron and systemd lines stay until migrated by wave.** Nothing in this subsection retires,
+  edits or re-times a live line; each moves by its own §23.12 wave and `cron` cutover grant, and a
+  lane that fails a wave stays on cron (§23.12). *Cause (§20): §0 rail 6 and §23.2 — lines are
+  commented, never deleted, per line, under a grant.*
+- **Broker, order, stop, secret and daemon lanes stay on host schedulers.** They are never
+  dispatcher-eligible (§23.14), so they are not "moved" and this subsection does not reach them;
+  edits to them follow §9.3, §17 and §22 as before. *Cause (§0 rails 1–2, §2A, §23.14): a stolen
+  relay bearer must not place an order, render a secret or start a second daemon.*
+- **The one sanctioned host-timer exception is the dead-man switch (§23.16).** It is listed here so
+  that ratifying this version approves it; any other host timer follows the rule above. *Cause
+  (§20): an alarm for n8n that runs inside n8n is silent exactly when n8n is down.*
+
+## 23.16 Independent dead-man switch (4.2.0)
+
+- **One host-side alarm path does not depend on n8n.** The autonomy watchdog —
+  `tradeai-autonomy-watchdog.service`, fired by `tradeai-autonomy-watchdog.timer` every 5 minutes, a
+  systemd user unit that sends through the SYSTEM family `send_system` — must alert the operator
+  when n8n, the relay, the gateway or the incident notifier has been silent beyond a configured
+  window. The window is configuration, not a literal in code. It is the one sanctioned host-timer
+  exception to §23.15, recommended by Agent A and approved by the operator's ratification of this
+  version. *Cause (§20): with `incident-notifier`, P16 and P18 dispatched by n8n (§23.3), an n8n,
+  relay or gateway outage would also silence the lanes that report it; the PR #1625 rows kept the
+  checkers on cron for that reason.*
+- **Silence is measured from host evidence, not from n8n.** The watchdog reads host-side receipts
+  and heartbeats — the notifier's receipt, the dispatcher's `RunReceipt@v1` rows, the relay and
+  gateway health — never an n8n execution row (§23.1). *Cause (§0 rail 8, §23.1): an n8n execution row
+  is not evidence that a host job ran.*
+- **Today the watchdog does not read any of the four (measured 2026-10-09: no n8n, relay, gateway or
+  incident-notifier reference in `scripts/lib/autonomy_watchdog/collectors.py`).** Until that check is
+  merged and served, the dead-man switch is an open finding, not a control, and n8n fires the three
+  §23.3 4.2.0 lanes in `dry_run` only, never `live`. *Cause (§15, §16): a control is claimed
+  only when its code exists and is served.*
+- **The switch watches; it never schedules, restarts or fails over.** It does not fire a lane, start
+  n8n or re-enable a cron line; recovery stays an operator or rollback step (§23.6). *Cause (§0
+  rail 6, §23.6): an alarm that acts becomes a second scheduler with no registry row.*
+
+## 23.17 n8n error-handling baseline (4.2.0)
+
+- **Every n8n workflow sets an error workflow.** A workflow without one is not activated; the standard
+  is `docs/implementation/n8n-maturity/03-error-handling-standard.md` (being written; until it is
+  merged, this bullet is the rule). *Cause (§20): an n8n failure with no error workflow leaves only an
+  n8n execution row, which §23.1 says is not evidence and nothing on the host reads.*
+- **Failures route n8n → relay → host fan-in → incident notifier → Telegram.** The error workflow
+  reports through the relay to a host coordination endpoint; the host incident fan-in records it; the
+  incident notifier decides whether and when to tell the operator (de-duplication, quiet hours and cap
+  host-side). *Cause (§9.1, §23.3): `send_system` and `send_telegram` on the host are the only
+  senders.*
+- **No Telegram in n8n.** No workflow — error workflow included — holds a Telegram credential, calls
+  the Telegram API or uses a Telegram node; §23.3 "No sends from n8n" and §23.5 hold. *Cause (§23.3,
+  §23.5): a Telegram token in n8n would be a third credential and a sender outside the chokepoint.*
 
 ---
 
@@ -4480,6 +4614,7 @@ every merge needs the operator's per-PR word again.
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 4.2.0 | 2026-10-09 | PROPOSED | MAJOR | n8n first for timed work (§23.15): every new or moved timed job is scheduled by n8n through registry-driven dispatch (§23.11–§23.12) by default; a new host cron line, a new systemd timer or a change to an existing cron line's schedule needs Agent A's written recommendation on the program board (with reason) and the operator's explicit approval of that recommendation — a `cron` grant alone is not enough; existing cron/systemd lines stay until migrated by wave; broker, order, stop, secret and daemon lanes (§23.14) stay on host schedulers. §23.3 named exception: n8n may dispatch `incident-notifier` (SYSTEM Telegram only through the host chokepoint `scripts/lib/autonomy_watchdog/telegram_system.py` `send_system`; content, de-duplication, quiet hours and cap host-side), `n8n-activation-grants` (P16, admitted by exact lane id despite the `grant` token; `FORBIDDEN_ROUTE_TOKENS` unchanged) and `n8n-workflow-drift-check` (P18); n8n triggers via the relay, the host executes, n8n holds no Telegram or broker credential; all other senders remain forbidden. §23.16 independent dead-man switch: the autonomy watchdog (systemd timer, `send_system`) alerts when n8n, the relay, the gateway or the incident notifier is silent beyond a configured window — the one sanctioned host-timer exception; not yet built (open finding, not a control). §23.17 error-handling baseline: every workflow sets an error workflow; failures route n8n → relay → host fan-in → notifier → Telegram; no Telegram in n8n (`docs/implementation/n8n-maturity/03-error-handling-standard.md`, forward reference). Replaced in place: §17 new-cron fragment; §9.3 gains n8n first; §23.14 sender sentences; §23.7 records each. Tests: `tests/test_agents_policy_4_2_0_amendment.py`. MAJOR: §17 changes and a sender lane may be caused by n8n; nothing in §0, §2, §2A or §7A or the broker, secret or delete rails is weakened. | **PENDING** — awaiting `APPROVE_AGENTS_POLICY_4_2_0 <pr> <sha>` (operator); operator direction recorded 2026-10-09 ~21:00 ET, verbatim: "why whould we use a cron in n8n , for notifications, n8n is there to relplace cron jobs"; "we go n8n first for everything with timing cron only by my approval of your reccomendation". |
 | 4.1.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for the N8N Maturity Acceleration program (`docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md`): §23.11 registry-driven dispatch (six generic workflows — dispatcher, event router, heartbeat watcher, incident router, digest scheduler, approval router — activated once under one `cron` grant listing their ids; a lane is enabled by a reviewed PR adding its registry row `kind: n8n`, `expression: "dispatcher"`, `cadence`, `match`, `wave`, `stage` plus its `config/n8n_run_allowlist.json` entry, no per-lane import or grant; gateway read route `coordination/due` computes due lanes with `cron_schedule.next_run`; mode clamped to stage; lane identity server-side; the five non-dispatcher workflows send nothing and the approval router never mints or approves a grant; one registry PR at a time); §23.12 wave ladder (whole-wave dry_run then live-with-cron fire, receipts per lane per fire, failing lanes stay on cron, cutover per wave under one `cron` grant naming every lane, per-lane `CutoverReceipt@v1`, per-line rollback, natural-schedule evidence still owed); §23.13 program window (push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00 via `.githooks/pre-push` + `scripts/lib/tradeai_push_budget.py`; no merge queue (user-owned repository) and strict protection off; standing 48 h merge approval — Agent A's review verdict on the program board, the three required checks green on the exact head, nothing live until main CI is green on the merged SHA — with `Expires-At` set at ratification + 48 h, excluding governance, hook, guard, branch-protection, broker, secret and allowlist-`never` changes; merge only, never deploy or grant); §23.14 broker, order, secret and daemon lanes never dispatcher-eligible, by test (`tests/test_agents_policy_4_1_0_amendment.py`); `trade-ai-scalp-live` stays the single named exception, only on its 4.0.0 §23.3 terms; read-only guard carve-out — the approval-router lane may read pending guard requests and grant expiry through `scripts/lib/approval_board_projection.py`, never request, grant, revoke or consume, test-pinned; the guard `never` entry still blocks every guard write. Replaced in place: §23.2 "Registry row first", "Install, activate, edit or retire…" (one grant tier, `cron`; audit E D5) and "Shadow before canary before cutover"; §9.3 scheduler-entry bullet; §17 n8n fragment; §23.5 present-tense facts (rotation unscheduled; relay credential created 2026-10-08T16:45:48Z with MFA off and DB role `n8n` superuser, still open; P13 open); `AI_WORK_POLICY.md` §3/§17; `scripts/check_n8n_activation_grants.py` tiers `cron` only. Causes: due-diligence audits A–F of 2026-10-09 (audit E C2, C3, C4, C5, C6, C8, D5, D7); 438 cron lines, 321 undeclared, 4 lanes moved. MAJOR: §17 and merge/push authority change; nothing in §0, §2, §2A or §7A or the broker, secret or delete rails is weakened. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079` (operator, 2026-10-09 ~17:30 ET, in session: "Approve agents 4.1.0"); merged #1592 as 71d27c799; standing merge approval expires 2026-10-11T17:30:03-04:00; operator decisions recorded 2026-10-09: (1) registry-driven dispatch — one `cron` grant activates the six generic workflows, lanes enabled by reviewed registry PR; (2) wave ladder with one `cron` grant per wave cutover; (3) push budget 4 for `n8nmat/*` until 2026-10-12T23:59:59-04:00, hook-enforced; (4) standing 48 h merge approval for `n8nmat/*` PRs with a board review verdict, green on the exact head, nothing live until main CI is green on the merged SHA, merge only; (5) 16:40 ET: read-only guard projection for the approval router, never a guard write. |
 | 4.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23.3 gains one named live-lane exception: `trade-ai-scalp-live` (Finviz ingest via the data broker, `trade_ai_scans` writer, `send_telegram` caller) may run `live` from n8n, only under the cron line's argv, lock, 295 s timeout and market gate, no provider key in n8n, relay live-lane listing and a workflow-id grant; cron stays the fallback until 3 clean market days. §23 status line corrected (stale 3.0.0 "awaiting" sentence). Allowlist `never` names the exception; `live_arg: []`. Evidence: `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md`, PR #1573, `tests/test_agents_policy_4_0_0_scalp_lane.py`. | Operator 2026-10-09 15:25 ET in session: "APPROVE_AGENTS_POLICY_4_0_0 and build the finviz API fix" (`APPROVE_AGENTS_POLICY_4_0_0`), after "n8n drives a governed lane (Recommended)". |
 | 3.0.0 | 2026-10-09 | ACTIVE | MAJOR | §23 amended for governed LLM and Agent capability in n8n: §23.3 first bullet replaced (n8n workflows **and Agent nodes** cause host work only through the relay → gateway `coordination/run` for allowlisted lanes and the read-only coordination endpoints; Agent tools = those endpoints; never-list incl. DOF SQL applies to Agent tools; per-process tool allowlist enforced at the bridge with typed refusal; container internet egress BLOCKED by a DOCKER-USER rule, host reach only `172.19.0.1:18092`); §23.4 replaced (capability not provider: registered `n8n_*` process + versioned template + optional routing policy through the governed bridge; default routing Grok OAuth → ChatGPT OAuth → DeepSeek metered; free text only after `sanitise_for_external` for `free_text_allowed` processes; output schema + behaviour-field scan at the bridge; caps and typed refusal kept); §23.5 first bullet replaced (at most two credentials — relay bearer, and a bridge token only after §23.10; owner MFA waived; non-superuser `n8n_app` role still required); §23.8 n8n Agent nodes (registry row, receipt per turn, grant naming the workflow id, model node → bridge only, tool nodes excluded, turn/token/wall caps, no streaming until audit B H1 is fixed; first Agent read-only "explain why lane X failed", coordination-read tools only, shadowed first); §23.9 governance parity; §23.10 preconditions P2–P9, P11–P13, P15–P22 as a checklist that grants nothing until each is measured true with a receipt. §17 gains Agent-node activation / bridge-token creation; §23 and top-of-file 2.0.0 status lines corrected; ADR_COORDINATION_SECRETS Policy line fixed + 3.0.0 addendum. Proposal `docs/implementation/n8n-parallel/proposals/agents-3-0-0-governed-n8n-agents-20261009.md`; audits `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md`, `guardrail-audit-b-code-20261009.md`, `guardrail-audit-c-policy-n8n-20261009.md`. MAJOR: egress policy and the n8n actor's authority change; nothing in §0, §2, §2A, §2B or §7A is weakened for any actor. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9` (operator, 2026-10-09, in session); proposed text merged #1547 as `3b5c24856`; ratification (the activation event) merged #1552 as `377e9b536`; operator decisions recorded 2026-10-09: (1) ratify the proposal's §3 text as 3.0.0; (2) routing Grok → ChatGPT → DeepSeek; (3) container internet egress blocked, not proxied; (4) first Agent read-only lane-failure explainer, shadowed first; (5) owner MFA waived, `n8n_app` role still required. |
