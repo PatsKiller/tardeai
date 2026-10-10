@@ -205,7 +205,10 @@ def test_the_proposed_lane_is_declared_never_scheduled_and_allowlisted_dry_run_f
         r["lane_id"]: r for r in json.loads((ROOT / "config/lane_registry.json").read_text(encoding="utf-8"))["lanes"]
     }
     row = reg["n8n-workflow-drift-check"]
-    assert row["state"] == "NEVER_SCHEDULED" and row["scheduler"] == {"kind": "none"}
+    # registry-ops-crons 2026-10-09: scheduled on host cron (:07), PAUSED until the line is installed, then
+    # ACTIVE; the generated n8n workflows below stay inactive (activating them too would double-schedule).
+    assert row["state"] in {"PAUSED", "ACTIVE"} and row["scheduler"]["kind"] == "cron"
+    assert row["scheduler"]["match"] == "scripts/check_n8n_workflow_drift.py --write"
     assert row["output_signal"]["path"] == "data/runtime/n8n_workflow_drift_last.json"
     allow = {
         e["lane_id"]: e

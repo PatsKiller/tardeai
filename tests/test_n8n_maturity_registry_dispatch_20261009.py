@@ -440,8 +440,10 @@ def test_scalp_lane_eligible_only_through_the_policy_exception():
     assert LD.dispatch_eligible(row, exceptions={}) == (False, "stay_on_cron")
     # With the markers stripped, the forbidden-token rule still trips on its own without the exception.
     bare = {k: v for k, v in row.items() if k not in ("stay_on_cron", "recommendation", "rationalization")}
+    # registry-ops-crons 2026-10-09: the expression is the bare schedule; the command text it carried is kept
+    # in scheduler.command_text, which the forbidden-token scan still reads.
     assert LD.dispatch_eligible(bare, exceptions={}) == (
-        False, "forbidden_token:market_day_gate.sh@scheduler.expression")
+        False, "forbidden_token:market_day_gate.sh@scheduler.command_text")
     assert LD.dispatch_eligible(bare) == (True, "eligible:policy_exception:market_day_gate.sh")
     assert LD.dispatch_mode(row) == "off" and LD.dispatchable(row) is False
 

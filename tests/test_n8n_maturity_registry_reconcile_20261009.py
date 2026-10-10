@@ -110,7 +110,8 @@ def test_dry_run_is_the_default_and_writes_nothing(tmp_path):
 
 def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     lines = _lines(inputs)
-    assert len(lines) == 438
+    # 438 captured + the 3 lines of the approved registry-ops-crons install (packet ops-crons-install.md)
+    assert len(lines) == 441
     mapping = R.line_mapping(committed, lines)
     bad = {R.sanitize(ln)[:120]: ids for ln, ids in mapping.items() if len(ids) != 1}
     assert not bad, bad
@@ -239,10 +240,13 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     for r in gen:
         sig = r["output_signal"]
         if sig.get("kind") == "none":
-            assert sig.get("reason") == R.UNVERIFIED_OUTPUT and R.UNVERIFIED_OUTPUT in r.get("flags", []), r["lane_id"]
+            # UNVERIFIED_OUTPUT, or (registry-ops-crons 2026-10-09) a written declaration that no artifact exists
+            assert sig.get("reason") in (R.UNVERIFIED_OUTPUT, "NO_DURABLE_OUTPUT"), r["lane_id"]
+            assert sig["reason"] in r.get("flags", []), r["lane_id"]
         else:
             assert sig.get("evidence") in ("SCRIPT_RECEIPT", "CRON_LOG_REDIRECT", "SYSTEMD_STDOUT_APPEND"), r["lane_id"]
-            assert sig.get("path"), r["lane_id"]
+            # db_max receipts (registry-ops-crons: stop-health-check, schwab-stream-daemon) name a table, not a path
+            assert sig.get("path") or (sig.get("kind") == "db_max" and sig.get("table")), r["lane_id"]
     assert not LR.validate_registry(committed)
 
 

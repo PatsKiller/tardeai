@@ -43,7 +43,8 @@ def test_allowlist_entry_runs_the_cron_argv_and_shares_the_cron_lock():
     assert argv[:5] == ["flock", "-n", "-E", str(X.FLOCK_CONFLICT_EXIT), "/tmp/tradeai_scalp_live.lock"]
     assert argv[-3:] == ["/py", "scripts/run_trade_ai_scalp_live.py", "--dry-run"]
     crontab_line = next(l for l in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
-                        if l["lane_id"] == LANE)["scheduler"]["expression"]
+                        if l["lane_id"] == LANE)["scheduler"]
+    crontab_line = crontab_line["expression"] + " " + crontab_line.get("command_text", "")  # registry-ops-crons 2026-10-09: bare schedule + command_text
     assert ENTRY["lock"] in crontab_line                           # n8n and cron can never overlap
 
 

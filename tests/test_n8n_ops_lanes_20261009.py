@@ -141,7 +141,9 @@ def test_p16_is_registered_but_blocked_from_the_allowlist_by_the_forbidden_token
 
     assert "grant" in G.FORBIDDEN_ROUTE_TOKENS
     assert "n8n-activation-grants" not in ALLOW
-    assert REG["n8n-activation-grants"]["state"] == "NEVER_SCHEDULED"
+    # registry-ops-crons 2026-10-09: host cron */30, PAUSED until Agent A installs the line (then ACTIVE)
+    assert REG["n8n-activation-grants"]["state"] in {"PAUSED", "ACTIVE"}
+    assert REG["n8n-activation-grants"]["scheduler"]["kind"] == "cron"
     doc = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))
     assert "grant" in doc["blocked_reasons"]["n8n-activation-grants"]
     assert "system-rollup-snapshot" not in ALLOW  # sender; the fix PR owns its code

@@ -422,6 +422,18 @@
    "source_file": "scripts/portfolio_server_watchdog.sh",
    "evidence": "scripts/portfolio_server_watchdog.sh:22-24 touch heartbeat every run (healthy or not); action log ~/logs/portfolio_server_watchdog.log only on events; host mtime 2026-10-09T16:18:01 (*/2 schedule)"
   },
+  "prewarm-finviz-strip-map": {
+   "declared_no_output": {
+    "reason": "NO_DURABLE_OUTPUT",
+    "evidence": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): `curl -s -o /dev/null ... >> log` writes nothing, so the redirect log is 0 bytes (mtime 09-28) while the endpoint answers 200 in 0.14 s. No durable per-run artifact exists; declared NO_DURABLE_OUTPUT until the line gains a `-w` receipt or is eliminated (rationalization)."
+   }
+  },
+  "prewarm-trade-ai": {
+   "declared_no_output": {
+    "reason": "NO_DURABLE_OUTPUT",
+    "evidence": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): same pattern as prewarm-finviz-strip-map: two `curl -o /dev/null`, redirect log 0 bytes (09-27); endpoint 200 in 0.006 s. Declared NO_DURABLE_OUTPUT."
+   }
+  },
   "pro-analyst-fetch": {
    "output_signal": {
     "kind": "file_mtime",
@@ -486,6 +498,15 @@
    "source_file": "scripts/inference_ensemble_worker.py",
    "evidence": "scripts/inference_ensemble_worker.py:168 _write_heartbeat() every run (:153/:157), launcher also appends logs/ensemble_worker.log; host mtime 2026-10-09T16:21:01"
   },
+  "run-governed-symbol-thesis-acquisition": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/symbol_thesis_acquisition.log"
+   },
+   "verified_token": "LOG=\"${TRADEAI_GOVERNED_THESIS_LOG:-$PROJ/logs/symbol_thesis_acquisition.log}\"",
+   "source_file": "scripts/run_governed_symbol_thesis_acquisition.sh",
+   "evidence": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the wrapper sets PROJ to the dev tree and logs there (host mtime 2026-10-09 17:18:48, exit=0); the CURRENT redirect log is 0 bytes since 08-28."
+  },
   "run-options-monitor": {
    "output_signal": {
     "kind": "file_mtime",
@@ -503,6 +524,24 @@
    "verified_token": "logs/options_paper_monitor.log",
    "source_file": "linux_launchers/run_options_paper_position_monitor.sh",
    "evidence": "linux_launchers/run_options_paper_position_monitor.sh launcher redirect >> logs/options_paper_monitor.log in dev tree (script writes no file, DB only); host mtime 2026-10-08T17:10:03"
+  },
+  "run-protection-pipeline-at-30-20": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/protection_pipeline.log"
+   },
+   "verified_token": "LOG=\"$PROJ/logs/protection_pipeline.log\"",
+   "source_file": "scripts/run_protection_pipeline.sh",
+   "evidence": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): same wrapper and log as run-protection-pipeline-at-x-30-9-16 (after-close 20:30 run)."
+  },
+  "run-protection-pipeline-at-x-30-9-16": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/protection_pipeline.log"
+   },
+   "verified_token": "LOG=\"$PROJ/logs/protection_pipeline.log\"",
+   "source_file": "scripts/run_protection_pipeline.sh",
+   "evidence": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the cron redirect log protection_pipeline_cron.log is silent since 10-02 (market_day_gate no longer prints); the wrapper appends every step to the dev-tree logs/protection_pipeline.log (host mtime 2026-10-09 16:30:25 '=== protection pipeline done ===')."
   },
   "run-pullback-macd-screener": {
    "output_signal": {
@@ -558,6 +597,16 @@
    "verified_token": "warrior_weekly_latest.json",
    "source_file": "scripts/warrior_weekly_audit_cron.py",
    "evidence": "scripts/warrior_weekly_audit_cron.py:41-42 latest_json panel (data/audit symlinked to state root); host mtime 2026-10-05T13:30:02 (Mon)"
+  },
+  "schwab-stream-daemon": {
+   "output_signal": {
+    "kind": "db_max",
+    "table": "schwab_stream_quotes",
+    "column": "captured_at"
+   },
+   "verified_token": "INSERT INTO schwab_stream_quotes",
+   "source_file": "scripts/schwab_stream_daemon.py",
+   "evidence": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the 09:31 start ran from an old release without line buffering, so logs/schwab_stream.log is unflushed while the daemon streams; DB max(captured_at) 2026-10-09 19:44:41, 167,971 rows that day. Side bug (code, not here): _market_open() uses whole-day isOpen, so the daemon keeps inserting after the close."
   },
   "shadow-batch-generator-at-15-10": {
    "output_signal": {
