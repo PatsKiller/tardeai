@@ -100,7 +100,10 @@
     "entrypoints": 345,
     "lib_modules": 210,
     "bypass_files": 130,
-    "bypass_rows": 176
+    "bypass_rows": 176,
+    "pre_recorded": {
+      "social_posts": "7 lane files read social_posts directly, measured 2026-10-10 on a probe merge of this branch + n8nmat/finviz-cache-n8n + n8nmat/broker-domains-q1 (PR #1678 makes social_posts projection-owned via social_feed). Recorded now so either merge order stays green; on main the table has no projection and is not counted."
+    }
   },
   "lane_direct_reads": {
     "market_quotes": 12,
@@ -116,7 +119,8 @@
     "watch_candidate_events": 3,
     "watchlist_agent_results": 18,
     "agent_debate_log": 2,
-    "ai_reports": 0
+    "ai_reports": 0,
+    "social_posts": 7
   },
   "lane_raw_cache_reads": {
     "ticker_enrichment_cache.json": 17

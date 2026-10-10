@@ -129,11 +129,13 @@ def test_repo_lane_counts_sit_at_or_under_the_recorded_ceilings():
     out = gate.lane_scan(auth, json.loads(gate.LANE_REGISTRY.read_text()))
     for key, cur in (("lane_direct_reads", out["direct_reads"]), ("lane_raw_cache_reads", out["raw_cache_reads"])):
         ceil = baseline[key]
-        assert set(cur) <= set(ceil), f"{key}: a store without a ceiling: {set(cur) - set(ceil)}"
-        rose = {k: (v, ceil[k]) for k, v in cur.items() if v > ceil[k]}
+        # a store without a recorded ceiling has a ceiling of 0 (a newly projection-owned table must record its debt)
+        rose = {k: (v, ceil.get(k, 0)) for k, v in cur.items() if v > int(ceil.get(k, 0))}
         assert not rose, f"{key} rose above the 2026-10-10 ceiling: {rose}"
     # existing ceilings are untouched by GAP 5 (they may only fall; this branch raised none)
     assert baseline["direct_reads"]["market_quotes"] == 13 and baseline["writers"]["news_articles"] == 1
+    # pre-recorded for PR #1678 (social_posts becomes projection-owned there); not counted on main
+    assert baseline["lane_direct_reads"]["social_posts"] == 7
 
 
 def test_gate_json_reports_every_bypass_and_no_lane_finding():
