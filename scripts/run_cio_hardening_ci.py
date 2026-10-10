@@ -4239,6 +4239,13 @@ GATES = [
         "alpha_vantage_phantom_spend_20261010",
         ["tests/test_alpha_vantage_phantom_spend_20261010.py"],
     ),
+    (
+        # etf_analyst_enrich pass 2 (API overlap Q10, 2026-10-10): save_yahoo_analyst_targets_history is called
+        # (snapshot_date, targets_payload) by keyword; reversed positional order discarded every constituent .info call.
+        # Pins the real signature (ast) and constituents_fetched == fetched. Hermetic fakes.
+        "etf_analyst_enrich_arg_order_20261010",
+        ["tests/test_etf_analyst_enrich_arg_order_20261010.py"],
+    ),
 ]
 
 
