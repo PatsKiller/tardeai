@@ -1187,6 +1187,12 @@ GATES = [
         "n8n_siem_bridge_20261010",
         ["tests/test_n8n_siem_bridge_20261010.py"],
     ),
+    # LLM self-remediation for n8n lanes (REMEDIATION_PLAN §6, operator decisions 2026-10-09 23:38 ET): remediation
+    # catalogue from the inventory, governed diagnosis (n8n_lane_failure_diagnosis), bounded actions, selftest lane.
+    (
+        "n8n_llm_remediation_20261010",
+        ["tests/test_n8n_llm_remediation_20261010.py"],
+    ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
     (

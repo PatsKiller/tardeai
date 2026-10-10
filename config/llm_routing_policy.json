@@ -708,6 +708,24 @@
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 2.0
         },
+        "n8n_lane_failure_diagnosis": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true
+        },
         "n8n_material_digest_draft": {
           "primary": {
             "provider": "grok",

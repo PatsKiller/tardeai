@@ -22,7 +22,12 @@ and timeout verdicts and the output_signal mtime before/after, so an exit 0 that
 moved nothing is visible as exactly that.
 
 This process never authenticates a caller, never binds a socket, never sends.
-Dry-run before live: the gateway's ``mode`` is passed through verbatim.
+Dry-run before live: the gateway's ``mode`` is passed through verbatim — except that the STAGE CLAMP (AGENTS.md
+§23.11, added 2026-10-10, operator "Ok" ~00:35 ET) runs a lane whose registry ``scheduler.stage`` is ``shadow`` in
+``dry_run`` whatever was requested, and fails closed to ``dry_run`` when the stage cannot be known (registry
+unreadable, no row, bad stage, dispatcher row without a stage). Rule: scripts/lib/lane_stage_clamp.py. ``main``
+always applies it (registry re-read every drain pass); the receipt records ``requested_mode`` and ``stage_clamp``
+and its ``mode`` is the mode that ran.
 
 2026-10-09 (n8n maturity B5.5, design 02 §5): executor v2 — ``ExecutorV2`` below. N worker threads
 (``--workers`` / ``TRADEAI_N8N_EXECUTOR_WORKERS`` >= 2, max 8; OPT-IN, the default is 1) with a per-lane lock in the
@@ -74,10 +79,15 @@ from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
     LedgerError,
     LedgerRunStore,
 )
+from scripts.lib.lane_stage_clamp import clamp_mode, load_stage_rows  # noqa: E402
 from scripts.lib.n8n_retry_policy import RetryPolicyError, class_verdict, finalize_outcome, load_policies  # noqa: E402
 from scripts.n8n_coordination_gateway import default_ledger_path  # noqa: E402
 
 RECEIPT_SCHEMA = "RunReceipt@v1"
+#: ``stage_rows`` default for library callers that do not apply the stage clamp (unit tests of other behaviour).
+#: ``main`` never uses it: it passes the loaded registry rows, or None (unreadable -> every live request runs dry).
+NO_STAGE_CLAMP = object()
+REGISTRY_REL = Path("config") / "lane_registry.json"
 ALLOWLIST_SCHEMA = "N8nRunAllowlist@v1"
 RUN_MODES = ("dry_run", "live")
 LOCK_KINDS = ("safe_flock", "flock")
@@ -330,6 +340,7 @@ def execute(
     runner=None,
     sleeper=time.sleep,
     v2: bool = False,
+    stage_rows: Any = NO_STAGE_CLAMP,
 ) -> dict[str, Any]:
     """Run one claimed row (plus the entry's opt-in bounded retries) and return its RunReceipt@v1.
 
@@ -341,14 +352,15 @@ def execute(
     in-worker layer would sleep without heartbeats and outlive the reaper's overdue bound. An entry that declares
     ``retry`` gets ``allowlist_retry: "ignored_v2"`` on its receipt. The v1 path (``v2=False``) is unchanged.
     """
-    receipt = _execute_once(row, entry, env=env, state_root=state_root, code_root=code_root, runner=runner, typed=v2)
+    receipt = _execute_once(row, entry, env=env, state_root=state_root, code_root=code_root, runner=runner, typed=v2,
+                            stage_rows=stage_rows)
     policy = retry_policy(entry) if entry is not None and not v2 else None
     states = [str(receipt["state"])]
     first = receipt
     while policy and len(states) <= policy["max"] and states[-1] in policy["on"]:
         sleeper(policy["backoff_s"])
         receipt = _execute_once(row, entry, env=env, state_root=state_root, code_root=code_root, runner=runner,
-                                typed=v2)
+                                typed=v2, stage_rows=stage_rows)
         states.append(str(receipt["state"]))
     if len(states) > 1:
         receipt["started_at"] = first["started_at"]
@@ -369,6 +381,7 @@ def _execute_once(
     code_root: Path,
     runner=None,
     typed: bool = False,
+    stage_rows: Any = NO_STAGE_CLAMP,
 ) -> dict[str, Any]:
     """One attempt: run the claimed row and return its RunReceipt@v1. ``typed`` (executor v2 only) adds the errno
     name to a spawn failure's reason (``spawn:OSError:ENOMEM``) so the retry policy can match it."""
@@ -400,6 +413,11 @@ def _execute_once(
         return _finish(receipt, "RUN_REFUSED", reason="lane_not_allowlisted", started=started)
     if mode not in RUN_MODES:
         return _finish(receipt, "RUN_REFUSED", reason="bad_mode", started=started)
+    if stage_rows is not NO_STAGE_CLAMP:
+        clamp = clamp_mode(lane_id, mode, stage_rows)
+        receipt["requested_mode"] = mode
+        receipt["stage_clamp"] = clamp
+        mode = receipt["mode"] = clamp["effective_mode"]
     argv = build_argv(entry, mode, env=env, state_root=state_root, code_root=code_root)
     if argv is None:
         return _finish(receipt, "RUN_REFUSED", reason=f"mode_unavailable:{mode}", started=started)
@@ -491,15 +509,18 @@ def drain(
     code_root: Path,
     runner=None,
     max_runs: int | None = None,
+    stage_rows: Any = NO_STAGE_CLAMP,
 ) -> list[dict[str, Any]]:
-    """Claim and execute until the queue is empty (or max_runs). One receipt per claimed row, always."""
+    """Claim and execute until the queue is empty (or max_runs). One receipt per claimed row, always.
+    ``stage_rows``: the registry lanes for the stage clamp (None = unreadable, fail closed)."""
     out: list[dict[str, Any]] = []
     while max_runs is None or len(out) < max_runs:
         row = store.claim_next()
         if row is None:
             break
         receipt = execute(
-            row, allowlist.get(str(row["lane_id"])), env=env, state_root=state_root, code_root=code_root, runner=runner
+            row, allowlist.get(str(row["lane_id"])), env=env, state_root=state_root, code_root=code_root, runner=runner,
+            stage_rows=stage_rows,
         )
         try:
             store.finish(str(row["run_id"]), state=str(receipt["state"]), receipt=receipt)
@@ -792,7 +813,8 @@ class ExecutorV2:
                  runner_factory=None, pid_alive=pid_alive, config: Mapping[str, Any] | None = None,
                  heartbeat_s: float | None = None, stale_heartbeat_s: float | None = None,
                  reap_every_s: float | None = None, lost_grace_s: float | None = None,
-                 worker_prefix: str | None = None, quiet: bool = False, sleeper=time.sleep) -> None:
+                 worker_prefix: str | None = None, quiet: bool = False, sleeper=time.sleep,
+                 stage_rows: Any = NO_STAGE_CLAMP, stage_rows_loader=None) -> None:
         cfg = dict(load_executor_config(None))
         cfg.update(config or {})
         if not 2 <= int(workers) <= min(MAX_WORKERS, int(cfg["max_workers"])):
@@ -801,6 +823,8 @@ class ExecutorV2:
         self.store, self.allowlist, self.env = store, allowlist, env
         self.state_root, self.code_root = state_root, code_root
         self.workers, self.policies, self.registry_rows = int(workers), policies, registry_rows
+        #: stage clamp (§23.11): fixed rows, or a loader re-read per claimed run so a stage PR applies without restart
+        self.stage_rows, self.stage_rows_loader = stage_rows, stage_rows_loader
         self.clock, self.runner_factory, self.pid_alive, self.sleeper = clock, runner_factory, pid_alive, sleeper
         self.heartbeat_s = float(cfg["heartbeat_s"] if heartbeat_s is None else heartbeat_s)
         self.stale_heartbeat_s = float(cfg["stale_heartbeat_s"] if stale_heartbeat_s is None else stale_heartbeat_s)
@@ -908,8 +932,9 @@ class ExecutorV2:
 
             factory = self.runner_factory or (lambda on_spawn, on_beat: heartbeat_runner(on_spawn, on_beat,
                                                                                           self.heartbeat_s))
+            stage_rows = self.stage_rows_loader() if self.stage_rows_loader is not None else self.stage_rows
             receipt = execute(row, self.allowlist.get(str(row["lane_id"])), env=self.env, state_root=self.state_root,
-                              code_root=self.code_root, runner=factory(beat, beat), v2=True)
+                              code_root=self.code_root, runner=factory(beat, beat), v2=True, stage_rows=stage_rows)
             self.complete(row, receipt, klass=str(slot["class"]), priority=int(slot["priority"]),
                           worker_id=str(slot["worker_id"]))
         except Exception as exc:  # noqa: BLE001 — never lose a worker; the row stays RUNNING for the reaper
@@ -1227,6 +1252,12 @@ def main(argv: list[str] | None = None) -> int:
             registry_rows = load_registry(code_root / "config" / "lane_registry.json").get("lanes") or []
         except (OSError, ValueError, ImportError):
             registry_rows = None
+    registry_path = code_root / REGISTRY_REL
+
+    def stage_rows_now():
+        """§23.11 stage clamp input, re-read each pass; None (unreadable) makes every live request run dry."""
+        return load_stage_rows(registry_path)
+
     ledger = CoordinationLedger(ledger_path)
     store = LedgerRunStore(ledger)
     print(
@@ -1239,13 +1270,15 @@ def main(argv: list[str] | None = None) -> int:
                 "code_root": str(code_root),
                 "once": bool(args.once),
                 "workers": workers,
+                "stage_clamp": "on" if stage_rows_now() is not None else "fail_closed:registry_unreadable",
             }
         ),
         flush=True,
     )
     if workers > 1:
         ex = ExecutorV2(store, allowlist, env=env, state_root=state_root, code_root=code_root, workers=workers,
-                        policies=policies, registry_rows=registry_rows, config=exec_cfg)
+                        policies=policies, registry_rows=registry_rows, config=exec_cfg,
+                        stage_rows_loader=stage_rows_now)
         try:
             if args.once:
                 ex.drain_until_idle()
@@ -1257,7 +1290,7 @@ def main(argv: list[str] | None = None) -> int:
             ledger.close()
     try:
         while True:
-            drain(store, allowlist, env=env, state_root=state_root, code_root=code_root)
+            drain(store, allowlist, env=env, state_root=state_root, code_root=code_root, stage_rows=stage_rows_now())
             if args.once:
                 return 0
             time.sleep(max(0.5, float(args.interval)))

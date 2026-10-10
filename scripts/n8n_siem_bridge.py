@@ -5,6 +5,9 @@ Reads the coordination ledger ``runs`` table (sqlite mode=ro) and the incident f
 (``data/runtime/n8n_incident_fanin_last.json``) and keeps one active ``system_health_events`` row per
 (component ``n8n:<lane_id>``, event_type): insert when new, update in place when severity or detail changed, skip
 when identical, resolve when the source says the lane recovered. Logic: ``scripts/lib/n8n_siem_bridge.py``.
+It also reads the failure diagnoser's store (``data/runtime/n8n_diagnoses/diagnoses.jsonl``, read-only) and folds
+the latest diagnosis of an open row's incident into that row (REMEDIATION_PLAN §6 R3): the diagnoser never writes
+the table, so this bridge stays its single ``n8n:*`` writer (AGENTS.md §9.4).
 
     python3 scripts/n8n_siem_bridge.py --dry-run [--out report.json]   # read-only transaction, no INSERT/UPDATE
     python3 scripts/n8n_siem_bridge.py --apply
@@ -111,9 +114,8 @@ def apply_plan(conn, plan: dict[str, list[dict]]) -> dict[str, Any]:
             got = cur.fetchone()
             done["inserted"].append(got[0] if got and not isinstance(got, dict) else (got or {}).get("id"))
         for r in plan["update"]:
-            cur.execute(
-                SQL_UPDATE, (r["severity"], r["message"], f"{B.WRITER}: updated (was {r.get('was_severity')})", r["id"])
-            )
+            action = r.get("action_note") or f"{B.WRITER}: updated (was {r.get('was_severity')})"
+            cur.execute(SQL_UPDATE, (r["severity"], r["message"], action, r["id"]))
             done["updated"] += 1
         for r in plan["resolve"]:
             cur.execute(SQL_RESOLVE, (B.WRITER, f"{B.WRITER}: resolved ({r['reason']})", r["id"]))
@@ -156,7 +158,9 @@ def build(now: datetime, root: Path, registry_path: Path, release_link: Path, co
     except Exception as exc:  # noqa: BLE001
         open_rows, db_ok = [], False
         notes["db"] = f"unavailable:{type(exc).__name__}:{str(exc)[:120]}"
-    plan = B.plan(findings, open_rows, env=env, good_lanes=good, ledger_ok=ledger_ok, fanin_ok=fanin_ok)
+    diagnoses, notes["diagnoses"] = B.read_diagnoses(root / B.DIAGNOSES_REL)
+    plan = B.plan(findings, open_rows, env=env, good_lanes=good, ledger_ok=ledger_ok, fanin_ok=fanin_ok,
+                  diagnoses=diagnoses)
     return {
         "plan": plan,
         "notes": notes,
@@ -200,6 +204,7 @@ def main(
         "env": res["env"],
         "source_notes": res["notes"],
         "counts": B.counts(plan),
+        "diagnoses_folded": sum(1 for k in ("update", "skip") for r in plan[k] if r.get("diagnosis_folded")),
         "fanin_ok": res["fanin_ok"],
         "ledger_ok": res["ledger_ok"],
     }

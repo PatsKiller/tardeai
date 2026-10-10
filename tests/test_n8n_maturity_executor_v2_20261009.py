@@ -389,6 +389,9 @@ def bench(tmp_path, monkeypatch):
               "dry_run_arg": ["--dry-run"], "live_arg": ["--apply"]} for i in range(3)]
     allow = tmp_path / "allow.json"
     allow.write_text(json.dumps({"schema": "N8nRunAllowlist@v1", "lanes": lanes}))
+    # 2026-10-10: main applies the §23.11 stage clamp; registered non-dispatcher rows keep the requested mode.
+    (code / "config" / "lane_registry.json").write_text(json.dumps({"lanes": [
+        {"lane_id": f"e2e-{i}", "scheduler": {"kind": "cron", "expression": "0 * * * *"}} for i in range(3)]}))
     yield SimpleNamespace(code=code, state=state, allow=allow, ledger=tmp_path / "ledger.sqlite")
 
 

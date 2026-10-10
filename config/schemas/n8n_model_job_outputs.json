@@ -150,6 +150,58 @@
     "price_target",
     "position"
    ]
+  },
+  "lane_failure_diagnosis/v1": {
+   "description": "Diagnosis of ONE failed n8n-dispatched lane run plus a bounded remediation CHOICE (REMEDIATION_PLAN §6 R1/R2, operator 2026-10-09 23:38 ET). action_id must be one of the lane's catalogue ids (config/n8n_remediation_catalogue.json) or suggest_only; scripts/n8n_failure_diagnosis.py re-validates it against the catalogue and never executes model text. Input is lane metadata, error text and log lines only (§2A decision 1).",
+   "required": [
+    "cause",
+    "confidence",
+    "action_id",
+    "rationale",
+    "citations"
+   ],
+   "properties": {
+    "cause": {
+     "type": "string",
+     "max_length": 400
+    },
+    "confidence": {
+     "type": "number"
+    },
+    "action_id": {
+     "type": "string",
+     "max_length": 64
+    },
+    "rationale": {
+     "type": "string",
+     "max_length": 600
+    },
+    "citations": {
+     "type": "array",
+     "max_items": 12,
+     "items": {
+      "type": "string",
+      "max_length": 160
+     }
+    },
+    "recommendation": {
+     "type": "string",
+     "enum": [
+      "NONE"
+     ]
+    }
+   },
+   "forbidden_keys": [
+    "buy",
+    "sell",
+    "size",
+    "order",
+    "price_target",
+    "position",
+    "command",
+    "argv",
+    "shell"
+   ]
   }
  }
 }
