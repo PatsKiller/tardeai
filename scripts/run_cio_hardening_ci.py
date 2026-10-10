@@ -3702,6 +3702,11 @@ GATES = [
         "n8n_maturity_registry_dispatch_20261009",
         [
             "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+            # Operator ruling 2026-10-10 (REMEDIATION_PLAN §7 ruling 2): whole-word / path-segment forbidden-token
+            # matching. SAFETY RAIL: every registry row, crontab line and allowlist argv the legacy substring
+            # matcher blocked still blocks (reviewed false positives excepted), env/flag tokens inspected,
+            # mutations prove the matrix has teeth. Hermetic: repo config files only.
+            "tests/test_lane_dispatch_word_boundary_20261010.py",
         ],
     ),
     (
