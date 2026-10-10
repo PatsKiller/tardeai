@@ -3560,6 +3560,9 @@ GATES = [
         [
             "tests/test_lane_registry_n8n_kind_20261008.py",
             "tests/test_n8n_lane_cutover_20261008.py",
+            # 2026-10-10 (D-3): one lane cutover retires up to 8 cron slots (list match, or string match with
+            # --expect-lines); per-line tags, one write, re-read of every line, count-checked rollback. Hermetic.
+            "tests/test_cutover_multiline_20261010.py",
             "tests/test_n8n_lane_readiness_20261008.py",
         ],
     ),
