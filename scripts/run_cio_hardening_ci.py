@@ -4253,6 +4253,13 @@ GATES = [
         "sec_form4_dedupe_20261010",
         ["tests/test_sec_form4_dedupe_20261010.py"],
     ),
+    (
+        # YouTube channel-id cache (API overlap Q9, 2026-10-10): a tracked channel stored with a slug id resolves its UC id
+        # once via channels.list forHandle/forUsername (1 unit), cached in data/runtime; later runs list the uploads
+        # playlist instead of search.list (100 units). Failed lookup negative-cached, search fallback unchanged. Hermetic.
+        "youtube_channel_id_cache_20261010",
+        ["tests/test_youtube_channel_id_cache_20261010.py"],
+    ),
 ]
 
 
