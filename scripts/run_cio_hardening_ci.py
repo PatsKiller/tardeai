@@ -4246,6 +4246,13 @@ GATES = [
         "etf_analyst_enrich_arg_order_20261010",
         ["tests/test_etf_analyst_enrich_arg_order_20261010.py"],
     ),
+    (
+        # sec_form4 dedupe (API overlap Q10, 2026-10-10): the unique key includes transaction_date, never set, so NULL never
+        # conflicted (7,960 rows / 530 sec_url). Insert only when no (symbol, sec_url) row exists; re-runs add 0 rows;
+        # a shared accession still lands per symbol. Hermetic fake applying PG NULL-unique semantics; scratch-PG test opt-in.
+        "sec_form4_dedupe_20261010",
+        ["tests/test_sec_form4_dedupe_20261010.py"],
+    ),
 ]
 
 
