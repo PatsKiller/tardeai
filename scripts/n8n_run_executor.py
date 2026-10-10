@@ -32,6 +32,14 @@ class caps, a reserved priority worker, a stale-RUNNING reaper, verdict/DLQ/brea
 Unset, ``1`` or an invalid value (``abc``, ``""``, ``2.5``: logged) is the v1 serial ``drain`` and RunReceipt@v1,
 unchanged, so an installed unit with no env stays v1 until the operator opts in. Intervals and limits:
 config/n8n_executor.json (N8nExecutorConfig@v1), read only on the v2 path.
+
+2026-10-09 (n8n maturity P7, supersedes #1561): per-lane child env allowlist, shared by v1 ``drain`` and v2
+workers (both spawn through ``_execute_once`` -> ``build_child_env``). Global mode ``TRADEAI_EXECUTOR_ENV_ALLOWLIST``
+= off | report | enforce, default report (the pre-P7 env, plus the NAMES enforcement would drop on the receipt's
+``env_allowlist`` block — never values). Under enforce a lane gets ``CHILD_ENV_BASE_NAMES`` + its allowlist
+``env_names`` only; a lane pinned ``env_allowlist_mode: "report"`` keeps the pre-P7 env, and a lane with no
+``env_names`` list is RUN_REFUSED (fail closed, never a silent fallback to the full env). An unknown mode value is
+RUN_REFUSED for every lane. The n8n secret strip below applies in every mode.
 """
 
 from __future__ import annotations
@@ -107,14 +115,98 @@ CHILD_ENV_LANE_PASSTHROUGH: dict[str, frozenset[str]] = {
 }
 
 
+#: P7 (2026-10-09): per-lane child env allowlist. The global switch is read from the EXECUTOR's env (the unit's
+#: ``Environment=TRADEAI_EXECUTOR_ENV_ALLOWLIST=...`` line, which the n8n maturity scorer reads) and is never a lane
+#: input. Unset or empty = ENV_ALLOWLIST_DEFAULT_MODE (report: behaviour unchanged, names-only evidence).
+ENV_ALLOWLIST_MODE_ENV = "TRADEAI_EXECUTOR_ENV_ALLOWLIST"
+ENV_ALLOWLIST_MODES = ("off", "report", "enforce")
+ENV_ALLOWLIST_DEFAULT_MODE = "report"
+LANE_ENV_ALLOWLIST_MODES = ("report", "enforce")
+#: Non-secret process plumbing every lane keeps under enforce (the unit's crontab-parity globals included).
+CHILD_ENV_BASE_NAMES = frozenset({
+    "PATH", "HOME", "LANG", "LC_ALL", "TZ", "USER", "LOGNAME", "XDG_RUNTIME_DIR", "PYTHONPATH",
+    "PROJ", "PY", "TRADEAI_ENV", "TRADEAI_STATE_ROOT", "TRADEAI_VENV_PYTHON", "LLM_DEFER_OFFPEAK",
+    "BLIND_REVIEW_LANES",
+})
+ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
 class AllowlistError(ValueError):
     pass
 
 
 def child_env(env: Mapping[str, str], lane_id: str) -> dict[str, str]:
-    """The env a lane is spawned with: ``env`` minus every n8n secret, plus only that lane's declared passthrough."""
+    """The pre-P7 env (off / report): ``env`` minus every n8n secret, plus only that lane's declared passthrough."""
     keep = CHILD_ENV_N8N_NON_SECRET | CHILD_ENV_LANE_PASSTHROUGH.get(lane_id, frozenset())
     return {k: v for k, v in env.items() if k in keep or not k.startswith(CHILD_ENV_STRIP_PREFIXES)}
+
+
+def env_policy_problem(entry: Mapping[str, Any]) -> str | None:
+    """None when the entry's optional ``env_names`` / ``env_allowlist_mode`` are well formed; else the defect. Pure.
+    A list may not name an n8n secret the lane is not already entitled to (relay keys, _PREVIOUS keys, ...)."""
+    names = entry.get("env_names")
+    if names is not None:
+        if not isinstance(names, list) or not all(isinstance(n, str) and ENV_NAME_RE.fullmatch(n) for n in names) \
+                or len(names) != len(set(names)):
+            return "bad_env_names"
+        permitted = CHILD_ENV_N8N_NON_SECRET | CHILD_ENV_LANE_PASSTHROUGH.get(str(entry.get("lane_id")), frozenset())
+        if any(n.startswith(CHILD_ENV_STRIP_PREFIXES) and n not in permitted for n in names):
+            return "forbidden_env_name"
+    if entry.get("env_allowlist_mode", "enforce") not in LANE_ENV_ALLOWLIST_MODES:
+        return "bad_lane_env_allowlist_mode"
+    return None
+
+
+def env_allowlist_mode(env: Mapping[str, str]) -> str | None:
+    """The executor's global mode; None for an unknown value (the caller refuses the run, fail closed)."""
+    raw = str(env.get(ENV_ALLOWLIST_MODE_ENV) or "").strip().lower()
+    if not raw:
+        return ENV_ALLOWLIST_DEFAULT_MODE
+    return raw if raw in ENV_ALLOWLIST_MODES else None
+
+
+def build_child_env(
+    env: Mapping[str, str], lane_id: str, entry: Mapping[str, Any] | None,
+) -> tuple[dict[str, str] | None, dict[str, Any]]:
+    """(child env, names-only ``env_allowlist`` receipt block) for one spawn — the ONE builder for v1 and v2.
+
+    off     -> pre-P7 env (``child_env``); report -> pre-P7 env + the names enforce would drop;
+    enforce -> base + the lane's ``env_names`` (from the already-stripped env), unless the lane is pinned
+    ``env_allowlist_mode: "report"`` (pre-P7 env + dropped names). The env is None (refuse, never spawn) for an
+    unknown global mode, a malformed lane policy, or an enforced lane with no ``env_names`` list. Values never
+    enter the block. Does not mutate ``env``."""
+    entry = entry or {}
+    requested = env_allowlist_mode(env)
+    lane_mode = entry.get("env_allowlist_mode", "enforce")
+    names = entry.get("env_names")
+    block: dict[str, Any] = {"requested_mode": requested, "effective_mode": None, "lane_mode": lane_mode,
+                             "env_names_declared": isinstance(names, list), "reason": None, "dropped_names": None}
+    if requested is None:
+        block["reason"] = "bad_env_allowlist_mode"   # the bad value itself is never recorded
+        return None, block
+    problem = env_policy_problem(entry)
+    if problem is not None:
+        block["reason"] = problem
+        return None, block
+    legacy = child_env(env, lane_id)
+    if requested == "off":
+        block["effective_mode"] = "off"
+        return legacy, block
+    keep = CHILD_ENV_BASE_NAMES | frozenset(names or ())
+    enforced = {k: v for k, v in legacy.items() if k in keep}
+    block["dropped_names"] = sorted(set(legacy) - set(enforced))
+    if requested == "enforce" and lane_mode == "enforce":
+        if names is None:
+            block["reason"] = "env_names_missing"
+            return None, block
+        block["effective_mode"] = "enforce"
+        return enforced, block
+    block["effective_mode"] = "report"
+    if requested == "enforce":
+        block["reason"] = "lane_report_only"
+    elif names is None:
+        block["reason"] = "env_names_missing"
+    return legacy, block
 
 
 def load_allowlist(path: Path) -> dict[str, dict[str, Any]]:
@@ -163,7 +255,7 @@ def validate_entry(entry: Mapping[str, Any]) -> str | None:
         return "bad_output_signal"
     if entry.get("retry") is not None and retry_policy(entry) is None:
         return "bad_retry"
-    return None
+    return env_policy_problem(entry)
 
 
 def retry_policy(entry: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -318,8 +410,12 @@ def _execute_once(
     receipt["argv"] = argv
     timeout_s = float(entry["timeout_s"])
     run = runner or _subprocess_runner
+    lane_env, receipt["env_allowlist"] = build_child_env(env, lane_id, entry)
+    if lane_env is None:
+        return _finish(receipt, "RUN_REFUSED", reason=f"env_allowlist:{receipt['env_allowlist']['reason']}",
+                       started=started)
     try:
-        result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=child_env(env, lane_id), cwd=code_root)
+        result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=lane_env, cwd=code_root)
     except subprocess.TimeoutExpired:
         receipt["timed_out"] = True
         receipt["output_signal_mtime_after"] = _mtime(signal_path)
