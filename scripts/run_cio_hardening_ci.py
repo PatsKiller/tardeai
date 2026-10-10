@@ -730,6 +730,10 @@ GATES = [
             "tests/test_data_source_health_decay_20260913.py",
             "tests/test_data_plausibility_required_fields_20260913.py",
             "tests/test_data_broker_envelope_20260913.py",
+            # Operator ruling 2026-10-10 (REMEDIATION_PLAN §7 ruling 3): the entry planner's bars fallback reads the
+            # Data Broker ohlc_bars projection; the lane never reads ALPACA_* or imports an alpaca module
+            # (import hook + recording environ). Hermetic: fake yfinance, fake db_query.
+            "tests/test_entry_planner_data_broker_bars_20261010.py",
             "tests/test_brave_router_spill.py",
             "tests/test_data_source_authority_resolve_backup.py",
             "tests/test_catalyst_news_search_backup.py",
