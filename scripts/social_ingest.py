@@ -5,6 +5,22 @@ Usage:
     python3 scripts/social_ingest.py --source stocktwits --symbols "SCHD,V,TDG,LHX,LMT,NOC,RTX"
     python3 scripts/social_ingest.py --source stocktwits --holdings   # uses holdings.json symbols
     python3 scripts/social_ingest.py --source reddit                  # r/dividends, r/investing
+    python3 scripts/social_ingest.py --source all --dry-run           # report the plan only
+
+Lanes (lane id derived from argv): ``--source all`` -> ``social-ingest-all`` (cron L243);
+``--source stocktwits --discover`` -> ``social-ingest-stocktwits`` (cron L244). Any other argv form
+(manual --symbols / --holdings / reddit runs) is not a lane run and writes no receipt.
+
+``--dry-run`` returns before pipeline_registry.run_start (no pipeline_runs row), before any StockTwits /
+Reddit request and before any DB connection; it does not resolve the Reddit credentials. It prints the
+symbol sets and subreddits a real run would query (from holdings.json and the static discovery lists;
+the StockTwits trending list is network-only and is reported as "would fetch"). No receipt.
+
+A real lane run writes ``<state_root>/data/runtime/<lane_id>_last.json`` (LaneRunReceipt@v1; ``ok_at``
+only on success) with a per-source summary. Exit codes: 0 = ran (posts already stored, Reddit not
+configured while StockTwits fetched, or zero new posts are findings); 1 = the run failed: crash / DB
+unavailable (failed receipt, exception re-raised), or nothing could be fetched from any source while
+requests were attempted and errored (incl. HTTP 429); 2 = usage error (unknown --source).
 """
 import json, sys, time, hashlib
 from datetime import datetime, timezone
@@ -50,6 +66,7 @@ def ingest_stocktwits(symbols: list) -> dict:
 
             if r.status_code == 429:
                 print(f"  [stocktwits] Rate limited — stopping. Got {total_inserted} posts so far.")
+                errors.append(f"{sym}: HTTP 429 (rate limited; remaining symbols not fetched)")
                 break
 
             if r.status_code != 200:
@@ -194,7 +211,7 @@ def ingest_reddit(subreddits: list = None) -> dict:
     import requests
 
     if subreddits is None:
-        subreddits = ["dividends", "investing", "retirement", "financialindependence"]
+        subreddits = list(REDDIT_DEFAULT_SUBS)
 
     session = reddit_session()
     if not session.get("ok"):
@@ -317,6 +334,7 @@ def ingest_stocktwits_discovery() -> dict:
     conn = _get_conn()
     cur = conn.cursor()
     total_inserted = 0
+    total_skipped = 0
     errors = []
 
     # 1. StockTwits trending endpoint
@@ -329,6 +347,8 @@ def ingest_stocktwits_discovery() -> dict:
             print(f"  [discovery] StockTwits trending: {', '.join(trending_tickers[:10])}")
             result = ingest_stocktwits(trending_tickers[:10])
             total_inserted += result.get("inserted", 0)
+            total_skipped += result.get("skipped", 0)
+            errors.extend(result.get("errors") or [])
         else:
             errors.append(f"trending: HTTP {r.status_code}")
     except Exception as e:
@@ -342,13 +362,15 @@ def ingest_stocktwits_discovery() -> dict:
             try:
                 result = ingest_stocktwits(discovery_syms)
                 total_inserted += result.get("inserted", 0)
+                total_skipped += result.get("skipped", 0)
+                errors.extend(result.get("errors") or [])
                 time.sleep(1)
             except Exception as e:
                 errors.append(f"{strategy}: {e}")
 
     conn.close()
     print(f"[discovery] Total inserted: {total_inserted}, Errors: {len(errors)}")
-    return {"inserted": total_inserted, "errors": errors}
+    return {"inserted": total_inserted, "skipped": total_skipped, "errors": errors}
 
 
 def ingest_reddit_with_discovery(subreddits: list = None) -> dict:
@@ -356,8 +378,7 @@ def ingest_reddit_with_discovery(subreddits: list = None) -> dict:
     import requests
 
     if subreddits is None:
-        subreddits = ["dividends", "investing", "retirement", "financialindependence",
-                      "stocks", "ValueInvesting"] + [x for x in REDDIT_MOMENTUM_SUBS if x != "stocks"]
+        subreddits = list(REDDIT_DISCOVERY_SUBS)
 
     session = reddit_session()
     if not session.get("ok"):
@@ -497,23 +518,118 @@ def rows_from_results(results) -> int | None:
     return sum(counts) if counts else None
 
 
-if __name__ == "__main__":
+DEFAULT_STOCKTWITS_SYMBOLS = ["SCHD", "V", "TDG", "LHX", "LMT", "NOC", "RTX"]
+REDDIT_DEFAULT_SUBS = ["dividends", "investing", "retirement", "financialindependence"]
+REDDIT_DISCOVERY_SUBS = ["dividends", "investing", "retirement", "financialindependence",
+                         "stocks", "ValueInvesting"] + [x for x in REDDIT_MOMENTUM_SUBS if x != "stocks"]
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.social_ingest
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def lane_id_for(source: str, discover: bool) -> str | None:
+    """The lane id an argv form belongs to (cron L243 / L244); None = a manual run, no receipt."""
+    if source == "all":
+        return "social-ingest-all"
+    if source == "stocktwits" and discover:
+        return "social-ingest-stocktwits"
+    return None
+
+
+def _discovery_plan() -> dict:
+    holdings_syms = set(_get_holdings_symbols())
+    return {"trending": "would fetch api.stocktwits.com trending (top 10)",
+            "strategy_symbols": {k: [s for s in v if s not in holdings_syms][:3]
+                                 for k, v in STRATEGY_DISCOVERY.items()}}
+
+
+def plan(source: str, discover: bool, symbols: list) -> dict:
+    """What a real run would query. Reads holdings.json only: no network, no DB, no credentials."""
+    if source == "stocktwits":
+        if discover:
+            return {"stocktwits_discovery": _discovery_plan()}
+        syms = symbols or _get_holdings_symbols()[:15] or list(DEFAULT_STOCKTWITS_SYMBOLS)
+        return {"stocktwits_symbols": syms}
+    if source == "reddit":
+        return {"reddit_subreddits": REDDIT_DISCOVERY_SUBS if discover else REDDIT_DEFAULT_SUBS}
+    if source == "all":
+        return {"stocktwits_symbols": _get_holdings_symbols()[:15],
+                "stocktwits_discovery": _discovery_plan(),
+                "reddit_subreddits": REDDIT_DISCOVERY_SUBS}
+    raise ValueError(source)
+
+
+def run_failed(results) -> bool:
+    """Honest exit: True when requests were attempted, all errored, and nothing was fetched."""
+    fetched = sum(int((r or {}).get("inserted") or 0) + int((r or {}).get("skipped") or 0)
+                  for r in results if isinstance(r, dict))
+    errored = any((r or {}).get("errors") for r in results if isinstance(r, dict))
+    return fetched == 0 and errored
+
+
+def _per_source(source: str, discover: bool, results) -> dict:
+    if source == "all":
+        names = ["stocktwits_holdings", "stocktwits_discovery", "reddit_discovery"]
+    elif source == "stocktwits":
+        names = ["stocktwits_discovery" if discover else "stocktwits"]
+    else:
+        names = ["reddit_discovery" if discover else "reddit"]
+    out = {}
+    for name, r in zip(names, results):
+        r = r if isinstance(r, dict) else {}
+        out[name] = {"inserted": int(r.get("inserted") or 0), "skipped": int(r.get("skipped") or 0),
+                     "errors": len(r.get("errors") or [])}
+        if "configured" in r:
+            out[name]["configured"] = bool(r["configured"])
+    return out
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
     source = "stocktwits"
     symbols = []
 
-    if "--source" in sys.argv:
-        idx = sys.argv.index("--source")
-        if idx + 1 < len(sys.argv):
-            source = sys.argv[idx + 1]
+    if "--source" in argv:
+        idx = argv.index("--source")
+        if idx + 1 < len(argv):
+            source = argv[idx + 1]
 
-    if "--symbols" in sys.argv:
-        idx = sys.argv.index("--symbols")
-        if idx + 1 < len(sys.argv):
-            symbols = [s.strip() for s in sys.argv[idx + 1].split(",") if s.strip()]
+    if "--symbols" in argv:
+        idx = argv.index("--symbols")
+        if idx + 1 < len(argv):
+            symbols = [s.strip() for s in argv[idx + 1].split(",") if s.strip()]
 
-    if "--holdings" in sys.argv:
+    if "--holdings" in argv:
         symbols = _get_holdings_symbols()
 
+    discover = "--discover" in argv
+    if source not in ("stocktwits", "reddit", "all"):
+        print(f"Unknown source: {source}. Use --source stocktwits|reddit|all [--discover] [--holdings] [--dry-run]")
+        return 2
+    lane_id = lane_id_for(source, discover)
+
+    if "--dry-run" in argv:
+        # Structural (AGENTS.md §6): returns before run_start, before any request, connection or secret.
+        p = plan(source, discover, symbols)
+        print(json.dumps(p, indent=2))
+        n_st = len(p.get("stocktwits_symbols") or []) + sum(
+            len(v) for v in ((p.get("stocktwits_discovery") or {}).get("strategy_symbols") or {}).values())
+        _receipt_lib().dry_run_report(
+            lane_id or f"social-ingest-manual-{source}",
+            {"source": source, "discover": discover, "lane_run": lane_id is not None,
+             "stocktwits_symbol_requests": n_st,
+             "stocktwits_trending": "stocktwits_discovery" in p,
+             "reddit_subreddits": len(p.get("reddit_subreddits") or [])},
+            would_write=["social_posts INSERT (<= 10 per StockTwits symbol, <= 25 per subreddit; dupes skipped)",
+                         "data_source health row 'reddit' (report_source)", "pipeline_runs row (run_start)"])
+        return 0
+
+    started = _receipt_lib().now_iso()
     _run_id = None
     try:
         from pipeline_registry import run_start, run_complete, run_fail
@@ -537,8 +653,6 @@ if __name__ == "__main__":
     # None still means NOT MEASURED (see pipeline_registry.run_complete). It is
     # used only where nothing ran at all, so "no input" stays distinguishable
     # from "produced nothing".
-    # A list, not a closure variable: this block runs at module scope under
-    # `if __name__ == "__main__"`, where `nonlocal` has no enclosing function.
     _results: list = []
 
     def _count(result) -> None:
@@ -546,19 +660,19 @@ if __name__ == "__main__":
 
     try:
         if source == "stocktwits":
-            if "--discover" in sys.argv:
+            if discover:
                 print("[stocktwits] Running discovery mode (trending + strategy exploration)...")
                 _count(ingest_stocktwits_discovery())
             else:
                 if not symbols:
                     symbols = _get_holdings_symbols()[:15]
                 if not symbols:
-                    symbols = ["SCHD", "V", "TDG", "LHX", "LMT", "NOC", "RTX"]
+                    symbols = list(DEFAULT_STOCKTWITS_SYMBOLS)
                 print(f"[stocktwits] Ingesting for {len(symbols)} symbols: {', '.join(symbols[:10])}...")
                 _count(ingest_stocktwits(symbols))
 
         elif source == "reddit":
-            if "--discover" in sys.argv:
+            if discover:
                 print("[reddit] Running discovery mode (hot + ticker extraction)...")
                 _count(ingest_reddit_with_discovery())
             else:
@@ -575,9 +689,6 @@ if __name__ == "__main__":
             _count(ingest_reddit_with_discovery())
             print("\n=== DONE ===")
 
-        else:
-            print(f"Unknown source: {source}. Use --source stocktwits|reddit|all [--discover] [--holdings]")
-
         rows_measured = rows_from_results(_results)
         label = "NOT_MEASURED" if rows_measured is None else rows_measured
         print(f"[social_ingest] rows_produced={label}")
@@ -590,4 +701,21 @@ if __name__ == "__main__":
             if _run_id: run_fail(_run_id, str(_e))
         except Exception:
             pass
+        if lane_id:
+            _receipt_lib().write_lane_receipt(lane_id, ok=False, exit_code=1, started_at=started,
+                                              script="social_ingest.py", error=f"{type(_e).__name__}: {_e}")
         raise
+
+    failed = run_failed(_results)
+    rc = 1 if failed else 0
+    if lane_id:
+        _receipt_lib().write_lane_receipt(lane_id, ok=not failed, exit_code=rc, started_at=started,
+                                          script="social_ingest.py",
+                                          summary={"source": source, "discover": discover,
+                                                   "rows_produced": rows_measured,
+                                                   "per_source": _per_source(source, discover, _results)})
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

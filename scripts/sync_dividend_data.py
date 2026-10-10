@@ -4,13 +4,36 @@
 Replaces seed-only ticker_dividend_data with real API data.
 
 Usage:
-    python3 scripts/sync_dividend_data.py [--json]
+    python3 scripts/sync_dividend_data.py [--json] [--dry-run]
+
+Lane ``sync-dividend-data`` (cron L216). ``--dry-run`` opens a READ ONLY session, reads the symbol
+universe (ticker_strategy_classifications, the same query as a real run), prints what a real run would
+fetch and upsert, and returns before any yfinance call or INSERT is reachable; it writes no receipt.
+A real run writes ``<state_root>/data/runtime/sync-dividend-data_last.json`` (LaneRunReceipt@v1;
+``ok_at`` only on success).
+
+Exit codes: 0 = ran (symbols without a dividend, or zero symbols, are findings, not failures);
+1 = the run failed: crash / DB unavailable (failed receipt, exception re-raised), or every symbol's
+yfinance fetch raised (nothing could be fetched when work existed); 2 = usage error.
 """
 import json, os, sys
 from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+LANE_ID = "sync-dividend-data"
+SYMBOL_CAP = 30  # rate limit
+_SKIP_PREFIXES = ["FID-", "SP500-", "SS-", "TRP-", "WM-", "AB-", "JPM-", "VANG-"]
+#: yfinance fetches that raised during the last sync() in this process (read by main() for the exit code)
+_FETCH_ERRORS: list = []
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.sync_dividend_data
+        from scripts.lib import lane_last_receipt as lr
+    return lr
 
 
 def _get_conn():
@@ -44,22 +67,44 @@ def _fetch_yf_dividend(symbol: str) -> dict:
         if beta:
             result["_beta"] = float(beta)
         return result
-    except Exception:
+    except Exception as exc:
+        _FETCH_ERRORS.append(f"{symbol}: {type(exc).__name__}")
         return {}
+
+
+def _universe(cur) -> list:
+    """Active strategy-classified symbols, Fidelity proprietary codes removed (read-only SELECT)."""
+    cur.execute("SELECT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
+    symbols = [r["symbol"] for r in cur.fetchall()]
+    # Filter to real tickers (skip Fidelity proprietary)
+    return [s for s in symbols if not any(s.startswith(p) for p in _SKIP_PREFIXES)]
+
+
+def preview(symbols: list = None) -> dict:
+    """Dry run (AGENTS.md §6): READ ONLY session, universe SELECT only; no yfinance call, no INSERT."""
+    import psycopg2.extras
+    conn = _get_conn()
+    try:
+        _receipt_lib().enforce_readonly(conn)
+        if not symbols:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            symbols = _universe(cur)
+    finally:
+        conn.close()
+    batch = symbols[:SYMBOL_CAP]
+    return {"symbols_total": len(symbols), "would_check": len(batch), "symbols": batch}
 
 
 def sync(symbols: list = None) -> dict:
     import psycopg2.extras
+    _FETCH_ERRORS.clear()
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if not symbols:
-        cur.execute("SELECT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
-        symbols = [r["symbol"] for r in cur.fetchall()]
-        # Filter to real tickers (skip Fidelity proprietary)
-        symbols = [s for s in symbols if not any(s.startswith(p) for p in ["FID-", "SP500-", "SS-", "TRP-", "WM-", "AB-", "JPM-", "VANG-"])]
+        symbols = _universe(cur)
 
     updated = 0
-    for sym in symbols[:30]:  # Rate limit
+    for sym in symbols[:SYMBOL_CAP]:  # Rate limit
         data = _fetch_yf_dividend(sym)
         if data:
             # Remove internal fields
@@ -83,12 +128,44 @@ def sync(symbols: list = None) -> dict:
     conn.commit()
     conn.close()
 
-    result = {"symbols_checked": len(symbols[:30]), "updated": updated}
-    print(f"[dividend-sync] Updated {updated} of {len(symbols[:30])} symbols from yfinance")
+    result = {"symbols_checked": len(symbols[:SYMBOL_CAP]), "updated": updated,
+              "fetch_errors": len(_FETCH_ERRORS)}
+    print(f"[dividend-sync] Updated {updated} of {len(symbols[:SYMBOL_CAP])} symbols from yfinance")
     return result
 
 
-if __name__ == "__main__":
-    r = sync()
-    if "--json" in sys.argv:
+def main(argv=None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="Sync yfinance dividend data into ticker_dividend_data.")
+    ap.add_argument("--json", action="store_true", help="also print the result as JSON")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="read the symbol universe (READ ONLY) and report; no fetch, no write, no receipt")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        # Structural (AGENTS.md §6): sync() -- yfinance + INSERT -- is not reachable from this branch.
+        plan = preview()
+        if a.json:
+            print(json.dumps(plan, indent=2, default=str))
+        _receipt_lib().dry_run_report(
+            LANE_ID, {"symbols_total": plan["symbols_total"], "would_check": plan["would_check"],
+                      "first_symbols": plan["symbols"][:10]},
+            would_write=[f"ticker_dividend_data upsert (<= {plan['would_check']} rows, yfinance dividendRate)"])
+        return 0
+    started = _receipt_lib().now_iso()
+    try:
+        r = sync()
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="sync_dividend_data.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    if a.json:
         print(json.dumps(r, indent=2, default=str))
+    failed = r["symbols_checked"] > 0 and r["fetch_errors"] >= r["symbols_checked"]
+    rc = 1 if failed else 0
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                                      script="sync_dividend_data.py", summary=r)
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())
