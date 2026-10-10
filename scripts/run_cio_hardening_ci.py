@@ -3560,6 +3560,9 @@ GATES = [
         [
             "tests/test_lane_registry_n8n_kind_20261008.py",
             "tests/test_n8n_lane_cutover_20261008.py",
+            # 2026-10-10 (D-3): one lane cutover retires up to 8 cron slots (list match, or string match with
+            # --expect-lines); per-line tags, one write, re-read of every line, count-checked rollback. Hermetic.
+            "tests/test_cutover_multiline_20261010.py",
             "tests/test_n8n_lane_readiness_20261008.py",
         ],
     ),
@@ -4278,6 +4281,13 @@ GATES = [
         # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.
         "lane_registry_generic_workflows_20261010",
         ["tests/test_lane_registry_generic_workflows_20261010.py"],
+    ),
+    (
+        # Stop push-from-cron (2026-10-10, AGENTS §0 rule 4): coder_dispatch (L556) and backup_generated_docs.sh
+        # (L541) are local-only by default; a push needs an operator flag AND TRADEAI_REMOTE_PUSH_AUTHORIZED=1,
+        # and a --from-queue drain never pushes. git shimmed; the remote is a throwaway local bare repo.
+        "stop_cron_pushes_20261010",
+        ["tests/test_stop_cron_pushes_20261010.py"],
     ),
     (
         # Alpha Vantage phantom spend (API overlap Q5, 2026-10-10): _fetch_alpha_vantage checks the
