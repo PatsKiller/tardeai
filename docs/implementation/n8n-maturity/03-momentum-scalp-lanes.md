@@ -150,7 +150,7 @@ The post-promote sample is 3 slots, because the market closed 14 minutes after t
   - `scheduler.cron "*/5 9-15 * * 1-5"`, `scheduler.tz "America/New_York"`;
   - 02 `dispatch` block: `{mode, cron ["*/5 9-15 * * 1-5"], tz, wave W1, class send, priority 1, retry_policy none, catchup_min 1, min_interval_s 240}` (full row in §5).
 - **`coordination/due`:**
-  - computes slots with `scripts/lib/cron_schedule.next_run`;
+  - computes slots with `next_run` in `scripts/lib/cron_schedule.py`;
   - emits only when `market_session.current_market_session(now) == "regular"`, which covers weekends, holidays and early closes (78 slots on a full day, 42 on an early close);
   - the 09:00-09:25 cron fires are not dispatched;
   - if the session check errors, it does **not** dispatch and records `DISPATCH_GATE_ERROR`. Cron is the fallback while it exists.

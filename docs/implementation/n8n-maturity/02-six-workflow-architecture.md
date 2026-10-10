@@ -443,7 +443,7 @@ sequenceDiagram
 
 **Anchor.** The `advice-digest` lane (`scripts/send_advice_digest.py`, slots 10/15/17 ET in `config/advice_digest.yaml`) is already a watermark-pull digest. It reads `communication_events`, held CIO notes and P1 archives, and five digest lines were folded into it on 10-08. The scheduler builds on it instead of replacing it.
 
-**Windows.** A new `config/digest_windows.json` (DigestWindows@v1) holds windows and members:
+**Windows.** A new DigestWindows@v1 config holds windows and members. It is not in the repo yet (planned path: config/digest_windows.json, lands with the digest-scheduler PR):
 - weekday 10:00, 15:00 and 17:00 (from `advice_digest.yaml`)
 - Saturday 09:00 and Sunday 18:00 (new weekend slots for oversight, rotation and strategy text)
 - the morning brief at 07:30 stays standalone (F: KEEP)
@@ -501,7 +501,7 @@ These stay standalone and are linked from a digest:
 
 ## 11. The six workflow files
 
-These are generated **once** by a new `scripts/n8n_workflow_templates.py build_generic` and committed under `docs/implementation/n8n-parallel/workflows/generic/`. They carry no lane constants. Static test `test_generic_workflows_have_no_lane_constants` (§15) enforces that.
+These are generated **once** by `python3 scripts/n8n_workflow_templates.py build-generic` (#1596, `build_generic()`) and committed under `docs/implementation/n8n-maturity/workflows/` (the script's default `--out`; `--check` verifies the committed files). They carry no lane constants. Static test `test_no_lane_constants_beyond_the_system_filters` (`tests/test_n8n_maturity_generic_workflows_20261009.py`, §15) enforces that.
 
 | # | id (name) | Triggers | Relay calls | errorWorkflow |
 |---|---|---|---|---|

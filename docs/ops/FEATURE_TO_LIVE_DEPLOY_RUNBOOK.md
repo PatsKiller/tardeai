@@ -1,7 +1,7 @@
 # Feature-to-live deploy runbook (single-approval)
 
 Status:      ACTIVE
-as_of:       2026-10-05T18:58:00Z
+as_of:       2026-10-09T21:00:00Z
 Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
 Verified:    exact-SHA gate at 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96 (PRs #1442, #1443)
 Authority:   AGENTS.md §Local gates / docs/GIT_HYGIENE.md / RELEASE_COORDINATOR boundary
@@ -178,8 +178,12 @@ persistent state (live copies hashed, paths removed from the index only, re-hash
 non-zero *after* `PROMOTE OK` and names the blocking paths. The release is live either way; a non-zero
 exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips the step.
 
-`promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
-`tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service`). Promote
+`promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default, from
+`restart_root_frozen_units` in `scripts/cio_phase2_exact_main_deploy.sh`:
+`tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service
+tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service
+tradeai-n8n-run-relay.service tradeai-n8n-run-executor.service tradeai-phone-status.service`). A bound
+unit that is not installed or not running is skipped, not started. Promote
 reads back each bound unit's `/proc/<pid>/cwd` and must match the new CURRENT dir — see
 `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. The desk bot is in that default because it keeps the code it
 imported at start. After promote, its cwd must be the new CURRENT directory.
@@ -213,7 +217,19 @@ Two things it does not do (`AGENTS.md` §9.3, §10):
    re-enabled job) needs its `config/lane_registry.json` row in the same PR, or
    `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. Editing the crontab is operator-only.
 
+3. **Turn on an opt-in mode of a bound unit.** Promote restarts `tradeai-n8n-run-executor.service` with the
+   environment the installed unit already has. The repo unit sets no `TRADEAI_N8N_EXECUTOR_WORKERS`, so the
+   executor stays on the v1 serial drain (RunReceipt@v1) after every promote. Executor v2 (#1598: N workers,
+   per-lane lock, reaper, RunReceipt@v2, limits in `config/n8n_executor.json`) starts only on an explicit
+   value of 2 or more. Setting it is a grant-gated edit of the installed unit (`Environment=TRADEAI_N8N_EXECUTOR_WORKERS=3`,
+   then `daemon-reload` and a restart of that unit). Rollback is in `docs/ops/ROLLBACK_COMMANDS.md`.
+
 ## Failure / rollback
+
+A `prepare` refused with `CURRENT pin check tree_diff:N` means the release overlay and the commit differ.
+2026-10-09: the overlay's `--exclude=data/` dropped the tracked `docs/implementation/n8n-maturity/data/`
+files (`tree_diff:4`). #1620 includes `docs/**/data/` before the excludes. Root `data/` (runtime) stays
+excluded. Find the differing paths before retrying. Do not retry blind.
 
 `promote` already auto-rolls back to `PREV_RELEASE` on a failed health check. Manual rollback
 restarts the bound units and rewrites the expected-release pin. See `docs/ops/ROLLBACK_COMMANDS.md`.
