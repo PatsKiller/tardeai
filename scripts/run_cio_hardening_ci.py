@@ -4123,6 +4123,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: CONSOLIDATION_STEP1_FINVIZ_BROKER — 2026-10-10 provider consolidation step 1 (cron L442 watch
+        # directives servicer, cron L142 finviz-enrichment owner): the Finviz enrichment cache's single writer saves
+        # locked + merged + atomic; consumers read lib.data_broker.finviz_enrichment_snapshot (as_of/age/stale,
+        # zero provider calls); the servicer refreshes its leads in ONE batched owner call (dry run plans only).
+        # Hermetic: tmp_path stores, stub owner module. Listing it schedules nothing.
+        "consolidation_step1_finviz_broker_20261010",
+        [
+            "tests/test_consolidation_step1_finviz_broker_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: REFACTOR_W3_BUCKET_X1 — 2026-10-10 cron -> n8n refactor wave 3, bucket X1 (ingest: cron L142 L150 L243 L244 L248 L216 L505 L520 L550 — finviz_enrichment, sec_data_ingest, social_ingest, fred_data_ingest, sync_dividend_data, etf_*_enrich, validate_expense_ratios):
         # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
         # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
