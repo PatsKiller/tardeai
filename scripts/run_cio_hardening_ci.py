@@ -4134,6 +4134,13 @@ GATES = [
         "finviz_view_contracts_timeout_20261010",
         ["tests/test_finviz_view_contracts_timeout_20261010.py"],
     ),
+    (
+        # The six generic n8n workflows (AGENTS.md §23.11) are declared by their committed INDEX, so activating
+        # them under their `cron` grant does not turn check_lane_registry --n8n-live red with six
+        # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.
+        "lane_registry_generic_workflows_20261010",
+        ["tests/test_lane_registry_generic_workflows_20261010.py"],
+    ),
 ]
 
 
