@@ -13,7 +13,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 _PROJECT = Path(__file__).resolve().parents[1]
@@ -23,6 +23,7 @@ if str(_PROJECT) not in sys.path:
 from scripts.lib.governed_commitment import (  # noqa: E402
     FEATURE_FLAG,
     build_governed_commitment,
+    horizon_delta,
     feature_enabled,
 )
 
@@ -70,7 +71,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     now = datetime.now(timezone.utc)
-    due = now + timedelta(days=7)
+    # Due derives from the horizon (was now+7d regardless; 2026-10-09).
+    span = horizon_delta(args.horizon)
+    if span is None:
+        print(json.dumps({"ok": False, "outcome": "refused", "reason": "horizon_not_an_explicit_duration",
+                          "horizon": args.horizon, "mbi_behavior": 0}, sort_keys=True))
+        return 2
+    due = now + span
     evidence = list(args.evidence_refs) or [f"shadow:{args.subject_guid}"]
     from scripts.lib.runtime_identity import resolve_source_sha
 
