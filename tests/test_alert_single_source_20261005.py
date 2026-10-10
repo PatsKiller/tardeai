@@ -51,7 +51,7 @@ BYPASS_ALLOWLIST = {
     "scripts/social_scalp_scanner.py": "Finviz",
     "scripts/technicals_gap_backfill.py": "yfinance backfill",
     "scripts/trade_ai_orchestrator.py": "yfinance",
-    "scripts/watchlist_entry_planner.py": "yfinance + Alpaca bars",
+    "scripts/watchlist_entry_planner.py": "yfinance (bars fallback via Data Broker ohlc_bars since 2026-10-10)",
 }
 
 #: Fixed on 2026-10-05: must stay clean, directly and one import down.

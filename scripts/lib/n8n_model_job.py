@@ -41,6 +41,9 @@ REFUSALS = frozenset({
 PROCESS_TASK_TYPE: dict[str, str] = {
     "n8n_material_digest_draft": "model_job",
     "n8n_ops_summary_draft": "ops_summary",
+    # 2026-10-10 (REMEDIATION_PLAN §6, operator decisions 23:38 ET): n8n lane failure diagnosis, caller
+    # scripts/n8n_failure_diagnosis.py; bounded remediation choice validated against the lane catalogue.
+    "n8n_lane_failure_diagnosis": "lane_failure_diagnosis",
 }
 #: The governance envelope the bridge returns on success: governance_pass, process_id, reservation_id, model_id,
 #: provider, cost_estimate, request_id and mock all live under this key (cio_governed_model_bridge Step 10).

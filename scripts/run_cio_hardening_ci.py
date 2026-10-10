@@ -730,6 +730,10 @@ GATES = [
             "tests/test_data_source_health_decay_20260913.py",
             "tests/test_data_plausibility_required_fields_20260913.py",
             "tests/test_data_broker_envelope_20260913.py",
+            # Operator ruling 2026-10-10 (REMEDIATION_PLAN §7 ruling 3): the entry planner's bars fallback reads the
+            # Data Broker ohlc_bars projection; the lane never reads ALPACA_* or imports an alpaca module
+            # (import hook + recording environ). Hermetic: fake yfinance, fake db_query.
+            "tests/test_entry_planner_data_broker_bars_20261010.py",
             "tests/test_brave_router_spill.py",
             "tests/test_data_source_authority_resolve_backup.py",
             "tests/test_catalyst_news_search_backup.py",
@@ -1186,6 +1190,12 @@ GATES = [
     (
         "n8n_siem_bridge_20261010",
         ["tests/test_n8n_siem_bridge_20261010.py"],
+    ),
+    # LLM self-remediation for n8n lanes (REMEDIATION_PLAN §6, operator decisions 2026-10-09 23:38 ET): remediation
+    # catalogue from the inventory, governed diagnosis (n8n_lane_failure_diagnosis), bounded actions, selftest lane.
+    (
+        "n8n_llm_remediation_20261010",
+        ["tests/test_n8n_llm_remediation_20261010.py"],
     ),
     # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
     # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
@@ -3692,6 +3702,11 @@ GATES = [
         "n8n_maturity_registry_dispatch_20261009",
         [
             "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+            # Operator ruling 2026-10-10 (REMEDIATION_PLAN §7 ruling 2): whole-word / path-segment forbidden-token
+            # matching. SAFETY RAIL: every registry row, crontab line and allowlist argv the legacy substring
+            # matcher blocked still blocks (reviewed false positives excepted), env/flag tokens inspected,
+            # mutations prove the matrix has teeth. Hermetic: repo config files only.
+            "tests/test_lane_dispatch_word_boundary_20261010.py",
         ],
     ),
     (

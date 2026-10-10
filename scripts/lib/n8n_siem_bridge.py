@@ -5,7 +5,12 @@ Command Center SIEM"). The n8n chain (relay, gateway, executor, incident fan-in,
 ``system_health_events`` rows; this module turns its two existing stores into SIEM rows:
 
 * the coordination ledger ``runs`` table (RunReceipt@v1 per run, read with sqlite ``mode=ro``), and
-* the incident fan-in receipt ``data/runtime/n8n_incident_fanin_last.json`` (N8nIncidentFanin@v1, read-only).
+* the incident fan-in receipt ``data/runtime/n8n_incident_fanin_last.json`` (N8nIncidentFanin@v1, read-only), and
+* the failure diagnoser's own store ``data/runtime/n8n_diagnoses/diagnoses.jsonl`` (N8nLaneDiagnosis@v1, read-only;
+  REMEDIATION_PLAN §6 R3). The diagnoser never writes ``system_health_events`` (AGENTS.md §9.4, one writer per
+  store; operator "Ok" 2026-10-10 ~00:35 ET): this bridge folds the latest diagnosis of an open row's incident into
+  that row's message (suffix after ``DIAG_MARKER``) and ``action_taken``, idempotently — the same diagnosis twice is a
+  skip, and a changed finding drops it (new evidence, new incident key, new diagnosis).
 
 One active row per (component ``n8n:<lane_id>``, event_type) — the dedupe key. A repeat with the same severity and
 message is skipped; a changed one updates the open row in place; a finding that clears is resolved
@@ -23,6 +28,7 @@ chokepoint (AGENTS.md §9.1, §23.3).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -41,6 +47,9 @@ FANIN_RECEIPT_REL = "data/runtime/n8n_incident_fanin_last.json"
 LEDGER_REL = "data/governance/n8n_coordination_ledger.sqlite"
 RECEIPT_REL = "data/runtime/n8n_siem_bridge_last.json"
 FANIN_LANE = "n8n-incident-fanin"
+DIAGNOSES_REL = "data/runtime/n8n_diagnoses/diagnoses.jsonl"
+DIAGNOSIS_SCHEMA = "N8nLaneDiagnosis@v1"
+DIAGNOSES_TAIL_BYTES = 4 * 1024 * 1024   # the newest records only; one diagnosis per incident, a few per day
 FANIN_MAX_AGE_H = 1.0  # fan-in runs */5; an hour without a receipt means the SIEM feed is blind
 
 SEVERITY_RANK = {"CRITICAL": 0, "URGENT": 1, "WARN": 2, "INFO": 3}
@@ -375,9 +384,102 @@ def message(f: dict[str, Any], env: str) -> str:
 # ---------------------------------------------------------------- plan
 
 
+#: The diagnosis suffix this bridge renders onto an open row's message (REMEDIATION_PLAN §6 R3). The bridge is the
+#: only writer of the row; scripts/n8n_failure_diagnosis.py writes its own store (DIAGNOSES_REL) and nothing else.
+DIAG_MARKER = " \u2016 diag:"
+
+
+def strip_diagnosis(msg: Any) -> str:
+    """The finding part of a row message (everything before the diagnosis suffix)."""
+    return str(msg or "").split(DIAG_MARKER, 1)[0]
+
+
 def stable_text(msg: Any) -> str:
-    """The message with timestamps blanked: what decides skip vs update."""
+    """The WHOLE message (finding + any diagnosis suffix) with timestamps blanked: what decides skip vs update."""
     return ISO_TS_RE.sub("<ts>", str(msg or ""))
+
+
+def finding_text(msg: Any) -> str:
+    """The finding alone, timestamps blanked: what an incident key is computed from."""
+    return ISO_TS_RE.sub("<ts>", strip_diagnosis(msg))
+
+
+def incident_key(row_id: Any, severity: Any, message: Any) -> str:
+    """One diagnosis per (SIEM row, finding): a re-written finding is new evidence; a timestamp or a folded
+    diagnosis is not. The diagnoser keys its records with this; the bridge matches them with it."""
+    h = hashlib.sha256(f"{severity}|{finding_text(message)}".encode("utf-8")).hexdigest()[:12]
+    return f"siem{row_id}-{h}"
+
+
+def read_diagnoses(path: Path, tail_bytes: int = DIAGNOSES_TAIL_BYTES) -> tuple[Optional[dict[str, dict]], str]:
+    """(incident_key -> {"diagnosis": latest record, "remediation": latest record or None}, note).
+
+    A missing file is an empty store (the diagnoser has not run yet); an unreadable one is None, and ``plan`` then
+    keeps whatever suffix an unchanged row already shows instead of erasing it. Malformed lines are counted, skipped."""
+    p = Path(path)
+    try:
+        size = p.stat().st_size
+        with p.open("rb") as fh:
+            if size > tail_bytes:
+                fh.seek(size - tail_bytes)
+                fh.readline()                       # drop the partial first line
+            raw = fh.read().decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        return {}, "diagnoses:none"
+    except OSError as exc:
+        return None, f"diagnoses:unavailable:{type(exc).__name__}"
+    out: dict[str, dict] = {}
+    bad = 0
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            bad += 1
+            continue
+        if not isinstance(rec, dict) or rec.get("schema") != DIAGNOSIS_SCHEMA or not rec.get("incident_key"):
+            bad += 1
+            continue
+        slot = out.setdefault(str(rec["incident_key"]), {"diagnosis": None, "remediation": None})
+        if rec.get("kind") == "diagnosis":
+            slot["diagnosis"], slot["remediation"] = rec, None      # a newer diagnosis restarts the story
+        elif rec.get("kind") == "remediation":
+            slot["remediation"] = rec
+        else:
+            bad += 1
+    out = {k: v for k, v in out.items() if v["diagnosis"] is not None}
+    return out, f"diagnoses:ok:{len(out)}" + (f":bad_lines={bad}" if bad else "")
+
+
+def diagnosis_suffix(view: dict[str, Any]) -> str:
+    """The text appended after DIAG_MARKER (one line, bounded, no timestamps so it is stable across passes)."""
+    d = view.get("diagnosis") or {}
+    rem = view.get("remediation") or {}
+
+    def q(v: Any) -> str:
+        return str(v or "").replace('"', "'").replace("\n", " ")[:300]
+
+    cost = d.get("cost_usd")
+    parts = [
+        f'cause="{q(d.get("cause"))}"', f"conf={d.get('confidence')}", f"action={d.get('action_id')}",
+        f"outcome={d.get('outcome')}", f"model={d.get('provider') or 'n/a'}/{d.get('model_id') or 'n/a'}",
+        f"cost_usd={'n/a' if cost is None else f'{float(cost):.4f}'}", f"latency_ms={d.get('latency_ms')}",
+        f"cites={','.join(str(c) for c in d.get('citations') or [])[:200]}", f"key={d.get('incident_key')}",
+    ]
+    if d.get("escalation"):
+        parts.append(f"escalated={d['escalation']}")
+    if rem.get("outcome"):
+        parts.append(f"remediation={str(rem['outcome']).replace(' ', '_')[:120]}")
+        if rem.get("escalation"):
+            parts.append(f"remediation_escalated={rem['escalation']}")
+    return (DIAG_MARKER + " " + " ".join(parts))[:1300]
+
+
+def diagnosis_action(view: dict[str, Any]) -> str:
+    d, rem = view.get("diagnosis") or {}, view.get("remediation") or {}
+    tail = f"; remediation -> {rem.get('outcome')}" if rem.get("outcome") else ""
+    return f"{WRITER}: diagnosis folded (n8n_failure_diagnosis: {d.get('action_id')} -> {d.get('outcome')}{tail})"[:300]
 
 
 def plan(
@@ -388,8 +490,13 @@ def plan(
     good_lanes: set[str],
     ledger_ok: bool,
     fanin_ok: bool,
+    diagnoses: Optional[dict[str, dict]] = None,
 ) -> dict[str, list[dict]]:
-    """Pure diff of wanted findings against the open n8n rows -> {insert, update, resolve, skip, hold}."""
+    """Pure diff of wanted findings against the open n8n rows -> {insert, update, resolve, skip, hold}.
+
+    ``diagnoses`` (``read_diagnoses``): the diagnosis whose incident key matches an open row's (id, severity,
+    finding) is rendered onto that row; ``{}`` = none; ``None`` = store unreadable, so an unchanged row keeps the
+    suffix it already shows. A new row has no id yet, so it never carries a diagnosis."""
     by_key: dict[tuple[str, str], list[dict]] = {}
     for r in open_rows:
         if (
@@ -414,12 +521,22 @@ def plan(
         existing = by_key.get(key)
         if not existing:
             out["insert"].append(row)
-        elif existing[0].get("severity") == f["severity"] and stable_text(existing[0].get("message")) == stable_text(
-            msg
-        ):
-            out["skip"].append({**row, "id": existing[0].get("id")})
+            continue
+        ex = existing[0]
+        ikey = incident_key(ex.get("id"), f["severity"], msg)
+        desired, folded = msg, None
+        if diagnoses is None:
+            old = str(ex.get("message") or "")
+            if finding_text(old) == finding_text(msg):
+                desired = msg + old[len(strip_diagnosis(old)):]
+        elif ikey in diagnoses:
+            desired, folded = msg + diagnosis_suffix(diagnoses[ikey]), ikey
+        row = {**row, "message": desired, "incident_key": ikey, "diagnosis_folded": folded,
+               "action_note": diagnosis_action(diagnoses[ikey]) if folded else None}
+        if ex.get("severity") == f["severity"] and stable_text(ex.get("message")) == stable_text(desired):
+            out["skip"].append({**row, "id": ex.get("id")})
         else:
-            out["update"].append({**row, "id": existing[0].get("id"), "was_severity": existing[0].get("severity")})
+            out["update"].append({**row, "id": ex.get("id"), "was_severity": ex.get("severity")})
     for key, rows in sorted(by_key.items()):
         if key in findings:
             continue
