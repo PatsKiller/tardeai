@@ -1,7 +1,7 @@
 # Feature-to-live deploy runbook (single-approval)
 
 Status:      ACTIVE
-as_of:       2026-10-09T21:00:00Z
+as_of:       2026-10-10T21:30:00Z (n8n bound-unit drop-ins); 2026-10-09T21:00:00Z otherwise
 Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
 Verified:    exact-SHA gate at 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96 (PRs #1442, #1443)
 Authority:   AGENTS.md §Local gates / docs/GIT_HYGIENE.md / RELEASE_COORDINATOR boundary
@@ -218,11 +218,15 @@ Two things it does not do (`AGENTS.md` §9.3, §10):
    `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. Editing the crontab is operator-only.
 
 3. **Turn on an opt-in mode of a bound unit.** Promote restarts `tradeai-n8n-run-executor.service` with the
-   environment the installed unit already has. The repo unit sets no `TRADEAI_N8N_EXECUTOR_WORKERS`, so the
-   executor stays on the v1 serial drain (RunReceipt@v1) after every promote. Executor v2 (#1598: N workers,
-   per-lane lock, reaper, RunReceipt@v2, limits in `config/n8n_executor.json`) starts only on an explicit
-   value of 2 or more. Setting it is a grant-gated edit of the installed unit (`Environment=TRADEAI_N8N_EXECUTOR_WORKERS=3`,
-   then `daemon-reload` and a restart of that unit). Rollback is in `docs/ops/ROLLBACK_COMMANDS.md`.
+   environment the installed unit and its drop-ins already have; it never reinstalls a unit. The repo unit sets no
+   `TRADEAI_N8N_EXECUTOR_WORKERS`. **Since 2026-10-10 13:07 ET executor v2 runs with 3 workers** from the installed
+   drop-in `~/.config/systemd/user/tradeai-n8n-run-executor.service.d/10-executor-v2.conf` (service grant
+   eebd4ca0a6b31bd2), so it survives every promote. The gateway likewise takes `TRADEAI_N8N_GATEWAY_EXTRA_LANES`
+   (incl. `n8n-workflow-error`) from the drop-in `tradeai-n8n-coordination-gateway.service.d/20-workflow-error-lane.conf`
+   (2026-10-10 16:27 ET). Changing either is a grant-gated edit of the drop-in (`config-write`), then `daemon-reload`
+   and a restart of that unit (`service`). Reinstalling a unit file from CURRENT keeps its `.service.d/` drop-ins.
+   Rollback is in `docs/ops/ROLLBACK_COMMANDS.md`; the full n8n configuration is
+   `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md`.
 
 ## Failure / rollback
 

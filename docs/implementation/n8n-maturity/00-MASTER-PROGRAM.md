@@ -2,7 +2,7 @@
 
 **Status:** CURRENT — index of the in-repo program artifacts
 
-**Date:** 2026-10-09
+**Date:** 2026-10-09 (index amended 2026-10-10: configuration reference, onboarding and monitoring standards, health contracts)
 
 **Owner:** Agent A (program supervisor)
 
@@ -11,8 +11,18 @@ rules live in AGENTS.md, the designs in the numbered docs below, and the scores 
 status (PR board, reviews, operator decisions) is kept outside the repo on the program board and is not
 mirrored here, so this file does not go stale with it.
 
+## Start here — configuration and procedures (2026-10-10)
+
+| Doc | What |
+|---|---|
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | **Entry point.** How n8n is configured on ms01-openclaw: container, host relay / gateway / executor, workflows, governance, change log, open items |
+| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | **Mandatory** procedure for adding any lane, workflow, relay path or executor setting to n8n (AGENTS.md §23 pointer) |
+| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | Per-lane monitoring, SIEM, Telegram routing, LLM auto-remediation, R6 validation, workflow health contracts |
+| `config/n8n_health_contracts.json` | Workflow health contracts (gate `scripts/check_n8n_health_contracts.py`) |
+
 ## Rules
 
+- `AGENTS.md` (4.4.0) §23.18 R1 classes and the 4.4.0 cron-row shape at shadow/canary.
 - `AGENTS.md` §23.11 registry-driven dispatch, §23.12 wave ladder, §23.13 program window (push budget,
   standing 48 h merge approval), §23.14 lanes never dispatcher-eligible
   (`tests/test_agents_policy_4_1_0_amendment.py`). §23.3 keeps `trade-ai-scalp-live` as the single named
