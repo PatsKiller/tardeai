@@ -170,3 +170,36 @@ def test_configuration_names_variables_never_values():
     assert not re.search(r"(?i)(password|secret|token|key)\s*[:=]\s*[A-Za-z0-9/+]{16,}", text)
     assert not re.search(r"\b[0-9a-f]{40,}\b", text)
     assert "EXECUTIONS_DATA_SAVE_ON_SUCCESS=none" in text
+
+
+# ----------------------------------------------------------------------------------------- AGENTS.md pointer
+
+
+def _agents() -> str:
+    return (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+
+def _section_23() -> str:
+    m = re.search(r"^# 23 · .*?(?=^# Version history)", _agents(), re.M | re.S)
+    assert m, "§23 not found"
+    return re.sub(r"\s+", " ", m.group(0))
+
+
+def test_agents_23_points_at_the_configuration_and_the_standards():
+    s23 = _section_23()
+    for doc in ("N8N_CONFIGURATION.md", "N8N_ONBOARDING_STANDARD.md", "N8N_MONITORING_AND_REMEDIATION_STANDARD.md",
+                "config/n8n_health_contracts.json"):
+        assert doc in s23, doc
+
+
+def test_agents_12_states_the_cron_wide_offpeak_arming():
+    flat = re.sub(r"\s+", " ", _agents())
+    assert "the crontab header sets `LLM_DEFER_OFFPEAK=1` for **every** cron-launched caller" in flat
+    assert "set in exactly one place — the drop-in" not in flat
+    assert "so no cron-launched caller inherits it**" not in flat
+
+
+def test_claude_md_adapter_restates_no_n8n_rule():
+    """CLAUDE.md is an adapter (AGENTS.md §19): it must not grow n8n rules of its own."""
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "n8n" not in text.lower()
