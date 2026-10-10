@@ -3560,6 +3560,9 @@ GATES = [
         [
             "tests/test_lane_registry_n8n_kind_20261008.py",
             "tests/test_n8n_lane_cutover_20261008.py",
+            # 2026-10-10 (D-3): one lane cutover retires up to 8 cron slots (list match, or string match with
+            # --expect-lines); per-line tags, one write, re-read of every line, count-checked rollback. Hermetic.
+            "tests/test_cutover_multiline_20261010.py",
             "tests/test_n8n_lane_readiness_20261008.py",
         ],
     ),
@@ -3845,6 +3848,25 @@ GATES = [
         "cron_tranche_b_20261007",
         [
             "tests/test_pipeline_manifest_runner_20261007.py",
+        ],
+    ),
+    (
+        # C1 manifest flips (operator approval 2026-10-10, JOB_REDUCTION_DEEP_PASS D-1): exactly the 75 approved
+        # crontab lines are stage steps (live text, inventory id per step); dual-claimed / approval-sheet / C2
+        # lines are deferred so an --apply stage cannot double-run them; the hermes_learning registry edit
+        # retires its 7 absorbed rows into the stage lanes. Pure file checks; schedules nothing.
+        "c1_manifest_flips_20261010",
+        [
+            "tests/test_c1_manifest_flips_20261010.py",
+        ],
+    ),
+    (
+        # Stage runner per-step env (2026-10-10, operator "Yes" ~19:45 ET): the manifest runner no longer sources
+        # $PROJ/.env into steps; each step runs under `env -i` with exactly its cron line's names (cron base +
+        # preceding crontab NAME= lines). Fake .env with canary + broker names in a scratch root; names only.
+        "stage_runner_env_20261010",
+        [
+            "tests/test_stage_runner_env_20261010.py",
         ],
     ),
     (
@@ -4151,6 +4173,19 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):
+        # registry rows finviz_enrichment / scalp_list / social_posts / yfinance_info_snapshot with the operator's
+        # grant; StockTwits rate limit; latest_quote projection; quote-only get_best_quote (stored first, first
+        # fresh provider, never the fan-out; legacy mode unchanged for execution-readiness callers); the Data
+        # Broker's dead fallback revived bounded; yfinance_info_snapshot single writer; enrichment-cache merge tool
+        # (dry run read-only; apply through the single writer, archive + tripwire + alias). Hermetic: fake DB,
+        # stub providers, tmp_path stores. Listing it schedules nothing.
+        "broker_domains_q1_20261010",
+        [
+            "tests/test_broker_domains_q1_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: REFACTOR_W3_BUCKET_X1 — 2026-10-10 cron -> n8n refactor wave 3, bucket X1 (ingest: cron L142 L150 L243 L244 L248 L216 L505 L520 L550 — finviz_enrichment, sec_data_ingest, social_ingest, fred_data_ingest, sync_dividend_data, etf_*_enrich, validate_expense_ratios):
         # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
         # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
@@ -4261,6 +4296,13 @@ GATES = [
         ["tests/test_lane_registry_generic_workflows_20261010.py"],
     ),
     (
+        # Stop push-from-cron (2026-10-10, AGENTS §0 rule 4): coder_dispatch (L556) and backup_generated_docs.sh
+        # (L541) are local-only by default; a push needs an operator flag AND TRADEAI_REMOTE_PUSH_AUTHORIZED=1,
+        # and a --from-queue drain never pushes. git shimmed; the remote is a throwaway local bare repo.
+        "stop_cron_pushes_20261010",
+        ["tests/test_stop_cron_pushes_20261010.py"],
+    ),
+    (
         # Alpha Vantage phantom spend (API overlap Q5, 2026-10-10): _fetch_alpha_vantage checks the
         # ENABLE_ALPHA_VANTAGE_CATALYST flag and key before api_budget.spend(), and spend() checks the cap
         # before incrementing (refusals are not counted). Hermetic fakes.
@@ -4311,6 +4353,16 @@ GATES = [
         # asks. Before: 35 model calls in 5 passes over 7 chat-less rows, all left open; after: 0, all closed.
         "desk_loop_pending_drain_20261010",
         ["tests/test_desk_loop_pending_drain_20261010.py"],
+    ),
+    (
+        # Search source routing engine (operator 2026-10-10: $20/month Brave, scalps about to fire first, a
+        # mature engine with rules for which source answers what). Policy validator, table-driven routing
+        # decisions, dollar budget math (pools, shares, pacing, $12/$15/$18 lines), the scalp-priority
+        # classifier, the shared cache, dry run proved at 0 Brave requests, the free lane never naming a Brave
+        # engine, the fan-in P2 source, the rerouted callers; plus the heartbeat fixture that leaked into the
+        # production search ledger. Hermetic.
+        "search_routing_engine_20261010",
+        ["tests/test_search_routing_engine_20261010.py"],
     ),
 ]
 

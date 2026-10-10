@@ -237,9 +237,24 @@
         "scope": "may supply: web_search"
       },
       "budget": {
-        "daily": 120,
-        "monthly": 1500,
+        "daily": 300,
+        "monthly": 3600,
         "monthly_reserve_for_on_demand": 200,
+        "_amended": {
+          "from": {
+            "daily": 120,
+            "monthly": 1500
+          },
+          "to": {
+            "daily": 300,
+            "monthly": 3600
+          },
+          "approved_by": "operator",
+          "approved_on": "2026-10-10",
+          "reference": "operator to coordinator, 2026-10-10 ~18:40 ET, approving the search-routing-engine follow-ups: \"Yes, from one to six\" (item 3: raise the Brave request breaker to monthly >= 3,000, daily >= 140, keep the on-demand reserve, so the dollar caps bind); branch n8nmat/search-routing-engine",
+          "scope": "request-count circuit breaker only. 3,600/month x $0.005 = $18.00 = the local ceiling in config/search_routing_policy.json; 300/day bounds a loop bug at $1.50/day (~2.2x the $0.68/day paced base). Money is bounded by the dollar policy (pools, shares, pacing, $12/$15/$18 lines), not by this number.",
+          "operator_context": "I have $20 maximum a month on Brave already, trying not to use it all (2026-10-10 ~18:03 ET)"
+        },
         "ledger": "data/runtime/search_budget.json",
         "receipts": "denial_receipts in the same ledger; overflow -> data/runtime/search_budget_receipts_archive.jsonl"
       },
@@ -413,7 +428,18 @@
       },
       "supplies": [
         "sentiment"
-      ]
+      ],
+      "rate_limit": {
+        "declared_on": "2026-10-10",
+        "approval_reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (14)",
+        "budget_per_hour": 150,
+        "provider_ceiling_per_hour": 200,
+        "scope": "per egress IP, shared by every caller on this host (unauthenticated api.stocktwits.com/api/2)",
+        "on_429": "stop the run for this source; do not retry inside the hour (social_ingest.py already does)",
+        "min_interval_seconds": 1.0,
+        "basis": "[I] provider ceiling: StockTwits' historically published unauthenticated limit (200 requests/hour per IP); no official page reachable on 2026-10-10 (community reports 400/h authenticated). [M] 3 'Rate limited — stopping' lines in social_ingest.log (served release logs, 513 lines). Budget 150/h = the §C.3 hot-tier estimate, kept 25% under the ceiling. Callers today: social_ingest, social_monitor, premarket_watcher, social_sentiment, symbol_enrichment, aegis_social_sentiment (~4k req/wk, API_OVERLAP_CONSOLIDATION.md §1.2).",
+        "enforced": "declared, not yet metered: no shared StockTwits throttle exists; the social owner (§C.2 item 4) is where it belongs"
+      }
     },
     "reddit": {
       "class": "live_external",
@@ -1395,6 +1421,10 @@
       ],
       "retired": [],
       "no_coverage": "declared_gap",
+      "routing_policy": "config/search_routing_policy.json",
+      "routing_engine": "scripts/lib/search_router.py",
+      "routing_receipts": "runtime/search_routing_receipts.jsonl",
+      "_routing_note": "2026-10-10 (operator: conserve the $20/month Brave account; scalps about to fire first): question class -> cache -> free lane (SearXNG with an explicit engine list that never names braveapi, internal catalyst_record news, the Alpha Vantage owner's news store once granted) -> paid Brave only when the class allows it and the free answer fails the measurable quality rule -> declared no_coverage. Dollar budget, pools and the scalp-priority definition live in the policy file. Amends this row's routing only: same store, same writer, same primary and backups; no new provider.",
       "answers": [
         "web_search"
       ],
@@ -2886,6 +2916,176 @@
           "expected_seconds": 0
         }
       ]
+    },
+    {
+      "domain": "finviz_enrichment",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-10",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (2) register finviz_enrichment; (3) store of record = data/state copy",
+        "scope": "per-symbol Finviz Elite six-view enrichment (rsi, float, rvol, atr, valuation, performance, sector/industry) in data/state/ticker_enrichment_cache.json, read through finviz_enrichment_snapshot; market data only"
+      },
+      "store": {
+        "file": "state/ticker_enrichment_cache.json"
+      },
+      "writer": "scripts/finviz_enrichment.py",
+      "cadence": "0 13 * * 1-5 (cron L142) + on-demand owner batches (watch-directive servicer prefetch, L442)",
+      "stale_after_hours": 6,
+      "stale_after_hours_closed": 72,
+      "projection": "finviz_enrichment_snapshot",
+      "required_fields": [
+        "cached_at",
+        "rsi",
+        "float_m",
+        "rvol",
+        "atr"
+      ],
+      "primary_provider": "finviz",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "metered",
+          "max_per_day": 48,
+          "expected_seconds": 600
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "save_cache is locked, merged (newer cached_at wins per ticker) and atomic (consolidation step 1). The second copy data/portfolios/state/ticker_enrichment_cache.json is NOT a store of record (operator §D.3): portfolio_orchestrator copies onto it today; scripts/merge_enrichment_cache.py merges it into this store, archives it and leaves an alias — dry-run only until a release-write grant (packet n8n-maturity-verification/packets/enrichment-cache-merge).",
+      "provider_health_window": false,
+      "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
+    },
+    {
+      "domain": "scalp_list",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-10",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register scalp_list",
+        "scope": "scalp screener membership plus per-symbol price/float/setup_class in TradeAIScalpUniverse@v1; market data only — the scalp lane's GO/score columns are not part of this domain"
+      },
+      "store": {
+        "file": "trade_ai/scalp_universe_latest.json"
+      },
+      "writer": "scripts/run_trade_ai_scalp_live.py",
+      "cadence": "*/5 09:30-16:00 Mon-Fri (cron L1050, §23.3 lane; unchanged). Premarket 06:00-09:30 hot tier (operator decision §D.4, PR #1671) is code-complete with its knob OFF by default.",
+      "stale_after_hours": 0.25,
+      "stale_after_hours_closed": 72,
+      "projection": "scalp_list",
+      "required_fields": [
+        "symbol",
+        "as_of"
+      ],
+      "primary_provider": "finviz",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Store of record: data/trade_ai/scalp_universe_latest.json, written only by run_trade_ai_scalp_live.write_projection (temp file + replace under production_state_root). The projection (lib.data_broker.scalp_list, PR #1671) also reads the hot-tier refresh receipt data/runtime/momentum_scalp_refresh_receipt.json (single writer momentum_scalp_early_lane_runner.py) + screener_symbol_membership (single writer finviz_screener_runner.py) and returns the fresher list. No refresh_producer vector here: nothing may trigger the live scalp lane out of band (§23.3). data/trade_ai is not in served_from.linked_dirs.",
+      "provider_health_window": false,
+      "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
+    },
+    {
+      "domain": "social_posts",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-10",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register social_posts",
+        "scope": "StockTwits posts (text, sentiment label/score, engagement) per mentioned symbol, read through social_feed"
+      },
+      "store": {
+        "table": "social_posts"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/social_ingest.py",
+      "cadence": "06:00 Mon-Fri --source all (cron L243) + 08:30/10:30/13:30 --source stocktwits --discover (L244)",
+      "stale_after_hours": 26,
+      "stale_after_hours_closed": 72,
+      "projection": "social_feed",
+      "required_fields": [
+        "platform",
+        "post_id",
+        "post_date",
+        "symbols_mentioned"
+      ],
+      "primary_provider": "stocktwits",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 4,
+          "expected_seconds": 300
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Three files INSERT today (measured 2026-10-10): social_ingest.py, social_monitor.py, premarket_watcher.py; ceiling 3 in the baseline, may only fall; target the social owner social_ingest.py (§C.2 item 4). stale_after_hours 26 matches today's daily cadence; the 0.25 h hot-tier window waits for §D.4.",
+      "provider_health_window": false,
+      "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
+    },
+    {
+      "domain": "yfinance_info_snapshot",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-10",
+        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (13) create store yfinance_info_snapshot",
+        "scope": "one raw yfinance .info payload per symbol (status ok/no_profile/error) for the reference owner to fan out; read through yfinance_info"
+      },
+      "store": {
+        "table": "yfinance_info_snapshot"
+      },
+      "writer": "scripts/lib/writers/yfinance_info_snapshot_writer.py",
+      "cadence": "unscheduled — no producer until the yfinance-reference-ingest owner lane is decided (§D.12); migration migrations/2026_10_10_yfinance_info_snapshot.sql not yet applied",
+      "stale_after_hours": 48,
+      "projection": "yfinance_info",
+      "required_fields": [
+        "symbol",
+        "fetched_at",
+        "status",
+        "payload"
+      ],
+      "primary_provider": "yfinance",
+      "backup": [],
+      "retired": [
+        "fmp"
+      ],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Upsert one row per symbol, never regressing fetched_at; rails on the receipt (naive time, empty ok payload rejected). tests/test_broker_domains_q1_20261010.py enforces the single writer.",
+      "provider_health_window": false,
+      "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
     },
     {
       "domain": "earnings_calendar",

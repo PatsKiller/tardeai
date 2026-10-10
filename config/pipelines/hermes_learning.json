@@ -34,7 +34,34 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 02:50 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 02:50 ET Peak B",
+          "inv_id": "cron:L658",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh",
+              "$PROJ/scripts/safe_flock.sh"
+            ],
+            "derived_from": "crontab line 658 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "tag_engine",
@@ -60,7 +87,34 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:05 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:05 ET Peak B",
+          "inv_id": "cron:L668",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh",
+              "$PROJ/scripts/safe_flock.sh"
+            ],
+            "derived_from": "crontab line 668 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "outcome_feedback_agent",
@@ -86,7 +140,34 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:25 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:25 ET Peak B",
+          "inv_id": "cron:L662",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh",
+              "$PROJ/scripts/safe_flock.sh"
+            ],
+            "derived_from": "crontab line 662 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "outcome_learning",
@@ -112,7 +193,33 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B",
+          "inv_id": "cron:L452",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh",
+              "$PROJ/scripts/safe_flock.sh"
+            ],
+            "derived_from": "crontab line 452 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "score_history_retention",
@@ -141,7 +248,33 @@
             "run_with_deepseek_offpeak.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:35 ET Peak B",
+          "inv_id": "cron:L650",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh"
+            ],
+            "derived_from": "crontab line 650 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "config_governor",
@@ -170,7 +303,33 @@
             "run_with_deepseek_offpeak.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:40 ET Peak B"
+          "cron_comment": "# RETARGETED_OFFPEAK 2026-08-21 was 03:40 ET Peak B",
+          "inv_id": "cron:L671",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh"
+            ],
+            "derived_from": "crontab line 671 (names only; values are the runner's cron environment)"
+          }
         }
       ]
     },
@@ -202,7 +361,31 @@
             "bound_source": "pam_group_max(upper)"
           },
           "note": "no wrapper on the cron line today (flock only)",
-          "cron_comment": "# Hermes self-learning auto-graft + self-purge (autonomous, no human touch)"
+          "cron_comment": "# Hermes self-learning auto-graft + self-purge (autonomous, no human touch)",
+          "inv_id": "cron:L577",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 577 (names only; values are the runner's cron environment)"
+          }
         }
       ]
     }

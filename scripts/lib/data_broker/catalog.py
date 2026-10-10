@@ -30,9 +30,52 @@ PROJECTIONS: list[dict[str, Any]] = [
         "entrypoints": ["get_price_batch"],
         "http": [],
         "domain": "quotes",
-        "description": "Batch live prices from market_quotes with get_best_quote waterfall fallback",
+        "description": "Batch live prices: newest market_quotes row per symbol (latest_quote projection) within "
+                       "max_age_hours; for misses, quote-only get_best_quote (stored first, first fresh provider, "
+                       "<=10 symbols per batch, 5 s each; QUOTE_ONLY_MODE=0 turns the fallback off)",
         "read_only": True,
         "provider_calls": "none_on_cache_hit",
+    },
+    {
+        "id": "latest_quote",
+        "module": "lib.data_broker.latest_quote",
+        "entrypoints": ["get_latest_quotes", "get_latest_quote"],
+        "http": [],
+        "domain": "quotes",
+        "authority_domain": "quote_price",
+        "description": "Newest stored quote per symbol from market_quotes (one index probe per symbol, not a "
+                       "DISTINCT ON scan) with as_of/age_seconds/stale; stale rows returned labelled "
+                       "(no_coverage last_price_with_age_and_source); never fetches",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["market_quote.get_price_batch", "market_quote_provider.get_best_quote (quote-only mode)"],
+    },
+    {
+        "id": "social_feed",
+        "module": "lib.data_broker.social_feed",
+        "entrypoints": ["get_social_posts"],
+        "http": [],
+        "domain": "social_posts",
+        "authority_domain": "social_posts",
+        "description": "Recent StockTwits posts per symbol from social_posts (sentiment label/score, bounded per "
+                       "symbol) with as_of = newest ingested_at; never fetches",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+    },
+    {
+        "id": "yfinance_info",
+        "module": "lib.data_broker.yfinance_info",
+        "entrypoints": ["get_info_batch"],
+        "http": [],
+        "domain": "yfinance_info_snapshot",
+        "authority_domain": "yfinance_info_snapshot",
+        "description": "Raw yfinance .info per symbol from yfinance_info_snapshot (status ok/no_profile/error is "
+                       "the negative cache) with as_of/age/stale; never fetches",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
     },
     {
         "id": "finviz_enrichment_snapshot",
@@ -40,7 +83,7 @@ PROJECTIONS: list[dict[str, Any]] = [
         "entrypoints": ["get_enrichment_batch", "get_enrichment"],
         "http": [],
         "domain": "finviz_enrichment",
-        "authority_domain": None,  # PROPOSED registry row (operator §17); see the module docstring
+        "authority_domain": "finviz_enrichment",  # registered 2026-10-10 (operator, CONSOLIDATION_PLAN §D.2)
         "description": "Finviz six-view enrichment per symbol (rsi/float/rvol/atr/valuation/performance) "
                        "from data/state/ticker_enrichment_cache.json, single writer scripts/finviz_enrichment.py; "
                        "per-symbol as_of/age/stale, never fetches",
@@ -55,7 +98,7 @@ PROJECTIONS: list[dict[str, Any]] = [
         "entrypoints": ["get_scalp_list", "get_scalp_enrichment", "freshness_report"],
         "http": [],
         "domain": "scalp_list",
-        "authority_domain": None,  # PROPOSED registry row (operator decision D.5, §17); see the module docstring
+        "authority_domain": "scalp_list",  # registered 2026-10-10 (operator, CONSOLIDATION_PLAN §D.5)
         "description": "Momentum-scalp list: the fresher of L1050's scalp_universe_latest.json (09:30-16:00) and the "
                        "hot-tier premarket screener membership (06:00-09:30, 2-min refresh receipt); hot enrichment "
                        "stamps for the list's names; the four hot-tier freshness SLOs. Never fetches, never writes",
@@ -73,7 +116,8 @@ PROJECTIONS: list[dict[str, Any]] = [
         "entrypoints": ["quote_row_from_broker"],
         "http": [],
         "domain": "quotes",
-        "description": "Canonical single-symbol quote via get_best_quote waterfall",
+        "description": "Canonical single-symbol quote via quote-only get_best_quote (stored quote first, a "
+                       "provider only when stale, stopping at the first fresh answer)",
         "read_only": True,
     },
     {
