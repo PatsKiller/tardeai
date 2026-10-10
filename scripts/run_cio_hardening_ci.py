@@ -4232,6 +4232,13 @@ GATES = [
         "lane_registry_generic_workflows_20261010",
         ["tests/test_lane_registry_generic_workflows_20261010.py"],
     ),
+    (
+        # Alpha Vantage phantom spend (API overlap Q5, 2026-10-10): _fetch_alpha_vantage checks the
+        # ENABLE_ALPHA_VANTAGE_CATALYST flag and key before api_budget.spend(), and spend() checks the cap
+        # before incrementing (refusals are not counted). Hermetic fakes.
+        "alpha_vantage_phantom_spend_20261010",
+        ["tests/test_alpha_vantage_phantom_spend_20261010.py"],
+    ),
 ]
 
 
