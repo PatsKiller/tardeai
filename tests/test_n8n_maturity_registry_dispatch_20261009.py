@@ -457,7 +457,7 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         else:
             assert entry["dry_run_arg"], lane
         assert entry["live_arg"] is None or lane in PREEXISTING_LIVE_ARG, lane
-    assert len(shadow) == 36, shadow
+    assert len(shadow) == 55, shadow  # 22 D1b + 14 D2 + 19 D3 (R1, activated 2026-10-10 under AGENTS 4.4.0)
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.
