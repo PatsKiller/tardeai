@@ -4135,6 +4135,15 @@ GATES = [
         ["tests/test_finviz_view_contracts_timeout_20261010.py"],
     ),
     (
+        # llm_process_config seed sync (2026-10-10): n8n_lane_failure_diagnosis was seeded with the table
+        # default allowed_lanes {grok,chatgpt} and a NULL daily_cost_cap_usd because _seed_registry's INSERT
+        # named neither column. Pins: a new row carries the registry allowlist and dollar cap; an existing
+        # NULL cap is filled, a non-NULL (operator) cap is never overwritten; existing lanes are never
+        # rewritten by seeding; get_process_config still takes lanes from the registry. Hermetic fake cursor.
+        "llm_process_seed_sync_20261010",
+        ["tests/test_llm_process_seed_sync_20261010.py"],
+    ),
+    (
         # The six generic n8n workflows (AGENTS.md §23.11) are declared by their committed INDEX, so activating
         # them under their `cron` grant does not turn check_lane_registry --n8n-live red with six
         # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.
