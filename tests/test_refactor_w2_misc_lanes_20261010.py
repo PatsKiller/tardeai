@@ -49,6 +49,15 @@ except ModuleNotFoundError:  # pragma: no cover
     sys.modules.setdefault("psycopg2", _pg)
     sys.modules.setdefault("psycopg2.extras", _pg_extras)
 
+# Required CI has no pandas/numpy/yfinance; trade_backtest_engine imports them at module level, but these tests
+# replace backtest_trade/run_all with fakes and never reach them. Stand-ins are installed ONLY when the real
+# libraries are absent, so the tests still run in CI instead of being skipped.
+for _name in ("pandas", "numpy", "yfinance"):  # pragma: no cover - depends on the environment
+    try:
+        __import__(_name)
+    except ModuleNotFoundError:
+        sys.modules.setdefault(_name, types.ModuleType(_name))
+
 import hermes_news_bridge as hnb  # noqa: E402
 import journal_tilt_morning_hook as jt  # noqa: E402
 import prewarm_eligible_cache as pec  # noqa: E402
