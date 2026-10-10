@@ -3677,8 +3677,10 @@ GATES = [
         # ANCHOR: N8N_OPS_LANES — 2026-10-09 operator "add the lanes": storage-watch, backup-verify (dump dir
         # config-driven), monthly trade-ai-restore-drill (throwaway DB only; drop guard pinned), N7 shadow
         # workflows. Hermetic: tmp_path dumps/stamps, fake runners, fake DB connections that record SQL.
+        # 2026-10-09 n8nmat/restore-drill-guard: adversarial dumps vs the line guard, psql swapped for a
+        # byte sink (real gzip producer), dedicated-role / 0600 credentials / psql \restrict preflight.
         "n8n_ops_lanes_20261009",
-        ["tests/test_n8n_ops_lanes_20261009.py"],
+        ["tests/test_n8n_ops_lanes_20261009.py", "tests/test_restore_drill_guard_20261009.py"],
     ),
     (
         # ANCHOR: N8N_MATURITY_RETRY_DLQ — n8n maturity B5.4 (design 02 §3.3/§3.4, F8/F9): N8nRetryPolicies@v1
