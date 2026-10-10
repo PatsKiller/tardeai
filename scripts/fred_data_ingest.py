@@ -11,6 +11,18 @@ Usage:
     python3 scripts/fred_data_ingest.py --ingest    # Daily/weekly snapshot
     python3 scripts/fred_data_ingest.py --context   # Show macro context string for agents
     python3 scripts/fred_data_ingest.py --history   # Fetch 90-day history for each series
+    python3 scripts/fred_data_ingest.py --ingest --dry-run   # Report the plan; fetch nothing, write nothing
+
+Lane ``fred-data-ingest`` (cron L248, ``--ingest``). ``--dry-run`` wins over every mode: it never enters
+PipelineRun (no pipeline_runs row), never calls the FRED API and never reaches ingest_fred(); it opens a
+READ ONLY session, reads the latest stored observation per series and prints the series a real run
+would fetch and upsert. It reports only whether FRED_API_KEY is configured, never its value. No receipt.
+
+A real ``--ingest`` run writes ``<state_root>/data/runtime/fred-data-ingest_last.json``
+(LaneRunReceipt@v1; ``ok_at`` only on success). Exit codes: 0 = ran (some series fetched; a series with
+no new value is not a failure); 1 = the run failed: crash / DB unavailable (failed receipt, exception
+re-raised), no FRED_API_KEY, or 0 of the series fetched (nothing could be fetched when work existed);
+2 = usage error (no mode given).
 """
 import sys
 from pathlib import Path
@@ -123,7 +135,7 @@ def show_status():
             print(f"    Observations: {len(obs_list)} | Fetched: {str(latest['fetched_at'])[:19]}")
         else:
             print(f"\n  {sid} — {FRED_SERIES[sid]}")
-            print(f"    NO DATA")
+            print("    NO DATA")
 
 
 def test():
@@ -154,25 +166,93 @@ def test():
     print("\n=== Test Complete ===")
 
 
-if __name__ == "__main__":
-    with PipelineRun("fred_data_ingest") as _run:
-        if "--test" in sys.argv:
-            test()
-        elif "--ingest" in sys.argv:
-            result = ingest_fred()
-            print(f"FRED ingest: {result}")
-        elif "--context" in sys.argv:
-            print(get_macro_context() or "(no FRED data)")
-        elif "--history" in sys.argv:
-            days = 90
-            for i, a in enumerate(sys.argv):
-                if a == "--days" and i + 1 < len(sys.argv):
-                    days = int(sys.argv[i + 1])
-            result = ingest_history(days)
-            print(f"FRED history: {result}")
-            show_status()
-        elif "--status" in sys.argv:
-            show_status()
-        else:
-            print("Usage: --test | --ingest | --context | --history [--days 90] | --status")
+LANE_ID = "fred-data-ingest"
 
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.fred_data_ingest
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def dry_run(argv) -> int:
+    """Dry run (AGENTS.md §6): READ ONLY latest-observation SELECT; no FRED call, no INSERT, no receipt."""
+    mode = "history" if "--history" in argv else "ingest"
+    key_configured = bool(_env("FRED_API_KEY"))
+    latest = {}
+    conn = _get_conn()
+    try:
+        _receipt_lib().enforce_readonly(conn)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ON (series_id) series_id, observation_date
+            FROM fred_economic_series
+            ORDER BY series_id, observation_date DESC
+        """)
+        latest = {r[0]: str(r[1]) for r in cur.fetchall()}
+    finally:
+        conn.close()
+    for sid, name in FRED_SERIES.items():
+        print(f"  [fred] would fetch {sid} ({name}); latest stored: {latest.get(sid, 'none')}")
+    per = "1 latest observation" if mode == "ingest" else "up to 100 observations"
+    _receipt_lib().dry_run_report(
+        LANE_ID if mode == "ingest" else "fred-data-ingest-history",
+        {"mode": mode, "series": len(FRED_SERIES), "fred_api_key_configured": key_configured,
+         "series_with_stored_data": len(latest), "latest_stored": latest},
+        would_write=[f"fred_economic_series upsert ({per} x {len(FRED_SERIES)} series)",
+                     "data_source health row 'fred' (report_source)", "pipeline_runs row (PipelineRun)"],
+    )
+    return 0
+
+
+def run_ingest() -> int:
+    """The lane: ingest_fred() + LaneRunReceipt@v1 + honest exit code."""
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    try:
+        result = ingest_fred()
+    except Exception as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="fred_data_ingest.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    print(f"FRED ingest: {result}")
+    fetched = int(result.get("fetched") or 0)
+    failed = fetched == 0  # no key, or every series failed -> nothing could be fetched
+    rc = 1 if failed else 0
+    lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started, script="fred_data_ingest.py",
+                          summary={"fetched": fetched, "series": len(FRED_SERIES),
+                                   "reason": result.get("reason")})
+    return rc
+
+
+def main(argv) -> int:
+    if "--test" in argv:
+        test()
+    elif "--ingest" in argv:
+        return run_ingest()
+    elif "--context" in argv:
+        print(get_macro_context() or "(no FRED data)")
+    elif "--history" in argv:
+        days = 90
+        for i, a in enumerate(argv):
+            if a == "--days" and i + 1 < len(argv):
+                days = int(argv[i + 1])
+        result = ingest_history(days)
+        print(f"FRED history: {result}")
+        show_status()
+    elif "--status" in argv:
+        show_status()
+    else:
+        print("Usage: --test | --ingest | --context | --history [--days 90] | --status  [--dry-run]")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    if "--dry-run" in sys.argv:
+        # Before PipelineRun: a dry run records no pipeline_runs row and cannot reach ingest_fred().
+        sys.exit(dry_run(sys.argv[1:]))
+    with PipelineRun("fred_data_ingest") as _run:
+        sys.exit(main(sys.argv[1:]))

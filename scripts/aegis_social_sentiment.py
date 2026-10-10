@@ -8,7 +8,23 @@ Sources:
 All outputs marked model='aegis', source='aegis:social'.
 Sentiment is SIGNAL only — never dominates recommendations alone.
 
-Entry point: main()
+Entry point: main() (returns a dict; aegis_overnight.py calls it) / cli() for the cron lane.
+
+Usage (cron L289, lane aegis-social-sentiment):
+  python3 scripts/aegis_social_sentiment.py [--dry-run]
+
+--dry-run (refactor wave 3, 2026-10-10) puts the db_adapter session in READ ONLY, resolves the universe and
+prints a DRY-RUN report of what a real run would fetch (Reddit subreddit pages, StockTwits symbol streams, Brave
+queries only when AEGIS_BRAVE_ENABLED=1) and write (social_sentiment_history, at most one row per symbol), then
+returns: it makes NO external request (Reddit/StockTwits are rate-limited, Brave is quota-bearing), never calls
+persist_sentiment/_db_write and writes no receipt.
+
+Exit codes (cli): 0 = ran (zero mentions is a finding, still 0); 1 = the run failed: Postgres unavailable
+(SELECT 1 probe), or the universe was non-empty and NO social source returned a single HTTP 200 (every fetch
+failed -- nothing could be fetched), or there were sentiment records to persist and EVERY write failed. One
+subreddit 403 or one failed symbol write is a soft failure (logged, exit 0). 2 = usage error (argparse).
+A real run writes <state_root>/data/runtime/aegis-social-sentiment_last.json (LaneRunReceipt@v1; ok_at only on
+success); a crash writes a failed receipt and re-raises.
 """
 from __future__ import annotations
 import json
@@ -39,6 +55,9 @@ if _env_path.exists():
 AGENT = "aegis"
 RUN_ID = f"aegis-social-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 BRAVE_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
+LANE_ID = "aegis-social-sentiment"
+# HTTP-200 responses per source in this process (exit rule: zero across all sources = nothing could be fetched).
+FETCH_OK: Counter = Counter()
 
 # Reddit subreddits to scan
 SUBREDDITS = ["wallstreetbets", "stocks", "investing", "options"]
@@ -71,6 +90,31 @@ def _db_query(sql, params=None, fetch="all"):
         return None
 
 
+def _db_available() -> bool:
+    """Postgres reachable through db_adapter (``SELECT 1``). False = every persist would fail."""
+    return bool(_db_query("SELECT 1 AS ok", fetch="one"))
+
+
+def _enforce_readonly_db() -> bool:
+    """Dry run: put this thread's db_adapter session in READ ONLY at the server (AGENTS.md §6)."""
+    try:
+        from db_adapter import _get_conn
+        from lib.lane_last_receipt import enforce_readonly
+
+        conn = _get_conn()
+        if conn is None:
+            return False
+        enforce_readonly(conn)
+        return True
+    except Exception as e:
+        print(f"  [aegis-social] READ ONLY session not established: {type(e).__name__}")
+        return False
+
+
+def _brave_enabled() -> bool:
+    return os.getenv("AEGIS_BRAVE_ENABLED", "0").lower() in ("1", "true", "yes")
+
+
 # ── Reddit public JSON API ───────────────────────────────────────────────
 
 def fetch_reddit_mentions(symbols: list[str]) -> dict[str, dict]:
@@ -87,6 +131,7 @@ def fetch_reddit_mentions(symbols: list[str]) -> dict[str, dict]:
             if resp.status_code != 200:
                 print(f"  [reddit] r/{sub} returned {resp.status_code}")
                 continue
+            FETCH_OK["reddit"] += 1
             data = resp.json()
             posts = data.get("data", {}).get("children", [])
 
@@ -141,6 +186,7 @@ def fetch_stocktwits_mentions(symbols: list[str], max_symbols: int = 50) -> dict
             resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
             if resp.status_code != 200:
                 continue
+            FETCH_OK["stocktwits"] += 1
             data = resp.json()
             messages = data.get("messages", [])
             for m in messages:
@@ -202,6 +248,7 @@ def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, d
             if not resp.ok:
                 print(f"  [brave] governed deny ({resp.reason}) — stopping at {sym}")
                 break
+            FETCH_OK["brave"] += 1
             mentions = []
             for r in (resp.results or [])[:3]:
                 mentions.append({
@@ -308,14 +355,32 @@ def persist_sentiment(symbol: str, sentiment: dict, source_family: str):
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-def main():
-    print(f"[aegis-social] Sentiment ingestion starting — {RUN_ID}")
+def main(dry_run: bool = False):
+    print(f"[aegis-social] Sentiment ingestion starting — {RUN_ID}" + (" (DRY RUN)" if dry_run else ""))
+    FETCH_OK.clear()
+    readonly = _enforce_readonly_db() if dry_run else False
+    if not _db_available():
+        print("  [aegis-social] Postgres unavailable — nothing can be persisted")
+        return {"universe": 0, "reddit_hits": 0, "stocktwits_hits": 0, "brave_hits": 0, "written": 0,
+                "run_id": RUN_ID, "db_ok": False, "error": "db_unavailable"}
 
     # Resolve universe (reuse from nightly ingestion)
     from aegis_nightly_ingestion import resolve_universe
     universe = resolve_universe()
     symbols = [u["symbol"] for u in universe]
     print(f"  Universe: {len(symbols)} symbols")
+
+    if dry_run:
+        # No Reddit/StockTwits/Brave request and no persist: report what a real run would fetch and write.
+        brave_on = _brave_enabled() and bool(BRAVE_KEY)
+        from lib.lane_last_receipt import dry_run_report
+        summary = {"universe": len(symbols), "would_fetch_reddit_pages": len(SUBREDDITS) if symbols else 0,
+                   "would_fetch_stocktwits_streams": min(len(symbols), 50),
+                   "would_query_brave": min(len(symbols), 10) if brave_on else 0,
+                   "brave_enabled": _brave_enabled(), "readonly_session": readonly, "run_id": RUN_ID}
+        dry_run_report(LANE_ID, summary,
+                       would_write=[f"social_sentiment_history: <= {len(symbols)} rows (one per symbol with mentions)"])
+        return {**summary, "dry_run": True, "written": 0}
 
     # D1: Reddit scan (best-effort — public JSON API is 403 since 2026-08-17)
     reddit_data = fetch_reddit_mentions(symbols)
@@ -337,20 +402,57 @@ def main():
 
     # D3: Normalize + persist
     written = 0
+    to_write = 0
     for sym in symbols:
         sentiment = normalize_sentiment(
             sym, reddit_data.get(sym, {}), brave_data.get(sym, {}),
             stocktwits_data.get(sym, {}),
         )
         if sentiment:
+            to_write += 1
             if persist_sentiment(sym, sentiment, "social"):
                 written += 1
 
     print(f"  Persisted: {written} sentiment records")
     print(f"[aegis-social] Complete — {datetime.now().isoformat()}")
-    return {"universe": len(symbols), "reddit_hits": reddit_hits, "stocktwits_hits": stocktwits_hits,
-            "brave_hits": len(brave_data), "written": written, "run_id": RUN_ID}
+    result = {"universe": len(symbols), "reddit_hits": reddit_hits, "stocktwits_hits": stocktwits_hits,
+              "brave_hits": len(brave_data), "written": written, "run_id": RUN_ID,
+              "to_write": to_write, "fetch_ok": dict(FETCH_OK), "db_ok": True}
+    if symbols and sum(FETCH_OK.values()) == 0:
+        result["error"] = "no_source_fetched"
+    elif to_write and written == 0:
+        result["error"] = "all_writes_failed"
+    return result
+
+
+def cli(argv=None) -> int:
+    """Cron entry: --dry-run, honest exit code, LaneRunReceipt@v1 on real runs only (see module docstring)."""
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Aegis social sentiment ingestion (cron L289)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="resolve universe + report; no external fetch, no INSERT, no receipt")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        result = main(dry_run=True)
+        return 1 if result.get("error") else 0
+
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        result = main()
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="aegis_social_sentiment.py",
+                           error=f"{type(exc).__name__}: {exc}")
+        raise
+    failed = bool(result.get("error"))
+    write_lane_receipt(LANE_ID, ok=not failed, exit_code=1 if failed else 0, started_at=started,
+                       script="aegis_social_sentiment.py",
+                       summary={k: result.get(k) for k in ("universe", "reddit_hits", "stocktwits_hits", "brave_hits",
+                                                           "to_write", "written", "run_id", "error")},
+                       error=result.get("error"))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(cli())
