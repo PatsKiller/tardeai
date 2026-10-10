@@ -424,7 +424,12 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     shadow step of the AGENTS §23.12 ladder: dispatch.mode dry_run, scheduler.stage shadow (so the executor's
     stage clamp turns any live request into dry_run), still on its cron line, allowlisted with a dry_run_arg and
     with NO live mode in the allowlist (live_arg null, except the pre-existing job-coverage-monitor entry, whose
-    live request the stage clamp still runs dry). No registry row is mode live."""
+    live request the stage clamp still runs dry). No registry row is mode live.
+
+    Wave D2 (2026-10-10) adds 14 rows. Four keep the live_arg of their pre-existing allowlist entry (their per-lane
+    n8n workflows predate the dispatcher); the stage clamp still runs every live request dry. Three are apply-gated
+    scripts whose no-argument run IS the dry run (dry_run_arg [], inventory custom_work_required): their command
+    never carries --apply and they have no live mode."""
     from scripts.lib.lane_stage_clamp import clamp_mode
 
     rows = _live_rows()
@@ -445,9 +450,49 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         assert LD.dispatchable(row), lane
         assert clamp_mode(lane, "live", rows)["effective_mode"] == "dry_run", lane
         entry = allow[lane]
-        assert entry["dry_run_arg"], lane
-        assert entry["live_arg"] is None or lane == "job-coverage-monitor", lane
-    assert len(shadow) == 22, shadow
+        assert isinstance(entry["dry_run_arg"], list), lane
+        if lane in APPLY_GATED_DRY_DEFAULT:
+            assert entry["dry_run_arg"] == [] and entry["live_arg"] is None, lane
+            assert not any(t.startswith("--apply") for t in entry["command"]), lane
+        else:
+            assert entry["dry_run_arg"], lane
+        assert entry["live_arg"] is None or lane in PREEXISTING_LIVE_ARG, lane
+    assert len(shadow) == 36, shadow
+
+
+#: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.
+PREEXISTING_LIVE_ARG = frozenset({"job-coverage-monitor", "source-attribution-monitor", "catalyst-calibration-monitor",
+                                  "watch-directives-monitor", "maturity-remeasure"})
+#: wave D2: apply-gated scripts (no --apply = dry run that writes nothing; proven by a before/after snapshot under a
+#: read-only Postgres session, n8n-maturity dispatch-shadow-wave2 evidence).
+APPLY_GATED_DRY_DEFAULT = frozenset({"catalyst-symbol-impact", "catalyst-graph", "cio-draft-plan-hygiene"})
+#: wave D2 finding: these Ready-for-Migration lanes write a file on their dry run (a heartbeat / health record /
+#: lifecycle projection), so a dispatcher dry run would refresh the very output_signal that proves the cron line ran.
+#: They stay mode off until the dry-run path writes nothing.
+DRY_RUN_WRITES = ("hermes-scope-governor", "hermes-score-event-feeder", "material-change-detector-stage1")
+
+
+def test_wave_d2_lanes_whose_dry_run_writes_are_not_dispatch_rows():
+    rows = {r["lane_id"]: r for r in _live_rows()}
+    for lane in DRY_RUN_WRITES:
+        assert lane in rows, lane
+        assert LD.dispatch_mode(rows[lane]) == "off", lane
+        assert "stage" not in rows[lane]["scheduler"], lane
+
+
+def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
+    """Each D2 row's dispatch.cron is its scheduler.expression (the live crontab schedule); the three
+    data-gap-resolver cadences share the one cron lock, so they can never run concurrently from either scheduler."""
+    rows = [r for r in _live_rows() if (r.get("scheduler") or {}).get("wave") == "D2"]
+    assert len(rows) == 14
+    allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
+    for r in rows:
+        assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]
+        assert r["dispatch"]["class"] in ("monitor", "report", "pipeline", "hygiene"), r["lane_id"]
+        assert LD.r1_class_admission(r)[1] == "pre_r1_class", r["lane_id"]
+    locks = {allow[x]["lock"] for x in ("data-gap-resolver-at-0-10-16", "data-gap-resolver-pre",
+                                         "data-gap-resolver-weekly")}
+    assert locks == {"/tmp/data_gap_resolver.lock"}
 
 
 def test_live_rows_naming_broker_order_secret_scripts_are_ineligible():

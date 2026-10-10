@@ -306,7 +306,7 @@
       "env_names": ["TRADEAI_HEARTBEAT_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_RELEASE_SHA", "TRADEAI_ROOT"],
       "env_allowlist_mode": "enforce",
       "env_evidence": "maturity_remeasure.py (5-module closure, all reads literal) reads STATE_ROOT; lazy canonical_store_registry.py STATE_ROOT/ROOT/PERSISTENT_STATE_ROOT; supervisor_heartbeat.py HEARTBEAT_DIR/ROOT/RELEASE_SHA and opens no DB connection itself. flock wrapper.",
-      "source": "crontab 40 6 * * 1 cd CURRENT && flock -n /tmp/tradeai_maturity_remeasure.lock $PY scripts/maturity_remeasure.py --write; without --write the script measures and prints, writing nothing",
+      "source": "crontab 40 6 * * 1 cd CURRENT && flock -n /tmp/tradeai_maturity_remeasure.lock $PY scripts/maturity_remeasure.py --write; without --write the script measures and prints, writing nothing (superseded 2026-10-10, dispatcher shadow wave D2: dry_run_arg is now the script's explicit --dry-run, which wins over --write and returns before any write is reachable; live_arg --write is kept for the existing per-lane workflow, and the registry stage shadow clamps any live request to dry_run)",
       "command": [
         "$PY",
         "scripts/maturity_remeasure.py"
@@ -314,7 +314,9 @@
       "lock": "/tmp/tradeai_maturity_remeasure.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
-      "dry_run_arg": [],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
       "live_arg": [
         "--write"
       ],
@@ -881,6 +883,838 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/hermes-entity-spike-discovery_last.json"
+    },
+    {
+      "lane_id": "agent-number-grounding-slo",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L1002. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L1002). refactor bucket W4. --dry-run measures and prints the SLO verdict, never writes --out, exits 0 (the verdict is reported, not enforced); the live --check-slo exit 1 on an SLO breach is the open R3 question (finding vs RUN_FAILED) and must be decided before canary.",
+      "command": [
+        "$PY",
+        "scripts/report_agent_number_grounding.py",
+        "--days",
+        "7",
+        "--check-slo",
+        "--out",
+        "data/runtime/agent_number_grounding_slo_last_run.json"
+      ],
+      "lock": "/tmp/tradeai_agent_number_grounding_slo.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/agent_number_grounding_slo_last_run.json"
+    },
+    {
+      "lane_id": "catalyst-symbol-impact",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L969. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L969). inventory Ready for Migration. The script is apply-gated: without --apply it is a dry run that prints counts and samples and writes nothing (docstring + main), so dry_run_arg is [] (inventory custom_work_required). The cron line's --apply is the live argument; it is NOT in this entry.",
+      "command": [
+        "$PY",
+        "scripts/catalyst_symbol_impact_writer.py"
+      ],
+      "lock": "/tmp/catalyst_symbol_impact.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/catalyst_symbol_impact_last_run.json"
+    },
+    {
+      "lane_id": "catalyst-graph",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L975. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L975). inventory Ready for Migration. Apply-gated: without --apply it prints 'DRY RUN ... nothing written' (main, args.apply guard), so dry_run_arg is [] (inventory custom_work_required). The cron line's --apply is the live argument; it is NOT in this entry.",
+      "command": [
+        "$PY",
+        "scripts/build_catalyst_graph.py"
+      ],
+      "lock": "/tmp/build_catalyst_graph.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/cio/catalyst_graph_latest.json"
+    },
+    {
+      "lane_id": "data-gap-resolver-at-0-10-16",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L137. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L137). refactor bucket W1. --dry-run opens the DB session read-only and writes no receipt. Queues follow-up agent/LLM jobs on a live run but calls no model and fetches no external data (pipeline, not llm/ingest). The three data-gap-resolver lanes share one cron lock.",
+      "command": [
+        "$PY",
+        "scripts/data_gap_resolver.py"
+      ],
+      "lock": "/tmp/data_gap_resolver.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/data-gap-resolver-at-0-10-16_last.json"
+    },
+    {
+      "lane_id": "data-gap-resolver-pre",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L147. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L147). refactor bucket W1 (see data-gap-resolver-at-0-10-16).",
+      "command": [
+        "$PY",
+        "scripts/data_gap_resolver.py",
+        "--pre-overnight"
+      ],
+      "lock": "/tmp/data_gap_resolver.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/data-gap-resolver-pre_last.json"
+    },
+    {
+      "lane_id": "data-gap-resolver-weekly",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L161. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L161). refactor bucket W1 (W1 fixed a pre-existing --weekly-audit --dry-run mutation: abandon_stale committed).",
+      "command": [
+        "$PY",
+        "scripts/data_gap_resolver.py",
+        "--weekly-audit"
+      ],
+      "lock": "/tmp/data_gap_resolver.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/data-gap-resolver-weekly_last.json"
+    },
+    {
+      "lane_id": "backtest-results-aggregator",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L605. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L605). refactor bucket V3. --dry-run computes only (no INSERT, no receipt). Caveat (R3): second writer of strategy_backtest_results beside proposal-backtest-engine L606; moving the scheduler adds no writer, but the single-writer question (§9.4) must be closed before canary.",
+      "command": [
+        "$PY",
+        "scripts/backtest_results_aggregator.py"
+      ],
+      "lock": "/tmp/bt_aggregator.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/backtest-results-aggregator_last.json"
+    },
+    {
+      "lane_id": "cio-draft-plan-hygiene",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L908. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L908). Apply-gated ('dry-run default' per its docstring): without --apply it prints would_expire and writes no PLAN_UPDATED/STATUS_CHANGED, so dry_run_arg is []. The cron line's --apply is the live argument; it is NOT in this entry. Also a member step of config/pipelines/premarket.json (pipeline runs dry-run only today). output_signal is the shared CIO plan event log (no lane receipt yet: a receipt is a canary blocker).",
+      "command": [
+        "$PY",
+        "scripts/cio_draft_plan_hygiene.py"
+      ],
+      "lock": "/tmp/cio_draft_hygiene.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/cio/cio_plans.jsonl"
+    },
+    {
+      "lane_id": "hermes-analyst-signal-discovery",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L685. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L685). Discovery Inbox candidate writer, same shape as hermes-entity-spike-discovery (wave D1b): --dry-run returns before inbox.upsert_candidate; no model call. The script writes no lane receipt yet, so output_signal names the LaneRunReceipt path it must write before canary (absent today: the RunReceipt records mtime null).",
+      "command": [
+        "$PY",
+        "scripts/hermes_analyst_signal_discovery.py",
+        "--run",
+        "--json"
+      ],
+      "lock": "/tmp/hermes_analyst_signal.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-analyst-signal-discovery_last.json"
+    },
+    {
+      "lane_id": "hermes-industry-novelty-discovery",
+      "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D2: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D2 (n8n-maturity), cron:L686. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L686). Discovery Inbox candidate writer (see hermes-analyst-signal-discovery). The cron line runs under run_with_deepseek_offpeak.sh --official although the lane calls no model; the dispatcher argv has no wrapper, so at canary the lane would run in windows where cron PEAK_SKIPs it (same as hermes-config-governor in D1b). No lane receipt yet (canary blocker).",
+      "command": [
+        "$PY",
+        "scripts/hermes_industry_novelty_discovery.py",
+        "--run",
+        "--json"
+      ],
+      "lock": "/tmp/hermes_industry_novelty.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-industry-novelty-discovery_last.json"
+    },
+    {
+      "lane_id": "catalyst-momentum-engine-overnight",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L381. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is ['--apply']; it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/catalyst_momentum_engine.py",
+        "--band",
+        "overnight"
+      ],
+      "lock": "/tmp/catalyst_overnight.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/catalyst-momentum-engine-overnight_last.json"
+    },
+    {
+      "lane_id": "news-to-catalyst",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L406. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/news_to_catalyst.py"
+      ],
+      "lock": "/tmp/news_to_catalyst.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/news-to-catalyst_last.json"
+    },
+    {
+      "lane_id": "hermes-topic-monitor-bridge",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L420. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is ['--apply']; it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/hermes_topic_monitor_bridge.py",
+        "--max-rows",
+        "40"
+      ],
+      "lock": "/tmp/hermes_topic_monitor_bridge.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-topic-monitor-bridge_last.json"
+    },
+    {
+      "lane_id": "watchlist-enrichment-sweep",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L447. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/watchlist_enrichment_sweep.py",
+        "--once"
+      ],
+      "lock": "/tmp/watchlist_sweep.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/watchlist-enrichment-sweep_last.json"
+    },
+    {
+      "lane_id": "sector-rs-daily",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L750. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/sector_rs_daily.py"
+      ],
+      "lock": "/tmp/sector_rs_daily.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/sector-rs-daily_last.json"
+    },
+    {
+      "lane_id": "hermes-news-bridge",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L413. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/hermes_news_bridge.py"
+      ],
+      "lock": "/tmp/hermes_news_bridge.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes_news_bridge_last.json"
+    },
+    {
+      "lane_id": "classify-instruments",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L504. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/classify_instruments.py"
+      ],
+      "lock": "/tmp/classify_instr.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/classify-instruments_last.json"
+    },
+    {
+      "lane_id": "research-insight-extractor",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L418. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/research_insight_extractor.py"
+      ],
+      "lock": "/tmp/research_insight_extractor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/research-insight-extractor_last.json"
+    },
+    {
+      "lane_id": "distributions-enrich",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L553. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/distributions_enrich.py"
+      ],
+      "lock": "/tmp/distributions_enrich.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/distributions_enrich_last.json"
+    },
+    {
+      "lane_id": "build-symbol-profiles-watchlist",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L508. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/build_symbol_profiles.py",
+        "--watchlist-top",
+        "300"
+      ],
+      "lock": "/tmp/symprofiles_wl.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/build_symbol_profiles_watchlist_last.json"
+    },
+    {
+      "lane_id": "fund-technicals-enrich",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L552. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/fund_technicals_enrich.py"
+      ],
+      "lock": "/tmp/fund_technicals.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/fund_technicals_enrich_last.json"
+    },
+    {
+      "lane_id": "mint-identity-registry",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L877. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is ['--apply']; it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/mint_identity_registry.py"
+      ],
+      "lock": "/tmp/tradeai_mint_identity_registry.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/mint-identity-registry_last.json"
+    },
+    {
+      "lane_id": "signal-fusion-full",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L409. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/signal_fusion.py",
+        "--full"
+      ],
+      "lock": "/tmp/signal_fusion.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1200,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/signal_fusion_full_last.json"
+    },
+    {
+      "lane_id": "signal-fusion-active",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L411. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/signal_fusion.py",
+        "--active"
+      ],
+      "lock": "/tmp/signal_fusion_active.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/signal_fusion_active_last.json"
+    },
+    {
+      "lane_id": "earnings-enrich",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L551. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/earnings_enrich.py"
+      ],
+      "lock": "/tmp/earnings_enrich.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/earnings_enrich_last.json"
+    },
+    {
+      "lane_id": "catalyst-calibration",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class learn), cron:L408. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/catalyst_calibration.py"
+      ],
+      "lock": "/tmp/catalyst_calibration.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/catalyst_calibration_last.json"
+    },
+    {
+      "lane_id": "agent-outcome-linker",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class learn), cron:L318. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's AFTER the wave23-flock crontab packet adds `flock -n /tmp/agent_outcome_linker.lock` (operator ruling 2026-10-10 ~14:00 ET). The cron line's live argument is ['--apply']; it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/agent_outcome_linker.py"
+      ],
+      "lock": "/tmp/agent_outcome_linker.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/agent-outcome-linker_last.json"
+    },
+    {
+      "lane_id": "agent-calibration-engine",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class learn), cron:L314. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's AFTER the wave23-flock crontab packet adds `flock -n /tmp/agent_calibration_engine.lock` (operator ruling 2026-10-10 ~14:00 ET). The cron line's live argument is ['--apply']; it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/agent_calibration_engine.py"
+      ],
+      "lock": "/tmp/agent_calibration_engine.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/agent-calibration-engine_last.json"
+    },
+    {
+      "lane_id": "update-agent-performance",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class learn), cron:L427. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's AFTER the wave23-flock crontab packet adds `flock -n /tmp/update_agent_performance.lock` (operator ruling 2026-10-10 ~14:00 ET). The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "command": [
+        "$PY",
+        "scripts/update_agent_performance.py"
+      ],
+      "lock": "/tmp/update_agent_performance.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/update_agent_performance_last.json"
     }
   ],
   "blocked_reasons": {
