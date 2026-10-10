@@ -3717,6 +3717,10 @@ GATES = [
             # `tradeai-dispatcher` (workflow id) refused by name in the gate, registry check, stage clamp and
             # _cutover.py. Hermetic: synthetic rows, fake crontab, repo config read only.
             "tests/test_r1_shadow_shape_20261010.py",
+            # Dispatcher shadow wave D3 (R1 ingest/learn, 2026-10-10): 19 rows staged as r1_pending (inert) until
+            # AGENTS 4.4.0 is ACTIVE; refused while PROPOSED, admitted with the status flipped in-test; compute_due
+            # week sweep; allowlist live_arg null, lock = cron lock, no broker credential. Hermetic: repo config.
+            "tests/test_dispatch_shadow_wave3_r1_20261010.py",
         ],
     ),
     (

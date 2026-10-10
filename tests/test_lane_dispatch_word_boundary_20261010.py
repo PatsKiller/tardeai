@@ -136,6 +136,9 @@ def _reviewed_key(row: dict) -> str | None:
     lane = row["lane_id"]
     if lane in REVIEWED_NOW_ALLOWED:
         return lane
+    # An allowlist entry (CORPUS id "allowlist:<lane_id>") of a reviewed registry lane carries the same artefact.
+    if lane.startswith("allowlist:") and lane.split(":", 1)[1] in REVIEWED_NOW_ALLOWED:
+        return lane.split(":", 1)[1]
     if lane.startswith("crontab-L"):
         for key in REVIEWED_NOW_ALLOWED:
             if key.endswith(".py") and f"scripts/{key}" in row["command"]:
