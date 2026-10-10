@@ -35,6 +35,21 @@ PROJECTIONS: list[dict[str, Any]] = [
         "provider_calls": "none_on_cache_hit",
     },
     {
+        "id": "finviz_enrichment_snapshot",
+        "module": "lib.data_broker.finviz_enrichment_snapshot",
+        "entrypoints": ["get_enrichment_batch", "get_enrichment"],
+        "http": [],
+        "domain": "finviz_enrichment",
+        "authority_domain": None,  # PROPOSED registry row (operator §17); see the module docstring
+        "description": "Finviz six-view enrichment per symbol (rsi/float/rvol/atr/valuation/performance) "
+                       "from data/state/ticker_enrichment_cache.json, single writer scripts/finviz_enrichment.py; "
+                       "per-symbol as_of/age/stale, never fetches",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["directive_promotion (watch directives servicer, cron L442)"],
+    },
+    {
         "id": "quote_batch",
         "module": "lib.data_broker.quote_batch",
         "entrypoints": ["quote_row_from_broker"],

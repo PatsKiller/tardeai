@@ -336,9 +336,80 @@ def load_cache(root: Path = Path(".")) -> Dict[str, Any]:
         return {}
 
 
+def _cached_at_key(record: Any) -> str:
+    """Sort key for merge: the record's ``cached_at`` ISO string ('' when absent)."""
+    if isinstance(record, dict):
+        return str(record.get("cached_at") or "")
+    return ""
+
+
+def merge_cache_records(on_disk: Dict[str, Any], mine: Dict[str, Any]) -> Dict[str, Any]:
+    """Union of two cache snapshots; per ticker the record with the newer ``cached_at`` wins.
+
+    Pure. A ticker present on only one side is kept. On a tie ``mine`` wins (it is the
+    writer's latest view). Nothing is dropped here: the cache only grows or refreshes.
+    """
+    merged: Dict[str, Any] = dict(on_disk or {})
+    for sym, rec in (mine or {}).items():
+        old = merged.get(sym)
+        if old is None or _cached_at_key(rec) >= _cached_at_key(old):
+            merged[sym] = rec
+    return merged
+
+
 def save_cache(cache: Dict[str, Any], root: Path = Path(".")) -> None:
-    """Save the enrichment cache to disk."""
-    _cache_path(root).write_text(json.dumps(cache, indent=2, default=str))
+    """Save the enrichment cache: locked, merged, atomic (consolidation step 1, 2026-10-10).
+
+    Before: ``write_text`` straight onto the live file. A reader that caught the file mid-write
+    got a parse error, ``load_cache`` turned that into ``{}``, and that reader's later save then
+    wrote a cache holding only its own few tickers -- the sweep log shows the cache shrinking
+    4501 -> 38 -> 67 -> 4501 -> 48 entries, and every consumer refetched from Finviz
+    (API_OVERLAP_CONSOLIDATION.md §2.2 A).
+
+    Now: an exclusive ``fcntl`` lock on ``<cache>.lock`` serialises writers; under it the file on
+    disk is re-read and merged with ``cache`` (newer ``cached_at`` wins per ticker, nothing is
+    dropped), written to a temp file in the same directory, fsync'd and ``os.replace``'d over the
+    cache. Readers see either the old file or the new one, never a torn one. The mode of an
+    existing cache file is kept. This module stays the single writer of the file.
+    """
+    import fcntl
+    import tempfile
+
+    path = _cache_path(root)
+    lock_path = path.with_name(path.name + ".lock")
+    with open(lock_path, "a") as lock_fh:
+        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+        try:
+            on_disk: Dict[str, Any] = {}
+            mode = None
+            if path.is_file():
+                mode = path.stat().st_mode & 0o777
+                try:
+                    loaded = json.loads(path.read_text())
+                    on_disk = loaded if isinstance(loaded, dict) else {}
+                except Exception:
+                    on_disk = {}
+            merged = merge_cache_records(on_disk, cache)
+            fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+            try:
+                with os.fdopen(fd, "w") as fh:
+                    fh.write(json.dumps(merged, indent=2, default=str))
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.chmod(tmp, mode if mode is not None else 0o664)
+                os.replace(tmp, path)
+            except BaseException:
+                # our own temp file only; the live cache is untouched on this path
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+            if isinstance(cache, dict):
+                cache.clear()
+                cache.update(merged)
+        finally:
+            fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
 
 
 def _read_cache_readonly(root: Path) -> Dict[str, Any]:

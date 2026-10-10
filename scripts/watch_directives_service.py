@@ -267,6 +267,58 @@ def _max_hermes_drain():
     return 50
 
 
+#: Consolidation step 1 (2026-10-10): refresh the Finviz enrichment of every lead this run will
+#: evaluate in ONE batched owner call before the loop, so each promote reads a fresh record
+#: through the Data Broker instead of fetching its own symbol (six views, one request each).
+#: "0" turns the pre-pass off and restores the per-symbol path exactly.
+PREFETCH_ENV = "DIRECTIVE_ENRICH_PREFETCH"
+
+
+def _prefetch_enabled():
+    return os.environ.get(PREFETCH_ENV, "1").strip().lower() not in ("0", "false", "no")
+
+
+def _enrichment_prefetch_candidates(cur, directives, stale_ids, recent_hit, resolve, max_hermes_drain, conn=None):
+    """Symbols the main loop below will hand to promote_directive_lead AND that reach enrichment.
+
+    Read-only. Mirrors the loop's skips (stale/removal-flagged directives, 12 h recent hits,
+    removal-flagged staging rows) and the governor (dp.would_enrich), so the batch holds no
+    lead the loop would stage without enriching. A lead the pre-pass misses (e.g. a staging row
+    that arrives between the two reads) simply takes the per-symbol path.
+    """
+    div_idx = dp.divergence_index()
+    out, seen = [], set()
+
+    def _add(sym, src, auto):
+        if sym and sym not in seen and dp.would_enrich(sym, src, auto, divergence_index=div_idx):
+            seen.add(sym)
+            out.append(sym)
+
+    for d in directives:
+        did = d["id"]
+        spec = d["spec"] if isinstance(d["spec"], dict) else json.loads(d["spec"] or "{}")
+        if did in stale_ids or is_removal_flagged(spec):
+            continue
+        if d["trade_ai_enabled"]:
+            is_ticker = d["kind"] == "ticker"
+            src = "operator" if is_ticker else "trade_ai"
+            for sym in resolve(d, conn=conn):
+                if not recent_hit(did, sym, src):
+                    _add(str(sym).upper(), src, True if is_ticker else None)
+        if d["hermes_enabled"]:
+            cur.execute("""SELECT * FROM hermes_directive_hits_staging WHERE drained=false AND directive_id=%s LIMIT %s""",
+                        (did, max_hermes_drain))
+            for h in cur.fetchall():
+                sym = (h["symbol"] or "").upper()
+                if not sym:
+                    continue
+                hit_detail = h.get("source_detail") if isinstance(h.get("source_detail"), dict) else json.loads(h.get("source_detail") or "{}")
+                if is_removal_flagged(hit_detail):
+                    continue
+                _add(sym, "hermes", None)
+    return out
+
+
 def main():
     dry = "--apply" not in sys.argv
     max_hermes_drain = _max_hermes_drain()
@@ -300,6 +352,19 @@ def main():
             return dp.promote_directive_lead(sym, did, reason, source_system, auto=auto)
         except Exception as e:
             return {"status": "ERROR", "error": str(e)[:140]}
+
+    # ── Consolidation step 1: one batched enrichment refresh, then every promote reads the
+    #    Data Broker projection. Dry run: plan only (broker read, no Finviz request, no write).
+    if _prefetch_enabled():
+        try:
+            cands = _enrichment_prefetch_candidates(cur, directives, stale_ids, recent_hit, _resolve,
+                                                    max_hermes_drain, conn=c)
+            if not dry:
+                c.commit()  # no transaction is held across the network refresh (M5 2026-09-24)
+            report["enrichment_prefetch"] = dp.prefetch_enrichment(cands, dry_run=dry)
+        except Exception as e:  # the per-symbol path below stays the fallback
+            c.rollback()  # dry or not: nothing was written; clears an aborted read transaction
+            report["enrichment_prefetch"] = {"error": str(e)[:200]}
 
     def evaluate(sym, did, reason, source_system, auto):
         # Main loop: nothing here is claim-locked, so end this connection's transaction
