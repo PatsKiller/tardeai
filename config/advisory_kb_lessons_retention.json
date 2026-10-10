@@ -1,0 +1,17 @@
+{
+ "schema": "AdvisoryKbLessonsRetention@v1",
+ "authority": "OPERATOR_APPROVED",
+ "approved": "2026-10-09 ~18:05 ET, operator John in session: \"Okay to everything except extending the scout to closing\" (advisory_kb_lessons archive retention).",
+ "note": "Archive rotation for the advisory KB lesson log. Records are never deleted: rows older than retain_days move into monthly gzip archives under <state_root>/<archive_subdir>/YYYY-MM.jsonl.gz with a SHA256SUMS manifest. The newest row per lesson id always stays live (readers take the latest row per id), and rows whose timestamp cannot be parsed stay live. Enforced by scripts/rotate_advisory_kb_lessons.py (dry-run unless --apply).",
+ "live_rel": "data/runtime/advisory_kb_lessons.jsonl",
+ "archive_subdir": "archive/advisory_kb_lessons",
+ "retain_days": 90,
+ "keep_latest_per_id": true,
+ "id_fields": ["id", "lesson_id"],
+ "ts_fields": ["ts", "ratified_at", "retired_at"],
+ "lock_suffix": ".lock",
+ "manifest_name": "SHA256SUMS",
+ "gzip_compresslevel": 6,
+ "state_root_env": "TRADEAI_STATE_ROOT",
+ "default_state_root": "~/trade-ai-releases/persistent-state"
+}

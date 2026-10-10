@@ -7,7 +7,8 @@ the seed file (the detector and the conformance report read it until the Postgre
 it refuses (exit 3) when the table is absent.
 
 Heuristics (explicit so the owner can override in the table later):
-  max_silence_s     3 × expected_cadence_hours (min 15 min, max 48 h); resident services 10 min
+  max_silence_s     3 × expected_cadence_hours (min 15 min) up to 48 h; above that max(48 h, 1.5 × cadence)
+                    so weekly/monthly lanes are judged on their real cadence (2026-10-09); resident services 10 min
   max_run_s         15 min (the wake dispatcher's existing timeout) unless cadence < 15 min, then cadence
   max_queue_age_s   2 × cadence
   max_failure_rate  0.10
@@ -42,6 +43,22 @@ def memory_requirement(lane_id: str) -> str:
     return "none"
 
 
+#: 3 x cadence while that stays under SHORT_CAP_H; past it the window follows the lane's real cadence
+#: (LONG_FACTOR x cadence, never below SHORT_CAP_H). 2026-10-09 breach triage: a flat 48 h cap made the weekly
+#: maturity-remeasure (168 h) SILENT two days after every healthy Monday run.
+SHORT_CAP_H = 48.0
+LONG_FACTOR = 1.5
+MIN_SILENCE_S = 900
+
+
+def max_silence_s(cadence_h: float) -> int:
+    """Heartbeat silence allowed before SILENT, from the lane's declared cadence (hours)."""
+    three = 3 * cadence_h
+    if three <= SHORT_CAP_H:
+        return int(max(three * 3600, MIN_SILENCE_S))
+    return int(max(LONG_FACTOR * cadence_h, SHORT_CAP_H) * 3600)
+
+
 def sla_row(lane: dict) -> dict:
     lane_id = lane.get("lane_id")
     cadence_h = lane.get("expected_cadence_hours")
@@ -50,7 +67,7 @@ def sla_row(lane: dict) -> dict:
     if resident:
         max_silence = 600
     elif cadence_h:
-        max_silence = int(min(max(3 * float(cadence_h) * 3600, 900), 48 * 3600))
+        max_silence = max_silence_s(float(cadence_h))
     else:
         max_silence = None
     cadence_s = int(float(cadence_h) * 3600) if cadence_h else None

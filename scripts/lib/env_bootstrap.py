@@ -57,6 +57,18 @@ def load_env(*, override: bool = False, required: list[str] | None = None) -> di
     """Load env from tmpfs render then disk fallback. Returns metadata (no values)."""
     global _LOADED
     meta = {"source": None, "path": None, "keys_applied": 0, "ok": False}
+    try:  # attribute this process's Postgres connections (libpq PGAPPNAME fallback)
+        from pg_attribution import ensure_pgappname
+    except ImportError:
+        try:
+            from lib.pg_attribution import ensure_pgappname
+        except ImportError:
+            try:
+                from .pg_attribution import ensure_pgappname  # type: ignore[no-redef]
+            except ImportError:
+                ensure_pgappname = None
+    if ensure_pgappname is not None:
+        ensure_pgappname()
     for path in _candidates():
         if path.is_file() and path.stat().st_size > 0:
             n = _apply_file(path, override=override)

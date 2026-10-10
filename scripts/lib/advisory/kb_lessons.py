@@ -1,6 +1,10 @@
 """Advisory Desk L4-D — durable lessons (Iris-curated).
 
 Storage: data/runtime/advisory_kb_lessons.jsonl (+ optional Postgres later).
+  Content rows only (ratify / retire) since 2026-10-09; applications and hits are
+  counter events in advisory_kb_lesson_applications.jsonl and readers derive the
+  counters (kb_lesson_counters). Vectors live once per (id, content sha, model)
+  in advisory_kb_lessons_embeddings.jsonl; rows carry ``embedding_ref``.
 Embeddings: approved pinned nomic model; fallback deterministic hash embed.
 
 Rules (design §5.4):
@@ -14,12 +18,19 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import math
+import os
 import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+try:
+    from lib import kb_lesson_counters as _counters
+except ImportError:  # imported as scripts.lib.advisory.kb_lessons
+    from scripts.lib import kb_lesson_counters as _counters  # type: ignore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = PROJECT_ROOT / "data" / "runtime"
@@ -27,9 +38,14 @@ LESSONS_PATH = RUNTIME / "advisory_kb_lessons.jsonl"
 CANDIDATES_PATH = RUNTIME / "advisory_kb_lesson_candidates.jsonl"
 APPLICATIONS_PATH = RUNTIME / "advisory_kb_lesson_applications.jsonl"
 LESSONS_INDEX = RUNTIME / "advisory_kb_lessons_index.json"
+# Embeddings stored once per (lesson id, sha256(title+body), model). None =
+# sibling of LESSONS_PATH (``<stem>_embeddings.jsonl``), so a test or caller
+# that relocates LESSONS_PATH relocates the store with it.
+EMBEDDINGS_PATH: Path | None = None
 
 EMBED_MODEL = "nomic-embed-text"
 EMBED_DIM = 64  # hash fallback dim
+HASH_EMBED_MODEL = "hash_embed_v1"
 MAX_INJECT = 5
 RETIRE_HIT_RATE = 0.40
 RETIRE_MIN_APPS = 20
@@ -39,14 +55,130 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_log = logging.getLogger(__name__)
+
+
+def _append_once(path: Path, line: str) -> None:
+    """Append one line durably (2026-10-09 follow-up to #1617).
+
+    A previous writer that died mid-line leaves the file without a trailing
+    newline; appending straight after it would glue two JSON objects onto one
+    line and lose both. Repair that first, then write, flush and fsync.
+    """
+    with open(path, "a+b") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.seek(0, os.SEEK_END)
+            if f.tell() > 0:
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) != b"\n":
+                    f.seek(0, os.SEEK_END)
+                    f.write(b"\n")
+            f.seek(0, os.SEEK_END)
+            f.write(line.encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _lessons_lock():
+    """The sidecar lock the archive rotator holds (kb_lessons_retention.writer_lock).
+
+    Held for every lesson-row append (rotation replaces the live inode) and for
+    every counter event, so event and content-row timestamps are issued in one
+    order: an event is counted iff it was written after the row it follows.
+    """
+    try:
+        from lib.advisory.kb_lessons_retention import writer_lock
+    except ImportError:
+        from scripts.lib.advisory.kb_lessons_retention import writer_lock  # type: ignore
+    LESSONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    return writer_lock(LESSONS_PATH)
+
+
 def _append_jsonl(path: Path, entry: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(entry, default=str, ensure_ascii=False) + "\n"
-    with open(path, "a", encoding="utf-8") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        f.write(line)
-        f.flush()
-        fcntl.flock(f, fcntl.LOCK_UN)
+    if path == LESSONS_PATH:
+        # 2026-10-09: the lesson log is archive-rotated (kb_lessons_retention), which
+        # replaces the live inode; append under the same sidecar lock the rotator holds
+        # so an append never lands in the superseded file.
+        with _lessons_lock():
+            _append_once(path, line)
+        return
+    _append_once(path, line)
+
+
+def _embeddings_path() -> Path:
+    if EMBEDDINGS_PATH is not None:
+        return EMBEDDINGS_PATH
+    return LESSONS_PATH.with_name(LESSONS_PATH.stem + "_embeddings.jsonl")
+
+
+def content_sha(row: dict[str, Any]) -> str:
+    text = f"{row.get('title') or ''}\n{row.get('body') or ''}"
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _embedding_key(lesson_id: str, csha: str, model: Any) -> str:
+    return f"{lesson_id}|{csha}|{model or ''}"
+
+
+def _load_embeddings() -> dict[str, list[float]]:
+    out: dict[str, list[float]] = {}
+    for r in _read_jsonl(_embeddings_path()):
+        if not isinstance(r, dict):
+            _log.warning("kb_lessons: skipping non-object line in %s (%s)",
+                         _embeddings_path(), type(r).__name__)
+            continue
+        emb = r.get("embedding")
+        if r.get("id") and isinstance(emb, list) and emb:
+            out.setdefault(_embedding_key(str(r["id"]), str(r.get("content_sha") or ""), r.get("model")), emb)
+    return out
+
+
+def _write_lesson_row(lesson: dict[str, Any], *, _locked: bool = False) -> dict[str, Any]:
+    """Append one content row (ratify / retire). The embedding goes to the
+    embeddings store once per (id, content sha, model); the row keeps a ref.
+
+    The store is append-only and is not rotated, so the archive rotator can
+    never move the only copy of a live lesson's vector. Returns the lesson as
+    readers see it (embedding attached, ts as written).
+
+    ``_locked=True`` means the caller already holds ``_lessons_lock`` (flock on a
+    fresh fd is not re-entrant, so taking it again would self-deadlock).
+    """
+    if not _locked:
+        with _lessons_lock():
+            return _write_lesson_row(lesson, _locked=True)
+    row = dict(lesson)
+    emb = row.pop("embedding", None)
+    model = row.get("embedding_model")
+    csha = content_sha(row)
+    if isinstance(emb, list) and emb:
+        key = _embedding_key(str(row.get("id")), csha, model)
+        if key not in _load_embeddings():
+            _append_once(_embeddings_path(), json.dumps({
+                "id": row.get("id"), "content_sha": csha, "model": model,
+                "dim": len(emb), "ts": _now_iso(), "embedding": emb,
+            }, default=str, ensure_ascii=False) + "\n")
+        row["embedding_ref"] = {"content_sha": csha, "model": model}
+    row["ts"] = _now_iso()
+    _append_once(LESSONS_PATH, json.dumps(row, default=str, ensure_ascii=False) + "\n")
+    out = dict(row)
+    if isinstance(emb, list) and emb:
+        out["embedding"] = emb
+    return out
+
+
+def _append_counter_event(event: dict[str, Any]) -> dict[str, Any]:
+    """One application/hit event; ts is issued under the lesson lock."""
+    APPLICATIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _lessons_lock():
+        ev = {"ts": _now_iso(), **event, _counters.COUNTER_EVENT_KEY: _counters.COUNTER_EVENT_VERSION}
+        _append_once(APPLICATIONS_PATH, json.dumps(ev, default=str, ensure_ascii=False) + "\n")
+    return ev
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -115,26 +247,120 @@ def embed_text(text: str) -> tuple[list[float], str]:
 
 
 def cosine(a: list[float], b: list[float]) -> float:
-    if not a or not b:
+    """Dot product of two unit vectors of the SAME model and dimension.
+
+    2026-10-09: this used to truncate to min(len), so a 768-d nomic query
+    against a 4096-d qwen3-embedding:8b lesson vector produced a meaningless
+    number. Vectors of different length are not comparable: 0.0. Callers
+    (``retrieve_lessons_for_row``) must only pair same-model vectors.
+    """
+    if not a or not b or len(a) != len(b):
         return 0.0
-    n = min(len(a), len(b))
-    return sum(a[i] * b[i] for i in range(n))
+    return sum(x * y for x, y in zip(a, b))
+
+
+def lesson_embedding_model(lesson: dict[str, Any]) -> str | None:
+    """The model that produced the lesson's stored vector, when recorded."""
+    ref = lesson.get("embedding_ref")
+    if isinstance(ref, dict) and ref.get("model"):
+        return str(ref["model"])
+    model = lesson.get("embedding_model")
+    return str(model) if model else None
+
+
+def embed_query_for_model(text: str, model: str) -> list[float] | None:
+    """Embed a query with one specific model, or None when that model cannot
+    be used here (e.g. outside the Ollama allowlist). Never substitutes another
+    model: a query vector is only useful against vectors of its own model."""
+    if model == HASH_EMBED_MODEL:
+        return hash_embed(text)
+    return ollama_embed(text, model=model)
+
+
+_TOKEN_RE = re.compile(r"[a-z0-9%$.]+")
+
+
+def lexical_similarity(query: str, lesson: dict[str, Any]) -> float:
+    """Token-set Jaccard of the query vs the lesson title+body, in [0, 1].
+
+    The similarity used for a lesson whose vector cannot be compared with the
+    query (unknown model, model unusable here, or dimension mismatch).
+
+    Scale: NOT calibrated to cosine. Jaccard of a short query vs a lesson body
+    is usually well below a same-model cosine of related text, so a lesson on
+    the lexical path ranks below comparable embedded lessons. The remedy is to
+    give every ratified lesson an allowlisted-model vector
+    (``reembed_lessons`` / scripts/kb_lessons_reembed.py), not to rescale."""
+    q = set(_TOKEN_RE.findall((query or "").lower()))
+    d = set(_TOKEN_RE.findall(f"{lesson.get('title') or ''} {lesson.get('body') or ''}".lower()))
+    if not q or not d:
+        return 0.0
+    return len(q & d) / len(q | d)
+
+
+_DIM_MISMATCH_LOGGED: set[tuple[str, int, int]] = set()
+
+
+def _log_dim_mismatch_once(model: str, q_dim: int, l_dim: int) -> None:
+    key = (model, q_dim, l_dim)
+    if key in _DIM_MISMATCH_LOGGED:
+        return
+    _DIM_MISMATCH_LOGGED.add(key)
+    _log.warning("kb_lessons: query/lesson embedding dimension mismatch for model %s "
+                 "(%d vs %d); similarity skipped, lexical fallback used", model, q_dim, l_dim)
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
 
-def list_lessons(*, status: str | None = "ratified") -> list[dict[str, Any]]:
-    rows = _read_jsonl(LESSONS_PATH)
-    # last write wins by id
+def _iter_jsonl(path: Path) -> Iterator[dict[str, Any]]:
+    if not path.exists():
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict):
+                yield row
+
+
+def _latest_content_rows() -> dict[str, dict[str, Any]]:
+    """Last content row per id (streamed; the log is hundreds of MB)."""
     by_id: dict[str, dict[str, Any]] = {}
-    for r in rows:
+    for r in _iter_jsonl(LESSONS_PATH):
         lid = r.get("id")
         if lid:
             by_id[lid] = r
-    out = list(by_id.values())
+    return by_id
+
+
+def _hydrate_embeddings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    need = [r for r in rows if not r.get("embedding") and isinstance(r.get("embedding_ref"), dict)]
+    if not need:
+        return rows
+    store = _load_embeddings()
+    out = []
+    for r in rows:
+        ref = r.get("embedding_ref")
+        if not r.get("embedding") and isinstance(ref, dict):
+            emb = store.get(_embedding_key(str(r.get("id")), str(ref.get("content_sha") or ""), ref.get("model")))
+            if emb:
+                r = {**r, "embedding": emb}
+        out.append(r)
+    return out
+
+
+def list_lessons(*, status: str | None = "ratified") -> list[dict[str, Any]]:
+    """Latest row per id with derived counters (content baseline + counter events)."""
+    out = list(_latest_content_rows().values())
+    out = _counters.apply_counter_events(out, APPLICATIONS_PATH)
     if status:
         out = [r for r in out if r.get("status") == status]
-    return out
+    return _hydrate_embeddings(out)
 
 
 def propose_lesson(
@@ -183,36 +409,35 @@ def ratify_lesson(lesson_id: str, *, by: str = "iris") -> dict[str, Any]:
         if c.get("id") == lesson_id:
             match = c
             break
-    # also allow re-ratify from lessons path
-    if not match:
-        for c in reversed(_read_jsonl(LESSONS_PATH)):
-            if c.get("id") == lesson_id:
-                match = c
-                break
-    if not match:
-        raise ValueError(f"lesson not found: {lesson_id}")
-
-    lesson = dict(match)
-    lesson["status"] = "ratified"
-    lesson["ratified_at"] = _now_iso()
-    lesson["ratified_by"] = by
-    lesson["ts"] = _now_iso()
-    _append_jsonl(LESSONS_PATH, lesson)
+    # also allow re-ratify from lessons path (derived counters carried, as before)
+    # The baseline counters are read under the lesson lock: read-then-lock let
+    # a counter event land between the read and the row write, and the new
+    # row's later ts then silently dropped that increment.
+    with _lessons_lock():
+        if not match:
+            match = next((l for l in list_lessons(status=None) if l.get("id") == lesson_id), None)
+        if not match:
+            raise ValueError(f"lesson not found: {lesson_id}")
+        lesson = dict(match)
+        lesson["status"] = "ratified"
+        lesson["ratified_at"] = _now_iso()
+        lesson["ratified_by"] = by
+        lesson = _write_lesson_row(lesson, _locked=True)
     _rebuild_index()
     return lesson
 
 
 def retire_lesson(lesson_id: str, *, reason: str = "manual") -> dict[str, Any]:
-    lessons = list_lessons(status=None)
-    match = next((l for l in lessons if l.get("id") == lesson_id), None)
-    if not match:
-        raise ValueError(f"lesson not found: {lesson_id}")
-    retired = dict(match)
-    retired["status"] = "retired"
-    retired["retired_at"] = _now_iso()
-    retired["retire_reason"] = reason
-    retired["ts"] = _now_iso()
-    _append_jsonl(LESSONS_PATH, retired)
+    # Baseline (derived counters) computed under the lock; see ratify_lesson.
+    with _lessons_lock():
+        match = next((l for l in list_lessons(status=None) if l.get("id") == lesson_id), None)
+        if not match:
+            raise ValueError(f"lesson not found: {lesson_id}")
+        retired = dict(match)
+        retired["status"] = "retired"
+        retired["retired_at"] = _now_iso()
+        retired["retire_reason"] = reason
+        retired = _write_lesson_row(retired, _locked=True)
     _rebuild_index()
     return retired
 
@@ -227,16 +452,12 @@ def retire_lesson(lesson_id: str, *, reason: str = "manual") -> dict[str, Any]:
 # count toward auto-retire.
 
 
-def _lesson_counts(lesson: dict[str, Any]) -> tuple[int, int, int, int]:
-    apps = int(lesson.get("applications") or 0)
-    hits = int(lesson.get("hits") or 0)
-    scored = int(lesson.get("scored") or 0)
-    citations = int(lesson.get("citations") or 0)
-    return apps, hits, scored, citations
-
-
-def _hit_rate(hits: int, scored: int) -> float | None:
-    return (hits / scored) if scored else None
+# 2026-10-09: applications/hits no longer re-append the lesson row; each is one
+# counter event in APPLICATIONS_PATH and readers derive the counters
+# (kb_lesson_counters). Appends cannot lose an increment the way the old
+# read-N/write-N+1 rows could.
+_lesson_counts = _counters.base_counts
+_hit_rate = _counters.hit_rate
 
 
 def _maybe_auto_retire(lesson_id: str, updated: dict[str, Any]) -> None:
@@ -265,26 +486,7 @@ def record_application(
     lesson = lessons.get(lesson_id)
     if not lesson:
         return
-    apps, hits, scored, citations = _lesson_counts(lesson)
-    apps += 1
-    citations += 1 if cited_in_rationale else 0
-    if hit is not None:
-        scored += 1
-        hits += 1 if hit else 0
-    hit_rate = _hit_rate(hits, scored)
-    updated = dict(lesson)
-    updated.update({
-        "applications": apps,
-        "hits": hits,
-        "scored": scored,
-        "hit_rate": hit_rate,
-        "citations": citations,
-        "ts": _now_iso(),
-        "status": lesson.get("status") or "ratified",
-    })
-    _append_jsonl(LESSONS_PATH, updated)
-    _append_jsonl(APPLICATIONS_PATH, {
-        "ts": _now_iso(),
+    ev = _append_counter_event({
         "kind": "application",
         "lesson_id": lesson_id,
         "symbol": symbol,
@@ -292,6 +494,8 @@ def record_application(
         "hit": hit,
         "cited": cited_in_rationale,
     })
+    # counters as a reader now sees them (this event included)
+    updated = _counters.apply_events(lesson, [ev])
     _maybe_auto_retire(lesson_id, updated)
 
 
@@ -319,22 +523,7 @@ def record_hit(lesson_id: str, *, hit: bool, source_row_id: str, horizon_d: int 
     lesson = lessons.get(lesson_id)
     if not lesson:
         return False
-    apps, hits, scored, citations = _lesson_counts(lesson)
-    scored += 1
-    hits += 1 if hit else 0
-    updated = dict(lesson)
-    updated.update({
-        "applications": apps,
-        "hits": hits,
-        "scored": scored,
-        "hit_rate": _hit_rate(hits, scored),
-        "citations": citations,
-        "ts": _now_iso(),
-        "status": lesson.get("status") or "ratified",
-    })
-    _append_jsonl(LESSONS_PATH, updated)
-    _append_jsonl(APPLICATIONS_PATH, {
-        "ts": _now_iso(),
+    ev = _append_counter_event({
         "kind": "hit",
         "lesson_id": lesson_id,
         "symbol": symbol,
@@ -342,6 +531,7 @@ def record_hit(lesson_id: str, *, hit: bool, source_row_id: str, horizon_d: int 
         "horizon_d": horizon_d,
         "hit": bool(hit),
     })
+    updated = _counters.apply_events(lesson, [ev])
     _maybe_auto_retire(lesson_id, updated)
     return True
 
@@ -379,18 +569,48 @@ def retrieve_lessons_for_row(
     query_text: str = "",
     limit: int = MAX_INJECT,
 ) -> list[dict[str, Any]]:
-    """Rank ratified lessons by symbol/sector/verdict + embedding similarity."""
+    """Rank ratified lessons by symbol/sector/verdict + similarity.
+
+    Similarity is cosine only between vectors of the SAME model: the query is
+    embedded once per lesson model (cached for this call). A lesson whose
+    model is unknown or unusable here (e.g. qwen3-embedding:8b, outside the
+    Ollama allowlist), or whose vector dimension differs from the query's,
+    gets the lexical similarity (token Jaccard vs title+body) instead —
+    never a cross-model number.
+    """
     lessons = list_lessons(status="ratified")
     if not lessons:
         return []
     q = query_text or f"{symbol} {sector} {verdict}"
-    q_emb, _ = embed_text(q)
+    q_default, q_default_model = embed_text(q)
+    q_cache: dict[str, list[float] | None] = {q_default_model: q_default}
+    if q_default_model != EMBED_MODEL:
+        # embed_text already tried EMBED_MODEL and fell back (Ollama down);
+        # do not wait on it a second time for lessons embedded with it.
+        q_cache[EMBED_MODEL] = None
+    # Same-content vectors re-embedded with the query's model (reembed_lessons)
+    # take precedence over a lesson's original, possibly unusable, vector.
+    store = _load_embeddings() if any(lesson_embedding_model(l) != q_default_model for l in lessons) else {}
     scored: list[tuple[float, dict[str, Any]]] = []
     sym_u = (symbol or "").upper()
     ver_u = (verdict or "").upper()
     sec_l = (sector or "").lower()
     for l in lessons:
-        score = cosine(q_emb, l.get("embedding") or [])
+        l_emb = l.get("embedding") or []
+        l_model = lesson_embedding_model(l)
+        if l_model != q_default_model and q_default:
+            alt = store.get(_embedding_key(str(l.get("id")), content_sha(l), q_default_model))
+            if alt:
+                l_emb, l_model = alt, q_default_model
+        q_emb: list[float] | None = None
+        if l_emb and l_model:
+            if l_model not in q_cache:
+                q_cache[l_model] = embed_query_for_model(q, l_model)
+            q_emb = q_cache[l_model]
+            if q_emb and len(q_emb) != len(l_emb):
+                _log_dim_mismatch_once(l_model, len(q_emb), len(l_emb))
+                q_emb = None
+        score = cosine(q_emb, l_emb) if q_emb else lexical_similarity(q, l)
         if sym_u and sym_u in [s.upper() for s in (l.get("symbols") or [])]:
             score += 0.35
         if ver_u and ver_u in [v.upper() for v in (l.get("verdict_types") or [])]:
@@ -404,6 +624,52 @@ def retrieve_lessons_for_row(
         scored.append((score, l))
     scored.sort(key=lambda x: -x[0])
     return [l for _, l in scored[:limit]]
+
+
+def reembed_lessons(*, apply: bool = False, model: str = EMBED_MODEL,
+                    status: str | None = "ratified") -> dict[str, Any]:
+    """Give lessons a vector from the allowlisted ``model`` (default nomic).
+
+    Append-only: new rows go to the embeddings store keyed (id, content sha,
+    model); lesson rows are never rewritten. Retrieval prefers a same-content
+    vector of the query's model over the lesson's original one. Dry-run (the
+    default) only plans and never calls the embedding endpoint. With
+    ``apply=True`` a lesson whose embed fails is skipped (never hash-filled).
+    """
+    lessons = list_lessons(status=status)
+    store = _load_embeddings()
+    todo, have = [], 0
+    for l in lessons:
+        if l.get("status") == "retired":
+            continue
+        key = _embedding_key(str(l.get("id")), content_sha(l), model)
+        if key in store or (lesson_embedding_model(l) == model and l.get("embedding")):
+            have += 1
+        else:
+            todo.append(l)
+    by_model = Counter(str(lesson_embedding_model(l)) for l in todo)
+    out: dict[str, Any] = {"ok": True, "apply": apply, "model": model, "lessons": len(lessons),
+                           "already_embedded": have, "to_embed": len(todo),
+                           "to_embed_by_current_model": dict(by_model),
+                           "ids": [l.get("id") for l in todo], "written": 0, "failed": []}
+    if not apply:
+        return out
+    for l in todo:
+        emb = ollama_embed(f"{l.get('title') or ''}\n{l.get('body') or ''}", model=model)
+        if not emb:
+            out["failed"].append(l.get("id"))
+            continue
+        csha = content_sha(l)
+        with _lessons_lock():
+            if _embedding_key(str(l.get("id")), csha, model) in _load_embeddings():
+                continue
+            _append_once(_embeddings_path(), json.dumps({
+                "id": l.get("id"), "content_sha": csha, "model": model, "dim": len(emb),
+                "ts": _now_iso(), "embedding": emb, "source": "reembed",
+            }, default=str, ensure_ascii=False) + "\n")
+        out["written"] += 1
+    out["ok"] = not out["failed"]
+    return out
 
 
 def format_lessons_for_prompt(lessons: list[dict[str, Any]]) -> list[dict[str, Any]]:

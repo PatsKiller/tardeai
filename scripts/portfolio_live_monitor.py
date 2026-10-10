@@ -8,8 +8,8 @@ Every 15 minutes: reprices all holdings from Finviz, checks triggers, fires Tele
 Self-terminates at 4:31 PM. Safe to leave running — won't fire outside market hours.
 
 Usage:
-    python scripts\\portfolio_live_monitor.py
-    (or via Task Scheduler — see launchers\\run_portfolio_monitor.bat)
+    python scripts/portfolio_live_monitor.py          # daemon: loops until 4:31 PM ET
+    python scripts/portfolio_live_monitor.py --once   # one cycle, exit (health_tick step, 2026-10-09)
 
 Trigger conditions (first-occurrence per trading day, 24hr cooldown):
     PRICE ACTION  : Single position ±3% on the day
@@ -399,7 +399,193 @@ def _eod_summary(portfolio: Dict, market_data: Dict[str, Dict], alerts_fired: Li
     lines.append("_Portfolio Intelligence v1.2_")
     return "\n".join(lines)
 
-def main() -> None:
+DAILY_FLAGS_FILE = "monitor_daily_flags.json"
+
+
+class DailyFlags:
+    """Per-day morning-brief / EOD / fired-alert memory that survives the process.
+
+    The daemon kept these in memory for the whole session. Under --once (one
+    process per cycle, health_tick) they live on disk next to the trigger state,
+    so a brief or summary goes out at most once per day however often the cycle
+    runs. Only today's entry is kept."""
+
+    def __init__(self, state_dir: Path, today: str) -> None:
+        self.path = state_dir / DAILY_FLAGS_FILE
+        self.today = today
+        data: Dict = {}
+        try:
+            if self.path.exists():
+                data = json.loads(self.path.read_text())
+        except Exception:
+            data = {}
+        day = data.get(today) if isinstance(data, dict) else None
+        self.day: Dict = day if isinstance(day, dict) else {}
+
+    @property
+    def morning_brief_sent(self) -> bool:
+        return bool(self.day.get("morning_brief"))
+
+    @property
+    def eod_sent(self) -> bool:
+        return bool(self.day.get("eod"))
+
+    @property
+    def alerts_fired(self) -> List[str]:
+        return list(self.day.get("alerts") or [])
+
+    def mark(self, key: str, value=True) -> None:
+        self.day[key] = value
+        self.save()
+
+    def add_alert(self, line: str) -> None:
+        self.day.setdefault("alerts", []).append(line)
+        self.save()
+
+    def save(self) -> None:
+        try:
+            self.path.write_text(json.dumps({self.today: self.day}, indent=2))
+        except Exception:
+            pass
+
+
+def _run_cycle(root: Path, now: datetime, trigger_state: "TriggerState", *,
+               morning_brief_sent: bool, eod_sent: bool, alerts_fired_today: List[str],
+               on_morning_brief=None, on_eod=None, on_alert=None) -> Optional[str]:
+    """One market-hours cycle: load the book, fetch data, brief/EOD when due, check
+    triggers. Returns None after a cycle, or "load_error" when the book would not load."""
+    now_mins = _mins_from_midnight(now.hour, now.minute)
+    open_mins  = _mins_from_midnight(*MARKET_OPEN_ET)
+    close_mins = _mins_from_midnight(*MARKET_CLOSE_ET)
+    try:
+        from portfolio_loader import load_all_portfolios
+        portfolio = load_all_portfolios(root)
+    except Exception as e:
+        print(f"  [monitor] Portfolio load error: {e}")
+        return "load_error"
+
+    symbols = list(set(
+        h["symbol"] for h in portfolio.get("holdings", [])
+        if h.get("symbol") and not h.get("is_loan") and not h.get("is_cash")
+        and (h.get("market_value") or 0) > 500
+        and len(h["symbol"]) <= 6
+    ))
+
+    print(f"[{_hhmm(now)}] Fetching data for {len(symbols)} holdings...")
+    market_data = _fetch_holdings_data(symbols, root)
+    print(f"  → Got data for {len(market_data)} symbols")
+
+    if open_mins <= now_mins <= open_mins + 15 and not morning_brief_sent:
+        print(f"  → Sending morning brief...")
+        brief = _morning_brief(portfolio, market_data, root)
+        _send_telegram(brief, root)
+        if on_morning_brief:
+            on_morning_brief()
+        print(f"  ✅ Morning brief sent")
+
+    if now_mins >= close_mins and not eod_sent:
+        print(f"  → Sending end-of-day summary...")
+        summary = _eod_summary(portfolio, market_data, alerts_fired_today, root)
+        _send_telegram(summary, root)
+        if on_eod:
+            on_eod()
+        print(f"  ✅ EOD summary sent")
+
+    print(f"  → Checking {len(symbols)} triggers...")
+    triggered = check_triggers(portfolio, market_data, trigger_state)
+
+    for alert in triggered:
+        msg = alert["msg"]
+        sym = alert.get("ticker", "")
+        trig = alert.get("trigger", "")
+        print(f"  🔔 ALERT: {sym} — {trig}")
+
+        # DB first
+        alert_event_id = None
+        try:
+            from alert_event_writer import save_alert_event
+            type_map = {
+                "DOWN_3PCT": "portfolio_intelligence", "UP_8PCT": "portfolio_intelligence",
+                "SMA50_CROSS": "technical_signal", "SMA200_CROSS": "technical_signal",
+                "RSI_HIGH": "technical_signal", "RSI_LOW": "technical_signal",
+                "RVOL_SPIKE": "technical_signal", "52WK_HIGH": "technical_signal",
+                "CONCENTRATION": "concentration_alert",
+                "DRAWDOWN": "drawdown_alert", "GAIN_DAY": "gain_alert",
+            }
+            sev_map = {
+                "SMA200_CROSS": "warning", "RSI_HIGH": "warning", "DOWN_3PCT": "warning",
+                "CONCENTRATION": "warning", "DRAWDOWN": "warning",
+            }
+            alert_event_id = save_alert_event(
+                alert_type=type_map.get(trig, "technical_signal"),
+                raw_text=msg[:2000],
+                symbol=sym,
+                severity=sev_map.get(trig, "info"),
+                source_script="portfolio_live_monitor.py",
+                parsed_payload={"trigger": trig},
+            )
+        except Exception as e:
+            print(f"  [monitor] Alert DB write failed (non-fatal): {e}")
+
+        telegram_message_id = _send_telegram(msg, root)
+        # Telegram second, per this module's contract — the id exists only
+        # now, so it is stamped onto the row already written rather than
+        # reordering the write (a DB outage must never block the send).
+        if alert_event_id and telegram_message_id:
+            try:
+                from alert_event_writer import attach_telegram_message_id
+                attach_telegram_message_id(alert_event_id, telegram_message_id)
+            except Exception as e:
+                print(f"  [monitor] id attach failed (non-fatal): {e}")
+        line = f"{_hhmm(now)} — {sym} {trig}"
+        alerts_fired_today.append(line)
+        if on_alert:
+            on_alert(line)
+
+    if not triggered:
+        print(f"  → No triggers fired this cycle")
+
+    # 2026-10-06: this loop no longer reprices or saves holdings.json. It loaded the book once at
+    # start and wrote that in-memory copy back every hour; when its Finviz fetch came back empty it
+    # wrote 10-02 cached prices with 0% day change over 22 of 25 live marks (12:01, 13:01, 14:00 ET),
+    # and any share/basis update since its start was reverted. Prices are written ONLY by the
+    # */15 portfolio_repricer.py cron; this monitor reads them (AGENTS §7A positions rule 1).
+    return None
+
+
+def run_once(root: Path, state_dir: Path, now: Optional[datetime] = None) -> str:
+    """One cycle and exit — the health_tick shape (2026-10-09). Never sleeps.
+
+    Returns what happened: after_close | weekend | pre_market | load_error | cycled."""
+    now = now or _et_now()
+    now_mins = _mins_from_midnight(now.hour, now.minute)
+    if now_mins >= _mins_from_midnight(*SELF_TERMINATE):
+        print(f"[{_hhmm(now)}] after 4:31 PM — nothing to do.")
+        return "after_close"
+    if now.weekday() >= 5:
+        print(f"[{_hhmm(now)}] Weekend — nothing to do.")
+        return "weekend"
+    if now_mins < _mins_from_midnight(*MARKET_OPEN_ET):
+        print(f"[{_hhmm(now)}] Pre-market — nothing to do.")
+        return "pre_market"
+    flags = DailyFlags(state_dir, now.strftime("%Y-%m-%d"))
+    alerts = flags.alerts_fired
+    res = _run_cycle(root, now, TriggerState(state_dir),
+                     morning_brief_sent=flags.morning_brief_sent, eod_sent=flags.eod_sent,
+                     alerts_fired_today=alerts,
+                     on_morning_brief=lambda: flags.mark("morning_brief", now.isoformat()),
+                     on_eod=lambda: flags.mark("eod", now.isoformat()),
+                     on_alert=flags.add_alert)
+    return res or "cycled"
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    import argparse
+    ap = argparse.ArgumentParser(description="Portfolio Intelligence live monitor")
+    ap.add_argument("--once", action="store_true",
+                    help="run one cycle and exit (the health_tick step; the daemon loop otherwise)")
+    args = ap.parse_args(argv)
+
     root = Path(__file__).parent.parent.resolve()
     _load_env_file(root)
     if str(root / "scripts") not in sys.path:
@@ -407,6 +593,12 @@ def main() -> None:
 
     state_dir   = root / "data" / "portfolios" / "state"
     state_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.once:
+        result = run_once(root, state_dir)
+        print(f"[monitor] --once: {result}")
+        return
+
     trigger_state = TriggerState(state_dir)
 
     print(f"\n{'='*60}")
@@ -435,47 +627,12 @@ def main() -> None:
             continue
 
         open_mins  = _mins_from_midnight(*MARKET_OPEN_ET)
-        close_mins = _mins_from_midnight(*MARKET_CLOSE_ET)
 
         if now_mins < open_mins:
             wait = open_mins - now_mins
             print(f"[{_hhmm(now)}] Pre-market — opening in {wait} min")
             time.sleep(min(wait * 60, 300))
             continue
-
-        try:
-            from portfolio_loader import load_all_portfolios
-            portfolio = load_all_portfolios(root)
-        except Exception as e:
-            print(f"  [monitor] Portfolio load error: {e}")
-            time.sleep(300)
-            continue
-
-        symbols = list(set(
-            h["symbol"] for h in portfolio.get("holdings", [])
-            if h.get("symbol") and not h.get("is_loan") and not h.get("is_cash")
-            and (h.get("market_value") or 0) > 500
-            and len(h["symbol"]) <= 6
-        ))
-
-        print(f"[{_hhmm(now)}] Fetching data for {len(symbols)} holdings...")
-        market_data = _fetch_holdings_data(symbols, root)
-        print(f"  → Got data for {len(market_data)} symbols")
-
-        if open_mins <= now_mins <= open_mins + 15 and not morning_brief_sent:
-            print(f"  → Sending morning brief...")
-            brief = _morning_brief(portfolio, market_data, root)
-            _send_telegram(brief, root)
-            morning_brief_sent = True
-            alerts_fired_today = []
-            print(f"  ✅ Morning brief sent")
-
-        if now_mins >= close_mins and not eod_sent:
-            print(f"  → Sending end-of-day summary...")
-            summary = _eod_summary(portfolio, market_data, alerts_fired_today, root)
-            _send_telegram(summary, root)
-            eod_sent = True
-            print(f"  ✅ EOD summary sent")
 
         if now.hour == 0 and now.minute < 5:
             morning_brief_sent = False
@@ -484,64 +641,21 @@ def main() -> None:
 
         elapsed = (now - last_cycle).total_seconds()
         if elapsed >= CYCLE_MINUTES * 60 or last_cycle == datetime.min:
-            print(f"  → Checking {len(symbols)} triggers...")
-            triggered = check_triggers(portfolio, market_data, trigger_state)
-
-            for alert in triggered:
-                msg = alert["msg"]
-                sym = alert.get("ticker", "")
-                trig = alert.get("trigger", "")
-                print(f"  🔔 ALERT: {sym} — {trig}")
-
-                # DB first
-                alert_event_id = None
-                try:
-                    from alert_event_writer import save_alert_event
-                    type_map = {
-                        "DOWN_3PCT": "portfolio_intelligence", "UP_8PCT": "portfolio_intelligence",
-                        "SMA50_CROSS": "technical_signal", "SMA200_CROSS": "technical_signal",
-                        "RSI_HIGH": "technical_signal", "RSI_LOW": "technical_signal",
-                        "RVOL_SPIKE": "technical_signal", "52WK_HIGH": "technical_signal",
-                        "CONCENTRATION": "concentration_alert",
-                        "DRAWDOWN": "drawdown_alert", "GAIN_DAY": "gain_alert",
-                    }
-                    sev_map = {
-                        "SMA200_CROSS": "warning", "RSI_HIGH": "warning", "DOWN_3PCT": "warning",
-                        "CONCENTRATION": "warning", "DRAWDOWN": "warning",
-                    }
-                    alert_event_id = save_alert_event(
-                        alert_type=type_map.get(trig, "technical_signal"),
-                        raw_text=msg[:2000],
-                        symbol=sym,
-                        severity=sev_map.get(trig, "info"),
-                        source_script="portfolio_live_monitor.py",
-                        parsed_payload={"trigger": trig},
-                    )
-                except Exception as e:
-                    print(f"  [monitor] Alert DB write failed (non-fatal): {e}")
-
-                telegram_message_id = _send_telegram(msg, root)
-                # Telegram second, per this module's contract — the id exists only
-                # now, so it is stamped onto the row already written rather than
-                # reordering the write (a DB outage must never block the send).
-                if alert_event_id and telegram_message_id:
-                    try:
-                        from alert_event_writer import attach_telegram_message_id
-                        attach_telegram_message_id(alert_event_id, telegram_message_id)
-                    except Exception as e:
-                        print(f"  [monitor] id attach failed (non-fatal): {e}")
-                alerts_fired_today.append(f"{_hhmm(now)} — {sym} {trig}")
-
-            if not triggered:
-                print(f"  → No triggers fired this cycle")
-
+            sent: Dict[str, bool] = {}
+            res = _run_cycle(root, now, trigger_state,
+                             morning_brief_sent=morning_brief_sent, eod_sent=eod_sent,
+                             alerts_fired_today=alerts_fired_today,
+                             on_morning_brief=lambda: (sent.__setitem__("brief", True),
+                                                       alerts_fired_today.clear()),
+                             on_eod=lambda: sent.__setitem__("eod", True))
+            if res == "load_error":
+                time.sleep(300)
+                continue
+            if sent.get("brief"):
+                morning_brief_sent = True
+            if sent.get("eod"):
+                eod_sent = True
             last_cycle = now
-
-            # 2026-10-06: this loop no longer reprices or saves holdings.json. It loaded the book once at
-            # start and wrote that in-memory copy back every hour; when its Finviz fetch came back empty it
-            # wrote 10-02 cached prices with 0% day change over 22 of 25 live marks (12:01, 13:01, 14:00 ET),
-            # and any share/basis update since its start was reverted. Prices are written ONLY by the
-            # */15 portfolio_repricer.py cron; this monitor reads them (AGENTS §7A positions rule 1).
 
         next_mins = (now_mins // CYCLE_MINUTES + 1) * CYCLE_MINUTES
         wait_secs = max(60, (next_mins - now_mins) * 60 - now.second)

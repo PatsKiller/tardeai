@@ -2,8 +2,8 @@
 """n8n_incident_fanin.py — one list of open incidents from the receipts that already exist.
 
 Roadmap Phase 1 (2026-10-07). Reads, never checks: the breach detector's per-lane rows,
-the five `--alert` timer receipts, the bridge watchdog, the n8n lab watchdog, and the lab
-backup receipt. Every open finding becomes ONE coordination event on lane `incident-fanin`
+the five `--alert` timer receipts, the bridge watchdog, the n8n lab watchdog, the lab
+backup receipt, and (2026-10-09) the P16 activation-attribution and P18 workflow-drift receipts. Every open finding becomes ONE coordination event on lane `incident-fanin`
 (idempotent per source+item+UTC day), walked to ARTIFACT_WRITTEN with a reference to the
 source receipt. A finding that disappears is closed with a `consumer_ack` from
 `recovery-observer`. Operator acks (Telegram) are a separate, later hook.
@@ -45,6 +45,8 @@ NO_CONSUMER_REASON = (
     "no cron line exists until the operator installs it (lane n8n-incident-fanin, NEVER_SCHEDULED)."
 )
 LANE = "incident-fanin"
+# This script's own receipt, relative to the state root. scripts/incident_notifier.py reads it from here.
+RECEIPT_REL = "data/runtime/n8n_incident_fanin_last.json"
 NOTES: dict[str, str] = {}   # per-source availability notes, copied onto the receipt (2026-10-08)
 LANE_REGISTRY_RECEIPT_REL = "data/runtime/n8n_lane_registry_drift_last.json"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -262,6 +264,12 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
     out.extend(_scalp_lane_findings(root, now))
     # 3h. Scalp cycle ledger (n8n maturity B4, 2026-10-09): per-slot ScalpCycleReceipt@v1 rules, market-hours aware.
     out.extend(_scalp_cycle_findings(root, now))
+    # 3i. Dead-letter queue + breakers (n8n maturity B5 follow-up, 2026-10-09): one P2 per unreleased dead letter,
+    # one P2 per open breaker. Ledger tables first (read-only), ExecutorStatus@v1 as the cross-check / fallback.
+    out.extend(_dlq_findings(root, now))
+    # 3j. n8n governance checks (AGENTS.md 3.0.0 §23.10 P16/P18, 2026-10-09): host-side cron receipts of
+    # scripts/check_n8n_activation_grants.py and scripts/check_n8n_workflow_drift.py. See _governance_findings.
+    out.extend(_governance_findings(root, now, prev))
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
@@ -336,6 +344,86 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         return []
 
 
+LEDGER_REL = "data/governance/n8n_coordination_ledger.sqlite"   # n8n_coordination_projection.ledger_path()
+EXECUTOR_STATUS_SCHEMA = "ExecutorStatus@v1"                      # n8n_run_executor STATUS_SCHEMA (executor v2)
+
+
+def _dlq_ledger_rows(path: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """(unreleased dead letters, open breakers) from the ledger, opened read-only (mode=ro, no migration).
+    None when the file or the B5.4 tables are absent (pre-#1594 ledger)."""
+    import sqlite3
+
+    from scripts.lib.n8n_coordination_ledger import breaker_is_open
+
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=3)
+    try:
+        conn.row_factory = sqlite3.Row
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {"dead_letters", "breakers"} <= tables:
+            return None
+        dead = [dict(r) for r in conn.execute(
+            "SELECT slot_key, lane_id, mode, attempts, last_state, last_reason, dead_at FROM dead_letters"
+            " WHERE released_at IS NULL ORDER BY dead_at, slot_key")]
+        brk = [dict(r) for r in conn.execute(
+            "SELECT lane_id, opened_at, consecutive, released_at FROM breakers ORDER BY lane_id")]
+        return dead, [b for b in brk if breaker_is_open(b)]
+    finally:
+        conn.close()
+
+
+def _dlq_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
+    """P2 `dlq:<slot_key>` per unreleased dead letter, P2 `breaker:<lane>` per open breaker.
+
+    A finding stays open until the operator releases it (n8n_dlq.py release) or a RUN_DONE auto-releases the
+    breaker; then it disappears and the fan-in closes it. The ledger is the record of truth; the executor's
+    ExecutorStatus@v1 (`breakers_open`, `dlq_24h`) adds breakers the ledger read missed and, when the ledger cannot
+    be read, stands in: its breakers and one aggregate `dlq:status_count` finding. TRADEAI_FANIN_DLQ=0 opts out."""
+    NOTES.pop("dlq_source", None)
+    if os.environ.get("TRADEAI_FANIN_DLQ", "1") == "0":
+        NOTES["dlq_source"] = "unavailable:disabled_by_env"
+        return []
+    explicit = os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    ledger = Path(explicit) if explicit else root / LEDGER_REL
+    try:
+        rows = _dlq_ledger_rows(ledger)
+        ledger_note = "ok" if rows is not None else "absent"
+    except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+        rows = None
+        ledger_note = f"error:{type(exc).__name__}"
+    status = _load(root / EXECUTOR_LAST_REL)
+    if not (isinstance(status, dict) and status.get("schema") == EXECUTOR_STATUS_SCHEMA):
+        status = None
+    day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    found: list[dict[str, Any]] = []
+    dead, breakers = rows if rows is not None else ([], [])
+    for d in dead:
+        found.append({"source": "dlq", "item": f"dlq:{d.get('slot_key')}", "severity": "P2",
+                      "detail": f"{d.get('lane_id')} {d.get('mode') or ''} {d.get('last_state') or ''} "
+                                f"{d.get('last_reason') or ''} attempts {d.get('attempts')}"[:160],
+                      "artifact_rel": LEDGER_REL, "store": "persistent-state",
+                      "detected_at": d.get("dead_at") or day})
+    open_lanes = {str(b.get("lane_id")): b for b in breakers}
+    ledger_lanes = set(open_lanes)
+    for lane in (status or {}).get("breakers_open") or []:
+        open_lanes.setdefault(str(lane), {"lane_id": str(lane), "opened_at": None, "consecutive": None})
+    for lane, b in sorted(open_lanes.items()):
+        found.append({"source": "dlq", "item": f"breaker:{lane}", "severity": "P2",
+                      "detail": f"breaker open: {b.get('consecutive')} consecutive dead slots; lane paused"[:160],
+                      "artifact_rel": LEDGER_REL if lane in ledger_lanes else EXECUTOR_LAST_REL,
+                      "store": "persistent-state" if lane in ledger_lanes else "data/runtime",
+                      "detected_at": b.get("opened_at") or day})
+    status_dlq = (status or {}).get("dlq_24h")
+    if rows is None and isinstance(status_dlq, int) and status_dlq > 0:
+        found.append({"source": "dlq", "item": "dlq:status_count", "severity": "P2",
+                      "detail": f"executor reports {status_dlq} dead letter(s) in 24 h; ledger {ledger_note}",
+                      "artifact_rel": EXECUTOR_LAST_REL, "store": "data/runtime", "detected_at": day})
+    NOTES["dlq_source"] = (f"ledger:{ledger_note}:dead={len(dead)}:breakers={len(breakers)}:"
+                           f"status={'yes' if status else 'no'}:status_dlq_24h={status_dlq}")
+    return found
+
+
 RELAY_LAST_REL = "data/runtime/n8n_relay/n8n_run_relay_last.json"
 RELAY_UNIT = "tradeai-n8n-run-relay.service"
 RELAY_AUTH_FAILURE_STEP = 3        # auth_failures must rise by at least this much between two fan-in receipts
@@ -403,6 +491,117 @@ def _relay_findings(root: Path, now: datetime, prev: dict[str, Any] | None) -> l
         return []
 
 
+# (fan-in source, receipt, lane_registry lane_id, cadence hours when the registry row has none)
+GOVERNANCE_SOURCES = (
+    ("n8n_activation_grants", "data/runtime/n8n_activation_grants_last.json", "n8n-activation-grants", 0.5),
+    ("n8n_workflow_drift", "data/runtime/n8n_workflow_drift_last.json", "n8n-workflow-drift-check", 1.0),
+)
+GOVERNANCE_STALE_FACTOR = 3.0      # receipt older than 3x the lane cadence = the check has stopped
+
+
+def _governance_lane(lane_id: str) -> dict[str, Any] | None:
+    """The lane_registry row, or None. Separate so tests can stub it without a registry file."""
+    from scripts.lib.lane_registry import load_registry
+    reg = load_registry(ROOT / "config" / "lane_registry.json")
+    return next((r for r in reg.get("lanes") or [] if r.get("lane_id") == lane_id), None)
+
+
+def _governance_rows(source: str, doc: dict[str, Any]) -> list[tuple[str, str, str, Any]]:
+    """(item, severity, detail, detected_at) per finding, derived from the receipt rows (not its own
+    fanin_findings) so the fan-in owns severity. Same map as the checkers' fanin_severity / fanin_findings."""
+    out: list[tuple[str, str, str, Any]] = []
+    if source == "n8n_activation_grants":
+        for r in doc.get("activations") or []:
+            st = str(r.get("status") or "")
+            if st not in {"UNGRANTED_ACTIVATION", "UNGRANTED_ACTIVATION_REGULARISED", "NAMED_IN_OTHER_TIER",
+                          "NAME_ONLY_GRANT"}:
+                continue
+            # P1 only while the LATEST activation is ungranted and the workflow is live; a regularised window
+            # (earlier ungranted, latest granted) stays reported as P3 with its start/end.
+            sev = "P1" if st == "UNGRANTED_ACTIVATION" and r.get("currently_active") else "P3"
+            win = r.get("ungranted_window") or {}
+            detail = f"{r.get('name')} activated {r.get('activated_at')} active={bool(r.get('currently_active'))}"
+            if win:
+                detail += f" ungranted {win.get('start')}..{win.get('end')}"
+            # severity is part of the item: a same-day P3 -> P1 escalation gets its own idempotency key
+            out.append((f"{r.get('workflow_id')}:{st}:{sev}", sev, detail, r.get("activated_at")))
+    else:
+        for r in doc.get("workflows") or []:
+            st = str(r.get("status") or "")
+            if st in {"DRIFT", "MISSING_IN_GIT"}:
+                out.append((f"{r.get('id')}:{st}:P2", "P2", f"{r.get('name')} {','.join(r.get('diffs') or [])}", None))
+            if r.get("placeholder_unsubstituted"):
+                out.append((f"{r.get('id')}:placeholder_unsubstituted:P2", "P2",
+                            f"{r.get('name')} still carries the relay URL placeholder", None))
+    return out
+
+
+def _governance_findings(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """P16 activation attribution + P18 git-vs-live drift, read from their receipts.
+
+    Severity: UNGRANTED_ACTIVATION of a currently active workflow P1; ungranted-but-off, name-only and
+    other-tier attribution P3; DRIFT / MISSING_IN_GIT / unsubstituted relay placeholder P2 (the executor
+    still refuses any lane outside the allowlist, so drift cannot widen what runs on the host).
+    Liveness, like the relay source: a missing receipt is only a note until the lane is scheduled
+    (registry row ACTIVE with a scheduler); then missing, or older than GOVERNANCE_STALE_FACTOR x cadence,
+    is a P2 `receipt:missing` / `receipt:stale`. A stale receipt of an unscheduled lane (a hand run) is
+    not read at all. Dedupe is the fan-in's usual source|item|UTC day key; detected_at is the activation
+    time or the UTC day start so the payload is stable. TRADEAI_FANIN_GOVERNANCE=0 opts out.
+    A broken source (unreadable registry row, malformed receipt) is a note, and also a P2
+    `governance:source_unavailable` when the lane is scheduled or the previous fan-in receipt already
+    recorded that source unavailable (2 consecutive runs). The env opt-out never alarms."""
+    if prev is None:
+        prev = PREV_RECEIPT
+    prev_notes = (prev or {}).get("source_notes") or {}
+    found: list[dict[str, Any]] = []
+    day0 = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    for source, rel, lane_id, default_cadence in GOVERNANCE_SOURCES:
+        key = f"{source}_source"
+        NOTES.pop(key, None)
+        scheduled = False
+        if os.environ.get("TRADEAI_FANIN_GOVERNANCE", "1") == "0":
+            NOTES[key] = "unavailable:RuntimeError:disabled_by_env"
+            continue
+        try:
+            row = _governance_lane(lane_id) or {}
+            scheduled = row.get("state") == "ACTIVE" and (row.get("scheduler") or {}).get("kind") not in (None, "", "none")
+            cadence = float(row.get("expected_cadence_hours") or default_cadence) if scheduled else default_cadence
+            stale_h = GOVERNANCE_STALE_FACTOR * cadence
+            doc = _load(root / rel)
+            if not doc:
+                if scheduled:
+                    found.append({"source": source, "item": "receipt:missing", "severity": "P2",
+                                  "detail": f"lane {lane_id} is scheduled but {rel} is missing or unreadable",
+                                  "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
+                NOTES[key] = f"ok:no_receipt:scheduled={'yes' if scheduled else 'no'}"
+                continue
+            age_h = (now - _stable(doc.get("as_of"), now)).total_seconds() / 3600 if doc.get("as_of") else None
+            stale = age_h is None or age_h > stale_h
+            if stale and not scheduled:
+                NOTES[key] = f"ok:stale_unscheduled:age_h={None if age_h is None else round(age_h, 1)}"
+                continue
+            if stale:
+                found.append({"source": source, "item": "receipt:stale", "severity": "P2",
+                              "detail": (f"{rel} age_h={None if age_h is None else round(age_h, 1)} > "
+                                         f"{GOVERNANCE_STALE_FACTOR}x cadence {cadence}h (lane {lane_id})"),
+                              "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
+            rows = _governance_rows(source, doc)
+            for item, sev, detail, detected in rows:
+                found.append({"source": source, "item": item, "severity": sev, "detail": detail[:160],
+                              "artifact_rel": rel, "store": "data/runtime", "detected_at": detected or day0})
+            NOTES[key] = (f"ok:{len(rows)}:verdict={doc.get('verdict')}:age_h={None if age_h is None else round(age_h, 2)}:"
+                          f"scheduled={'yes' if scheduled else 'no'}{':stale' if stale else ''}")
+        except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
+            NOTES[key] = f"unavailable:{type(exc).__name__}:{str(exc)[:80]}"
+            repeated = str(prev_notes.get(key) or "").startswith("unavailable:") and "disabled_by_env" not in str(prev_notes.get(key))
+            if scheduled or repeated:
+                found.append({"source": source, "item": "governance:source_unavailable", "severity": "P2",
+                              "detail": (f"{NOTES[key]} (lane {lane_id} scheduled={'yes' if scheduled else 'unknown/no'}, "
+                                         f"previous run unavailable={'yes' if repeated else 'no'})")[:160],
+                              "artifact_rel": rel, "store": "data/runtime", "detected_at": day0})
+    return found
+
+
 def _outbox_findings(now: datetime) -> list[dict[str, Any]]:
     """Anomalies from scripts/lib/notification_outbox_projection; fail-soft and recorded in the receipt."""
     global OUTBOX_SOURCE_STATUS
@@ -466,7 +665,7 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(timezone.utc)
     day = now.strftime("%Y-%m-%d")
     sha = served_sha() or ""
-    out = Path(args.receipt) if args.receipt else (root / "data" / "runtime" / "n8n_incident_fanin_last.json")
+    out = Path(args.receipt) if args.receipt else (root / RECEIPT_REL)
     prev = _load(out) or {}
     global PREV_RECEIPT
     PREV_RECEIPT = prev

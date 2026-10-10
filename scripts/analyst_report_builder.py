@@ -26,8 +26,12 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root, served_url as _served_url, resolve_served_path as _resolve_served_path  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
-REPORT_OUT = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+REPORT_OUT = _portfolio_reports_root() / "analyst"
 
 SECTION_IDS = (
     "header_context",
@@ -901,11 +905,7 @@ def _ensemble(symbol: str) -> dict | None:
 
 
 def _chart_url(path: Path | str) -> str:
-    try:
-        rel = Path(path).relative_to(PROJECT_ROOT)
-        return "/" + str(rel).replace("\\", "/")
-    except ValueError:
-        return str(path)
+    return _served_url(path, PROJECT_ROOT)
 
 
 def _attach_symbol_charts(symbol: str, enrich: dict, visuals: list[dict], proposal: dict | None = None) -> None:

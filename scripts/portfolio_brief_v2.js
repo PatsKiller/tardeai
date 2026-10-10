@@ -677,7 +677,12 @@ const doc = new Document({
 });
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
-const outDir = path.join(projectRoot, 'data', 'portfolios', 'reports');
+// DEAD PATH (2026-10-09): nothing in the repo, crontab or launchers invokes this script;
+// portfolio_orchestrator.py writes the brief DOCX itself. Kept, not deleted (AGENTS.md).
+// If revived: reports live in persistent-state (scripts/lib/portfolio_reports_root.py),
+// so honour TRADEAI_PORTFOLIO_REPORTS_ROOT before the release-local fallback below.
+const outDir = process.env.TRADEAI_PORTFOLIO_REPORTS_ROOT
+  || path.join(projectRoot, 'data', 'portfolios', 'reports');
 if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 const outPath = path.join(outDir, `portfolio_brief_${today}_${runType}.docx`);
 

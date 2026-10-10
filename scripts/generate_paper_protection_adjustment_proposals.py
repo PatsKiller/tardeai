@@ -183,6 +183,7 @@ def run(persist=True):
     conn.close()
     # dump JSON file (date passed via arg to avoid Date.now ban is not needed here — file uses provided date)
     out_dir = os.path.join(ROOT, "data/atm/protection_adjustment_proposals")
+    os.makedirs(out_dir, exist_ok=True)  # a fresh tree has no such dir -> FileNotFoundError every run
     fname = os.path.join(out_dir, f"{os.environ.get('PROP_DATE','latest')}_proposals.json")
     with open(fname, "w") as f:
         json.dump({"generated": True, "count": len(all_props), "proposals": all_props}, f, indent=2, default=str)

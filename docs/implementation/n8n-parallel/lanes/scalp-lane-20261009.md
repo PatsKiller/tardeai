@@ -73,3 +73,13 @@ Ratify with `APPROVE_AGENTS_POLICY_4_0_0 <PR> <sha>`. A follow-up PR then sets `
 - **Not built:** an automatic extra run with a longer budget when the lane is stalled. A host script cannot
   request a run, because only the relay holds the `coordination_run` scope. Granting that scope to another
   caller is a §23.3 change.
+
+## Registry-dispatch eligibility (2026-10-09)
+
+The B5 registry dispatcher (`scripts/lib/lane_dispatch.py`, PR #1595) refuses any lane whose command carries a
+`pipeline_manifest.FORBIDDEN_COMMAND_TOKENS` entry. This lane wraps `scripts/market_day_gate.sh`, so it was
+ineligible. `config/lane_dispatch_policy_exceptions.json` (AGENTS.md 4.0.0 §23.3; operator 2026-10-09 ~18:05 ET
+"Okay to everything except extending the scout to closing") exempts this lane from **that token only**, and from
+the B1 reconciler's `stay_on_cron` marker of class `pipeline_excluded_gate` naming it (PR #1597). Any other
+forbidden token, stay-behind or sender rule still blocks it, and a missing or malformed exception file means no
+exception. Eligibility is not dispatch: the registry row has no `dispatch` block, so its mode stays `off`.

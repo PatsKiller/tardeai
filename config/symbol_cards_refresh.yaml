@@ -1,0 +1,13 @@
+# scripts/refresh_symbol_cards.py step 2: materialize data/runtime/symbol_cards_latest.json from
+# :7777/api/v2/symbol-cards (cron 06:40 ET weekdays, lane refresh-symbol-cards).
+# 2026-10-09 breach triage: the cold build takes ~5 s idle but ran past the old fixed 60 s timeout on 10-08 and
+# 10-09 at 06:42, when ~10 enrichment/DB crons run (06:35-06:45), so the cards file went 2 days stale.
+schema: SymbolCardsRefresh@v1
+# Per-attempt read timeout for the endpoint, seconds.
+materialize_timeout_s: 180
+# Extra attempts after a failed first one (timeout, connection error, bad JSON, too few cards).
+materialize_retries: 1
+# Wait between attempts, seconds.
+retry_backoff_s: 30
+# A payload with fewer cards than this is refused and the existing file is kept.
+min_cards: 30

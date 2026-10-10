@@ -1264,7 +1264,11 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     _weekly_context = ""
     if run_type in ("monthly", "manual"):
         try:
-            _weekly_dir = Path(root) / "data" / "portfolios" / "reports" / "weekly"
+            try:
+                from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root
+            except ImportError:  # pragma: no cover - imported as scripts.<module>
+                from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root
+            _weekly_dir = _portfolio_reports_root() / "weekly"
             _weekly_jsons = sorted(_weekly_dir.glob("weekly_*.json"))[-4:]
             if _weekly_jsons:
                 _wk_lines = []

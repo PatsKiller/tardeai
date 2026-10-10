@@ -18,6 +18,12 @@ A second, optional key (TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N) identifies the
 recorded as a REQUESTED row in the ledger ``runs`` table for the lanes named in
 config/n8n_run_allowlist.json (``--run-allowlist``). This process never spawns
 the lane; scripts/n8n_run_executor.py does, from its own unit.
+
+2026-10-09 (n8n maturity B5.3): the read operation ``due`` on route
+``coordination/due`` computes the due slots from the lane registry
+(``--registry``) and the retry policies (``--retry-policies``), re-read on every
+call, plus the run allowlist; a server-minted ``d:`` run key is checked against
+the same computation. ``due`` writes nothing.
 """
 from __future__ import annotations
 
@@ -36,6 +42,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.lib.n8n_coordination_gateway import PILOT_LANES, build_caller_keys, handle_request  # noqa: E402
+from scripts.lib.n8n_due import DEFAULT_REGISTRY_PATH, file_sources  # noqa: E402
+from scripts.lib.n8n_retry_policy import DEFAULT_PATH as DEFAULT_RETRY_POLICIES  # noqa: E402
 from scripts.lib.n8n_coordination_ledger import (  # noqa: E402
     CoordinationLedger,
     LedgerNonceStore,
@@ -178,6 +186,7 @@ def dispatch_http(
     caller_keys: dict | None = None,
     run_store: Any = None,
     run_allowlist: frozenset[str] | None = None,
+    due_sources: Any = None,
 ) -> tuple[int, dict]:
     """One HTTP decision. Proxy headers are not copied into the claim check."""
     del headers  # identity is the HMAC claim; forwarded headers are not read
@@ -217,7 +226,10 @@ def dispatch_http(
         caller_keys=caller_keys,
         run_store=run_store,
         run_allowlist=run_allowlist,
+        due_sources=due_sources,
     )
+    if result.get("schema") == "DueResponse@v1" and result.get("ok") is True:
+        return 200, result                   # closed schema (additionalProperties: false); nothing was written
     result["proxy_headers_used_as_auth"] = False
     if result.get("state") == "REFUSED":
         result["durable"] = False            # nothing was written for a refusal
@@ -231,7 +243,7 @@ def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | Non
                  ledger: CoordinationLedger | None = None, ledger_path: Path | None = None,
                  lane_allowlist: frozenset[str] | None = None, n8n_key: bytes | None = None,
                  run_allowlist: frozenset[str] | None = None,
-                 n8n_previous_key: bytes | None = None):
+                 n8n_previous_key: bytes | None = None, due_sources: Any = None):
     nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
     idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
     # runs are durable or nothing: memory-only mode has no executor to drain it, so no run store
@@ -285,6 +297,7 @@ def make_handler(key: bytes, expected_origin_sha: str, previous_key: bytes | Non
                 caller_keys=caller_keys,
                 run_store=run_store,
                 run_allowlist=run_allowlist,
+                due_sources=due_sources,
             )
             self._send(status, payload)
 
@@ -311,6 +324,8 @@ def serve(
     n8n_key: bytes | None = None,
     n8n_previous_key: bytes | None = None,
     run_allowlist_path: Path | None = None,
+    registry_path: Path | None = None,
+    retry_policies_path: Path | None = None,
 ) -> ThreadingHTTPServer:
     guard_bind(host, port)
     if len(key) < MIN_KEY_BYTES:
@@ -323,9 +338,12 @@ def serve(
     allow = frozenset(PILOT_LANES) | frozenset(extra_lanes or ())
     # 2026-10-08: the run allowlist is read once at serve time; a change needs a restart (promote restarts the unit).
     run_allow = load_run_allowlist(run_allowlist_path)
+    # 2026-10-09 (B5.3): due inputs are re-read per call; the allowlist is narrowed to run_allow in the gateway.
+    due = file_sources(registry_path or DEFAULT_REGISTRY_PATH, run_allowlist_path or DEFAULT_RUN_ALLOWLIST,
+                       retry_policies_path or DEFAULT_RETRY_POLICIES)
     httpd = GatewayServer((host, port), make_handler(key, expected_origin_sha, previous_key, ledger=ledger, ledger_path=ledger_path,
                                                      lane_allowlist=allow, n8n_key=n8n_key, run_allowlist=run_allow,
-                                                     n8n_previous_key=n8n_previous_key))
+                                                     n8n_previous_key=n8n_previous_key, due_sources=due))
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
     httpd.run_allowlist = run_allow  # type: ignore[attr-defined]
     return httpd
@@ -342,6 +360,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="additional lane_id accepted besides the five pilots (e.g. incident-fanin); repeatable")
     parser.add_argument("--run-allowlist", default=str(DEFAULT_RUN_ALLOWLIST),
                         help="N8nRunAllowlist@v1 naming the lanes the run operation may request (read at start)")
+    parser.add_argument("--registry", default=str(DEFAULT_REGISTRY_PATH),
+                        help="lane registry read by the due operation (re-read per call)")
+    parser.add_argument("--retry-policies", default=str(DEFAULT_RETRY_POLICIES),
+                        help="N8nRetryPolicies@v1 read by the due operation (re-read per call)")
     args = parser.parse_args(argv)
     try:
         key = load_key()
@@ -351,7 +373,8 @@ def main(argv: list[str] | None = None) -> int:
         ledger_path = None if args.no_ledger else (Path(args.ledger) if args.ledger else default_ledger_path())
         httpd = serve(args.host, args.port, key=key, expected_origin_sha=args.expected_sha, previous_key=previous,
                       ledger_path=ledger_path, extra_lanes=frozenset(args.allow_lane), n8n_key=n8n_key,
-                      n8n_previous_key=n8n_previous, run_allowlist_path=Path(args.run_allowlist))
+                      n8n_previous_key=n8n_previous, run_allowlist_path=Path(args.run_allowlist),
+                      registry_path=Path(args.registry), retry_policies_path=Path(args.retry_policies))
         print(json.dumps({"bound": f"{args.host}:{httpd.server_address[1]}", "durable": ledger_path is not None,
                           "ledger": str(ledger_path) if ledger_path else None,
                           "run_scope": n8n_key is not None and ledger_path is not None,

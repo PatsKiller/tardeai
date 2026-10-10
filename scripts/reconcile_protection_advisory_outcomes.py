@@ -35,7 +35,21 @@ def db():
     import psycopg2, psycopg2.extras
     return psycopg2.connect(host=os.environ["DB_HOST"], port=os.environ["DB_PORT"],
                             dbname=os.environ["DB_NAME"], user=os.environ["DB_USER"],
-                            password=os.environ["DB_PASSWORD"])
+                            password=os.environ["DB_PASSWORD"],
+                            application_name="reconcile_protection_advisory_outcomes",
+                            connect_timeout=10)
+
+
+def _audit_stop(au, side):
+    """stop_price from an APPLIED audit row's broker_order_<side> block, or None.
+
+    Older/other audit writers omit broker_order_before/after (2026-10-09: KeyError on every
+    pipeline run since one such row landed, so the whole reconcile aborted and no outcome rows
+    were written)."""
+    if not au:
+        return None
+    blk = au.get(f"broker_order_{side}") or {}
+    return f(blk.get("stop_price")) if isinstance(blk, dict) else None
 
 
 def f(x):
@@ -62,8 +76,16 @@ def applied_audit_for(trade_id):
 
 def run(persist=True):
     load_env()
+    conn = db()
+    try:
+        return _reconcile(conn, persist)
+    finally:
+        conn.close()   # also on error — a crashed step must not leave its slot to the reaper
+
+
+def _reconcile(conn, persist=True):
     import psycopg2.extras
-    conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if persist:
         wc = conn.cursor()
         wc.execute(open(os.path.join(ROOT, "migrations/2026_06_02_phase193_advisory_outcomes.sql")).read())
@@ -149,8 +171,8 @@ def run(persist=True):
             else:
                 accuracy = "baseline_no_advisory"
 
-        stop_before = f(ap["current_stop"]) if ap else (f(au["broker_order_before"]["stop_price"]) if au else None)
-        stop_after = f(ap["proposed_stop"]) if ap else (f(au["broker_order_after"]["stop_price"]) if au else None)
+        stop_before = f(ap["current_stop"]) if ap else _audit_stop(au, "before")
+        stop_after = f(ap["proposed_stop"]) if ap else _audit_stop(au, "after")
         giveback_avoided = round(f(ap["giveback_before"]) - f(ap["giveback_after"]), 2) if (ap and ap["giveback_before"] is not None and ap["giveback_after"] is not None) else None
 
         rec = {
@@ -214,7 +236,6 @@ def run(persist=True):
                 {','.join(f'{c}=excluded.{c}' for c in cols if c!='trade_id')}, reconciled_at=now()""", rec)
     if persist:
         conn.commit()
-    conn.close()
     print(json.dumps({"reconciled": len(out), "counts": counts}, indent=2, default=str))
     return out
 

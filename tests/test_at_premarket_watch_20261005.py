@@ -214,5 +214,6 @@ def test_premarket_lane_is_registered_from_6am():
     import json
     lanes = {l["lane_id"]: l for l in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
     lane = lanes["active-trader-premarket-watch"]
-    assert lane["scheduler"]["expression"].startswith("*/5 6-9 * * 1-5 ")
-    assert "premarket_watch.py --apply" in lane["scheduler"]["expression"]
+    # registry-ops-crons 2026-10-09: the expression is the bare schedule; the command lives in command_text
+    assert lane["scheduler"]["expression"] == "*/5 6-9 * * 1-5"
+    assert "premarket_watch.py --apply" in lane["scheduler"]["command_text"]

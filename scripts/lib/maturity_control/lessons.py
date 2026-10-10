@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from scripts.lib.kb_lesson_counters import apply_counter_events
 from scripts.lib.maturity_control.schema import map_kb_status_to_lesson_state
 from scripts.lib.maturity_control.store import load_json_map, resolve_root
 
@@ -109,7 +110,12 @@ def collect_lessons(*, root: Path | str | None = None) -> dict[str, Any]:
 
 
 def _collect_lessons(base: Path, runtime: Path, cio: Path, overlays: dict[str, Any]) -> dict[str, Any]:
-    kb = _latest_by_id_stream(runtime / "advisory_kb_lessons.jsonl")
+    # 2026-10-09: counters = latest content row + counter events after it (the
+    # writer no longer re-appends whole rows per application/hit).
+    kb = apply_counter_events(
+        _latest_by_id_stream(runtime / "advisory_kb_lessons.jsonl"),
+        runtime / "advisory_kb_lesson_applications.jsonl",
+    )
     cands = _latest_by_id_stream(runtime / "advisory_kb_lesson_candidates.jsonl")
     application_events = _count_rows(runtime / "advisory_kb_lesson_applications.jsonl")
     by_id: dict[str, dict[str, Any]] = {}

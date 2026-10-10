@@ -24,10 +24,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
-WEEKLY_DIR = PROJECT_ROOT / "data" / "portfolios" / "reports" / "weekly"
+WEEKLY_DIR = _portfolio_reports_root() / "weekly"
 WEEKLY_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -989,7 +993,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
     global PROJECT_ROOT, STATE_DIR, WEEKLY_DIR
     PROJECT_ROOT = Path(project_root)
     STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
-    WEEKLY_DIR = PROJECT_ROOT / "data" / "portfolios" / "reports" / "weekly"
+    WEEKLY_DIR = _portfolio_reports_root() / "weekly"
     WEEKLY_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -1112,7 +1116,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
     # Update CC dashboard (copy portfolio_live.html to reports/)
     try:
         import shutil as _sh
-        live_src = PROJECT_ROOT / "data" / "portfolios" / "reports" / "portfolio_live.html"
+        live_src = _portfolio_reports_root() / "portfolio_live.html"
         live_dst = PROJECT_ROOT / "reports" / "portfolio_live.html"
         if live_src.exists():
             _sh.copy2(live_src, live_dst)

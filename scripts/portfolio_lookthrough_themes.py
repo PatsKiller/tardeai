@@ -135,12 +135,17 @@ def _themes(underlying, total):
     return out
 
 
-def _advisories(themes, top, total):
+def _advisories(themes, top, total, ips_max=None):
+    # Single-name guideline = the ratified IPS limit (operator 2026-10-09),
+    # not a hardcoded 8%; lib.ips_policy falls back to 8% with a warning.
+    if ips_max is None:
+        from lib.ips_policy import ips_max_position_pct
+        ips_max = ips_max_position_pct()
     adv = []
     for row in top:
-        if row["pct"] >= 8:
+        if row["pct"] >= ips_max:
             adv.append({"severity": "high", "title": f"{row['symbol']} concentration {row['pct']:.1f}%",
-                        "detail": f"${row['value']:,.0f} look-through in {row['symbol']} — above an 8% single-name guideline. "
+                        "detail": f"${row['value']:,.0f} look-through in {row['symbol']} — at/above the {ips_max:g}% IPS single-name limit. "
                                   f"Consider trimming toward 5%."})
         elif row["pct"] >= 5:
             adv.append({"severity": "medium", "title": f"{row['symbol']} {row['pct']:.1f}%",

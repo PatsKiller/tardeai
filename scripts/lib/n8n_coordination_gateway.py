@@ -33,7 +33,14 @@ SCOPES = frozenset({SCOPE_READ, SCOPE_RUN})
 #: key that never grants anything but run+read; it never falls back to the dispatch key.
 DISPATCH_CALLER = "tradeai-dispatch"
 RELAY_CALLER = "n8n-relay"
-ALLOWED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run"})
+#: 2026-10-09 (n8n maturity B5.3, design 02 §3.1): `coordination/due` is a READ route (scope coordination_read,
+#: operation `due` only). It computes what is due from the registry; it writes nothing and runs nothing.
+ALLOWED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run", "coordination/due"})
+DUE_ROUTE = "coordination/due"
+#: `now` on a due request is advisory; more than this many seconds from the gateway clock is refused
+#: (`due_clock_skew`). The value is the design's, not a tunable: docs/implementation/n8n-maturity/
+#: 02-six-workflow-architecture.md §3.1 line 117 ("refuses `now` values more than 90 s from it") and failure row F12.
+DUE_MAX_SKEW_S = 90
 ALLOWED_PROJECTS = frozenset({"trade-ai", "nyc-dof-auction"})
 PILOT_LANES = frozenset(
     {
@@ -149,6 +156,11 @@ REFUSAL_REASONS = frozenset({
     # key or no durable run store on this gateway; a caller_id that maps to no key.
     "run_lane_not_allowlisted", "run_bad_mode", "run_scope_unavailable", "unknown_caller",
     "process_not_registered",   # 2026-10-08 model_job: job.process_id outside n8n_model_job.PROCESS_TASK_TYPE
+    # 2026-10-09 (B5.3): a d:/e:/g: key that compute_due does not currently hold DUE/RETRY_DUE in that mode.
+    "run_slot_not_due",
+    # 2026-10-09 (B5.3) operation `due` (DueResponse@v1 `refused`).
+    "due_clock_skew", "bad_source", "bad_lane_filter", "registry_unreadable", "allowlist_unreadable",
+    "policies_unreadable",
 })
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
@@ -223,10 +235,11 @@ def payload_hash(event: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical(event)).hexdigest()
 
 
-def route_forbidden(route: str) -> str | None:
-    text = (route or "").strip().lower()
-    if not text:
-        return "missing_route"
+def forbidden_route_token(text: str) -> str | None:
+    """The first FORBIDDEN_ROUTE_TOKENS entry in ``text``: a whole token, or a substring of the text with
+    '-' and '/' removed (so `placeorders` and `n8n-activation-grants` match). The matcher route_forbidden
+    uses; scripts/lib/lane_dispatch.py reuses it for lane eligibility. None when clean."""
+    text = (text or "").strip().lower()
     tokens = [tok for tok in re.split(r"[^a-z0-9]+", text) if tok]
     collapsed = text.replace("-", "").replace("/", "")
     for token in tokens:
@@ -235,6 +248,16 @@ def route_forbidden(route: str) -> str | None:
     for token in FORBIDDEN_ROUTE_TOKENS:
         if token in collapsed and token not in {"title"}:
             return token
+    return None
+
+
+def route_forbidden(route: str) -> str | None:
+    text = (route or "").strip().lower()
+    if not text:
+        return "missing_route"
+    hit = forbidden_route_token(text)
+    if hit is not None:
+        return hit
     if text not in ALLOWED_ROUTES:
         return "route_not_allowlisted"
     return None
@@ -253,8 +276,13 @@ def handle_request(
     caller_keys: Mapping[str, CallerKey] | None = None,
     run_store: Any = None,
     run_allowlist: frozenset[str] | set[str] | None = None,
+    due_sources: Any = None,
 ) -> dict[str, Any]:
-    """Authenticate and accept, or return a typed refusal. Never sends, never spawns."""
+    """Authenticate and accept, or return a typed refusal. Never sends, never spawns.
+
+    ``due_sources`` (scripts/lib/n8n_due.DueSources) feeds the read operation ``due`` and the slot-key check in
+    ``run``; None means neither is configured (``due`` refuses registry_unreadable, server-minted run keys refuse
+    run_slot_not_due)."""
     peer = request.get("peer")
     route = str(request.get("route") or "")
     blocked = route_forbidden(route)
@@ -281,9 +309,15 @@ def handle_request(
             return _refused(None, "unknown_operation", peer_ignored=peer)
         if claim["scope"] != SCOPE_RUN:
             return _refused(None, "bad_scope", peer_ignored=peer)
-        return _run(request, claim, run_store=run_store, run_allowlist=run_allowlist, now=_unix(now), peer=peer)
+        return _run(request, claim, run_store=run_store, run_allowlist=run_allowlist, now=_unix(now), peer=peer,
+                    due_sources=due_sources)
     if claim["scope"] != SCOPE_READ:
         return _refused(None, "bad_scope", peer_ignored=peer)
+    if operation == "due" or route.strip().lower() == DUE_ROUTE:
+        if operation != "due" or route.strip().lower() != DUE_ROUTE:
+            return _refused(None, "unknown_operation", peer_ignored=peer)
+        return _due(request, run_store=run_store, run_allowlist=run_allowlist, due_sources=due_sources,
+                    now=_unix(now), peer=peer)
     allow = frozenset(lane_allowlist) if lane_allowlist is not None else PILOT_LANES
     if operation == "status":
         return _status(request, claim, idempotency_store, peer)
@@ -306,7 +340,93 @@ def handle_request(
     return _refused(None, "unknown_operation", peer_ignored=peer)
 
 
-def _run(request, claim, *, run_store, run_allowlist, now: float, peer) -> dict[str, Any]:
+def _due_mod():
+    """scripts/lib/n8n_due, imported lazily: n8n_due -> lane_dispatch imports this module."""
+    try:
+        from scripts.lib import n8n_due as D  # type: ignore
+    except ImportError:
+        import n8n_due as D  # type: ignore
+    return D
+
+
+def _due_refused(code: str, peer) -> dict[str, Any]:
+    """A due refusal is the gateway's ordinary typed refusal ({state: REFUSED, reason}); it does NOT carry the
+    DueResponse@v1 label, whose schema is closed and describes only a computed answer."""
+    return _refused(None, code, peer_ignored=peer)
+
+
+def _load_due_inputs(due_sources, run_allowlist):
+    """(rows, rsha, entries, asha, policies, psha) or raise GatewayError(<source>_unreadable). The allowlist is
+    narrowed to the lanes this gateway loaded at serve time, so due never emits a lane `run` would refuse."""
+    D = _due_mod()
+    if due_sources is None:
+        raise GatewayError("registry_unreadable")
+    try:
+        rows, rsha = due_sources.load_registry()
+    except D.DueSourceError as exc:
+        raise GatewayError("registry_unreadable") from exc
+    try:
+        entries, asha = due_sources.load_allowlist()
+    except D.DueSourceError as exc:
+        raise GatewayError("allowlist_unreadable") from exc
+    try:
+        policies, psha = due_sources.load_policies()
+    except D.DueSourceError as exc:
+        raise GatewayError("policies_unreadable") from exc
+    if run_allowlist is not None:
+        entries = {k: v for k, v in entries.items() if k in frozenset(run_allowlist)}
+    return rows, rsha, entries, asha, policies, psha
+
+
+def _due(request, *, run_store, run_allowlist, due_sources, now: float, peer) -> dict[str, Any]:
+    """DueResponse@v1 (design 02 §3). Read-only: nothing is written, nothing is run."""
+    D = _due_mod()
+    source = request.get("source", "schedule")
+    if source not in D.SOURCES:
+        return _due_refused("bad_source", peer)
+    claimed = request.get("now")
+    if claimed is not None:
+        try:
+            if abs(_parse_time(claimed).timestamp() - now) > DUE_MAX_SKEW_S:
+                return _due_refused("due_clock_skew", peer)
+        except GatewayError:
+            return _due_refused("due_clock_skew", peer)
+    limit = request.get("limit", D.DEFAULT_LIMIT)
+    if isinstance(limit, bool) or not isinstance(limit, int):
+        limit = D.DEFAULT_LIMIT
+    limit = max(1, min(limit, D.MAX_LIMIT))
+    try:
+        rows, rsha, entries, asha, policies, psha = _load_due_inputs(due_sources, run_allowlist)
+    except GatewayError as exc:
+        return _due_refused(exc.reason, peer)
+    lane_filter = request.get("lane_filter")
+    if lane_filter is not None:
+        known = {r["lane_id"] for r in rows}
+        if (not isinstance(lane_filter, list) or not lane_filter or len(lane_filter) > D.MAX_LANE_FILTER
+                or not all(isinstance(x, str) and x in known for x in lane_filter)):
+            return _due_refused("bad_lane_filter", peer)
+    return D.compute_due(rows, entries, policies, run_store, now, source=source, lane_filter=lane_filter,
+                         limit=limit, tz=getattr(due_sources, "tz", D.DEFAULT_TZ), registry_sha=rsha,
+                         allowlist_sha=asha, policies_sha=psha)
+
+
+def _run_envelope(row, duplicate: bool, run_store) -> dict[str, Any]:
+    return {
+        "schema": RUN_REQUESTED_SCHEMA,
+        "state": row["state"],
+        "run_id": row["run_id"],
+        "lane_id": row["lane_id"],
+        "mode": row["mode"],
+        "requested_by": row.get("requested_by"),
+        "caller_id": row.get("caller_id"),
+        "requested_at": row.get("requested_at"),
+        "durable": bool(getattr(run_store, "durable", False)),
+        "duplicate": bool(duplicate),
+        "peer_used_as_auth": False,
+    }
+
+
+def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sources=None) -> dict[str, Any]:
     """Record a run REQUEST for an allowlisted lane. The gateway writes one ``runs`` row (state REQUESTED) and
     returns RunRequested@v1; scripts/n8n_run_executor.py claims it from the ledger. A repeated idempotency_key
     returns the existing row with ``duplicate: true`` whatever state it has reached. Nothing is spawned here."""
@@ -330,22 +450,49 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer) -> dict[
     requested_by = request.get("requested_by")
     if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
         return _refused(None, "malformed_event", peer_ignored=peer)
+    if run_id[:2].lower() in ("d:", "e:", "g:"):
+        # 2026-10-09 (B5.3, design 02 §3.3): a server-minted slot key. A replay of an accepted key returns the
+        # existing row (it is IN_FLIGHT/DONE now, so it is no longer DUE); otherwise compute_due must currently
+        # hold this exact key DUE or RETRY_DUE in this mode, or n8n invented the slot. The prefix test is
+        # case-insensitive so `D:`/`E:`/`G:` cannot bypass the check as a "legacy" key: only the exact lower-case,
+        # well-formed form is accepted, and its lane/mode must be the request's (a replay never returns another
+        # lane's row).
+        D = _due_mod()
+        parsed = D.parse_key(run_id)
+        if parsed is None:
+            out = _refused(None, "run_slot_not_due", peer_ignored=peer)
+            out["slot_state"] = "MALFORMED_KEY"
+            return out
+        if parsed[1] != lane_id or parsed[2] != mode:
+            out = _refused(None, "run_slot_not_due", peer_ignored=peer)
+            out["slot_state"] = "KEY_MISMATCH"
+            return out
+        existing = run_store.get(run_id)
+        if existing is not None:
+            if existing.get("lane_id") != lane_id or existing.get("mode") != mode:
+                out = _refused(None, "run_slot_not_due", peer_ignored=peer)
+                out["slot_state"] = "KEY_MISMATCH"
+                return out
+            return _run_envelope(existing, True, run_store)
+        try:
+            rows, _rsha, entries, _asha, policies, _psha = _load_due_inputs(due_sources, run_allowlist)
+        except GatewayError:
+            return _refused(None, "run_slot_not_due", peer_ignored=peer)
+        check = D.check_slot_key(run_id, lane_id, mode, registry_rows=rows, allowlist=entries, policies=policies,
+                                 run_store=run_store, now=now, tz=getattr(due_sources, "tz", D.DEFAULT_TZ))
+        if not check.ok:
+            out = _refused(None, "run_slot_not_due", peer_ignored=peer)
+            out["slot_state"] = check.state
+            return out
+        row, duplicate = run_store.request(
+            run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"],
+            now=now, slot_key=check.slot_key, attempt=check.attempt, parent_run_id=check.parent_run_id,
+            klass=check.klass, priority=check.priority)
+        return _run_envelope(row, duplicate, run_store)
     row, duplicate = run_store.request(
         run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
     )
-    return {
-        "schema": RUN_REQUESTED_SCHEMA,
-        "state": row["state"],
-        "run_id": row["run_id"],
-        "lane_id": row["lane_id"],
-        "mode": row["mode"],
-        "requested_by": row.get("requested_by"),
-        "caller_id": row.get("caller_id"),
-        "requested_at": row.get("requested_at"),
-        "durable": bool(getattr(run_store, "durable", False)),
-        "duplicate": bool(duplicate),
-        "peer_used_as_auth": False,
-    }
+    return _run_envelope(row, duplicate, run_store)
 
 
 #: Injected by tests; production uses n8n_model_job.bridge_governed_call (loopback HTTP to the governed bridge).
