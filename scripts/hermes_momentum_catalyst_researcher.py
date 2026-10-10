@@ -52,9 +52,45 @@ def classify_catalyst(text):
     return "news_momentum"
 
 
-def search_catalyst(symbol, query_suffix="latest news"):
-    """Query SearXNG for a symbol's catalyst."""
+def _routed_search(symbol, query, candidate=None, caller="hermes_momentum_catalyst", intent=None):
+    """Search routing engine path (2026-10-10), or None when SEARCH_ROUTING_ENGINE is off.
+
+    Class catalyst_confirmation, promoted to scalp_priority when scripts/lib/scalp_priority.py marks the
+    symbol about to fire (on the scalp list, near the GO line or showing momentum, not researched in 30
+    min). The cache is keyed on (symbol, intent) so L708 and L379 share one entry per intent. Same row shape
+    as the SearXNG path below, so downstream code is unchanged."""
+    try:
+        from lib import search_router
+    except ImportError:  # pragma: no cover
+        from scripts.lib import search_router  # type: ignore
+    if not search_router.engine_enabled():
+        return None
+    out = search_router.route_search(
+        query, request_class="scalp_research", caller=caller, subject=symbol, intent=intent or query,
+        categories="news", limit=MAX_SOURCES_PER_TICKER, cache_ttl_s=1200,
+        candidates=[candidate] if isinstance(candidate, dict) else [])
+    if not out["results"]:
+        # A declared no_coverage is an honest empty answer; anything else is an error row.
+        reason = str(out.get("denied_reason") or "")
+        return [] if reason.startswith("NO_COVERAGE") else [{"error": reason[:100]}]
+    results = out["results"][:MAX_SOURCES_PER_TICKER]
+    try:
+        from hermes_source_policy import filter_search_results
+        results = filter_search_results(results)
+    except Exception:
+        pass
+    return [{k: r.get(k, "") for k in ("title", "url", "content", "engine", "published")} for r in results]
+
+
+def search_catalyst(symbol, query_suffix="latest news", candidate=None, caller="hermes_momentum_catalyst"):
+    """Query SearXNG for a symbol's catalyst (or the search routing engine when SEARCH_ROUTING_ENGINE=1)."""
     query = f"{symbol} stock {query_suffix}"
+    try:
+        routed = _routed_search(symbol, query, candidate, caller, intent=query_suffix)
+    except Exception as e:  # noqa: BLE001 — same contract as the SearXNG path: an error row, never a raise
+        routed = [{"error": f"router:{type(e).__name__}"}]
+    if routed is not None:
+        return routed
     params = urllib.parse.urlencode({
         "q": query, "format": "json", "categories": "news",
         "time_range": "day", "engines": "google news,bing news,duckduckgo"

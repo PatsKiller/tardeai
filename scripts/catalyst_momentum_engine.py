@@ -159,6 +159,21 @@ def main():
     return rc
 
 
+def _catalyst_search(search_catalyst, sym, band, cand):
+    """One catalyst search. With SEARCH_ROUTING_ENGINE=1 the candidate row (score, decision, rvol, gap_pct)
+    travels with the question so the routing engine can classify a scalp about to fire (2026-10-10);
+    otherwise the historic two-argument call, byte for byte."""
+    suffix = "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing"
+    try:
+        from lib.search_router import engine_enabled
+    except ImportError:  # pragma: no cover
+        from scripts.lib.search_router import engine_enabled  # type: ignore
+    if engine_enabled():
+        return search_catalyst(sym, suffix, candidate=cand if isinstance(cand, dict) else None,
+                               caller="catalyst_momentum_engine")
+    return search_catalyst(sym, suffix)
+
+
 def _dry_run(args) -> int:
     """No DB connection, no writer, no subprocess, no marker, no receipt (AGENTS.md §6)."""
     band = BANDS[args.band]
@@ -169,8 +184,7 @@ def _dry_run(args) -> int:
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
-            sources, errored = _usable_sources(
-                search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing"))
+            sources, errored = _usable_sources(_catalyst_search(search_catalyst, sym, band, c))
         except Exception:
             sources, errored = [], True
         search_errors += int(errored and not sources)
@@ -215,7 +229,7 @@ def _run(args, stats: dict) -> int:
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
-            sources = search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing")
+            sources = _catalyst_search(search_catalyst, sym, band, c)
         except Exception as e:
             log.warning("  %s: catalyst search failed: %s", sym, e); search_errors += 1; continue
         sources, errored = _usable_sources(sources)

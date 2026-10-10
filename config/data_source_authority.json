@@ -1361,6 +1361,10 @@
       ],
       "retired": [],
       "no_coverage": "declared_gap",
+      "routing_policy": "config/search_routing_policy.json",
+      "routing_engine": "scripts/lib/search_router.py",
+      "routing_receipts": "runtime/search_routing_receipts.jsonl",
+      "_routing_note": "2026-10-10 (operator: conserve the $20/month Brave account; scalps about to fire first): question class -> cache -> free lane (SearXNG with an explicit engine list that never names braveapi, internal catalyst_record news, the Alpha Vantage owner's news store once granted) -> paid Brave only when the class allows it and the free answer fails the measurable quality rule -> declared no_coverage. Dollar budget, pools and the scalp-priority definition live in the policy file. Amends this row's routing only: same store, same writer, same primary and backups; no new provider.",
       "answers": [
         "web_search"
       ],

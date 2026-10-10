@@ -240,6 +240,22 @@ def _default_brave(query: str, **kw: Any) -> Any:
     return brave_router.search(query, **kw)
 
 
+def _engine_on(env: dict[str, str]) -> bool:
+    try:
+        from scripts.lib import search_router
+    except ImportError:  # pragma: no cover
+        from lib import search_router  # type: ignore
+    return search_router.engine_enabled(env)
+
+
+def _default_route(query: str, *, env: dict[str, str], **kw: Any) -> Any:
+    try:
+        from scripts.lib import search_router
+    except ImportError:  # pragma: no cover
+        from lib import search_router  # type: ignore
+    return search_router.route_query(query, env=env, enabled=True, **kw)
+
+
 def gather(
     request: dict[str, Any],
     *,
@@ -248,8 +264,14 @@ def gather(
     brave_fn: Optional[Callable[..., Any]] = None,
     env: Optional[dict[str, str]] = None,
     now: Optional[datetime] = None,
+    route_fn: Optional[Callable[..., Any]] = None,
 ) -> dict[str, Any]:
-    """Web results for one research request, or ``{"used": False}``. Never raises."""
+    """Web results for one research request, or ``{"used": False}``. Never raises.
+
+    With ``SEARCH_ROUTING_ENGINE=1`` each planned query goes through the search routing engine
+    (``scripts/lib/search_router.py``, class ``research``): cache, then SearXNG with named engines, then
+    Brave only when the free answer fails the policy's quality rule and the dollar budget has room —
+    replacing the "Brave only when SearXNG returned nothing" rule and this caller's per-caller cap."""
     s = settings(cfg)
     if not applies(request, s):
         return {"used": False, "reason": "not_enabled_for_reason"}
@@ -281,8 +303,38 @@ def gather(
     if reused:
         log.append({"query": "reused_research_objects", "provider": "research_objects", "ok": True, "n": len(reused)})
     planned = planned_queries(request, s, now=now)
+    routed = route_fn is not None or _engine_on(env)
+    routed_key: Optional[str] = None
     for q, kind in planned:
         provider, resp = "searxng", None
+        if routed:
+            try:
+                if routed_key is None:
+                    routed_key = _brave_key(env)
+                rr = (route_fn or _default_route)(
+                    q, caller=caller, symbol=_symbol(request) or None, kind=kind, count=n,
+                    idempotency_key=f"hwr|{rid}|{q}", env=env, api_key=routed_key or None,
+                )
+                provider = str(getattr(rr, "provider", "") or "search_router")
+                resp = rr
+                hits = list(getattr(rr, "results", None) or []) if getattr(rr, "ok", False) else []
+                hits = [h for h in hits if isinstance(h, dict) and relevant(h)]
+            except Exception as exc:  # noqa: BLE001
+                hits = []
+                log.append({"query": q, "provider": "search_router", "ok": False, "reason": type(exc).__name__})
+            log.append({"query": q, "provider": provider, "ok": bool(hits), "n": len(hits),
+                        "tier": getattr(resp, "tier", None),
+                        "reason": None if hits else str(getattr(resp, "reason", "") or "no_results")[:120]})
+            for h in hits:
+                url = str((h or {}).get("url") or "").strip()
+                if not url.startswith("http") or _canonical(url) in seen or len(results) >= cap:
+                    continue
+                seen.add(_canonical(url))
+                body = h.get("description") or h.get("snippet") or h.get("content") or ""
+                results.append({"id": f"w{len(results) + 1}", "title": str(h.get("title") or "")[:200], "url": url,
+                                "snippet": str(body)[:chars], "provider": str(h.get("provider") or provider),
+                                "query": q})
+            continue
         try:
             resp = free_fn(q, caller=caller, kind=kind, count=n)
         except Exception as exc:  # noqa: BLE001
