@@ -55,7 +55,26 @@ def main(argv: list[str] | None = None) -> int:
         help="append outcomes and lesson candidates to the durable ledgers",
     )
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--as-of",
+        default=None,
+        help="simulate the sweep at this ISO instant (report only; refused with --apply)",
+    )
     args = ap.parse_args(argv)
+
+    when = datetime.now(timezone.utc)
+    if args.as_of:
+        if args.apply:
+            # A backdated or future-dated evaluated_at must never reach the ledger.
+            print(json.dumps({"ok": False, "outcome": "AS_OF_REFUSED_WITH_APPLY"}, indent=2))
+            return 2
+        try:
+            when = datetime.fromisoformat(str(args.as_of).replace("Z", "+00:00"))
+        except ValueError:
+            print(json.dumps({"ok": False, "outcome": "AS_OF_UNPARSEABLE", "as_of": args.as_of}, indent=2))
+            return 2
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
 
     root = Path(args.state_root)
     commitments = read_jsonl(root / COMMITMENTS)
@@ -81,10 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     from scripts.lib.commitment_price_observation import make_price_observation_provider
     from scripts.resolve_due_checkpoints import _price_lookup_factory
 
-    provider = make_price_observation_provider(price_lookup=_price_lookup_factory())
-    res = sweep_due_commitments(commitments, ledger=ledger, now=datetime.now(timezone.utc),
+    provider = make_price_observation_provider(price_lookup=_price_lookup_factory(), now=when)
+    res = sweep_due_commitments(commitments, ledger=ledger, now=when,
                                 observation_provider=provider)
     report = res.to_dict()
+    report["as_of"] = when.isoformat()
     report["state_root"] = str(root)
     report["applied"] = bool(args.apply)
     report["commitments_path"] = str(root / COMMITMENTS)

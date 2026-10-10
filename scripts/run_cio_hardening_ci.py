@@ -3935,6 +3935,8 @@ GATES = [
             "tests/test_registry_signals_r1_20261009.py",
             # registry-ops-crons 2026-10-09: incident-notifier + P16/P18 host-cron rows, PAUSED pending install.
             "tests/test_registry_ops_crons_20261009.py",
+            # commitment-horizon-due 2026-10-09: due = created+horizon; sweep horizon guard + terminal UNSCOREABLE.
+            "tests/test_commitment_horizon_due_20261009.py",
         ],
     ),
     (

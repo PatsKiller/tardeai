@@ -43,14 +43,18 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 SCHEMA = "GovernedCommitment@v1"
 OUTCOME_SCHEMA = "GovernedCommitmentOutcome@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 FEATURE_FLAG = "GOVERNED_COMMITMENT_ENABLED"
-OUTCOMES = ("CONFIRMED", "REFUTED", "EXPIRED", "INSUFFICIENT_EVIDENCE")
+OUTCOMES = ("CONFIRMED", "REFUTED", "EXPIRED", "INSUFFICIENT_EVIDENCE", "UNSCOREABLE")
+#: Terminal outcome for a commitment no observation can ever score (an
+#: unfalsifiable claim, or one minted without an observation_spec). Unlike
+#: INSUFFICIENT_EVIDENCE it is final: re-evaluating it tomorrow cannot change it.
+UNSCOREABLE = "UNSCOREABLE"
 
 REQUIRED_FIELDS = (
     "claim",
@@ -95,6 +99,39 @@ def _parse_ts(raw: Any) -> datetime | None:
     except Exception:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+#: Same literal-duration grammar outcome_resolution.checkpoint_deadline_migrations
+#: accepts: "14d", "2 weeks", "36h", "P3D", "PT12H". Session/event horizons are
+#: ambiguous and deliberately not parsed.
+_HORIZON_RE = re.compile(r"([1-9][0-9]{0,4})\s*(h|hours?|d|days?|w|weeks?)")
+_HORIZON_ISO_RE = re.compile(r"P([1-9][0-9]{0,4})D|PT([1-9][0-9]{0,4})H")
+_HORIZON_SECONDS = {"h": 3600, "d": 86400, "w": 604800}
+
+
+def horizon_delta(horizon: Any) -> timedelta | None:
+    """Parse a commitment horizon to a timedelta; None when not an explicit duration.
+
+    A caller that gets None must refuse (to mint, or to settle early) -- never
+    substitute a default horizon.
+    """
+    text = str(horizon or "").strip()
+    m = _HORIZON_RE.fullmatch(text.lower())
+    if m:
+        return timedelta(seconds=int(m[1]) * _HORIZON_SECONDS[m[2][0]])
+    iso = _HORIZON_ISO_RE.fullmatch(text)
+    if iso:
+        return timedelta(days=int(iso[1])) if iso[1] else timedelta(hours=int(iso[2]))
+    return None
+
+
+def horizon_closes_at(commitment: Mapping[str, Any]) -> datetime | None:
+    """created_at + horizon: the earliest instant the claim's window has closed."""
+    delta = horizon_delta(commitment.get("horizon"))
+    created = _parse_ts(commitment.get("created_at") or commitment.get("frozen_at"))
+    if delta is None or created is None:
+        return None
+    return created + delta
 
 
 def _commitment_id(c: dict[str, Any]) -> str:
@@ -237,6 +274,16 @@ def build_governed_commitment(
     falsifiable, reason = claim_is_falsifiable(commitment)
     if not falsifiable:
         errs.append("claim_not_falsifiable:" + reason)
+    # 2026-10-09: the due date is a function of the horizon, not of the caller's
+    # habit. cortex_shadow_pipeline minted a 14d claim (XLB) due at +7d, so the
+    # sweep would have closed its window at half-time. Refuse at mint: the
+    # horizon must be an explicit duration and due_at may not precede it.
+    if commitment["horizon"]:
+        closes = horizon_closes_at(commitment)
+        if closes is None:
+            errs.append("horizon_not_an_explicit_duration")
+        elif (_parse_ts(commitment["due_at"]) or created) < closes:
+            errs.append("due_before_horizon_close")
     if errs:
         raise CommitmentError(";".join(errs))
     commitment["commitment_id"] = _commitment_id(commitment)
@@ -364,7 +411,10 @@ __all__ = [
     "SCHEMA",
     "OUTCOME_SCHEMA",
     "OUTCOMES",
+    "UNSCOREABLE",
     "REQUIRED_FIELDS",
+    "horizon_delta",
+    "horizon_closes_at",
     "FEATURE_FLAG",
     "CommitmentError",
     "feature_enabled",

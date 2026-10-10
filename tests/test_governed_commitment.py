@@ -28,7 +28,7 @@ def _base(**kw):
         claim="V will hold its 50-day moving average over the next week",
         confidence=0.7,
         horizon="7d",
-        due_at=datetime(2026, 9, 17, 0, 0, tzinfo=timezone.utc),
+        due_at=datetime(2026, 9, 17, 1, 0, tzinfo=timezone.utc),
         falsifier="V closes below the 50-day MA for two consecutive sessions",
         evidence_refs=["research:46057", "material_change:mc-1"],
         source_identity="brave_router+research_scheduler",

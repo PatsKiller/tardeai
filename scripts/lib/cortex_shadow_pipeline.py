@@ -20,17 +20,21 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
 from scripts.lib.agent_view_v1 import critic_pass, persist_allowed, produce_agent_view_v1
+from scripts.lib.commitment_price_observation import direction_of
 from scripts.lib.governed_commitment import (
     FEATURE_FLAG as COMMITMENT_FLAG,
+    UNSCOREABLE,
+    CommitmentError,
     build_governed_commitment,
     claim_is_falsifiable,
     evaluate_outcome,
     feature_enabled as commitment_enabled,
+    horizon_delta,
 )
 from scripts.lib.prior_calibration_v1 import CalibrationStore, gate_scoring_allowed
 
@@ -150,6 +154,7 @@ def run_cortex_shadow(
     dry_run: bool = True,
     env: Mapping[str, str] | None = None,
     author_stance: str | None = None,
+    observation_spec: Mapping[str, Any] | None = None,
 ) -> CortexShadowResult:
     """Run one shadow pass. Flag OFF ⇒ no-op. dry_run ⇒ no durable writes."""
     env_map = dict(env if env is not None else os.environ)
@@ -205,31 +210,58 @@ def run_cortex_shadow(
 
     if commitment_enabled(env_map) and view.critic_pass:
         now = datetime.now(timezone.utc)
-        due = due_at or (now + timedelta(days=7))
+        # 2026-10-09: due derives from the horizon. This line was
+        # `now + timedelta(days=7)` whatever the horizon said, so the 14d XLB
+        # claim (gcmt_c300f64e4756a9b68285d474) was due at +7d and the sweep
+        # would have closed it EXPIRED at half-time. No explicit-duration
+        # horizon => no prediction: mint nothing rather than guess a window.
+        span = horizon_delta(horizon)
+        if span is None:
+            return CortexShadowResult(ok=True, outcome="observation_only", view=view_row,
+                                      paths=paths, reason="horizon_not_an_explicit_duration")
+        due = due_at or (now + span)
         scoreable, refusal = claim_is_falsifiable({"claim": view.summary, "falsifier": falsifier,
                                                   "horizon": horizon, "due_at": due})
         if not scoreable:
             return CortexShadowResult(ok=True, outcome="observation_only", view=view_row,
                                       paths=paths, reason=refusal)
-        commitment_row = build_governed_commitment(
-            claim=view.summary,
-            confidence=view.confidence,
-            horizon=horizon,
-            due_at=due,
-            falsifier=falsifier,
-            evidence_refs=list(view.citations) or [f"view:{view.view_id}"],
-            source_identity="cortex_shadow_pipeline",
-            source_sha=sha,
-            served_sha=sha,
-            subject_guid=subject,
-            trigger_provenance={
-                "producer": "cortex_shadow_pipeline",
-                "trigger": "agent_view_v1",
-                "view_id": view.view_id,
-            },
-            created_at=now,
-            frozen_at=now,
-        )
+        # The price observation adapter scores only a recorded observation_spec
+        # (close_return_pct / ticker_prices / operator / threshold). A stance or
+        # a free-text falsifier is not one, and inventing a threshold here would
+        # be manufactured evidence -- so without a valid spec the commitment is
+        # minted, but marked UNSCOREABLE at mint and settled so at its horizon.
+        spec = dict(observation_spec) if isinstance(observation_spec, Mapping) else None
+        if spec is not None and direction_of({"observation_spec": spec}) is None:
+            spec_refusal = "observation_spec_not_scoreable"
+            spec = None
+        else:
+            spec_refusal = "no_observation_spec"
+        try:
+            commitment_row = build_governed_commitment(
+                claim=view.summary,
+                confidence=view.confidence,
+                horizon=horizon,
+                due_at=due,
+                falsifier=falsifier,
+                evidence_refs=list(view.citations) or [f"view:{view.view_id}"],
+                source_identity="cortex_shadow_pipeline",
+                source_sha=sha,
+                served_sha=sha,
+                subject_guid=subject,
+                trigger_provenance={
+                    "producer": "cortex_shadow_pipeline",
+                    "trigger": "agent_view_v1",
+                    "view_id": view.view_id,
+                },
+                created_at=now,
+                frozen_at=now,
+                observation_spec=spec,
+            )
+        except CommitmentError as exc:
+            return CortexShadowResult(ok=False, outcome="commitment_refused", view=view_row,
+                                      paths=paths, reason=str(exc))
+        if spec is None:
+            commitment_row["scoreability"] = {"state": UNSCOREABLE, "reason": spec_refusal}
         if author_stance:
             # The L3 author's own stance (BULLISH / BEARISH / ...), kept beside
             # the AgentView posture so the outcome sweep can read a direction

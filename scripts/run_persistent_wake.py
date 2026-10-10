@@ -289,6 +289,9 @@ def _maybe_cortex_shadow_after_wake(
                 "horizon": str(author.get("horizon") or "7d"),
                 "stance": mapped,
                 "author_stance": raw_stance or None,
+                # A recorded, scoreable observable when the author supplied one;
+                # absent => the commitment is minted UNSCOREABLE (2026-10-09).
+                "observation_spec": author.get("observation_spec") if isinstance(author.get("observation_spec"), dict) else None,
             }
             if mapped == "ABSTAIN":
                 shadow_env["GOVERNED_COMMITMENT_ENABLED"] = "0"
