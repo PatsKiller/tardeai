@@ -1,4 +1,5 @@
-"""AGENTS.md 4.4.0 — the R1 shadow and canary rows may be cron rows (§23.11, §23.18 (c)); PROPOSED 2026-10-10.
+"""AGENTS.md 4.4.0 — the R1 shadow and canary rows may be cron rows (§23.11, §23.18 (c)); PROPOSED 2026-10-10, ACTIVE 2026-10-10
+(ratified `APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe`; merged #1660 as 40e445d79).
 
 The failure this guards against (Agent A, 2026-10-10): a §23.11 dispatcher row (`kind: n8n`, `expression:
 "dispatcher"`) fails CRON_PRESENT_WHILE_SCHEDULER_N8N and the inactive-n8n-row check while its cron line is live, so
@@ -218,3 +219,21 @@ def test_new_text_carries_no_absolute_home_path():
 
 def test_agents_md_keeps_lf_line_endings():
     assert b"\r\n" not in (ROOT / "AGENTS.md").read_bytes()
+
+
+def test_when_active_the_ratification_is_recorded():
+    """Ratified 2026-10-10 by PR #1660 comment (PatsKiller, 2026-10-10T20:04:37Z) "APPROVE_AGENTS_POLICY_4_4_0 1660
+    463535dfe"; merged as 40e445d79. An ACTIVE 4.4.0 carries a real date, the operator line, the merge sha, the §23
+    heading and status line, and the code gate open on 4.4.0 terms."""
+    if _version() == (4, 4, 0) and _control("Status") == "ACTIVE":
+        assert _control("Effective-Date") == "2026-10-10"
+        rest = _row().group(2)
+        assert f"{TOKEN} 1660 463535dfe" in rest and "40e445d790c4b8294c3f2e3fb64cbb9f1658e9d9" in rest
+        assert "2026-10-10T20:04:37Z" in rest
+        assert LD.R1_SHADOW_SHAPE_STATUS == "ACTIVE"
+        banner = _flat(AGENTS[: AGENTS.index("**4.0.0 is ACTIVE")])
+        assert "4.4.0 is ACTIVE (MAJOR)" in banner and f"{TOKEN} 1660 463535dfe" in banner
+        assert "4.4.0 is PROPOSED" not in AGENTS
+        assert re.search(r"^# 23 · .*— ACTIVE 4\.4\.0$", AGENTS, re.M)
+        assert f"**4.4.0 ACTIVE (ratified 2026-10-10,** `{TOKEN} 1660 463535dfe`**)**" in _flat(AGENTS)
+        assert "4.4.0 (ACTIVE 2026-10-10; the 4.3.0 text stays readable" in _flat(_subsection("23.7"))
