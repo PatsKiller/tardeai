@@ -90,8 +90,12 @@ DISPATCHER_WORKFLOW_ID = "tradeai-dispatcher"
 #: §23.12 shadow step is a CRON row: scheduler.kind "cron", scheduler.stage "shadow", dispatch.mode "dry_run" (wave 1,
 #: n8nmat/dispatch-shadow-wave1). 4.3.0 §23.18 (c) admits an R1 class only on an expression-"dispatcher" row, so this
 #: shape is admitted for R1 classes only once the amendment is ratified: "PROPOSED" until the ratifying edit flips it,
-#: and tests/test_r1_shadow_shape_20261010.py fails unless it matches AGENTS.md. Canary/cutover are unchanged: they
-#: still need the dispatcher row.
+#: and tests/test_r1_shadow_shape_20261010.py fails unless it matches AGENTS.md.
+#: Canary (operator ruling 2026-10-10 ~14:00 ET, folded into 4.4.0 by the same constant): the §23.12 canary fires
+#: `live` with the cron line still present, so it is a cron row too — stage "canary", dispatch.mode "live", an
+#: allowlist live_arg that is set (not null), and the allowlist lock (lock_kind flock) equal to the cron line's own
+#: flock lock as declared in scheduler.command_text, so the lock proves no double run (§23.12). Cutover still needs
+#: the dispatcher row.
 R1_SHADOW_SHAPE_POLICY_VERSION = "4.4.0"
 R1_SHADOW_SHAPE_STATUS = "PROPOSED"
 #: The only route a governed LLM job may use for model calls (AGENTS §23.4, §9.2, §12; `cio-governed-bridge`).
@@ -711,9 +715,13 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
       * the row shape is one of
           - a dispatcher row: scheduler.kind "n8n", scheduler.expression == "dispatcher" and scheduler.stage in
             {shadow, canary, cutover} (§23.11); or
-          - a shadow-on-cron row (r1_shadow_on_cron_shape; only while R1_SHADOW_SHAPE_STATUS is ACTIVE):
-            scheduler.kind "cron", scheduler.stage "shadow", dispatch.mode "dry_run", and an allowlist entry whose
-            live_arg is null, so no live argv exists for the dispatcher to run while the cron line does the work;
+          - a cron ladder row (r1_shadow_on_cron_shape; only while R1_SHADOW_SHAPE_STATUS is ACTIVE), either
+            shadow: scheduler.kind "cron", scheduler.stage "shadow", dispatch.mode "dry_run", and an allowlist entry
+            whose live_arg is null, so no live argv exists while the cron line does the work; or
+            canary: scheduler.kind "cron", scheduler.stage "canary", dispatch.mode "live", an allowlist live_arg
+            that is set, lock_kind "flock", and the allowlist lock equal to every flock lock in the row's
+            scheduler.command_text (the cron line's lock), so the lock proves no double run;
+          a cron row at cutover is refused (cutover is the dispatcher row);
         `tradeai-dispatcher` (the workflow id) as the expression is refused by name;
       * an allowlist entry with a non-empty dry_run_arg (the shadow step needs a real dry run);
       * output_signal is the LaneRunReceipt@v1 (json_key ok_at on data/runtime/<x>_last.json) and the allowlist
@@ -753,8 +761,12 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
         entry = load_run_allowlist_entries().get(lane)
     if not isinstance(entry, Mapping):
         return False, "not_allowlisted"
-    if cron_shadow and entry.get("live_arg") is not None:
+    if cron_shadow and sched.get("stage") == "shadow" and entry.get("live_arg") is not None:
         return False, f"shadow_on_cron_live_arg_not_null:{entry.get('live_arg')!r}"
+    if cron_shadow and sched.get("stage") == "canary":
+        ok, why = r1_canary_lock_matches(row, entry)
+        if not ok:
+            return False, why
     for key in ("command", "dry_run_arg", "live_arg"):
         for tok in entry.get(key) or []:
             if any(str(tok) == d or str(tok).startswith(d + "=") for d in R1_DAEMON_ARGV_TOKENS):
@@ -790,14 +802,55 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
     return True, f"r1_admitted:{klass}"
 
 
+#: The cron row's stage -> the only dispatch.mode it may carry (shadow fires dry_run, canary fires live).
+CRON_LADDER_MODES = {"shadow": "dry_run", "canary": "live"}
+_FLOCK_OPTS_WITH_VALUE = frozenset({"-w", "--wait", "--timeout", "-E", "--conflict-exit-code"})
+
+
+def cron_flock_locks(command_text: str) -> list[str]:
+    """Every lock path a `flock` invocation in a cron command names (flock [-n|-x|-w N ...] <lock> ...), in order."""
+    toks = str(command_text or "").split()
+    out: list[str] = []
+    for i, tok in enumerate(toks):
+        if tok.rsplit("/", 1)[-1] != "flock":
+            continue
+        j = i + 1
+        while j < len(toks) and toks[j].startswith("-"):
+            j += 2 if toks[j] in _FLOCK_OPTS_WITH_VALUE else 1
+        if j < len(toks):
+            out.append(toks[j])
+    return out
+
+
+def r1_canary_lock_matches(row: Mapping[str, Any], entry: Mapping[str, Any]) -> tuple[bool, str]:
+    """(ok, reason) for an R1 cron row at canary: live_arg set, lock_kind flock, and the allowlist lock is the cron
+    line's lock (§23.12: a lane whose allowlist lock is not the cron line's lock cannot prove no double run)."""
+    if not isinstance(entry.get("live_arg"), list):
+        return False, f"canary_on_cron:live_arg {entry.get('live_arg')!r} (must be set for the live fire)"
+    if entry.get("lock_kind") != "flock":
+        return False, f"canary_on_cron:lock_kind {entry.get('lock_kind')!r} (must be flock)"
+    lock = entry.get("lock")
+    if not isinstance(lock, str) or not lock:
+        return False, "canary_on_cron:no_allowlist_lock"
+    sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
+    locks = cron_flock_locks(sched.get("command_text") or "")
+    if not locks:
+        return False, "canary_on_cron:no_cron_lock (scheduler.command_text names no flock lock)"
+    if any(x != lock for x in locks):
+        return False, f"canary_on_cron:lock_mismatch cron={locks} allowlist={lock!r}"
+    return True, "canary_on_cron"
+
+
 def r1_shadow_on_cron_shape(row: Mapping[str, Any], block: Optional[DispatchBlock] = None, *,
                             status: Optional[str] = None) -> tuple[bool, str]:
-    """(ok, reason): is `row` the shadow-on-cron shape an R1 class may use while its cron line is live?
+    """(ok, reason): is `row` a cron ladder row an R1 class may use while its cron line is live?
 
-    scheduler.kind "cron" with a 5-field cron expression, scheduler.stage "shadow", and dispatch.mode "dry_run";
-    admitted only while R1_SHADOW_SHAPE_STATUS (or `status`, tests only) is ACTIVE. The caller (r1_class_admission)
-    also requires the allowlist live_arg to be null and keeps every other R1 condition. Never a canary or cutover
-    shape: a live fire needs the §23.11 dispatcher row."""
+    scheduler.kind "cron" with a 5-field cron expression, admitted only while R1_SHADOW_SHAPE_STATUS (or `status`,
+    tests only) is ACTIVE, and either stage "shadow" with dispatch.mode "dry_run" or stage "canary" with
+    dispatch.mode "live" (CRON_LADDER_MODES). The caller (r1_class_admission) adds the allowlist conditions:
+    live_arg null at shadow; at canary live_arg set and the allowlist lock == the cron flock lock
+    (r1_canary_lock_matches); and keeps every other R1 condition. Never a cutover shape: cutover is the §23.11
+    dispatcher row."""
     sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
     if sched.get("kind") != "cron":
         return False, "shadow_on_cron:not_a_cron_row"
@@ -808,16 +861,18 @@ def r1_shadow_on_cron_shape(row: Mapping[str, Any], block: Optional[DispatchBloc
     expr = sched.get("expression")
     if not isinstance(expr, str) or not _CRON_SHAPE.match(expr.strip()):
         return False, f"shadow_on_cron:expression {expr!r} is not a 5-field cron"
-    if sched.get("stage") != "shadow":
-        return False, f"shadow_on_cron:stage {sched.get('stage')!r} (a cron row is admitted at shadow only)"
+    stage = sched.get("stage")
+    if stage not in CRON_LADDER_MODES:
+        return False, f"shadow_on_cron:stage {stage!r} (a cron row is admitted at shadow or canary only)"
     if block is None:
         try:
             block = parse_dispatch_block(row)
         except DispatchBlockError as e:
             return False, f"bad_block:{e.detail}"
-    if block is None or block.mode != "dry_run":
-        return False, f"shadow_on_cron:dispatch.mode {getattr(block, 'mode', None)!r} (must be dry_run)"
-    return True, "shadow_on_cron"
+    want = CRON_LADDER_MODES[stage]
+    if block is None or block.mode != want:
+        return False, f"{stage}_on_cron:dispatch.mode {getattr(block, 'mode', None)!r} (must be {want})"
+    return True, f"{stage}_on_cron"
 
 
 # ── validation ───────────────────────────────────────────────────────────────────────────────────

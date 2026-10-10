@@ -15,7 +15,9 @@ shadow. `lane_dispatch.r1_class_admission` now also accepts that cron shadow sha
 * every other R1 condition still applies (dispatch_eligible / forbidden tokens, no daemon, dry_run_arg,
   LaneRunReceipt@v1, no broker credential, the governed bridge for llm), and broker / order / stop / positions /
   secret / daemon lanes stay refused under every class;
-* canary and cutover are unchanged: they still need the dispatcher row.
+* canary (operator ruling 2026-10-10 ~14:00 ET, same 4.4.0 constant): a cron row at stage canary, dispatch.mode
+  live, allowlist live_arg set, lock_kind flock and the allowlist lock equal to the cron line's flock lock
+  (scheduler.command_text); cutover still needs the dispatcher row.
 
 Naming: `dispatcher` is the row expression (code, §23.11, the 4.1.0 and 4.3.0 tests); `tradeai-dispatcher` is the
 dispatcher's n8n workflow id (workflows/INDEX.json). Design 02 §12.2 wrote the workflow id as the expression. A row
@@ -196,7 +198,7 @@ def test_pre_r1_cron_shadow_rows_are_unchanged():
 @pytest.mark.parametrize(
     ("mutate", "why"),
     [
-        (lambda r, e: r["scheduler"].update(stage="canary"), "shadow_on_cron:stage"),
+        (lambda r, e: r["scheduler"].update(stage="canary"), "canary_on_cron:dispatch.mode 'dry_run'"),
         (lambda r, e: r["scheduler"].update(stage="cutover"), "shadow_on_cron:stage"),
         (lambda r, e: r["scheduler"].pop("stage"), "shadow_on_cron:stage"),
         (lambda r, e: r["dispatch"].update(mode="live"), "dispatch.mode 'live'"),
@@ -296,6 +298,93 @@ def test_other_scheduler_kinds_are_not_the_shadow_shape():
         assert LD.r1_shadow_on_cron_shape(row, status="ACTIVE") == (False, "shadow_on_cron:not_a_cron_row")
 
 
+# ------------------------------------------------- canary on the cron row (operator ruling 2026-10-10 ~14:00 ET)
+
+
+def _cron_canary(klass: str, command: list[str] | None = None, **kw):
+    """The canary step of the same lane: cron row at stage canary, dispatch.mode live, live_arg set, and the cron
+    line's flock lock (scheduler.command_text) equal to the allowlist lock."""
+    live = kw.pop("live", ("--apply",) if klass != "llm" else ())
+    row, entry, argv = _cron_shadow(klass, command, live=live, stage="canary", mode="live", **kw)
+    row["scheduler"]["command_text"] = (
+        f"cd $PROJ && flock -n {entry['lock']} $PY {' '.join(entry['command'][1:])} >> logs/x.log 2>&1"
+    )
+    return row, entry, argv
+
+
+@pytest.mark.parametrize("klass", sorted(LD.R1_ADMITTED_CLASSES))
+def test_cron_canary_row_is_admitted_for_every_r1_class_once_ratified(klass):
+    row, entry, argv = _cron_canary(klass)
+    assert _admit(row, entry, argv) == (True, f"r1_admitted:{klass}")
+    assert LD.r1_shadow_on_cron_shape(row, status="ACTIVE") == (True, "canary_on_cron")
+    ok, why = _admit(row, entry, argv, shape="PROPOSED")
+    assert not ok and why.startswith("shadow_on_cron_not_ratified"), why
+
+
+@pytest.mark.parametrize("klass", sorted(LD.R1_ADMITTED_CLASSES))
+@pytest.mark.parametrize(
+    ("mutate", "why"),
+    [
+        (lambda r, e: r["dispatch"].update(mode="dry_run"), "canary_on_cron:dispatch.mode 'dry_run'"),
+        (lambda r, e: r["dispatch"].update(mode="off"), "canary_on_cron:dispatch.mode 'off'"),
+        (lambda r, e: e.update(live_arg=None), "canary_on_cron:live_arg None"),
+        (lambda r, e: e.update(lock_kind="safe_flock"), "canary_on_cron:lock_kind"),
+        (lambda r, e: e.update(lock=""), "canary_on_cron:no_allowlist_lock"),
+        (lambda r, e: r["scheduler"].pop("command_text"), "canary_on_cron:no_cron_lock"),
+        (
+            lambda r, e: r["scheduler"].update(command_text="cd $PROJ && $PY scripts/x.py"),
+            "canary_on_cron:no_cron_lock",
+        ),
+        (lambda r, e: e.update(lock="/tmp/other.lock"), "canary_on_cron:lock_mismatch"),
+        (
+            lambda r, e: r["scheduler"].update(
+                command_text=r["scheduler"]["command_text"] + " && flock -n /tmp/b.lock x"
+            ),
+            "canary_on_cron:lock_mismatch",
+        ),
+        (lambda r, e: r["scheduler"].update(stage="cutover"), "shadow_on_cron:stage 'cutover'"),
+        (lambda r, e: e.update(dry_run_arg=None), "no_dry_run_arg"),
+        (lambda r, e: e.update(env_names=["SCHWAB_APP_KEY"]), "broker_credential_env"),
+        (lambda r, e: e.update(live_arg=["--apply", "--daemon"]), "daemon_flag"),
+        (lambda r, e: r.update(stay_on_cron={"class": "operator", "reason": "x"}), "stay_on_cron"),
+    ],
+)
+def test_cron_canary_row_keeps_every_condition(klass, mutate, why):
+    row, entry, argv = _cron_canary(klass)
+    mutate(row, entry)
+    argv = {row["lane_id"]: " ".join([*entry["command"], *(entry["dry_run_arg"] or []), *(entry["live_arg"] or [])])}
+    ok, reason = _admit(row, entry, argv)
+    assert not ok and why in reason, (klass, reason)
+
+
+@pytest.mark.parametrize("klass", sorted(LD.R1_ADMITTED_CLASSES))
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["$PY", "scripts/schwab_place_order.py"],
+        ["$PY", "scripts/submit_orders.py"],
+        ["$PY", "scripts/unified_stop_supervisor.py"],
+        ["$PY", "scripts/schwab_position_sync.py"],
+        ["$PY", "scripts/alpaca_paper_executor.py"],
+        ["$PY", "scripts/render_env.py"],
+        ["bash", "scripts/sm-render.sh"],
+        ["$PY", "scripts/bin_guard_grant.py"],
+        ["$PY", "scripts/send_telegram_proposal_alert.py"],
+    ],
+)
+def test_never_eligible_lanes_stay_refused_at_canary(klass, command):
+    row, entry, argv = _cron_canary(klass, command)
+    ok, reason = _admit(row, entry, argv)
+    assert not ok and "forbidden_token" in reason, (klass, command, reason)
+
+
+def test_cron_flock_locks_parses_options():
+    assert LD.cron_flock_locks("cd x && flock -n /tmp/a.lock $PY s.py") == ["/tmp/a.lock"]
+    assert LD.cron_flock_locks("/usr/bin/flock -x -w 30 /tmp/a.lock bash -c 'y'") == ["/tmp/a.lock"]
+    assert LD.cron_flock_locks("flock -n /tmp/a.lock a; flock /tmp/b.lock b") == ["/tmp/a.lock", "/tmp/b.lock"]
+    assert LD.cron_flock_locks("$PY scripts/flock_report.py") == []
+
+
 # ------------------------------------------------------------- the due computation honours the gate
 
 
@@ -320,6 +409,22 @@ def test_compute_due_emits_the_cron_shadow_lane_only_once_ratified_and_only_dry_
     assert resp["errors"] == [], resp["errors"]
     assert [i["lane_id"] for i in resp["items"]] == [row["lane_id"]]
     assert {i["mode"] for i in resp["items"]} == {"dry_run"}
+
+
+@pytest.mark.parametrize("klass", sorted(LD.R1_ADMITTED_CLASSES))
+def test_compute_due_emits_the_cron_canary_lane_live_only_once_ratified(klass, monkeypatch):
+    row, entry, _argv = _cron_canary(klass)
+    allow = {row["lane_id"]: entry}
+    monkeypatch.setattr(LD, "R1_STATUS", "ACTIVE")
+    monkeypatch.setattr(LD, "load_llm_process_ids", lambda path=None: frozenset(PROCS))
+    monkeypatch.setattr(LD, "load_run_allowlist_argv", lambda path=None: {})
+    monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
+    resp = D.compute_due([row], allow, POLICIES, None, NOW)
+    assert resp["items"] == [] and [e["code"] for e in resp["errors"]] == ["class_not_permitted"]
+    monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
+    resp = D.compute_due([row], allow, POLICIES, None, NOW)
+    assert resp["errors"] == [], resp["errors"]
+    assert {i["mode"] for i in resp["items"]} == {"live"}
 
 
 # --------------------------------------------------------------------------- dispatcher vs tradeai-dispatcher
