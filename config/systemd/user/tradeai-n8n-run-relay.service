@@ -12,6 +12,12 @@
 # (TRADEAI_N8N_RELAY_BEARER, Header-Auth); the relay signs coordination_run claims with the host-side
 # TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N and forwards to the loopback gateway on 127.0.0.1:18091. Both secrets come
 # from Bitwarden SM via scripts/secrets/render_env.py -> %t/tradeai/env; neither is in this file.
+# ENV ALLOWLIST (B2-D2, 2026-10-09): the relay must never see the full secrets env (broker + provider keys).
+# ExecStartPre renders %t/tradeai/n8n-relay-secrets.env (0600, tmpfs) holding ONLY TRADEAI_N8N_RELAY_BEARER,
+# TRADEAI_N8N_RELAY_BEARER_PREVIOUS (rotation overlap) and TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N; systemd reads it
+# for ExecStart after ExecStartPre exits, so a restart after rotation picks up the new values. The full
+# %t/tradeai/env is NOT an EnvironmentFile here. RELAY_STRICT_ENV=1: the relay exits 3 if any broker,
+# provider or other credential name outside its allowlist reaches it (scripts/lib/n8n_relay_env.py).
 # TRADEAI_N8N_RELAY_LIVE_LANES (space-separated lane ids) is the canary flag: empty = dry_run only (shadow).
 # Set it in ~/.config/tradeai/n8n-relay.env under a config-write grant, one tranche at a time.
 
@@ -23,10 +29,13 @@ Wants=tradeai-n8n-coordination-gateway.service
 [Service]
 Type=simple
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
-EnvironmentFile=-%t/tradeai/env
+EnvironmentFile=-%t/tradeai/n8n-relay-secrets.env
 EnvironmentFile=-%h/.config/tradeai/n8n-relay.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment=TRADEAI_N8N_GATEWAY_URL=http://127.0.0.1:18091
+Environment=RELAY_STRICT_ENV=1
+UnsetEnvironment=SSH_AUTH_SOCK GPG_AGENT_INFO DBUS_SESSION_BUS_ADDRESS
+ExecStartPre=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/render_n8n_relay_env.py --source %t/tradeai/env --out %t/tradeai/n8n-relay-secrets.env
 ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_relay.py --host 172.19.0.1 --port 18092
 Restart=always
 RestartSec=10

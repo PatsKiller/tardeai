@@ -8,6 +8,11 @@ filters the last run by mode (no query keeps the old any-mode answer).
 
 During rotation the relay accepts TRADEAI_N8N_RELAY_BEARER or TRADEAI_N8N_RELAY_BEARER_PREVIOUS.
 A missing previous bearer is the pre-rotation state. A short one refuses to start.
+
+Environment (B2-D2, 2026-10-09): the unit loads only the allowlisted secrets (scripts/render_n8n_relay_env.py
+renders them as ExecStartPre). At startup main() runs scripts/lib/n8n_relay_env.enforce(): with
+RELAY_STRICT_ENV=1 any broker, provider, or other credential name outside the allowlist exits 3 (names only on
+stdout); then os.environ is scrubbed to the allowlist. The relay never spawns, so no child needs the rest.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ from scripts.lib.n8n_due import DEFAULT_LIMIT as DUE_DEFAULT_LIMIT  # noqa: E402
 from scripts.lib.n8n_due import MAX_LANE_FILTER as DUE_MAX_LANES  # noqa: E402
 from scripts.lib.n8n_due import MAX_LIMIT as DUE_MAX_LIMIT  # noqa: E402
 from scripts.lib.n8n_due import SOURCES as DUE_SOURCES  # noqa: E402
+from scripts.lib.n8n_relay_env import enforce as enforce_relay_env
 from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
 
 NO_CONSUMER_REASON = (
@@ -514,6 +520,10 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=18092)
     parser.add_argument("--run-allowlist", type=Path, default=DEFAULT_RUN_ALLOWLIST)
     args = parser.parse_args()
+    env_report = enforce_relay_env(os.environ)
+    if not env_report["ok"]:
+        print(json.dumps(env_report, separators=(",", ":")), flush=True)
+        return 3
     try:
         guard_bind(args.host, args.port)
         relay = Relay(allowlist=load_run_allowlist(args.run_allowlist))

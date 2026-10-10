@@ -541,6 +541,7 @@
   "tests/test_n8n_pilot_compare_20261007.py": 0.5,
   "tests/test_n8n_pilot_contracts_20261007.py": 0.5,
   "tests/test_n8n_pilot_observations_20261007.py": 0.9,
+  "tests/test_n8n_relay_env_allowlist_20261009.py": 1.0,
   "tests/test_n8n_release_rebind.py": 0.6,
   "tests/test_n8n_research_intake_20261008.py": 0.9,
   "tests/test_n8n_run_allowlist_20261008.py": 1.9,
