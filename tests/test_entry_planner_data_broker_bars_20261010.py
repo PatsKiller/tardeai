@@ -225,4 +225,4 @@ def test_fallback_uses_the_registered_data_broker_entrypoint():
 
 def test_cli_surface_is_unchanged():
     flags = re.findall(r'ap\.add_argument\("(--[a-z-]+)"', SRC)
-    assert flags == ["--lane", "--symbols", "--limit", "--scope", "--buy-rated-cap", "--no-alert"]
+    assert flags == ["--lane", "--symbols", "--limit", "--scope", "--buy-rated-cap", "--no-alert", "--dry-run"]  # --dry-run: refactor wave 2

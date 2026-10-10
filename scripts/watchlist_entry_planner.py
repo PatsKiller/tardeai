@@ -17,7 +17,7 @@ Alerting: urgency near_entry/ready, or price already inside the entry zone, send
   python3 scripts/watchlist_entry_planner.py --dry-run [same selection flags]
 
 --dry-run runs the same candidate selection on a READ ONLY session and returns BEFORE price bars
-(yfinance / the Alpaca data fallback and its credentials), the cloud LLM, the watchlist_entry_plans
+(yfinance / the data-broker stored-bars fallback), the cloud LLM, the watchlist_entry_plans
 INSERT/UPDATE and the Telegram alert are reachable, listing who it would plan (AGENTS.md §6).
 A real scheduled run (no --symbols) writes data/runtime/watchlist_entry_planner_last.json, or
 watchlist_entry_planner_proposals_last.json for --scope proposals (LaneRunReceipt@v1; ok_at only on

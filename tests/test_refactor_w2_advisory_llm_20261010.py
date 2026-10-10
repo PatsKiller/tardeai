@@ -111,7 +111,7 @@ def _planner_dry(monkeypatch, cands):
         return cands
 
     monkeypatch.setattr(wep, "_candidates", fake_candidates)
-    for name in ("_bars", "_bars_alpaca", "_alpaca_creds", "_alert", "_analyst", "_live"):
+    for name in ("_bars", "_bars_data_broker", "_alert", "_analyst", "_live"):
         _forbid(monkeypatch, wep, name)
     fake_llm = types.ModuleType("llm_lane")
     fake_llm.generate = lambda *a, **k: (_ for _ in ()).throw(AssertionError("dry run reached the LLM"))
