@@ -217,7 +217,19 @@ Two things it does not do (`AGENTS.md` §9.3, §10):
    re-enabled job) needs its `config/lane_registry.json` row in the same PR, or
    `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. Editing the crontab is operator-only.
 
+3. **Turn on an opt-in mode of a bound unit.** Promote restarts `tradeai-n8n-run-executor.service` with the
+   environment the installed unit already has. The repo unit sets no `TRADEAI_N8N_EXECUTOR_WORKERS`, so the
+   executor stays on the v1 serial drain (RunReceipt@v1) after every promote. Executor v2 (#1598: N workers,
+   per-lane lock, reaper, RunReceipt@v2, limits in `config/n8n_executor.json`) starts only on an explicit
+   value of 2 or more. Setting it is a grant-gated edit of the installed unit (`Environment=TRADEAI_N8N_EXECUTOR_WORKERS=3`,
+   then `daemon-reload` and a restart of that unit). Rollback is in `docs/ops/ROLLBACK_COMMANDS.md`.
+
 ## Failure / rollback
+
+A `prepare` refused with `CURRENT pin check tree_diff:N` means the release overlay and the commit differ.
+2026-10-09: the overlay's `--exclude=data/` dropped the tracked `docs/implementation/n8n-maturity/data/`
+files (`tree_diff:4`). #1620 includes `docs/**/data/` before the excludes. Root `data/` (runtime) stays
+excluded. Find the differing paths before retrying. Do not retry blind.
 
 `promote` already auto-rolls back to `PREV_RELEASE` on a failed health check. Manual rollback
 restarts the bound units and rewrites the expected-release pin. See `docs/ops/ROLLBACK_COMMANDS.md`.

@@ -5,7 +5,7 @@ Status:      ACCEPTED 2026-10-08 (operator decision: "one scoped key may live in
 as_of:       2026-10-08T12:00:00-04:00
 Measured at: origin/main e6eee00a2 (served CURRENT == main) / lab compose docker-compose.n8n.yml as read 2026-10-08
 Supersedes:  the PROPOSED text of 2026-10-07, kept verbatim below under "Superseded"
-Policy:      AGENTS.md §23.5 (ACTIVE 2.0.0, ratified 2026-10-08; amended by 3.0.0 ACTIVE 2026-10-09, see "Addendum — AGENTS.md 3.0.0"; 4.0.0 ACTIVE 2026-10-09 adds no credential)
+Policy:      AGENTS.md §23.5 (ACTIVE 2.0.0, ratified 2026-10-08; amended by 3.0.0 ACTIVE 2026-10-09, see "Addendum — AGENTS.md 3.0.0"; 4.0.0 ACTIVE 2026-10-09 adds no credential; 4.1.0 ACTIVE 2026-10-09 corrects the present-tense facts, see "Addendum — AGENTS.md 4.1.0")
 ```
 
 ## Decision
@@ -104,9 +104,10 @@ enum-covered refusals; fake runner, lock skip, timeout, receipt). None of them h
 
 ## What remains false
 
-`durable=false` on the gateway receipt. No claim of exactly-once delivery outside the sqlite file. The relay
-is not installed and the bearer does not exist until the preconditions above are measured true. No DOF
-role exists (proposal: `docs/implementation/n8n-parallel/proposals/dof-reader-role-20261008.sql.md`).
+`durable=false` on the gateway receipt. No claim of exactly-once delivery outside the sqlite file. The
+preconditions above were **not** all true when the bearer was created: the relay credential
+`tradeai-run-relay` was created 2026-10-08T16:45:48Z with owner MFA off and the n8n DB role a superuser
+(see "Addendum — AGENTS.md 4.1.0"; the superuser breach is still open). No DOF role exists (proposal: `docs/implementation/n8n-parallel/proposals/dof-reader-role-20261008.sql.md`).
 
 ## Addendum — AGENTS.md 3.0.0 (ACTIVE 2026-10-09, `APPROVE_AGENTS_POLICY_3_0_0 1547 a0984546181d316f92931c7b87218b55b3b836d9`)
 
@@ -155,3 +156,16 @@ Unknown method, encoded path, proxy header without a signature, oversized body, 
 - No credential is added or changed. The one live-lane exception (`trade-ai-scalp-live`, §23.3) runs on
   the host under the existing relay bearer; the Finviz key stays behind the data broker on the host and
   never enters n8n.
+
+## Addendum — AGENTS.md 4.1.0 (ACTIVE 2026-10-09, `APPROVE_AGENTS_POLICY_4_1_0 1592 2f824b4f789110d6ccc5f3c7d5783aa9e995a079`)
+
+- **No credential is added.** Registry-driven dispatch (§23.11) runs the six generic workflows under the
+  existing relay bearer. A dispatcher row adds no per-lane credential or import.
+- **§23.5 present-tense facts corrected.** Weekly rotation is not scheduled (only a proposal). The relay
+  credential `tradeai-run-relay` was created 2026-10-08T16:45:48Z while owner MFA was off and the DB role
+  `n8n` was a superuser. That breaches the 2.0.0 precondition, and it is still open (`rolsuper=t` measured
+  2026-10-09, audit E C1/D7). §23.10 P13 stays open, so the bridge token still may not be created.
+- **The approval router reads guard state only** (read-only guard projection,
+  `scripts/lib/approval_board_projection.py`). It holds no guard credential and never writes a guard
+  request, grant, revocation or consumption.
+- Secret lanes are never dispatcher-eligible (§23.14, `tests/test_agents_policy_4_1_0_amendment.py`).

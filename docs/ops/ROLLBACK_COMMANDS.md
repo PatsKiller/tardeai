@@ -28,3 +28,21 @@ curl -fsS http://localhost:7777/api/v2/health
 pid=$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)
 readlink -f /proc/$pid/cwd
 ```
+
+## Executor v2 (opt-in) rollback
+
+Executor v2 (#1598) runs only when the installed `tradeai-n8n-run-executor.service` sets
+`TRADEAI_N8N_EXECUTOR_WORKERS` to 2 or more. A release rollback does not change that setting. To go back to
+the v1 serial drain, an operator-authorized unit edit is needed:
+
+```bash
+# remove the Environment=TRADEAI_N8N_EXECUTOR_WORKERS=... line (or set it to 1) in
+# ~/.config/systemd/user/tradeai-n8n-run-executor.service, then:
+systemctl --user daemon-reload
+systemctl --user restart tradeai-n8n-run-executor.service
+# confirm: after the next run the file holds a RunReceipt@v1 (v2 writes ExecutorStatus@v1 there)
+python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/trade-ai-releases/persistent-state/data/runtime/n8n_run_executor_last.json'))).get('schema'))"
+```
+
+The v1 drain leaves v2 RUNNING rows in place. A later v2 start reaps them once they are overdue, or once
+they are stale and their owning executor pid is dead.
