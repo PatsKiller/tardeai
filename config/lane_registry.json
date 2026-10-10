@@ -5758,15 +5758,15 @@
         "install_line": "*/5 * * * * cd $PROJ && set -a && . ./.env && set +a && TRADEAI_STATE_ROOT=$HOME/trade-ai-releases/persistent-state SYSTEM_TELEGRAM_ENABLED=1 CIO_TELEGRAM_INTERDICT=1 bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_incident_notifier.lock timeout 120 $PY scripts/incident_notifier.py --live >> logs/incident_notifier.log 2>&1  # TRADEAI_LANE incident-notifier"
       },
       "expected_cadence_hours": 0.1,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "state_since": "2026-10-09",
-      "state_reason": "APPROVED, PENDING INSTALL (2026-10-09, PR n8nmat/registry-ops-crons): declared PAUSED so the row exists before the line does. PAUSED is the registry's only state that is green both before and after the install: check_lane_registry --state-drift classifies PAUSED+line-absent ALIGNED and PAUSED+line-present as no conflict; the lane monitor treats PAUSED as EXPECTED_SILENT; the fan-in governance liveness (receipt:missing/stale) and supervisor breaches only arm on ACTIVE. Agent A installs scheduler.install_line verbatim under a `cron` grant (packet ~/n8n-maturity-program/packets/ops-crons-install.md), then flips state to ACTIVE in a registry PR. Host cron */5 (merged #1603 e094ec117): fan-in P1/P2 -> operator through the SYSTEM ops family only (telegram_system.send_system -> transport chokepoint, comms editor, SYSTEM interdict). Never on config/n8n_run_allowlist.json (AGENTS.md §23.3: no senders from n8n). The line sources $PROJ/.env for the ops bot exactly like the other cron senders and sets SYSTEM_TELEGRAM_ENABLED=1 CIO_TELEGRAM_INTERDICT=1 as tradeai-autonomy-watchdog.service does.",
+      "state_reason": "INSTALLED and live (registry-drift 2026-10-10): the line in scheduler.install_line is on the host crontab verbatim (crontab -l line 1052 on 2026-10-10, byte-identical to install_line), installed by Agent A 2026-10-09 23:34 ET under cron grant 2db296cd0e9e6a10 (packet ops-crons-install.md); first live run 23:35 ET sent the P1 message. The receipt data/runtime/incident_notifier_last.json is rewritten every */5 run (mtime 2026-10-10T11:40:01-04:00, mode live, status OK, served_sha af292381c). Was PAUSED 'APPROVED, PENDING INSTALL' (PR n8nmat/registry-ops-crons) only until the install; ACTIVE arms the lane monitor, supervisor breaches and the fan-in governance liveness on this receipt. Sender (SYSTEM ops family): stays KEEP_ON_CRON, never on config/n8n_run_allowlist.json (AGENTS.md §23.3).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/incident_notifier_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_incident_notifier_20261009.py (36); tests/test_registry_ops_crons_20261009.py; PR #1603 body (row proposal, cron */5 by Agent A); --dry-run 2026-10-09T23:43Z against a scratch copy of the live fan-in receipt + ledger: 2 messages planned (P1 x2, P2 batch x25), nothing sent.",
+      "reason_evidence": "tests/test_incident_notifier_20261009.py (36); tests/test_registry_ops_crons_20261009.py; PR #1603 body (row proposal, cron */5 by Agent A); --dry-run 2026-10-09T23:43Z against a scratch copy of the live fan-in receipt + ledger: 2 messages planned (P1 x2, P2 batch x25), nothing sent. | 2026-10-10 install evidence: crontab -l L1052 == scheduler.install_line; persistent-state/data/runtime/incident_notifier_last.json mtime 2026-10-10T11:40:01-04:00 (as_of 15:40:01Z, mode live); logs/incident_notifier.log last line status OK, fanin OK, cap used 1/24.",
       "review_by": "2026-10-16",
       "note": "Reads n8n_incident_fanin_last.json + ledger acks; P1 immediate and never capped; P2 batch/30 min, held 22:00-07:00 America/New_York; recovery; 24 h dedupe; 60-min flap cooldown; daily cap 24 per NY day; the receipt is rewritten every run (also NO_INPUT), so file_mtime is a liveness signal; exit 75 = lock held.",
       "value_class": "Operationally Important",
@@ -6010,7 +6010,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "*/30 9-16 * * 1-5",
-        "command_text": "auto_proposal_generator.py --today --apply (AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp)",
+        "command_text": "cd $PROJ && AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1 flock -n /tmp/auto_proposal_general.lock timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1",
         "match": "AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp"
       },
       "expected_cadence_hours": 0.5,
@@ -6040,7 +6040,7 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible). | 2026-10-10 registry-drift: command_text was a paraphrase that dropped the line's env (MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1, which reaches proposal_paper_submitter.submit_paper via momentum_scalp_paper_fast_path); it is now the live crontab L323 command verbatim, so the dispatch forbidden-token rule sees 'submit' and the row is not dispatch-eligible (tests/test_lane_dispatch_word_boundary_20261010.py::test_l323_env_submit_flag_makes_the_lane_ineligible)."
     },
     {
       "lane_id": "atm-position-reconciler",
@@ -14850,10 +14850,10 @@
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/20 13-21 * * 1-5",
+        "expression": "*/20 9-16 * * 1-5",
         "match": "scripts/compute_intraday_vwap.py"
       },
-      "expected_cadence_hours": 63.33,
+      "expected_cadence_hours": 64.33,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
@@ -14871,7 +14871,11 @@
         "recommendation": "PIPELINE:P01",
         "f_recommendation": "CONSOLIDATE-into P01",
         "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
+        "f_evidence": "Unverified use: no consumer check run for this line",
+        "schedule_changed_since_rationalization": {
+          "f_sched": "*/20 13-21 * * 1-5",
+          "live_sched": "*/20 9-16 * * 1-5"
+        }
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",

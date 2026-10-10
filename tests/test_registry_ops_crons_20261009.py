@@ -40,6 +40,10 @@ LANES = {
                                  "/tmp/tradeai_n8n_workflow_drift.lock", "logs/n8n_workflow_drift.log", 1.0),
 }
 LINES = [ROWS[lid]["scheduler"]["install_line"] for lid in LANES]
+#: 2026-10-10 registry-drift: rows whose install_line is on the host crontab and that flipped to ACTIVE.
+#: incident-notifier: crontab -l L1052 == install_line (cron grant 2db296cd0e9e6a10, installed 2026-10-09 23:34 ET).
+INSTALLED = {"incident-notifier"}
+PENDING = sorted(set(LANES) - INSTALLED)
 
 
 @pytest.mark.parametrize("lane_id", sorted(LANES))
@@ -47,8 +51,12 @@ def test_row_is_paused_pending_install_with_the_exact_line(lane_id):
     sched, match, lock, log, cadence = LANES[lane_id]
     row = ROWS[lane_id]
     assert LR.validate_row(row) == []
-    assert row["state"] == "PAUSED" and row["review_by"] and row["state_since"] == "2026-10-09"
-    assert "PENDING INSTALL" in row["state_reason"] and "ops-crons-install.md" in row["state_reason"]
+    assert row["review_by"] and row["state_since"] == "2026-10-09"
+    assert "ops-crons-install.md" in row["state_reason"]
+    if lane_id in INSTALLED:
+        assert row["state"] == "ACTIVE" and "INSTALLED" in row["state_reason"]
+    else:
+        assert row["state"] == "PAUSED" and "PENDING INSTALL" in row["state_reason"]
     s = row["scheduler"]
     assert s["kind"] == "cron" and s["match"] == match and s["expression"] == sched
     line = s["install_line"]
@@ -104,13 +112,15 @@ def _drift(rows, lines):
 
 
 def test_state_drift_is_green_before_install_after_install_and_after_the_flip():
-    rows = [ROWS[lid] for lid in LANES]
+    # As declared before the install (PAUSED); the installed row's current declaration is checked below.
+    rows = [dict(ROWS[lid], state="PAUSED") for lid in LANES]
     before = _drift(rows, [])
     after = _drift(rows, LINES)
     assert {r["code"] for r in before.values()} == {"ALIGNED"}
     assert SD.conflicts(list(before.values())) == [] and SD.conflicts(list(after.values())) == []
     flipped = [dict(r, state="ACTIVE") for r in rows]
     assert {r["code"] for r in _drift(flipped, LINES).values()} == {"ALIGNED"}
+    assert {r["code"] for r in _drift([ROWS[lid] for lid in INSTALLED], LINES).values()} == {"ALIGNED"}  # as committed
     # The old declaration would have been a conflict once the line is installed: why the rows had to change.
     old = [dict(r, state="NEVER_SCHEDULED") for r in rows]
     assert {r["code"] for r in _drift(old, LINES).values()} == {"CRON_PRESENT_WHILE_DECLARED_NEVER_SCHEDULED"}
@@ -129,7 +139,7 @@ def test_reconcile_leaves_the_rows_untouched_before_and_after_install():
 
 def test_paused_rows_are_expected_silent_for_the_lane_monitor(tmp_path):
     now = datetime(2026, 10, 9, 23, 0, tzinfo=timezone.utc)
-    for lid in LANES:
+    for lid in PENDING:
         v = LR.evaluate_lane(ROWS[lid], now=now, found={"cron": [], "systemd": []}, root=tmp_path)
         assert v["verdict"] == LR.EXPECTED_SILENT, (lid, v)
 
