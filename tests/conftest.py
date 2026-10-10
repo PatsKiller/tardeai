@@ -218,6 +218,23 @@ def _block_cio_wake_trace_production_writes(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _block_desk_pending_budget_production_writes(monkeypatch, tmp_path_factory):
+    """Keep the pending-pass budget counter (2026-10-10) out of data/cio.
+
+    try_fulfill_pending_replies persists its per-day background-call and per-row attempt counters to
+    PENDING_BUDGET_PATH; a desk test that does not know about it would write the repo's data/cio and
+    carry counts from one test into the next. Both import spellings are patched when already loaded
+    (test modules import the desk at collection, before any fixture runs); nothing is imported here.
+    """
+    import sys as _sys
+    isolated = tmp_path_factory.mktemp("desk_pending_budget") / "cio_operator_pending_budget.json"
+    for name in ("scripts.lib.cio_operator_desk_loop", "lib.cio_operator_desk_loop"):
+        mod = _sys.modules.get(name)
+        if mod is not None and hasattr(mod, "PENDING_BUDGET_PATH"):
+            monkeypatch.setattr(mod, "PENDING_BUDGET_PATH", isolated)
+
+
+@pytest.fixture(autouse=True)
 def _block_gap_resolver_production_writes(monkeypatch, tmp_path_factory):
     """Keep gap-resolution receipts out of data/cio.
 

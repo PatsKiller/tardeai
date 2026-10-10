@@ -145,30 +145,162 @@ def auto_promote_allowed(tier, divergence):
 
 
 # ── enrichment (on demand, real technicals — never a screener export) ────────────
-def _latest_quote_price(symbol, conn):
-    """Latest price from market_quotes (Alpaca-primary feed). The finviz enrichment cache
-    carries rsi/float/rvol but NOT current price, so we backfill it here."""
-    try:
+#: Price backfill window for the market_quote projection read (matches the old unbounded
+#: "newest row" read closely enough: a 30-day-old price is still shown with its as_of).
+QUOTE_BACKFILL_MAX_AGE_HOURS = 24 * 30
+
+
+def _conn_db_query(conn):
+    """Adapt a DB-API connection to the broker projections' ``db_query(sql, params, fetch)``."""
+    def _q(sql, params=None, fetch="all"):
         cur = conn.cursor()
-        cur.execute("SELECT price FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1",
-                    (symbol.upper(),))
-        row = cur.fetchone()
-        return float(row[0]) if row and row[0] is not None else None
+        cur.execute(sql, params or ())
+        cols = [d[0] for d in (cur.description or [])]
+        if fetch == "one":
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return dict(row) if hasattr(row, "keys") else dict(zip(cols, row))
+        rows = cur.fetchall() or []
+        return [dict(r) if hasattr(r, "keys") else dict(zip(cols, r)) for r in rows]
+    return _q
+
+
+def _latest_quote_price(symbol, conn):
+    """Latest price through the Data Broker ``market_quote`` projection (store market_quotes,
+    Alpaca-primary). The finviz enrichment cache carries rsi/float/rvol but not always a current
+    price, so we backfill it here. ``skip_live=True``: this read never reaches a provider."""
+    try:
+        from lib.data_broker.market_quote import get_price_batch
+        sym = symbol.upper()
+        q = get_price_batch(_conn_db_query(conn), [sym],
+                            max_age_hours=QUOTE_BACKFILL_MAX_AGE_HOURS, skip_live=True).get(sym)
+        return float(q["price"]) if q and q.get("price") is not None else None
     except Exception:
         return None
 
 
+#: Kill switch for the batched enrichment read (consolidation step 1). "0" restores the old
+#: per-symbol fetch path exactly.
+ENRICH_VIA_BROKER_ENV = "DIRECTIVE_ENRICH_VIA_BROKER"
+
+
+def _broker_enabled():
+    return os.environ.get(ENRICH_VIA_BROKER_ENV, "1").strip().lower() not in ("0", "false", "no")
+
+
+def _fresh_enrichment_via_broker(symbol):
+    """The symbol's enrichment record from the Data Broker projection when it is fresh, else None.
+
+    Fresh = younger than the owner's own refresh window (finviz_enrichment.CACHE_TTL_HOURS), so a
+    record served here is one ``enrich_tickers`` would not have refetched either.
+    """
+    try:
+        from finviz_enrichment import CACHE_TTL_HOURS
+        from lib.data_broker.finviz_enrichment_snapshot import get_enrichment
+        row = get_enrichment(symbol, max_age_hours=float(CACHE_TTL_HOURS), root=PROJECT_ROOT)
+        if row.get("stale") or not row.get("record"):
+            return None
+        return dict(row["record"])
+    except Exception:
+        return None
+
+
+def would_enrich(symbol, source_system, auto=None, *, divergence_index=None):
+    """True when promote_directive_lead would reach the enrichment step for this lead.
+
+    Mirrors the governor at the top of promote_directive_lead: an explicit ``auto`` wins;
+    otherwise auto_promote_allowed(tier, divergence). Reads only (tier policy, pills JSON).
+    ``divergence_index`` ({SYMBOL: divergence}) lets a batch caller parse the pills file once.
+    """
+    if auto is not None:
+        return bool(auto)
+    sym = str(symbol or "").upper().strip()
+    tier = get_source_tier(source_system)
+    if divergence_index is not None:
+        divergence = divergence_index.get(sym) or "unavailable"
+    else:
+        divergence = get_divergence_status(sym)
+    return bool(auto_promote_allowed(tier, divergence))
+
+
+def divergence_index():
+    """{SYMBOL: divergence} from the pills snapshot, parsed once ({} when unreadable)."""
+    try:
+        d = json.loads(_PILLS_JSON.read_text())
+    except Exception:
+        return {}
+    out = {}
+    for p in d.get("pills", []) or []:
+        sym = str(p.get("symbol", "")).upper()
+        if sym and sym not in out:
+            out[sym] = p.get("divergence") or "unavailable"
+    return out
+
+
+def prefetch_enrichment(symbols, *, dry_run=False):
+    """Ask the enrichment owner to refresh a whole batch at once (consolidation step 1).
+
+    One ``enrich_tickers(symbols)`` call fetches only the stale/missing symbols, 20 per Finviz
+    export request per view, instead of one request per symbol per view. Measured before
+    (watch_directives_service.log, 2026-10-09): 1,775-2,450 single-ticker fetches per run, six
+    views each. ``dry_run`` reads the broker projection only and returns the plan: no Finviz
+    request, no cache write.
+    """
+    from lib.data_broker.finviz_enrichment_snapshot import get_enrichment_batch
+    syms = []
+    seen = set()
+    for s in symbols or []:
+        u = str(s or "").upper().strip()
+        if u and u not in seen:
+            seen.add(u)
+            syms.append(u)
+    try:
+        from finviz_enrichment import BATCH_SIZE, CACHE_TTL_HOURS, _default_views
+        views = len(_default_views())
+    except Exception:
+        BATCH_SIZE, CACHE_TTL_HOURS, views = 20, 6, 6
+    snap = get_enrichment_batch(syms, max_age_hours=float(CACHE_TTL_HOURS), root=PROJECT_ROOT)
+    stale = snap["stale_or_missing"]
+    batches = -(-len(stale) // int(BATCH_SIZE)) if stale else 0
+    plan = {
+        "symbols": len(syms),
+        "fresh_in_broker": len(snap["fresh"]),
+        "stale_or_missing": len(stale),
+        "finviz_requests_batched": batches * views,
+        "finviz_requests_per_symbol_path": len(stale) * views,
+        "broker_as_of": snap.get("as_of"),
+        "dry_run": bool(dry_run),
+        "fetched": False,
+    }
+    if dry_run or not stale:
+        return plan
+    try:
+        from finviz_enrichment import enrich_tickers
+        enrich_tickers(stale, project_root=str(PROJECT_ROOT))
+        plan["fetched"] = True
+    except Exception as e:  # the per-symbol path stays the fallback
+        plan["error"] = str(e)[:200]
+    return plan
+
+
 def enrich_symbol_on_demand(symbol, conn=None):
-    """enrich_tickers([sym]) populates the finviz cache (rsi/float/rvol/atr/...); get_enriched
-    reads it back. Price is NOT in that cache, so backfill it from market_quotes (Alpaca feed).
+    """Enrichment for one symbol, read through the Data Broker first.
+
+    1. ``finviz_enrichment_snapshot`` projection: a fresh record is used as-is (no Finviz call).
+    2. Otherwise the owner refreshes it (``enrich_tickers([sym])``, unchanged legacy path) and
+       ``get_enriched`` reads it back.
+    Price is not always in that cache, so it is backfilled from the market_quote projection.
     Returns the enriched dict or {} on failure (fail-closed)."""
     try:
-        from finviz_enrichment import enrich_tickers, get_enriched
-        try:
-            enrich_tickers([symbol], project_root=str(PROJECT_ROOT))
-        except Exception:
-            pass  # cache may already hold it; get_enriched still tries
-        rec = get_enriched(symbol, project_root=str(PROJECT_ROOT)) or {}
+        rec = _fresh_enrichment_via_broker(symbol) if _broker_enabled() else None
+        if rec is None:
+            from finviz_enrichment import enrich_tickers, get_enriched
+            try:
+                enrich_tickers([symbol], project_root=str(PROJECT_ROOT))
+            except Exception:
+                pass  # cache may already hold it; get_enriched still tries
+            rec = get_enriched(symbol, project_root=str(PROJECT_ROOT)) or {}
         if _tech_price(rec) is None:
             px = _latest_quote_price(symbol, conn or _conn())
             if px is not None:
