@@ -5,6 +5,17 @@ Exit 0 when a release-write grant is bound to THIS release (PR/SHA/campaign);
 exit 2 when refused. ``TRADEAI_RELEASE_GRANT_BINDING=warn`` prints the refusal
 and exits 0 (visible degradation, transition only). Prints one JSON line.
 No credential is read or printed.
+
+Promote: exact-SHA CI BEFORE the grant use (2026-10-09, due diligence B §2.3 /
+R5). A promote consumes one release-write use, and the deploy script used to
+check the exact-SHA push/main runs only afterwards, so a promote tried while CI
+was still in flight burned a use and then refused (19 -> 18 -> 9 on 10-09). Now
+``--action promote`` reads the CI evidence after the binding decision and before
+the consume; anything but green exits 3 with ``consumed.skipped=ci_not_green``.
+A fresh green receipt for the same SHA (``--ci-receipt``, written by the deploy
+script's own early ``--ci-only`` check, #1558 Q9) is reused instead of a second
+GitHub query. ``--skip-ci-gate`` exists only for the CI-outage emergency path,
+which proves the outage itself before activation.
 """
 from __future__ import annotations
 
@@ -12,7 +23,9 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -156,6 +169,41 @@ def collect_ci_evidence(sha: str, *, env=None, attest=None, push=None) -> dict:
     return evidence
 
 
+CI_RECEIPT_REUSE_S = 300
+
+
+def _fresh_green_receipt(sha: str, receipt: Optional[Path], *, now: Optional[float] = None) -> Optional[dict]:
+    """A green exact-SHA receipt written in the last few minutes, else None (never a pass by default)."""
+    from datetime import datetime
+
+    if receipt is None:
+        return None
+    try:
+        body = json.loads(receipt.read_text(encoding="utf-8"))
+        if not isinstance(body, dict) or body.get("ok") is not True or body.get("candidate_sha") != sha:
+            return None
+        checked = datetime.fromisoformat(str(body.get("checked_at")).replace("Z", "+00:00")).timestamp()
+    except (OSError, ValueError, TypeError):
+        return None
+    age = (now if now is not None else time.time()) - checked
+    return body if 0 <= age <= CI_RECEIPT_REUSE_S else None
+
+
+def promote_ci_gate(sha: str, receipt: Optional[Path], *, collect=None, now: Optional[float] = None) -> dict:
+    """Exact-SHA CI evidence for a promote, read BEFORE a grant use is consumed."""
+    reused = _fresh_green_receipt(sha, receipt, now=now)
+    if reused is not None:
+        return {"ok": True, "source": "receipt", "checked_at": reused.get("checked_at"), "errors": []}
+    evidence = (collect or collect_ci_evidence)(sha)
+    if receipt is not None:
+        try:
+            _write_json(receipt, evidence)
+        except OSError:
+            pass
+    return {"ok": bool(evidence.get("ok")), "source": "query", "checked_at": evidence.get("checked_at"),
+            "errors": list(evidence.get("errors") or evidence.get("reasons") or [])[:10]}
+
+
 def _write_json(path: Path, body: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -190,6 +238,8 @@ def main() -> int:
     ap.add_argument("--backstop-check", action="store_true",
                     help="read the push/main run of a tree-attested release; exit 3 when it is red")
     ap.add_argument("--backstop-receipt", type=Path, default=BACKSTOP_RECEIPT)
+    ap.add_argument("--skip-ci-gate", action="store_true",
+                    help="promote only: do not read exact-SHA CI before consuming (CI-outage emergency path only)")
     args = ap.parse_args()
     if args.backstop_check:
         return backstop_check(args.sha, args.backstop_receipt)
@@ -205,6 +255,15 @@ def main() -> int:
     mode = (os.environ.get("TRADEAI_RELEASE_GRANT_BINDING") or "enforce").lower()
     v = decide_from_disk(ReleaseAction(action=args.action, target_sha=args.sha, pr_number=args.pr, campaign=args.campaign))
     out = {**v.to_dict(), "mode": mode, "action": args.action, "sha": args.sha, "pr": args.pr}
+    if v.allowed and args.action == "promote" and not args.skip_ci_gate:
+        gate = promote_ci_gate(args.sha, args.ci_receipt)
+        out["ci_gate"] = gate
+        if not gate["ok"]:
+            out["consumed"] = {"ok": False, "skipped": "ci_not_green"}
+            print(json.dumps(out, sort_keys=True))
+            print("RELEASE GRANT: exact-SHA push/main CI is not green for " + args.sha
+                  + " — promote refused, no grant use consumed", file=sys.stderr)
+            return 3
     if v.allowed and args.action in ("prepare", "promote", "rollback"):
         # C-10 (2026-09-26): the deploy path never consumed a grant use, so the
         # ledger under-counted every Claude Code promote (both P1 grants showed
