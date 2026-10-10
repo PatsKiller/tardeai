@@ -12,18 +12,38 @@ Signals blended:
 
 Tiers: core | trusted | probationary | candidate | demoted. "core" is computed but operator-gated for
 activation (Gate 4 ladder). Never mutates trades/scoring/holdings.
+
+--dry-run reads on a READ ONLY session and returns BEFORE write_out() (the only file write) is
+reachable. A real run writes data/runtime/source_maturity_last.json (LaneRunReceipt@v1; ok_at only on
+success) and exits 1 on failure. data/runtime resolves through lib.persistent_state_root (the served
+copy), not the checkout the code runs from (AGENTS.md §9.4).
 """
 import os, sys, json
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "data" / "runtime" / "source_maturity_latest.json"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+
+def runtime_dir() -> Path:
+    """Served data/runtime (persistent state root when provisioned, else the checkout)."""
+    try:
+        from lib.persistent_state_root import resolve_durable_dir
+
+        return resolve_durable_dir("data/runtime", ROOT)
+    except Exception:  # noqa: BLE001 -- helper unavailable: the checkout path (release symlinks it)
+        return ROOT / "data" / "runtime"
+
+
+OUT = runtime_dir() / "source_maturity_latest.json"
 MIN_TRADES = 5
 MIN_VOLUME = 20  # signals needed before precision is fully trusted
-for ln in (ROOT / ".env").read_text().splitlines():
-    if "=" in ln and not ln.strip().startswith("#"):
-        k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+RECEIPT_NAME = "source_maturity"
+if (ROOT / ".env").exists():  # absent in a bare checkout/test tree; the served release symlinks it
+    for ln in (ROOT / ".env").read_text().splitlines():
+        if "=" in ln and not ln.strip().startswith("#"):
+            k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 import psycopg2
 import psycopg2.extras
 
@@ -34,9 +54,12 @@ def _db():
                             password=os.getenv("DB_PASSWORD"), cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def main():
-    dry = "--dry-run" in sys.argv
-    c = _db(); cur = c.cursor()
+def compute(dry_run=False):
+    """Read-only: returns the full source_maturity_latest document (never writes)."""
+    c = _db()
+    if dry_run:
+        c.set_session(readonly=True)
+    cur = c.cursor()
     cur.execute("SELECT * FROM source_performance")
     perf = {r["source_id"]: r for r in cur.fetchall()}
     cur.execute("SELECT source_key, signals_seen, duplicates, stale_items, false_catalysts, candidates_promoted FROM source_learning_scores")
@@ -117,15 +140,48 @@ def main():
     rows.sort(key=lambda r: -r["maturity_score"])
     from collections import Counter
     tier_counts = dict(Counter(r["tier"] for r in rows))
-    out = {"updated_at": datetime.now(timezone.utc).isoformat(), "min_trades": MIN_TRADES,
-           "tier_counts": tier_counts, "source_count": len(rows), "sources": rows}
-    if dry:
-        print(json.dumps({"tier_counts": tier_counts, "top10": [{k: r[k] for k in ("source", "maturity_score", "tier", "go_rate", "total_signals")} for r in rows[:10]]}, indent=2))
+    return {"updated_at": datetime.now(timezone.utc).isoformat(), "min_trades": MIN_TRADES,
+            "tier_counts": tier_counts, "source_count": len(rows), "sources": rows}
+
+
+def write_out(out, path=None):
+    """The only writer. Never called by a dry run."""
+    target = Path(path) if path else OUT
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(out, indent=2, default=str))
+    return target
+
+
+def run(dry_run=False):
+    out = compute(dry_run=dry_run)
+    rows, tier_counts = out["sources"], out["tier_counts"]
+    if dry_run:
+        print(json.dumps({"dry_run": True, "would_write": str(OUT), "tier_counts": tier_counts,
+                          "top10": [{k: r[k] for k in ("source", "maturity_score", "tier", "go_rate", "total_signals")} for r in rows[:10]]}, indent=2))
     else:
-        OUT.parent.mkdir(parents=True, exist_ok=True)
-        OUT.write_text(json.dumps(out, indent=2, default=str))
-        print(f"wrote {OUT}  tiers={tier_counts}")
+        target = write_out(out)
+        print(f"wrote {target}  tiers={tier_counts}")
+    return out
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "--dry-run" in argv:
+        run(dry_run=True)
+        return 0
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    started = now_iso()
+    try:
+        out = run()
+    except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
+        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        print(f"source_maturity FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    write_receipt(RECEIPT_NAME, ok=True, started_at=started,
+                  summary={"source_count": out["source_count"], "tier_counts": out["tier_counts"]})
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

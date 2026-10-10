@@ -9,6 +9,12 @@ Reports + Rotation surface them automatically instead of the operator having to 
 Sources: holdings (data/portfolios/state/holdings.json, real accounts) joined to symbol_profiles
 (instrument_type, expense_ratio, ytd_return_pct, dividend_yield_pct). Honest about data gaps: a fund with a
 NULL expense_ratio is flagged 'unknown — verify' rather than assumed free. No trades, no writes to holdings.
+
+Holdings resolve through scripts/lib/persistent_state_root (the served copy, §9.4). Without --emit, or with
+--dry-run (which wins over --emit), nothing is written: the findings print and the would-emit count is
+reported. An --emit run writes <state_root>/data/runtime/fee-efficiency-analyzer_last.json (ok_at only on
+success) and exits 1 when holdings or symbol_profiles could not be read, or an alert_events write failed.
+Findings themselves are not failures.
 """
 from __future__ import annotations
 
@@ -28,17 +34,46 @@ FEE_FLAG_THRESHOLD = 0.0020
 LOW_COST_BASELINE = 0.0005          # 0.05% — a cheap broad ETF; excess fee is measured against this
 
 
+LANE_ID = "fee-efficiency-analyzer"
+#: data errors seen by the last analyze() in this process (read by main() for the exit code)
+_DATA_ERRORS: list[str] = []
+
+
 def _conn():
     from db_adapter import _get_conn
     return _get_conn()
 
 
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.fee_efficiency_analyzer
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
+    """lane_last_receipt.dry_run_report, sent to stderr when stdout carries the script's JSON report."""
+    import contextlib
+    with contextlib.redirect_stdout(sys.stderr) if json_stdout else contextlib.nullcontext():
+        return _receipt_lib().dry_run_report(lane_id, summary, would_write=would_write)
+
+
+def _holdings_path() -> Path:
+    try:
+        from lib.persistent_state_root import resolve_durable_dir
+    except ImportError:
+        from scripts.lib.persistent_state_root import resolve_durable_dir
+    return Path(resolve_durable_dir("data/portfolios/state", PROJ)) / "holdings.json"
+
+
 def _holdings():
-    for p in (PROJ / "data" / "portfolios" / "state" / "holdings.json",):
+    for p in (_holdings_path(),):
         try:
             h = json.loads(p.read_text())
             return h.get("holdings") if isinstance(h, dict) else h
-        except Exception:
+        except Exception as exc:
+            _DATA_ERRORS.append(f"holdings unreadable: {type(exc).__name__}")
             continue
     return []
 
@@ -53,7 +88,8 @@ def _profiles(symbols):
         return {r[0]: {"instrument_type": r[1], "expense_ratio": (float(r[2]) if r[2] is not None else None),
                        "ytd_return_pct": (float(r[3]) if r[3] is not None else None),
                        "dividend_yield_pct": (float(r[4]) if r[4] is not None else None)} for r in cur.fetchall()}
-    except Exception:
+    except Exception as exc:
+        _DATA_ERRORS.append(f"symbol_profiles unreadable: {type(exc).__name__}")
         return {}
 
 
@@ -63,6 +99,7 @@ def _is_ira(account: str) -> bool:
 
 
 def analyze() -> dict:
+    _DATA_ERRORS.clear()
     holds = _holdings()
     syms = sorted({(h.get("symbol") or "").upper() for h in holds if isinstance(h, dict) and h.get("symbol")})
     prof = _profiles(syms)
@@ -164,20 +201,56 @@ def emit_findings(min_severity_excess: float = 0.0):
                              raw_text=f"[fee-efficiency] {f['recommendation']}",
                              parsed_payload={"kind": "fee_efficiency", **f})
             sent += 1
-    except Exception:
-        pass
+    except Exception as exc:
+        res["emit_error"] = type(exc).__name__
     res["emitted"] = sent
     return res
 
 
-def main():
+def main(argv=None) -> int:
     import argparse
+    from datetime import datetime, timezone
     ap = argparse.ArgumentParser()
     ap.add_argument("--emit", action="store_true", help="also write findings to alert_events for Reports")
-    a = ap.parse_args()
-    res = emit_findings() if a.emit else analyze()
+    ap.add_argument("--dry-run", action="store_true", help="analyze + print only; wins over --emit")
+    a = ap.parse_args(argv)
+    if a.dry_run or not a.emit:
+        # Structural (AGENTS.md §6): emit_findings / save_alert_event are not reachable from this branch,
+        # and the (shared, thread-local) session is READ ONLY at the server.
+        try:
+            _receipt_lib().enforce_readonly(_conn())
+        except Exception as exc:  # no DB: analyze() records the profile read failure as a data error
+            _DATA_ERRORS.append(f"db unavailable: {type(exc).__name__}")
+        res = analyze()
+        res["would_emit"] = len(res["findings"]) if a.emit else 0
+        res["data_errors"] = list(_DATA_ERRORS)
+        print(json.dumps(res, indent=2, default=str))
+        if a.dry_run:
+            _dry_report(LANE_ID, {"flagged_count": res["flagged_count"],
+                                                    "would_emit": res["would_emit"],
+                                                    "data_errors": res["data_errors"]},
+                                          would_write=["alert_events (strategic_alert, info) x would_emit"],
+            json_stdout=True)
+        return 1 if _DATA_ERRORS else 0
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        res = emit_findings()
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="fee_efficiency_analyzer.py",
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
+    res["data_errors"] = list(_DATA_ERRORS)
     print(json.dumps(res, indent=2, default=str))
+    failed = bool(_DATA_ERRORS) or bool(res.get("emit_error")) or res["emitted"] < len(res["findings"])
+    rc = 1 if failed else 0
+    _receipt_lib().write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                                      script="fee_efficiency_analyzer.py",
+                                      summary={"flagged_count": res["flagged_count"], "emitted": res["emitted"],
+                                               "data_errors": res["data_errors"],
+                                               "emit_error": res.get("emit_error")})
+    return rc
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

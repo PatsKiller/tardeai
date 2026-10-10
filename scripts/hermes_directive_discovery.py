@@ -11,7 +11,14 @@ FIREWALL: this writes ONLY the hermes staging table (the Hermes lane) — never 
 watch_directive_hits, watchlist_items, or strategy_watchpool. It SURFACES Hermes research as proposed
 leads; promotion stays inside promote_directive_lead. Advisory; no execution.
 
-  python3 scripts/hermes_directive_discovery.py [--apply] [--limit-per-directive N]
+  python3 scripts/hermes_directive_discovery.py [--apply] [--dry-run] [--limit-per-directive N]
+
+Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L448 --apply):
+- ``--dry-run`` wins over ``--apply`` (no flag is still a dry run) and runs on a READ ONLY session, so
+  the staging INSERT/commit is refused at the server even if reached; the report is the same JSON with
+  ``mode: dry_run``. No receipt.
+- A real ``--apply`` run writes data/runtime/hermes_directive_discovery_last.json (LaneRunReceipt@v1,
+  ok_at only on success); a DB error exits non-zero. Staging nothing is a finding, not a failure.
 """
 from __future__ import annotations
 import argparse, json, sys
@@ -96,7 +103,12 @@ def _already_pending(cur, did, sym):
 
 
 def run(apply=False, cap=PER_DIRECTIVE_CAP):
-    conn = _conn(); cur = conn.cursor()
+    conn = _conn()
+    if not apply:
+        from lib.lane_last_receipt import enforce_readonly
+
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
+    cur = conn.cursor()
     cur.execute("SELECT id, label, spec, hermes_enabled FROM watch_directives WHERE status='active' AND kind='trend'")
     directives = cur.fetchall()
     try:
@@ -104,7 +116,8 @@ def run(apply=False, cap=PER_DIRECTIVE_CAP):
         stale_ids = set((load_critique_snapshot().get("index") or {}).get("stale_directive_ids") or [])
     except Exception:
         stale_ids = set()
-    report = {"trend_directives": len(directives), "staged": 0, "skipped_stale": 0, "detail": []}
+    report = {"mode": "apply" if apply else "dry_run", "trend_directives": len(directives), "staged": 0,
+              "skipped_stale": 0, "detail": []}
     for did, label, spec, hermes_enabled in directives:
         if not hermes_enabled:
             continue
@@ -130,17 +143,36 @@ def run(apply=False, cap=PER_DIRECTIVE_CAP):
             report["detail"].append({"directive": label, "symbol": sym, "thesis": thesis[:60]})
         if apply:
             conn.commit()
+    if not apply:
+        conn.rollback()
+        report["would_write"] = {"table": "hermes_directive_hits_staging", "rows": report["staged"]}
     print(json.dumps(report, indent=2))
     return report
 
 
-def main():
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write to staging (default: dry-run)")
+    ap.add_argument("--dry-run", action="store_true", help="read-only preview; wins over --apply")
     ap.add_argument("--limit-per-directive", type=int, default=PER_DIRECTIVE_CAP)
-    a = ap.parse_args()
-    run(apply=a.apply, cap=a.limit_per_directive)
+    a = ap.parse_args(argv)
+    apply = a.apply and not a.dry_run
+    if not apply:
+        run(apply=False, cap=a.limit_per_directive)
+        return 0
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    started_at = now_iso()
+    try:
+        report = run(apply=True, cap=a.limit_per_directive)
+    except Exception as exc:
+        write_receipt("hermes_directive_discovery", ok=False, started_at=started_at,
+                      error=f"{type(exc).__name__}: {exc}")
+        raise
+    write_receipt("hermes_directive_discovery", ok=True, started_at=started_at,
+                  summary={k: report[k] for k in ("trend_directives", "staged", "skipped_stale")})
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

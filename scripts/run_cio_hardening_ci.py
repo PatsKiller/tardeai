@@ -4065,6 +4065,64 @@ GATES = [
             "tests/test_refactor_w1_warm_caches_20261010.py",
         ],
     ),
+    (
+        # ANCHOR: REFACTOR_W2_BUCKET_V1 — 2026-10-10 cron->n8n refactor wave 2, bucket V1: --dry-run that
+        # cannot reach a write/send/paid call (READ ONLY session + return-before-write, source-order
+        # pinned), LaneRunReceipt@v1 <state_root>/data/runtime/<script>_last.json with ok_at on success
+        # only, honest exit codes. Scripts: signal_fusion (full/active), agent_recommendation_normalizer,
+        # update_agent_performance, catalyst_calibration, backtest_history_snapshot, holdings_llm_refresh,
+        # hermes_directive_discovery, earnings_enrich, ipo_lockup_alert. Hermetic: fake DB, tmp state root.
+        "refactor_w2_bucket_v1_20261010",
+        [
+            "tests/test_refactor_w2_signal_fusion_20261010.py",
+            "tests/test_refactor_w2_learning_lanes_20261010.py",
+            "tests/test_refactor_w2_ingest_alert_lanes_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W2_BUCKET_V4 — 2026-10-10 cron->n8n refactor wave 2, bucket V4 (11 scripts, cron
+        # L300 L318 L352 L381 L406 L420 L447 L484 L549 L606 L683): --dry-run cannot reach a DB write, file
+        # write, LLM call or subprocess (READ ONLY session + patched writers that raise); real runs leave
+        # LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest exit codes.
+        # Hermetic: fake connections/modules, TRADEAI_STATE_ROOT = tmp. Listing them schedules nothing.
+        "refactor_w2_bucket_v4_20261010",
+        [
+            "tests/test_refactor_w2_topic_curation_20261010.py",
+            "tests/test_refactor_w2_catalysts_20261010.py",
+            "tests/test_refactor_w2_backtests_20261010.py",
+            "tests/test_refactor_w2_portfolio_reports_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W2_BUCKET_V2 — 2026-10-10 cron -> n8n refactor wave 2, bucket V2: --dry-run that cannot
+        # reach a write/LLM/send (entry planner L473/L474, health LLM review L337, top20 intel L453, backtest
+        # L365, news bridge L413, source-maturity chain L431, lockup dates L490, eligible prewarm L573, tilt hook
+        # L626) + LaneRunReceipt@v1 + honest exits. Hermetic: fake DBs/modules, TRADEAI_STATE_ROOT = tmp.
+        "refactor_w2_bucket_v2_20261010",
+        [
+            "tests/test_refactor_w2_advisory_llm_20261010.py",
+            "tests/test_refactor_w2_source_maturity_20261010.py",
+            "tests/test_refactor_w2_misc_lanes_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: REFACTOR_W2_BUCKET_V3 — 2026-10-10 cron->n8n refactor wave 2, bucket V3: --dry-run that
+        # cannot reach a write / model call / yfinance fetch / send (READ ONLY session or
+        # return-before-write, pinned by fakes that fail on a write), LaneRunReceipt@v1
+        # <state_root>/data/runtime/<script>_last.json with ok_at on success only, honest exit codes.
+        # Scripts: run_afterhours_candidate_preparation.{sh,py}, agent_calibration_engine,
+        # enterprise_backtester, setup_quality_prior, multi_tier_trade_reviewer, research_insight_extractor,
+        # pro_analyst_fetch / build_pro_analyst_read_model / pro_analyst_monitor + run_pro_analyst_chain,
+        # technicals_gap_backfill, classify_instruments, backtest_results_aggregator,
+        # hermes_discovery_ingestors. Hermetic: fake DB/modules, tmp state root. Schedules nothing.
+        "refactor_w2_bucket_v3_20261010",
+        [
+            "tests/test_refactor_w2_calibration_lanes_20261010.py",
+            "tests/test_refactor_w2_proposal_lanes_20261010.py",
+            "tests/test_refactor_w2_research_lanes_20261010.py",
+            "tests/test_refactor_w2_portfolio_lanes_20261010.py",
+        ],
+    ),
 ]
 
 

@@ -7,7 +7,11 @@ ADVISORY/READ-ONLY (external Yahoo fetch). Yahoo analyst targets are the authori
 proposals + today GO/WAIT scalp + active watchlist, persisting via the existing
 save_yahoo_analyst_targets_history. Skips ETF/fund-like symbols (no analyst coverage). No trades/scoring change.
 
-  python3 scripts/pro_analyst_fetch.py [--max 80]
+  python3 scripts/pro_analyst_fetch.py [--max 80] [--dry-run]
+
+--dry-run builds the universe on a READ ONLY session and stops: no yfinance call, no
+yahoo_analyst_targets_history write, no data_source_health report (AGENTS.md §6).
+Exit 1 when every attempted symbol errored (was exit 0); no coverage without errors is a finding.
 """
 import os, sys, json
 from datetime import datetime
@@ -23,11 +27,17 @@ import psycopg2
 _FIDELITY_PFX = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-", "CASH", "FCNTX")
 
 
-def main():
-    mx = int(sys.argv[sys.argv.index("--max") + 1]) if "--max" in sys.argv else 80
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    mx = int(argv[argv.index("--max") + 1]) if "--max" in argv else 80
+    dry_run = "--dry-run" in argv
     c = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
                          dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
-                         password=os.getenv("DB_PASSWORD")); cur = c.cursor()
+                         password=os.getenv("DB_PASSWORD"))
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(c)  # dry run: the server refuses any write (AGENTS.md §6)
+    cur = c.cursor()
     cur.execute("""
         SELECT DISTINCT symbol FROM (
             SELECT symbol FROM paper_trades WHERE entry_time>now()-interval '30 days' AND symbol IS NOT NULL
@@ -58,6 +68,11 @@ def main():
     except Exception as _e:
         print(f"  (holdings union skipped: {str(_e)[:60]})")
     print(f"actionable symbols to fetch: {len(syms)} (cap {mx})")
+    if dry_run:
+        # returns before yfinance, save_yahoo_analyst_targets_history and report_source (AGENTS.md §6)
+        print(json.dumps({"dry_run": True, "would_fetch": len(syms[:mx]),
+                          "would_fetch_sample": syms[:10]}, indent=2))
+        return 0
 
     try:
         import yfinance as yf
@@ -106,7 +121,12 @@ def main():
         pass
     print(json.dumps({"fetched_with_coverage": len(payload), "no_analyst_coverage": len(no_cov),
                       "no_coverage_sample": no_cov[:10]}, indent=2))
+    attempted = len(syms[:mx])
+    # Every attempted symbol erroring is a failed run (was exit 0, hidden by the cron line's ';'
+    # chain); symbols without analyst coverage are a finding. Evidence for the lane is the chain
+    # receipt (run_pro_analyst_chain.py) plus the yahoo_finance data_source_health row above.
+    return 1 if (attempted and errors >= attempted) else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

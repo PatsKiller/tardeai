@@ -24,6 +24,7 @@ def _uid(prefix="ACE_"): return f"{prefix}{datetime.now(timezone.utc).strftime('
 
 AGENT_SAMPLE_INSIGHT = 25
 AGENT_SAMPLE_SHADOW = 100
+ROW_CAP = 2000  # score_recommendations LIMIT -- reported, so a capped run is visible (not a fix)
 
 def _get_conn():
     from session13_db import get_conn
@@ -45,7 +46,7 @@ def score_recommendations(conn, agent_filter=None, window_days=90):
     if agent_filter:
         sql += " AND r.agent_name ILIKE %s"
         params.append(f"%{agent_filter}%")
-    sql += " ORDER BY r.recommendation_time DESC LIMIT 2000"
+    sql += f" ORDER BY r.recommendation_time DESC LIMIT {ROW_CAP}"
     cur.execute(sql, params)
 
     events = []
@@ -295,44 +296,75 @@ def save_windows(conn, windows, dry_run=True):
     conn.commit()
 
 
-def main():
+def _receipt(**kw):
+    """Real-run receipt (data/runtime/agent-calibration-engine_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("agent-calibration-engine", script="agent_calibration_engine.py", **kw)
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Agent Calibration Engine")
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="score and report; never write (wins over --apply)")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--agent", help="Filter by agent")
     parser.add_argument("--window", default="90d", help="Window (e.g. 30d, 90d)")
     parser.add_argument("--rebuild", action="store_true")
     parser.add_argument("--json", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    dry_run = not args.apply
+    # --dry-run wins: a dispatcher passing both must never write (AGENTS.md §6).
+    dry_run = args.dry_run or not args.apply
     window_days = int(args.window.replace("d", ""))
+    started_at = _now_iso()
     conn = _get_conn()
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
     try:
         events = score_recommendations(conn, agent_filter=args.agent, window_days=window_days)
         windows = aggregate_windows(events, window_days=window_days)
 
-        if not dry_run:
-            save_events(conn, events, dry_run=False)
-            save_windows(conn, windows, dry_run=False)
-
         out = {
             "mode": "dry_run" if dry_run else "applied",
             "calibration_events": len(events),
+            "events_capped": len(events) >= ROW_CAP,
             "agent_windows": len(windows),
             "window_days": window_days,
             "agents": [{k: v for k, v in w.items() if k != "payload"} for w in windows],
             "low_sample_warning": all(w.get("low_sample_size", True) for w in windows),
         }
+        if dry_run:
+            out["would_write"] = {"agent_calibration_events": len(events),
+                                  "agent_calibration_windows": len(windows)}
+        else:
+            save_events(conn, events, dry_run=False)
+            save_windows(conn, windows, dry_run=False)
+            _receipt(ok=True, started_at=started_at,
+                     summary={"calibration_events": len(events), "agent_windows": len(windows),
+                              "events_capped": out["events_capped"]})
         if args.json:
             print(json.dumps(out, indent=2, default=str))
         else:
             print(f"Calibration: {out['calibration_events']} events, {out['agent_windows']} windows ({out['mode']})")
+            if out["events_capped"]:
+                print(f"  NOTE: event count hit the {ROW_CAP}-row query cap")
             if out["low_sample_warning"]:
                 print("  WARNING: All agents have low sample size")
+        return 0
+    except Exception as exc:
+        if not dry_run:  # a failed real run leaves a failed receipt (ok_at kept), then exits non-zero
+            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
     finally:
         conn.close()
 
 
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

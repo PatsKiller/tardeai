@@ -6,7 +6,14 @@ Loads decision_outcomes with price data, matches to agent recommendations
 from watchlist_agent_results, computes accuracy (did recommendation direction
 match actual price outcome?), and writes to agent_performance_history.
 
-CLI: python3 scripts/update_agent_performance.py [--json]
+CLI: python3 scripts/update_agent_performance.py [--json] [--dry-run]
+
+Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L427):
+- The connection comes from db_adapter (shared credential loader), not an inline .env password parse.
+- Scoring (``score``) is SELECT-only; the INSERTs live in ``_write_rows``. ``--dry-run`` scores on a
+  READ ONLY session and returns before ``_write_rows`` is reachable, reporting the rows it would add.
+- A real run writes data/runtime/update_agent_performance_last.json (LaneRunReceipt@v1, ok_at only on
+  success); a DB error exits non-zero. No matched recommendations is a finding, not a failure.
 """
 import json, os, sys
 from collections import defaultdict
@@ -14,6 +21,8 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
 # Direction classification for recommendations
@@ -23,12 +32,10 @@ LOOKBACK_DAYS = 30
 
 
 def _get_conn():
-    import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="):
-            pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    # Shared loader (env_bootstrap / .env, timeouts) -- no inline password parse.
+    from db_adapter import _get_conn as _adapter_conn
+
+    return _adapter_conn()
 
 
 def _rec_direction(rec: str) -> str:
@@ -60,9 +67,8 @@ def _outcome_direction(price_at: float, price_after: float) -> str:
     return "neutral"
 
 
-def run(as_json: bool = False):
-    conn = _get_conn()
-    cur = conn.cursor()
+def score(cur) -> dict:
+    """READ ONLY: every statement is a SELECT. Returns outcomes/matched counts and per-agent rows."""
 
     cutoff = datetime.now() - timedelta(days=LOOKBACK_DAYS)
     today = date.today()
@@ -143,14 +149,22 @@ def run(as_json: bool = False):
 
             matched_count += 1
 
-    # Write agent_performance_history rows
-    written = []
+    rows = []
     for agent, stats in agent_stats.items():
         if stats["total"] == 0:
             continue
         accuracy = round(100.0 * stats["correct"] / stats["total"], 1)
         avg_conf = round(sum(stats["confidences"]) / len(stats["confidences"]), 3) if stats["confidences"] else 0
+        rows.append({"agent": agent, "total": stats["total"], "correct": stats["correct"],
+                     "accuracy_pct": accuracy, "avg_confidence": avg_conf, "overrides": stats["overrides"]})
+    return {"outcomes": len(outcomes), "matched": matched_count, "rows": rows,
+            "period_start": period_start, "period_end": today}
 
+
+def _write_rows(cur, scored: dict) -> list:
+    """The ONLY write: one agent_performance_history row per scored agent."""
+    written = []
+    for r in scored["rows"]:
         cur.execute("""
             INSERT INTO agent_performance_history
                 (agent, period_start, period_end, total_recommendations,
@@ -158,38 +172,65 @@ def run(as_json: bool = False):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
-            agent, period_start, today, stats["total"],
-            accuracy, avg_conf, 0, stats["overrides"],
+            r["agent"], scored["period_start"], scored["period_end"], r["total"],
+            r["accuracy_pct"], r["avg_confidence"], 0, r["overrides"],
         ))
         perf_id = cur.fetchone()[0]
-        written.append({
-            "id": perf_id,
-            "agent": agent,
-            "total": stats["total"],
-            "correct": stats["correct"],
-            "accuracy_pct": accuracy,
-            "avg_confidence": avg_conf,
-            "overrides": stats["overrides"],
-        })
+        written.append({"id": perf_id, **r})
+    return written
 
-    conn.commit()
-    cur.close()
-    conn.close()
+
+def run(as_json: bool = False, dry_run: bool = False) -> int:
+    conn = _get_conn()
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+
+        enforce_readonly(conn)  # the server refuses any write (AGENTS.md §6)
+        try:
+            scored = score(conn.cursor())
+            conn.rollback()
+        finally:
+            conn.close()
+        print(json.dumps({
+            "mode": "dry_run", "outcomes_analyzed": scored["outcomes"], "matches_found": scored["matched"],
+            "would_write": {"table": "agent_performance_history", "rows": len(scored["rows"])},
+            "agents": scored["rows"],
+        }, default=str, indent=2))
+        return 0
+
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    started_at = now_iso()
+    try:
+        cur = conn.cursor()
+        scored = score(cur)
+        written = _write_rows(cur, scored)
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as exc:
+        write_receipt("update_agent_performance", ok=False, started_at=started_at,
+                      error=f"{type(exc).__name__}: {exc}")
+        raise
+    outcomes, matched_count = scored["outcomes"], scored["matched"]
+    write_receipt("update_agent_performance", ok=True, started_at=started_at,
+                  summary={"outcomes": outcomes, "matched": matched_count, "agents_scored": len(written)})
 
     if as_json:
         print(json.dumps({
-            "outcomes_analyzed": len(outcomes),
+            "outcomes_analyzed": outcomes,
             "matches_found": matched_count,
             "agents_scored": written,
         }, default=str))
     else:
-        print(f"[update_agent_performance] Analyzed {len(outcomes)} outcomes, matched {matched_count} agent recommendations.")
+        print(f"[update_agent_performance] Analyzed {outcomes} outcomes, matched {matched_count} agent recommendations.")
         print(f"[update_agent_performance] Scored {len(written)} agents:")
         for w in written:
             print(f"  {w['agent']:<15} | {w['total']:>3} recs | accuracy={w['accuracy_pct']:5.1f}% | conf={w['avg_confidence']:.3f} | overrides={w['overrides']}")
         if not written:
             print("  (no agent recommendations matched to outcomes with price data)")
+    return 0
 
 
 if __name__ == "__main__":
-    run(as_json="--json" in sys.argv)
+    sys.exit(run(as_json="--json" in sys.argv, dry_run="--dry-run" in sys.argv))

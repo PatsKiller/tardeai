@@ -9,6 +9,14 @@ LLM read.
 
 Honest approximation: yfinance gives each fund's TOP ~10 holdings, so mega-caps (Mag 7) are well-captured
 but the long tail is understated — theme %s are lower bounds. Cached to fund_holdings_cache.json.
+
+State resolves through scripts/lib/persistent_state_root (served copy first, §9.4), not the checkout.
+--dry-run computes the deterministic report from the served holdings and prints it; it writes neither cache
+nor lookthrough_themes.json, calls no LLM, and writes no receipt. A real run writes
+<state_root>/data/runtime/portfolio-lookthrough-themes_last.json (ok_at only on success) and exits 1 when
+holdings are missing/empty or the served report could not be written. A run without --grok keeps the previous
+grok_narrative / agent_advisories (with their grok_generated_at) instead of blanking them, so the
+deterministic report can run on its own schedule.
 """
 from __future__ import annotations
 
@@ -20,7 +28,44 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-STATE = ROOT / "data" / "portfolios" / "state"
+LANE_ID = "portfolio-lookthrough-themes"
+_STATE_REL = "data/portfolios/state"
+
+
+def _state_dir() -> Path:
+    """Served data/portfolios/state (persistent root when provisioned, else this checkout)."""
+    try:
+        from lib.persistent_state_root import resolve_durable_dir
+    except ImportError:  # imported as scripts.portfolio_lookthrough_themes
+        from scripts.lib.persistent_state_root import resolve_durable_dir
+    return Path(resolve_durable_dir(_STATE_REL, ROOT))
+
+
+def _state_write_targets() -> list[Path]:
+    """Served copy first, then the checkout copy (dual-write, de-duplicated by realpath)."""
+    try:
+        from lib.persistent_state_root import portfolio_state_write_targets
+    except ImportError:
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+    return [Path(p) for p in portfolio_state_write_targets(ROOT)]
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _dry_report(lane_id, summary, *, would_write, json_stdout=False):
+    """lane_last_receipt.dry_run_report, sent to stderr when stdout carries the script's JSON report."""
+    import contextlib
+    with contextlib.redirect_stdout(sys.stderr) if json_stdout else contextlib.nullcontext():
+        return _receipt_lib().dry_run_report(lane_id, summary, would_write=would_write)
+
+
+STATE = _state_dir()
 HOLD_CACHE = STATE / "fund_holdings_cache.json"
 CONSTITUENTS = STATE / "index_constituents.json"
 
@@ -81,8 +126,25 @@ def _fund_holdings(etf, cache):
     return out
 
 
-def _resolve_underlying(holdings):
-    """Return (underlying $ by stock, sources {stock:{holding_label:$}}, per-account underlying, total, covered)."""
+def _write_state_json(name: str, doc) -> list[str]:
+    """Write ``name`` into every state write target (served first). Returns the paths written; raises when the
+    served (first) target fails."""
+    written = []
+    for i, d in enumerate(_state_write_targets()):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            (d / name).write_text(json.dumps(doc, indent=2))
+            written.append(str(d / name))
+        except Exception:
+            if i == 0:
+                raise
+    return written
+
+
+def _resolve_underlying(holdings, *, persist: bool = True):
+    """Return (underlying $ by stock, sources {stock:{holding_label:$}}, per-account underlying, total, covered).
+
+    ``persist=False`` (dry run) leaves fund_holdings_cache.json untouched."""
     import holding_family as hf
     cache = _load(HOLD_CACHE, {})
     underlying = defaultdict(float)
@@ -115,7 +177,8 @@ def _resolve_underlying(holdings):
             sources[stock][label] += mv * w
             by_account[acct][stock] += mv * w
         covered += mv * sum(weights.values())
-    HOLD_CACHE.write_text(json.dumps(cache, indent=2))
+    if persist:
+        _write_state_json(HOLD_CACHE.name, cache)
     return underlying, sources, by_account, total, covered
 
 
@@ -194,11 +257,11 @@ def _theme_gaps(themes, total):
     return gaps
 
 
-def run(account: str | None = None) -> dict:
+def run(account: str | None = None, *, persist: bool = True) -> dict:
     holdings = _load(STATE / "holdings.json", {}).get("holdings", [])
     if account:
         holdings = [h for h in holdings if (h.get("account") or "") == account]
-    underlying, sources, by_account, total, covered = _resolve_underlying(holdings)
+    underlying, sources, by_account, total, covered = _resolve_underlying(holdings, persist=persist)
     themes = _themes(underlying, total)
     top = [{"symbol": s, "value": round(v, 0), "pct": round(v / total * 100, 2) if total else 0,
             "in": [{"src": k, "value": round(x, 0)} for k, x in sorted(sources[s].items(), key=lambda i: -i[1])[:6]]}
@@ -268,32 +331,40 @@ def grok_narrative(data: dict) -> str:
         return ""
 
 
-def main():
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--account")
     ap.add_argument("--grok", action="store_true")
-    a = ap.parse_args()
-    r = run(account=a.account)
-    if a.grok:
-        r["grok_narrative"] = grok_narrative(r)
-        r["agent_advisories"] = agent_advisories(r)
-    # per-account detail (no LLM — themes/top/rule-advisories only; the fund-holdings cache makes this cheap)
-    if not a.account:
-        detail = {}
-        for acct in r.get("accounts", []):
-            ar = run(account=acct)
-            detail[acct] = {k: ar[k] for k in ("portfolio_total", "coverage_pct", "themes",
-                                               "top_underlying", "advisories")}
-        r["accounts_detail"] = detail
-    # write the cache the API serves (fast, no yfinance in the request path) — only for the global run
-    if not a.account:
-        try:
-            (STATE / "lookthrough_themes.json").write_text(json.dumps(r, indent=2))
-        except Exception:
-            pass
+    ap.add_argument("--dry-run", action="store_true",
+                    help="deterministic report only; no cache/report write, no LLM, no receipt")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        r = run(account=a.account, persist=False)
+        summary = {"portfolio_total": r["portfolio_total"], "coverage_pct": r["coverage_pct"],
+                   "accounts": len(r.get("accounts", [])), "advisories": len(r["advisories"]),
+                   "theme_gaps": len(r["theme_gaps"]), "llm": "skipped (dry run)" if a.grok else "not requested"}
+        would = [] if a.account else [str(t / "lookthrough_themes.json") for t in _state_write_targets()]
+        would += [str(t / HOLD_CACHE.name) for t in _state_write_targets()]
+        _dry_report(LANE_ID, summary, would_write=would,
+            json_stdout=a.json)
+        return 0
+    from datetime import datetime, timezone
+    started = datetime.now(timezone.utc).isoformat()
+    summary: dict = {"account": a.account, "grok": bool(a.grok)}
+    try:
+        rc, r = _report(a, summary)
+    except Exception as exc:
+        if not a.account:
+            _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                              script="portfolio_lookthrough_themes.py", summary=summary,
+                                              error=f"{type(exc).__name__}: {exc}")
+        raise
+    if not a.account:  # the lane is the global run; a per-account manual run is not the lane
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=(rc == 0), exit_code=rc, started_at=started,
+                                          script="portfolio_lookthrough_themes.py", summary=summary)
     if a.json:
-        print(json.dumps(r, indent=2)); return 0
+        print(json.dumps(r, indent=2)); return rc
     print(f"Portfolio ${r['portfolio_total']:,.0f} · coverage {r['coverage_pct']}%"
           + (f" · {a.account}" if a.account else ""))
     for name, t in r["themes"].items():
@@ -303,7 +374,47 @@ def main():
         print(f"  [{x['severity']}] {x['title']} — {x['detail']}")
     if r.get("grok_narrative"):
         print("\nGrok:", r["grok_narrative"])
-    return 0
+    return rc
+
+
+def _report(a, summary: dict) -> tuple[int, dict]:
+    """The real run. Returns (exit code, report)."""
+    from datetime import datetime, timezone
+    r = run(account=a.account)
+    summary.update(portfolio_total=r["portfolio_total"], coverage_pct=r["coverage_pct"])
+    if a.grok:
+        r["grok_narrative"] = grok_narrative(r)
+        r["agent_advisories"] = agent_advisories(r)
+        r["grok_generated_at"] = datetime.now(timezone.utc).isoformat()
+        # §9.2: a lane that could not run says so instead of rendering a silently empty section
+        r["grok_status"] = "ok" if (r["grok_narrative"] or r["agent_advisories"]) else "unavailable"
+        summary["grok_status"] = r["grok_status"]
+    elif not a.account:
+        prev = _load(STATE / "lookthrough_themes.json", {})
+        for k in ("grok_narrative", "agent_advisories", "grok_generated_at", "grok_status"):
+            if k in prev:
+                r[k] = prev[k]
+    # per-account detail (no LLM — themes/top/rule-advisories only; the fund-holdings cache makes this cheap)
+    if not a.account:
+        detail = {}
+        for acct in r.get("accounts", []):
+            ar = run(account=acct)
+            detail[acct] = {k: ar[k] for k in ("portfolio_total", "coverage_pct", "themes",
+                                               "top_underlying", "advisories")}
+        r["accounts_detail"] = detail
+    rc = 0
+    if not r["portfolio_total"]:
+        print("[lookthrough] no holdings / zero portfolio total -> exit 1", file=sys.stderr)
+        rc = 1
+    # write the cache the API serves (fast, no yfinance in the request path) — only for the global run
+    if not a.account:
+        try:
+            summary["written"] = _write_state_json("lookthrough_themes.json", r)
+        except Exception as exc:
+            print(f"[lookthrough] report write failed: {type(exc).__name__} -> exit 1", file=sys.stderr)
+            summary["write_error"] = type(exc).__name__
+            rc = 1
+    return rc, r
 
 
 if __name__ == "__main__":

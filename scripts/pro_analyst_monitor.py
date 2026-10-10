@@ -67,7 +67,8 @@ def main():
     try:
         d = json.loads(SRC.read_text())
     except Exception as e:
-        print(json.dumps({"status": "NO_READ_MODEL", "error": str(e)[:120]})); return
+        print(json.dumps({"status": "NO_READ_MODEL", "error": str(e)[:120]}))
+        return 1  # the read model it monitors is missing/unreadable: a failure, not a quiet exit 0
     pills = d.get("pills", [])
     covered = [p for p in pills if p.get("has_professional_coverage")]
     cov_syms = {p["symbol"] for p in covered}
@@ -141,7 +142,8 @@ def main():
         HIST.write_text(json.dumps({"updated_at": snap["ts"], "snapshots": hist}, indent=2))
     print(json.dumps({k: snap[k] for k in ("date", "with_consensus", "coverage_pct", "comparable",
           "divergence_counts", "divergent", "status", "notes", "newly_covered", "newly_divergent")}, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

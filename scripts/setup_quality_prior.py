@@ -54,6 +54,15 @@ CREATE TABLE IF NOT EXISTS candidate_setup_advisory (
 """
 
 
+def _write(cur, dry_run, sql, params=None):
+    """The ONLY path to a DDL/TRUNCATE/INSERT here. A dry run never executes it (AGENTS.md §6) --
+    and its session is READ ONLY at the server besides (main)."""
+    if dry_run:
+        return False
+    cur.execute(sql, params)
+    return True
+
+
 def rsi_band(rsi):
     if rsi is None:
         return None
@@ -65,7 +74,7 @@ def conf(n):
     return "high" if n >= 15 else "medium" if n >= 8 else "low"
 
 
-def build_prior(cur):
+def build_prior(cur, dry_run=False):
     # Structural stats per band from closed-trade grades
     cur.execute("""
         SELECT CASE WHEN entry_rsi<40 THEN '<40' WHEN entry_rsi<55 THEN '40-55'
@@ -98,7 +107,7 @@ def build_prior(cur):
     """)
     llm = {r["band"]: r for r in cur.fetchall()}
 
-    cur.execute("TRUNCATE setup_quality_prior")
+    _write(cur, dry_run, "TRUNCATE setup_quality_prior")
     bands = ["<40", "40-55", "55-70", ">70"]
     for b in bands:
         s = struct.get(b)
@@ -108,7 +117,7 @@ def build_prior(cur):
         n = s["n"]
         note = (f"Entries at RSI {b}: {s['win_rate']}% win, ${s['avg_left']} avg left on table "
                 f"(n={n}, {conf(n)} confidence).")
-        cur.execute("""
+        _write(cur, dry_run, """
             INSERT INTO setup_quality_prior
               (dimension, band, n, win_rate, avg_pnl, avg_left, grade_score, llm_score, dominant_verdict, confidence, note, updated_at)
             VALUES ('rsi_band',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
@@ -118,13 +127,13 @@ def build_prior(cur):
     return struct, llm
 
 
-def build_advisories(cur, struct, llm):
+def build_advisories(cur, struct, llm, dry_run=False):
     cur.execute("""
         SELECT id, symbol, status, rsi FROM paper_trade_proposals
         WHERE rsi IS NOT NULL AND created_at > now() - interval '90 days'
     """)
     props = cur.fetchall()
-    cur.execute("TRUNCATE proposal_setup_advisory")
+    _write(cur, dry_run, "TRUNCATE proposal_setup_advisory")
     written = 0
     for p in props:
         b = rsi_band(p["rsi"])
@@ -149,7 +158,7 @@ def build_advisories(cur, struct, llm):
         note = (f"RSI {p['rsi']:.0f} → band {b}: {wr:.0f}% win, ${left:.0f} avg left on table, "
                 f"prior score ~{score:.0f}/100 (n={n}, {conf(n)} conf)."
                 + (f" Dominant verdict: {verdict}." if verdict else "") + guide)
-        cur.execute("""
+        _write(cur, dry_run, """
             INSERT INTO proposal_setup_advisory
               (proposal_id, symbol, status, rsi, band, prior_score, prior_win_rate, prior_avg_left,
                dominant_verdict, confidence, advisory_flag, note, updated_at)
@@ -157,14 +166,16 @@ def build_advisories(cur, struct, llm):
         """, [p["id"], p["symbol"], p["status"], p["rsi"], b, round(score, 0), wr, left,
               verdict, conf(n), flag, note])
         written += 1
-    log.info("advisories written: %d (of %d proposals with RSI)", written, len(props))
+    log.info("advisories %s: %d (of %d proposals with RSI)",
+             "would write" if dry_run else "written", written, len(props))
+    return written
 
 
-def build_candidate_advisories(cur, struct, llm):
+def build_candidate_advisories(cur, struct, llm, dry_run=False):
     """Attach the same advisory to candidate symbols in the incubator + watchlist.
     Uses each symbol's latest RSI from ticker_snapshot_daily. Advisory-only — never
     changes incubator scoring/promotion or watchlist status."""
-    cur.execute("TRUNCATE candidate_setup_advisory")
+    _write(cur, dry_run, "TRUNCATE candidate_setup_advisory")
     sources = [
         ("incubator", "SELECT symbol, status FROM incubator_universe WHERE status='ACTIVE'"),
         ("watchlist", "SELECT symbol, status FROM watchlist_items WHERE status='active'"),
@@ -200,7 +211,7 @@ def build_candidate_advisories(cur, struct, llm):
             note = (f"Currently RSI {float(snap['rsi']):.0f} → band {b}: {wr:.0f}% win, ${left:.0f} avg left "
                     f"on table, prior score ~{score:.0f}/100 (n={n}, {conf(n)} conf)."
                     + (f" Dominant verdict: {verdict}." if verdict else "") + guide)
-            cur.execute("""
+            _write(cur, dry_run, """
                 INSERT INTO candidate_setup_advisory
                   (entity_type, symbol, status, rsi, snapshot_date, band, prior_score, prior_win_rate,
                    prior_avg_left, dominant_verdict, confidence, advisory_flag, note, updated_at)
@@ -208,23 +219,58 @@ def build_candidate_advisories(cur, struct, llm):
                 ON CONFLICT (entity_type, symbol) DO NOTHING
             """, [entity, it["symbol"], it["status"], snap["rsi"], snap["snapshot_date"], b,
                   round(score, 0), wr, left, verdict, conf(n), flag, note])
-            written += cur.rowcount
-        log.info("%s advisories written: %d (of %d active)", entity, written, len(items))
+            written += 1 if dry_run else cur.rowcount
+        log.info("%s advisories %s: %d (of %d active)", entity,
+                 "would write" if dry_run else "written", written, len(items))
         total += written
     return total
 
 
-def main():
+def main(argv=None):
+    import argparse
+    from datetime import datetime, timezone
+
+    ap = argparse.ArgumentParser(description="Setup-quality prior + advisories (advisory-only)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="compute and report; no DDL/TRUNCATE/INSERT, READ ONLY session, no receipt")
+    args = ap.parse_args(argv)
+    dry_run = args.dry_run
+    started_at = datetime.now(timezone.utc).isoformat()
+
     conn = psycopg2.connect(**DB)
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # before autocommit: the server refuses any write (AGENTS.md §6)
     conn.autocommit = True
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute(DDL)
-    struct, llm = build_prior(cur)
-    build_advisories(cur, struct, llm)
-    build_candidate_advisories(cur, struct, llm)
-    conn.close()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _write(cur, dry_run, DDL)
+        struct, llm = build_prior(cur, dry_run)
+        n_prop = build_advisories(cur, struct, llm, dry_run)
+        n_cand = build_candidate_advisories(cur, struct, llm, dry_run)
+        summary = {"prior_bands": len(struct), "proposal_advisories": n_prop,
+                   "candidate_advisories": n_cand}
+        if dry_run:
+            log.info("dry run: nothing written %s", summary)
+            return 0
+        _receipt(ok=True, started_at=started_at, summary=summary)
+    except Exception as exc:
+        if not dry_run:  # failed real run: failed receipt (ok_at kept), then exit non-zero
+            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        conn.close()
     log.info("done (advisory-only; no proposal/incubator/watchlist mutation)")
+    return 0
+
+
+def _receipt(**kw):
+    """Real-run receipt (data/runtime/setup-quality-prior_last.json, ok_at on success only)."""
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("setup-quality-prior", script="setup_quality_prior.py", **kw)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

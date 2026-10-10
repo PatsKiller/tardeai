@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """Trade Backtest Engine — reconstructs technical context at entry/exit for closed trades.
-Grades entry quality (A-D) and exit quality (A-D) using historical OHLCV from yfinance."""
+Grades entry quality (A-D) and exit quality (A-D) using historical OHLCV from yfinance.
+
+  python3 scripts/trade_backtest_engine.py                       # live: upsert every closed trade
+  python3 scripts/trade_backtest_engine.py --dry-run --limit 25  # read-only preview of 25 trades
+
+--dry-run selects the trades on a READ ONLY session, backtests them (yfinance reads only) and returns
+BEFORE upsert_result / commit are reachable, printing what it would upsert (AGENTS.md §6). A real run
+writes data/runtime/trade_backtest_engine_last.json (LaneRunReceipt@v1; ok_at only on success) under
+the persistent state root and exits 1 on failure. Per-trade data gaps ('insufficient'/'error') are
+findings in the counts, not a failed run."""
 import os, sys, time, logging
 from datetime import timedelta
 from pathlib import Path
@@ -11,10 +20,13 @@ ROOT = Path(__file__).resolve().parent.parent
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
-for line in (ROOT / '.env').read_text().splitlines():
-    if '=' in line and not line.startswith('#'):
-        k, v = line.split('=', 1)
-        os.environ.setdefault(k.strip(), v.strip())
+RECEIPT_NAME = 'trade_backtest_engine'
+
+if (ROOT / '.env').exists():  # absent in a bare checkout/test tree; the served release symlinks it
+    for line in (ROOT / '.env').read_text().splitlines():
+        if '=' in line and not line.startswith('#'):
+            k, v = line.split('=', 1)
+            os.environ.setdefault(k.strip(), v.strip())
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -390,12 +402,7 @@ def upsert_result(conn, result):
     """, values)
 
 
-def run_all():
-    conn = get_db()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    # Schwab import (trade_closed) + the PAPER loop (closed paper_trades) — unified keyspace so backtest
-    # comparison covers paper trades too. paper_trade_id is carried so the link is explicit.
-    cur.execute("""
+_TRADES_SQL = """
         SELECT symbol || ':' || account || ':' || close_date::text as trade_key,
                symbol, open_date, close_date, trade_type,
                buy_price, sell_price, shares, pnl, pnl_pct, hold_days,
@@ -411,9 +418,49 @@ def run_all():
         FROM paper_trades
         WHERE exit_time IS NOT NULL AND symbol ~ '^[A-Z]{1,5}$' AND COALESCE(entry_price,0) > 0
         ORDER BY symbol, open_date
-    """)
+    """
+
+
+def load_trades(readonly=False):
+    conn = get_db()
+    if readonly:
+        conn.set_session(readonly=True)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    # Schwab import (trade_closed) + the PAPER loop (closed paper_trades) — unified keyspace so backtest
+    # comparison covers paper trades too. paper_trade_id is carried so the link is explicit.
+    cur.execute(_TRADES_SQL)
     trades = [dict(r) for r in cur.fetchall()]
     conn.close()
+    return trades
+
+
+def preview(limit=None):
+    """Dry run: same selection + same per-trade backtest, no DB write and no connection that could."""
+    trades = load_trades(readonly=True)
+    total = len(trades)
+    if limit is not None:
+        trades = trades[:limit]
+    counts = {'full': 0, 'partial': 0, 'insufficient': 0, 'error': 0}
+    df_cache = {}
+    left_20d = 0.0
+    top = []
+    for trade in trades:
+        result = backtest_trade(trade, df_cache)
+        counts[result['data_quality']] += 1
+        lot = result.get('left_on_table_20d') or 0
+        left_20d += float(lot)
+        top.append((float(lot), result['trade_key'], result.get('overall_grade')))
+    top.sort(reverse=True)
+    return {'dry_run': True, 'trades_selected': total, 'trades_backtested': len(trades), 'counts': counts,
+            'would_upsert': len(trades), 'table': 'trade_backtest_results',
+            'left_on_table_20d_preview_sum': round(left_20d, 2),
+            'largest_left_on_table_20d': [{'trade_key': k, 'left_20d': v, 'grade': g} for v, k, g in top[:5]]}
+
+
+def run_all(limit=None):
+    trades = load_trades()
+    if limit is not None:
+        trades = trades[:limit]
 
     log.info(f"Backtesting {len(trades)} trades across {len(set(t['symbol'] for t in trades))} symbols")
 
@@ -467,6 +514,31 @@ def print_summary():
     conn.close()
 
 
+def main(argv=None):
+    import argparse
+    import json
+
+    ap = argparse.ArgumentParser(description='Backtest closed trades into trade_backtest_results.')
+    ap.add_argument('--dry-run', action='store_true', help='read-only preview; writes nothing')
+    ap.add_argument('--limit', type=int, default=None, help='only the first N trades (default: all)')
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(json.dumps(preview(limit=args.limit), indent=2, default=str))
+        return 0
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    started = now_iso()
+    try:
+        counts = run_all(limit=args.limit)
+        print_summary()
+    except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
+        write_receipt(RECEIPT_NAME, ok=False, error=f'{type(exc).__name__}: {exc}', started_at=started)
+        log.error(f'backtest FAILED: {type(exc).__name__}: {exc}')
+        return 1
+    write_receipt(RECEIPT_NAME, ok=True, summary={'counts': counts, 'trades': sum(counts.values())},
+                  started_at=started)
+    return 0
+
+
 if __name__ == '__main__':
-    run_all()
-    print_summary()
+    sys.exit(main())

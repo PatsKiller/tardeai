@@ -12,6 +12,12 @@ scalp-critic gate) on 3 cadence bands, and feeds BOTH:
 
 Bands: premarket_scalp (4–11 AM, fast), market_swing (9:30–4, multi-hour/day), overnight (24/7 baseline).
 LLM classification on gemma3:4b. Kill-switch aware (data/runtime/HERMES_DISABLED). Default dry-run.
+
+--dry-run (wins over --apply and --generate-proposals) reads candidates and runs the read-only SearXNG
+search, then prints what would be staged; write_research_rows, the auto_proposal_generator subprocess, the
+last-run marker and the lane receipt are unreachable from it. A real run writes the per-band lane receipt
+<state_root>/data/runtime/catalyst-momentum-engine-<band>_last.json (ok_at only on success). Exit 1 when every
+candidate's catalyst search errored (search source down) — a run that found no catalyst is a finding, exit 0.
 """
 import os
 import sys
@@ -79,6 +85,33 @@ BANDS = {
 }
 
 
+#: per-band registry lane id (config/lane_registry.json) — one receipt per band, so the three cron lines
+#: sharing one log and one last-run marker can be told apart.
+BAND_LANE_IDS = {
+    "premarket_scalp": "catalyst-momentum-engine-premarket",
+    "market_swing": "catalyst-momentum-engine-market",
+    "overnight": "catalyst-momentum-engine-overnight",
+}
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # imported as scripts.catalyst_momentum_engine
+        from scripts.lib import lane_last_receipt as lr
+    return lr
+
+
+def _usable_sources(sources) -> tuple[list, bool]:
+    """(sources without error entries, whether the search itself errored).
+
+    search_catalyst() returns ``[{"error": ...}]`` on a failed request; that entry is not a catalyst and must
+    not be staged (it used to count as one source and pass the no-catalyst accuracy gate)."""
+    sources = sources or []
+    errored = any(isinstance(s, dict) and s.get("error") for s in sources)
+    return [s for s in sources if not (isinstance(s, dict) and s.get("error"))], errored
+
+
 def kill_active():
     return any(p.exists() for p in _kill_paths())
 
@@ -102,12 +135,68 @@ def main():
     ap.add_argument("--band", choices=list(BANDS), default="premarket_scalp")
     ap.add_argument("--apply", action="store_true", help="stage catalyst findings (feed #1)")
     ap.add_argument("--generate-proposals", action="store_true", help="also auto-create gated paper proposals (feed #2)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="read + search only; print what would be staged; wins over --apply/--generate-proposals")
     args = ap.parse_args()
+    if args.dry_run:
+        return _dry_run(args)
     if kill_active():
         log.warning("kill switch active — engine halted"); return 0
     if os.environ.get("ALPACA_MODE", "") != "paper" and args.generate_proposals:
         log.error("ALPACA_MODE must be paper for proposal generation. Aborting."); return 1
+    lane_id = BAND_LANE_IDS[args.band]
+    started = datetime.now(timezone.utc).isoformat()
+    stats: dict = {"band": args.band, "apply": bool(args.apply)}
+    try:
+        rc = _run(args, stats)
+    except Exception as exc:
+        _receipt_lib().write_lane_receipt(lane_id, ok=False, exit_code=1, started_at=started,
+                                          script="catalyst_momentum_engine.py", summary=stats,
+                                          error=f"{type(exc).__name__}: {exc}")
+        raise
+    _receipt_lib().write_lane_receipt(lane_id, ok=(rc == 0), exit_code=rc, started_at=started,
+                                      script="catalyst_momentum_engine.py", summary=stats)
+    return rc
 
+
+def _dry_run(args) -> int:
+    """No DB connection, no writer, no subprocess, no marker, no receipt (AGENTS.md §6)."""
+    band = BANDS[args.band]
+    from hermes_momentum_candidate_reader import get_momentum_candidates
+    from hermes_momentum_catalyst_researcher import search_catalyst, classify_catalyst
+    cands = get_momentum_candidates(max_tickers=band["max"], min_rvol=band["min_rvol"], min_score=band["min_score"])
+    would_stage, gateable, search_errors = [], [], 0
+    for c in cands:
+        sym = c["symbol"] if isinstance(c, dict) else c
+        try:
+            sources, errored = _usable_sources(
+                search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing"))
+        except Exception:
+            sources, errored = [], True
+        search_errors += int(errored and not sources)
+        if not sources:
+            continue
+        text = " ".join(s.get("title", "") + " " + s.get("content", "") for s in sources[:3])
+        conf = round(min(0.9, 0.4 + 0.1 * len(sources)), 2)
+        would_stage.append({"symbol": sym, "type": classify_catalyst(text), "conf": conf, "sources": len(sources)})
+        if conf >= 0.6 and float((c.get("rvol") if isinstance(c, dict) else 0) or 0) >= band["min_rvol"]:
+            gateable.append(sym)
+    summary = {"band": args.band, "kill_switch_active": kill_active(), "candidates": len(cands),
+               "search_errors": search_errors, "would_stage": would_stage if args.apply else [],
+               "catalyst_found": len(would_stage), "catalyst_confirmed": len(gateable),
+               "would_attempt_proposals": (sorted(gateable)[:band["prop_cap"]]
+                                           if args.generate_proposals and band["gen_proposals"] else [])}
+    would = []
+    if args.apply:
+        would.append("hermes_research_intelligence (research_type=momentum_catalyst, status=staged)")
+    if summary["would_attempt_proposals"]:
+        would.append("subprocess auto_proposal_generator.py --apply (gated paper proposals)")
+    would.append(str(_served_state_root() / LAST_RUN_RELATIVE))
+    _receipt_lib().dry_run_report(BAND_LANE_IDS[args.band], summary, would_write=would)
+    return 0
+
+
+def _run(args, stats: dict) -> int:
     band = BANDS[args.band]
     log.info("Catalyst Momentum Engine — band=%s (apply=%s, gen_proposals=%s)", args.band, args.apply, args.generate_proposals and band["gen_proposals"])
     log.info("  served_state_root=%s", _served_state_root())
@@ -118,16 +207,20 @@ def main():
     from hermes_momentum_catalyst_researcher import search_catalyst, classify_catalyst
     cands = get_momentum_candidates(max_tickers=band["max"], min_rvol=band["min_rvol"], min_score=band["min_score"])
     log.info("  %d candidates (RVOL≥%s, score≥%s)", len(cands), band["min_rvol"], band["min_score"])
+    stats["candidates"] = len(cands)
 
     conn = psycopg2.connect(**DB); conn.autocommit = True
     cur = conn.cursor()
-    staged, gated, proposals = 0, [], 0
+    staged, gated, proposals, search_errors = 0, [], 0, 0
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
             sources = search_catalyst(sym, "premarket catalyst" if band["kind"] == "scalp" else "catalyst news swing")
         except Exception as e:
-            log.warning("  %s: catalyst search failed: %s", sym, e); continue
+            log.warning("  %s: catalyst search failed: %s", sym, e); search_errors += 1; continue
+        sources, errored = _usable_sources(sources)
+        if errored and not sources:
+            log.warning("  %s: catalyst search errored", sym); search_errors += 1; continue
         if not sources:
             continue  # ACCURACY GATE: no catalyst → skip (no fabricated signal)
         text = " ".join(s.get("title", "") + " " + s.get("content", "") for s in sources[:3])
@@ -188,6 +281,12 @@ def main():
     if path:
         log.info("  wrote served last-run marker %s", path)
     conn.close()
+    stats.update(staged=staged, catalyst_confirmed=len(gated), proposals_attempted=proposals,
+                 search_errors=search_errors)
+    if cands and search_errors == len(cands):
+        # every search failed: "0 staged" would otherwise read as "no catalysts today" (§0 rail 8)
+        log.error("  catalyst search failed for all %d candidates -> exit 1", len(cands))
+        return 1
     return 0
 
 

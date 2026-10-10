@@ -12,6 +12,11 @@ threshold checks can't provide.
 Usage:
     .venv/bin/python scripts/health_agent_llm_review.py
     .venv/bin/python scripts/health_agent_llm_review.py --dry-run
+
+--dry-run runs the same SELECTs on a READ ONLY session, builds the prompt and returns BEFORE the
+local-LLM call and both INSERTs are reachable (AGENTS.md §6). A real run writes
+data/runtime/health_agent_llm_review_last.json (LaneRunReceipt@v1; ok_at only when the review was
+stored) under the persistent state root and exits 1 when no review was stored.
 """
 import json
 import logging
@@ -25,6 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [health-llm] %(message)s")
 log = logging.getLogger("health-llm")
+RECEIPT_NAME = "health_agent_llm_review"
 
 
 def _get_conn():
@@ -108,10 +114,15 @@ def _call_local_llm(prompt):
 
 
 def run_review(dry_run=False):
+    """Returns {"status": "dry_run"|"stored"|"no_db"|"no_response"|"store_failed", ...}."""
     conn = _get_conn()
     if not conn:
         log.error("No DB connection")
-        return
+        return {"status": "no_db"}
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+
+        enforce_readonly(conn)
 
     log.info("Collecting daily health data...")
     data = _collect_daily_health_data(conn)
@@ -177,14 +188,18 @@ RISK FORECAST:
 
     log.info(f"Sending to local LLM ({n_health} events, {n_failed} failed jobs, {pipeline_fail} pipeline failures)...")
 
+    counts = {"health_events": n_health, "failed_jobs": n_failed,
+              "interventions": n_interventions, "pipeline_failed": pipeline_fail}
     if dry_run:
-        log.info(f"[DRY RUN] Would send prompt ({len(prompt)} chars) to qwen3:14b")
-        return
+        log.info(f"[DRY RUN] Would send prompt ({len(prompt)} chars) to "
+                 f"{os.getenv('LOCAL_LLM_MODEL', 'gemma3:4b')} and upsert llm_intelligence_cache"
+                 f"(section='health_review') + 1 system_health_events row")
+        return {"status": "dry_run", "prompt_chars": len(prompt), **counts}
 
     response = _call_local_llm(prompt)
     if not response:
         log.warning("LLM returned no response — skipping")
-        return
+        return {"status": "no_response", **counts}
 
     log.info(f"LLM response: {response[:200]}...")
 
@@ -197,8 +212,10 @@ RISK FORECAST:
                     [response[:3000], response[:3000]])
         conn.commit()
         log.info("Stored health review in llm_intelligence_cache")
+        stored = True
     except Exception as e:
         log.warning(f"Failed to store review: {e}")
+        stored = False
 
     # Also store as a system health event for the log
     try:
@@ -213,11 +230,31 @@ RISK FORECAST:
 
     conn.close()
     log.info("Nightly health review complete")
+    return {"status": "stored" if stored else "store_failed", "response_chars": len(response), **counts}
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
-    run_review(dry_run=args.dry_run)
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        res = run_review(dry_run=True)
+        return 0 if res.get("status") == "dry_run" else 1
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    started = now_iso()
+    try:
+        res = run_review(dry_run=False)
+    except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
+        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        log.error(f"health review FAILED: {type(exc).__name__}: {exc}")
+        return 1
+    ok = res.get("status") == "stored"
+    write_receipt(RECEIPT_NAME, ok=ok, summary=res, started_at=started,
+                  error=None if ok else res.get("status"))
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

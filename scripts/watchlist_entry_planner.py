@@ -14,6 +14,15 @@ Alerting: urgency near_entry/ready, or price already inside the entry zone, send
 (ticker, zone, limit, reason, urgency). One alert per symbol per day (dedup on alerted_at).
 
   python3 scripts/watchlist_entry_planner.py [--lane grok|chatgpt] [--symbols CIFR,DLR] [--limit 25]
+  python3 scripts/watchlist_entry_planner.py --dry-run [same selection flags]
+
+--dry-run runs the same candidate selection on a READ ONLY session and returns BEFORE price bars
+(yfinance / the data-broker stored-bars fallback), the cloud LLM, the watchlist_entry_plans
+INSERT/UPDATE and the Telegram alert are reachable, listing who it would plan (AGENTS.md §6).
+A real scheduled run (no --symbols) writes data/runtime/watchlist_entry_planner_last.json, or
+watchlist_entry_planner_proposals_last.json for --scope proposals (LaneRunReceipt@v1; ok_at only on
+success), under the persistent state root, and exits 1 when the run failed or every candidate failed.
+Per-symbol failures ('unparseable', no bars) are findings in the counts, not a failed run.
 """
 from __future__ import annotations
 
@@ -405,6 +414,30 @@ def _live(conn, cur):
         return conn, conn.cursor()
 
 
+def preview(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
+    """Dry run: the candidate selection only, on a READ ONLY session. Never reaches bars, the LLM,
+    the plan INSERT or an alert."""
+    from db_adapter import _get_conn
+    from lib.lane_last_receipt import enforce_readonly
+
+    conn = enforce_readonly(_get_conn())
+    cur = conn.cursor()
+    requested = str(lane or "grok").lower()
+    if requested not in CLOUD_LANES:
+        raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN: use grok or chatgpt")
+    cands = _candidates(cur, limit, symbols, scope, buy_rated_cap)
+    buy_rated = sum(1 for c in cands if c.get("_buy_rated"))
+    report = {"dry_run": True, "scope": scope, "lane": requested, "candidates": len(cands),
+              "buy_rated": buy_rated, "would_call_llm": len(cands),
+              "would_insert": "up to %d watchlist_entry_plans rows" % len(cands),
+              "alerts": ("eligible for up to %d (near_entry/ready only)" % (len(cands) - buy_rated))
+              if alert else "suppressed (--no-alert)",
+              "symbols": [c["symbol"] for c in cands[:40]],
+              "note": "bars, LLM, plan writes and alerts not reached; lane availability not probed"}
+    print(json.dumps(report))
+    return report
+
+
 def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_rated_cap=20):
     import llm_lane
     from db_adapter import _get_conn
@@ -418,7 +451,8 @@ def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_
     base_lane = requested if requested in available else available[0]
     fallback_lane = next((name for name in available if name != base_lane), None)
     done = failed = alerts = cloud_used = 0
-    for c in _candidates(cur, limit, symbols, scope, buy_rated_cap):
+    cands = _candidates(cur, limit, symbols, scope, buy_rated_cap)
+    for c in cands:
         sym = c["symbol"]
         eff_lane = base_lane
         bars = _bars(sym)
@@ -565,9 +599,35 @@ def run(lane="grok", symbols=None, limit=25, alert=True, scope="watchlist", buy_
                 if _alert(sym, p, urg, t["price"]):
                     cur.execute("UPDATE watchlist_entry_plans SET alerted_at=now() WHERE id=%s", (plan_id,))
                     conn.commit(); alerts += 1
-    print(json.dumps({"lane": base_lane, "fallback_lane": fallback_lane, "planned": done,
-                      "via_cloud": cloud_used, "failed": failed, "alerts": alerts,
-                      "note": "ADVISORY ONLY — no orders, no proposal-state changes, no execution"}))
+    summary = {"lane": base_lane, "fallback_lane": fallback_lane, "planned": done,
+               "via_cloud": cloud_used, "failed": failed, "alerts": alerts,
+               "note": "ADVISORY ONLY — no orders, no proposal-state changes, no execution"}
+    print(json.dumps(summary))
+    return {**summary, "candidates": len(cands)}
+
+
+def receipt_name(scope: str) -> str:
+    return "watchlist_entry_planner" if scope == "watchlist" else f"watchlist_entry_planner_{scope}"
+
+
+def _scheduled_run(kw: dict) -> int:
+    from lib.lane_last_receipt import now_iso, write_receipt
+
+    name = receipt_name(kw.get("scope") or "watchlist")
+    started = now_iso()
+    try:
+        res = run(**kw)
+    except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
+        write_receipt(name, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        print(f"entry planner FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    # Every candidate failed (none planned): the lane's work did not happen. Partial failures and an
+    # empty queue are findings, not a failed run.
+    failed = res["candidates"] > 0 and res["planned"] == 0
+    write_receipt(name, ok=not failed, started_at=started,
+                  summary={k: res[k] for k in ("candidates", "planned", "failed", "alerts", "lane")},
+                  error="every candidate failed" if failed else None)
+    return 1 if failed else 0
 
 
 def _alert(sym, p, urg, price) -> bool:
@@ -680,6 +740,15 @@ if __name__ == "__main__":
     ap.add_argument("--buy-rated-cap", type=int, default=20,
                     help="also plan up to N strongest BUY-rated researched names (0=off)")
     ap.add_argument("--no-alert", action="store_true")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="read-only: list the candidates it would plan; no bars/LLM/writes/alerts")
     a = ap.parse_args()
-    run(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None,
-        limit=a.limit, alert=not a.no_alert, scope=a.scope, buy_rated_cap=a.buy_rated_cap)
+    kw = dict(lane=a.lane, symbols=a.symbols.split(",") if a.symbols else None,
+              limit=a.limit, alert=not a.no_alert, scope=a.scope, buy_rated_cap=a.buy_rated_cap)
+    if a.dry_run:
+        preview(**kw)
+        sys.exit(0)
+    if a.symbols:  # on-demand operator request, not the scheduled lane: no lane receipt
+        run(**kw)
+        sys.exit(0)
+    sys.exit(_scheduled_run(kw))

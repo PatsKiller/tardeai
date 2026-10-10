@@ -10,7 +10,7 @@ Usage:
     python3 scripts/research_insight_extractor.py --from-catalysts [--json]
 """
 import json, os, re, sys, hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -29,19 +29,26 @@ _HORIZON_SHORT = {"this week", "short-term", "swing", "day trade", "near-term", 
 _HORIZON_LONG = {"long-term", "retirement", "compound", "decade", "5-year", "10-year", "lifetime"}
 
 
-def _get_conn():
+def _get_conn(dry_run: bool = False):
     import psycopg2
     pw = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
         if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    if dry_run:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
+    return conn
 
 
 def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
-                    source_reference: str = None) -> dict:
-    """Extract structured insight from free text. Classification-first."""
+                    source_reference: str = None, dry_run: bool = False) -> dict:
+    """Extract structured insight from free text. Classification-first.
+
+    dry_run: classify only -- returns before the INSERT (AGENTS.md §6), READ ONLY session."""
     import psycopg2.extras
-    conn = _get_conn()
+    conn = _get_conn(dry_run)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     text_lower = text.lower()
@@ -112,7 +119,7 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     if symbols_found:
         structured = f"{symbols_found[0]}: {structured}"
     if yield_thesis:
-        structured += f" — income-relevant"
+        structured += " — income-relevant"
 
     # Price target extraction
     price_target = None
@@ -141,6 +148,11 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
         "extraction_confidence": confidence,
     }
 
+    if dry_run:
+        insight["id"] = None
+        conn.close()
+        return insight
+
     # Store in DB
     cur.execute("""
         INSERT INTO research_insights
@@ -163,10 +175,12 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     return insight
 
 
-def extract_from_news(limit: int = 100) -> list:
-    """Extract insights from recent news articles that don't have linked insights yet."""
+def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = None) -> list:
+    """Extract insights from recent news articles that don't have linked insights yet.
+
+    errors: when given, collects one string per failed extraction (was silently dropped)."""
     import psycopg2.extras
-    conn = _get_conn()
+    conn = _get_conn(dry_run)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("""
@@ -186,17 +200,18 @@ def extract_from_news(limit: int = 100) -> list:
             continue
         try:
             r = extract_insight(text, symbol=a.get("symbol"), source_type="news",
-                                source_reference=f"news:{a['id']}")
+                                source_reference=f"news:{a['id']}", dry_run=dry_run)
             results.append(r)
         except Exception as e:
-            pass
+            if errors is not None:
+                errors.append(f"news:{a['id']}: {type(e).__name__}: {str(e)[:120]}")
     return results
 
 
-def extract_from_catalysts(limit: int = 100) -> list:
+def extract_from_catalysts(limit: int = 100, dry_run: bool = False, errors: list = None) -> list:
     """Extract insights from catalyst events."""
     import psycopg2.extras
-    conn = _get_conn()
+    conn = _get_conn(dry_run)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("""
@@ -216,11 +231,49 @@ def extract_from_catalysts(limit: int = 100) -> list:
             continue
         try:
             r = extract_insight(text, symbol=c.get("symbol"), source_type="catalyst",
-                                source_reference=f"catalyst:{c['id']}")
+                                source_reference=f"catalyst:{c['id']}", dry_run=dry_run)
             results.append(r)
         except Exception as e:
-            pass
+            if errors is not None:
+                errors.append(f"catalyst:{c['id']}: {type(e).__name__}: {str(e)[:120]}")
     return results
+
+
+def run_default(dry_run: bool = False, as_json: bool = False) -> int:
+    """Default/cron path: news + catalysts. Exit 1 only when extractions were attempted and EVERY one
+    failed (a run that wrote nothing it could have); per-item failures are counted, not hidden."""
+    started_at = datetime.now(timezone.utc).isoformat()
+    errors: list = []
+    try:
+        n = extract_from_news(dry_run=dry_run, errors=errors)
+        c = extract_from_catalysts(dry_run=dry_run, errors=errors)
+    except Exception as exc:
+        if not dry_run:
+            _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}")
+        raise
+    verb = "Would extract" if dry_run else "Extracted"
+    print(f"[research] {verb} {len(n)} from news, {len(c)} from catalysts ({len(n)+len(c)} total)"
+          + (f", {len(errors)} failed" if errors else ""))
+    for e in errors[:5]:
+        print(f"  failed: {e}")
+    if as_json:
+        print(json.dumps({"news": len(n), "catalysts": len(c), "failed": len(errors),
+                          "dry_run": dry_run}, indent=2))
+    ok = not (errors and not (n or c))
+    if not dry_run:
+        _receipt(ok=ok, started_at=started_at,
+                 error=None if ok else f"all {len(errors)} extractions failed: {errors[0]}",
+                 summary={"news": len(n), "catalysts": len(c), "failed": len(errors)})
+    return 0 if ok else 1
+
+
+def _receipt(**kw):
+    """Real-run receipt (data/runtime/research-insight-extractor_last.json, ok_at on success only)."""
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.lane_last_receipt import write_lane_receipt
+
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    write_lane_receipt("research-insight-extractor", script="research_insight_extractor.py", **kw)
 
 
 if __name__ == "__main__":
@@ -239,9 +292,5 @@ if __name__ == "__main__":
         results = extract_from_catalysts()
         print(f"[research] Extracted {len(results)} insights from catalysts")
     else:
-        # Default: extract from both
-        n = extract_from_news()
-        c = extract_from_catalysts()
-        print(f"[research] Extracted {len(n)} from news, {len(c)} from catalysts ({len(n)+len(c)} total)")
-        if "--json" in sys.argv:
-            print(json.dumps({"news": len(n), "catalysts": len(c)}, indent=2))
+        # Default (the cron form): extract from both
+        sys.exit(run_default(dry_run="--dry-run" in sys.argv, as_json="--json" in sys.argv))
