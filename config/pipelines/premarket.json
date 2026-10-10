@@ -35,7 +35,29 @@
             "bound_source": "pam_group_max(upper)"
           },
           "note": "05:30 today; moves 15 min later inside the stage",
-          "inv_id": "cron:L408"
+          "inv_id": "cron:L408",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 408 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "catalyst_calibration_monitor",
@@ -60,7 +82,29 @@
             "upper_bound_p95_s": 65.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L435"
+          "inv_id": "cron:L435",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 435 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "register_analyst_sources",
@@ -85,7 +129,30 @@
             "upper_bound_p95_s": 65.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L589"
+          "inv_id": "cron:L589",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 589 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "overnight_batch_outcomes",
@@ -106,7 +173,30 @@
             "p95_s": 0.1,
             "max_s": 0.1
           },
-          "inv_id": "cron:L597"
+          "inv_id": "cron:L597",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 597 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "source_outcome_attribution",
@@ -131,7 +221,29 @@
             "upper_bound_p95_s": 22.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L431"
+          "inv_id": "cron:L431",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 431 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "indicator_cache_refresh",
@@ -161,7 +273,29 @@
           },
           "note": "VERIFIED 390 s median — the longest verified premarket step",
           "cron_comment": "# lane indicator-cache-refresh (2026-09-15: was scripts/data_broker_indicator_refresh.py, never merged to main, 81 can't-open-file errors; indicator_cache_refresh.py takes no flags and covers watchlist+portfolio+screener+incubator)",
-          "inv_id": "cron:L255"
+          "inv_id": "cron:L255",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 255 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "sec_form4_momentum_context",
@@ -193,7 +327,30 @@
             "upper_bound_p95_s": 22.0,
             "bound_source": "log_span(lower)+pam_group_max(upper)"
           },
-          "inv_id": "cron:L640"
+          "inv_id": "cron:L640",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 640 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "mint_identity_registry",
@@ -225,7 +382,30 @@
             "upper_bound_p95_s": 2.3,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L877"
+          "inv_id": "cron:L877",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 877 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "strategy_backtester",
@@ -256,7 +436,31 @@
           "wrappers_kept_verbatim": [
             "safe_flock.sh"
           ],
-          "inv_id": "cron:L352"
+          "inv_id": "cron:L352",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$PROJ/scripts/safe_flock.sh"
+            ],
+            "derived_from": "crontab line 352 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "backtest_history_snapshot",
@@ -292,7 +496,31 @@
           "wrappers_kept_verbatim": [
             "safe_flock.sh"
           ],
-          "inv_id": "cron:L363"
+          "inv_id": "cron:L363",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$PROJ/scripts/safe_flock.sh"
+            ],
+            "derived_from": "crontab line 363 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "fred_data_ingest",
@@ -313,7 +541,29 @@
             "p95_s": 6.1,
             "max_s": 6.1
           },
-          "inv_id": "cron:L248"
+          "inv_id": "cron:L248",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 248 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "candidate_discovery_orchestrator",
@@ -345,7 +595,30 @@
             "upper_bound_p95_s": 56.3,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L861"
+          "inv_id": "cron:L861",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 861 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "backtest_results_aggregator",
@@ -379,7 +652,30 @@
             "notes": "partial: "
           },
           "cron_comment": "# aggregate backtest runs → strategy_backtest_results (after 06:00 strategy_backtester)",
-          "inv_id": "cron:L605"
+          "inv_id": "cron:L605",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 605 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "watch_directives_monitor",
@@ -404,7 +700,29 @@
             "upper_bound_p95_s": 117.3,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L444"
+          "inv_id": "cron:L444",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 444 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "market_regime_collector_am",
@@ -436,7 +754,29 @@
             "upper_bound_p95_s": 124.2,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L199"
+          "inv_id": "cron:L199",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 199 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "classify_candidates",
@@ -468,7 +808,29 @@
             "upper_bound_p95_s": 757.2,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L204"
+          "inv_id": "cron:L204",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 204 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "market_regime_classifier",
@@ -500,7 +862,29 @@
             "upper_bound_p95_s": 757.2,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L205"
+          "inv_id": "cron:L205",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 205 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "earnings_enrich",
@@ -533,7 +917,32 @@
             "bound_source": "pam_group_max(upper)"
           },
           "cron_comment": "# daily: next earnings date + last beat/miss for held stocks (card layer)",
-          "inv_id": "cron:L551"
+          "inv_id": "cron:L551",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [
+              "./.env"
+            ],
+            "wrappers": [],
+            "derived_from": "crontab line 551 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "research_intelligence_materialize",
@@ -559,7 +968,30 @@
             "bound_source": "pam_group_max(upper)"
           },
           "cron_comment": "# RI v3.1 snapshot rebuild after overnight content",
-          "inv_id": "cron:L741"
+          "inv_id": "cron:L741",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 741 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "fund_technicals_enrich",
@@ -592,7 +1024,32 @@
             "bound_source": "pam_group_max(upper)"
           },
           "cron_comment": "# daily: RSI/W/M/YTD for mutual funds (Finviz does not cover funds)",
-          "inv_id": "cron:L552"
+          "inv_id": "cron:L552",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [
+              "./.env"
+            ],
+            "wrappers": [],
+            "derived_from": "crontab line 552 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "refresh_symbol_cards",
@@ -625,7 +1082,29 @@
             "bound_source": "pam_group_max(upper)"
           },
           "cron_comment": "# keep symbol_cards_latest.json fresh for rotation/card layer",
-          "inv_id": "cron:L502"
+          "inv_id": "cron:L502",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 502 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "build_lesson_candidates",
@@ -650,7 +1129,30 @@
             "upper_bound_p95_s": 84.6,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L876"
+          "inv_id": "cron:L876",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 876 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "distributions_enrich",
@@ -683,7 +1185,32 @@
             "bound_source": "pam_group_max(upper)"
           },
           "cron_comment": "# daily: fund/ETF distribution schedule (next/last/cadence/ttm)",
-          "inv_id": "cron:L553"
+          "inv_id": "cron:L553",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [
+              "./.env"
+            ],
+            "wrappers": [],
+            "derived_from": "crontab line 553 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "sync_watchlist_items_to_db",
@@ -715,7 +1242,29 @@
             "upper_bound_p95_s": 70.4,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L210"
+          "inv_id": "cron:L210",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 210 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "build_symbol_profiles",
@@ -748,7 +1297,30 @@
             "bound_source": "pam_group_max(upper)"
           },
           "cron_comment": "# watchlist card sector/description coverage (operator 2026-06-18)",
-          "inv_id": "cron:L508"
+          "inv_id": "cron:L508",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 508 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "volatility_tier_refresh",
@@ -780,7 +1352,30 @@
             "upper_bound_p95_s": 70.4,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L719"
+          "inv_id": "cron:L719",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 719 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "watch_valuation_backfill",
@@ -803,7 +1398,30 @@
           },
           "note": "VERIFIED 360 s median (PAM exact)",
           "cron_comment": "# yfinance valuation supplement for Watch names Finviz misses (resumable, capped); feeds finviz-strip-map fallback (2026-07-25)",
-          "inv_id": "cron:L800"
+          "inv_id": "cron:L800",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 800 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "cio_draft_plan_hygiene",
@@ -828,7 +1446,32 @@
             "upper_bound_p95_s": 13.8,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L908"
+          "inv_id": "cron:L908",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [
+              "TRADEAI_ROOT"
+            ],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 908 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "materialize_income_engine",
@@ -860,7 +1503,29 @@
             "upper_bound_p95_s": 3.1,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L220"
+          "inv_id": "cron:L220",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 220 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "llm_retry_monitor",
@@ -885,7 +1550,29 @@
             "upper_bound_p95_s": 138.5,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L440"
+          "inv_id": "cron:L440",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 440 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "iris_taxonomy_agent",
@@ -910,7 +1597,30 @@
             "upper_bound_p95_s": 138.5,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L778"
+          "inv_id": "cron:L778",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 778 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "opening_intelligence",
@@ -942,7 +1652,30 @@
             "upper_bound_p95_s": 79.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L790"
+          "inv_id": "cron:L790",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 790 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "research_watchlist_discovery",
@@ -974,7 +1707,30 @@
             "upper_bound_p95_s": 79.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L858"
+          "inv_id": "cron:L858",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 858 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "sync_dividend_data",
@@ -1006,7 +1762,29 @@
             "upper_bound_p95_s": 10.1,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L216"
+          "inv_id": "cron:L216",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 216 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "recommendation_intelligence_engine",
@@ -1032,7 +1810,29 @@
             "bound_source": "pam_group_max(upper)"
           },
           "cron_comment": "# recommendation lineage: ingest all sources + executions",
-          "inv_id": "cron:L503"
+          "inv_id": "cron:L503",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 503 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "price_db_sync",
@@ -1064,7 +1864,29 @@
             "upper_bound_p95_s": 117.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L183"
+          "inv_id": "cron:L183",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 183 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "iris_proposal_curator",
@@ -1089,7 +1911,29 @@
             "upper_bound_p95_s": 116.9,
             "bound_source": "log_span(lower)+pam_group_max(upper)"
           },
-          "inv_id": "cron:L391"
+          "inv_id": "cron:L391",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 391 (names only; values are the runner's cron environment)"
+          }
         }
       ]
     }
