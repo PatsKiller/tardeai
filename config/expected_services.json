@@ -2,7 +2,7 @@
   "schema": "ExpectedServices@v1",
   "_why": "systemctl --failed only reports units that FAILED. A unit that was stopped or disabled is not failed -- it is absent, and absence is invisible to every 'what is running' view. tradeai-cio-telegram.service sat disabled for five days and no check anywhere could see it, because a disabled unit drops out of the very lists a monitor would enumerate. The only way to detect a missing thing is to have written down that it should be there.",
   "_captured": "2026-09-13, from the live enabled set on ms01-openclaw.",
-  "_how_to_change": "Deliberately retiring a unit? Remove it here in the same change that disables it. A diff in this file is the audit trail for 'we meant to turn that off'.",
+  "_how_to_change": "Deliberately retiring a unit? Remove it here in the same change that disables it. A diff in this file is the audit trail for 'we meant to turn that off'. 2026-10-09 retire batch 1: removed tradeai-advisory-shadow-session.timer, tradeai-agent-runtime@aegis.timer, tradeai-agent-runtime@argus.timer, tradeai-agent-runtime@darwin.timer, tradeai-agent-runtime@iris.timer, tradeai-agent-runtime@maria.timer, tradeai-agent-runtime@reflection.timer, tradeai-agent-runtime@risk_agent.timer, tradeai-agent-runtime@sentinel.timer, tradeai-agent-runtime@tax_agent.timer, tradeai-agent-runtime@vega.timer (lanes RETIRED in config/lane_registry.json; units disabled after promote).",
   "units": [
     {
       "unit": "trade-ai-lab-moomoo-opend.service"
@@ -26,52 +26,19 @@
       "unit": "tradeai-advisory-shadow-seed.timer"
     },
     {
-      "unit": "tradeai-advisory-shadow-session.timer"
-    },
-    {
       "unit": "tradeai-agent-runtime-health.timer"
     },
     {
       "unit": "tradeai-agent-runtime-producer.timer"
     },
     {
-      "unit": "tradeai-agent-runtime@aegis.timer"
-    },
-    {
       "unit": "tradeai-agent-runtime@alex.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@argus.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@darwin.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@iris.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@maria.timer"
     },
     {
       "unit": "tradeai-agent-runtime@morgan.timer"
     },
     {
-      "unit": "tradeai-agent-runtime@reflection.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@risk_agent.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@sentinel.timer"
-    },
-    {
       "unit": "tradeai-agent-runtime@steph.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@tax_agent.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@vega.timer"
     },
     {
       "unit": "tradeai-autonomy-watchdog.timer"

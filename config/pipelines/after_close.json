@@ -43,36 +43,6 @@
           }
         },
         {
-          "id": "atp2_research_eod",
-          "cron_line": 225,
-          "cron_schedule": "5 16 * * 1-5",
-          "cron_time": "16:05",
-          "command": "./scripts/run_scheduled_atp2_research_cycle.sh --cycle eod",
-          "log": "logs/atp2_research_cycle_cron.log",
-          "timeout": "5m",
-          "continue_on_error": true,
-          "dow": [
-            1,
-            2,
-            3,
-            4,
-            5
-          ],
-          "cron_line_verbatim": "5 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle eod >> logs/atp2_research_cycle_cron.log 2>&1",
-          "measured": {
-            "verified": true,
-            "source": "pipeline_runs",
-            "runs": 5,
-            "firings": 5,
-            "median_s": 0.6,
-            "p95_s": 0.9,
-            "max_s": 0.9
-          },
-          "flags": [
-            "DEV_TREE_WRAPPER: the wrapper hardcodes /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild (study §1); runs verbatim today, repoint to CURRENT before cutover"
-          ]
-        },
-        {
           "id": "at_session_review",
           "cron_line": 1061,
           "cron_schedule": "10 16 * * 1-5",
@@ -134,36 +104,6 @@
           ],
           "note": "three-command chain kept verbatim; safe_flock receipt covers only the repricer (holdings_reconcile + lookthrough resolver unmeasured)",
           "cron_comment": "# +phase3 look-through allocation: DAILY auto-refresh from settled holdings (2026-06-18)"
-        },
-        {
-          "id": "stale_proposal_sweeper_report",
-          "cron_line": 179,
-          "cron_schedule": "10 16 * * 1-5",
-          "cron_time": "16:10",
-          "command": "flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --report-only",
-          "log": "logs/stale_proposal_sweeper.log",
-          "timeout": "5m",
-          "continue_on_error": true,
-          "dow": [
-            1,
-            2,
-            3,
-            4,
-            5
-          ],
-          "cron_line_verbatim": "10 16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --report-only >> logs/stale_proposal_sweeper.log 2>&1",
-          "measured": {
-            "verified": true,
-            "source": "pipeline_runs",
-            "runs": 5,
-            "firings": 5,
-            "median_s": 0.5,
-            "p95_s": 0.8,
-            "max_s": 0.9
-          },
-          "flags": [
-            "DEV_TREE_WRAPPER: the wrapper hardcodes /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild (study §1); runs verbatim today, repoint to CURRENT before cutover"
-          ]
         },
         {
           "id": "finviz_industry_groups",
@@ -1872,6 +1812,40 @@
         "median_s": 29.4,
         "p95_s": 38.0,
         "max_s": 38.8
+      }
+    },
+    {
+      "cron_line": 225,
+      "cron_schedule": "5 16 * * 1-5",
+      "cron_time": "16:05",
+      "basename": "run_scheduled_atp2_research_cycle.sh",
+      "category": "RETIRED",
+      "reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L214: former step close-capture/atp2_research_eod removed so a pipeline cutover cannot resurrect a retired job.",
+      "measured": {
+        "verified": true,
+        "source": "pipeline_runs",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 0.6,
+        "p95_s": 0.9,
+        "max_s": 0.9
+      }
+    },
+    {
+      "cron_line": 179,
+      "cron_schedule": "10 16 * * 1-5",
+      "cron_time": "16:10",
+      "basename": "run_scheduled_stale_proposal_sweeper.sh",
+      "category": "RETIRED",
+      "reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L170: former step close-capture/stale_proposal_sweeper_report removed so a pipeline cutover cannot resurrect a retired job.",
+      "measured": {
+        "verified": true,
+        "source": "pipeline_runs",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 0.5,
+        "p95_s": 0.8,
+        "max_s": 0.9
       }
     }
   ]

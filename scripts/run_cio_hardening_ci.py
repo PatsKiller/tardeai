@@ -1174,6 +1174,13 @@ GATES = [
         "n8n_import_guard_20261010",
         ["tests/test_n8n_import_guard_20261010.py"],
     ),
+    # Iris (operator 2026-10-09 "fix"): --freshness remediation runs an allowlisted argv via venv_python (was a
+    # shell string, exit 127 in every release) and exits non-zero on failure; proposals de-duplicated (4,058
+    # pending retire_channel rows were 32 channels); weekly scan --dry-run (no LLM, no writes) for the n8n shadow.
+    (
+        "iris_fixes_20261009",
+        ["tests/test_iris_fixes_20261009.py"],
+    ),
     # n8n -> Command Center SIEM bridge (REMEDIATION_PLAN §5 L2/L7, operator 2026-10-09 23:20 ET): ledger runs + fan-in
     # incidents become one deduped system_health_events row per n8n:<lane>|kind; inbox accepts CRITICAL/URGENT.
     (
@@ -1775,6 +1782,8 @@ GATES = [
         [
             "tests/test_lane_registry.py",
             "tests/test_lane_state_drift_20261007.py",
+            # Retire batch 1 (2026-10-09): 32 RETIRED rows + opening-intelligence schedule, pipelines, services.
+            "tests/test_retire_batch_1_20261009.py",
             "tests/test_report_lane_fire_ledger_20261007.py",
             "tests/test_lane_portfolio_repricer.py",
             # Day P/L for shares traded today (fills) + basis rebase on trade-sized share change.

@@ -236,7 +236,9 @@ def test_recommendation_normalisation():
 
 def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     gen = [r for r in committed["lanes"] if r.get("generated_by") == R.GENERATOR_VERSION]
-    assert len(gen) >= 360
+    # 370 at B1; retire batch 1 (2026-10-09) turned 33 generated rows hand-curated (retired / schedule
+    # changed / sibling id pinned) so the generator keeps those decisions instead of re-deriving them ACTIVE.
+    assert len(gen) >= 330
     for r in gen:
         sig = r["output_signal"]
         if sig.get("kind") == "none":
