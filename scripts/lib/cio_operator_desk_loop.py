@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -29,6 +30,53 @@ from typing import Any, Callable, Optional
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PENDING_PATH = PROJECT_ROOT / "data" / "cio" / "cio_operator_pending_replies.jsonl"
 AUTHORITY = "READ_ONLY_ADVISORY"
+
+# ── Background cost-cap backoff (2026-10-10, API overlap Q6) ────────────────
+# try_fulfill_pending_replies runs every third Telegram poll (~1.4 min). Once cio_operator_reply hit its
+# daily request cap the pass kept asking the bridge anyway: ~16,800 refused reservations a week (6 per
+# pass). After a COST_CAP_EXCEEDED answer inside that background pass, the pass stops calling the model
+# until the cap resets (the next midnight in the ledger's day zone, America/New_York — llm_cost_reservations
+# counts created_at >= CURRENT_DATE in that session time zone) and returns the same refused shape, so the
+# caller takes its existing fail-soft path. Interactive operator asks are not latched. Under the cap nothing
+# changes. CIO_DESK_COST_CAP_BACKOFF=0 turns the latch off; a service restart clears it.
+_COST_CAP_DAY_TZ = "America/New_York"
+_cost_cap_backoff_until: Optional[datetime] = None
+_pass_state = threading.local()  # .background is True only inside try_fulfill_pending_replies (this thread)
+
+
+def _next_cap_reset(now: datetime) -> datetime:
+    local = now.astimezone(ZoneInfo(_COST_CAP_DAY_TZ))
+    nxt = (local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return nxt.astimezone(timezone.utc)
+
+
+def _is_cost_cap_refusal(res: Any) -> bool:
+    if not isinstance(res, dict) or res.get("ok"):
+        return False
+    blob = f"{res.get('governance_code') or ''} {res.get('error') or ''}".lower()
+    return "cost_cap_exceeded" in blob
+
+
+def _operator_reply_llm(messages: list[dict[str, str]], *, now: Optional[datetime] = None) -> dict[str, Any]:
+    """The governed bridge call for task_type operator_reply, with the background cost-cap backoff."""
+    global _cost_cap_backoff_until
+    latch_on = getattr(_pass_state, "background", False) and os.environ.get("CIO_DESK_COST_CAP_BACKOFF", "1").lower() not in (
+        "0", "false", "off", "no")
+    now = now or datetime.now(timezone.utc)
+    if latch_on and _cost_cap_backoff_until is not None and now < _cost_cap_backoff_until:
+        return {
+            "ok": False,
+            "error": f"COST_CAP_EXCEEDED: desk backoff until {_cost_cap_backoff_until.isoformat()} (no call made)",
+            "governance_refused": True,
+            "governance_code": "COST_CAP_EXCEEDED",
+            "backoff": True,
+        }
+    from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy  # noqa: PLC0415
+
+    res = call_governed_llm(messages, load_llm_policy(), use_pro=False, task_type="operator_reply")
+    if latch_on and _is_cost_cap_refusal(res):
+        _cost_cap_backoff_until = _next_cap_reset(now)
+    return res
 
 #: Buy / perspective asks must not lead with a hollow DeepSeek reword of thin
 #: house facts (live 2026-09-22: "im thinking of buying S give me the perspective"
@@ -606,8 +654,6 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
 
     if _env("CIO_OPERATOR_INTENT_FLASH", "1").lower() not in ("0", "false", "off", "no"):
         try:
-            from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
-
             system = (
                 "You classify CIO Telegram operator questions. "
                 "Return ONE JSON object only with keys: "
@@ -634,14 +680,11 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                 )
             except Exception:
                 _user_content = (t or "")[:800]
-            llm = call_governed_llm(
+            llm = _operator_reply_llm(
                 [
                     {"role": "system", "content": system},
                     {"role": "user", "content": _user_content},
                 ],
-                load_llm_policy(),
-                use_pro=False,
-                task_type="operator_reply",
             )
             if llm.get("ok"):
                 raw = str(llm.get("content") or "").strip()
@@ -1669,8 +1712,6 @@ def answer_freeform_with_flash(
         return {"ok": True, "text": failsoft, "source": "freeform_failsoft", "model": None}
 
     try:
-        from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
-
         # The model sees ONLY the assembled facts, never cut mid-structure.
         facts_json = _facts_for_model(context)
         gaps_json = json.dumps(soft_gaps[:12], default=str)[:2000]
@@ -1716,14 +1757,11 @@ def answer_freeform_with_flash(
             f"TRADE_AI_FACTS:\n{facts_json}\n\n"
             f"SOFT_GAPS:\n{gaps_json}"
         )
-        llm = call_governed_llm(
+        llm = _operator_reply_llm(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            load_llm_policy(),
-            use_pro=False,
-            task_type="operator_reply",
         )
         if not llm.get("ok"):
             return {
@@ -2773,9 +2811,7 @@ def _subject_flash_enabled() -> bool:
 
 
 def _subject_flash_call(messages: list[dict[str, str]]) -> dict[str, Any]:
-    from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy  # noqa: PLC0415
-
-    return call_governed_llm(messages, load_llm_policy(), use_pro=False, task_type="operator_reply")
+    return _operator_reply_llm(messages)
 
 
 _SUBJECT_FLASH_BANNED = ("ORDER PLACED", "BUYING NOW", "SUBMITTED", "FILLED", "I WILL BUY", "EXECUTING",
@@ -5098,6 +5134,14 @@ def try_fulfill_pending_replies(
     limit: int = 10,
 ) -> dict[str, Any]:
     """Re-check open pending operator questions; reply when Trade-AI has facts."""
+    _pass_state.background = True
+    try:
+        return _try_fulfill_pending_replies(send_fn, limit=limit)
+    finally:
+        _pass_state.background = False
+
+
+def _try_fulfill_pending_replies(send_fn: SendFn, *, limit: int) -> dict[str, Any]:
     rows = _read_jsonl(PENDING_PATH)
     latest: dict[str, dict[str, Any]] = {}
     for r in rows:

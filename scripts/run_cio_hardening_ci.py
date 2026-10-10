@@ -4260,6 +4260,13 @@ GATES = [
         "youtube_channel_id_cache_20261010",
         ["tests/test_youtube_channel_id_cache_20261010.py"],
     ),
+    (
+        # Desk-loop cost-cap backoff (API overlap Q6, 2026-10-10): after COST_CAP_EXCEEDED inside try_fulfill_pending_replies
+        # the pass makes no bridge call until the next America/New_York midnight (the ledger day); under the cap and
+        # on interactive asks nothing changes. Before: 15 bridge calls in 5 refused passes; after: 1. Hermetic fakes.
+        "desk_loop_cost_cap_backoff_20261010",
+        ["tests/test_desk_loop_cost_cap_backoff_20261010.py"],
+    ),
 ]
 
 
