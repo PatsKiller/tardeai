@@ -109,9 +109,32 @@ def test_scheduler_operations_matches_any_schedule_of_a_multi_line_lane():
     hit = {"expression": "45 2 * * *", "command": "cd /p && python3 x.py"}
     other = {"expression": "10 16 * * 1-5", "command": "cd /p && python3 x.py"}
     assert so._cron_matches(lane, hit) and so._cron_matches(lane, {**hit, "expression": "45 20 * * 1-5"})
-    assert not so._cron_matches(lane, other)
+    assert so._cron_matches(lane, other)  # " + " row: pre-#1623 fallback keeps a marker-matching line attached
     single = {"scheduler": {"kind": "cron", "match": "x.py", "expression": "*/15 9-16 * * 1-5 x.py"}}
     assert so._cron_matches(single, {"expression": "*/15 9-16 * * 1-5", "command": "x.py"})
+
+
+@pytest.mark.parametrize("expr,match,other_line", [
+    # the three live shapes from the #1623 review: a command-text row plus a second crontab line of the same job
+    ("*/15 9-16 * * 1-5 portfolio_repricer.py", "portfolio_repricer.py",
+     ("10 16 * * 1-5", "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_repricer.lock $PY scripts/portfolio_repricer.py")),
+    ("30 12 * * 1-5 finviz_industry_groups.py", "finviz_industry_groups.py",
+     ("18 16 * * 1-5", "cd /p && flock -n /tmp/industry_momentum.lock bash -c 'python3 scripts/finviz_industry_groups.py'")),
+    ("0 10,13 * * 1-5 plan_drift_revalidator.py --apply", "scripts/plan_drift_revalidator.py",
+     ("25 17 * * 1-5", "cd $PROJ && flock -n /tmp/plan_drift_reval.lock $PY scripts/plan_drift_revalidator.py --apply")),
+])
+def test_scheduler_operations_command_text_row_keeps_its_other_line(expr, match, other_line):
+    lane = {"scheduler": {"kind": "cron", "match": match, "expression": expr}}
+    sched, cmd = other_line
+    assert so._cron_matches(lane, {"expression": sched, "command": cmd})          # fallback: not an orphan
+    assert so._cron_matches(lane, {"expression": " ".join(expr.split()[:5]), "command": cmd})  # schedule match
+
+
+def test_scheduler_operations_bare_schedule_rows_stay_strict():
+    # multi-stage lanes sharing a runner are told apart by their bare 5-field expression (pre-#1623 rule)
+    stage = {"scheduler": {"kind": "cron", "match": "runner.sh", "expression": "0 7 * * 1-5"}}
+    assert so._cron_matches(stage, {"expression": "0 7 * * 1-5", "command": "bash runner.sh a"})
+    assert not so._cron_matches(stage, {"expression": "30 17 * * 1-5", "command": "bash runner.sh b"})
 
 
 def test_source_clocks_next_fire_reads_names_and_command_text():
@@ -208,6 +231,7 @@ def test_ensemble_holds_no_connection_across_llm_calls(tmp_path, monkeypatch):
     assert [e[0] for e in log] == ["connect", "execute", "close", "llm", "llm", "connect", "set", "commit", "close"]
     rec = json.loads(rp.read_text())
     assert rec["status"] == "ok" and rec["candidates"] == 2 and rec["upgraded"] == 1 and rec["finished_at"]
+    assert rec["ok_at"] == rec["finished_at"]
 
 
 def test_ensemble_failure_is_visible_in_its_receipt(tmp_path):
@@ -215,9 +239,38 @@ def test_ensemble_failure_is_visible_in_its_receipt(tmp_path):
         raise RuntimeError("SSL connection has been closed unexpectedly")
 
     rp = tmp_path / "ensemble.json"
-    assert tc.ensemble_rescue(None, 5, connect=connect, validate=lambda *a, **k: {}, receipt_path=rp) == 0
+    rp.write_text(json.dumps({"status": "ok", "ok_at": "2026-10-08T22:30:05+00:00"}))
+    out: dict = {}
+    assert tc.ensemble_rescue(None, 5, connect=connect, validate=lambda *a, **k: {}, receipt_path=rp,
+                              receipt_out=out) == 0
     rec = json.loads(rp.read_text())
     assert rec["status"] == "error" and rec["stage"] == "read" and "SSL" in rec["error"]
+    assert rec["ok_at"] == "2026-10-08T22:30:05+00:00"   # an error run never advances the freshness key
+    assert out["status"] == "error"
+
+
+def test_curator_main_exits_nonzero_when_the_ensemble_failed(monkeypatch):
+    class _Idle:
+        def cursor(self, *a, **k):
+            raise RuntimeError("no db in tests")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(tc, "_get_conn", lambda: _Idle())
+    monkeypatch.setattr(tc, "rate_pending_content", lambda conn, topic=None: (0, 0, 0))
+    monkeypatch.setattr(tc, "extract_and_link_entities", lambda conn, topic=None: 0)
+    monkeypatch.setattr(tc, "update_agent_context", lambda conn, topic=None: 0)
+    monkeypatch.setattr(tc, "_write_desk_projection", lambda stats: None)
+
+    def fake_rescue(topic, receipt_out=None):
+        receipt_out.update(status="error")
+        return 0
+    monkeypatch.setattr(tc, "ensemble_rescue", fake_rescue)
+    monkeypatch.setattr(sys, "argv", ["topic_curator.py", "--ensemble"])
+    assert tc.main() == 1
+    monkeypatch.setattr(tc, "ensemble_rescue", lambda topic, receipt_out=None: receipt_out.update(status="ok") or 0)
+    assert tc.main() == 0
 
 
 # ── 4. stop health heartbeat ────────────────────────────────────────────────────────────────────────
@@ -231,7 +284,7 @@ def test_stop_health_quiet_run_writes_a_heartbeat(tmp_path, monkeypatch):
     doc = json.loads(hb.read_text())
     assert seen["quiet"] is True
     assert doc["schema"] == "StopHealthRun@v1" and doc["status"] == "ok" and doc["stops"] == 12
-    assert doc["alert_count"] == 0 and doc["finished_at"]
+    assert doc["alert_count"] == 0 and doc["finished_at"] and doc["ok_at"] == doc["finished_at"]
 
 
 def test_stop_health_failure_still_writes_a_heartbeat_and_raises(tmp_path, monkeypatch):
@@ -239,9 +292,20 @@ def test_stop_health_failure_still_writes_a_heartbeat_and_raises(tmp_path, monke
         raise RuntimeError("scan failed")
     monkeypatch.setattr(shc, "run", boom)
     hb = tmp_path / "hb.json"
+    hb.write_text(json.dumps({"status": "ok", "ok_at": "2026-10-09T20:50:04+00:00"}))
     with pytest.raises(RuntimeError):
         shc.main(["--quiet"], heartbeat_path=hb)
-    assert json.loads(hb.read_text())["status"] == "error"
+    doc = json.loads(hb.read_text())
+    assert doc["status"] == "error" and doc["ok_at"] == "2026-10-09T20:50:04+00:00"
+
+
+def test_stop_health_malformed_result_is_a_failed_run_not_a_lost_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(shc, "run", lambda quiet=False: {"summary": {"incident_recovery": "not-a-dict"}})
+    hb = tmp_path / "hb.json"
+    with pytest.raises(AttributeError):
+        shc.main([], heartbeat_path=hb)
+    doc = json.loads(hb.read_text())
+    assert doc["status"] == "error" and doc["ok_at"] is None
 
 
 def test_stop_health_check_places_no_orders():
@@ -252,7 +316,9 @@ def test_stop_health_check_places_no_orders():
 
 def test_registry_signals_point_at_the_new_receipts():
     lanes = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"]}
-    assert lanes["topic-curator-ensemble"]["output_signal"]["path"] == "data/runtime/topic_curator_ensemble_latest.json"
-    assert lanes["stop-health-check"]["output_signal"]["path"] == "data/runtime/stop_health_last.json"
+    for lane_id, path in (("topic-curator-ensemble", "data/runtime/topic_curator_ensemble_latest.json"),
+                          ("stop-health-check", "data/runtime/stop_health_last.json")):
+        sig = lanes[lane_id]["output_signal"]
+        assert (sig["kind"], sig["path"], sig["key"]) == ("json_key", path, "ok_at"), lane_id
     assert str(tc.ENSEMBLE_RECEIPT).endswith("data/runtime/topic_curator_ensemble_latest.json")
     assert str(shc.HEARTBEAT_FILE).endswith("data/runtime/stop_health_last.json")

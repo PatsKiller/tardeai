@@ -37,6 +37,15 @@ def _write_heartbeat(doc: dict, path: Path | None = None) -> None:
     import os
 
     path = path or HEARTBEAT_FILE
+    # ok_at is the lane's freshness key (json_key): it advances only on a successful run; a failed run still
+    # writes this file (status error) but carries the previous ok_at forward, so it never looks fresh.
+    if doc.get("status") == "ok":
+        doc = {**doc, "ok_at": doc.get("finished_at")}
+    else:
+        try:
+            doc = {**doc, "ok_at": (json.loads(path.read_text(encoding="utf-8")) or {}).get("ok_at")}
+        except Exception:  # noqa: BLE001 — no previous heartbeat
+            doc = {**doc, "ok_at": None}
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
@@ -649,15 +658,17 @@ def main(argv: list[str] | None = None, *, heartbeat_path: Path | None = None) -
     started = datetime.now(timezone.utc).isoformat()
     try:
         out = run(quiet="--quiet" in argv)
+        # building the success doc is inside the guard too: a malformed summary is a failed run, not a lost one
+        summary = out.get("summary") or {}
+        doc = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(), "status": "ok",
+               "stops": summary.get("total"), "by_health": summary.get("by_health"),
+               "alert_count": out.get("alert_count"), "telegram_fired": out.get("telegram_fired"),
+               "incident_recovery_ok": (summary.get("incident_recovery") or {}).get("ok")}
     except BaseException as exc:
         _write_heartbeat({"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
                           "status": "error", "error": f"{type(exc).__name__}: {exc}"[:300]}, heartbeat_path)
         raise
-    summary = out.get("summary") or {}
-    _write_heartbeat({"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
-                      "status": "ok", "stops": summary.get("total"), "by_health": summary.get("by_health"),
-                      "alert_count": out.get("alert_count"), "telegram_fired": out.get("telegram_fired"),
-                      "incident_recovery_ok": (summary.get("incident_recovery") or {}).get("ok")}, heartbeat_path)
+    _write_heartbeat(doc, heartbeat_path)
     return out
 
 

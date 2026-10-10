@@ -535,6 +535,15 @@ def _write_ensemble_receipt(receipt: dict, path: Path | None = None) -> None:
     topic-curator-ensemble lane's own output signal.
     """
     path = path or ENSEMBLE_RECEIPT
+    # ok_at is the lane's freshness key (json_key): it advances only on a successful run, so an error run is
+    # still a visible receipt but never looks fresh. An error run carries the previous ok_at forward.
+    if receipt.get("status") == "ok":
+        receipt["ok_at"] = receipt.get("finished_at")
+    else:
+        try:
+            receipt["ok_at"] = (json.loads(path.read_text(encoding="utf-8")) or {}).get("ok_at")
+        except Exception:  # noqa: BLE001 — no previous receipt
+            receipt["ok_at"] = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
@@ -544,7 +553,8 @@ def _write_ensemble_receipt(receipt: dict, path: Path | None = None) -> None:
         print(f"  [curator] ensemble receipt write failed: {e}")
 
 
-def ensemble_rescue(topic_id=None, limit=None, *, connect=None, validate=None, receipt_path: Path | None = None):
+def ensemble_rescue(topic_id=None, limit=None, *, connect=None, validate=None, receipt_path: Path | None = None,
+                    receipt_out: dict | None = None):
     """Second opinion on borderline rejects: re-rate recently low_quality topic articles with the FREE-lane
     multi-LLM ensemble (grok+chatgpt+local); upgrade consensus-approved ones to 'approved'. Catches single-
     lane false rejects without re-rating everything (only the borderline items pay the 3-lane cost). No keys.
@@ -554,7 +564,8 @@ def ensemble_rescue(topic_id=None, limit=None, *, connect=None, validate=None, r
     DB use is bracketed: one short connection reads the candidates and is closed BEFORE the slow LLM calls;
     a fresh connection writes the upgrades. Holding one connection across up to ~60 lane calls is what made
     every --ensemble run die with "SSL connection has been closed unexpectedly" (2026-10-09 triage).
-    Every run writes ENSEMBLE_RECEIPT (status ok | error | unavailable)."""
+    Every run writes ENSEMBLE_RECEIPT (status ok | error | unavailable; ok_at only advances on ok) and, when
+    given, copies it into ``receipt_out`` so main() can exit non-zero on a failed rescue."""
     from datetime import datetime, timezone
     connect = connect or _get_conn
     receipt = {"schema": "TopicCuratorEnsembleRun@v1", "started_at": datetime.now(timezone.utc).isoformat(),
@@ -632,6 +643,8 @@ def ensemble_rescue(topic_id=None, limit=None, *, connect=None, validate=None, r
     finally:
         receipt["finished_at"] = datetime.now(timezone.utc).isoformat()
         _write_ensemble_receipt(receipt, receipt_path)
+        if receipt_out is not None:
+            receipt_out.update(receipt)
 
 
 # ════════════════════════════════════════════════════════════
@@ -661,7 +674,9 @@ def main():
         stats['rated'] = total
         if args.ensemble:
             print("  [1b] Ensemble rescue on borderline rejects (free-lane grok+chatgpt+local)...")
-            stats['ensemble_rescued'] = ensemble_rescue(args.topic)
+            ensemble_receipt: dict = {}
+            stats['ensemble_rescued'] = ensemble_rescue(args.topic, receipt_out=ensemble_receipt)
+            stats['ensemble_status'] = ensemble_receipt.get("status")
             # the shared connection sat idle through the ensemble's lane calls: replace it before step 2
             try:
                 conn.close()
@@ -754,8 +769,13 @@ def main():
     _write_desk_projection(stats)
 
     conn.close()
+    if stats.get('ensemble_status') not in (None, 'ok'):
+        # the rest of the curation ran and the receipt is written; the cron exit code still says it failed
+        print(f"  [curator] ensemble rescue status={stats['ensemble_status']} -> exit 1")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
     os.chdir(str(PROJECT_ROOT))
-    main()
+    sys.exit(main())

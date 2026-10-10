@@ -588,12 +588,13 @@
   },
   "stop-health-check": {
    "output_signal": {
-    "kind": "file_mtime",
-    "path": "data/runtime/stop_health_last.json"
+    "kind": "json_key",
+    "path": "data/runtime/stop_health_last.json",
+    "key": "ok_at"
    },
    "verified_token": "stop_health_last.json",
    "source_file": "scripts/stop_health_check.py",
-   "evidence": "scripts/stop_health_check.py main() -> _write_heartbeat (HEARTBEAT_FILE) on every run incl. --quiet and failures; 2026-10-09 breach triage: --quiet left logs/stop_health_cron.log unchanged on clean runs"
+   "evidence": "scripts/stop_health_check.py main() -> _write_heartbeat (HEARTBEAT_FILE) every run incl. --quiet; ok_at advances only on a successful run (a failed run keeps the previous ok_at); 2026-10-09 breach triage: --quiet left logs/stop_health_cron.log unchanged on clean runs"
   },
   "strategy-tilt": {
    "output_signal": {
@@ -627,7 +628,7 @@
     "state": "NEVER_SCHEDULED",
     "state_since": "2026-10-09",
     "reason_confidence": "ESTABLISHED",
-    "state_reason": "OS-shipped user unit (vendor preset enabled) that is not enabled in this user session: ActiveState inactive, LastTriggerUSec empty \u2014 it has never fired. Not a Trade AI producer.",
+    "state_reason": "OS-shipped user unit (vendor preset enabled) that is not enabled in this user session: ActiveState inactive, LastTriggerUSec empty — it has never fired. Not a Trade AI producer.",
     "reason_evidence": "systemctl --user show systemd-tmpfiles-clean.timer (read-only) 2026-10-09; docs/audits/overnight/W2_UNDECLARED_CENSUS_2026-09-01.md (OS user timers)"
    }
   },
@@ -642,12 +643,13 @@
   },
   "topic-curator-ensemble": {
    "output_signal": {
-    "kind": "file_mtime",
-    "path": "data/runtime/topic_curator_ensemble_latest.json"
+    "kind": "json_key",
+    "path": "data/runtime/topic_curator_ensemble_latest.json",
+    "key": "ok_at"
    },
    "verified_token": "topic_curator_ensemble_latest.json",
    "source_file": "scripts/topic_curator.py",
-   "evidence": "scripts/topic_curator.py ensemble_rescue() -> _write_ensemble_receipt (ENSEMBLE_RECEIPT) on every --ensemble run, status ok|error|unavailable; own signal since the 2026-10-09 breach triage (the shared topic_curator_latest.json hid every [1b] crash)"
+   "evidence": "scripts/topic_curator.py ensemble_rescue() -> _write_ensemble_receipt (ENSEMBLE_RECEIPT) every --ensemble run; ok_at advances only on status ok (an error run keeps the previous ok_at and exits non-zero); own signal since the 2026-10-09 breach triage"
   },
   "topic-ingestion": {
    "output_signal": {
@@ -729,7 +731,7 @@
     "state_since": "2026-09-27",
     "reason_confidence": "ESTABLISHED",
     "review_by": "2026-10-16",
-    "state_reason": "Duplicates the iris_taxonomy_agent.py cron lines with different arguments; kept disabled since 2026-09-27. Retiring it is approval item O-4 (retiring a writer, AGENTS \u00a717) \u2014 operator decision open.",
+    "state_reason": "Duplicates the iris_taxonomy_agent.py cron lines with different arguments; kept disabled since 2026-09-27. Retiring it is approval item O-4 (retiring a writer, AGENTS §17) — operator decision open.",
     "reason_evidence": "docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md:495; docs/architecture/cognitive_transformation_20260927/11_APPROVAL_PACKAGE.md (O-4)"
    }
   },
