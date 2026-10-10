@@ -51,12 +51,12 @@
   }
  },
  "summary": {
-  "lanes": 54,
+  "lanes": 53,
   "actions": 34,
   "lanes_with_auto_rerun": 8,
-  "lanes_suggest_only": 46,
+  "lanes_suggest_only": 45,
   "by_severity": {
-   "Critical": 16,
+   "Critical": 15,
    "High": 9,
    "Medium": 13,
    "Low": 16
@@ -2498,39 +2498,6 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": "timeout_s 16200 > 600: a rerun would hold the single executor worker; human approval"
-  },
-  {
-   "schema": "N8nLaneRemediation@v1",
-   "lane_id": "trade-ai-scalp-live",
-   "severity": "Critical",
-   "severity_basis": "cron:L1050: business_function=trading-adjacent; critical path CP2 -> Critical",
-   "inv_ids": [
-    "cron:L1050"
-   ],
-   "classification": [
-    "Requires Refactoring Before Migration"
-   ],
-   "migration_risk": [
-    "High"
-   ],
-   "known_issues": [
-    {
-     "inv_id": "cron:L1050",
-     "known_issues": "Receipt file trade_ai_scalp_live_last.json and scalp_cycle_receipts/ do NOT exist (the registry/allowlist output_signal is absent, so the heartbeat watcher cannot see it); receipt code served only since the 21:11 10-09 promote. Only 7 completed cycles logged on its first day (10-09), cycle time 133–272 s against a 295 s timeout. Overlaps L636/L804 scanners 09:30–11:59 (V2 C5d) and possibly double-alerts GOs with L961.",
-     "custom_work_required": "Prove receipt on natural RTH fires (Mon 10-12); cycle-time headroom vs 295 s; one GO ledger shared with L961"
-    }
-   ],
-   "registry": {
-    "present": true,
-    "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": null
-   },
-   "allowlisted": true,
-   "allowlist_source": "config/n8n_run_allowlist.json",
-   "actions": [],
-   "default_action": "suggest_only",
-   "suggest_only_reason": "§23.14 never-list / 4.0.0 named exception: escalate only (V9 §6.3)"
   },
   {
    "schema": "N8nLaneRemediation@v1",

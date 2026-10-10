@@ -1,8 +1,8 @@
 """N8N Maturity B5.2 — registry dispatch/watch block loader + forbidden-token eligibility (design 02 §2).
 
-Hermetic: synthetic rows. The live config/lane_registry.json is only READ, for two invariants: no row carries
-a dispatch block yet (all parse to mode off), and every real row naming a broker/order/secret script is
-dispatch-ineligible."""
+Hermetic: synthetic rows. The live config/lane_registry.json is only READ, for two invariants: every row is mode
+off or a shadow-stage dry_run row (wave D1b, 2026-10-10; never live), and every real row naming a
+broker/order/secret script is dispatch-ineligible."""
 
 from __future__ import annotations
 
@@ -419,12 +419,35 @@ def _live_rows():
     return json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]
 
 
-def test_live_registry_rows_are_all_mode_off():
+def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
+    """2026-10-10 dispatcher shadow wave D1b: the first rows leave mode off. A non-off row is only ever the
+    shadow step of the AGENTS §23.12 ladder: dispatch.mode dry_run, scheduler.stage shadow (so the executor's
+    stage clamp turns any live request into dry_run), still on its cron line, allowlisted with a dry_run_arg and
+    with NO live mode in the allowlist (live_arg null, except the pre-existing job-coverage-monitor entry, whose
+    live request the stage clamp still runs dry). No registry row is mode live."""
+    from scripts.lib.lane_stage_clamp import clamp_mode
+
     rows = _live_rows()
     assert rows
+    allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
+    known = {r["lane_id"] for r in rows}
+    shadow = []
     for row in rows:
-        assert LD.dispatch_mode(row) == "off", row["lane_id"]
-        assert LD.validate_dispatch_block(row, known_lane_ids={r["lane_id"] for r in rows}) == [], row["lane_id"]
+        lane = row["lane_id"]
+        assert LD.validate_dispatch_block(row, known_lane_ids=known) == [], lane
+        mode = LD.dispatch_mode(row)
+        assert mode in ("off", "dry_run"), lane
+        if mode == "off":
+            continue
+        shadow.append(lane)
+        sched = row["scheduler"]
+        assert sched["kind"] == "cron" and sched.get("stage") == "shadow", lane
+        assert LD.dispatchable(row), lane
+        assert clamp_mode(lane, "live", rows)["effective_mode"] == "dry_run", lane
+        entry = allow[lane]
+        assert entry["dry_run_arg"], lane
+        assert entry["live_arg"] is None or lane == "job-coverage-monitor", lane
+    assert len(shadow) == 22, shadow
 
 
 def test_live_rows_naming_broker_order_secret_scripts_are_ineligible():
