@@ -495,6 +495,20 @@ def _run(request, claim, *, run_store, run_allowlist, now: float, peer, due_sour
     return _run_envelope(row, duplicate, run_store)
 
 
+def host_run_request(*, lane_id: str, mode: str, run_id: str, requested_by: str, caller_id: str, run_store,
+                     run_allowlist, now: float) -> dict[str, Any]:
+    """``coordination/run`` for a caller already on the host (no bearer to verify): the SAME ``_run`` validation
+    (allowlist, mode, run-id shape, secret material) and the same single REQUESTED row the gateway writes for n8n.
+    The executor runs it, and the executor applies the §23.11 stage clamp (a shadow lane runs dry_run). Server-minted
+    slot keys (``d:``/``e:``/``g:``) are the dispatcher's and are refused here. Added 2026-10-10 for the n8n failure
+    diagnoser's catalogue reruns (REMEDIATION_PLAN §6 R2; operator "Ok" ~00:35 ET)."""
+    if str(run_id or "")[:2].lower() in ("d:", "e:", "g:"):
+        return _refused(None, "run_slot_not_due", peer_ignored=None)
+    request = {"lane_id": lane_id, "mode": mode, "idempotency_key": run_id, "requested_by": requested_by}
+    return _run(request, {"caller_id": caller_id}, run_store=run_store, run_allowlist=run_allowlist, now=now,
+                peer=None)
+
+
 #: Injected by tests; production uses n8n_model_job.bridge_governed_call (loopback HTTP to the governed bridge).
 MODEL_JOB_GOVERNED_CALL = None
 MODEL_JOB_FIELDS = frozenset({"process_id", "artifact_ref", "correlation_id", "deadline", "output_schema_id"})

@@ -96,6 +96,11 @@ def bench(tmp_path, monkeypatch):
         ],
     }
     (tmp_path / "locks").mkdir()
+    # 2026-10-10: main applies the §23.11 stage clamp; registered non-dispatcher rows keep the requested mode.
+    (code / "config").mkdir()
+    (code / "config" / "lane_registry.json").write_text(json.dumps({"lanes": [
+        {"lane_id": lane["lane_id"], "scheduler": {"kind": "cron", "expression": "0 * * * *"}}
+        for lane in allow["lanes"]]}))
     allow_path = tmp_path / "allow.json"
     allow_path.write_text(json.dumps(allow))
     ledger_path = tmp_path / "ledger.sqlite"
@@ -329,6 +334,65 @@ def test_bad_allowlist_is_exit_2_and_malformed_entries_are_dropped(bench, tmp_pa
         )
         is None
     )
+
+
+def _registry(bench, lanes):
+    (bench["code"] / "config" / "lane_registry.json").write_text(json.dumps({"lanes": lanes}))
+
+
+def test_stage_clamp_runs_a_shadow_lane_dry_whatever_was_requested(bench):
+    """AGENTS.md §23.11 (added 2026-10-10): the executor clamps the mode to the row's stage; canary/cutover keep it."""
+    disp = {"kind": "n8n", "expression": "dispatcher", "cadence": "*/5 * * * *"}
+    _registry(bench, [{"lane_id": "fake-lane", "scheduler": {**disp, "stage": "shadow"}},
+                      {"lane_id": "flock-lane", "scheduler": {**disp, "stage": "cutover"}}])
+    _request(bench["ledger"], "run-clamp-0000000001", "fake-lane", "live", T0)
+    _request(bench["ledger"], "run-clamp-0000000002", "flock-lane", "live", T0 + 1)
+    assert _once(bench) == 0
+    shadow = _row(bench, "run-clamp-0000000001")["receipt"]
+    assert shadow["mode"] == "dry_run" and shadow["requested_mode"] == "live" and shadow["argv"][-1] == "--dry-run"
+    assert shadow["stage_clamp"] == {"requested_mode": "live", "effective_mode": "dry_run", "stage": "shadow",
+                                     "clamped": True, "reason": "stage_shadow"}
+    assert "fake lane mode=--dry-run" in shadow["stdout_tail"]                     # the child ran dry
+    cut = _row(bench, "run-clamp-0000000002")["receipt"]
+    assert cut["mode"] == "live" and cut["argv"][-1] == "--apply" and cut["stage_clamp"]["reason"] == "stage_cutover"
+
+
+@pytest.mark.parametrize("registry", ["missing", "unreadable", "no_row", "bad_stage", "dispatcher_no_stage"])
+def test_stage_clamp_fails_closed_to_dry_run_when_the_stage_is_unknown(bench, registry):
+    path = bench["code"] / "config" / "lane_registry.json"
+    if registry == "missing":
+        path.unlink()
+    elif registry == "unreadable":
+        path.write_text("{not json")
+    elif registry == "no_row":
+        _registry(bench, [])
+    elif registry == "bad_stage":
+        _registry(bench, [{"lane_id": "fake-lane", "scheduler": {"kind": "n8n", "expression": "dispatcher",
+                                                                  "stage": "Cutover "}}])
+    else:
+        _registry(bench, [{"lane_id": "fake-lane", "scheduler": {"kind": "n8n", "expression": "dispatcher"}}])
+    _request(bench["ledger"], "run-unkno-0000000001", "fake-lane", "live", T0)
+    assert _once(bench) == 0
+    r = _row(bench, "run-unkno-0000000001")["receipt"]
+    assert r["mode"] == "dry_run" and r["argv"][-1] == "--dry-run" and r["stage_clamp"]["clamped"] is True
+
+
+def test_stage_clamp_rules():
+    from scripts.lib import lane_stage_clamp as S
+
+    disp = {"kind": "n8n", "expression": "dispatcher"}
+    rows = [{"lane_id": "sh", "scheduler": {**disp, "stage": "shadow"}},
+            {"lane_id": "ca", "scheduler": {**disp, "stage": "canary"}},
+            {"lane_id": "cu", "scheduler": {**disp, "stage": "cutover"}},
+            {"lane_id": "wf", "scheduler": {"kind": "n8n", "expression": "722fac0e043ea5c4"}},   # lane-specific wf
+            {"lane_id": "cron", "scheduler": {"kind": "cron", "expression": "0 * * * *", "stage": "shadow"}}]
+    eff = {lane: S.clamp_mode(lane, "live", rows)["effective_mode"] for lane in ("sh", "ca", "cu", "wf", "cron", "x")}
+    assert eff == {"sh": "dry_run", "ca": "live", "cu": "live", "wf": "live", "cron": "dry_run", "x": "dry_run"}
+    assert S.clamp_mode("cu", "live", None)["reason"] == "registry_unreadable"
+    assert all(S.clamp_mode(lane, "dry_run", rows)["effective_mode"] == "dry_run" for lane in ("sh", "cu", "x"))
+    assert [S.live_rerun_allowed(lane, rows) for lane in ("sh", "ca", "cu", "wf")] == [False, False, True, False]
+    assert S.live_rerun_allowed("cu", None) is False
+    assert S.load_stage_rows(ROOT / "config" / "lane_registry.json")      # the shipped registry parses
 
 
 def test_market_gate_and_tokens_resolve_in_build_argv(tmp_path):

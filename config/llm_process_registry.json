@@ -1315,6 +1315,39 @@
       "registered_by": "n8n-parallel-phase2-G1",
       "registered_at": "2026-10-08T02:00:00Z",
       "notes": "One draft per week by design (soft cap 1/day). Caller n8n_model_job + task type ops_summary maps here server-side (CALLER_TASK_PROCESS_MAP); the plain model_job task type still maps to n8n_material_digest_draft. Cap $0.10/day; raise only with evidence from the job receipts."
+    },
+    {
+      "id": "n8n_lane_failure_diagnosis",
+      "name": "n8n coordination: lane failure DIAGNOSIS + bounded remediation choice (OAuth first)",
+      "category": "N8nCoordination",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "REMEDIATION_PLAN §6 R1/R2 (operator decisions 2026-10-09 23:38 ET): one diagnosis per open n8n:* SIEM incident, run by scripts/n8n_failure_diagnosis.py through scripts/lib/n8n_model_job.py (template lane_failure_diagnosis.v1, caller n8n_model_job + task type lane_failure_diagnosis). Input: lane metadata, error text and log lines only, scrubbed of secrets and portfolio fields (§2A decision 1). Output validated against lane_failure_diagnosis/v1; action_id is re-checked against config/n8n_remediation_catalogue.json and only deterministic catalogue handlers execute; recommendation NONE; never a send. READ_ONLY_ADVISORY. Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (decision 2), cost_ceiling_usd 0.05 per call.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 12000,
+      "max_output_tokens": 1024,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.1,
+      "output_schema_id": "lane_failure_diagnosis/v1",
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "free_text_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "offpeak_tier": "standard",
+      "registered_by": "n8nmat/llm-self-remediation",
+      "registered_at": "2026-10-10T05:00:00Z",
+      "notes": "Per-call ceiling $0.05 (routing policy cost_ceiling_usd, enforced by the bridge, §23.10 P21) and re-checked by the caller; $0.10/day and 40 calls/day for this process inside LLM_GLOBAL_DAILY_USD_CAP 2.00. One call per incident, at most 3 per lane per day. A refused or deferred call escalates the incident without a diagnosis and says so. Claude is not a bridge provider today: the operator's 'DeepSeek or Claude' fallback is DeepSeek until a Claude lane is provisioned (§17)."
     }
   ],
   "default_deepseek_policy": "FAST",

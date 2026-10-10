@@ -76,6 +76,8 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
     "n8n_model_job": {
         "model_job": "n8n_material_digest_draft",
         "ops_summary": "n8n_ops_summary_draft",
+        # 2026-10-10 (REMEDIATION_PLAN §6): lane failure diagnosis, $0.05/call ceiling, grok -> chatgpt -> deepseek.
+        "lane_failure_diagnosis": "n8n_lane_failure_diagnosis",
     },
     "advisory_desk": {
         "advisory_opinion": "advisory_desk_opinion",
