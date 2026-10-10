@@ -11,40 +11,15 @@
       "window": "02:20-06:15",
       "steps": [
         {
-          "id": "universe_history_retention",
-          "cron_line": 1023,
-          "cron_schedule": "25 3 * * *",
-          "cron_time": "03:25",
-          "command": "flock -n /tmp/hermes_universe_history_retention.lock $PY scripts/hermes_universe_history_retention.py --apply",
-          "log": "logs/hermes_universe_history_retention.log",
-          "timeout": "5m",
-          "continue_on_error": true,
-          "cron_line_verbatim": "25 3 * * * cd $PROJ && flock -n /tmp/hermes_universe_history_retention.lock $PY scripts/hermes_universe_history_retention.py --apply >> logs/hermes_universe_history_retention.log 2>&1  # 21d window + one-snapshot-per-day thinning for governed-universe history; lane hermes-universe-history-retention (2026-09-19)",
-          "measured": {
-            "verified": false,
-            "source": "pam_group_max(upper)",
-            "runs": 0,
-            "firings": 7,
-            "median_s": null,
-            "p95_s": null,
-            "max_s": null,
-            "lower_bound_median_s": null,
-            "upper_bound_median_s": 0.4,
-            "upper_bound_p95_s": 0.4,
-            "bound_source": "pam_group_max(upper)"
-          },
-          "cron_comment": "# 21d window + one-snapshot-per-day thinning for governed-universe history; lane hermes-universe-history-retention (2026-09-19)"
-        },
-        {
           "id": "discovery_yield_builder",
           "cron_line": 861,
           "cron_schedule": "45 3 * * *",
           "cron_time": "03:45",
-          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_yield_builder.lock $PY scripts/hermes_discovery_yield_builder.py --apply --json",
+          "command": "flock -n /tmp/hermes_yield_builder.lock $PY scripts/hermes_discovery_yield_builder.py --apply --json",
           "log": "logs/hermes_discovery_yield.log",
           "timeout": "5m",
           "continue_on_error": true,
-          "cron_line_verbatim": "45 3 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/hermes_yield_builder.lock $PY scripts/hermes_discovery_yield_builder.py --apply --json >> logs/hermes_discovery_yield.log 2>&1  # Phase 5 outcome yield: after 03:35 outcome learning (2026-08-04)",
+          "cron_line_verbatim": "45 3 * * * cd $PROJ && flock -n /tmp/hermes_yield_builder.lock $PY scripts/hermes_discovery_yield_builder.py --apply --json >> logs/hermes_discovery_yield.log 2>&1  # Phase 5 outcome yield: after 03:35 outcome learning (2026-08-04)",
           "measured": {
             "verified": false,
             "source": "pam_group_max(upper)",
@@ -58,11 +33,9 @@
             "upper_bound_p95_s": 32.5,
             "bound_source": "pam_group_max(upper)"
           },
-          "wrappers_kept_verbatim": [
-            "run_with_deepseek_offpeak.sh"
-          ],
-          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# Phase 5 outcome yield: after 03:35 outcome learning (2026-08-04)"
+          "note": "live line (2026-10-10) has no off-peak wrapper; step text re-synced to it verbatim",
+          "cron_comment": "# Phase 5 outcome yield: after 03:35 outcome learning (2026-08-04)",
+          "inv_id": "cron:L824"
         },
         {
           "id": "tag_lift_discovery",
@@ -91,7 +64,8 @@
             "run_with_deepseek_offpeak.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# URDL tag-lift, daily after 03:25 outcome-bus build (enabled 2026-07-05)"
+          "cron_comment": "# URDL tag-lift, daily after 03:25 outcome-bus build (enabled 2026-07-05)",
+          "inv_id": "cron:L684"
         },
         {
           "id": "industry_novelty_discovery",
@@ -120,35 +94,8 @@
             "run_with_deepseek_offpeak.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# industry/sector novelty discovery — LIVE (industry_novelty_enabled=true since 2026-08-04)"
-        },
-        {
-          "id": "discovery_scorecard",
-          "cron_line": 869,
-          "cron_schedule": "30 5 * * *",
-          "cron_time": "05:30",
-          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- $PY scripts/hermes_discovery_scorecard.py",
-          "log": "logs/hermes_discovery_scorecard.log",
-          "timeout": "5m",
-          "continue_on_error": true,
-          "cron_line_verbatim": "30 5 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1",
-          "measured": {
-            "verified": false,
-            "source": "pam_group_max(upper)",
-            "runs": 0,
-            "firings": 7,
-            "median_s": null,
-            "p95_s": null,
-            "max_s": null,
-            "lower_bound_median_s": null,
-            "upper_bound_median_s": 60.2,
-            "upper_bound_p95_s": 63.6,
-            "bound_source": "pam_group_max(upper)"
-          },
-          "wrappers_kept_verbatim": [
-            "run_with_deepseek_offpeak.sh"
-          ],
-          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage"
+          "cron_comment": "# industry/sector novelty discovery — LIVE (industry_novelty_enabled=true since 2026-08-04)",
+          "inv_id": "cron:L686"
         },
         {
           "id": "siem_to_hermes_backlog",
@@ -172,7 +119,8 @@
             "upper_bound_median_s": 35.5,
             "upper_bound_p95_s": 54.3,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L835"
         }
       ]
     },
@@ -208,12 +156,37 @@
             "run_with_deepseek_offpeak.sh",
             "safe_flock.sh"
           ],
-          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage"
+          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
+          "inv_id": "cron:L376"
         }
       ]
     }
   },
-  "deferred": [],
+  "deferred": [
+    {
+      "cron_line": 869,
+      "cron_schedule": "30 5 * * *",
+      "cron_time": "05:30",
+      "basename": "hermes_discovery_scorecard.py",
+      "category": "DEFERRED_OTHER_PLAN",
+      "reason": "C1 2026-10-10: inventory cron:L832 (discovery_scorecard) is planned in JOB_REDUCTION_DEEP_PASS.md §2 C2 group P13 (premarket daily), not C1; live line has no off-peak wrapper (manifest text had drifted). Stays its own cron line.",
+      "inv_id": "cron:L832",
+      "former_step": "night/discovery_scorecard",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 60.2,
+        "upper_bound_p95_s": 63.6,
+        "bound_source": "pam_group_max(upper)"
+      }
+    }
+  ],
   "excluded": [
     {
       "cron_line": 717,
@@ -335,6 +308,28 @@
         "median_s": 0.0,
         "p95_s": 0.1,
         "max_s": 0.1
+      }
+    },
+    {
+      "cron_line": 1023,
+      "cron_schedule": "25 3 * * *",
+      "cron_time": "03:25",
+      "basename": "hermes_universe_history_retention.py",
+      "category": "ABSORBED_ELSEWHERE",
+      "reason": "C1 2026-10-10: no live cron line; since cron tranche A rank 4 (2026-10-07) the job runs as step 7 of tradeai-platform-maintenance-nightly (lane hermes-universe-history-retention RETIRED, superseded_by platform-maintenance-nightly). Removed so an --apply stage cannot run the retention twice a night (cron-tranche-b-cutover-plan-20261008.md blocker 1).",
+      "former_step": "night/universe_history_retention",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 0.4,
+        "upper_bound_p95_s": 0.4,
+        "bound_source": "pam_group_max(upper)"
       }
     }
   ]
