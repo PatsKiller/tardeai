@@ -45,6 +45,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 KILL_FILE = ROOT / "data" / "state" / "STREAM_DISABLED"
 FLUSH_EVERY = 5.0          # seconds between DB flushes
 BOOK_TOP_N = 5             # book levels persisted per side
+SESSION_CHECK_ERROR_RC = 2  # not 1: supervise() reconnects only on 1, and a failed session check must not retry
 
 
 def _conn():
@@ -115,11 +116,20 @@ def _stream_sessions():
     return out or {"regular"}
 
 
+def _session_status(now=None, sessions=None):
+    """"open" while the configured session window is in progress (market_session calendar: weekends,
+    NYSE holidays and early closes included), "closed" outside it, "error" if the check itself failed.
+    Local and cheap — checked every loop iteration. Callers fail CLOSED on "error"."""
+    try:
+        import market_session
+        return "open" if market_session.current_market_session(now) in (sessions or _stream_sessions()) else "closed"
+    except Exception as e:
+        print(f"[stream] session check failed ({e}) — failing closed")
+        return "error"
+
+
 def _in_session(now=None, sessions=None):
-    """True while the configured session window is in progress (market_session calendar: weekends,
-    NYSE holidays and early closes included). Local and cheap — checked every loop iteration."""
-    import market_session
-    return market_session.current_market_session(now) in (sessions or _stream_sessions())
+    return _session_status(now, sessions) == "open"
 
 
 def _schwab_is_open():
@@ -137,6 +147,10 @@ def _schwab_is_open():
 def _market_open(now=None):
     """Capture allowed: inside the configured session window AND Schwab does not say the day is closed."""
     return _in_session(now) and _schwab_is_open()
+
+
+def _session_stop_reason(status):
+    return "session_check_error" if status == "error" else "session_end"
 
 
 def _receipt_dir() -> Path:
@@ -166,13 +180,16 @@ def _write_receipt(rec, *, final=False, dirpath=None):
 
 
 class Capture:
-    def __init__(self):
+    def __init__(self, heartbeat_s=None):
+        # An unchanged quote is still re-written at most once per heartbeat_s per symbol, so a per-symbol
+        # freshness reader never mistakes a quiet symbol for a dead stream. 0 disables (pure dedupe).
+        self.heartbeat_s = float(os.getenv("STREAM_QUOTE_HEARTBEAT_S", "60")) if heartbeat_s is None else heartbeat_s
         self.quotes = {}      # symbol -> latest L1 dict
         self.books = {}       # symbol -> latest book dict
         self.q_writes = 0
         self.q_skipped = 0    # unchanged quotes not re-inserted
         self.b_writes = 0
-        self._last_q = {}     # symbol -> last written quote tuple
+        self._last_q = {}     # symbol -> (last written quote tuple, epoch written)
         self.msgs = 0
 
     def on_l1(self, msg):
@@ -206,13 +223,16 @@ class Capture:
                                "best_ask": (asks[0]["price"] if asks else None),
                                "bid_levels": bids, "ask_levels": asks}
 
-    def flush(self, conn):
+    def flush(self, conn, now=None):
+        import time
+        now = time.time() if now is None else now
         cur = conn.cursor()
         for sym, q in self.quotes.items():
             if not q:
                 continue
             key = (q.get("last"), q.get("bid"), q.get("ask"), q.get("bid_size"), q.get("ask_size"), q.get("volume"))
-            if self._last_q.get(sym) == key:
+            prev = self._last_q.get(sym)
+            if prev and prev[0] == key and not (self.heartbeat_s > 0 and now - prev[1] >= self.heartbeat_s):
                 self.q_skipped += 1
                 continue
             cur.execute("""INSERT INTO schwab_stream_quotes (symbol,last,bid,ask,bid_size,ask_size,volume)
@@ -220,7 +240,7 @@ class Capture:
                         (sym, q.get("last"), q.get("bid"), q.get("ask"),
                          q.get("bid_size"), q.get("ask_size"), q.get("volume")))
             self.q_writes += 1
-            self._last_q[sym] = key
+            self._last_q[sym] = (key, now)
         for sym, b in self.books.items():
             cur.execute("""INSERT INTO schwab_stream_book
                 (symbol,venue,bid_depth,ask_depth,imbalance,best_bid,best_ask,bid_levels,ask_levels)
@@ -246,7 +266,10 @@ async def run(max_seconds=None):
            "sessions": sorted(_stream_sessions()), "status": "starting", "heartbeats": 0}
     if KILL_FILE.exists():
         print("[stream] STREAM_DISABLED kill switch present — exiting"); return _stop(rec, "kill_switch")
-    if not _market_open():
+    st = _session_status()
+    if st == "error":
+        return _stop(rec, "session_check_error", rc=SESSION_CHECK_ERROR_RC)
+    if st != "open" or not _schwab_is_open():
         print("[stream] market closed — exiting"); return _stop(rec, "outside_session")
     limit = int(os.getenv("STREAM_MAX_SYMBOLS", "12"))
     scalp_limit = int(os.getenv("STREAM_MAX_SCALP_SYMBOLS", "10"))
@@ -271,6 +294,16 @@ async def run(max_seconds=None):
     print("[stream] subscribed (L1 + NASDAQ book) — read-only market data")
 
     conn = _conn()
+    try:
+        return await _loop(sc, cap, conn, rec, syms, scalp_limit, resub_s, max_seconds)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+async def _loop(sc, cap, conn, rec, syms, scalp_limit, resub_s, max_seconds):
     started = dt.datetime.now(dt.timezone.utc)
     last_flush = started
     last_mh_check = started
@@ -286,12 +319,18 @@ async def run(max_seconds=None):
             pass
         except Exception as e:
             # websocket drop / decode error: return 1 so supervise() reconnects while the market is open
-            print(f"[stream] stream error ({e}) — returning for reconnect")
             cap.flush(conn)
+            st = _session_status()
+            if st != "open":   # the socket closed at/after the session end — that is a clean stop, not a drop
+                print(f"[stream] stream ended outside the session ({e}) — stopping")
+                return _stop(rec, _session_stop_reason(st), cap, rc=SESSION_CHECK_ERROR_RC if st == "error" else 0)
+            print(f"[stream] stream error ({e}) — returning for reconnect")
             return _stop(rec, "stream_error", cap, rc=1)
         now = dt.datetime.now(dt.timezone.utc)
-        if not _in_session(now):   # local session clock every iteration — stop at the close, not 10 min late
-            print("[stream] session window ended — stopping"); reason = "session_end"; break
+        st = _session_status(now)   # local session clock every iteration — stop at the close, not 10 min late
+        if st != "open":
+            reason = _session_stop_reason(st)
+            print(f"[stream] session window ended ({reason}) — stopping"); break
         if (now - last_flush).total_seconds() >= FLUSH_EVERY:
             cap.flush(conn); last_flush = now
         if (now - last_hb).total_seconds() >= 60:
@@ -326,7 +365,7 @@ async def run(max_seconds=None):
         await sc.logout()
     except Exception:
         pass
-    return _stop(rec, reason, cap)
+    return _stop(rec, reason, cap, rc=SESSION_CHECK_ERROR_RC if reason == "session_check_error" else 0)
 
 
 def supervise(run_once, market_open, sleep, max_restarts: int, backoff_s: float, backoff_cap_s: float = 300.0) -> int:
@@ -334,15 +373,18 @@ def supervise(run_once, market_open, sleep, max_restarts: int, backoff_s: float,
 
     2026-10-09: the cron line starts this daemon once at 09:31 and nothing restarts it (the "systemd
     Restart=on-failure" the drop message relied on was never installed), so one websocket drop ended capture
-    for the day — 10-06 had no stream rows after 09:xx. run_once returns 1 on a drop / client error.
+    for the day — 10-06 had no stream rows after 09:xx. run_once returns 1 on a drop / client error (2 = session check failed: fail closed, no retry).
+    Once the session has closed there is nothing left to capture: a drop that ends at/after the close exits 0.
     """
     rc, restarts, wait = run_once(), 0, backoff_s
-    while rc == 1 and restarts < max_restarts and market_open():
+    while rc == 1 and restarts < max_restarts:
+        if not market_open():
+            return 0
         restarts += 1
         print(f"[stream] reconnect {restarts}/{max_restarts} in {wait:.0f}s")
         sleep(wait)
         if not market_open():
-            break
+            return 0
         rc = run_once()
         wait = min(wait * 2, backoff_cap_s)
     return rc

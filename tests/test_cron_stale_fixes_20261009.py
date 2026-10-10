@@ -163,7 +163,8 @@ def test_stream_stops_reconnecting_when_market_closes_or_cap_reached():
         calls.append(1)
         return 1
 
-    assert d.supervise(once, lambda: False, lambda s: None, 5, 30) == 1 and len(calls) == 1
+    # session closed → nothing left to capture → clean exit 0 (Agent A review of #1627), no reconnect
+    assert d.supervise(once, lambda: False, lambda s: None, 5, 30) == 0 and len(calls) == 1
     calls.clear()
     assert d.supervise(once, lambda: True, lambda s: None, 3, 30) == 1 and len(calls) == 4
     src = (ROOT / "scripts/schwab_stream_daemon.py").read_text(encoding="utf-8")
@@ -292,3 +293,104 @@ def test_stream_run_outside_session_exits_with_receipt(monkeypatch, tmp_path):
     monkeypatch.setattr(d, "_market_open", lambda now=None: False)
     assert asyncio.run(d.run()) == 0
     assert _json.loads((tmp_path / "schwab_stream_receipt.json").read_text(encoding="utf-8"))["stop_reason"] == "outside_session"
+
+
+# ── #1627 review follow-ups: fail-closed session check, clean session_end rc, per-symbol quote heartbeat ─────
+class _FakeSC:
+    def __init__(self, raise_on_msg=False):
+        self.raise_on_msg = raise_on_msg
+
+    async def login(self):
+        pass
+
+    async def logout(self):
+        pass
+
+    def add_level_one_equity_handler(self, h):
+        pass
+
+    def add_nasdaq_book_handler(self, h):
+        pass
+
+    async def level_one_equity_subs(self, s):
+        pass
+
+    async def nasdaq_book_subs(self, s):
+        pass
+
+    async def handle_message(self):
+        if self.raise_on_msg:
+            raise ConnectionError("1000 normal closure")
+
+
+class _ClosingConn(_Conn):
+    closed = False
+
+    def close(self):
+        self.closed = True
+
+
+def _run_with_fakes(monkeypatch, tmp_path, statuses, sc):
+    import asyncio
+    import json as _json
+    import types
+
+    import schwab_stream_daemon as d
+
+    seq = iter(statuses)
+    conn = _ClosingConn()
+    monkeypatch.setenv("STREAM_RECEIPT_DIR", str(tmp_path))
+    monkeypatch.setattr(d, "KILL_FILE", tmp_path / "nope")
+    monkeypatch.setattr(d, "_session_status", lambda now=None, sessions=None: next(seq))
+    monkeypatch.setattr(d, "_schwab_is_open", lambda: True)
+    monkeypatch.setattr(d, "_symbols", lambda limit: ["AAPL"])
+    monkeypatch.setattr(d, "_scalp_symbols", lambda limit: [])
+    monkeypatch.setattr(d, "_conn", lambda: conn)
+    monkeypatch.setitem(sys.modules, "schwab_transport",
+                        types.SimpleNamespace(build_stream_client=lambda: (sc, None)))
+    rc = asyncio.run(d.run())
+    rec = _json.loads((tmp_path / "schwab_stream_receipt.json").read_text(encoding="utf-8"))
+    return rc, rec, conn
+
+
+def test_stream_session_check_error_fails_closed(monkeypatch, tmp_path):
+    import schwab_stream_daemon as d
+
+    def boom(now=None):
+        raise RuntimeError("tz db missing")
+
+    monkeypatch.setattr(sys.modules.get("market_session") or __import__("market_session"), "current_market_session", boom)
+    assert d._session_status() == "error" and d._in_session() is False and d._market_open() is False
+    rc, rec, conn = _run_with_fakes(monkeypatch, tmp_path, ["open", "error"], _FakeSC())
+    assert rec["stop_reason"] == "session_check_error" and rc == d.SESSION_CHECK_ERROR_RC != 1 and conn.closed
+    assert d.supervise(lambda: d.SESSION_CHECK_ERROR_RC, lambda: True, lambda s: None, 5, 30) == 2   # no retry
+
+
+def test_stream_session_end_is_a_clean_exit(monkeypatch, tmp_path):
+    rc, rec, conn = _run_with_fakes(monkeypatch, tmp_path, ["open", "closed"], _FakeSC())
+    assert (rc, rec["stop_reason"], rec["rc"], conn.closed) == (0, "session_end", 0, True)
+    # the socket closing at/after the close is a session end, not a stream_error/rc=1
+    rc, rec, conn = _run_with_fakes(monkeypatch, tmp_path, ["open", "closed"], _FakeSC(raise_on_msg=True))
+    assert (rc, rec["stop_reason"], conn.closed) == (0, "session_end", True)
+    # a drop mid-session is still a stream_error for the supervisor to reconnect
+    rc, rec, _ = _run_with_fakes(monkeypatch, tmp_path, ["open", "open"], _FakeSC(raise_on_msg=True))
+    assert (rc, rec["stop_reason"]) == (1, "stream_error")
+
+
+def test_stream_unchanged_quote_heartbeat_once_per_interval(monkeypatch):
+    import schwab_stream_daemon as d
+
+    monkeypatch.setenv("STREAM_QUOTE_HEARTBEAT_S", "60")
+    cap, conn = d.Capture(), _Conn()
+    assert cap.heartbeat_s == 60.0
+    cap.on_l1({"content": [{"key": "QUIET", "LAST_PRICE": 5.0}]})
+    for t in (0, 5, 30, 59.9, 60, 65, 119, 120):
+        cap.flush(conn, now=1000.0 + t)
+    quotes = [r for r in conn.c.rows if r[0] == "schwab_stream_quotes"]
+    assert len(quotes) == 3 and cap.q_skipped == 5      # t=0, t=60, t=120
+    off = d.Capture(heartbeat_s=0)
+    off.on_l1({"content": [{"key": "QUIET", "LAST_PRICE": 5.0}]})
+    c2 = _Conn()
+    for t in (0, 600, 6000):
+        off.flush(c2, now=t)
+    assert off.q_writes == 1
