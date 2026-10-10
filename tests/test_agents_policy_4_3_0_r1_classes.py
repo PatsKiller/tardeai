@@ -1,4 +1,5 @@
-"""AGENTS.md 4.3.0 — R1: `ingest`, `llm` and `learn` become dispatcher classes (§23.18); PROPOSED 2026-10-10.
+"""AGENTS.md 4.3.0 — R1: `ingest`, `llm` and `learn` become dispatcher classes (§23.18); PROPOSED 2026-10-10, ACTIVE 2026-10-10
+(ratified `APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1`; merged #1642 as 203b46914).
 
 Operator rulings for all waves, 2026-10-10 ~00:20 ET: (1) ingest writers, governed LLM jobs and learning/memory
 writers are dispatcher-eligible, always shadow -> canary -> cutover; governed DeepSeek route approved for L401
@@ -486,3 +487,21 @@ def test_every_real_r1_row_passes_the_gate():
         if (row.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES:
             ok, reason = LD.r1_class_admission(copy.deepcopy(row))
             assert ok, f"{lane}: {reason}"
+
+
+def test_when_active_the_ratification_is_recorded():
+    """Ratified 2026-10-10 with APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1, re-approved ("approved") for head
+    c3d5e895d after the #1643 conflict merge: an ACTIVE 4.3.0 carries a real date, both operator words, the merge
+    sha, and the code gate is open on R1 terms."""
+    if _version() == (4, 3, 0) and _control("Status") == "ACTIVE":
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date"))
+        assert not _proposed()
+        rest = _row().group(2)
+        assert f"{TOKEN} 1642 64c9210e1" in rest
+        assert '"approved"' in rest and "c3d5e895d4de5eb16f43f90ce8f43dc61a0cadfc" in rest
+        assert "203b469146154c6729620a2428fcb76740a4d0a8" in rest
+        assert "4.3.0 is PROPOSED" not in AGENTS
+        assert "4.3.0 PROPOSED" not in AGENTS
+        assert "4.3.0 (PROPOSED" not in AGENTS
+        assert LD.R1_STATUS == "ACTIVE"
+        assert LD.permitted_classes_now() == LD.PERMITTED_CLASSES_R1

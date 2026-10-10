@@ -73,7 +73,7 @@ R1_ADMITTED_CLASSES = frozenset({"ingest", "llm", "learn"})
 #: Policy status of R1. "PROPOSED" until the operator ratifies AGENTS.md 4.3.0; only the ratifying edit flips it,
 #: and tests/test_agents_policy_4_3_0_r1_classes.py fails unless it matches the 4.3.0 version-history row.
 R1_POLICY_VERSION = "4.3.0"
-R1_STATUS = "PROPOSED"
+R1_STATUS = "ACTIVE"  # ratified 2026-10-10: APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1 (merged as 203b46914)
 #: Classes a dispatch block may carry once R1 is ACTIVE (each R1 class still needs r1_class_admission).
 PERMITTED_CLASSES_R1 = PERMITTED_CLASSES_PRE_R1 | R1_ADMITTED_CLASSES
 #: The ladder stages an R1 row may be at (AGENTS §23.11/§23.12 scheduler.stage). Anything else is refused.
