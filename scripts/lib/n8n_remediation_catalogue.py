@@ -64,6 +64,10 @@ SECRET_TOKENS = ("render_env", "sm-render", "sm_render", "secrets/", "rotation_d
 SENDER_TOKENS = ("send_telegram", "telegram", "notify", "--send", "email", "gog ")
 #: §23.14 + V9 §6.3: the never-list lanes and the single 4.0.0 live exception get escalate only.
 NEVER_LANES = frozenset({"trade-ai-scalp-live"})
+#: OPTIONAL (operator decision pending, 2026-10-10): lanes kept OUT of the LLM diagnosis catalogue entirely, so
+#: none of their error text or log tail is ever sent to an external model (AGENTS.md §2A). trade-ai-scalp-live is
+#: the live broker-adjacent scalp lane (§23.3 exception); its failures still reach the SIEM and the operator.
+DIAGNOSIS_EXCLUDED_LANES = frozenset({"trade-ai-scalp-live"})
 
 #: business_function (enrich_S*.csv) -> proposed severity before the overrides in proposed_severity().
 FUNCTION_SEVERITY = {
@@ -145,7 +149,7 @@ def target_lanes(inventory: Mapping[str, Mapping[str, str]], allowlist_lanes: It
     for lane in lanes:
         lanes[lane] = sorted(by_job.get(lane, []))
     lanes.setdefault(SELFTEST_LANE, [])
-    return dict(sorted(lanes.items()))
+    return {k: v for k, v in sorted(lanes.items()) if k not in DIAGNOSIS_EXCLUDED_LANES}
 
 
 # ---------------------------------------------------------------- judgement
@@ -372,6 +376,8 @@ def validate_catalogue(doc: Mapping[str, Any]) -> list[str]:
         if not lane or lane in seen:
             errs.append(f"lane_id missing or duplicate: {lane!r}")
         seen.add(lane)
+        if lane in DIAGNOSIS_EXCLUDED_LANES:
+            errs.append(f"{lane}: excluded from LLM diagnosis (DIAGNOSIS_EXCLUDED_LANES)")
         if e.get("severity") not in SEVERITIES:
             errs.append(f"{lane}: severity {e.get('severity')!r}")
         if e.get("default_action") != SUGGEST_ONLY:

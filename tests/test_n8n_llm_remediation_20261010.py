@@ -282,7 +282,7 @@ def test_catalogue_generation_from_inventory(tmp_path):
     assert lanes["lane-wave"]["actions"] == [] and "allowlist" in lanes["lane-wave"]["suggest_only_reason"]
     assert lanes["lane-wave"]["known_issues"][0]["known_issues"] == "no lock (enriched)"
     assert lanes["lane-broker"]["actions"] == [] and "FORBIDDEN" in lanes["lane-broker"]["suggest_only_reason"]
-    assert lanes["trade-ai-scalp-live"]["actions"] == []
+    assert "trade-ai-scalp-live" not in lanes   # excluded from LLM diagnosis (DIAGNOSIS_EXCLUDED_LANES, 2026-10-10 optional)
     # a long lane would hold the single executor worker -> approval
     assert ids("lane-long")["rerun_dry_run"] is False
     # the self-test lane is in scope from its proposed entry, and says so

@@ -1180,6 +1180,7 @@ class ExecutorV2:
         while True:
             started = self.step()
             if not started and not self.busy():
+                self.write_status(self.clock())  # a worker may clear its slot after step() wrote the status
                 return
             if end is not None and time.monotonic() > end:
                 return

@@ -238,7 +238,11 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     gen = [r for r in committed["lanes"] if r.get("generated_by") == R.GENERATOR_VERSION]
     # 370 at B1; retire batch 1 (2026-10-09) turned 33 generated rows hand-curated (retired / schedule
     # changed / sibling id pinned) so the generator keeps those decisions instead of re-deriving them ACTIVE.
-    assert len(gen) >= 330
+    # Dispatcher shadow wave D1b (2026-10-10) adopted 17 more (adopted_from_generator): a row carrying a reviewed
+    # dispatch block is hand-maintained, or the next regeneration would drop the block (320 generated rows left).
+    assert len(gen) >= 310
+    adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
+    assert adopted and all("dispatch" in r and "generated_by" not in r for r in adopted)
     for r in gen:
         sig = r["output_signal"]
         if sig.get("kind") == "none":

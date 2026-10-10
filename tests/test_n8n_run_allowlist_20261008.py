@@ -158,7 +158,12 @@ def test_n4_monitors_reuse_cron_locks_and_do_not_allow_destructive_retry_trim():
         assert LANES[lane]["lock"] == "/tmp/" + lane.replace("-", "_") + ".lock"
         assert LANES[lane]["lock_kind"] == "flock"
         assert LANES[lane]["dry_run_arg"] == ["--dry-run"]
-    assert "llm-retry-monitor" not in LANES
+    # 2026-10-10 dispatcher shadow wave D1b: refactor W3 split llm_retry_monitor into --no-trim / --trim-only.
+    # The lane is runnable only as the non-destructive half: --no-trim always in the command, never --trim-only,
+    # and no live mode (the trim stays on cron until an operator decides it at cutover).
+    retry = LANES["llm-retry-monitor"]
+    assert retry["command"] == ["$PY", "scripts/llm_retry_monitor.py", "--no-trim"]
+    assert "--trim-only" not in json.dumps(retry) and retry["live_arg"] is None
     assert "youtube-cookie-health-check" not in LANES
 
 
