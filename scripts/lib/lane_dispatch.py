@@ -338,6 +338,12 @@ def _triggers(v: Any) -> tuple[Trigger, ...]:
     return tuple(out)
 
 
+#: The most cron slots one dispatcher row may carry (`dispatch.cron`). `_cutover.py` mirrors it as
+#: MAX_LANE_LINES: one lane cutover may retire at most this many crontab lines (pinned equal by
+#: tests/test_cutover_multiline_20261010.py).
+DISPATCH_CRON_MAX_SLOTS = 8
+
+
 def parse_dispatch_block(row: Mapping[str, Any]) -> Optional[DispatchBlock]:
     """The row's dispatch block, None when absent. Raises DispatchBlockError when malformed."""
     if "dispatch" not in row or row.get("dispatch") is None:
@@ -364,7 +370,7 @@ def parse_dispatch_block(row: Mapping[str, Any]) -> Optional[DispatchBlock]:
         raise _bad(f"dispatch.digest_role must be one of {DIGEST_ROLES}, got {role!r}")
     return DispatchBlock(
         mode=d["mode"],
-        cron=_cron_list(d["cron"], 8, "dispatch.cron"),
+        cron=_cron_list(d["cron"], DISPATCH_CRON_MAX_SLOTS, "dispatch.cron"),
         tz=tz,
         wave=d["wave"],
         klass=d["class"],
