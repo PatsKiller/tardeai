@@ -7560,7 +7560,7 @@
     "basis": "LEARNED_PROVISIONAL",
     "source": "coordination ledger runs: last 50 finished live runs (50 RUN_DONE)",
     "runs_considered": 50,
-    "duration_p50_s": 0.422,
+    "duration_p50_s": 0.421,
     "duration_p95_s": 0.568,
     "failure_rate": 0.0,
     "retried_runs": 0
@@ -10328,7 +10328,7 @@
    "remediation": {
     "catalogue_entry": false,
     "diagnosis_excluded": false,
-    "note": "workflow errors reach the fan-in as lane n8n-workflow-error events (relay POST /event); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
+    "note": "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event; the fan-in has no reader for them yet); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
    },
    "evidence": {
     "receipt": "relay_log.jsonl + coordination ledger",
@@ -10449,7 +10449,7 @@
    "remediation": {
     "catalogue_entry": false,
     "diagnosis_excluded": false,
-    "note": "workflow errors reach the fan-in as lane n8n-workflow-error events (relay POST /event); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
+    "note": "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event; the fan-in has no reader for them yet); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
    },
    "evidence": {
     "receipt": "relay_log.jsonl + coordination ledger",
@@ -10570,7 +10570,7 @@
    "remediation": {
     "catalogue_entry": false,
     "diagnosis_excluded": false,
-    "note": "workflow errors reach the fan-in as lane n8n-workflow-error events (relay POST /event); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
+    "note": "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event; the fan-in has no reader for them yet); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
    },
    "evidence": {
     "receipt": "relay_log.jsonl + coordination ledger",
@@ -10691,7 +10691,7 @@
    "remediation": {
     "catalogue_entry": false,
     "diagnosis_excluded": false,
-    "note": "workflow errors reach the fan-in as lane n8n-workflow-error events (relay POST /event); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
+    "note": "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event; the fan-in has no reader for them yet); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
    },
    "evidence": {
     "receipt": "relay_log.jsonl + coordination ledger",
@@ -10818,7 +10818,7 @@
    "remediation": {
     "catalogue_entry": false,
     "diagnosis_excluded": false,
-    "note": "workflow errors reach the fan-in as lane n8n-workflow-error events (relay POST /event); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
+    "note": "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event; the fan-in has no reader for them yet); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
    },
    "evidence": {
     "receipt": "relay_log.jsonl + coordination ledger",
@@ -10939,7 +10939,7 @@
    "remediation": {
     "catalogue_entry": false,
     "diagnosis_excluded": false,
-    "note": "workflow errors reach the fan-in as lane n8n-workflow-error events (relay POST /event); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
+    "note": "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event; the fan-in has no reader for them yet); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)"
    },
    "evidence": {
     "receipt": "relay_log.jsonl + coordination ledger",

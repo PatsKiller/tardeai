@@ -43,32 +43,42 @@ def test_document_exists_with_a_header(doc):
 
 def test_configuration_is_the_entry_point_and_links_the_standards():
     f = _flat(CONFIG)
-    for target in ("N8N_ONBOARDING_STANDARD.md", "N8N_MONITORING_AND_REMEDIATION_STANDARD.md",
-                   "02-six-workflow-architecture.md", "cron-inventory/README.md", "config/n8n_health_contracts.json"):
+    for target in (
+        "N8N_ONBOARDING_STANDARD.md",
+        "N8N_MONITORING_AND_REMEDIATION_STANDARD.md",
+        "02-six-workflow-architecture.md",
+        "cron-inventory/README.md",
+        "config/n8n_health_contracts.json",
+    ):
         assert target in f, target
     assert "N8N_CONFIGURATION.md" in _flat(ONBOARD) and "N8N_CONFIGURATION.md" in _flat(MONITOR)
     assert "N8N_MONITORING_AND_REMEDIATION_STANDARD.md" in _flat(ONBOARD)
     master = _flat(DOCS / "00-MASTER-PROGRAM.md")
-    assert all(n in master for n in ("N8N_CONFIGURATION.md", "N8N_ONBOARDING_STANDARD.md",
-                                     "N8N_MONITORING_AND_REMEDIATION_STANDARD.md"))
+    assert all(
+        n in master
+        for n in ("N8N_CONFIGURATION.md", "N8N_ONBOARDING_STANDARD.md", "N8N_MONITORING_AND_REMEDIATION_STANDARD.md")
+    )
 
 
-@pytest.mark.parametrize("rule", [
-    "`dispatcher`, never `tradeai-dispatcher`",
-    "check_n8n_relay_contract.py",
-    '"deletedAt" IS NULL',
-    "TRADE_AI_CI=1",
-    "LaneRunReceipt@v1",
-    "adopted_from_generator",
-    "retry_policy",
-    "saveManualExecutions: false",
-    "errorWorkflow = tradeai-incident-router",
-    "One registry PR at a time",
-    "write the workflow health contract",
-    "--defer-in-process",
-    "never delete",
-    "re-send it",
-])
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "`dispatcher`, never `tradeai-dispatcher`",
+        "check_n8n_relay_contract.py",
+        '"deletedAt" IS NULL',
+        "TRADE_AI_CI=1",
+        "LaneRunReceipt@v1",
+        "adopted_from_generator",
+        "retry_policy",
+        "saveManualExecutions: false",
+        "errorWorkflow = tradeai-incident-router",
+        "One registry PR at a time",
+        "write the workflow health contract",
+        "--defer-in-process",
+        "never delete",
+        "re-send it",
+    ],
+)
 def test_onboarding_standard_carries_the_rule(rule):
     assert rule.lower() in _flat(ONBOARD).lower(), rule
 
@@ -79,11 +89,23 @@ def test_onboarding_lessons_table_links_every_root_cause():
         assert f"| RC{i} |" in f, f"RC{i}"
 
 
-@pytest.mark.parametrize("item", [
-    "N8nHealthContract@v1", "LEARNED_PROVISIONAL", "CLASS_DEFAULT_PROVISIONAL", "DRAFT_AT_LIVE_STAGE",
-    "DIAGNOSIS_EXCLUDED_LANES", "PEAK_DEFER_IN_PROCESS", "22:00–07:00", "R6", "n8n-selftest-fail",
-    "Per-lane onboarding template", "n8n:<lane>", "L6",
-])
+@pytest.mark.parametrize(
+    "item",
+    [
+        "N8nHealthContract@v1",
+        "LEARNED_PROVISIONAL",
+        "CLASS_DEFAULT_PROVISIONAL",
+        "DRAFT_AT_LIVE_STAGE",
+        "DIAGNOSIS_EXCLUDED_LANES",
+        "PEAK_DEFER_IN_PROCESS",
+        "22:00–07:00",
+        "R6",
+        "n8n-selftest-fail",
+        "Per-lane onboarding template",
+        "n8n:<lane>",
+        "L6",
+    ],
+)
 def test_monitoring_standard_covers_the_operator_questions(item):
     assert item in _flat(MONITOR), item
 
@@ -104,7 +126,11 @@ def test_notifier_numbers_quoted_equal_its_defaults():
     import incident_notifier as N
 
     assert (N.DEFAULT_DAILY_CAP, N.DEFAULT_P2_BATCH_MIN, N.DEFAULT_QUIET_START, N.DEFAULT_QUIET_END) == (
-        24, 30, "22:00", "07:00")
+        24,
+        30,
+        "22:00",
+        "07:00",
+    )
     f = _flat(MONITOR)
     assert "24 messages per ET day" in f and "every 30 min" in f
 
@@ -121,8 +147,16 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
 
 def test_class_caps_quoted_equal_the_retry_policies():
     caps = json.loads((ROOT / "config" / "n8n_retry_policies.json").read_text(encoding="utf-8"))["class_caps"]
-    assert caps == {"global": 3, "reserved_priority_max": 1, "heavy": 1, "llm": 1, "ingest": 1, "send": 1,
-                    "pipeline": 2, "learn": 1}
+    assert caps == {
+        "global": 3,
+        "reserved_priority_max": 1,
+        "heavy": 1,
+        "llm": 1,
+        "ingest": 1,
+        "send": 1,
+        "pipeline": 2,
+        "learn": 1,
+    }
     assert "global 3, `heavy` 1, `llm` 1, `ingest` 1, `send` 1, `pipeline` 2, `learn` 1" in _flat(ONBOARD)
 
 
@@ -134,12 +168,21 @@ def test_dispatcher_naming_quoted_equals_the_gate():
 
 
 def test_scripts_the_documents_name_exist():
-    for rel in ("scripts/check_n8n_relay_contract.py", "scripts/check_n8n_health_contracts.py",
-                "scripts/build_n8n_health_contracts.py", "scripts/build_remediation_catalogue.py",
-                "scripts/n8n_siem_bridge.py", "scripts/n8n_failure_diagnosis.py", "scripts/incident_notifier.py",
-                "scripts/n8n_selftest_fail.py", "scripts/check_n8n_activation_grants.py",
-                "scripts/check_n8n_import_ready.py", "scripts/pipelines/cutover/_cutover.py",
-                "scripts/lib/lane_stage_clamp.py", "scripts/lib/lane_last_receipt.py"):
+    for rel in (
+        "scripts/check_n8n_relay_contract.py",
+        "scripts/check_n8n_health_contracts.py",
+        "scripts/build_n8n_health_contracts.py",
+        "scripts/build_remediation_catalogue.py",
+        "scripts/n8n_siem_bridge.py",
+        "scripts/n8n_failure_diagnosis.py",
+        "scripts/incident_notifier.py",
+        "scripts/n8n_selftest_fail.py",
+        "scripts/check_n8n_activation_grants.py",
+        "scripts/check_n8n_import_ready.py",
+        "scripts/pipelines/cutover/_cutover.py",
+        "scripts/lib/lane_stage_clamp.py",
+        "scripts/lib/lane_last_receipt.py",
+    ):
         assert (ROOT / rel).exists(), rel
 
 
@@ -154,14 +197,21 @@ def test_stale_statements_are_corrected():
     assert "executor stays on the v1 serial drain" not in deploy and "10-executor-v2.conf" in deploy
     assert "10-executor-v2.conf" in _flat(ROOT / "docs" / "ops" / "ROLLBACK_COMMANDS.md")
     doc17 = (ROOT / "docs" / "implementation" / "n8n-parallel" / "17-n8n-operating-model-20261008.md").read_text(
-        encoding="utf-8")
+        encoding="utf-8"
+    )
     assert doc17.splitlines()[2].startswith("**Status:** SUPERSEDED BY")
 
 
 def test_inventory_change_log_records_the_day():
     f = _flat(DOCS / "cron-inventory" / "README.md")
-    for needle in ("Executor v2 enabled", "W0 rolled back", "`flock -n` added to crontab L318",
-                   "Gateway lane `n8n-workflow-error`", "Dispatch shadow wave 1", "waves 2+3"):
+    for needle in (
+        "Executor v2 enabled",
+        "W0 rolled back",
+        "`flock -n` added to crontab L318",
+        "Gateway lane `n8n-workflow-error`",
+        "Dispatch shadow wave 1",
+        "waves 2+3",
+    ):
         assert needle in f, needle
 
 
@@ -187,8 +237,12 @@ def _section_23() -> str:
 
 def test_agents_23_points_at_the_configuration_and_the_standards():
     s23 = _section_23()
-    for doc in ("N8N_CONFIGURATION.md", "N8N_ONBOARDING_STANDARD.md", "N8N_MONITORING_AND_REMEDIATION_STANDARD.md",
-                "config/n8n_health_contracts.json"):
+    for doc in (
+        "N8N_CONFIGURATION.md",
+        "N8N_ONBOARDING_STANDARD.md",
+        "N8N_MONITORING_AND_REMEDIATION_STANDARD.md",
+        "config/n8n_health_contracts.json",
+    ):
         assert doc in s23, doc
 
 

@@ -175,8 +175,12 @@ def unknown_fields(c: Mapping[str, Any]) -> list[str]:
     return found
 
 
-def check(contracts_doc: Mapping[str, Any], registry: Mapping[str, Any], index: Mapping[str, Any],
-          today: Optional[date] = None) -> dict[str, Any]:
+def check(
+    contracts_doc: Mapping[str, Any],
+    registry: Mapping[str, Any],
+    index: Mapping[str, Any],
+    today: Optional[date] = None,
+) -> dict[str, Any]:
     """Join contracts with the registry and the generic INDEX. Returns {errors, warnings, counts}.
 
     Errors (the gate fails):

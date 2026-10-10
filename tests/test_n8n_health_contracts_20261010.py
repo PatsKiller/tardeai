@@ -29,10 +29,20 @@ from scripts import check_n8n_health_contracts as C  # noqa: E402
 from scripts.lib import n8n_health_contracts as H  # noqa: E402
 
 TODAY = date(2026, 10, 10)
-LIVE_LANES = ("n8n-incident-fanin", "n8n-pilot-dispatch", "n8n-research-intake-consumer",
-              "crontab-snapshot-for-health-agent")
-GENERIC = ("tradeai-approval-router", "tradeai-digest-scheduler", "tradeai-dispatcher", "tradeai-event-router",
-           "tradeai-heartbeat-watcher", "tradeai-incident-router")
+LIVE_LANES = (
+    "n8n-incident-fanin",
+    "n8n-pilot-dispatch",
+    "n8n-research-intake-consumer",
+    "crontab-snapshot-for-health-agent",
+)
+GENERIC = (
+    "tradeai-approval-router",
+    "tradeai-digest-scheduler",
+    "tradeai-dispatcher",
+    "tradeai-event-router",
+    "tradeai-heartbeat-watcher",
+    "tradeai-incident-router",
+)
 
 
 @pytest.fixture(scope="module")
@@ -59,8 +69,9 @@ def test_every_n8n_lane_workflow_and_host_monitor_has_a_contract(committed):
     assert set(LIVE_LANES) <= ids
     assert set(GENERIC) <= ids
     assert set(H.HOST_MONITOR_LANES) <= ids
-    shadow = {r["lane_id"] for r in reg["lanes"]
-              if (r.get("scheduler") or {}).get("stage") == "shadow" or "r1_pending" in r}
+    shadow = {
+        r["lane_id"] for r in reg["lanes"] if (r.get("scheduler") or {}).get("stage") == "shadow" or "r1_pending" in r
+    }
     assert len(shadow) >= 55 and shadow <= ids
 
 
@@ -112,10 +123,15 @@ def _registry_with(reg, row):
     return r
 
 
-NEW_ROW = {"lane_id": "zz-new-lane", "owner": "platform", "state": "ACTIVE", "expected_cadence_hours": 1.0,
-           "scheduler": {"kind": "cron", "expression": "0 * * * *", "match": "scripts/zz.py", "stage": "shadow"},
-           "output_signal": {"kind": "json_key", "path": "data/runtime/zz-new-lane_last.json", "key": "ok_at"},
-           "dispatch": {"mode": "dry_run", "class": "report"}}
+NEW_ROW = {
+    "lane_id": "zz-new-lane",
+    "owner": "platform",
+    "state": "ACTIVE",
+    "expected_cadence_hours": 1.0,
+    "scheduler": {"kind": "cron", "expression": "0 * * * *", "match": "scripts/zz.py", "stage": "shadow"},
+    "output_signal": {"kind": "json_key", "path": "data/runtime/zz-new-lane_last.json", "key": "ok_at"},
+    "dispatch": {"mode": "dry_run", "class": "report"},
+}
 
 
 def test_a_new_shadow_lane_without_a_contract_fails(committed):
@@ -141,8 +157,9 @@ def test_canary_needs_a_reviewed_contract_without_unknowns(committed):
     reg2 = copy.deepcopy(reg)
     row = next(r for r in reg2["lanes"] if r["lane_id"] == "fee-efficiency-analyzer")
     row["scheduler"]["stage"] = "canary"
-    assert any(e.startswith("DRAFT_AT_LIVE_STAGE fee-efficiency-analyzer") for e in
-               H.check(doc, reg2, idx, TODAY)["errors"])
+    assert any(
+        e.startswith("DRAFT_AT_LIVE_STAGE fee-efficiency-analyzer") for e in H.check(doc, reg2, idx, TODAY)["errors"]
+    )
     d = copy.deepcopy(doc)
     c = next(c for c in d["contracts"] if c["id"] == "fee-efficiency-analyzer")
     c["status"] = "REVIEWED"
@@ -194,11 +211,15 @@ def test_cli_exit_codes(tmp_path, committed):
 
 def _ledger(path: Path, lane: str, n: int, state: str = "RUN_DONE") -> Path:
     conn = sqlite3.connect(path)
-    conn.execute("CREATE TABLE runs (run_id TEXT, lane_id TEXT, mode TEXT, state TEXT, requested_at TEXT, "
-                 "duration_s REAL, attempt INTEGER)")
+    conn.execute(
+        "CREATE TABLE runs (run_id TEXT, lane_id TEXT, mode TEXT, state TEXT, requested_at TEXT, "
+        "duration_s REAL, attempt INTEGER)"
+    )
     for i in range(n):
-        conn.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?)",
-                     (f"r{i}", lane, "live", state, f"2026-10-10T00:{i:02d}:00", 1.0 + i, 1))
+        conn.execute(
+            "INSERT INTO runs VALUES (?,?,?,?,?,?,?)",
+            (f"r{i}", lane, "live", state, f"2026-10-10T00:{i:02d}:00", 1.0 + i, 1),
+        )
     conn.execute("INSERT INTO runs VALUES ('d','%s','dry_run','RUN_DONE','2026-10-10T01:00:00',99,1)" % lane)
     conn.commit()
     conn.close()
@@ -228,13 +249,24 @@ def test_builder_keeps_reviewed_contracts_and_does_not_grandfather_new_lanes(com
     rev = next(c for c in existing["contracts"] if c["id"] == "fee-efficiency-analyzer")
     rev["status"] = "REVIEWED"
     rev["purpose"]["text"] = "owner-reviewed text"
-    out = B.build(registry=_registry_with(reg, NEW_ROW), allowlist={"lanes": []}, catalogue={"lanes": []},
-                  inventory={}, index=idx, ledger=None, excluded=frozenset(), as_of=TODAY, existing=existing)
+    out = B.build(
+        registry=_registry_with(reg, NEW_ROW),
+        allowlist={"lanes": []},
+        catalogue={"lanes": []},
+        inventory={},
+        index=idx,
+        ledger=None,
+        excluded=frozenset(),
+        as_of=TODAY,
+        existing=existing,
+    )
     kept = next(c for c in out["contracts"] if c["id"] == "fee-efficiency-analyzer")
     assert kept["purpose"]["text"] == "owner-reviewed text"
     assert "zz-new-lane" not in out["grandfathered_draft"]
-    assert any(e.startswith("DRAFT_NOT_GRANDFATHERED zz-new-lane") for e in
-               H.check(out, _registry_with(reg, NEW_ROW), idx, TODAY)["errors"])
+    assert any(
+        e.startswith("DRAFT_NOT_GRANDFATHERED zz-new-lane")
+        for e in H.check(out, _registry_with(reg, NEW_ROW), idx, TODAY)["errors"]
+    )
 
 
 def test_builder_dry_run_writes_nothing(tmp_path):
