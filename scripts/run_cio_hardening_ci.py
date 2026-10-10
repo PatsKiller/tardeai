@@ -4285,6 +4285,14 @@ GATES = [
         "desk_loop_cost_cap_backoff_20261010",
         ["tests/test_desk_loop_cost_cap_backoff_20261010.py"],
     ),
+    (
+        # Desk-loop drain (operator-approved 2026-10-10): the background pending pass closes a chat-less row before
+        # any model call, bounds answer attempts per row per day (then closes with the reason), and may use at most
+        # CIO_DESK_BACKGROUND_CAP_SHARE (0.25) of cio_operator_reply's daily cap; the rest is reserved for operator
+        # asks. Before: 35 model calls in 5 passes over 7 chat-less rows, all left open; after: 0, all closed.
+        "desk_loop_pending_drain_20261010",
+        ["tests/test_desk_loop_pending_drain_20261010.py"],
+    ),
 ]
 
 
