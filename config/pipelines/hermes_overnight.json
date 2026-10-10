@@ -11,35 +11,6 @@
       "window": "02:20-06:15",
       "steps": [
         {
-          "id": "backlog_drain",
-          "cron_line": 783,
-          "cron_schedule": "20 2 * * *",
-          "cron_time": "02:20",
-          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash $PROJ/scripts/llm_priority_guard.sh && $PY scripts/hermes_backlog_drain.py --apply --max-rows 25 --max-runtime 3000 --telegram-summary",
-          "log": "logs/hermes_backlog_drain_nightly.log",
-          "timeout": "3300s",
-          "continue_on_error": true,
-          "cron_line_verbatim": "20 2 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash $PROJ/scripts/llm_priority_guard.sh && $PY scripts/hermes_backlog_drain.py --apply --max-rows 25 --max-runtime 3000 --telegram-summary >> logs/hermes_backlog_drain_nightly.log 2>&1",
-          "measured": {
-            "verified": false,
-            "source": "pam_group_max(upper)",
-            "runs": 0,
-            "firings": 7,
-            "median_s": null,
-            "p95_s": null,
-            "max_s": null,
-            "lower_bound_median_s": null,
-            "upper_bound_median_s": 94.3,
-            "upper_bound_p95_s": 371.2,
-            "bound_source": "pam_group_max(upper)"
-          },
-          "wrappers_kept_verbatim": [
-            "run_with_deepseek_offpeak.sh",
-            "llm_priority_guard.sh"
-          ],
-          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage; --max-runtime 3000 bounds the step at 50 min"
-        },
-        {
           "id": "universe_history_retention",
           "cron_line": 1023,
           "cron_schedule": "25 3 * * *",
@@ -210,31 +181,6 @@
       "window": "23:13-23:59",
       "steps": [
         {
-          "id": "commit_hermes_daily",
-          "cron_line": 550,
-          "cron_schedule": "13 23 * * *",
-          "cron_time": "23:13",
-          "command": "bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash scripts/commit_hermes_daily.sh",
-          "log": "logs/commit_hermes_daily.log",
-          "timeout": "5m",
-          "continue_on_error": true,
-          "cron_line_verbatim": "13 23 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash scripts/commit_hermes_daily.sh >> logs/commit_hermes_daily.log 2>&1  # auto-commit daily hermes reports",
-          "measured": {
-            "verified": true,
-            "source": "pam_exact",
-            "runs": 7,
-            "firings": 7,
-            "median_s": 0.0,
-            "p95_s": 0.1,
-            "max_s": 0.1
-          },
-          "wrappers_kept_verbatim": [
-            "run_with_deepseek_offpeak.sh"
-          ],
-          "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "cron_comment": "# auto-commit daily hermes reports"
-        },
-        {
           "id": "source_curation",
           "cron_line": 392,
           "cron_schedule": "30 23 * * *",
@@ -351,6 +297,44 @@
         "upper_bound_median_s": 132.9,
         "upper_bound_p95_s": 710.1,
         "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 783,
+      "cron_schedule": "20 2 * * *",
+      "cron_time": "02:20",
+      "basename": "hermes_backlog_drain.py",
+      "category": "RETIRED",
+      "reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L748: former step night/backlog_drain removed so a pipeline cutover cannot resurrect a retired job.",
+      "measured": {
+        "verified": false,
+        "source": "pam_group_max(upper)",
+        "runs": 0,
+        "firings": 7,
+        "median_s": null,
+        "p95_s": null,
+        "max_s": null,
+        "lower_bound_median_s": null,
+        "upper_bound_median_s": 94.3,
+        "upper_bound_p95_s": 371.2,
+        "bound_source": "pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 550,
+      "cron_schedule": "13 23 * * *",
+      "cron_time": "23:13",
+      "basename": "commit_hermes_daily.sh",
+      "category": "RETIRED",
+      "reason": "operator-approved retire batch 1 2026-10-09 (inventory: no consumer / never runs / idle; evidence ~/n8n-maturity-verification/cron-inventory/retire_check_R*.csv). inventory cron:L518: former step close/commit_hermes_daily removed so a pipeline cutover cannot resurrect a retired job.",
+      "measured": {
+        "verified": true,
+        "source": "pam_exact",
+        "runs": 7,
+        "firings": 7,
+        "median_s": 0.0,
+        "p95_s": 0.1,
+        "max_s": 0.1
       }
     }
   ]
