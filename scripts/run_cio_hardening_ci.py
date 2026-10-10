@@ -3861,6 +3861,15 @@ GATES = [
         ],
     ),
     (
+        # Stage runner per-step env (2026-10-10, operator "Yes" ~19:45 ET): the manifest runner no longer sources
+        # $PROJ/.env into steps; each step runs under `env -i` with exactly its cron line's names (cron base +
+        # preceding crontab NAME= lines). Fake .env with canary + broker names in a scratch root; names only.
+        "stage_runner_env_20261010",
+        [
+            "tests/test_stage_runner_env_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: CADENCE_TIMER_UNITS — 2026-10-08: the five timer-driven pipeline services (governance,
         # portfolio daily/weekly/monthly/lookthrough) executed the DEV tree from host-only unit copies with no
         # repo text; tradeai-operator-answer-quality.service was the sixth --alert monitor still dev-tree.

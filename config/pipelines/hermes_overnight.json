@@ -35,7 +35,30 @@
           },
           "note": "live line (2026-10-10) has no off-peak wrapper; step text re-synced to it verbatim",
           "cron_comment": "# Phase 5 outcome yield: after 03:35 outcome learning (2026-08-04)",
-          "inv_id": "cron:L824"
+          "inv_id": "cron:L824",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 824 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "tag_lift_discovery",
@@ -65,7 +88,32 @@
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
           "cron_comment": "# URDL tag-lift, daily after 03:25 outcome-bus build (enabled 2026-07-05)",
-          "inv_id": "cron:L684"
+          "inv_id": "cron:L684",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh"
+            ],
+            "derived_from": "crontab line 684 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "industry_novelty_discovery",
@@ -95,7 +143,32 @@
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
           "cron_comment": "# industry/sector novelty discovery — LIVE (industry_novelty_enabled=true since 2026-08-04)",
-          "inv_id": "cron:L686"
+          "inv_id": "cron:L686",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh"
+            ],
+            "derived_from": "crontab line 686 (names only; values are the runner's cron environment)"
+          }
         },
         {
           "id": "siem_to_hermes_backlog",
@@ -120,7 +193,30 @@
             "upper_bound_p95_s": 54.3,
             "bound_source": "pam_group_max(upper)"
           },
-          "inv_id": "cron:L835"
+          "inv_id": "cron:L835",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES",
+              "CIO_DUAL_CHATGPT_CAP"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [],
+            "derived_from": "crontab line 835 (names only; values are the runner's cron environment)"
+          }
         }
       ]
     },
@@ -157,7 +253,32 @@
             "safe_flock.sh"
           ],
           "note": "wrapper and cap env kept VERBATIM inside the step; the runner never wraps the stage",
-          "inv_id": "cron:L376"
+          "inv_id": "cron:L376",
+          "env": {
+            "inherit": "cron",
+            "cron_base": [
+              "HOME",
+              "LANG",
+              "LOGNAME",
+              "PATH",
+              "SHELL"
+            ],
+            "crontab_vars": [
+              "SHELL",
+              "PROJ",
+              "PY",
+              "LLM_DEFER_OFFPEAK",
+              "TRADEAI_ENV",
+              "BLIND_REVIEW_LANES"
+            ],
+            "inline": [],
+            "sources": [],
+            "wrappers": [
+              "$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh",
+              "$PROJ/scripts/safe_flock.sh"
+            ],
+            "derived_from": "crontab line 376 (names only; values are the runner's cron environment)"
+          }
         }
       ]
     }
