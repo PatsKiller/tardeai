@@ -402,9 +402,17 @@ It is a separate workflow from the dispatcher on purpose. A broken dispatcher, d
 
 **Workflow.**
 - Two entry points.
-  - **Schedule `*/1`** → `/due?source=schedule&lane=incident-fanin,incident-notify`. Fan-in runs every 5 min, notify every 1 min, and notify has `after: incident-fanin` (soft).
+  - **Schedule `*/1`** → `/due?source=schedule&lane=n8n-incident-fanin,incident-notifier`. Fan-in runs every 5 min, notify every 1 min, and notify has `after: n8n-incident-fanin` (soft). *Amended 2026-10-10 (W0 relay fix): the filter names registry rows. `incident-fanin` is the fan-in's gateway event lane, not a registry row, and B2 shipped the notifier as row `incident-notifier`; the gateway refuses a filter naming a non-row (`bad_lane_filter`), which failed every incident-router tick at W0.*
   - **Error Trigger**, the `errorWorkflow` of all six workflows → POST relay `/event` (new) → gateway `accept_event` on lane `n8n-workflow-error` with `{workflow_id, execution_id, node, message[:160]}`. The relay refuses any other lane on `/event`. The fan-in reads those events as P2 (P1 if `workflow_id` is the dispatcher or the watcher).
 - n8n sends nothing (§23.3).
+- *Built 2026-10-10 (W0 relay fix, `scripts/n8n_run_relay.py` `Relay.event`):* `POST /event` accepts exactly
+  `{lane_id, workflow_id, execution_id, node, message}`, refuses any lane but `n8n-workflow-error`
+  (`relay_event_lane_refused`), cleans and bounds `node` (64) and `message` (160), and forwards one read-scope
+  `accept_event`. The gateway event schema is closed, so `workflow_id`, `execution_id`, `node` and `message` travel
+  in `subject_key`; the idempotency key is `wferr-<workflow_id>-<execution_id>` and a retry replays the same event.
+  The gateway accepts it only when `n8n-workflow-error` is in `TRADEAI_N8N_GATEWAY_EXTRA_LANES` (operator unit
+  change); until then it answers `unknown_lane`. `scripts/check_n8n_relay_contract.py` checks every workflow HTTP
+  node against the relay's routes and the registry before an import.
 
 **Host lane `incident-notify`.** This is B2's notifier, class `send`, retry policy `none`, priority 0. It reads `n8n_incident_fanin_last.json` plus the gateway `list(lane=incident-fanin, state=ARTIFACT_WRITTEN)`. It keeps **its own ledger**, `data/runtime/incident_notifications.jsonl`. It never `consumer_ack`s its own sends, because that would read as "acknowledged".
 
@@ -508,7 +516,7 @@ These are generated **once** by `python3 scripts/n8n_workflow_templates.py build
 | 1 | `tradeai-dispatcher` | schedule `* * * * *` | GET /due?source=schedule, POST /run | 4 |
 | 2 | `tradeai-event-router` | webhook nudge + schedule `* * * * *` | GET /due?source=event, POST /run | 4 |
 | 3 | `tradeai-heartbeat-watcher` | schedule `*/5` | GET /due?lane=heartbeat-watch, POST /run, GET /runs/heartbeat-watch/last?mode=live | 4 |
-| 4 | `tradeai-incident-router` | schedule `* * * * *` + Error Trigger | GET /due?lane=incident-fanin,incident-notify, POST /run, POST /event | itself is excluded; host `dispatcher:silent` covers it |
+| 4 | `tradeai-incident-router` | schedule `* * * * *` + Error Trigger | GET /due?lane=n8n-incident-fanin,incident-notifier, POST /run, POST /event | itself is excluded; host `dispatcher:silent` covers it |
 | 5 | `tradeai-digest-scheduler` | schedule `*/5` | GET /due?source=digest, POST /run | 4 |
 | 6 | `tradeai-approval-router` | schedule `*/5` | GET /due?lane=approval-escalate, POST /run | 4 |
 

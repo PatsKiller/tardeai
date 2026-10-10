@@ -209,10 +209,11 @@ def test_no_lane_constants_beyond_the_system_filters(rendered):
     known = _known_lane_ids()
     assert len(known) > 100
     allowed = set(gen.SYSTEM_FILTER_LANES)
+    # 2026-10-10 (W0 relay fix): the incident filter names the registry rows, not design 02 §8's spelling.
     assert allowed == {
         "heartbeat-watch",
-        "incident-fanin",
-        "incident-notify",
+        "n8n-incident-fanin",
+        "incident-notifier",
         "approval-escalate",
         "n8n-workflow-error",
     }
@@ -228,7 +229,7 @@ def test_no_lane_constants_beyond_the_system_filters(rendered):
     by_wf = {wf["id"]: json.dumps(wf) for wf in _workflows(rendered).values()}
     assert "lane=heartbeat-watch" in by_wf["tradeai-heartbeat-watcher"]
     assert "/runs/heartbeat-watch/last?mode=live" in by_wf["tradeai-heartbeat-watcher"]
-    assert "lane=incident-fanin,incident-notify" in by_wf["tradeai-incident-router"]
+    assert "lane=n8n-incident-fanin,incident-notifier" in by_wf["tradeai-incident-router"]
     assert "n8n-workflow-error" in by_wf["tradeai-incident-router"]
     assert "lane=approval-escalate" in by_wf["tradeai-approval-router"]
     for wid in ("tradeai-dispatcher", "tradeai-event-router", "tradeai-digest-scheduler"):

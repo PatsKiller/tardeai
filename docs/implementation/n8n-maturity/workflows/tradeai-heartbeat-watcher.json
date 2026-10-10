@@ -430,7 +430,7 @@
     "executionOrder": "v1",
     "executionTimeout": 150,
     "saveDataErrorExecution": "all",
-    "saveManualExecutions": true,
+    "saveManualExecutions": false,
     "timezone": "America/New_York"
   }
 }
