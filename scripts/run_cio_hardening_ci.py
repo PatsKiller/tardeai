@@ -3841,6 +3841,16 @@ GATES = [
         ],
     ),
     (
+        # C1 manifest flips (operator approval 2026-10-10, JOB_REDUCTION_DEEP_PASS D-1): exactly the 75 approved
+        # crontab lines are stage steps (live text, inventory id per step); dual-claimed / approval-sheet / C2
+        # lines are deferred so an --apply stage cannot double-run them; the hermes_learning registry edit
+        # retires its 7 absorbed rows into the stage lanes. Pure file checks; schedules nothing.
+        "c1_manifest_flips_20261010",
+        [
+            "tests/test_c1_manifest_flips_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: CADENCE_TIMER_UNITS — 2026-10-08: the five timer-driven pipeline services (governance,
         # portfolio daily/weekly/monthly/lookthrough) executed the DEV tree from host-only unit copies with no
         # repo text; tradeai-operator-answer-quality.service was the sixth --alert monitor still dev-tree.
