@@ -4130,6 +4130,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: SCALP_HOT_TIER — 2026-10-10 operator decision (4) momentum-scalp hot tier, data side only (cron L636
+        # list owner + proposal-stage trigger, L142 enrichment owner --scalp-hot, L244 social owner --scalp-list,
+        # L708/L379 routed research, L246 --on-list-advance). Knob SCALP_HOT_TIER defaults OFF; the dry runs reach no
+        # request/write; research only through the search routing engine. Hermetic. Listing it schedules nothing.
+        "scalp_hot_tier_20261010",
+        [
+            "tests/test_scalp_hot_tier_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: CONSOLIDATION_STEP1_FINVIZ_BROKER — 2026-10-10 provider consolidation step 1 (cron L442 watch
         # directives servicer, cron L142 finviz-enrichment owner): the Finviz enrichment cache's single writer saves
         # locked + merged + atomic; consumers read lib.data_broker.finviz_enrichment_snapshot (as_of/age/stale,
