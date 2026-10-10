@@ -339,7 +339,7 @@
     "executionOrder": "v1",
     "executionTimeout": 50,
     "saveDataErrorExecution": "all",
-    "saveManualExecutions": true,
+    "saveManualExecutions": false,
     "timezone": "America/New_York"
   }
 }

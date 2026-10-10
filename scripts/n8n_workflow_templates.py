@@ -1276,13 +1276,18 @@ HEARTBEAT_SETTLE_WAIT_S = 60
 HEARTBEAT_MAX_AGE_S = 600
 WORKFLOW_ERROR_LANE = "n8n-workflow-error"
 ERROR_MESSAGE_MAX = 160
+# 2026-10-10 (W0 relay fix): the incident router's /due lane filter names REGISTRY lane ids. Design 02 §8 wrote
+# `incident-fanin,incident-notify`; the registry rows are `n8n-incident-fanin` (scripts/n8n_incident_fanin.py;
+# `incident-fanin` is its gateway EVENT lane, not a registry row) and `incident-notifier` (scripts/
+# incident_notifier.py, B2's notifier). The gateway refuses a filter naming a non-row (`bad_lane_filter`, design
+# 02 §11), which is how every incident-router tick failed at W0 (n8n executions 1981, 1989, 1995, 1999, 2002).
+INCIDENT_FILTER_LANES = ("n8n-incident-fanin", "incident-notifier")
 # The only lane ids any generic workflow may spell (design 02 §7, §8, §10). Everything
 # else comes from the gateway at run time.
 SYSTEM_FILTER_LANES = frozenset(
     {
         HEARTBEAT_LANE,
-        "incident-fanin",
-        "incident-notify",
+        *INCIDENT_FILTER_LANES,
         "approval-escalate",
         WORKFLOW_ERROR_LANE,
     }
@@ -1376,7 +1381,7 @@ GENERIC_KINDS: dict[str, dict] = {
         "id": INCIDENT_ROUTER_ID,
         "cron": "* * * * *",
         "source": "schedule",
-        "lanes": ["incident-fanin", "incident-notify"],
+        "lanes": list(INCIDENT_FILTER_LANES),
         "timeout_s": 50,
         "error_trigger": True,
     },
@@ -1813,7 +1818,9 @@ def build_generic(kind: str) -> dict:
         "timezone": TIMEZONE,
         "executionTimeout": spec["timeout_s"],
         "saveDataErrorExecution": "all",
-        "saveManualExecutions": True,
+        # Open item F4 / P19: manual (editor) executions are not saved; the instance already sets
+        # EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false and a workflow setting of true would override it.
+        "saveManualExecutions": False,
     }
     if wid != INCIDENT_ROUTER_ID:
         settings["errorWorkflow"] = INCIDENT_ROUTER_ID

@@ -18,8 +18,8 @@
   "system_filter_lanes": [
     "approval-escalate",
     "heartbeat-watch",
-    "incident-fanin",
-    "incident-notify",
+    "incident-notifier",
+    "n8n-incident-fanin",
     "n8n-workflow-error"
   ],
   "workflows": [
@@ -33,7 +33,7 @@
         "GET /due?source=schedule&limit=40",
         "POST /run"
       ],
-      "sha256": "ad665d5d8f4e3e2de0d1239d49c291eb4a17763778cfeb338c89949560e21b40",
+      "sha256": "28451c9614e6d87c61bd750687d7c8b9758744088e1af5a03e0f0125fbba4a40",
       "triggers": [
         "schedule * * * * *"
       ]
@@ -48,7 +48,7 @@
         "GET /due?source=event&limit=40",
         "POST /run"
       ],
-      "sha256": "71bccdfb5aa9c1ff80bb584fb0530d3c44a6eda86b7454cacd8a1b676e7b1175",
+      "sha256": "59dde8bde4422e105fb6c8c16ad39ca5134eb82c8e0413fdea46e532fad833dd",
       "triggers": [
         "schedule * * * * *",
         "webhook POST tradeai-nudge"
@@ -65,7 +65,7 @@
         "POST /run",
         "GET /runs/heartbeat-watch/last?mode=live"
       ],
-      "sha256": "2900ef5077f0c2f2d13324a7586204cc1e81deb744b9eede78e5a7751cf16206",
+      "sha256": "7b8fc8244b74a891b7bb8137b6955eb1223c91fdde9720f65f240736b9388003",
       "triggers": [
         "schedule */5 * * * *"
       ]
@@ -77,11 +77,11 @@
       "id": "tradeai-incident-router",
       "kind": "incident-router",
       "relay_calls": [
-        "GET /due?source=schedule&limit=40&lane=incident-fanin,incident-notify",
+        "GET /due?source=schedule&limit=40&lane=n8n-incident-fanin,incident-notifier",
         "POST /run",
         "POST /event"
       ],
-      "sha256": "127b79d1b416eeadee574fb32081bd81b9644a6a5bb0566c58f2ad2a89c83ebc",
+      "sha256": "13d8ad954a4c7d5fae3da67c6f8dd9550b5dc477a5726606b390108f3e585f60",
       "triggers": [
         "schedule * * * * *",
         "error trigger"
@@ -97,7 +97,7 @@
         "GET /due?source=digest&limit=40",
         "POST /run"
       ],
-      "sha256": "8ca789a8a3614b734dbb19529a836702ef324a3c3997a50b99e5b1032602ca41",
+      "sha256": "9e79b90b906e3dbbe402aeed42481669774f04b629cb3352d230a01835493883",
       "triggers": [
         "schedule */5 * * * *"
       ]
@@ -112,7 +112,7 @@
         "GET /due?source=schedule&limit=40&lane=approval-escalate",
         "POST /run"
       ],
-      "sha256": "a7d237beb89eb0a64f08855b8322fa7b740fda4a84fafd88be8818f9aafd7846",
+      "sha256": "d38b089b512ae5874a5fff692c256ad48c3b6082958d39d34e15beaf7fd1c1fe",
       "triggers": [
         "schedule */5 * * * *"
       ]

@@ -3665,6 +3665,17 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_W0_RELAY_FIX (2026-10-10): W0 rolled back at 15:58 ET. Relay POST /event (lane n8n-workflow-error
+        # only, bounded, idempotent per workflow+execution, forwards one read-scope accept_event), the relay ROUTES
+        # table, incident-router lane filter on registry ids, saveManualExecutions false (F4), and the pre-import
+        # relay contract check (scripts/check_n8n_relay_contract.py). Hermetic: in-process gateway library, loopback
+        # scratch relay under tmp_path; no n8n, no live relay, gateway or ledger.
+        "n8n_w0_relay_fix_20261010",
+        [
+            "tests/test_n8n_w0_relay_fix_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
         # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
         # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
