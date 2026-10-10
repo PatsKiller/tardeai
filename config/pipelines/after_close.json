@@ -16,7 +16,7 @@
           "cron_line": 224,
           "cron_schedule": "5 16 * * 1-5",
           "cron_time": "16:05",
-          "command": "$PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply",
+          "command": "flock -n /tmp/tradeai_market_regime_collector.lock $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && flock -n /tmp/tradeai_market_regime_classifier.lock $PY scripts/market_regime_classifier.py --apply",
           "log": "logs/regime_classifier.log",
           "timeout": "30m",
           "continue_on_error": true,
@@ -27,7 +27,7 @@
             4,
             5
           ],
-          "cron_line_verbatim": "5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1",
+          "cron_line_verbatim": "5 16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_market_regime_collector.lock $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && flock -n /tmp/tradeai_market_regime_classifier.lock $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1",
           "measured": {
             "verified": false,
             "source": "pam_group_max(upper)",
@@ -40,7 +40,8 @@
             "upper_bound_median_s": 204.4,
             "upper_bound_p95_s": 730.3,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L213"
         },
         {
           "id": "at_session_review",
@@ -71,7 +72,8 @@
             "upper_bound_median_s": 39.9,
             "upper_bound_p95_s": 39.9,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L1011"
         },
         {
           "id": "repricer_reconcile_lookthrough",
@@ -103,7 +105,8 @@
             "safe_flock.sh"
           ],
           "note": "three-command chain kept verbatim; safe_flock receipt covers only the repricer (holdings_reconcile + lookthrough resolver unmeasured)",
-          "cron_comment": "# +phase3 look-through allocation: DAILY auto-refresh from settled holdings (2026-06-18)"
+          "cron_comment": "# +phase3 look-through allocation: DAILY auto-refresh from settled holdings (2026-06-18)",
+          "inv_id": "cron:L446"
         },
         {
           "id": "finviz_industry_groups",
@@ -135,36 +138,8 @@
             "upper_bound_p95_s": 15.7,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# Defense v2 B2: close capture (states+debounce+alerts), 2x/day per budget"
-        },
-        {
-          "id": "llm_intelligence_enrichment_pm",
-          "cron_line": 194,
-          "cron_schedule": "20 16 * * 1-5",
-          "cron_time": "16:20",
-          "command": "flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py",
-          "log": "logs/llm_enrichment.log",
-          "timeout": "5m",
-          "continue_on_error": true,
-          "dow": [
-            1,
-            2,
-            3,
-            4,
-            5
-          ],
-          "cron_line_verbatim": "20 16 * * 1-5 cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichment.log 2>&1  # flash intel PM",
-          "measured": {
-            "verified": true,
-            "source": "log_end",
-            "runs": 5,
-            "firings": 5,
-            "median_s": 81.0,
-            "p95_s": 87.8,
-            "max_s": 89.0
-          },
-          "note": "no LLM wrapper or cap on the cron line today; folding changes no cap accounting",
-          "cron_comment": "# flash intel PM"
+          "cron_comment": "# Defense v2 B2: close capture (states+debounce+alerts), 2x/day per budget",
+          "inv_id": "cron:L758"
         },
         {
           "id": "strategy_tilt",
@@ -196,7 +171,8 @@
             "upper_bound_p95_s": 1.6,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# per-strategy allocation tilt refresh (post-close)"
+          "cron_comment": "# per-strategy allocation tilt refresh (post-close)",
+          "inv_id": "cron:L517"
         },
         {
           "id": "technicals_gap_backfill",
@@ -228,7 +204,8 @@
             "upper_bound_p95_s": 1054.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# missing-technicals checker+backfill (operator 2026-06-12)"
+          "cron_comment": "# missing-technicals checker+backfill (operator 2026-06-12)",
+          "inv_id": "cron:L470"
         },
         {
           "id": "paper_execution_quality_analyzer",
@@ -259,7 +236,8 @@
             "upper_bound_median_s": 212.9,
             "upper_bound_p95_s": 1054.0,
             "bound_source": "log_span(lower)+pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L329"
         },
         {
           "id": "inference_cycle_pm",
@@ -286,7 +264,8 @@
             "median_s": 218.0,
             "p95_s": 243.4,
             "max_s": 246.0
-          }
+          },
+          "inv_id": "cron:L530"
         },
         {
           "id": "audit_enrichment_coverage",
@@ -318,7 +297,8 @@
             "upper_bound_p95_s": 222.9,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# agent: audits every enrichment surface vs canonical watch universe (operator 2026-06-12)"
+          "cron_comment": "# agent: audits every enrichment surface vs canonical watch universe (operator 2026-06-12)",
+          "inv_id": "cron:L472"
         },
         {
           "id": "research_intelligence_queue_drain",
@@ -349,7 +329,8 @@
             "upper_bound_median_s": 76.1,
             "upper_bound_p95_s": 222.9,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L736"
         }
       ]
     },
@@ -390,7 +371,8 @@
             "bound_source": "pam_group_max(upper)"
           },
           "note": "READ-ONLY cross-source basis audit",
-          "cron_comment": "# basis drift alarm (holdings vs broker)"
+          "cron_comment": "# basis drift alarm (holdings vs broker)",
+          "inv_id": "cron:L467"
         },
         {
           "id": "investment_costs_ledger",
@@ -421,7 +403,8 @@
             "upper_bound_median_s": 196.0,
             "upper_bound_p95_s": 322.2,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L770"
         }
       ]
     },
@@ -461,7 +444,8 @@
           },
           "flags": [
             "DEV_TREE_WRAPPER: the wrapper hardcodes /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild (study §1); runs verbatim today, repoint to CURRENT before cutover"
-          ]
+          ],
+          "inv_id": "cron:L622"
         },
         {
           "id": "paper_execution_quality_events",
@@ -492,14 +476,15 @@
             "upper_bound_median_s": 123.2,
             "upper_bound_p95_s": 909.2,
             "bound_source": "log_span(lower)+pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L330"
         },
         {
           "id": "sector_rs_daily",
           "cron_line": 785,
           "cron_schedule": "20 17 * * 1-5",
           "cron_time": "17:20",
-          "command": "$PY scripts/sector_rs_daily.py",
+          "command": "flock -n /tmp/sector_rs_daily.lock $PY scripts/sector_rs_daily.py",
           "log": "logs/sector_rs_daily.log",
           "timeout": "20m",
           "continue_on_error": true,
@@ -510,7 +495,7 @@
             4,
             5
           ],
-          "cron_line_verbatim": "20 17 * * 1-5 cd $PROJ && $PY scripts/sector_rs_daily.py >> logs/sector_rs_daily.log 2>&1",
+          "cron_line_verbatim": "20 17 * * 1-5 cd $PROJ && flock -n /tmp/sector_rs_daily.lock $PY scripts/sector_rs_daily.py >> logs/sector_rs_daily.log 2>&1",
           "measured": {
             "verified": false,
             "source": "pam_group_max(upper)",
@@ -523,7 +508,8 @@
             "upper_bound_median_s": 76.7,
             "upper_bound_p95_s": 339.6,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L750"
         },
         {
           "id": "sector_momentum_engine",
@@ -555,7 +541,8 @@
             "upper_bound_p95_s": 342.7,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# Defense Desk WS-A: nightly sector momentum states + transition alerts"
+          "cron_comment": "# Defense Desk WS-A: nightly sector momentum states + transition alerts",
+          "inv_id": "cron:L756"
         },
         {
           "id": "plan_drift_revalidator_pm",
@@ -586,7 +573,8 @@
             "upper_bound_median_s": 184.3,
             "upper_bound_p95_s": 342.7,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L674"
         },
         {
           "id": "afterhours_candidate_preparation",
@@ -613,7 +601,8 @@
             "median_s": 2.5,
             "p95_s": 2.7,
             "max_s": 2.8
-          }
+          },
+          "inv_id": "cron:L196"
         },
         {
           "id": "watchlist_entry_planner",
@@ -645,7 +634,8 @@
             "upper_bound_p95_s": 92.6,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)"
+          "cron_comment": "# daily watchlist entry plans: ALL operator-entered + buy/strong-buy/add/wait, drains resumably (operator 2026-06-18)",
+          "inv_id": "cron:L473"
         },
         {
           "id": "watchlist_entry_planner_proposals",
@@ -677,7 +667,8 @@
             "upper_bound_p95_s": 156.4,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# daily proposal entry validation (advisory)"
+          "cron_comment": "# daily proposal entry validation (advisory)",
+          "inv_id": "cron:L474"
         },
         {
           "id": "defense_recommendations",
@@ -709,7 +700,8 @@
             "upper_bound_p95_s": 126.5,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# Defense v3 WS-R: recommendations after sector 17:25 + radar 17:35"
+          "cron_comment": "# Defense v3 WS-R: recommendations after sector 17:25 + radar 17:35",
+          "inv_id": "cron:L760"
         },
         {
           "id": "defense_inverse_stoplights",
@@ -740,7 +732,8 @@
             "upper_bound_median_s": 1.9,
             "upper_bound_p95_s": 2.2,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L772"
         },
         {
           "id": "compute_source_weights",
@@ -771,14 +764,15 @@
             "upper_bound_median_s": 1.3,
             "upper_bound_p95_s": 19.1,
             "bound_source": "pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L463"
         },
         {
           "id": "data_gap_resolver_pre_overnight",
           "cron_line": 153,
           "cron_schedule": "0 18 * * 1-5",
           "cron_time": "18:00",
-          "command": "$PY scripts/data_gap_resolver.py --pre-overnight",
+          "command": "flock -n /tmp/data_gap_resolver.lock $PY scripts/data_gap_resolver.py --pre-overnight",
           "log": "logs/data_gap_resolver_pre_overnight.log",
           "timeout": "10m",
           "continue_on_error": true,
@@ -789,7 +783,7 @@
             4,
             5
           ],
-          "cron_line_verbatim": "0 18 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/data_gap_resolver.py --pre-overnight >> logs/data_gap_resolver_pre_overnight.log 2>&1",
+          "cron_line_verbatim": "0 18 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/data_gap_resolver.lock $PY scripts/data_gap_resolver.py --pre-overnight >> logs/data_gap_resolver_pre_overnight.log 2>&1",
           "measured": {
             "verified": false,
             "source": "log_span(lower)+pam_group_max(upper)",
@@ -802,7 +796,8 @@
             "upper_bound_median_s": 83.4,
             "upper_bound_p95_s": 126.1,
             "bound_source": "log_span(lower)+pam_group_max(upper)"
-          }
+          },
+          "inv_id": "cron:L147"
         },
         {
           "id": "trade_backtest_engine",
@@ -832,7 +827,8 @@
           },
           "wrappers_kept_verbatim": [
             "safe_flock.sh"
-          ]
+          ],
+          "inv_id": "cron:L365"
         },
         {
           "id": "trade_thesis_review_engine",
@@ -864,7 +860,8 @@
             "upper_bound_p95_s": 3561.0,
             "bound_source": "pam_group_max(upper)"
           },
-          "cron_comment": "# scored thesis review -> journal-learning (idempotent safety-net)"
+          "cron_comment": "# scored thesis review -> journal-learning (idempotent safety-net)",
+          "inv_id": "cron:L705"
         }
       ]
     }
@@ -986,6 +983,25 @@
         "upper_bound_median_s": 86.0,
         "upper_bound_p95_s": 346.7,
         "bound_source": "log_span(lower)+pam_group_max(upper)"
+      }
+    },
+    {
+      "cron_line": 194,
+      "cron_schedule": "20 16 * * 1-5",
+      "cron_time": "16:20",
+      "basename": "llm_intelligence_enrichment.py",
+      "category": "DEFERRED_APPROVAL_SHEET",
+      "reason": "C1 2026-10-10: inventory cron:L185 is on packets/consolidation-step1/approval_sheet.csv (category b, C-IDENT-01 merge into L184); decided there, not absorbed by C1.",
+      "inv_id": "cron:L185",
+      "former_step": "close-capture/llm_intelligence_enrichment_pm",
+      "measured": {
+        "verified": true,
+        "source": "log_end",
+        "runs": 5,
+        "firings": 5,
+        "median_s": 81.0,
+        "p95_s": 87.8,
+        "max_s": 89.0
       }
     }
   ],

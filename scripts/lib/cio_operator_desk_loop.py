@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -29,6 +30,149 @@ from typing import Any, Callable, Optional
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PENDING_PATH = PROJECT_ROOT / "data" / "cio" / "cio_operator_pending_replies.jsonl"
 AUTHORITY = "READ_ONLY_ADVISORY"
+
+# ── Background cost-cap backoff (2026-10-10, API overlap Q6) ────────────────
+# try_fulfill_pending_replies runs every third Telegram poll (~1.4 min). Once cio_operator_reply hit its
+# daily request cap the pass kept asking the bridge anyway: ~16,800 refused reservations a week (6 per
+# pass). After a COST_CAP_EXCEEDED answer inside that background pass, the pass stops calling the model
+# until the cap resets (the next midnight in the ledger's day zone, America/New_York — llm_cost_reservations
+# counts created_at >= CURRENT_DATE in that session time zone) and returns the same refused shape, so the
+# caller takes its existing fail-soft path. Interactive operator asks are not latched. Under the cap nothing
+# changes. CIO_DESK_COST_CAP_BACKOFF=0 turns the latch off; a service restart clears it.
+_COST_CAP_DAY_TZ = "America/New_York"
+_cost_cap_backoff_until: Optional[datetime] = None
+_pass_state = threading.local()  # .background is True only inside try_fulfill_pending_replies (this thread)
+
+
+def _next_cap_reset(now: datetime) -> datetime:
+    local = now.astimezone(ZoneInfo(_COST_CAP_DAY_TZ))
+    nxt = (local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return nxt.astimezone(timezone.utc)
+
+
+def _is_cost_cap_refusal(res: Any) -> bool:
+    if not isinstance(res, dict) or res.get("ok"):
+        return False
+    blob = f"{res.get('governance_code') or ''} {res.get('error') or ''}".lower()
+    return "cost_cap_exceeded" in blob
+
+
+# ── Operator reserve + per-row attempt bound (2026-10-10, desk-loop drain) ───
+# Measured: the background pass spent all 400 cio_operator_reply requests every day between 00:00 and
+# ~03:30 ET (llm_cost_reservations, 10-05..10-10), re-curating 7 open rows that had no chat_id and so could
+# never be delivered or closed. The background pass may now use at most CIO_DESK_BACKGROUND_CAP_SHARE
+# (default 0.25) of the registry's daily request cap; the rest is reserved for operator-initiated asks.
+# Each row gets CIO_PENDING_MAX_ATTEMPTS_PER_DAY (default 3) answer attempts before it is closed with the
+# reason. Both counters live in PENDING_BUDGET_PATH, keyed by the ledger day (America/New_York), so a
+# service restart does not reset them.
+PENDING_BUDGET_PATH = PROJECT_ROOT / "data" / "cio" / "cio_operator_pending_budget.json"
+_OPERATOR_REPLY_PROCESS_ID = "cio_operator_reply"
+_OPERATOR_REPLY_CAP_FALLBACK = 400
+_BACKGROUND_SHARE_DEFAULT = 0.25
+_MAX_ATTEMPTS_DEFAULT = 3
+
+
+def _ledger_day(now: Optional[datetime] = None) -> str:
+    return (now or datetime.now(timezone.utc)).astimezone(ZoneInfo(_COST_CAP_DAY_TZ)).date().isoformat()
+
+
+def _load_pending_budget(now: Optional[datetime] = None) -> dict[str, Any]:
+    day = _ledger_day(now)
+    try:
+        b = json.loads(PENDING_BUDGET_PATH.read_text(encoding="utf-8"))
+        if isinstance(b, dict) and b.get("day") == day:
+            return {"day": day, "background_calls": int(b.get("background_calls") or 0),
+                    "rows": dict(b.get("rows") or {})}
+    except (OSError, ValueError, TypeError):
+        pass
+    return {"day": day, "background_calls": 0, "rows": {}}
+
+
+def _save_pending_budget(budget: dict[str, Any]) -> None:
+    PENDING_BUDGET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = PENDING_BUDGET_PATH.with_name(PENDING_BUDGET_PATH.name + ".tmp")
+    tmp.write_text(json.dumps(budget, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, PENDING_BUDGET_PATH)
+
+
+def _operator_reply_daily_cap() -> int:
+    """cio_operator_reply's daily request cap, from the process registry (fallback 400)."""
+    try:
+        reg = json.loads((PROJECT_ROOT / "config" / "llm_process_registry.json").read_text(encoding="utf-8"))
+        for p in reg.get("processes") or []:
+            if p.get("id") == _OPERATOR_REPLY_PROCESS_ID:
+                return int(p.get("daily_soft_cap") or _OPERATOR_REPLY_CAP_FALLBACK)
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return _OPERATOR_REPLY_CAP_FALLBACK
+
+
+def _background_call_ceiling() -> int:
+    """Most cio_operator_reply calls the background pass may make in a ledger day."""
+    try:
+        share = float(os.environ.get("CIO_DESK_BACKGROUND_CAP_SHARE", _BACKGROUND_SHARE_DEFAULT))
+    except ValueError:
+        share = _BACKGROUND_SHARE_DEFAULT
+    share = min(1.0, max(0.0, share))
+    return int(_operator_reply_daily_cap() * share)
+
+
+def _max_attempts_per_day() -> int:
+    try:
+        return max(1, int(os.environ.get("CIO_PENDING_MAX_ATTEMPTS_PER_DAY", _MAX_ATTEMPTS_DEFAULT)))
+    except ValueError:
+        return _MAX_ATTEMPTS_DEFAULT
+
+
+def _background_reserve_refusal() -> Optional[dict[str, Any]]:
+    """Inside the background pass: refuse (no call) once its share is spent, else count the call."""
+    budget = getattr(_pass_state, "budget", None)
+    if budget is None:
+        return None
+    ceiling = _background_call_ceiling()
+    if budget["background_calls"] >= ceiling:
+        return {
+            "ok": False,
+            "error": (f"OPERATOR_RESERVE: background pass used {budget['background_calls']}/{ceiling} "
+                      f"{_OPERATOR_REPLY_PROCESS_ID} calls today; the rest is reserved for operator asks "
+                      "(no call made)"),
+            "governance_refused": True,
+            "governance_code": "OPERATOR_RESERVE",
+            "reserve": True,
+        }
+    budget["background_calls"] += 1  # counted before the call, as the bridge reserves before the call
+    try:
+        _save_pending_budget(budget)
+    except OSError:
+        pass  # the in-memory count still bounds this pass; the next pass re-reads the file
+    return None
+
+
+def _operator_reply_llm(messages: list[dict[str, str]], *, now: Optional[datetime] = None) -> dict[str, Any]:
+    """The governed bridge call for task_type operator_reply, with the background cost-cap backoff and
+    the background share of the daily cap. Operator-initiated asks are held by neither."""
+    global _cost_cap_backoff_until
+    latch_on = getattr(_pass_state, "background", False) and os.environ.get("CIO_DESK_COST_CAP_BACKOFF", "1").lower() not in (
+        "0", "false", "off", "no")
+    now = now or datetime.now(timezone.utc)
+    if latch_on and _cost_cap_backoff_until is not None and now < _cost_cap_backoff_until:
+        return {
+            "ok": False,
+            "error": f"COST_CAP_EXCEEDED: desk backoff until {_cost_cap_backoff_until.isoformat()} (no call made)",
+            "governance_refused": True,
+            "governance_code": "COST_CAP_EXCEEDED",
+            "backoff": True,
+        }
+    if getattr(_pass_state, "background", False):
+        refused = _background_reserve_refusal()
+        if refused is not None:
+            return refused
+    from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy  # noqa: PLC0415
+
+    res = call_governed_llm(messages, load_llm_policy(), use_pro=False, task_type="operator_reply")
+    if latch_on and _is_cost_cap_refusal(res):
+        _cost_cap_backoff_until = _next_cap_reset(now)
+    return res
 
 #: Buy / perspective asks must not lead with a hollow DeepSeek reword of thin
 #: house facts (live 2026-09-22: "im thinking of buying S give me the perspective"
@@ -606,8 +750,6 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
 
     if _env("CIO_OPERATOR_INTENT_FLASH", "1").lower() not in ("0", "false", "off", "no"):
         try:
-            from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
-
             system = (
                 "You classify CIO Telegram operator questions. "
                 "Return ONE JSON object only with keys: "
@@ -634,14 +776,11 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                 )
             except Exception:
                 _user_content = (t or "")[:800]
-            llm = call_governed_llm(
+            llm = _operator_reply_llm(
                 [
                     {"role": "system", "content": system},
                     {"role": "user", "content": _user_content},
                 ],
-                load_llm_policy(),
-                use_pro=False,
-                task_type="operator_reply",
             )
             if llm.get("ok"):
                 raw = str(llm.get("content") or "").strip()
@@ -1669,8 +1808,6 @@ def answer_freeform_with_flash(
         return {"ok": True, "text": failsoft, "source": "freeform_failsoft", "model": None}
 
     try:
-        from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
-
         # The model sees ONLY the assembled facts, never cut mid-structure.
         facts_json = _facts_for_model(context)
         gaps_json = json.dumps(soft_gaps[:12], default=str)[:2000]
@@ -1716,14 +1853,11 @@ def answer_freeform_with_flash(
             f"TRADE_AI_FACTS:\n{facts_json}\n\n"
             f"SOFT_GAPS:\n{gaps_json}"
         )
-        llm = call_governed_llm(
+        llm = _operator_reply_llm(
             [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            load_llm_policy(),
-            use_pro=False,
-            task_type="operator_reply",
         )
         if not llm.get("ok"):
             return {
@@ -2773,9 +2907,7 @@ def _subject_flash_enabled() -> bool:
 
 
 def _subject_flash_call(messages: list[dict[str, str]]) -> dict[str, Any]:
-    from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy  # noqa: PLC0415
-
-    return call_governed_llm(messages, load_llm_policy(), use_pro=False, task_type="operator_reply")
+    return _operator_reply_llm(messages)
 
 
 _SUBJECT_FLASH_BANNED = ("ORDER PLACED", "BUYING NOW", "SUBMITTED", "FILLED", "I WILL BUY", "EXECUTING",
@@ -5097,7 +5229,42 @@ def try_fulfill_pending_replies(
     *,
     limit: int = 10,
 ) -> dict[str, Any]:
-    """Re-check open pending operator questions; reply when Trade-AI has facts."""
+    """Re-check open pending operator questions; reply when Trade-AI has facts.
+
+    Every open row reaches a terminal state: fulfilled, or expired with a stated reason (no chat to
+    deliver to; evidence never arrived; or its daily answer attempts were spent without a delivery).
+    Model calls made here count against the background share of the daily cap (_background_call_ceiling).
+    """
+    _pass_state.background = True
+    _pass_state.budget = _load_pending_budget()
+    try:
+        return _try_fulfill_pending_replies(send_fn, limit=limit)
+    finally:
+        _pass_state.background = False
+        _pass_state.budget = None
+
+
+#: Why a chat-less row is closed. 2026-10-10: 7 rows opened with chat_id "" (the Maria skill path,
+#: operator_internal_first, defaults chat_id to "") were curated by the model on every pass and then
+#: dropped at `if not chat_id: continue`, never closing; that loop spent the whole daily request cap.
+UNDELIVERABLE_REASON = (
+    "it was opened with no chat id, so a follow-up can never be delivered"
+)
+
+
+def _expired_row(row: dict[str, Any], reason: str, age_h: Optional[float], **extra: Any) -> dict[str, Any]:
+    return {
+        **{k: row.get(k) for k in ("pending_id", "chat_id", "message_id", "channel", "operator_text")},
+        "status": "expired",
+        "expired_ts": _now(),
+        "expiry_reason": reason,
+        "age_hours": round(age_h, 2) if age_h is not None else None,
+        **extra,
+        "authority": AUTHORITY,
+    }
+
+
+def _try_fulfill_pending_replies(send_fn: SendFn, *, limit: int) -> dict[str, Any]:
     rows = _read_jsonl(PENDING_PATH)
     latest: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -5108,6 +5275,17 @@ def try_fulfill_pending_replies(
     fulfilled = 0
     failed = 0
     expired = 0
+    budget = getattr(_pass_state, "budget", None) or _load_pending_budget()
+    max_attempts = _max_attempts_per_day()
+
+    def _attempt(pid: str, error: Optional[str] = None, *, count: bool = True) -> None:
+        rec = budget["rows"].setdefault(pid, {"attempts": 0, "last_error": None})
+        if count:
+            rec["attempts"] = int(rec.get("attempts") or 0) + 1
+        if error is not None:
+            rec["last_error"] = str(error)[:200]
+        _save_pending_budget(budget)
+
     # Each follow-up is sent inside the lineage of the turn that asked (the
     # pending row carries it), so the reply joins back to that turn.
     from scripts.lib.event_lineage import enter_row_scope  # noqa: PLC0415
@@ -5115,10 +5293,33 @@ def try_fulfill_pending_replies(
     _lin_token = None
     for row in open_rows:
         _lin_token = enter_row_scope(row, _lin_token)
+        pending_key = str(row.get("pending_id") or "")
+        attempted = False
         try:
+            # Closed before any model call: a row with no chat can never be delivered, so curating it
+            # only spends the cap and leaves it open (the 2026-10-05..10-10 drain).
+            if not str(row.get("chat_id") or ""):
+                _append_jsonl(PENDING_PATH, _expired_row(row, UNDELIVERABLE_REASON, _pending_age_hours(row)))
+                expired += 1
+                continue
+            # A row that has spent today's answer attempts without a delivery is closed, not retried.
+            rec = budget["rows"].get(pending_key) or {}
+            if int(rec.get("attempts") or 0) >= max_attempts:
+                n = int(rec.get("attempts") or 0)
+                reason = (f"{n} answer attempts today did not deliver a reply"
+                          + (f" (last: {rec.get('last_error')})" if rec.get("last_error") else ""))
+                age_h = _pending_age_hours(row)
+                closing_text, _ = _closing_message(row, row.get("intent") or {}, age_h=age_h,
+                                                   limit_h=_pending_expiry_hours(row), why=reason)
+                body, _prov = _finalize_operator_reply(
+                    closing_text, _pending_reply_provenance("pending_expired", row, {}),
+                )
+                send_fn(str(row.get("chat_id")), body, row.get("message_id"))
+                _append_jsonl(PENDING_PATH, _expired_row(row, reason, age_h, attempts=n))
+                expired += 1
+                continue
             intent = row.get("intent") or analyze_operator_intent(row.get("operator_text") or "")
             evidence = gather_tradeai_evidence(intent)
-            pending_key = str(row.get("pending_id") or "")
             hermes_result = None
             if not evidence.get("complete"):
                 # The research this pending asked for lands in the Hermes result
@@ -5147,29 +5348,22 @@ def try_fulfill_pending_replies(
                 if not evidence.get("complete"):
                     limit_h = _pending_expiry_hours(row)
                     if answerable and (age_h is None or age_h < limit_h):
-                        continue
+                        continue  # waiting for evidence: no model call, no attempt spent
                     closing_text, reason = _closing_message(
                         row, intent, age_h=age_h, limit_h=limit_h, why=why,
                     )
                     chat_id = str(row.get("chat_id") or "")
-                    if chat_id:
-                        body, _prov = _finalize_operator_reply(
-                            closing_text,
-                            _pending_reply_provenance("pending_expired", row, evidence),
-                        )
-                        send_fn(chat_id, body, row.get("message_id"))
-                    _append_jsonl(PENDING_PATH, {
-                        **{k: row.get(k) for k in (
-                            "pending_id", "chat_id", "message_id", "channel", "operator_text",
-                        )},
-                        "status": "expired",
-                        "expired_ts": _now(),
-                        "expiry_reason": reason,
-                        "age_hours": round(age_h, 2) if age_h is not None else None,
-                        "authority": AUTHORITY,
-                    })
+                    body, _prov = _finalize_operator_reply(
+                        closing_text,
+                        _pending_reply_provenance("pending_expired", row, evidence),
+                    )
+                    send_fn(chat_id, body, row.get("message_id"))
+                    _append_jsonl(PENDING_PATH, _expired_row(row, reason, age_h))
                     expired += 1
                     continue
+            # The answer step (the only place this pass reaches the model for an intent-bearing row).
+            _attempt(pending_key)
+            attempted = True
             curated = _curate_from_evidence(str(row.get("operator_text") or ""), evidence)
             answer_text = curated.get("text") or ""
             note = str((evidence.get("available") or {}).get("research_failure_note") or "").strip()
@@ -5190,11 +5384,10 @@ def try_fulfill_pending_replies(
                 + _with_sources_footer(answer_text, evidence, curated),
                 _pending_reply_provenance("pending_fulfilled", row, evidence, curated),
             )
-            chat_id = str(row.get("chat_id") or "")
-            if not chat_id:
-                continue
+            chat_id = str(row.get("chat_id") or "")  # non-empty: chat-less rows were closed above
             sent = send_fn(chat_id, body, row.get("message_id"))
             if not sent.get("ok", True) and sent.get("error"):
+                _attempt(pending_key, f"send failed: {sent.get('error')}", count=False)
                 failed += 1
                 continue
             _append_jsonl(PENDING_PATH, {
@@ -5222,8 +5415,13 @@ def try_fulfill_pending_replies(
                 # ALARM-DELIVERY-DECLARED: optional lifecycle projection must not block pending fulfillment.
                 pass
             fulfilled += 1
-        except Exception:
+        except Exception as exc:
             # ALARM-DELIVERY-DECLARED: failed-row count is the durable local outcome for this best-effort worker.
+            # The error counts as an attempt (once per pass), so a row that raises every pass is closed.
+            try:
+                _attempt(pending_key, f"{type(exc).__name__}: {exc}", count=not attempted)
+            except Exception:  # noqa: BLE001 -- a budget-file write failure must not end the pass
+                pass
             failed += 1
     enter_row_scope(None, _lin_token)
     return {

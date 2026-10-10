@@ -21,6 +21,18 @@ Lane mode (2026-10-08, n8n scheduler-of-record) — move ONE registry lane to an
                 flips to {kind: n8n, expression: <workflow id>, match: <kept>, cadence: <old
                 cron schedule>}. Refuses on 0 or >1 matches, an already-commented line, a row
                 that is not ACTIVE, or a row that is already kind n8n.
+  multi-line:   (2026-10-10, D-3) a lane with up to MAX_LANE_LINES cron slots (the dispatcher's
+                `dispatch.cron` cap) retires every slot in ONE cutover, one crontab write:
+                  - `scheduler.match` as a LIST: each item must hit exactly one live line, and no
+                    two items the same line; or
+                  - `scheduler.match` as a STRING hitting K lines, only with `--expect-lines K`
+                    (an accidental broad match still refuses on the 1-line default).
+                Each line gets its own `# RETIRED <date> n8n-cutover <lane_id> ` tag; every line is
+                re-read after the write. `scheduler.cadence` stays one cron string (the first
+                slot) and `scheduler.cadence_slots` lists every slot; a row with a `dispatch` block
+                must carry exactly those slots in `dispatch.cron`. The receipt lists `lines`
+                [{index, before, after, cadence}]; rollback uncomments exactly the tagged lines
+                and refuses unless their count equals the receipt's.
   systemd lane: systemctl is NOT run. The receipt carries `operator_command`
                 (`systemctl --user disable --now <timer>`) for the operator's config-write grant,
                 and the registry row flips the same way (`--cadence` required: a timer has no
@@ -69,6 +81,9 @@ DEFAULT_LOCK = "/tmp/n8n_cutover.lock"
 #: (kept local: this tool runs standalone). The dispatcher's workflow id is refused as an expression.
 DISPATCHER_EXPRESSION = "dispatcher"
 DISPATCHER_WORKFLOW_ID = "tradeai-dispatcher"
+#: Mirrors scripts/lib/lane_dispatch.DISPATCH_CRON_MAX_SLOTS (kept local: this tool runs standalone; a test
+#: pins the two equal). One lane cutover retires at most this many crontab lines.
+MAX_LANE_LINES = 8
 N8N_TAG_RE = re.compile(r"^#\s*RETIRED\s+(\d{4}-\d{2}-\d{2})\s+n8n-cutover\s+(\S+)\s(.*)$")
 
 PIPELINES = {
@@ -302,6 +317,14 @@ def find_lane_lines(text: str, match: str) -> tuple[list[int], list[int]]:
     return live, commented
 
 
+def lane_matches(sched: dict[str, Any]) -> tuple[list[str], bool]:
+    """(match strings, is_list). `scheduler.match` may be one string or a list of strings (multi-line lane)."""
+    raw = sched.get("match") or sched.get("expression") or ""
+    if isinstance(raw, list):
+        return [str(x) for x in raw if str(x)], True
+    return ([str(raw)] if str(raw) else []), False
+
+
 def find_retired_lines(text: str, lane_id: str) -> list[int]:
     out = []
     for i, ln in enumerate(text.splitlines()):
@@ -384,7 +407,10 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
     rc["registry_sha_before"] = _sha256(raw)
     sched = dict(row.get("scheduler") or {})
     kind = str(sched.get("kind") or "")
-    match = str(sched.get("match") or sched.get("expression") or "")
+    matches, match_is_list = lane_matches(sched)
+    match: Any = sched.get("match") or sched.get("expression") or ""
+    if not match_is_list:
+        match = str(match)
     rc["scheduler_before"] = sched
     problems: list[str] = []
     if fmt_problem:
@@ -400,28 +426,76 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
     elif str(args.workflow_id) == DISPATCHER_WORKFLOW_ID:
         problems.append(f"--workflow-id {DISPATCHER_WORKFLOW_ID} is the dispatcher's workflow id, not a row expression; "
                         f"a dispatcher lane is cut over with --workflow-id {DISPATCHER_EXPRESSION} (AGENTS §23.11)")
-    if not match:
+    if not matches:
         problems.append("scheduler.match / expression is empty; nothing to find on the host")
+    expect = getattr(args, "expect_lines", None)
+    if expect is not None and not 1 <= expect <= MAX_LANE_LINES:
+        problems.append(f"--expect-lines {expect} is outside 1..{MAX_LANE_LINES} (the dispatch.cron slot cap)")
+    if match_is_list and expect is not None:
+        problems.append("--expect-lines applies to a string scheduler.match; a list match retires one line per item")
+    if match_is_list and len(matches) > MAX_LANE_LINES:
+        problems.append(f"scheduler.match lists {len(matches)} items; at most {MAX_LANE_LINES} lines per lane")
 
     text = None
-    line_idx = None
+    line_idxs: list[int] = []
     cadence = args.cadence or ""
+    cadence_slots: list[str] = []
     if kind == "cron" and not problems:
         text = read_crontab()
-        live, commented = find_lane_lines(text, match)
         retired = find_retired_lines(text, lane_id)
         if retired:
             problems.append(f"a line is already tagged `n8n-cutover {lane_id}` (line {retired[0] + 1}); rollback first")
-        if len(live) != 1:
-            problems.append(f"match {match!r} found on {len(live)} uncommented line(s) (need exactly 1)"
-                            + (f"; {len(commented)} commented line(s) also contain it" if commented else ""))
+        if match_is_list:
+            for m in matches:
+                live, commented = find_lane_lines(text, m)
+                if len(live) != 1:
+                    problems.append(f"match item {m!r} found on {len(live)} uncommented line(s) (need exactly 1)"
+                                    + (f"; {len(commented)} commented line(s) also contain it" if commented else ""))
+                else:
+                    line_idxs.append(live[0])
+            if not problems and len(set(line_idxs)) != len(line_idxs):
+                problems.append("two scheduler.match items hit the same crontab line; each item must name its own line")
+        else:
+            live, commented = find_lane_lines(text, match)
+            need = expect if expect is not None else 1
+            if len(live) != need:
+                problems.append(f"match {match!r} found on {len(live)} uncommented line(s) (need exactly {need}"
+                                + (f", --expect-lines {expect}" if expect is not None else "") + ")"
+                                + (f"; {len(commented)} commented line(s) also contain it" if commented else ""))
+            elif len(live) > MAX_LANE_LINES:
+                problems.append(f"match {match!r} found on {len(live)} lines; at most {MAX_LANE_LINES} per lane")
+            else:
+                line_idxs = list(live)
         if not problems:
-            line_idx = live[0]
-            rc["line_before"] = text.splitlines()[line_idx]
-            cadence = cadence or cron_schedule_of(rc["line_before"])
-            rc["line_after"] = f"# RETIRED {cutover_date()} n8n-cutover {lane_id} " + rc["line_before"]
-            if not cadence:
-                problems.append("could not derive the cron schedule from the line; pass --cadence")
+            all_lines = text.splitlines()
+            line_idxs.sort()
+            tag = f"# RETIRED {cutover_date()} n8n-cutover {lane_id} "
+            if len(line_idxs) == 1:
+                line_idx = line_idxs[0]
+                rc["line_before"] = all_lines[line_idx]
+                cadence = cadence or cron_schedule_of(rc["line_before"])
+                rc["line_after"] = tag + rc["line_before"]
+                if not cadence:
+                    problems.append("could not derive the cron schedule from the line; pass --cadence")
+            else:
+                rc["lines"] = []
+                for i in line_idxs:
+                    before = all_lines[i]
+                    slot = cron_schedule_of(before)
+                    if not slot:
+                        problems.append(f"could not derive the cron schedule from line {i + 1}; a multi-line lane needs "
+                                        "a schedule on every line")
+                    rc["lines"].append({"index": i, "before": before, "after": tag + before, "cadence": slot})
+                    if slot and slot not in cadence_slots:
+                        cadence_slots.append(slot)
+                cadence = cadence or (cadence_slots[0] if cadence_slots else "")
+                block = row.get("dispatch") if isinstance(row.get("dispatch"), dict) else None
+                if block is not None and block.get("cron") is not None:
+                    dcron = block.get("cron")
+                    dset = {str(x) for x in (dcron if isinstance(dcron, list) else [dcron])}
+                    if dset != set(cadence_slots):
+                        problems.append(f"dispatch.cron {sorted(dset)} does not equal the retired slots "
+                                        f"{sorted(set(cadence_slots))}: a slot would be lost or added at cutover")
     elif kind == "systemd" and not problems:
         if not match.endswith(".timer"):
             problems.append(f"systemd lane match {match!r} is not a .timer unit")
@@ -432,6 +506,8 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
         return _refuse(rc, args, problems)
 
     new_sched = {"kind": "n8n", "expression": str(args.workflow_id), "match": match, "cadence": cadence}
+    if len(cadence_slots) > 1:
+        new_sched["cadence_slots"] = cadence_slots
     if str(args.workflow_id) == DISPATCHER_EXPRESSION:
         # §23.12: a dispatcher row moves to stage cutover (a dispatcher row without a stage is clamped to dry_run
         # and refused by lane_dispatch.r1_class_admission); its wave label is kept.
@@ -446,6 +522,8 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
     if rc["line_before"] is not None:
         print(f"  would comment   : {rc['line_before'][:150]}")
         print(f"  as              : {rc['line_after'][:150]}")
+    for ent in rc.get("lines") or []:
+        print(f"  would comment   : L{ent['index'] + 1} {ent['before'][:150]}")
     if rc["operator_command"]:
         print(f"  operator command (NOT run here; config-write grant): {rc['operator_command']}")
     if not args.apply:
@@ -453,17 +531,21 @@ def cmd_cutover_lane(args: argparse.Namespace) -> int:
         print(f"dry-run: nothing written except the receipt {p}")
         return 0
 
-    if text is not None and line_idx is not None:
+    if text is not None and line_idxs:
+        edits = ([(line_idxs[0], rc["line_after"])] if rc.get("lines") is None
+                 else [(e["index"], e["after"]) for e in rc["lines"]])
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         bk = backup_dir() / f"crontab-{ts}-pre-cutover-lane-{lane_id}.txt"
         bk.write_text(text, encoding="utf-8")
         rc["crontab_backup"] = str(bk)
         lines = text.splitlines()
-        lines[line_idx] = rc["line_after"]
+        for i, new_line in edits:
+            lines[i] = new_line
         write_crontab("\n".join(lines) + "\n")
-        after = read_crontab()
-        if rc["line_after"] not in after.splitlines():
-            rc["problems"] = ["crontab write did not stick (line_after not found on re-read)"]
+        after_lines = read_crontab().splitlines()
+        missing = [i for i, new_line in edits if i >= len(after_lines) or after_lines[i] != new_line]
+        if missing:
+            rc["problems"] = [f"crontab write did not stick (line_after not found on re-read for {len(missing)} line(s))"]
             write_receipt(args, rc)
             print("FAILED: crontab re-read does not show the retired line")
             return 1
@@ -512,25 +594,43 @@ def cmd_rollback_lane(args: argparse.Namespace) -> int:
     rc["scheduler_after"] = restore or None
 
     text = None
-    line_idx = None
+    edits: list[tuple[int, str]] = []
     if not problems and restore.get("kind") == "cron":
         text = read_crontab()
+        all_lines = text.splitlines()
         retired = find_retired_lines(text, lane_id)
-        if len(retired) != 1:
-            problems.append(f"found {len(retired)} line(s) tagged `n8n-cutover {lane_id}` (need exactly 1)")
-        else:
+        prior_lines = prior.get("lines") if isinstance(prior.get("lines"), list) else None
+        need = len(prior_lines) if prior_lines else 1
+        if len(retired) != need:
+            problems.append(f"found {len(retired)} line(s) tagged `n8n-cutover {lane_id}` (need exactly {need})")
+        elif need == 1:
             line_idx = retired[0]
-            before = text.splitlines()[line_idx]
+            before = all_lines[line_idx]
             m = N8N_TAG_RE.match(before)
             rc["line_before"] = before
             rc["line_after"] = m.group(3) if m else before
+            edits.append((line_idx, rc["line_after"]))
             if prior.get("line_before") and prior["line_before"] != rc["line_after"]:
                 print("  NOTE: uncommented text differs from the receipt's line_before; restoring what is on the host")
                 rc["note"] = "line text differs from cutover receipt line_before"
-            match = str(restore.get("match") or restore.get("expression") or "")
-            live, _ = find_lane_lines(text, match) if match else ([], [])
-            if live:
-                problems.append(f"match {match!r} is already live on line {live[0] + 1}; uncommenting would double-schedule")
+        else:
+            rc["lines"] = []
+            prior_before = {str(e.get("before")) for e in prior_lines or []}
+            for i in retired:
+                m = N8N_TAG_RE.match(all_lines[i])
+                restored = m.group(3) if m else all_lines[i]
+                rc["lines"].append({"index": i, "before": all_lines[i], "after": restored})
+                edits.append((i, restored))
+                if restored not in prior_before:
+                    rc["note"] = "line text differs from cutover receipt lines[].before"
+            if rc.get("note"):
+                print("  NOTE: uncommented text differs from the receipt's lines; restoring what is on the host")
+        if not problems:
+            for m_ in lane_matches(restore)[0]:
+                live, _ = find_lane_lines(text, m_)
+                if live:
+                    problems.append(f"match {m_!r} is already live on line {live[0] + 1}; uncommenting would double-schedule")
+                    break
     elif not problems and restore.get("kind") == "systemd":
         unit = str(restore.get("match") or restore.get("expression") or "")
         rc["operator_command"] = f"systemctl --user enable --now {unit}"
@@ -542,6 +642,8 @@ def cmd_rollback_lane(args: argparse.Namespace) -> int:
     if rc["line_before"] is not None:
         print(f"  would uncomment : {rc['line_before'][:150]}")
         print(f"  as              : {rc['line_after'][:150]}")
+    for ent in rc.get("lines") or []:
+        print(f"  would uncomment : L{ent['index'] + 1} {ent['after'][:150]}")
     if rc["operator_command"]:
         print(f"  operator command (NOT run here; config-write grant): {rc['operator_command']}")
     if not args.apply:
@@ -549,16 +651,17 @@ def cmd_rollback_lane(args: argparse.Namespace) -> int:
         print(f"dry-run: nothing written except the receipt {p}")
         return 0
 
-    if text is not None and line_idx is not None:
+    if text is not None and edits:
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         bk = backup_dir() / f"crontab-{ts}-pre-rollback-lane-{lane_id}.txt"
         bk.write_text(text, encoding="utf-8")
         rc["crontab_backup"] = str(bk)
         lines = text.splitlines()
-        lines[line_idx] = rc["line_after"]
+        for i, new_line in edits:
+            lines[i] = new_line
         write_crontab("\n".join(lines) + "\n")
-        after = read_crontab()
-        if rc["line_after"] not in after.splitlines():
+        after_lines = read_crontab().splitlines()
+        if any(i >= len(after_lines) or after_lines[i] != new_line for i, new_line in edits):
             rc["problems"] = ["crontab write did not stick (line_after not found on re-read)"]
             write_receipt(args, rc)
             print("FAILED: crontab re-read does not show the restored line")
@@ -586,6 +689,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lane", default=None, help="lane mode: the config/lane_registry.json lane_id to move to / back from n8n")
     ap.add_argument("--workflow-id", default=None, help="lane cutover: the n8n workflow id (becomes scheduler.expression)")
     ap.add_argument("--cadence", default=None, help="lane cutover: cron expression the workflow uses (derived from the line for cron lanes)")
+    ap.add_argument("--expect-lines", type=int, default=None,
+                    help=f"lane cutover: a string scheduler.match must hit exactly this many live lines (1..{MAX_LANE_LINES}); "
+                         "without it a string match must hit exactly 1")
     ap.add_argument("--receipt", default=None, help="lane rollback: the cutover receipt to restore scheduler_before from")
     ap.add_argument("--state-root", default=None, help="where receipts live (default $TRADEAI_STATE_ROOT / production state root)")
     args = ap.parse_args(argv)
