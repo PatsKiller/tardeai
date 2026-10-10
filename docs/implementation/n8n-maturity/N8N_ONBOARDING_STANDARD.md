@@ -100,7 +100,7 @@ The schedule lives in `config/lane_registry.json`, never in a workflow. Check ev
 | Stage | `scheduler` | `dispatch` | allowlist | Example |
 |---|---|---|---|---|
 | **shadow** (cron row) | `kind: "cron"`, live expression, `match`, `stage: "shadow"`, `wave` | `mode: "dry_run"`, `cron` = the live line's schedule, `tz: "America/New_York"`, `class`, `priority`, `retry_policy` | `live_arg: null` | 36 rows on main (#1656, #1661): `fee-efficiency-analyzer` |
-| **staged R1** | cron row + an `r1_pending` block holding the shadow `scheduler`, `output_signal`, `dispatch`; **no** `dispatch` key | none until activation | `live_arg: null` | 19 rows (#1661); activated by #1665 (OPEN) |
+| **staged R1** | cron row + an `r1_pending` block holding the shadow `scheduler`, `output_signal`, `dispatch`; **no** `dispatch` key | none until activation | `live_arg: null` | 19 rows (#1661); activated by #1665 (merged 2026-10-10 20:40Z as `e8a4a6815`) |
 | **canary** (cron row) | as shadow, `stage: "canary"`, `command_text` carrying the cron line's `flock` lock | `mode: "live"` | `live_arg` set, `lock_kind: flock`, `lock` = every `flock` lock in `command_text` | none yet |
 | **cutover** (dispatcher row) | `kind: "n8n"`, `expression: "dispatcher"`, `cadence`, `match` (the retired line), `wave`, `stage: "cutover"` | `mode: "live"` | as canary | none yet |
 
@@ -319,7 +319,7 @@ Full procedure, per lane, in the companion `N8N_MONITORING_AND_REMEDIATION_STAND
 | Relay routes | `/status`, `/due`, `/runs/<lane_id>/last`, `/run`, `/event` (POST /event on main via #1663, needs a promote) | `n8n_run_relay.py` `ROUTES` |
 | Generic workflows | imported inactive; published 15:53, unpublished 15:58 ET (W0 rollback) | `packets/w0-import-six/` |
 | Live per-lane n8n workflows | 4: `n8n-incident-fanin` (722fac0e043ea5c4), `n8n-pilot-dispatch` (078e8fcbea0c5020), `n8n-research-intake-consumer` (21fd15d5f8a4c4da), `crontab-snapshot-for-health-agent` (c0d4c7845e5c4fcc) | registry `kind: n8n` ACTIVE rows |
-| Shadow rows | 36 on main (wave 1: 22, #1656; wave 2: 14, #1661); 19 R1 rows staged, activated by #1665 (OPEN) → 55 | registry `stage: shadow` |
+| Shadow rows | 36 on main (wave 1: 22, #1656; wave 2: 14, #1661); 19 R1 rows activated by #1665 (merged 20:40Z, `e8a4a6815`, not yet promoted) → 55 | registry `stage: shadow` |
 | Flock for R1 learn lanes | L318, L314, L427 `flock -n` installed 16:20 ET (cron grant 08c0bb77ec898136; backup `~/.local/state/tradeai/backups/crontab-20261010T202023Z-pre-wave23-flock.txt`) | `packets/wave23-flock/` |
 | Incident notifier | cron L1052, ACTIVE since 2026-10-09 23:34 ET | registry `incident-notifier` (#1654) |
 | SIEM bridge, diagnoser | registry rows PAUSED (#1657), not installed | `packets/siem-diagnoser-schedule/` |

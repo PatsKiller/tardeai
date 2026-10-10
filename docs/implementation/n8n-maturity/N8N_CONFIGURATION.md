@@ -210,7 +210,7 @@ One-line summaries; the procedure is in [`N8N_MONITORING_AND_REMEDIATION_STANDAR
 | 2026-10-10 16:20 | `flock -n` on crontab L318, L314, L427 (wave-3 learn lanes) | cron grant 08c0bb77ec898136; `packets/wave23-flock/` |
 | 2026-10-10 16:27 | gateway lane `n8n-workflow-error` (drop-in `20-workflow-error-lane.conf`) | config-write 8c235faa82733127, service 7752d1c23506de55 |
 | 2026-10-10 16:27 | `llm_process_config` row `n8n_lane_failure_diagnosis` synced to the registry | `packets/llm-seed-sync/apply-20261010.txt` |
-| pending | wave-3 activation: 19 R1 rows to `stage: shadow` (#1665 OPEN) | registry PR |
+| 2026-10-10 16:40 | wave-3 activation: 19 R1 rows to `stage: shadow` (merge #1665 `e8a4a6815`; live once promoted) | registry PR |
 
 ---
 
@@ -235,4 +235,4 @@ One-line summaries; the procedure is in [`N8N_MONITORING_AND_REMEDIATION_STANDAR
 | 15 | Off-host n8n backup copy (W16) | operator |
 | 16 | Older off-peak wrapper copy in `~/.config/tradeai/bin` used by 17 crontab lines | inventory row + cron grant |
 | 17 | Remediation catalogue stale vs host inventory; regenerate before activation | agent PR |
-| 18 | #1665 merge (wave-3 activation) | operator / §23.13 |
+| 18 | Promote main with #1663/#1664/#1665 (relay `/event`, wave-3 shadow rows) | operator promote |

@@ -41,7 +41,7 @@ that record. It is updated **every time a job is retired, consolidated or cut ov
 | 2026-10-10 15:58 | Dispatch shadow waves 2+3: 14 more shadow rows; 19 R1 rows staged `r1_pending` (inert until activation) | 14 + 19 registry rows (wave 2: cron:L433 L435 L444 L1000 L1002 L969 L975 L137 L147 L161 L605 L908 L685 L686; wave 3: L381 L406 L420 L447 L750 L413 L504 L418 L553 L508 L552 L877 L409 L411 L551 L408 L318 L314 L427) | merge #1661; dry runs from CURRENT, 154,675-file snapshot unchanged |
 | 2026-10-10 16:20 | `flock -n` added to crontab L318 (agent_outcome_linker), L314 (agent_calibration_engine), L427 (update_agent_performance) so their allowlist locks equal the cron locks | cron:L318 L314 L427 | cron grant 08c0bb77ec898136; backup `~/.local/state/tradeai/backups/crontab-20261010T202023Z-pre-wave23-flock.txt`; `packets/wave23-flock/` |
 | 2026-10-10 16:27 | Gateway lane `n8n-workflow-error` allowed (relay `POST /event`); no cron line changed | systemd `tradeai-n8n-coordination-gateway` drop-in `20-workflow-error-lane.conf` | config-write 8c235faa82733127, service 7752d1c23506de55; `packets/gateway-lane-evidence/install-20261010.log` |
-| pending | Wave-3 activation: the 19 staged R1 rows move to `stage: shadow` (`dispatch.mode: dry_run`) | 19 registry rows | #1665 (OPEN) |
+| 2026-10-10 16:40 | Wave-3 activation merged: the 19 staged R1 rows move to `stage: shadow` (`dispatch.mode: dry_run`); live once promoted | 19 registry rows | merge #1665 `e8a4a6815` (20:40Z); not yet promoted |
 
 Procedure for any n8n change that this log records: `../N8N_ONBOARDING_STANDARD.md`; configuration reference:
 `../N8N_CONFIGURATION.md`.
