@@ -239,6 +239,14 @@ def test_premarket_due_window_is_a_subset_of_the_live_line():
     s = ROWS["active-trader-premarket-watch"]["scheduler"]
     assert s["expression"] == "*/5 6-9 * * 1-5"
     assert s["due_schedules"] == ["*/5 6-8 * * 1-5", "0-25/5 9 * * 1-5"]
+    SBD = _sbd()
+    now = datetime(2026, 10, 9, 13, 50, tzinfo=timezone.utc)            # 09:50 EDT, Friday
+    lane = {"scheduler": {"kind": "cron", "expression": s["expression"]}, "expected_cadence_hours": 0.084}
+    assert SBD._expected_since(lane, now, 240)[0] == datetime(2026, 10, 9, 13, 45, tzinfo=timezone.utc)
+    lane["scheduler"]["due_schedules"] = s["due_schedules"]
+    assert SBD._expected_since(lane, now, 240)[0] == datetime(2026, 10, 9, 13, 25, tzinfo=timezone.utc)  # 09:25
+    assert SBD._expected_since(lane, datetime(2026, 10, 9, 11, 0, tzinfo=timezone.utc), 240)[0] == datetime(
+        2026, 10, 9, 10, 55, tzinfo=timezone.utc)                          # 06:55 EDT, inside the window
 
 
 def test_sla_max_silence_follows_the_real_cadence():

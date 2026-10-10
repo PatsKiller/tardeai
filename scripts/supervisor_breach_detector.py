@@ -110,6 +110,11 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
     """
     sched = lane.get("scheduler") or {}
     expr = str(sched.get("expression") or "")
+    # registry-ops-crons 2026-10-09: `due_schedules` (a subset of the crontab schedule) names the fires whose
+    # output is due, e.g. premarket_watch.py writes no heartbeat after 09:29 while its line fires to 09:55.
+    due = sched.get("due_schedules")
+    if isinstance(due, list) and due and all(isinstance(x, str) and x.strip() for x in due):
+        expr = " + ".join(x.strip() for x in due)
     cad_h = lane.get("expected_cadence_hours")
     if sched.get("kind") == "cron":
         # the most recent fire that has had max_run to finish: a run still in progress is not a miss
