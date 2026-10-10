@@ -3734,6 +3734,13 @@ GATES = [
             # AGENTS 4.4.0 is ACTIVE; refused while PROPOSED, admitted with the status flipped in-test; compute_due
             # week sweep; allowlist live_arg null, lock = cron lock, no broker credential. Hermetic: repo config.
             "tests/test_dispatch_shadow_wave3_r1_20261010.py",
+            # Gateway /due latency (W0 re-run 2026-10-10 ~17:14 ET, relay_gateway_unreachable under 3-4 concurrent
+            # /due at CPUQuota=20%): the precomputed / split-lookup / memoized forbidden-token matcher equals a
+            # verbatim copy of the old one on every served-registry text and a compound corpus; DueResponse@v1
+            # byte-identical with either matcher over 36 h + catch-up + DST fold; 3-4 concurrent cold due calls
+            # through the real gateway HTTP server under 2 s wall and a CPU budget that holds at the quota.
+            # Hermetic: tmp_path ledger, port 0, repo config read only.
+            "tests/test_gateway_due_latency_20261010.py",
         ],
     ),
     (
@@ -4252,6 +4259,41 @@ GATES = [
         # UNDECLARED_N8N_WORKFLOW; an unknown id still fails; a missing/foreign INDEX fails closed. Hermetic.
         "lane_registry_generic_workflows_20261010",
         ["tests/test_lane_registry_generic_workflows_20261010.py"],
+    ),
+    (
+        # Alpha Vantage phantom spend (API overlap Q5, 2026-10-10): _fetch_alpha_vantage checks the
+        # ENABLE_ALPHA_VANTAGE_CATALYST flag and key before api_budget.spend(), and spend() checks the cap
+        # before incrementing (refusals are not counted). Hermetic fakes.
+        "alpha_vantage_phantom_spend_20261010",
+        ["tests/test_alpha_vantage_phantom_spend_20261010.py"],
+    ),
+    (
+        # etf_analyst_enrich pass 2 (API overlap Q10, 2026-10-10): save_yahoo_analyst_targets_history is called
+        # (snapshot_date, targets_payload) by keyword; reversed positional order discarded every constituent .info call.
+        # Pins the real signature (ast) and constituents_fetched == fetched. Hermetic fakes.
+        "etf_analyst_enrich_arg_order_20261010",
+        ["tests/test_etf_analyst_enrich_arg_order_20261010.py"],
+    ),
+    (
+        # sec_form4 dedupe (API overlap Q10, 2026-10-10): the unique key includes transaction_date, never set, so NULL never
+        # conflicted (7,960 rows / 530 sec_url). Insert only when no (symbol, sec_url) row exists; re-runs add 0 rows;
+        # a shared accession still lands per symbol. Hermetic fake applying PG NULL-unique semantics; scratch-PG test opt-in.
+        "sec_form4_dedupe_20261010",
+        ["tests/test_sec_form4_dedupe_20261010.py"],
+    ),
+    (
+        # YouTube channel-id cache (API overlap Q9, 2026-10-10): a tracked channel stored with a slug id resolves its UC id
+        # once via channels.list forHandle/forUsername (1 unit), cached in data/runtime; later runs list the uploads
+        # playlist instead of search.list (100 units). Failed lookup negative-cached, search fallback unchanged. Hermetic.
+        "youtube_channel_id_cache_20261010",
+        ["tests/test_youtube_channel_id_cache_20261010.py"],
+    ),
+    (
+        # Desk-loop cost-cap backoff (API overlap Q6, 2026-10-10): after COST_CAP_EXCEEDED inside try_fulfill_pending_replies
+        # the pass makes no bridge call until the next America/New_York midnight (the ledger day); under the cap and
+        # on interactive asks nothing changes. Before: 15 bridge calls in 5 refused passes; after: 1. Hermetic fakes.
+        "desk_loop_cost_cap_backoff_20261010",
+        ["tests/test_desk_loop_cost_cap_backoff_20261010.py"],
     ),
 ]
 
