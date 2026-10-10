@@ -20,6 +20,7 @@ Usage:
 Exit code: number of FAILs (NOT_SCHEDULED + STALE), capped at 250.
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -27,6 +28,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOGS = PROJECT_ROOT / "logs"
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 # ── Registry: jobs that must run. cadence_h = max hours between heartbeats.
 #   signal: ("log", filename) → use log mtime;  ("db", sql) → MAX(timestamp) from DB.
@@ -36,20 +38,25 @@ REGISTRY = [
      "signal": ("db", "SELECT MAX(holdings_llm_at) FROM watchlist_items WHERE source='portfolio'")},
     {"name": "catalyst_momentum_engine", "schedule_match": "catalyst_momentum_engine.py", "cadence_h": 30,
      "signal": ("db", "SELECT MAX(created_at) FROM hermes_research_intelligence WHERE research_type='momentum_catalyst'")},
+    # llm_priority_guard.sh defers it 06:00-11:59 ET on weekdays, so those ticks write nothing.
     {"name": "hermes_coordinator", "schedule_match": "hermes_coordinator.py", "cadence_h": 1,
-     "signal": ("log", "hermes_coordinator.log")},
+     "signal": ("log", "hermes_coordinator.log"),
+     "schedule_exprs": ["*/15 0-5,12-23 * * 1-5", "*/15 * * * 0,6"]},
     {"name": "iterate_research_topics", "schedule_match": "iterate_research_topics.py", "cadence_h": 30,
      "signal": ("log", "research_iterate.log")},
     {"name": "topic_ingestion", "schedule_match": "topic_ingestion.py", "cadence_h": 96,
      "signal": ("log", "topic_ingestion.log")},
-    {"name": "process_watchlist_agent_jobs", "schedule_match": "process_watchlist_agent_jobs.py", "cadence_h": 3,
+    # 2026-09-15: the direct line was retired; the off-peak wrapper runs the same worker.
+    {"name": "process_watchlist_agent_jobs", "schedule_match": "run_watchlist_agent_jobs_offpeak.sh", "cadence_h": 3,
      "signal": ("db", "SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'")},
     {"name": "aegis_overnight", "schedule_match": "aegis_overnight.py", "cadence_h": 30,
+     "systemd_timer": "aegis-overnight.timer",
      "signal": ("db", "SELECT MAX(observed_at) FROM aegis_portfolio_briefs")},
     {"name": "portfolio_server_watchdog", "schedule_match": "portfolio_server_watchdog.sh", "cadence_h": 1,
      "signal": ("log", ".portfolio_watchdog_heartbeat")},
-    {"name": "drive_sync", "schedule_match": "sync-docs-to-drive.sh", "cadence_h": 26,
-     "signal": ("log", "drive-sync.log")},
+    # The :05 docs sync and :35 code mirror were folded into run_drive_syncs.sh (lane drive-syncs-hourly).
+    {"name": "drive_sync", "schedule_match": "run_drive_syncs.sh", "cadence_h": 26,
+     "signal": ("log", "drive-syncs.log")},
     {"name": "news_ingestion", "schedule_match": "news_ingestion.py", "cadence_h": 12,
      "signal": ("db", "SELECT MAX(created_at) FROM news_articles")},
     {"name": "rag_embeddings", "schedule_match": "rag_indexer.py", "cadence_h": 72,
@@ -70,8 +77,9 @@ REGISTRY = [
      "signal": ("db", "SELECT MAX(captured_at) FROM options_iv_history")},
     {"name": "atm_auto_approver", "schedule_match": "atm_auto_approver.py", "cadence_h": 1,
      "signal": ("log", "atm.log")},
+    # The pipeline writes its own log (protection_pipeline.log); the cron redirect only catches gate noise.
     {"name": "protection_pipeline", "schedule_match": "run_protection_pipeline.sh", "cadence_h": 2,
-     "signal": ("log", "protection_pipeline_cron.log")},
+     "signal": ("log", "protection_pipeline.log")},
     {"name": "watchlist_proposal_bridge", "schedule_match": "watchlist_proposal_bridge.py", "cadence_h": 1,
      "signal": ("log", "watchlist_proposal_bridge.log")},
     {"name": "pullback_macd_screener", "schedule_match": "run_pullback_macd_screener.sh", "cadence_h": 30,
@@ -144,13 +152,62 @@ def _is_scheduled(match, cron_lines):
     return any(match in ln for ln in cron_lines)
 
 
+def _timer_active(unit):
+    try:
+        out = subprocess.run(["systemctl", "--user", "is-active", unit], capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() == "active"
+    except Exception:
+        return False
+
+
+def _cron_exprs(match, cron_lines):
+    """The schedule expressions of the active crontab lines that run this job."""
+    from lib.cron_schedule import REBOOT, cron_fields  # the shared 5-field extractor
+
+    out = []
+    for ln in cron_lines:
+        if match not in ln:
+            continue
+        fields = cron_fields(ln)
+        if fields and fields != REBOOT:
+            out.append(fields)
+    return out
+
+
+def _hours_since_due(exprs, now=None):
+    """Hours since the job was last due to run (0 when unknown).
+
+    2026-10-09: the monitor runs at 08:30 and 20:30, so every market-hours job (10:00-15:00, 09:00-16:00,
+    ...) read STALE every morning and evening — 6 of the 9 FAILs that day were jobs idle by schedule.
+    Staleness is now measured from the last scheduled fire, not from wall-clock now.
+    """
+    if not exprs:
+        return 0.0
+    import datetime as _dt
+
+    from lib.cron_last_fire import last_fire
+
+    now = now or _dt.datetime.now()
+    fires = [f for f in (last_fire(e, now) for e in exprs) if f is not None]
+    if not fires:
+        return 0.0
+    return max(0.0, (now - max(fires)).total_seconds() / 3600)
+
+
+def _log_bases():
+    # Logs live in the served tree's logs/ (persistent-state), the dev tree's logs/ (launchers and
+    # wrappers that cd there: options monitor, pullback screener, protection pipeline) or ~/logs.
+    dev = Path(os.environ.get("TRADEAI_DEV_TREE") or Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild")
+    return (LOGS, dev / "logs", Path.home() / "logs")
+
+
 def _log_age_h(fname):
-    # Logs live in either the project logs/ or the operator's ~/logs.
-    for base in (LOGS, Path.home() / "logs"):
+    ages = []
+    for base in _log_bases():
         p = base / fname
         if p.exists():
-            return round((time.time() - p.stat().st_mtime) / 3600, 1)
-    return None
+            ages.append(round((time.time() - p.stat().st_mtime) / 3600, 1))
+    return min(ages) if ages else None
 
 
 def _db_age_h(sql):
@@ -173,19 +230,27 @@ def evaluate():
     cron_lines = _crontab_lines()
     results = []
     for job in REGISTRY:
-        scheduled = _is_scheduled(job["schedule_match"], cron_lines)
+        timer = job.get("systemd_timer")
+        scheduled = _is_scheduled(job["schedule_match"], cron_lines) or bool(timer and _timer_active(timer))
         kind, arg = job["signal"]
         age = _log_age_h(arg) if kind == "log" else _db_age_h(arg)
+        idle = _hours_since_due(job.get("schedule_exprs") or _cron_exprs(job["schedule_match"], cron_lines))
+        # Never looser than the cadence while the job is in its window; outside it, the output only has to
+        # postdate the last due fire (plus up to 1h of run time).
+        allowed = max(job["cadence_h"], idle + min(job["cadence_h"], 1.0))
         if not scheduled:
-            status, detail = "NOT_SCHEDULED", f"not in crontab (last signal {age}h ago)" if age is not None else "not in crontab, no heartbeat"
+            where = f"crontab or {timer}" if timer else "crontab"
+            status, detail = "NOT_SCHEDULED", (f"not in {where} (last signal {age}h ago)" if age is not None
+                                              else f"not in {where}, no heartbeat")
         elif age is None:
             status, detail = "NO_SIGNAL", "scheduled but no heartbeat found yet"
-        elif age > job["cadence_h"]:
-            status, detail = "STALE", f"{age}h since last run (max {job['cadence_h']}h)"
+        elif age > allowed:
+            status, detail = "STALE", f"{age}h since last run (max {allowed:.1f}h; last due {idle:.1f}h ago)"
         else:
-            status, detail = "OK", f"{age}h ago (max {job['cadence_h']}h)"
+            status, detail = "OK", f"{age}h ago (max {allowed:.1f}h; last due {idle:.1f}h ago)"
         results.append({"job": job["name"], "status": status, "detail": detail,
-                        "age_hours": age, "cadence_hours": job["cadence_h"], "scheduled": scheduled})
+                        "age_hours": age, "cadence_hours": job["cadence_h"], "idle_hours": round(idle, 1),
+                        "scheduled": scheduled})
     return results
 
 

@@ -25,6 +25,10 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # surfaces as a confusing second ModuleNotFoundError rather than the first.
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 
 _env_path = PROJECT_ROOT / ".env"
 if _env_path.exists():
@@ -577,7 +581,7 @@ def write_formal_export(brief: dict, summary: str) -> str:
     ])
 
     # Write to reports directory
-    export_dir = PROJECT_ROOT / "data" / "portfolios" / "reports"
+    export_dir = _portfolio_reports_root()
     export_dir.mkdir(parents=True, exist_ok=True)
     export_path = export_dir / f"aegis_morning_brief_{today}.md"
     export_path.write_text("\n".join(lines))

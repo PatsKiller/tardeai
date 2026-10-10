@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Bearer-authenticated n8n run relay; never spawns and never holds provider credentials.
 
+2026-10-09 (n8n maturity B5.3, design 02 §3.1/§4): GET /due?source=&lane=&limit= signs a coordination_read
+claim and forwards to the gateway's read-only `coordination/due`; every forwarded call appends one
+{"op": "due"} line to relay_log.jsonl, the dispatcher's liveness signal. GET /runs/<lane>/last?mode=dry_run|live
+filters the last run by mode (no query keeps the old any-mode answer).
+
 During rotation the relay accepts TRADEAI_N8N_RELAY_BEARER or TRADEAI_N8N_RELAY_BEARER_PREVIOUS.
 A missing previous bearer is the pre-rotation state. A short one refuses to start.
 
@@ -28,14 +33,19 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import parse_qs
 
 # Support direct execution from outside the repository, as systemd does.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.lib.n8n_coordination_gateway import RUN_ID_RE, SCOPE_RUN, RELAY_CALLER, sign_claim
+from scripts.lib.n8n_coordination_gateway import RUN_ID_RE, SCOPE_READ, SCOPE_RUN, RELAY_CALLER, sign_claim
 from scripts.lib.n8n_coordination_projection import ledger_path, project_runs
+from scripts.lib.n8n_due import DEFAULT_LIMIT as DUE_DEFAULT_LIMIT  # noqa: E402  (config/n8n_due.json)
+from scripts.lib.n8n_due import MAX_LANE_FILTER as DUE_MAX_LANES  # noqa: E402
+from scripts.lib.n8n_due import MAX_LIMIT as DUE_MAX_LIMIT  # noqa: E402
+from scripts.lib.n8n_due import SOURCES as DUE_SOURCES  # noqa: E402
 from scripts.lib.n8n_relay_env import enforce as enforce_relay_env
 from scripts.n8n_coordination_gateway import BLOCKED_PORTS, DEFAULT_RUN_ALLOWLIST, load_run_allowlist
 
@@ -49,6 +59,10 @@ BEARER_PREVIOUS_ENV = "TRADEAI_N8N_RELAY_BEARER_PREVIOUS"
 N8N_KEY_ENV = "TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N"
 LIVE_LANES_ENV = "TRADEAI_N8N_RELAY_LIVE_LANES"
 DEFAULT_GATEWAY = "http://127.0.0.1:18091"
+#: limit is at most 3 ASCII digits before int(): no Unicode digits ("²", "١٢"), no huge-int parsing.
+DUE_LIMIT_DIGITS = len(str(DUE_MAX_LIMIT))
+DUE_QUERY_KEYS = frozenset({"source", "lane", "limit"})
+RUN_MODES = frozenset({"dry_run", "live"})
 MAX_BODY = 1024
 MIN_KEY_BYTES = 32
 LAST_SCHEMA = "N8nRunRelayLast@v1"
@@ -70,6 +84,7 @@ REFUSALS = frozenset(
         "relay_gateway_http_error",
         "relay_missing_secret",
         "relay_bad_bind",
+        "relay_bad_query",
     }
 )
 
@@ -208,7 +223,7 @@ class Relay:
         self.clock = clock
         self.transport = transport or self._transport
         self.started_at = datetime.now(timezone.utc).isoformat()
-        self.counts = {"requested": 0, "refused": 0, "auth_failures": 0, "gateway_unreachable": 0}
+        self.counts = {"requested": 0, "refused": 0, "auth_failures": 0, "gateway_unreachable": 0, "due": 0}
         self.last: dict[str, Any] | None = None
         root = Path(self.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
         self.log_dir = root / "data" / "runtime" / "n8n_relay"
@@ -343,12 +358,98 @@ class Relay:
         reply["gateway_http_status"] = gateway_status
         return status, reply
 
-    def last_run(self, authorization: str | None, lane_id: str) -> tuple[int, dict[str, Any]]:
-        """Read-only newest runs row for one lane. Never calls the gateway and never runs a command."""
+    def due(self, authorization: str | None, query: str = "") -> tuple[int, dict[str, Any]]:
+        """GET /due passthrough to the gateway's read-only coordination/due (design 02 §3.1). The relay validates
+        only the query shape; the gateway owns source / lane_filter / clock checks. One {"op": "due"} log line
+        per forwarded call (dispatcher liveness, §4)."""
+        if not self._auth(authorization):
+            self.counts["auth_failures"] += 1
+            return self._refuse("relay_bad_bearer", 401, op="due")
+        try:
+            params = parse_qs(query, keep_blank_values=True, strict_parsing=bool(query))
+        except ValueError:
+            return self._refuse("relay_bad_query", 400, op="due")
+        if set(params) - DUE_QUERY_KEYS or any(len(params.get(k, [])) > 1 for k in ("source", "limit")):
+            return self._refuse("relay_bad_query", 400, op="due")
+        source = params.get("source", ["schedule"])[0]
+        if source not in DUE_SOURCES:                      # validated before anything logs it
+            return self._refuse("relay_bad_query", 400, op="due")
+        lane_values = params.get("lane", [])
+        if sum(len(v) for v in lane_values) > DUE_MAX_LANES * 65:   # bound before splitting (64-char ids + commas)
+            return self._refuse("relay_bad_query", 400, op="due")
+        lanes = [x for v in lane_values for x in v.split(",") if x]
+        if any(not _LANE_ID_RE.fullmatch(x) for x in lanes) or len(lanes) > DUE_MAX_LANES:
+            return self._refuse("relay_bad_query", 400, op="due")
+        raw_limit = params.get("limit", [str(DUE_DEFAULT_LIMIT)])[0]
+        if not (raw_limit.isascii() and raw_limit.isdigit() and len(raw_limit) <= DUE_LIMIT_DIGITS) \
+                or int(raw_limit) < 1:
+            return self._refuse("relay_bad_query", 400, op="due")
+        limit = min(int(raw_limit), DUE_MAX_LIMIT)
+        now = self.clock()
+        claim = {
+            "v": 1,
+            "caller_id": RELAY_CALLER,
+            "project": "trade-ai",
+            "iat": now,
+            "exp": now + 120,
+            "nonce": secrets.token_urlsafe(12),
+            "scope": SCOPE_READ,
+        }
+        payload: dict[str, Any] = {
+            "route": "coordination/due",
+            "operation": "due",
+            "claim": claim,
+            "signature": sign_claim(claim, self.key),
+            "source": source,
+            "now": datetime.fromtimestamp(now, timezone.utc).isoformat(),
+            "limit": limit,
+        }
+        if lanes:
+            payload["lane_filter"] = lanes
+        self.counts["due"] += 1
+        try:
+            gateway_status, reply = self.transport(self.gateway_url + "/v1/coordination", payload)
+        except (OSError, urllib.error.URLError, TimeoutError):
+            self.counts["gateway_unreachable"] += 1
+            return self._refuse("relay_gateway_unreachable", 502, op="due", source=source)
+        ok = reply.get("schema") == "DueResponse@v1" and reply.get("ok") is True
+        items = reply.get("items") if ok and isinstance(reply.get("items"), list) else []
+        self._log({
+            "at": datetime.now(timezone.utc).isoformat(),
+            "op": "due",
+            "state": "OK" if ok else "REFUSED",
+            "reason": None if ok else str(reply.get("reason") or "")[:64],
+            "source": source,
+            "limit": limit,
+            "items": len(items),
+            "truncated": reply.get("truncated", 0) if ok else 0,
+            "gateway_http_status": gateway_status,
+        })
+        if ok:
+            return 200, reply
+        return (gateway_status if isinstance(gateway_status, int) and gateway_status >= 400 else 403), reply
+
+    def last_run(self, authorization: str | None, lane_id: str, query: str = "") -> tuple[int, dict[str, Any]]:
+        """Read-only newest runs row for one lane. Never calls the gateway and never runs a command.
+
+        2026-10-09 (B5.3): ``?mode=dry_run|live`` filters by mode (design 02 §3.2 step 4: a dry_run row must not
+        answer a live question). No query keeps the old any-mode answer; any other query is 400."""
         if not self._auth(authorization):
             self.counts["auth_failures"] += 1
             return self._refuse("relay_bad_bearer", 401)
-        proj = project_runs(ledger_path(self.environ), lane_id=lane_id, limit=1)
+        mode = None
+        if query:
+            try:
+                params = parse_qs(query, keep_blank_values=True, strict_parsing=True)
+            except ValueError:
+                return self._refuse("relay_bad_query", 400, lane_id=lane_id)
+            if set(params) - {"mode"}:
+                return self._refuse("relay_bad_query", 400, lane_id=lane_id)
+            values = params.get("mode", [])
+            if len(values) != 1 or values[0] not in RUN_MODES:
+                return self._refuse("relay_bad_mode", 400, lane_id=lane_id)
+            mode = values[0]
+        proj = project_runs(ledger_path(self.environ), lane_id=lane_id, limit=1, mode=mode)
         payload = _compact_last(lane_id, proj)
         if payload is None:
             return self._refuse("relay_body_too_large", 413, lane_id=lane_id)
@@ -370,11 +471,14 @@ def handler_for(relay: Relay) -> type[BaseHTTPRequestHandler]:
             return
 
         def do_GET(self) -> None:  # noqa: N802
-            lane_id = parse_last_path(self.path)
+            path, _, query = self.path.partition("?")
+            lane_id = parse_last_path(path)
             if self.path == "/status":
                 status, payload = relay.status(self.headers.get("Authorization"))
+            elif path == "/due":
+                status, payload = relay.due(self.headers.get("Authorization"), query)
             elif lane_id is not None:
-                status, payload = relay.last_run(self.headers.get("Authorization"), lane_id)
+                status, payload = relay.last_run(self.headers.get("Authorization"), lane_id, query)
             else:
                 _json_response(self, 404, {"state": "REFUSED", "reason": "relay_bad_path"})
                 return

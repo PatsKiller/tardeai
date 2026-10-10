@@ -7,7 +7,7 @@
 #   */3 9-16 * * 1-5 cd $PROJ && bash linux_launchers/run_ensemble_worker.sh
 set -uo pipefail
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
-PY="$PROJ/.venv/bin/python"; [ -x "$PY" ] || PY="python3"
+. "$PROJ/scripts/lib/venv_python.sh"; PY="$(tradeai_venv_python "$PROJ")"  # release dirs ship no .venv
 cd "$PROJ"
 exec /usr/bin/flock -n /tmp/tradeai_ensemble_worker.lock \
     timeout 8m "$PY" scripts/inference_ensemble_worker.py --run --limit 5 \

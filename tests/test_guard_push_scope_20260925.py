@@ -1,8 +1,8 @@
 """A git-push grant must name what it covers (AGENTS.md 1.3.0 PROPOSED; review 2026-09-25).
 
 Failure it guards: any active git-push grant authorized -- and budget-overrode -- a push to ANY
-branch; a 100-use campaign grant covered unrelated branches. Default mode WARNS (so existing
-sessions are not broken while the operator decides); TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1 refuses.
+branch; a 100-use campaign grant covered unrelated branches. Default mode REFUSES (operator
+2026-10-09); TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0 restores warn-only.
 """
 
 from __future__ import annotations
@@ -82,8 +82,17 @@ def test_detached_head_never_matches_by_name():
 
 
 # --- ledger-backed decision -------------------------------------------------------------
-def test_unscoped_grant_warns_but_authorizes_by_default(tmp_path: Path, monkeypatch):
+def test_unscoped_grant_refused_by_default(tmp_path: Path, monkeypatch):
+    # Operator 2026-10-09 made enforcement the default.
     monkeypatch.delenv(G.SCOPE_ENFORCE_ENV, raising=False)
+    adir = tmp_path / "a"
+    _grant(adir, "campaign grant, no branch named")
+    v = G.push_authorized_by_guard_scoped(branch="wt/x", head_sha=SHA, adir=adir)
+    assert v["ok"] is False and v["scoped"] is False and v["enforced"] is True
+
+
+def test_unscoped_grant_warns_but_authorizes_when_opted_out(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv(G.SCOPE_ENFORCE_ENV, "0")
     adir = tmp_path / "a"
     _grant(adir, "campaign grant, no branch named")
     v = G.push_authorized_by_guard_scoped(branch="wt/x", head_sha=SHA, adir=adir)
@@ -138,12 +147,12 @@ def test_pre_push_hook_warns_then_refuses_an_unscoped_grant(tmp_path: Path):
         "GUARD_APPROVALS_DIR": str(adir),
         "PYTHONPATH": str(src),
     }
-    warn = _run(["git", "push", "-u", "origin", "main"], cwd=src, env=env)
+    warn = _run(["git", "push", "-u", "origin", "main"], cwd=src, env={**env, G.SCOPE_ENFORCE_ENV: "0"})
     assert warn.returncode == 0, warn.stderr + warn.stdout
     assert "does not name branch 'main'" in warn.stdout + warn.stderr
 
     (src / "README").write_text("second\n")
     subprocess.run(["git", "add", "README"], cwd=src, check=True)
     subprocess.run(["git", "commit", "-m", "second"], cwd=src, check=True)
-    refused = _run(["git", "push", "origin", "main"], cwd=src, env={**env, G.SCOPE_ENFORCE_ENV: "1"})
+    refused = _run(["git", "push", "origin", "main"], cwd=src, env=env)  # default: enforced
     assert refused.returncode != 0, refused.stdout

@@ -45,7 +45,9 @@ DENIED_TOOL_MAP: dict[str, str] = {
     "systemd.*": ALLOWLIST,
 }
 #: The routes the ALLOWLIST mapping relies on. Adding a route means re-reviewing every ALLOWLIST row.
-EXPECTED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run"})
+#: 2026-10-09 re-review (n8n maturity B5.3): coordination/due is a READ route (scope coordination_read, operation
+#: `due` only, writes nothing, returns lane_id/mode/key items); it serves none of the ALLOWLIST rows above.
+EXPECTED_ROUTES = frozenset({"coordination/event", "coordination/status", "coordination/run", "coordination/due"})
 
 
 def _mvl() -> dict:

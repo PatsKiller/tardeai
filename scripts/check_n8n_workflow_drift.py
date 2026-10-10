@@ -13,6 +13,10 @@ with the same id (pending/ included), after normalising:
   * node ``position`` and ``webhookId`` are dropped (canvas layout and n8n-assigned ids are not behaviour);
   * nodes are keyed by name; keys whose value is null are dropped.
 
+Since 2026-10-09 (n8n maturity B5 follow-up) the reviewed copy also includes the six generic, registry-driven
+workflows under docs/implementation/n8n-maturity/workflows/ (``build-generic``; ``--generic-dir`` overrides).
+Their relay URL is the bridge IP, which the same host normalisation covers.
+
 Verdicts per workflow: OK, DRIFT (with the differing fields), MISSING_IN_GIT (no generated file has the
 id: a UI-built or hand-imported workflow). A workflow that still carries the unsubstituted placeholder
 host is reported as ``placeholder_unsubstituted`` beside its verdict: it matches git but cannot reach the
@@ -22,11 +26,15 @@ relay, so every fire fails.
     python3 scripts/check_n8n_workflow_drift.py --write              # live read, write the receipt
     python3 scripts/check_n8n_workflow_drift.py --workflows-json F   # offline (CI / fixtures)
 
-Receipt: ``$TRADEAI_STATE_ROOT/data/runtime/n8n_workflow_drift_last.json`` (``--receipt`` overrides).
-Exit codes: 0 clean (or report-only), 1 DRIFT/MISSING_IN_GIT with --fail-on-drift, 2 cannot run.
+Receipt: ``$TRADEAI_STATE_ROOT/data/runtime/n8n_workflow_drift_last.json`` (``--receipt`` overrides),
+written atomically (tmp + replace) only with --write. scripts/n8n_incident_fanin.py reads it (source
+``n8n_workflow_drift``): DRIFT / MISSING_IN_GIT / placeholder_unsubstituted are P2 incidents, a stale
+receipt of a scheduled lane P2.
+Exit codes: 0 clean (or report-only), 1 DRIFT/MISSING_IN_GIT with --fail-on-drift, 2 cannot run
+(n8n DB or generated INDEX unreadable; no receipt is written, so the fan-in sees the receipt go stale).
 
-Proposed lane ``n8n-workflow-drift-check`` (registry row NEVER_SCHEDULED, allowlist entry): it is not
-scheduled until the operator imports a generated workflow under a grant naming its id.
+Lane ``n8n-workflow-drift-check``: proposed host-side cron (hourly) rather than an n8n workflow, so the
+check of what n8n runs does not depend on n8n itself.
 
 AUTHORITY: READ_ONLY_ADVISORY. One SELECT against the n8n DB; no n8n write, no send, no network.
 """
@@ -61,6 +69,7 @@ MISSING_IN_GIT = "MISSING_IN_GIT"
 FINDING_STATUSES = (DRIFT, MISSING_IN_GIT)
 
 DEFAULT_PLACEHOLDER = "http://RELAY_HOST:18092"
+GENERIC_DIR = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows"   # n8n_workflow_templates GENERIC_DEFAULT_OUT
 DROP_NODE_KEYS = ("position", "webhookId")
 
 
@@ -134,6 +143,19 @@ def diff_fields(live: dict, git: dict) -> list[str]:
     return out
 
 
+def git_reviewed_set(generated_dir: Optional[Path] = None, generic_dir: Optional[Path] = None) -> dict[str, tuple[Path, dict]]:
+    """{workflow id: (file, json)} over the per-lane generated set (pending included) AND the generic set.
+    A missing generic dir contributes nothing; an id present in both is a CANNOT RUN (ambiguous reviewed copy)."""
+    git = dict(inv.git_workflows(generated_dir))
+    gdir = Path(generic_dir) if generic_dir else GENERIC_DIR
+    generic = inv.git_workflows(gdir) if gdir.is_dir() else {}
+    clash = sorted(set(git) & set(generic))
+    if clash:
+        raise ValueError(f"workflow id(s) in both the generated and the generic set: {clash}")
+    git.update(generic)
+    return git
+
+
 def evaluate(
     workflows: list[dict],
     *,
@@ -170,6 +192,39 @@ def evaluate(
     return rows
 
 
+def fanin_findings(rows: list[dict]) -> list[dict]:
+    """Incident findings; scripts/n8n_incident_fanin.py derives the same list from `workflows`.
+
+    P2 for DRIFT, MISSING_IN_GIT and an unsubstituted relay placeholder: the live set no longer matches the
+    reviewed copy (or cannot reach the relay), but the executor still refuses any lane outside
+    config/n8n_run_allowlist.json, so a drifted workflow cannot widen what runs on the host -> not P1."""
+    out = []
+    for r in rows:
+        if r["status"] in FINDING_STATUSES:
+            out.append(
+                {
+                    "source": "n8n_workflow_drift",
+                    "item": f"{r['id']}:{r['status']}:P2",
+                    "severity": "P2",
+                    "detail": f"{r.get('name')} {','.join(r['diffs'])[:120]}",
+                    "artifact_rel": str(RECEIPT_REL),
+                    "store": "data/runtime",
+                }
+            )
+        if r.get("placeholder_unsubstituted"):
+            out.append(
+                {
+                    "source": "n8n_workflow_drift",
+                    "item": f"{r['id']}:placeholder_unsubstituted:P2",
+                    "severity": "P2",
+                    "detail": f"{r.get('name')} still carries the relay URL placeholder; every fire fails",
+                    "artifact_rel": str(RECEIPT_REL),
+                    "store": "data/runtime",
+                }
+            )
+    return out
+
+
 def build_receipt(rows: list[dict], *, source: str, now: Optional[datetime] = None) -> dict:
     now = now or datetime.now(timezone.utc)
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in (OK, DRIFT, MISSING_IN_GIT)}
@@ -186,20 +241,10 @@ def build_receipt(rows: list[dict], *, source: str, now: Optional[datetime] = No
         "placeholder_unsubstituted": unsub,
         "verdict": "CLEAN" if not findings else "DRIFT",
         "workflows": rows,
-        # Shaped like scripts/n8n_incident_fanin.py findings so a later fan-in source can read them
-        # verbatim. NOT wired: nothing sends from here (P18 asks for the check; alerting is a separate PR).
-        "fanin_findings": [
-            {
-                "source": "n8n_workflow_drift",
-                "item": f"{r['id']}:{r['status']}",
-                "severity": "P2",
-                "detail": f"{r.get('name')} {','.join(r['diffs'])[:120]}",
-                "artifact_rel": str(RECEIPT_REL),
-                "store": "data/runtime",
-            }
-            for r in findings
-        ],
-        "fanin_wired": False,
+        # scripts/n8n_incident_fanin.py reads this receipt (source n8n_workflow_drift, 2026-10-09) and
+        # derives the same findings from `workflows`. Nothing here sends.
+        "fanin_findings": fanin_findings(rows),
+        "fanin_wired": True,
     }
 
 
@@ -216,6 +261,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     ap.add_argument("--container", default=inv.DB_CONTAINER)
     ap.add_argument("--generated-dir", default=None)
+    ap.add_argument("--generic-dir", default=None, help="generic workflow set (default " + str(GENERIC_DIR.relative_to(ROOT)) + ")")
     ap.add_argument("--index", default=None, help="generated INDEX.json (relay placeholder)")
     ap.add_argument("--receipt", default=None, help="receipt path (default $STATE_ROOT/" + str(RECEIPT_REL) + ")")
     ap.add_argument("--include-inactive", action="store_true")
@@ -231,7 +277,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             workflows = inv.read_workflow_bodies(container=a.container)
             source = f"docker exec {a.container} psql (SELECT workflow_entity)"
         index = inv.load_generated_index(Path(a.index) if a.index else None)
-        git = inv.git_workflows(Path(a.generated_dir) if a.generated_dir else None)
+        git = git_reviewed_set(Path(a.generated_dir) if a.generated_dir else None,
+                               Path(a.generic_dir) if a.generic_dir else None)
     except Exception as exc:  # noqa: BLE001 — cannot run != clean
         print(f"n8n workflow drift CANNOT RUN: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2

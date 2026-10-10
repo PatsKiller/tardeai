@@ -14,6 +14,10 @@ from decimal import Decimal
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from dotenv import load_dotenv
@@ -355,7 +359,7 @@ def main():
 
     week_dir = PROJECT_ROOT / "archive" / "weekly" / str(today) / "reports_weekly"
     week_dir.mkdir(parents=True, exist_ok=True)
-    analyst_dir = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+    analyst_dir = _portfolio_reports_root() / "analyst"
     analyst_dir.mkdir(parents=True, exist_ok=True)
 
     save_report_json(report, stem=stem)

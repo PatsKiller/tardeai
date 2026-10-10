@@ -528,7 +528,7 @@ def _handle_iris(args: str) -> str:
             from iris_taxonomy_agent import get_library_status
             ls = get_library_status()
             rag = ls.get("rag", {})
-            lines = [f"*Iris Library*", f"RAG: {rag.get('coverage_pct', 0)}% embedded",
+            lines = ["*Iris Library*", f"RAG: {rag.get('coverage_pct', 0)}% embedded",
                      f"Stale: {len(ls.get('stale_symbols', []))} symbols >7d old",
                      f"Dupes: {ls.get('duplicate_groups', 0)} groups",
                      f"Gaps: {len(ls.get('content_gaps', []))} categories thin"]
@@ -1128,12 +1128,12 @@ def process_command(cmd: dict) -> str:
             f"\U0001F4B0 Portfolio: ${pv/1e6:.2f}M",
             f"\U0001F4C8 Income: ${income:,.0f}/yr ({int(income/55000*100)}% of $55K)",
             f"\U0001F3E6 Tax: {12 if agi - float(tax.get('standard_deduction') or 15700) < 47150 else 22}% | Room: ${room:,.0f} | Roth: ${roth:,.0f}",
-            f"",
+            "",
             f"\U0001F916 Agent jobs (24h): {agents_str}",
             f"\u26A1 Queued: {queued} | Decisions: {decisions} | Actionable: {actionable}",
             f"\U0001F6A8 Escalations (24h): {escalations}",
-            f"",
-            f"\U0001F517 http://ms01-openclaw:7777/v2/",
+            "",
+            "\U0001F517 http://ms01-openclaw:7777/v2/",
         ]
         return "\n".join(lines)
 
@@ -1493,7 +1493,7 @@ def process_command(cmd: dict) -> str:
             lines = ["*Pending Proposals:*"]
             for r in rows:
                 lines.append(f"  #{r[0]} {r[1]} → {r[2]} (conf:{r[3]:.0%})" if r[3] else f"  #{r[0]} {r[1]} → {r[2]}")
-            lines.append(f"\n_approve proposal <id>_ or _reject proposal <id>_")
+            lines.append("\n_approve proposal <id>_ or _reject proposal <id>_")
             return "\n".join(lines)
         except Exception as e:
             return f"Error: {e}"
@@ -1511,7 +1511,7 @@ def process_command(cmd: dict) -> str:
             lines = ["*Pending Tasks:*"]
             for r in rows:
                 lines.append(f"  #{r[0]} [{r[3]}] {r[1]} — {r[2][:60]}")
-            lines.append(f"\n_approve task <id>_ or _reject task <id>_")
+            lines.append("\n_approve task <id>_ or _reject task <id>_")
             return "\n".join(lines)
         except Exception as e:
             return f"Error: {e}"
@@ -1847,7 +1847,7 @@ def process_command(cmd: dict) -> str:
                     f"${float(p.get('proposed_entry',0)):.2f} x {p.get('proposed_shares',0)} "
                     f"risk=${float(p.get('proposed_dollar_risk',0)):.0f} "
                     f"RG:{p.get('risk_gate_result','?')}")
-            lines.append(f"\nApprove: /ptapprove ID\nReject: /ptreject ID reason")
+            lines.append("\nApprove: /ptapprove ID\nReject: /ptreject ID reason")
             return '\n'.join(lines)
         except Exception as e:
             return f"\u274c Pending proposals error: {e}"
@@ -2159,7 +2159,6 @@ def process_command(cmd: dict) -> str:
             from paper_execution_revalidator import revalidate, get_pending_proposals, save_recheck, check_safety
             from market_session import is_market_open, current_market_session
             from session13_db import get_conn
-            import os
             pid = int(args.strip())
 
             # Safety gates

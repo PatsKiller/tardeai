@@ -218,6 +218,36 @@ def get_symbol_news(db_query, symbol: str, *, days: int = 45, limit: int = 6) ->
     return out
 
 
+def get_news_bulk(db_query, symbols: list[str], *, hours: int = 72, per_symbol: int = 6) -> dict[str, list[dict[str, Any]]]:
+    """{SYMBOL: [articles newest first]} for many symbols in one query (news_articles, registry domain catalyst_news),
+    for the 5-min scalp lane's catalyst read (2026-10-09). Same-title rows collapse per symbol. Read-only."""
+    syms = sorted({(s or "").upper().strip() for s in symbols if s and str(s).strip()})
+    if not syms:
+        return {}
+    rows = db_query(
+        f"""
+        SELECT upper(symbol) AS symbol, title, source, source_url, published_at
+        FROM news_articles
+        WHERE upper(symbol) = ANY(%s) AND published_at > now() - make_interval(hours => %s)
+          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL AND {not_news_sql()}
+        ORDER BY upper(symbol), published_at DESC
+        """,
+        (syms, int(hours)),
+    ) or []
+    out: dict[str, list[dict[str, Any]]] = {}
+    seen: dict[str, set[str]] = {}
+    for r in rows:
+        sym = str(r.get("symbol") or "")
+        key = title_key(r.get("title"))
+        if not sym or not key or key in seen.setdefault(sym, set()) or len(out.get(sym, [])) >= int(per_symbol):
+            continue
+        seen[sym].add(key)
+        at = r.get("published_at")
+        out.setdefault(sym, []).append({"title": r.get("title"), "source": r.get("source"), "url": r.get("source_url"),
+                                        "published_at": at.isoformat() if hasattr(at, "isoformat") else at})
+    return out
+
+
 def get_symbol_catalysts(db_query, symbol: str, *, days: int = 90, limit: int = 5) -> list[dict[str, Any]]:
     """Typed catalysts for one symbol, newest first (catalyst_events; 'other' is untyped news and is excluded), each
     normalized with the verified flag (confidence >= 0.3). For the opportunity modal (operator 2026-10-08). Read-only."""

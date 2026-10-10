@@ -823,6 +823,10 @@ def _check_output_validity(component, log_file, error_signatures=None, success_s
 _RETRY_DISARMED_LOGGED: set = set()
 
 
+def _retry_armed() -> bool:
+    return os.environ.get("TRADEAI_HEALTH_AGENT_RETRY", "0") == "1"
+
+
 def _attempt_retry(comp, conn):
     """Attempt automatic retry of a failed component. Max 2 retries per day."""
     cmd = comp.get("retry_cmd")
@@ -836,7 +840,7 @@ def _attempt_retry(comp, conn):
     # path stays DISARMED unless TRADEAI_HEALTH_AGENT_RETRY=1.
     if cmd.startswith(".venv/bin/python"):
         cmd = sys.executable + cmd[len(".venv/bin/python"):]
-    if os.environ.get("TRADEAI_HEALTH_AGENT_RETRY", "0") != "1":
+    if not _retry_armed():
         if component not in _RETRY_DISARMED_LOGGED:
             _RETRY_DISARMED_LOGGED.add(component)
             log.info(f"[retry] {component} — RETRY_DISARMED (set TRADEAI_HEALTH_AGENT_RETRY=1 to arm): {cmd[:80]}")
@@ -1103,7 +1107,7 @@ def _escalate(comp, check_result, conn):
             AND created_at > NOW() - INTERVAL '2 hours'""", [component])
         if (cur.fetchone()[0] or 0) > 0:
             _log_event(conn, component, "ESCALATION_DEDUPED", severity,
-                       f"Suppressed duplicate escalation (2h window)", success=True)
+                       "Suppressed duplicate escalation (2h window)", success=True)
             return
     except Exception:
         pass
@@ -1147,7 +1151,7 @@ def run_health_check(dry_run=True, verbose=False):
         "mode": "dry_run" if dry_run else "active",
         "checks": [],
         "summary": {"ok": 0, "stale": 0, "missing": 0, "failed": 0,
-                     "locked": 0, "retried": 0, "escalated": 0},
+                     "locked": 0, "retried": 0, "retry_disarmed": 0, "escalated": 0},
     }
 
     # Semantic broker freshness is separate from log/file freshness.  Missing local
@@ -1258,14 +1262,23 @@ def run_health_check(dry_run=True, verbose=False):
         # 5. Self-heal
         if needs_action and not dry_run:
             # Try retry first
-            if comp.get("retry_cmd"):
+            if comp.get("retry_cmd") and not _retry_armed():
+                # 2026-10-09: a disarmed retry is not a retry. The summary said "5 retried" on every run
+                # while _attempt_retry returned at RETRY_DISARMED without running anything.
+                check["action_taken"] = "retry_disarmed"
+                report["summary"]["retry_disarmed"] += 1
+                if comp.get("critical"):
+                    _escalate(comp, check, conn)
+                    check["action_taken"] = "retry_disarmed_escalated"
+                    report["summary"]["escalated"] += 1
+            elif comp.get("retry_cmd"):
                 success = _attempt_retry(comp, conn)
                 check["action_taken"] = "retry_success" if success else "retry_failed"
                 report["summary"]["retried"] += 1
                 if success:
                     check["status"] = "RECOVERED"
                     _log_event(conn, component, "RECOVERED", "INFO",
-                               f"Self-healed via retry", action=comp["retry_cmd"][:100], success=True)
+                               "Self-healed via retry", action=comp["retry_cmd"][:100], success=True)
                 else:
                     # Escalate
                     if comp.get("critical"):
@@ -1551,7 +1564,7 @@ def run_health_check(dry_run=True, verbose=False):
                 WHERE created_at > NOW() - INTERVAL '3 hours' AND created_at::date = CURRENT_DATE""")
             _recent_proposals = cur.fetchone()[0] or 0
             if _recent_proposals == 0 and _h >= 10:
-                pipeline_alerts.append(f"⚠️ 0 proposals created in last 3 hours (market open)")
+                pipeline_alerts.append("⚠️ 0 proposals created in last 3 hours (market open)")
 
             # 3. Signal generation — 0 signals today after 10 AM.
             # Include universe size so the cause is attributable: a thin universe points upstream
@@ -1574,7 +1587,7 @@ def run_health_check(dry_run=True, verbose=False):
                     WHERE entry_time::date = CURRENT_DATE AND status != 'cancelled'""")
                 _today_trades = cur.fetchone()[0] or 0
                 if _today_trades == 0 and _h >= 11:
-                    pipeline_alerts.append(f"⚠️ ATM=active but 0 trades today (check proposal pipeline)")
+                    pipeline_alerts.append("⚠️ ATM=active but 0 trades today (check proposal pipeline)")
 
             # 5. Alpaca position sync — SCHEDULE-AWARE.
             # The syncing job (alpaca_paper_adapter --sync-only) runs hourly 10:00-16:00
@@ -1827,7 +1840,7 @@ def run_health_check(dry_run=True, verbose=False):
                 "component": "proposal_enrichment_stuck",
                 "detail": f"Proposal #{_er[0]} {_er[1]} stuck after {_er[2]} enrichment attempts (created {_er[3]})",
                 "fixable": True,
-                "retry_cmd": f".venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 5",
+                "retry_cmd": ".venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 5",
             })
     except Exception:
         pass
@@ -1893,20 +1906,25 @@ def main():
 
     s = report.get("summary", {})
     mode = "DRY RUN" if args.dry_run else "ACTIVE"
-    total = sum(s.values())
+    # Components checked (actions are counted separately, not as extra components).
+    total = sum(s.get(k, 0) for k in ("ok", "stale", "missing", "failed", "locked"))
     log.info(f"[{mode}] Health check complete: {s['ok']}/{total} OK, "
              f"{s['stale']} stale, {s['missing']} missing, {s['failed']} failed, "
-             f"{s['locked']} locked, {s['retried']} retried, {s['escalated']} escalated")
+             f"{s['locked']} locked, {s['retried']} retried, {s.get('retry_disarmed', 0)} retry disarmed, "
+             f"{s['escalated']} escalated")
 
     if args.output_json:
         Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output_json).write_text(json.dumps(report, indent=2, default=str))
 
-    # Return non-zero if any critical component is down
+    # Exit EXIT_FINDING (3) if any critical component is down. Not 1: 1 is what an
+    # uncaught exception exits with, and health_tick.py must tell a crash of this
+    # agent from a finding (n8n maturity B3.1, 2026-10-09; scripts/lib/monitor_exit_codes.py).
     critical_down = [c for c in report.get("checks", [])
                      if c.get("critical") and c.get("status") not in ("OK", "RECOVERED")]
     if critical_down and not args.dry_run:
-        sys.exit(1)
+        from lib.monitor_exit_codes import EXIT_FINDING
+        sys.exit(EXIT_FINDING)
 
 
 if __name__ == "__main__":

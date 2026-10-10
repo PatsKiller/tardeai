@@ -16,6 +16,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+
+def _child_python(code_root) -> str:
+    """Interpreter for child Python steps: release dirs ship no .venv (lib/live_project_root.venv_python)."""
+    try:
+        from lib.live_project_root import venv_python
+    except ImportError:
+        from live_project_root import venv_python
+    return venv_python(code_root)
+
+
 # Config-driven (env override) — no hardcoded gate roster (per no-hardcoded-values rule).
 REQUIRED_AGENTS = tuple(
     a.strip() for a in os.getenv("BROKER_REQUIRED_AGENTS", "maria,risk_agent,steph").split(",") if a.strip()
@@ -364,7 +374,7 @@ def _build_cloud_review_subject(local: dict, context: dict) -> str:
     sym = local.get("symbol") or context.get("symbol") or "?"
     strat = local.get("strategy_id") or context.get("strategy") or "?"
     lines = [
-        f"LIVE broker queue trade review (Path B — real Schwab/Fidelity desk, not Alpaca paper).",
+        "LIVE broker queue trade review (Path B — real Schwab/Fidelity desk, not Alpaca paper).",
         f"Symbol {sym} · strategy {strat} · proposal #{context.get('proposal_id')}.",
         f"As of {context.get('as_of_et') or context.get('as_of_utc') or 'now'}.",
     ]
@@ -466,7 +476,7 @@ def queue_cloud_oversight(proposal_id: int, *, timeout: int = 120) -> dict:
         return {"ok": True, "skipped": True, "reason": "already_running"}
     import subprocess as sp
     root = _project_root()
-    py = str(root / ".venv/bin/python")
+    py = _child_python(root)
     script = str(root / "scripts/broker_promote_oversight.py")
     try:
         sp.Popen(
@@ -614,7 +624,7 @@ def queue_oversight_jobs(proposal_id: int) -> dict:
     row = _q("SELECT symbol FROM paper_trade_proposals WHERE id=%s", (proposal_id,), one=True) or {}
     sym = str(row.get("symbol") or "").upper()
     root = Path(__file__).resolve().parent.parent
-    py = str(root / ".venv/bin/python")
+    py = _child_python(root)
     scripts = root / "scripts"
     started = []
     for script, args in (
@@ -1135,7 +1145,7 @@ def advance_broker_diligence(proposal_id: int) -> dict:
             import subprocess as sp
             root = Path(__file__).resolve().parent.parent
             sp.Popen(
-                [str(root / ".venv/bin/python"), str(root / "scripts/proposal_enrichment_loop.py"),
+                [_child_python(root), str(root / "scripts/proposal_enrichment_loop.py"),
                  "--run", "--proposal-id", str(proposal_id)],
                 cwd=str(root), stdout=sp.DEVNULL, stderr=sp.DEVNULL,
             )

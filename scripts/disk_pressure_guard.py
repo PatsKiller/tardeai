@@ -75,6 +75,12 @@ REALERT_MINUTES = 360
 CONDITION_KEY = "system_health:disk_pressure"
 
 
+try:
+    from lib.live_project_root import venv_python  # noqa: E402  (release dirs ship no .venv)
+except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+    from live_project_root import venv_python  # noqa: E402
+
+
 def disk_used_pct(path: str = "/") -> tuple[float, int, int]:
     """Percent used AS `df` REPORTS IT — used/(used+available), not used/total.
 
@@ -103,7 +109,7 @@ def run_enforcer(*, dry_run: bool) -> dict:
     script = ROOT / "scripts" / "disk_hygiene_enforcer.py"
     if not script.is_file():
         return {"ok": False, "error": "disk_hygiene_enforcer.py missing", "skipped": True}
-    py = str(ROOT / ".venv" / "bin" / "python")
+    py = venv_python(ROOT)
     argv = [py if Path(py).exists() else sys.executable, str(script),
             "--dry-run" if dry_run else "--apply"]
     try:

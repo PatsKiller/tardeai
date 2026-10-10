@@ -66,4 +66,5 @@ def test_the_ratified_slo_is_scheduled_with_a_receipt():
     lanes = {l["lane_id"]: l for l in _json.loads((root / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
     lane = lanes["agent-number-grounding-slo"]
     assert lane["state"] == "ACTIVE" and lane["output_signal"]["path"] == slo["schedule"]["receipt"]
-    assert "--check-slo" in lane["scheduler"]["expression"] and "--out" in lane["scheduler"]["expression"]
+    line = lane["scheduler"]["expression"] + " " + lane["scheduler"].get("command_text", "")  # registry-ops-crons 2026-10-09: bare schedule + command_text
+    assert "--check-slo" in line and "--out" in line

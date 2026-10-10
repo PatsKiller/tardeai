@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:n8n-maturity/due-response.schema.json",
+  "title": "DueResponse@v1",
+  "description": "Response of gateway operation `due` on route `coordination/due` (design 02 §3). Read-only. Only a computed answer carries this label (ok is always true); a refusal (due_clock_skew, bad_source, bad_lane_filter, registry_unreadable, allowlist_unreadable, policies_unreadable) is the gateway's ordinary typed refusal {state: REFUSED, reason} and does not carry `schema`. Items carry only what n8n may echo to coordination/run: lane_id, mode, idempotency_key (server-minted). Commands, locks, argv, paths and timeouts never appear.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "ok", "source", "computed_at", "registry_sha", "allowlist_sha", "policies_sha", "limit", "items", "counts"],
+  "properties": {
+    "schema": {"const": "DueResponse@v1"},
+    "ok": {"const": true},
+    "source": {"enum": ["schedule", "event", "digest"]},
+    "lane_filter": {"type": "array", "items": {"$ref": "#/$defs/lane_id"}, "maxItems": 8},
+    "computed_at": {"type": "string", "format": "date-time"},
+    "tz": {"const": "America/New_York"},
+    "registry_sha": {"$ref": "#/$defs/sha256"},
+    "allowlist_sha": {"$ref": "#/$defs/sha256"},
+    "policies_sha": {"$ref": "#/$defs/sha256"},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+    "truncated": {"type": "integer", "minimum": 0, "description": "Actionable items beyond limit; they stay due next tick inside catchup_min."},
+    "items": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["DUE", "RETRY_DUE", "IN_FLIGHT", "DONE", "RETRY_WAIT", "DEAD_LETTER", "WAITING_AFTER", "BREAKER_OPEN", "MISSED"],
+      "properties": {
+        "DUE": {"type": "integer", "minimum": 0},
+        "RETRY_DUE": {"type": "integer", "minimum": 0},
+        "IN_FLIGHT": {"type": "integer", "minimum": 0},
+        "DONE": {"type": "integer", "minimum": 0},
+        "RETRY_WAIT": {"type": "integer", "minimum": 0},
+        "DEAD_LETTER": {"type": "integer", "minimum": 0},
+        "WAITING_AFTER": {"type": "integer", "minimum": 0},
+        "BREAKER_OPEN": {"type": "integer", "minimum": 0},
+        "MISSED": {"type": "integer", "minimum": 0}
+      }
+    },
+    "held": {
+      "description": "Non-actionable slots worth surfacing (RETRY_WAIT, WAITING_AFTER, BREAKER_OPEN, MISSED, DEAD_LETTER). Read by host monitors; n8n ignores it.",
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lane_id", "mode", "state", "slot_local"],
+        "properties": {
+          "lane_id": {"$ref": "#/$defs/lane_id"},
+          "mode": {"$ref": "#/$defs/mode"},
+          "state": {"enum": ["RETRY_WAIT", "WAITING_AFTER", "BREAKER_OPEN", "MISSED", "DEAD_LETTER"]},
+          "slot_local": {"$ref": "#/$defs/slot_local"},
+          "retry_at": {"type": "string", "format": "date-time"},
+          "wait_deadline": {"type": "string", "format": "date-time"},
+          "waiting_on": {"type": "array", "items": {"$ref": "#/$defs/lane_id"}}
+        }
+      }
+    },
+    "errors": {
+      "description": "Registry rows skipped because their dispatch block could not be evaluated (bad cron, unknown policy), plus after-edge defects that keep the lane evaluated (after_not_dispatched: the predecessor is off/on cron and writes no ledger row, so the edge can only time out; after_mode_unsatisfiable: a live lane after a dry_run-dispatched predecessor). Never fatal for other lanes.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lane_id", "code"],
+        "properties": {
+          "lane_id": {"$ref": "#/$defs/lane_id"},
+          "code": {"enum": ["bad_cron", "unknown_retry_policy", "not_allowlisted", "class_not_permitted", "after_unknown_lane", "after_not_dispatched", "after_mode_unsatisfiable", "trigger_source_unreadable"]},
+          "detail": {"type": "string", "maxLength": 160}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "lane_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{1,63}$"},
+    "mode": {"enum": ["dry_run", "live"]},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "slot_local": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{4}$", "description": "Local America/New_York wall-clock minute (fold 0 on DST fall-back)."},
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lane_id", "mode", "idempotency_key", "attempt", "slot_local", "reason", "priority"],
+      "properties": {
+        "lane_id": {"$ref": "#/$defs/lane_id"},
+        "mode": {"$ref": "#/$defs/mode"},
+        "idempotency_key": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128,
+          "pattern": "^[deg]:[a-z0-9][a-z0-9._-]{1,63}:(dry_run|live):[0-9A-Za-z]{8,16}(T[0-9]{4})?(:a[2-9])?$",
+          "description": "d:<lane>:<mode>:<YYYYMMDDTHHMM> (schedule), e:<lane>:<mode>:<cursor hash12> (event), g:<lane>:<mode>:<window YYYYMMDDTHHMM> (digest); ':a<n>' suffix for attempt n>1. Must also match the gateway regex ^[A-Za-z0-9._:-]{16,128}$."
+        },
+        "attempt": {"type": "integer", "minimum": 1, "maximum": 9},
+        "slot_local": {"$ref": "#/$defs/slot_local"},
+        "reason": {"enum": ["schedule", "catchup", "retry", "event", "sweep", "digest_prepare", "digest_send", "digest_send_partial", "dlq_release"]},
+        "priority": {"type": "integer", "minimum": 0, "maximum": 9}
+      }
+    }
+  }
+}

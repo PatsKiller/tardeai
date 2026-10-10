@@ -17,13 +17,17 @@ import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 import reporting_engine as re  # noqa: E402
 from report_lineage import canonical_registry_map  # noqa: E402
 
 OPERATOR = "john@jwwhiting.com"
-REPORTS = PROJECT_ROOT / "data" / "portfolios" / "reports" / "analyst"
+REPORTS = _portfolio_reports_root() / "analyst"
 MAX_ATTACH = int(os.getenv("URGENT_MAX_ATTACH", "6"))
 
 

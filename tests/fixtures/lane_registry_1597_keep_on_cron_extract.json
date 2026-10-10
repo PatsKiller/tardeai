@@ -1,0 +1,2031 @@
+{
+ "_source": "config/lane_registry.json at origin/n8nmat/b1-registry-reconcile (PR #1597, 615 rows), 2026-10-09: every row marked stay_on_cron or recommendation KEEP_ON_CRON, trimmed to the fields lane_dispatch reads. Test fixture only; the registry itself is unchanged.",
+ "lanes": [
+  {
+   "lane_id": "dof-run-pipeline",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 20 * * 6",
+    "match": "nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "dof-rescan-tickets",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 18 * * *",
+    "match": "nyc-dof-auction && .venv/bin/python3 scripts/rescan_tickets.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "backup-generated-docs",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "50 23 * * *",
+    "match": "linux_launchers/backup_generated_docs.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "sync-memory-to-drive",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "10 3 * * *",
+    "match": ".claude/sync-memory-to-drive.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "cio-wake-dispatch",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/5 * * * * cio_wake_dispatch_entrypoint.py",
+    "match": "cio_wake_dispatch_entrypoint.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "portfolio-backup-cadence",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-portfolio-backup-cadence.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "portfolio-daily-cadence",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-portfolio-daily-cadence.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "portfolio-weekly-cadence",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-portfolio-weekly-cadence.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "portfolio-monthly-cadence",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-portfolio-monthly-cadence.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "portfolio-lookthrough-cadence",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-portfolio-lookthrough-cadence.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "governance-pipeline",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-governance-pipeline.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "sm-render",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-sm-render.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "tax-lots-rebuild",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-tax-lots-rebuild.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "at-observation-01",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "at-observation-01.timer"
+   },
+   "recommendation": "R0_ELIMINATE",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "moomoo",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "RETIRED",
+   "rationalization": {
+    "recommendation": "R0_ELIMINATE"
+   }
+  },
+  {
+   "lane_id": "at-observation-01-closeout",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "at-observation-01-closeout.timer"
+   },
+   "recommendation": "R0_ELIMINATE",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "moomoo",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "RETIRED",
+   "rationalization": {
+    "recommendation": "R0_ELIMINATE"
+   }
+  },
+  {
+   "lane_id": "rotation-autopilot",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 4-16 * * 1-5 run_rotation_autopilot.sh cron",
+    "match": "run_rotation_autopilot.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "hermes-librarian-retention",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "hermes-librarian-retention.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "disk-hygiene-enforcer",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-disk-hygiene-enforcer.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "morning-brief-0730",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "30 7 * * 1-5 send_morning_brief.py",
+    "match": "scripts/send_morning_brief.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "moomoo-live-read-sync",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 9-16 * * 1-5 moomoo_live_read_sync.py",
+    "match": "moomoo_live_read_sync.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "moomoo",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "deepseek-balance-snapshot",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "50 * * * * deepseek_balance_snapshot.py --apply",
+    "match": "scripts/deepseek_balance_snapshot.py --apply"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "cio-entry-state",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/10 9-16 * * 1-5 cio_entry_state_runner.py --apply",
+    "match": "cio_entry_state_runner.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P14"
+   }
+  },
+  {
+   "lane_id": "postgres-main-watchdog",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-postgres-main-watchdog.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "weekly-disk-cleanup",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-weekly-disk-cleanup.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "disk-pressure-guard",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-disk-pressure-guard.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "agent-worktree-retention",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-agent-worktree-retention.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "alpaca-stop-manager-rth",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "7-59/20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock bash scripts/market_day_gate.sh $PY scripts/alpaca_stop_manager.py --apply >> logs/alpaca_stop_manager_cron.log 2>&1",
+    "match": "scripts/alpaca_stop_manager.py --apply"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "alpaca-stop-manager-oco-repair",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 4-10 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock $PY scripts/alpaca_stop_manager.py --repair-oco --apply >> logs/alpaca_stop_manager_repair.log 2>&1",
+    "match": "scripts/alpaca_stop_manager.py --repair-oco --apply"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "crontab-snapshot-for-health-agent",
+   "scheduler": {
+    "kind": "n8n",
+    "expression": "c0d4c7845e5c4fcc",
+    "match": "crontab_snapshot.txt.tmp",
+    "cadence": "*/20 * * * *"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "reconcile-alpaca-paper-options",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python bash linux_launchers/reconcile_alpaca_paper_options.sh",
+    "match": "linux_launchers/reconcile_alpaca_paper_options.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "edge-fanout-consumer",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-edge-fanout-consumer.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "active-trader-premarket-watch",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/5 6-9 * * 1-5 cd $PROJ && flock -n /tmp/at_premarket.lock timeout 240 $PY scripts/active_trader/premarket_watch.py --apply >> logs/at_premarket_watch.log 2>&1",
+    "match": "scripts/active_trader/premarket_watch.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "active-trader-micro-recorder-premarket",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 6 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder_pm.lock $PY scripts/active_trader/microstructure_recorder.py --apply --premarket >> logs/at_micro_recorder.log 2>&1",
+    "match": "microstructure_recorder.py --apply --premarket"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "active-trader-micro-recorder",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "28 9 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder.lock $PY scripts/active_trader/microstructure_recorder.py --apply >> logs/at_micro_recorder.log 2>&1",
+    "match": "microstructure_recorder.py --apply >>"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "options-intent-matcher",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "15,45 9-15 * * 1-5 cd $PROJ && flock -n /tmp/options_intent_matcher.lock timeout 240 $PY scripts/options_intent_matcher.py --apply >> logs/options_intent_matcher.log 2>&1",
+    "match": "scripts/options_intent_matcher.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "portfolio-broker-reconciliation",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "30 20 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_reconcile.lock timeout 300 $PY scripts/portfolio_reconcile.py --json data/runtime/portfolio_reconcile_latest.json >> logs/portfolio_reconcile.log 2>&1",
+    "match": "scripts/portfolio_reconcile.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "positions-sync",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "9,24,39,54 9-16 * * 1-5 cd $PROJ && flock -n /tmp/positions_sync.lock timeout 240 bash -c \"set -a; . ./.env; set +a; GIT_SHA=$(basename $(readlink -f $PROJ) | cut -d- -f1) $PY scripts/positions_sync.py --apply\" >> logs/positions_sync.log 2>&1",
+    "match": "scripts/positions_sync.py --apply"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "positions_sync.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "positions-shadow-diff",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "20 17 * * 1-5 cd $PROJ && flock -n /tmp/positions_sync.lock timeout 120 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_sync.py --diff\" >> logs/positions_sync.log 2>&1",
+    "match": "scripts/positions_sync.py --diff"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "positions_sync.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "positions-proof-daily",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "25 17 * * 1-5 cd $PROJ && flock -n /tmp/positions_proof.lock timeout 180 bash -c \"set -a; . ./.env; set +a; $PY scripts/positions_proof_daily.py --send\" >> logs/positions_proof.log 2>&1",
+    "match": "scripts/positions_proof_daily.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "n8n-pilot-dispatch",
+   "scheduler": {
+    "kind": "n8n",
+    "expression": "078e8fcbea0c5020",
+    "match": "scripts/n8n_pilot_dispatch.py",
+    "cadence": "*/15 * * * *"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "n8n-incident-fanin",
+   "scheduler": {
+    "kind": "n8n",
+    "expression": "722fac0e043ea5c4",
+    "match": "scripts/n8n_incident_fanin.py",
+    "cadence": "*/5 * * * *"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "health-tick",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-health-tick.timer (*:0/5)",
+    "match": "tradeai-health-tick.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "options-tick",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "7,22,37,52 * * * * options_tick.py --apply",
+    "match": "scripts/options_tick.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "drive-syncs-hourly",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "5 * * * * run_drive_syncs.sh --apply",
+    "match": "scripts/run_drive_syncs.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "platform-maintenance-nightly",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-platform-maintenance-nightly.timer (OnCalendar=*-*-* 01:15:00)",
+    "match": "tradeai-platform-maintenance-nightly.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "platform-maintenance-weekly",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-platform-maintenance-weekly.timer (OnCalendar=Sun *-*-* 03:00:00)",
+    "match": "tradeai-platform-maintenance-weekly.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "platform-maintenance-monthly",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-platform-maintenance-monthly.timer (OnCalendar=*-*-01 06:00:00)",
+    "match": "tradeai-platform-maintenance-monthly.timer"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "n8n-research-intake-consumer",
+   "scheduler": {
+    "kind": "n8n",
+    "expression": "21fd15d5f8a4c4da",
+    "match": "scripts/n8n_research_intake_consumer.py",
+    "cadence": "*/15 * * * *"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "cio-opportunity-curator",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/cio_opportunity_curator.lock timeout 600 $PY scripts/cio_opportunity_curator.py --apply >> logs/cio_opportunity_curator.log 2>&1  # TRADEAI_LANE cio-opportunity-curator",
+    "match": "scripts/cio_opportunity_curator.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "advice-digest",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 10,15,17 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/send_advice_digest.py --slot auto --send >> logs/advice_digest.log 2>&1  # TRADEAI_LANE advice-digest",
+    "match": "scripts/send_advice_digest.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "trade-ai-scalp-live",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/5 9-15 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_scalp_live.lock timeout 295 bash scripts/market_day_gate.sh $PY scripts/run_trade_ai_scalp_live.py >> logs/trade_ai_scalp_live.log 2>&1  # TRADEAI_LANE trade-ai-scalp-live",
+    "match": "scripts/run_trade_ai_scalp_live.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P02"
+   }
+  },
+  {
+   "lane_id": "run-automated-trade-proposal-revalidation",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/30 9-15 * * 1-5",
+    "match": "scripts/run_automated_trade_proposal_revalidation.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P07"
+   }
+  },
+  {
+   "lane_id": "paper-execution-sweep",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/5 9-16 * * 1-5",
+    "match": "scripts/paper_execution_sweep.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "alpaca-paper-adapter",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 10-16 * * 1-5",
+    "match": "scripts/alpaca_paper_adapter.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "telegram-smart-alerts",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 6 * * 1-5",
+    "match": "scripts/telegram_smart_alerts.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "MERGE_INTO:P11"
+   }
+  },
+  {
+   "lane_id": "paper-performance-governance",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 8,20 * * 1-5",
+    "match": "scripts/paper_performance_governance.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "news-ingestion",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "30 12 * * 1-5 + 30 0 * * *",
+    "match": "scripts/news_ingestion.py --priority",
+    "schedules": [
+     "30 12 * * 1-5",
+     "30 0 * * *"
+    ]
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "alpaca-paper-reconciler",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "35 9 * * 1-5",
+    "match": "scripts/alpaca_paper_reconciler.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "send-telegram-proposal-alert",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/2 9-16 * * 1-5",
+    "match": "scripts/send_telegram_proposal_alert.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "EVENT_DRIVEN_CANDIDATE"
+   }
+  },
+  {
+   "lane_id": "eod-open-trade-alert",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "5 16 * * 1-5",
+    "match": "scripts/eod_open_trade_alert.py"
+   },
+   "recommendation": "R0_ELIMINATE",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "R0_ELIMINATE"
+   }
+  },
+  {
+   "lane_id": "atm-auto-approver",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 4-19 * * 1-5",
+    "match": "scripts/atm_auto_approver.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "unified-stop-supervisor",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/3 9-16 * * 1-5",
+    "match": "scripts/unified_stop_supervisor.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "unified_stop_supervisor",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "event-detector",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 7,9,12,16,20 * * 1-5",
+    "match": "scripts/event_detector.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P14"
+   }
+  },
+  {
+   "lane_id": "claude-escalation-handler",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/10 * * * *",
+    "match": "scripts/claude_escalation_handler.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "run-protection-pipeline-at-x-30-9-16",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/30 9-16 * * 1-5",
+    "match": "scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection-learning"
+   },
+   "recommendation": "R0_ELIMINATE",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "R0_ELIMINATE"
+   }
+  },
+  {
+   "lane_id": "run-protection-pipeline-at-30-20",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "30 20 * * 1-5",
+    "match": "scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection after-close"
+   },
+   "recommendation": "R0_ELIMINATE",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "R0_ELIMINATE"
+   }
+  },
+  {
+   "lane_id": "portfolio-server-watchdog",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/2 * * * *",
+    "match": "scripts/portfolio_server_watchdog.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "trade-integrity-audit",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 9-16 * * 1-5",
+    "match": "scripts/trade_integrity_audit.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "hermes-watchlist-scorer",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 * * * *",
+    "match": "scripts/hermes_watchlist_scorer.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "generate-max-hold-exit-proposals",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "20 10 * * 1-5",
+    "match": "scripts/generate_max_hold_exit_proposals.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "schwab-transaction-ingest-classifier",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "15 18 * * 1-5",
+    "match": "scripts/schwab_transaction_ingest.py --apply && $PY scripts/schwab_journal_builder.py --apply &&"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "schwab_transaction_ingest.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "schwab-transaction-ingest-at-3-18-33-48-9-16",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "3,18,33,48 9-16 * * 1-5",
+    "match": "scripts/schwab_transaction_ingest.py --apply && $PY scripts/schwab_journal_builder.py --apply\""
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "schwab_transaction_ingest.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "ingest-tos-watchlists",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "45 18 * * *",
+    "match": "scripts/ingest_tos_watchlists.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "sync-basis-from-broker",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "33 16 * * 1-5",
+    "match": "scripts/sync_basis_from_broker.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "sync_basis_from_broker.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "holding-protection-advisor-at-5-17",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "5 17 * * 1-5",
+    "match": "scripts/holding_protection_advisor.py >>"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "holding_protection_advisor.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "monthly-protection-meta-review",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "10 8 1 * *",
+    "match": "scripts/monthly_protection_meta_review.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "holding-protection-advisor-lane",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "20 17 * * 1",
+    "match": "scripts/holding_protection_advisor.py --lane"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "holding_protection_advisor.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "snaptrade-sync",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "50 9 * * 1-5 + 35 17 * * 1-5",
+    "match": "scripts/snaptrade_sync.py",
+    "schedules": [
+     "50 9 * * 1-5",
+     "35 17 * * 1-5"
+    ]
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "snaptrade_sync.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "snaptrade-activity-ingest",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "20 7 * * 1-6",
+    "match": "scripts/snaptrade_activity_ingest.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "snaptrade_activity_ingest.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "stop-health-check",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/10 9-16 * * 1-5",
+    "match": "scripts/stop_health_check.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "MIGRATE_N8N"
+   }
+  },
+  {
+   "lane_id": "grok-stop-review",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "5 10,15 * * 1-5",
+    "match": "scripts/grok_stop_review.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "schwab-position-sync",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "7,22,37,52 9-16 * * 1-5",
+    "match": "scripts/schwab_position_sync.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "schwab_position_sync.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "MERGE_INTO:positions_sync"
+   }
+  },
+  {
+   "lane_id": "run-ensemble-worker",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/3 * * * *",
+    "match": "run_ensemble_worker.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "coder-dispatch",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 9-18/3 * * 1-5",
+    "match": "scripts/coder_dispatch.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "options-iv-snapshot",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "45 15 * * 1-5",
+    "match": "scripts/options_iv_snapshot.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "run-broker-queue-autocal",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/5 9-16 * * 1-5",
+    "match": "scripts/run_broker_queue_autocal.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "broker",
+    "source": "n8n_coordination_gateway.FORBIDDEN_ROUTE_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "run-broker-proposal-curator",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0,30 9-16 * * 1-5",
+    "match": "scripts/run_broker_proposal_curator.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "broker",
+    "source": "n8n_coordination_gateway.FORBIDDEN_ROUTE_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "process-reaper",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/3 * * * *",
+    "match": "scripts/process_reaper.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "paper-trade-advisory",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "15 */6 * * *",
+    "match": "scripts/paper_trade_advisory.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "watchlist-proposal-bridge",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/30 10-15 * * 1-5",
+    "match": "scripts/watchlist_proposal_bridge.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P07"
+   }
+  },
+  {
+   "lane_id": "protection-atm-pass",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 9-16 * * 1-5",
+    "match": "scripts/protection_atm_pass.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "journal-annotation-reminder",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "30 23 * * 1-5",
+    "match": "scripts/journal_annotation_reminder.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "stop-drift-alert",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "35 17 * * 1-5",
+    "match": "scripts/stop_drift_alert.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "stop_drift_alert",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "news-ingestion-tail",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "0 10,14,18 * * 0,6",
+    "match": "scripts/news_ingestion.py --tail-rotate"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "run-options-monitor",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/10 12-15 * * 1-5 + 5 16 * * 1-5",
+    "match": "run_options_monitor.sh",
+    "schedules": [
+     "*/10 12-15 * * 1-5",
+     "5 16 * * 1-5"
+    ]
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "run-options-paper-position-monitor",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "10 17 * * 1-5",
+    "match": "run_options_paper_position_monitor.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "fidelity-stop-sync",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "5 10 * * 1-5",
+    "match": "scripts/fidelity_stop_sync.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "pipeline_excluded_gate",
+    "token": "market_day_gate.sh",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "holdings-gain-guardian",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "40 17 * * 1-5",
+    "match": "scripts/holdings_gain_guardian.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "holdings_gain_guardian.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "options-chain-snapshot",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "35 17 * * 1-5 + 0 10 * * 1-5",
+    "match": "scripts/options_chain_snapshot.py\"",
+    "schedules": [
+     "35 17 * * 1-5",
+     "0 10 * * 1-5"
+    ]
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "options_chain_snapshot.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P09"
+   }
+  },
+  {
+   "lane_id": "options-lifecycle-run",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/20 9-16 * * 1-5",
+    "match": "scripts/options_lifecycle_run.py\""
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "schwab-econfirm-reconcile",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "35 18 * * 1-5",
+    "match": "scripts/schwab_econfirm_reconcile.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "schwab_econfirm_reconcile.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "broker-stop-reconcile",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "12 6 * * 1-5",
+    "match": "scripts/broker_stop_reconcile.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "broker_stop_reconcile.py",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "alpaca-live-read-sync",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "*/15 9-16 * * 1-5",
+    "match": "scripts/alpaca_live_read_sync.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "alpaca_live_read_sync",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "start-trade-ai-lab-moomoo-opend",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "@reboot",
+    "match": "systemctl --user start trade-ai-lab-moomoo-opend.service"
+   },
+   "recommendation": "R0_ELIMINATE",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "moomoo",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "R0_ELIMINATE"
+   }
+  },
+  {
+   "lane_id": "run-governed-symbol-thesis-acquisition",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "17 17 * * 1-5",
+    "match": "scripts/run_governed_symbol_thesis_acquisition.sh"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "sweep-schwab-instruments",
+   "scheduler": {
+    "kind": "cron",
+    "expression": "30 3 * * 6",
+    "match": "scripts/sweep_schwab_instruments.py"
+   },
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "launchpadlib-cache-clean",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "launchpadlib-cache-clean.timer"
+   },
+   "exec_start": "find ~/.launchpadlib/api.launchpad.net/cache -type f -mtime +30 -delete",
+   "service": "launchpadlib-cache-clean.service",
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "mcporter-token-refresh",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "mcporter-token-refresh.timer"
+   },
+   "exec_start": "/bin/bash ~/.config/mcporter/refresh_token.sh",
+   "service": "mcporter-token-refresh.service",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "secret",
+    "token": "token",
+    "source": "n8n_coordination_gateway.SECRET_KEYS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P14"
+   }
+  },
+  {
+   "lane_id": "recovery-watch",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "recovery-watch.timer"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/recovery_watch_daily.py",
+   "service": "recovery-watch.service",
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "snap-firmware-updater-firmware-notifier",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "snap.firmware-updater.firmware-notifier.timer"
+   },
+   "exec_start": "/usr/bin/snap run --timer=00:00-24:00/8 firmware-updater.firmware-notifier",
+   "service": "snap.firmware-updater.firmware-notifier.service",
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "systemd-tmpfiles-clean",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "systemd-tmpfiles-clean.timer"
+   },
+   "exec_start": "systemd-tmpfiles --user --clean",
+   "service": "systemd-tmpfiles-clean.service",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "os",
+    "token": "systemd-tmpfiles-clean.timer",
+    "source": "operating-system unit"
+   },
+   "state": "NEVER_SCHEDULED"
+  },
+  {
+   "lane_id": "tradeai-advisory-notif-broker",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-advisory-notif-broker.timer"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/advisory_notification_broker.py process --hours 24",
+   "service": "tradeai-advisory-notif-broker.service",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "broker",
+    "source": "n8n_coordination_gateway.FORBIDDEN_ROUTE_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P14"
+   }
+  },
+  {
+   "lane_id": "tradeai-backup-enforcer",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-backup-enforcer.timer"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/backup_enforcer.py",
+   "service": "tradeai-backup-enforcer.service",
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "tradeai-hermes-cio-worker",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-hermes-cio-worker.timer"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_cio_worker.py --drain --max 2 --backend live --json",
+   "service": "tradeai-hermes-cio-worker.service",
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "ubuntu-insights-collect",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "ubuntu-insights-collect.timer"
+   },
+   "exec_start": "/usr/bin/ubuntu-insights collect -p=2629743",
+   "service": "ubuntu-insights-collect.service",
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "ubuntu-insights-upload",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "ubuntu-insights-upload.timer"
+   },
+   "exec_start": "/usr/bin/ubuntu-insights upload -r",
+   "service": "ubuntu-insights-upload.service",
+   "recommendation": "KEEP_ON_CRON",
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "chatgpt-oauth-proxy-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "chatgpt-oauth-proxy.service"
+   },
+   "exec_start": "/usr/bin/python3 ~/trade-ai-releases/portfolio-server/<release>/scripts/chatgpt_oauth_proxy.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "chatgpt-oauth-proxy.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "cio-governed-bridge-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "cio-governed-bridge.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/lib/cio_governed_model_bridge.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "cio-governed-bridge.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "dof-dashboard-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "dof-dashboard.service"
+   },
+   "exec_start": "~/nyc-dof-auction/.venv/bin/python3 dof_server.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "dof-dashboard.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "grok-oauth-proxy-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "grok-oauth-proxy.service"
+   },
+   "exec_start": "/usr/bin/python3 ~/trade-ai-releases/portfolio-server/<release>/scripts/grok_oauth_proxy.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "grok-oauth-proxy.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "heartbeat-receiver-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "heartbeat-receiver.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/<release>/scripts/heartbeat_receiver.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "heartbeat-receiver.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "PIPELINE:P12"
+   }
+  },
+  {
+   "lane_id": "openclaw-gateway-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "openclaw-gateway.service"
+   },
+   "exec_start": "/usr/bin/node ~/.local/lib/openclaw/dist/index.js gateway --port 18789",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "openclaw-gateway.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "portfolio-server-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "portfolio-server.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/<release>/scripts/portfolio_server.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "portfolio-server.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "power-watch-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "power-watch.service"
+   },
+   "exec_start": "/usr/bin/python3 ~/.local/bin/power_watch.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "power-watch.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "trade-ai-lab-moomoo-opend-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "trade-ai-lab-moomoo-opend.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/moomoo/opend_launch.sh",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "broker_order",
+    "token": "moomoo",
+    "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "tradeai-active-trader-motion-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-active-trader-motion.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m active_trader.motion_runtime",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "tradeai-active-trader-motion.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "tradeai-cio-telegram-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-cio-telegram.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/cio_telegram_bot.py --loop",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "tradeai-cio-telegram.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "tradeai-health-agent-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-health-agent.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/.config/tradeai/bin/health_agent_daemon_current.py",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "tradeai-health-agent.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "MERGE_INTO:P12"
+   }
+  },
+  {
+   "lane_id": "tradeai-lab-postgres-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-lab-postgres.service"
+   },
+   "exec_start": "/usr/lib/postgresql/17/bin/pg_ctl -D ~/tradeai-lab/pg17 -l ~/tradeai-lab/pg17.log start",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "tradeai-lab-postgres.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "MIGRATE_N8N"
+   }
+  },
+  {
+   "lane_id": "tradeai-n8n-coordination-gateway-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-n8n-coordination-gateway.service"
+   },
+   "exec_start": "/bin/bash ~/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_coordination_gateway_run.sh",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "tradeai-n8n-coordination-gateway.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "tradeai-n8n-run-executor-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-n8n-run-executor.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_executor.py --interval 5",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "tradeai-n8n-run-executor.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  },
+  {
+   "lane_id": "tradeai-n8n-run-relay-service",
+   "scheduler": {
+    "kind": "systemd",
+    "expression": "tradeai-n8n-run-relay.service"
+   },
+   "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_run_relay.py --host 172.19.0.1 --port 18092",
+   "recommendation": "KEEP_ON_CRON",
+   "stay_on_cron": {
+    "class": "daemon",
+    "token": "tradeai-n8n-run-relay.service",
+    "source": "long-running user service"
+   },
+   "state": "ACTIVE",
+   "rationalization": {
+    "recommendation": "KEEP_ON_CRON"
+   }
+  }
+ ]
+}

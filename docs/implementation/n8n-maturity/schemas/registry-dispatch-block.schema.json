@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:n8n-maturity/registry-dispatch-block.schema.json",
+  "title": "LaneRegistry dispatch + watch blocks (design 02 §2)",
+  "description": "Optional blocks on a config/lane_registry.json row. `dispatch` makes a movable lane schedulable by the generic dispatcher; absent or mode=off is inert. `watch` applies to every row (stay-behinds included) and tunes the heartbeat watcher.",
+  "type": "object",
+  "properties": {
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "cron", "class", "priority", "retry_policy", "wave"],
+      "properties": {
+        "mode": {"enum": ["off", "dry_run", "live"]},
+        "cron": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": {"type": "string", "pattern": "^\\S+ \\S+ \\S+ \\S+ \\S+$"},
+          "description": "5-field Vixie cron (no names, no @-macros, no L/#). Must equal the live crontab schedule while scheduler.kind=cron, and scheduler.cadence once kind=n8n. Empty only for purely event-triggered or digest-window lanes."
+        },
+        "tz": {"const": "America/New_York"},
+        "wave": {"enum": ["W0", "W1", "W2", "W3", "W4", "W5"]},
+        "class": {"enum": ["monitor", "report", "hygiene", "pipeline", "heavy", "llm", "ingest", "send", "learn"]},
+        "priority": {"type": "integer", "minimum": 0, "maximum": 9},
+        "retry_policy": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$"},
+        "catchup_min": {"type": "integer", "minimum": 1, "maximum": 1440},
+        "min_interval_s": {"type": "integer", "minimum": 0, "maximum": 86400},
+        "after": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["lane_id"],
+            "properties": {
+              "lane_id": {"type": "string"},
+              "same_day": {"type": "boolean", "default": true},
+              "deadline_min": {"type": "integer", "minimum": 1, "maximum": 720},
+              "soft": {"type": "boolean", "default": false, "description": "Soft edge: run anyway at deadline (digest sender with --partial)."}
+            }
+          }
+        },
+        "triggers": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source"],
+            "properties": {
+              "source": {"enum": ["run_done", "receipt", "cio_bus", "ledger_event", "outbox"]},
+              "lane_id": {"type": "string", "description": "run_done: upstream lane (live RUN_DONE only)."},
+              "receipt_rel": {"type": "string", "pattern": "^data/[A-Za-z0-9._/-]+$", "description": "receipt: path relative to $STATE_ROOT."},
+              "event_type": {"type": "string", "maxLength": 80, "description": "cio_bus / ledger_event / outbox type."}
+            }
+          }
+        },
+        "sweep_cron": {"type": "array", "maxItems": 4, "items": {"type": "string", "pattern": "^\\S+ \\S+ \\S+ \\S+ \\S+$"}},
+        "digest_window": {"type": "string", "description": "Window id in config/digest_windows.json when this lane is a preparer or the sender."},
+        "digest_role": {"enum": ["preparer", "sender"]}
+      }
+    },
+    "watch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "factor": {"type": "number", "minimum": 1.0, "maximum": 6.0, "default": 2.0},
+        "severity": {"enum": ["P1", "P2", "P3"]},
+        "max_run_s": {"type": "integer", "minimum": 1, "maximum": 86400},
+        "stay_behind": {"type": "boolean", "description": "True for broker/order/stop/secret/daemon/CIO lanes n8n must never run (watch only)."},
+        "restart_safe": {"type": "boolean", "default": false, "description": "Reserved for rule R3 (governed restart); unused until ratified."}
+      }
+    }
+  }
+}

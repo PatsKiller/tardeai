@@ -59,6 +59,8 @@ def _get_conn():
         dbname=env_vars.get("DB_NAME", "trade_ai"),
         user=env_vars.get("DB_USER", "trade_ai"),
         password=env_vars.get("DB_PASSWORD", ""),
+        application_name="hybrid_rag_context_adapter",
+        connect_timeout=10,
     )
 
 

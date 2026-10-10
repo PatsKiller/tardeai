@@ -909,6 +909,12 @@ GATES = [
             "tests/test_research_delta_index_20261002.py",
             # /api/v3/maturity/learning: stream + cache the 270 MB lesson store (was ~910 MB/request).
             "tests/test_maturity_lessons_stream_cache_20261002.py",
+            # 10-09 operator-approved: archive rotation of the lesson log (never deletes; latest-by-id stays live).
+            "tests/test_advisory_kb_lessons_retention.py",
+            # 10-09 operator-approved: lesson counters derived from events; vectors stored once.
+            "tests/test_kb_lessons_writer_derived_counters_20261009.py",
+            # 10-09 #1617 follow-ups: same-model similarity, baseline under lock, durable appends.
+            "tests/test_kb_lessons_followups_20261009.py",
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",
@@ -1156,6 +1162,18 @@ GATES = [
         "investment_command_center_20261008",
         ["tests/test_investment_command_center_20261008.py"],
     ),
+    # Cron interpreter resolution (operator 2026-10-09 "fix the broken cron jobs"): release dirs ship no .venv, so
+    # rotation_autopilot died on `import dotenv` every 15 min and hermes_coordinator's child steps hit "No such file".
+    (
+        "cron_venv_resolver_20261009",
+        ["tests/test_cron_venv_resolver_20261009.py"],
+    ),
+    # Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).
+    # Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09).
+    (
+        "paper_venv_resolver_20261009",
+        ["tests/test_paper_venv_resolver_20261009.py"],
+    ),
     # Symbol-thesis job repair (operator 2026-10-09 "fix the thesis job"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop
     # backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies.
     (
@@ -1173,6 +1191,18 @@ GATES = [
     (
         "trade_ai_scalp_5min_20261009",
         ["tests/test_trade_ai_scalp_5min_20261009.py"],
+    ),
+    # Postgres connection-slot hygiene (n8nmat/b6 2026-10-09): PGAPPNAME attribution for raw connects, tests never use
+    # the stale ~/.pgpass, batched price counts, reconcile KeyError + real rc in run_protection_pipeline.sh.
+    (
+        "pg_conn_exhaustion_b6_20261009",
+        ["tests/test_pg_conn_exhaustion_b6_20261009.py"],
+    ),
+    # Scalp lane bulk catalyst read (operator 2026-10-09: "build the finviz API fix"): data-broker news plus the
+    # Finviz Elite news export in batches instead of ~2 throttled Finviz page requests per ticker.
+    (
+        "scalp_catalyst_bulk_20261009",
+        ["tests/test_scalp_catalyst_bulk_20261009.py"],
     ),
     # Opportunity modal news (operator 2026-10-08: "nothing here on what company does or latest news, catalyst"):
     # profile description, typed catalysts, latest news without catalyst repeats, and the news-ingestion opportunity
@@ -2075,8 +2105,10 @@ GATES = [
             # AGENTS.md 1.3.0 (ratified 2026-09-27): execution engineering needs a per-task grant, and
             # the broker-boundary verifier must refuse every out-of-envelope mutation.
             "tests/test_agents_policy_1_3_0_amendment.py",
-            # AGENTS.md 3.0.0 (PROPOSED 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
+            # AGENTS.md 3.0.0 (ACTIVE 2026-10-09): §23 Agent nodes, parity, preconditions checklist.
             "tests/test_agents_policy_3_0_0_amendment.py",
+            # AGENTS.md 4.1.0 (PROPOSED 2026-10-09): registry dispatch, wave ladder, program push budget, 48 h merge approval.
+            "tests/test_agents_policy_4_1_0_amendment.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3520,8 +3552,19 @@ GATES = [
             # pins due-phase arithmetic, lock skip, timeout = failure, receipt
             # shape and that dry-run writes nothing. Timer stays NEVER_SCHEDULED.
             "tests/test_health_tick_20261007.py",
+            # 2026-10-09 n8n maturity B3.1: tick exit = tick health (findings in the
+            # receipt), step timeouts clamped to a tick deadline, leftover children
+            # reaped; portfolio_live_monitor --once; cron_self_heal acts + live $PY.
+            "tests/test_health_tick_outcomes_20261009.py",
+            "tests/test_cron_self_heal_acts_20261009.py",
+            # B3.1 review: monitors report a finding with EXIT_FINDING=3, never 1.
+            "tests/test_monitor_finding_exit_codes_20261009.py",
             "tests/test_morning_brief_sent_flag_20261007.py",
             "tests/test_telegram_ack_hook_20261007.py",
+            # 2026-10-09 operator: every single-position threshold follows the IPS
+            # limit (advisory overweight, CIO review gates, look-through guideline,
+            # specialist-shadow severity) via lib.ips_policy.
+            "tests/test_ips_position_limit_20261009.py",
             "tests/test_retention_registry_20261007.py",
             "tests/test_pgvector_migration_plan_20261008.py",
             "tests/test_maturity_score_independent_20261007.py",
@@ -3555,6 +3598,15 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):
+        # DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.
+        # Pure and hermetic: explicit instants only, no clock, no I/O.
+        "n8n_maturity_cron_tz_20261009",
+        [
+            "tests/test_n8n_maturity_cron_tz_20261009.py",
+        ],
+    ),
+    (
         # N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n
         # scheduler-of-record workflow generator and the per-lane cutover checklist. The tests
         # pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set
@@ -3564,6 +3616,35 @@ GATES = [
         [
             "tests/test_n8n_workflow_templates_20261008.py",
             "tests/test_n8n_cutover_checklist_20261008.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_GENERIC_WORKFLOWS (2026-10-09, design 02 §11, B5.6): the six generic
+        # registry-driven workflows (build-generic). Static only: byte-determinism, node allowlist, /run body keys,
+        # bridge-IP relay, errorWorkflow, no lane constants beyond SYSTEM_FILTER_LANES. Imports nothing into n8n.
+        "n8n_maturity_generic_workflows_20261009",
+        [
+            "tests/test_n8n_maturity_generic_workflows_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
+        # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
+        # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
+        # live crontab, workflow drift over the generic set. Hermetic: tmp_path ledgers/receipts, no n8n.
+        "n8n_maturity_b5_followups_20261009",
+        [
+            "tests/test_n8n_maturity_b5_followups_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: BREACH_TRIAGE_CODE (2026-10-09 breach triage): one shared cron extractor (cron_schedule.cron_fields /
+        # cron_schedules) for detector, cron_last_fire, job coverage, scheduler operations and source clocks;
+        # symbol-cards timeout + retry from config; topic curator ensemble without a DB connection across LLM calls
+        # plus its own receipt; stop health per-run heartbeat. Hermetic: tmp_path outputs, fake DB, no network.
+        "breach_triage_code_20261009",
+        [
+            "tests/test_breach_triage_code_20261009.py",
         ],
     ),
     (
@@ -3578,6 +3659,18 @@ GATES = [
             "tests/test_n8n_workflow_drift_20261009.py",
             "tests/test_n8n_activation_grants_20261009.py",
             "tests/test_n8n_agent_identity_parity_20261009.py",
+            # incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)
+            "tests/test_n8n_incident_fanin_governance_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_REGISTRY_DISPATCH
+        # N8N Maturity B5.2 (design 02 §2): lane-registry dispatch/watch block loader + validation
+        # (scripts/lib/lane_dispatch.py) and the forbidden-token eligibility rule. Hermetic synthetic rows;
+        # the live registry is only read (all rows mode off; broker/order/secret rows ineligible).
+        "n8n_maturity_registry_dispatch_20261009",
+        [
+            "tests/test_n8n_maturity_registry_dispatch_20261009.py",
         ],
     ),
     (
@@ -3588,10 +3681,65 @@ GATES = [
         ["tests/test_n8n_ops_lanes_20261009.py"],
     ),
     (
+        # ANCHOR: N8N_MATURITY_RETRY_DLQ — n8n maturity B5.4 (design 02 §3.3/§3.4, F8/F9): N8nRetryPolicies@v1
+        # + program rules, verdict table, additive ledger schema (runs dispatch columns, dead_letters, breakers,
+        # event_cursors), DLQ + breaker after 3, n8n_dlq.py list/release receipts. Hermetic tmp_path ledgers.
+        "n8n_maturity_retry_dlq_20261009",
+        ["tests/test_n8n_maturity_retry_dlq_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_SCHED_FIXES — 2026-10-09 audit (operator "fix the broken cron jobs"): watchdog unit lock
+        # miss = clean skip; ACTIVE kind-n8n rows need an active workflow (INACTIVE_N8N_WORKFLOW); board
+        # same-second receipt tie-break; executor opt-in bounded retry; cleanup_stale_locks report-only.
+        # Hermetic: tmp_path receipts/registries, fake runner and sleeper.
+        "n8n_sched_fixes_20261009",
+        ["tests/test_n8n_sched_fixes_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_EXECUTOR_V2 — n8n maturity B5.5 (design 02 §5): executor v2 — N workers, per-lane
+        # lock (claim_next_v2), global/class caps, reserved priority worker, stale-RUNNING reaper, verdict/DLQ/
+        # breaker via finalize_outcome, RunReceipt@v2 + ExecutorStatus@v1; workers=1 is the v1 path. Hermetic:
+        # tmp_path ledgers, fake clock, gated fake runners, tiny real subprocesses.
+        "n8n_maturity_executor_v2_20261009",
+        ["tests/test_n8n_maturity_executor_v2_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
+        # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
+        # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
+        "n8n_scalp_lane_20261009",
+        ["tests/test_n8n_scalp_lane_20261009.py", "tests/test_agents_policy_4_0_0_scalp_lane.py"],
+    ),
+    (
+        # ANCHOR: SCALP_CYCLE_RECEIPT_B4 — n8n maturity B4 2026-10-09: ScalpCycleReceipt@v1 per 5-min cycle
+        # (started/ok/error/killed on SIGTERM), market-hours-aware monitor (P2 2 missed RTH slots, P1 30 min),
+        # fan-in source 3h, state saved before the send, slot guard. Hermetic: tmp state root, fakes, no send.
+        "scalp_cycle_receipt_b4_20261009",
+        ["tests/test_scalp_cycle_receipt_b4_20261009.py"],
+    ),
+    (
+        # SCALP_FOLLOWUPS_B4 — 2026-10-09: a GO is marked alerted only after its line built and the send was
+        # accepted (pre-alert save keeps it un-alerted; one bad trigger is isolated; rejected send rolls back);
+        # a release-dir TRADEAI_ROOT never becomes the state root. Hermetic: stubbed send, tmp home.
+        "scalp_followups_b4_20261009",
+        ["tests/test_scalp_followups_b4_20261009.py"],
+    ),
+    (
         # N8N_RUN_RELAY — 2026-10-08: bearer-authenticated host relay; hermetic tests only.
         # 2026-10-09 B2-D2: env allowlist (dedicated EnvironmentFile render, strict fail-closed, scrub).
         "N8N_RUN_RELAY",
         ["tests/test_n8n_run_relay_20261008.py", "tests/test_n8n_relay_env_allowlist_20261009.py"],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_DUE
+        # N8N Maturity B5.3 (design 02 §3.1-§3.3, §4): pure compute_due (scripts/lib/n8n_due.py), the read route
+        # coordination/due, server-minted d: slot keys validated in the gateway's run operation, relay GET /due
+        # (liveness log line) and mode-aware /runs/<lane>/last. Hermetic: tmp ledgers, fixed clock, injected loaders.
+        "n8n_maturity_due_20261009",
+        [
+            "tests/test_n8n_maturity_due_20261009.py",
+            "tests/test_n8n_maturity_gateway_due_20261009.py",
+        ],
     ),
     (
         # PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only
@@ -3662,6 +3810,17 @@ GATES = [
             "tests/test_lane_monitor_n8n_rendering_20261008.py",
             "tests/test_n8n_incident_fanin_relay_20261008.py",
             "tests/test_secret_rotation_schedule_20261008.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_INCIDENT_NOTIFIER — N8N maturity B2 (2026-10-09): scripts/incident_notifier.py, the human
+        # end of the incident fan-in. P1 at once, P2 one batch per window, recovery on clear, per-incident 24 h
+        # dedupe, daily cap from env, operator acks from the ledger, dry-run sends and records nothing, and the
+        # sender is only the SYSTEM ops module (no family, token or chat; this module is not a SYSTEM caller).
+        # Hermetic: tmp state root, tmp sqlite ledger, stub sender/previewer. Listing it here schedules nothing.
+        "N8N_INCIDENT_NOTIFIER",
+        [
+            "tests/test_incident_notifier_20261009.py",
         ],
     ),
     (
@@ -3738,6 +3897,21 @@ GATES = [
         ],
     ),
     (
+        # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
+        # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
+        # in 503 errors, alert-quality registry row matches the host.
+        "cron_crash_fixes_20261009",
+        ["tests/test_cron_crash_fixes_20261009.py"],
+    ),
+    (
+        # 2026-10-09 cron audit, stale/silent jobs: document_mentions watermark + budget + flushed log;
+        # job_coverage_monitor schedule-aware (last due fire), systemd timers, dev-tree logs, moved schedulers;
+        # schwab stream reconnects while open + line-buffered log; ri_overnight / paper post-close processors
+        # resolve a real interpreter in release dirs; BOOK checkpoints never price-resolvable.
+        "cron_stale_fixes_20261009",
+        ["tests/test_cron_stale_fixes_20261009.py"],
+    ),
+    (
         # ANCHOR: SYSTEM_TELEGRAM_INTERDICT_SCOPE — 2026-10-09: C4's lowest-layer interdict keyed on
         # CIO_TELEGRAM_INTERDICT alone blocked every TRADE_AI_SYSTEM send since 2026-09-19. Scoped by a typed
         # SendFamily the transport confirms (caller module, ops bot, ops chat, SYSTEM_TELEGRAM_ENABLED): CIO and
@@ -3747,6 +3921,43 @@ GATES = [
         [
             "tests/test_system_telegram_interdict_scope_20261009.py",
         ],
+    ),
+    (
+        # ANCHOR: N8N_MATURITY_REGISTRY_RECONCILE — N8N maturity B1 2026-10-09: the lane registry's 476-entry
+        # undeclared_baseline (+113 inherited-tranche lines) is retired. scripts/reconcile_lane_registry.py
+        # derives a row for every live crontab line, user timer and platform service (read-only host or the
+        # committed snapshot); the committed registry is its fixed point, every live line maps to exactly one
+        # row, broker/order/secret lines are KEEP_ON_CRON (FORBIDDEN_COMMAND_TOKENS / FORBIDDEN_ROUTE_TOKENS
+        # cross-check), unproven outputs are flagged UNVERIFIED_OUTPUT. Hermetic: repo files only.
+        "N8N_MATURITY_REGISTRY_RECONCILE",
+        [
+            "tests/test_n8n_maturity_registry_reconcile_20261009.py",
+            # registry-signals-r1 2026-10-09: run-log signals for 3 false-NO_OUTPUT lanes; watch-review split.
+            "tests/test_registry_signals_r1_20261009.py",
+            # registry-ops-crons 2026-10-09: incident-notifier + P16/P18 host-cron rows, PAUSED pending install.
+            "tests/test_registry_ops_crons_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_PLATFORM_MATURITY — 2026-10-09 n8n maturity program C1: scripts/n8n_platform_maturity.py
+        # scores 12 dimensions 0-10 from evidence only (N8nPlatformMaturity@v1); the probe refuses any
+        # non-read-only command; missing evidence scores 0 (UNVERIFIED). Hermetic: tmp state/proj roots,
+        # fake command runner, fixed clock. Listing them here schedules nothing.
+        "N8N_PLATFORM_MATURITY",
+        [
+            "tests/test_n8n_platform_maturity_core_20261009.py",
+            "tests/test_n8n_platform_maturity_scheduling_20261009.py",
+            "tests/test_n8n_platform_maturity_signal_20261009.py",
+            "tests/test_n8n_platform_maturity_healing_20261009.py",
+            "tests/test_n8n_platform_maturity_governance_20261009.py",
+        ],
+    ),
+    (
+        # ANCHOR: PORTFOLIO_REPORTS_STATE_ROOT — 2026-10-09 n8n maturity: report writers/readers resolve
+        # data/portfolios/reports via lib.portfolio_reports_root (persistent-state), not the release dir;
+        # one-shot copy-only migration (dry-run default, never moves/deletes/overwrites). Hermetic: tmp roots.
+        "portfolio_reports_state_root_20261009",
+        ["tests/test_portfolio_reports_state_root_20261009.py"],
     ),
 ]
 

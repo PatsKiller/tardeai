@@ -532,7 +532,7 @@ RUN_NOW_REFRESHES: dict[str, bool] = {
 DEPENDENCY_LANES: dict[str, tuple[str, ...]] = {
     "technicals": ("indicator-cache-refresh",),
     "prices": ("portfolio-repricer",),
-    "watch_intelligence": ("watch-review-workers",),
+    "watch_intelligence": ("watch-review-workers", "watch-review-workers-cio"),
     "reentry": (),
     "analyst_data": (),
     "research": (

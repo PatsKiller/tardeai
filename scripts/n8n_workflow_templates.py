@@ -32,6 +32,7 @@ runs the lane's own runner under the lane's own lock (plan: streamed-humming-wol
 
     python3 scripts/n8n_workflow_templates.py --lanes N1 --out docs/implementation/n8n-parallel/workflows/generated
     python3 scripts/n8n_workflow_templates.py --lanes all --check     # CI: committed files == regenerated
+    python3 scripts/n8n_workflow_templates.py build-generic [--out DIR] [--check]   # six generic workflows
 
 Output is deterministic: workflow and node ids derive from sha256/uuid5 of the lane id, keys
 are sorted, 2-space indent, trailing newline. `INDEX.json` keeps its `generated_at` while
@@ -672,6 +673,17 @@ LANES: list[dict] = [
         "source": "registry row NEVER_SCHEDULED (AGENTS.md 3.0.0 §23.10 P18, #1554); proposed '20 6 * * * scripts/check_n8n_workflow_drift.py --write'",
         "note": "Daily cadence per the registry row (expected_cadence_hours 24). Read-only; receipt data/runtime/n8n_workflow_drift_last.json.",
     },
+    # Trade-AI scalp scan (operator 2026-10-09 "n8n drives a governed lane"; lanes/scalp-lane-20261009.md).
+    # The cron line stays the scheduler of record and fallback. Live allowed by the AGENTS.md 4.0.0 §23.3
+    # exception (APPROVE_AGENTS_POLICY_4_0_0, 2026-10-09); still needs the relay live-lane listing + activation grant.
+    {
+        "lane_id": "trade-ai-scalp-live",
+        "tranche": "N7",
+        "cron": ["*/5 9-15 * * 1-5"],
+        "fidelity": "EXACT",
+        "source": "crontab: */5 9-15 * * 1-5 run_trade_ai_scalp_live.py (registry kind cron); the script self-gates 09:30-16:00 ET, so the 09:00-09:25 fires exit with receipt status outside_rth",
+        "note": "Same /tmp/tradeai_scalp_live.lock (flock -n) as the cron line, so n8n and cron never overlap. Receipt data/runtime/trade_ai_scalp_live_last.json; the incident fan-in raises trade-ai-scalp-live:STALLED when last_ok_at is older than 12 min in RTH.",
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -1242,7 +1254,674 @@ def check(out: Path, lanes: list[dict], relay_url: str) -> list[str]:
     return diffs
 
 
+# ---------------------------------------------------------------------------
+# Generic, registry-driven workflows (N8N Maturity design 02 §4, §6–§11).
+#
+# Six workflows replace one-workflow-per-lane: they ask the gateway what is due
+# (GET /due) and echo each due item to POST /run. They carry no registry lane id,
+# no command, no path and no cron line other than their own Schedule Trigger.
+# The only lane ids allowed are the system filters in SYSTEM_FILTER_LANES.
+# All six are generated inactive; activation is one config-write grant (AGENTS 4.1.0).
+# ---------------------------------------------------------------------------
+GENERIC_DEFAULT_OUT = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows"
+GENERIC_SCHEMA = "N8nGenericWorkflowSet@v1"
+# The bridge IP, never a hostname (EAI_AGAIN lesson, design 02 §4 node 2).
+GENERIC_RELAY_URL = "http://172.19.0.1:18092"
+DUE_SCHEMA = "DueResponse@v1"
+DUE_LIMIT = 40
+GENERIC_BATCH_SIZE = 5
+GENERIC_BATCH_WAIT_S = 1
+HEARTBEAT_LANE = "heartbeat-watch"
+HEARTBEAT_SETTLE_WAIT_S = 60
+HEARTBEAT_MAX_AGE_S = 600
+WORKFLOW_ERROR_LANE = "n8n-workflow-error"
+ERROR_MESSAGE_MAX = 160
+# The only lane ids any generic workflow may spell (design 02 §7, §8, §10). Everything
+# else comes from the gateway at run time.
+SYSTEM_FILTER_LANES = frozenset(
+    {
+        HEARTBEAT_LANE,
+        "incident-fanin",
+        "incident-notify",
+        "approval-escalate",
+        WORKFLOW_ERROR_LANE,
+    }
+)
+# The /run body: exactly these keys (three echoed from the due item, two from n8n).
+RUN_BODY_KEYS = ("lane_id", "mode", "idempotency_key", "workflow_id", "execution_id")
+EVENT_BODY_KEYS = ("lane_id", "workflow_id", "execution_id", "node", "message")
+# A separate allowlist for build_generic only. ALLOWED_NODE_TYPES (per-lane) is not widened.
+GENERIC_ALLOWED_NODE_TYPES = frozenset(
+    {
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.webhook",
+        "n8n-nodes-base.errorTrigger",
+        "n8n-nodes-base.set",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.splitInBatches",
+        "n8n-nodes-base.wait",
+        "n8n-nodes-base.stopAndError",
+    }
+)
+# Never in a generic workflow, whatever the allowlist says (tests assert both).
+GENERIC_FORBIDDEN_NODE_TYPES = frozenset(
+    {
+        "n8n-nodes-base.executeCommand",
+        "n8n-nodes-base.ssh",
+        "n8n-nodes-base.postgres",
+        "n8n-nodes-base.mySql",
+        "n8n-nodes-base.microsoftSql",
+        "n8n-nodes-base.mongoDb",
+        "n8n-nodes-base.redis",
+        "n8n-nodes-base.telegram",
+        "n8n-nodes-base.emailSend",
+        "n8n-nodes-base.gmail",
+        "n8n-nodes-base.function",
+        "n8n-nodes-base.functionItem",
+        "n8n-nodes-base.executeWorkflow",
+        "@n8n/n8n-nodes-langchain.agent",
+        "@n8n/n8n-nodes-langchain.openAi",
+        "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+    }
+)
+INCIDENT_ROUTER_ID = "tradeai-incident-router"
+
+GN_SCHED = "Schedule"
+GN_WEBHOOK = "Nudge webhook"
+GN_ERROR = "Error Trigger"
+GN_SHAPE = "Shape error event"
+GN_SET = "Relay"
+GN_ROUTE = "Is error event"
+GN_EVENT = "POST relay /event"
+GN_DUE = "GET relay /due"
+GN_VALIDATE = "Validate due"
+GN_BATCH = "Batch 5"
+GN_RUN = "POST relay /run"
+GN_PACE = "Wait 1s"
+GN_ASSERT = "Assert"
+GN_IF = "Any refused"
+GN_STOP = "Stop And Error"
+GN_SETTLE = "Wait 60s"
+GN_LAST = "GET heartbeat last"
+GN_FRESH = "Assert heartbeat fresh"
+
+# kind -> (workflow id, cron, due query, lane filter, executionTimeout s, extra trigger)
+GENERIC_KINDS: dict[str, dict] = {
+    "dispatcher": {
+        "id": "tradeai-dispatcher",
+        "cron": "* * * * *",
+        "source": "schedule",
+        "lanes": [],
+        "timeout_s": 50,
+    },
+    "event-router": {
+        "id": "tradeai-event-router",
+        "cron": "* * * * *",
+        "source": "event",
+        "lanes": [],
+        "timeout_s": 50,
+        "webhook": True,
+    },
+    "heartbeat-watcher": {
+        "id": "tradeai-heartbeat-watcher",
+        "cron": "*/5 * * * *",
+        "source": "schedule",
+        "lanes": [HEARTBEAT_LANE],
+        "timeout_s": 150,
+        "heartbeat": True,
+    },
+    "incident-router": {
+        "id": INCIDENT_ROUTER_ID,
+        "cron": "* * * * *",
+        "source": "schedule",
+        "lanes": ["incident-fanin", "incident-notify"],
+        "timeout_s": 50,
+        "error_trigger": True,
+    },
+    "digest-scheduler": {
+        "id": "tradeai-digest-scheduler",
+        "cron": "*/5 * * * *",
+        "source": "digest",
+        "lanes": [],
+        "timeout_s": 50,
+    },
+    "approval-router": {
+        "id": "tradeai-approval-router",
+        "cron": "*/5 * * * *",
+        "source": "schedule",
+        "lanes": ["approval-escalate"],
+        "timeout_s": 50,
+    },
+}
+
+
+def _g_node_id(kind: str, node: str) -> str:
+    return str(uuid.uuid5(_UUID_NS, f"generic:{kind}:{node}"))
+
+
+def _relay_expr() -> str:
+    return "$('" + GN_SET + "').first().json." + RELAY_URL_VAR
+
+
+def _relay_credentials() -> dict:
+    return {"httpHeaderAuth": {"id": CREDENTIAL_NAME, "name": CREDENTIAL_NAME}}
+
+
+def _due_query(spec: dict) -> str:
+    query = f"source={spec['source']}&limit={DUE_LIMIT}"
+    if spec["lanes"]:
+        query += "&lane=" + ",".join(spec["lanes"])
+    return "/due?" + query
+
+
+def _validate_due_js(spec: dict) -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-generic — do not edit in n8n.",
+            f"const SCHEMA = {json.dumps(DUE_SCHEMA)};",
+            f"const SOURCE = {json.dumps(spec['source'])};",
+            f"const LIMIT = {DUE_LIMIT};",
+            f"const LANE_FILTER = {json.dumps(spec['lanes'])};",
+            "const LANE_RE = /^[a-z0-9][a-z0-9._-]{1,63}$/;",
+            "const KEY_RE = /^[A-Za-z0-9._:-]{16,128}$/;",
+            "const due = $input.first().json;",
+            "if (!due || due.schema !== SCHEMA) throw new Error('due: schema is not ' + SCHEMA);",
+            "if (due.ok !== true) throw new Error('due: ok is not true (' + String(due.refused) + ')');",
+            "if (due.source !== SOURCE) throw new Error('due: source is not ' + SOURCE);",
+            "const items = Array.isArray(due.items) ? due.items : null;",
+            "if (items === null) throw new Error('due: items is not a list');",
+            "if (items.length > LIMIT) throw new Error('due: ' + items.length + ' items over limit ' + LIMIT);",
+            "const out = [];",
+            "for (const it of items) {",
+            "  const lane = it && it.lane_id;",
+            "  if (typeof lane !== 'string' || !LANE_RE.test(lane)) throw new Error('due: bad lane_id');",
+            "  if (LANE_FILTER.length && !LANE_FILTER.includes(lane)) throw new Error('due: lane outside filter: ' + lane);",
+            "  if (it.mode !== 'dry_run' && it.mode !== 'live') throw new Error('due: bad mode for ' + lane);",
+            "  if (typeof it.idempotency_key !== 'string' || !KEY_RE.test(it.idempotency_key)) {",
+            "    throw new Error('due: bad idempotency_key for ' + lane);",
+            "  }",
+            "  // Only these three fields leave this node; the /run body cannot carry anything else.",
+            "  out.push({ json: { lane_id: lane, mode: it.mode, idempotency_key: it.idempotency_key } });",
+            "}",
+            "return out;",
+            "",
+        ]
+    )
+
+
+def _assert_runs_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-generic — do not edit in n8n.",
+            "// Batch-done output is every /run response in request order; pair it with the due items.",
+            f"const due = $('{GN_VALIDATE}').all().map((i) => i.json);",
+            "const res = $input.all().map((i) => i.json);",
+            "let posted = 0;",
+            "let duplicate = 0;",
+            "const refused = [];",
+            "const unreachable = [];",
+            "for (let i = 0; i < due.length; i++) {",
+            "  const lane = due[i].lane_id;",
+            "  const r = res[i];",
+            "  if (!r || r.error || typeof r.statusCode !== 'number') {",
+            "    unreachable.push({ lane_id: lane, reason: 'no response' });",
+            "    continue;",
+            "  }",
+            "  const body = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "  if (r.statusCode === 200 && body.duplicate === true) { duplicate++; continue; }",
+            "  if (r.statusCode === 200 && body.state === 'REQUESTED') { posted++; continue; }",
+            "  const why = String(body.refused || body.error || body.state || ('HTTP ' + r.statusCode)).slice(0, 80);",
+            "  refused.push({ lane_id: lane, reason: why });",
+            "}",
+            "if (res.length > due.length) refused.push({ lane_id: '-', reason: 'extra responses' });",
+            "return [{ json: { posted, duplicate, refused, unreachable } }];",
+            "",
+        ]
+    )
+
+
+def _shape_error_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-generic — do not edit in n8n.",
+            "// Error Trigger payload -> the five fields the relay /event accepts. Nothing else leaves.",
+            "const e = $input.first().json || {};",
+            "const exec = e.execution || {};",
+            "const wf = e.workflow || {};",
+            "const err = exec.error || {};",
+            "return [{ json: {",
+            f"  event_lane: {json.dumps(WORKFLOW_ERROR_LANE)},",
+            "  workflow_id: String(wf.id ?? ''),",
+            "  execution_id: String(exec.id ?? ''),",
+            "  node: String(exec.lastNodeExecuted ?? (err.node && err.node.name) ?? ''),",
+            f"  message: String(err.message ?? '').slice(0, {ERROR_MESSAGE_MAX}),",
+            "} }];",
+            "",
+        ]
+    )
+
+
+def _heartbeat_fresh_js() -> str:
+    """Freshness of the watch lane itself, alarmed ONLY once heartbeat-watch is n8n-dispatched.
+
+    2026-10-09 (B5 follow-up): at W0 every registry row is ``dispatch.mode: off``, so no live RUN_DONE can exist
+    and an unconditional check was a P1 every 5 min. Dispatch state is read from this tick's ``/due`` reply (the
+    lane-filtered DueResponse@v1): a row with mode off is never evaluated, so it leaves no item, held slot, count
+    or error. Any trace = dispatched. An ``errors[]`` entry for the lane is a broken dispatch block: alarm.
+    Seen only in dry_run: skip (a live row cannot exist). Mode unknown (only counts, e.g. the slot is DONE) and no
+    live run ever: skip, the lane has never been live. Otherwise a live RUN_DONE must be <= MAX_AGE_S old.
+    Age is elapsed real seconds (DST-safe by construction)."""
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-generic — do not edit in n8n.",
+            f"const MAX_AGE_S = {HEARTBEAT_MAX_AGE_S};",
+            f"const LANE = {json.dumps(HEARTBEAT_LANE)};",
+            f"const due = $('{GN_DUE}').first().json;",
+            "if (!due || due.ok !== true) throw new Error('heartbeat-watch: /due unreadable; dispatch state unknown');",
+            "const mine = (xs) => (Array.isArray(xs) ? xs : []).filter((x) => x && x.lane_id === LANE);",
+            "const errs = mine(due.errors);",
+            "if (errs.length) throw new Error('heartbeat-watch: dispatch block error ' + String(errs[0].code));",
+            "const traced = mine(due.items).concat(mine(due.held));",
+            "const counts = (due.counts && typeof due.counts === 'object') ? due.counts : {};",
+            "const counted = Object.values(counts).reduce((a, n) => a + (Number(n) || 0), 0);",
+            "if (!traced.length && counted === 0) {",
+            "  return [{ json: { heartbeat_ok: true, skipped: 'not_dispatched' } }];",
+            "}",
+            "const modes = new Set(traced.map((x) => x.mode));",
+            "if (modes.size && !modes.has('live')) {",
+            "  return [{ json: { heartbeat_ok: true, skipped: 'dispatched_dry_run' } }];",
+            "}",
+            "const r = $input.first().json;",
+            "const body = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "const last = (body.last && typeof body.last === 'object') ? body.last : null;",
+            "if (!modes.size && !last) {",
+            "  return [{ json: { heartbeat_ok: true, skipped: 'mode_unknown_never_live' } }];",
+            "}",
+            "const finished = last && last.finished_at ? Date.parse(String(last.finished_at)) : NaN;",
+            "const age = Number.isNaN(finished) ? null : Math.round((Date.now() - finished) / 1000);",
+            "const ok = r.statusCode === 200 && !!last && last.state === 'RUN_DONE' && age !== null && age <= MAX_AGE_S;",
+            "if (!ok) {",
+            "  throw new Error('heartbeat-watch: no live RUN_DONE within ' + MAX_AGE_S + ' s (state ' +",
+            "    String(last ? last.state : 'none') + ', age ' + String(age) + ')');",
+            "}",
+            "return [{ json: { heartbeat_ok: true, age_s: age } }];",
+            "",
+        ]
+    )
+
+
+def _g_http(kind: str, name: str, *, method: str, path_expr: str, position: list[int], **extra) -> dict:
+    params: dict = {
+        "method": method,
+        "url": "={{ " + _relay_expr() + " }}" + path_expr,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {"timeout": HTTP_TIMEOUT_MS},
+    }
+    if extra.get("json_body"):
+        params.update({"sendBody": True, "specifyBody": "json", "jsonBody": extra["json_body"]})
+    if extra.get("full_response"):
+        params["options"]["response"] = {"response": {"fullResponse": True, "neverError": True}}
+    node = {
+        "id": _g_node_id(kind, name),
+        "name": name,
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": position,
+        "credentials": _relay_credentials(),
+        "parameters": params,
+        "retryOnFail": True,
+        "maxTries": 2,
+        "waitBetweenTries": extra.get("wait_ms", 3000),
+    }
+    if extra.get("on_error"):
+        node["onError"] = extra["on_error"]
+    return node
+
+
+def _g_code(kind: str, name: str, js: str, position: list[int]) -> dict:
+    return {
+        "id": _g_node_id(kind, name),
+        "name": name,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": position,
+        "parameters": {"language": "javaScript", "mode": "runOnceForAllItems", "jsCode": js},
+    }
+
+
+def _g_wait(kind: str, name: str, seconds: int, position: list[int]) -> dict:
+    return {
+        "id": _g_node_id(kind, name),
+        "name": name,
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": position,
+        "webhookId": _g_node_id(kind, name + ":webhook"),
+        "parameters": {"amount": seconds, "unit": "seconds"},
+    }
+
+
+def _g_if(kind: str, name: str, left: str, position: list[int]) -> dict:
+    return {
+        "id": _g_node_id(kind, name),
+        "name": name,
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": position,
+        "parameters": {
+            "conditions": {
+                "combinator": "and",
+                "conditions": [
+                    {
+                        "id": _g_node_id(kind, name + ":cond"),
+                        "leftValue": left,
+                        "operator": {"type": "boolean", "operation": "true", "singleValue": True},
+                        "rightValue": True,
+                    }
+                ],
+                "options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
+            }
+        },
+    }
+
+
+def _g_main(conns: dict, src: str, *outputs: list[str]) -> None:
+    conns[src] = {"main": [[{"node": dst, "type": "main", "index": 0} for dst in out] for out in outputs]}
+
+
+def build_generic(kind: str) -> dict:
+    """One of the six registry-driven workflows (design 02 §11), always inactive."""
+    if kind not in GENERIC_KINDS:
+        raise ValueError(f"unknown generic kind {kind!r}; choose from {sorted(GENERIC_KINDS)}")
+    spec = GENERIC_KINDS[kind]
+    wid = spec["id"]
+    nodes: list[dict] = []
+    conns: dict = {}
+    run_body = (
+        "={{ JSON.stringify({ lane_id: $json.lane_id, mode: $json.mode, idempotency_key: $json.idempotency_key, "
+        "workflow_id: String($workflow.id), execution_id: String($execution.id) }) }}"
+    )
+
+    nodes.append(
+        {
+            "id": _g_node_id(kind, GN_SCHED),
+            "name": GN_SCHED,
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [0, 300],
+            "parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": spec["cron"]}]}},
+        }
+    )
+    nodes.append(
+        {
+            "id": _g_node_id(kind, GN_SET),
+            "name": GN_SET,
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [480, 300],
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": _g_node_id(kind, GN_SET + ":url"),
+                            "name": RELAY_URL_VAR,
+                            "type": "string",
+                            "value": GENERIC_RELAY_URL,
+                        }
+                    ]
+                },
+                # The incident router passes the shaped error event through this node.
+                "includeOtherFields": bool(spec.get("error_trigger")),
+                "options": {},
+            },
+        }
+    )
+    _g_main(conns, GN_SCHED, [GN_SET])
+
+    if spec.get("webhook"):
+        nodes.append(
+            {
+                "id": _g_node_id(kind, GN_WEBHOOK),
+                "name": GN_WEBHOOK,
+                "type": "n8n-nodes-base.webhook",
+                "typeVersion": 2,
+                "position": [0, 120],
+                "webhookId": _g_node_id(kind, GN_WEBHOOK + ":webhook"),
+                "credentials": _relay_credentials(),
+                # The nudge only wakes the router; its body is never read (design 02 §6).
+                "parameters": {
+                    "httpMethod": "POST",
+                    "path": "tradeai-nudge",
+                    "authentication": "headerAuth",
+                    "responseMode": "onReceived",
+                    "options": {},
+                },
+            }
+        )
+        _g_main(conns, GN_WEBHOOK, [GN_SET])
+
+    due_from = GN_SET
+    if spec.get("error_trigger"):
+        nodes.append(
+            {
+                "id": _g_node_id(kind, GN_ERROR),
+                "name": GN_ERROR,
+                "type": "n8n-nodes-base.errorTrigger",
+                "typeVersion": 1,
+                "position": [0, 120],
+                "parameters": {},
+            }
+        )
+        nodes.append(_g_code(kind, GN_SHAPE, _shape_error_js(), [240, 120]))
+        nodes.append(
+            _g_if(kind, GN_ROUTE, "={{ $json.event_lane === " + json.dumps(WORKFLOW_ERROR_LANE) + " }}", [720, 300])
+        )
+        event_body = (
+            "={{ JSON.stringify({ lane_id: $json.event_lane, workflow_id: $json.workflow_id, "
+            "execution_id: $json.execution_id, node: $json.node, message: $json.message }) }}"
+        )
+        nodes.append(
+            _g_http(kind, GN_EVENT, method="POST", path_expr="/event", position=[960, 120], json_body=event_body)
+        )
+        _g_main(conns, GN_ERROR, [GN_SHAPE])
+        _g_main(conns, GN_SHAPE, [GN_SET])
+        _g_main(conns, GN_SET, [GN_ROUTE])
+        _g_main(conns, GN_ROUTE, [GN_EVENT], [GN_DUE])
+        due_from = GN_ROUTE
+
+    x0 = 960 if spec.get("error_trigger") else 720
+    nodes.append(_g_http(kind, GN_DUE, method="GET", path_expr=_due_query(spec), position=[x0, 300]))
+    nodes.append(_g_code(kind, GN_VALIDATE, _validate_due_js(spec), [x0 + 240, 300]))
+    nodes.append(
+        {
+            "id": _g_node_id(kind, GN_BATCH),
+            "name": GN_BATCH,
+            "type": "n8n-nodes-base.splitInBatches",
+            "typeVersion": 3,
+            "position": [x0 + 480, 300],
+            "parameters": {"batchSize": GENERIC_BATCH_SIZE, "options": {}},
+        }
+    )
+    nodes.append(
+        _g_http(
+            kind,
+            GN_RUN,
+            method="POST",
+            path_expr="/run",
+            position=[x0 + 720, 420],
+            json_body=run_body,
+            full_response=True,
+            wait_ms=2000,
+            on_error="continueRegularOutput",
+        )
+    )
+    nodes.append(_g_wait(kind, GN_PACE, GENERIC_BATCH_WAIT_S, [x0 + 960, 420]))
+    nodes.append(_g_code(kind, GN_ASSERT, _assert_runs_js(), [x0 + 720, 180]))
+    nodes.append(_g_if(kind, GN_IF, "={{ ($json.refused.length + $json.unreachable.length) > 0 }}", [x0 + 960, 180]))
+    nodes.append(
+        {
+            "id": _g_node_id(kind, GN_STOP),
+            "name": GN_STOP,
+            "type": "n8n-nodes-base.stopAndError",
+            "typeVersion": 1,
+            "position": [x0 + 1200, 120],
+            "parameters": {
+                "errorType": "errorMessage",
+                # Lane ids and reasons only.
+                "errorMessage": "={{ "
+                + json.dumps(wid + ": ")
+                + " + $json.refused.concat($json.unreachable).map((r) => r.lane_id + '=' + r.reason).join('; ') }}",
+            },
+        }
+    )
+    if due_from == GN_SET:
+        if spec.get("heartbeat"):
+            _g_main(conns, GN_SET, [GN_DUE, GN_SETTLE])
+        else:
+            _g_main(conns, GN_SET, [GN_DUE])
+    _g_main(conns, GN_DUE, [GN_VALIDATE])
+    _g_main(conns, GN_VALIDATE, [GN_BATCH])
+    # SplitInBatches v3: output 0 = done, output 1 = loop.
+    _g_main(conns, GN_BATCH, [GN_ASSERT], [GN_RUN])
+    _g_main(conns, GN_RUN, [GN_PACE])
+    _g_main(conns, GN_PACE, [GN_BATCH])
+    _g_main(conns, GN_ASSERT, [GN_IF])
+    _g_main(conns, GN_IF, [GN_STOP], [])
+
+    if spec.get("heartbeat"):
+        # Runs every tick, due or not: the watcher must see a stale watch lane even when /due is empty.
+        nodes.append(_g_wait(kind, GN_SETTLE, HEARTBEAT_SETTLE_WAIT_S, [720, 560]))
+        nodes.append(
+            _g_http(
+                kind,
+                GN_LAST,
+                method="GET",
+                path_expr=f"/runs/{HEARTBEAT_LANE}/last?mode=live",
+                position=[960, 560],
+                full_response=True,
+            )
+        )
+        nodes.append(_g_code(kind, GN_FRESH, _heartbeat_fresh_js(), [1200, 560]))
+        _g_main(conns, GN_SETTLE, [GN_LAST])
+        _g_main(conns, GN_LAST, [GN_FRESH])
+
+    settings: dict = {
+        "executionOrder": "v1",
+        "timezone": TIMEZONE,
+        "executionTimeout": spec["timeout_s"],
+        "saveDataErrorExecution": "all",
+        "saveManualExecutions": True,
+    }
+    if wid != INCIDENT_ROUTER_ID:
+        settings["errorWorkflow"] = INCIDENT_ROUTER_ID
+    nodes.sort(key=lambda n: n["name"])
+    return {
+        "id": wid,
+        "name": wid,
+        "active": False,
+        "nodes": nodes,
+        "connections": conns,
+        "settings": settings,
+        "meta": {
+            "generator": "scripts/n8n_workflow_templates.py build-generic",
+            "kind": kind,
+            "design": "docs/implementation/n8n-maturity/02-six-workflow-architecture.md §11",
+        },
+    }
+
+
+def generic_relay_calls(kind: str) -> list[str]:
+    spec = GENERIC_KINDS[kind]
+    calls = ["GET " + _due_query(spec), "POST /run"]
+    if spec.get("heartbeat"):
+        calls.append(f"GET /runs/{HEARTBEAT_LANE}/last?mode=live")
+    if spec.get("error_trigger"):
+        calls.append("POST /event")
+    return calls
+
+
+def generic_triggers(kind: str) -> list[str]:
+    spec = GENERIC_KINDS[kind]
+    triggers = ["schedule " + spec["cron"]]
+    if spec.get("webhook"):
+        triggers.append("webhook POST tradeai-nudge")
+    if spec.get("error_trigger"):
+        triggers.append("error trigger")
+    return triggers
+
+
+def render_generic() -> dict[str, str]:
+    """Map of file name -> text for the six workflows plus INDEX.json (no timestamp; byte-stable)."""
+    files: dict[str, str] = {}
+    rows = []
+    for kind in GENERIC_KINDS:
+        wf = build_generic(kind)
+        text = _dump(wf)
+        fname = f"{wf['id']}.json"
+        files[fname] = text
+        rows.append(
+            {
+                "kind": kind,
+                "id": wf["id"],
+                "file": fname,
+                "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "triggers": generic_triggers(kind),
+                "relay_calls": generic_relay_calls(kind),
+                "error_workflow": wf["settings"].get("errorWorkflow"),
+                "active": False,
+            }
+        )
+    files["INDEX.json"] = _dump(
+        {
+            "schema": GENERIC_SCHEMA,
+            "generator": "scripts/n8n_workflow_templates.py build-generic",
+            "relay_url": GENERIC_RELAY_URL,
+            "credential_name": CREDENTIAL_NAME,
+            "system_filter_lanes": sorted(SYSTEM_FILTER_LANES),
+            "node_types": sorted(GENERIC_ALLOWED_NODE_TYPES),
+            "workflows": rows,
+        }
+    )
+    return files
+
+
+def generic_main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="n8n_workflow_templates.py build-generic", description="six generic workflows")
+    ap.add_argument("--out", default=str(GENERIC_DEFAULT_OUT))
+    ap.add_argument("--check", action="store_true", help="fail if regenerating would change any byte")
+    a = ap.parse_args(argv)
+    out = Path(a.out)
+    files = render_generic()
+    if a.check:
+        diffs = []
+        for rel, text in sorted(files.items()):
+            path = out / rel
+            if not path.exists():
+                diffs.append(f"missing: {rel}")
+            elif path.read_bytes() != text.encode("utf-8"):
+                diffs.append(f"stale: {rel}")
+        print(json.dumps({"mode": "check-generic", "files": len(files), "diffs": diffs, "out": str(out)}))
+        return 1 if diffs else 0
+    changed = []
+    out.mkdir(parents=True, exist_ok=True)
+    for rel, text in sorted(files.items()):
+        path = out / rel
+        data = text.encode("utf-8")
+        if not path.exists() or path.read_bytes() != data:
+            path.write_bytes(data)
+            changed.append(rel)
+    print(json.dumps({"mode": "write-generic", "files": len(files), "changed": changed, "out": str(out)}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "build-generic":
+        return generic_main(list(argv[1:]))
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--lanes", default="all", help="N1|N2|...|N6 (comma list) or all")
     ap.add_argument("--out", default=str(DEFAULT_OUT))

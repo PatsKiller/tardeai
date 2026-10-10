@@ -16,6 +16,10 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:  # reports live in persistent-state, not the release dir (lib/portfolio_reports_root.py)
+    from lib.portfolio_reports_root import glob_reports, is_report_relpath, served_url  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.portfolio_reports_root import glob_reports, is_report_relpath, served_url  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 # ── Portal categories: friendly tab → (label, icon, member notification_types / alert filters) ──────
@@ -97,12 +101,12 @@ def _scan_docx_files() -> list[dict]:
     ]
     out = []
     for pat in patterns:
-        for fp in sorted(root.glob(pat), reverse=True)[:40]:
+        hits = glob_reports(pat) if is_report_relpath(pat) else root.glob(pat)
+        for fp in sorted(hits, reverse=True)[:40]:
             try:
                 if not fp.is_file():
                     continue
-                rel = fp.relative_to(root)
-                url = "/" + str(rel).replace("\\", "/")
+                url = served_url(fp, root)
                 name = fp.name
                 # date token from filename when present
                 dm = re.search(r"(20\d{2}-\d{2}-\d{2})", name)
@@ -112,7 +116,7 @@ def _scan_docx_files() -> list[dict]:
                     "size_kb": round(fp.stat().st_size / 1024, 1),
                     "modified": fp.stat().st_mtime,
                     "date": dm.group(1) if dm else None,
-                    "kind": "weekly" if "weekly" in str(rel) else "monthly" if "monthly" in str(rel)
+                    "kind": "weekly" if "weekly" in url else "monthly" if "monthly" in url
                     else "portfolio" if "portfolio_brief" in name else "trade_ai" if "trade_ai" in name else "other",
                 })
             except Exception:

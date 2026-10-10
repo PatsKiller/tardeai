@@ -524,49 +524,127 @@ def update_agent_context(conn, topic_id=None):
 # ════════════════════════════════════════════════════════════
 # OPT-IN: free-lane multi-LLM ensemble rescue
 # ════════════════════════════════════════════════════════════
-def ensemble_rescue(conn, topic_id=None, limit=None):
+ENSEMBLE_RECEIPT = PROJECT_ROOT / "data" / "runtime" / "topic_curator_ensemble_latest.json"
+
+
+def _write_ensemble_receipt(receipt: dict, path: Path | None = None) -> None:
+    """Per-run receipt of the --ensemble rescue, written on success AND failure (atomic replace).
+
+    2026-10-09 breach triage: every --ensemble run crashed at [1b] while the lane's signal was the shared
+    topic_curator_latest.json the 13:30 run refreshes, so the crash was invisible. This file is the
+    topic-curator-ensemble lane's own output signal.
+    """
+    path = path or ENSEMBLE_RECEIPT
+    # ok_at is the lane's freshness key (json_key): it advances only on a successful run, so an error run is
+    # still a visible receipt but never looks fresh. An error run carries the previous ok_at forward.
+    if receipt.get("status") == "ok":
+        receipt["ok_at"] = receipt.get("finished_at")
+    else:
+        try:
+            receipt["ok_at"] = (json.loads(path.read_text(encoding="utf-8")) or {}).get("ok_at")
+        except Exception:  # noqa: BLE001 — no previous receipt
+            receipt["ok_at"] = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(receipt, indent=2, default=str) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception as e:  # noqa: BLE001 — the receipt must never mask the run's own result
+        print(f"  [curator] ensemble receipt write failed: {e}")
+
+
+def ensemble_rescue(topic_id=None, limit=None, *, connect=None, validate=None, receipt_path: Path | None = None,
+                    receipt_out: dict | None = None):
     """Second opinion on borderline rejects: re-rate recently low_quality topic articles with the FREE-lane
     multi-LLM ensemble (grok+chatgpt+local); upgrade consensus-approved ones to 'approved'. Catches single-
     lane false rejects without re-rating everything (only the borderline items pay the 3-lane cost). No keys.
     Cap is config-driven (inference_layers.yaml → ensemble.rescue_max, default 20) so the daily EOD cron stays
-    bounded — each item costs ~3 sequential lane calls."""
-    if limit is None:
-        limit = 20
-        try:
-            import yaml
-            from pathlib import Path as _P
-            y = yaml.safe_load((_P(__file__).resolve().parent.parent / "config" / "inference_layers.yaml").read_text()) or {}
-            limit = int(((y.get("inference_layers") or {}).get("ensemble") or {}).get("rescue_max", 20))
-        except Exception:
-            pass
+    bounded — each item costs ~3 sequential lane calls.
+
+    DB use is bracketed: one short connection reads the candidates and is closed BEFORE the slow LLM calls;
+    a fresh connection writes the upgrades. Holding one connection across up to ~60 lane calls is what made
+    every --ensemble run die with "SSL connection has been closed unexpectedly" (2026-10-09 triage).
+    Every run writes ENSEMBLE_RECEIPT (status ok | error | unavailable; ok_at only advances on ok) and, when
+    given, copies it into ``receipt_out`` so main() can exit non-zero on a failed rescue."""
+    from datetime import datetime, timezone
+    connect = connect or _get_conn
+    receipt = {"schema": "TopicCuratorEnsembleRun@v1", "started_at": datetime.now(timezone.utc).isoformat(),
+               "topic": topic_id, "status": "error", "stage": "config", "candidates": 0, "approve_decisions": 0,
+               "upgraded": 0, "validate_errors": 0}
     try:
-        from inference_ensemble import ensemble_validate
-    except Exception as e:
-        print(f"  [curator] ensemble unavailable: {e}"); return 0
-    cur = conn.cursor()
-    sql = ("SELECT id, title, summary, strategy_type FROM news_articles "
-           "WHERE rag_status='low_quality' AND source LIKE 'topic_%%'")
-    params = []
-    if topic_id:
-        sql += " AND strategy_type=%s"; params.append(topic_id)
-    sql += " ORDER BY created_at DESC LIMIT %s"; params.append(limit)
-    cur.execute(sql, params)
-    rows = cur.fetchall()
-    upgraded = 0
-    for rid, title, summary, strat in rows:
-        res = ensemble_validate(f"{title}\n{summary or ''}",
-                                context=f"topic {strat}; research/retirement/markets relevance",
-                                task="content_quality_and_relevance_for_research")
-        if (res.get("final_decision") == "approve" and res.get("consensus_reached")
-                and res.get("final_score", 0) >= 6.5):
+        if limit is None:
+            limit = 20
+            try:
+                import yaml
+                y = yaml.safe_load((PROJECT_ROOT / "config" / "inference_layers.yaml").read_text()) or {}
+                limit = int(((y.get("inference_layers") or {}).get("ensemble") or {}).get("rescue_max", 20))
+            except Exception:
+                pass
+        receipt["limit"] = limit
+        if validate is None:
+            try:
+                from inference_ensemble import ensemble_validate as validate
+            except Exception as e:
+                print(f"  [curator] ensemble unavailable: {e}")
+                receipt.update(status="unavailable", error=f"{type(e).__name__}: {e}"[:300])
+                return 0
+        # 1. read the candidates on a short-lived connection
+        receipt["stage"] = "read"
+        sql = ("SELECT id, title, summary, strategy_type FROM news_articles "
+               "WHERE rag_status='low_quality' AND source LIKE 'topic_%%'")
+        params = []
+        if topic_id:
+            sql += " AND strategy_type=%s"; params.append(topic_id)
+        sql += " ORDER BY created_at DESC LIMIT %s"; params.append(limit)
+        conn = connect()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+        receipt["candidates"] = len(rows)
+        # 2. the slow LLM calls, with no connection open
+        receipt["stage"] = "validate"
+        upgrades = []
+        for rid, title, summary, strat in rows:
+            try:
+                res = validate(f"{title}\n{summary or ''}",
+                               context=f"topic {strat}; research/retirement/markets relevance",
+                               task="content_quality_and_relevance_for_research")
+            except Exception as e:  # noqa: BLE001 — one lane failure must not lose the other decisions
+                receipt["validate_errors"] += 1
+                receipt["last_validate_error"] = f"{type(e).__name__}: {e}"[:200]
+                continue
+            if (res.get("final_decision") == "approve" and res.get("consensus_reached")
+                    and res.get("final_score", 0) >= 6.5):
+                upgrades.append((rid, (f"ensemble rescue ({','.join(res.get('lanes_used', []))}): "
+                                       f"{res.get('reasoning_summary', '')}"[:200])))
+        receipt["approve_decisions"] = len(upgrades)
+        # 3. write the upgrades on a fresh connection
+        receipt["stage"] = "write"
+        if upgrades:
             from lib.writers.news_articles_writer import set_rag_status
-            set_rag_status(cur, rid, "approved",
-                           (f"ensemble rescue ({','.join(res.get('lanes_used', []))}): "
-                            f"{res.get('reasoning_summary', '')}"[:200]))
-            upgraded += 1
-    conn.commit()
-    print(f"  [curator] ensemble rescue: {upgraded}/{len(rows)} low_quality → approved (free-lane consensus)")
-    return upgraded
+            conn = connect()
+            try:
+                cur = conn.cursor()
+                for rid, reason in upgrades:
+                    set_rag_status(cur, rid, "approved", reason)
+                conn.commit()
+            finally:
+                conn.close()
+        receipt.update(status="ok", stage="done", upgraded=len(upgrades))
+        print(f"  [curator] ensemble rescue: {len(upgrades)}/{len(rows)} low_quality → approved (free-lane consensus)")
+        return len(upgrades)
+    except Exception as e:
+        receipt["error"] = f"{type(e).__name__}: {e}"[:300]
+        print(f"  [curator] ensemble rescue failed at {receipt['stage']}: {receipt['error']}")
+        return 0
+    finally:
+        receipt["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _write_ensemble_receipt(receipt, receipt_path)
+        if receipt_out is not None:
+            receipt_out.update(receipt)
 
 
 # ════════════════════════════════════════════════════════════
@@ -596,7 +674,15 @@ def main():
         stats['rated'] = total
         if args.ensemble:
             print("  [1b] Ensemble rescue on borderline rejects (free-lane grok+chatgpt+local)...")
-            stats['ensemble_rescued'] = ensemble_rescue(conn, args.topic)
+            ensemble_receipt: dict = {}
+            stats['ensemble_rescued'] = ensemble_rescue(args.topic, receipt_out=ensemble_receipt)
+            stats['ensemble_status'] = ensemble_receipt.get("status")
+            # the shared connection sat idle through the ensemble's lane calls: replace it before step 2
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn = _get_conn()
         stats['approved'] = approved
         stats['blocked'] = blocked
     else:
@@ -683,8 +769,13 @@ def main():
     _write_desk_projection(stats)
 
     conn.close()
+    if stats.get('ensemble_status') not in (None, 'ok'):
+        # the rest of the curation ran and the receipt is written; the cron exit code still says it failed
+        print(f"  [curator] ensemble rescue status={stats['ensemble_status']} -> exit 1")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
     os.chdir(str(PROJECT_ROOT))
-    main()
+    sys.exit(main())
