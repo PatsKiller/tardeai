@@ -27532,6 +27532,21 @@ def _state_root_divergence(query=None):
         }
 
 
+def _isolated_truth_block(module, schema, fn_name, kwargs):
+    """Compute a truth contract in a child process under a deadline (n8nmat reliability).
+
+    These contracts scan stores, crontab and the bundle. In-process, one slow scan
+    held a server thread and ~800 MB of the API heap until the watchdog SIGKILLed
+    :7777. lib.request_isolation kills the child at the deadline and returns an
+    honest TIMEOUT body; the API keeps serving.
+    """
+    from lib.request_isolation import run_isolated
+
+    body = run_isolated(module, fn_name, kwargs)
+    body.setdefault("schema", schema)
+    return body
+
+
 def _whole_site_truth_block(fn_name, **kwargs):
     """Shared read-only wrapper for the whole-site truth contracts.
 
@@ -27539,9 +27554,7 @@ def _whole_site_truth_block(fn_name, **kwargs):
     reason, never as an empty report that reads like a healthy one.
     """
     try:
-        from lib import whole_site_truth as _wst
-
-        return getattr(_wst, fn_name)(**kwargs)
+        return _isolated_truth_block("lib.whole_site_truth", "WholeSiteTruth@v1", fn_name, kwargs)
     except Exception as e:  # noqa: BLE001
         return {
             "schema": "WholeSiteTruth@v1",
@@ -27599,9 +27612,7 @@ def _effective_truth_block(fn_name, **kwargs):
     empty report that reads like a healthy one.
     """
     try:
-        from lib import effective_truth as _et
-
-        return getattr(_et, fn_name)(**kwargs)
+        return _isolated_truth_block("lib.effective_truth", "EffectiveTruth@v1", fn_name, kwargs)
     except Exception as e:  # noqa: BLE001
         return {
             "schema": "EffectiveTruth@v1",

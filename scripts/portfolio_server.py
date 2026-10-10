@@ -38,6 +38,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -638,7 +639,7 @@ def _handle_personal_write(handler, raw_body: bytes):
                 _sf = _sd / _stale
                 if _sf.exists():
                     _sf.unlink()
-            print(f"  [personal] Invalidated AI caches (Roth + analysis)")
+            print("  [personal] Invalidated AI caches (Roth + analysis)")
         except Exception:
             pass
 
@@ -1619,7 +1620,11 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # Suppress noisy GET logs for static files, keep API logs
         path = args[0] if args else ""
         if "/api/" in str(path):
-            print(f"  [server] {fmt % args}")
+            # Timestamped and flushed: stdout is a block-buffered file, so the lines
+            # leading up to a watchdog SIGKILL were lost with the process (n8nmat
+            # reliability 2026-10-09) and nobody could say which request wedged it.
+            _ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            print(f"  [server] {_ts} {fmt % args}", flush=True)
 
     def _check_auth(self) -> bool:
         """Validate API authentication. Returns True if authorized."""
@@ -2781,6 +2786,22 @@ def _sem_exempt_path(path: str) -> bool:
     return False
 
 
+def _log_slow_request(path: str, elapsed: float) -> None:
+    """One flushed line per request slower than TRADEAI_API_SLOW_REQUEST_SEC (default 10s).
+
+    The watchdog kills :7777 after ~46s of unanswered /api/health. A slow-request
+    trail with wall-clock stamps is the evidence that names the endpoint next time.
+    """
+    try:
+        threshold = float(os.getenv("TRADEAI_API_SLOW_REQUEST_SEC", "10"))
+    except ValueError:
+        threshold = 10.0
+    if elapsed < threshold:
+        return
+    _ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"  [slow-request] {_ts} {elapsed:.1f}s {path or '?'}", flush=True)
+
+
 class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     """Threaded HTTPServer with SO_REUSEADDR.
 
@@ -2842,7 +2863,11 @@ class ReusableHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
                 except Exception:
                     pass
                 return
-            super().process_request_thread(request, client_address)
+            _t0 = time.monotonic()
+            try:
+                super().process_request_thread(request, client_address)
+            finally:
+                _log_slow_request(path, time.monotonic() - _t0)
         finally:
             if acquired:
                 try:
