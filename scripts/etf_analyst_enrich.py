@@ -129,11 +129,15 @@ def enrich():
             tm, nop = info.get("targetMeanPrice"), info.get("numberOfAnalystOpinions")
             if tm is None and not nop:
                 continue
-            save_yahoo_analyst_targets_history([{"symbol": s, "current_price": info.get("currentPrice"),
+            # Keyword arguments (2026-10-10): the signature is (snapshot_date, targets_payload). Passing them
+            # positionally in the reverse order iterated the date string, raised inside the bare except
+            # below, and discarded every constituent's .info call (up to CONSTITUENT_CAP a run).
+            save_yahoo_analyst_targets_history(snapshot_date=ds, targets_payload=[{
+                "symbol": s, "current_price": info.get("currentPrice"),
                 "target_mean_price": tm, "target_high_price": info.get("targetHighPrice"),
                 "target_low_price": info.get("targetLowPrice"), "target_median_price": info.get("targetMedianPrice"),
                 "recommendation_mean": info.get("recommendationMean"),
-                "recommendation_key": info.get("recommendationKey"), "number_of_analyst_opinions": nop}], ds)
+                "recommendation_key": info.get("recommendationKey"), "number_of_analyst_opinions": nop}])
             fetched += 1
         except Exception:
             continue

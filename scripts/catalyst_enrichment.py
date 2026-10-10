@@ -175,19 +175,21 @@ def _report_alpha_vantage(ok: bool, rows=None, error=None) -> None:
 
 
 def _fetch_alpha_vantage(symbol: str) -> List[Dict]:
+    # Alpha Vantage free tier = 5 calls/min, 100/day — disabled for bulk catalyst runs
+    # Enable only for single-ticker deep dives: ENABLE_ALPHA_VANTAGE_CATALYST=true in .env
+    # Flag and key are checked BEFORE the budget ledger (2026-10-10): spend() used to run first, so a
+    # disabled fetcher recorded ~4,650 "calls"/week in api_budget_ledger with 0 real requests.
+    if _env("ENABLE_ALPHA_VANTAGE_CATALYST", "false").lower() != "true":
+        return []
+    key = _env("ALPHA_VANTAGE_API_KEY")
+    if not key:
+        return []
     try:
         from api_budget import spend as _ab_spend
         if not _ab_spend("alphavantage"):
             return []
     except Exception:
         pass
-    # Alpha Vantage free tier = 5 calls/min, 100/day — disabled for bulk catalyst runs
-    # Enable only for single-ticker deep dives: ENABLE_ALPHA_VANTAGE_CATALYST=true in .env
-    if _env("ENABLE_ALPHA_VANTAGE_CATALYST", "false").lower() != "true":
-        return []
-    key = _env("ALPHA_VANTAGE_API_KEY")
-    if not key:
-        return []
     try:
         url = "https://www.alphavantage.co/query"
         params = {

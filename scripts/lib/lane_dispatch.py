@@ -43,6 +43,7 @@ An exception changes eligibility only — dispatch mode stays whatever the row's
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 from dataclasses import dataclass
@@ -495,44 +496,88 @@ _PHRASES = tuple((tok, _phrase(tok)) for tok in FORBIDDEN_TOKENS_ALL if _phrase(
 _SCRIPT_SUBSTRINGS = tuple((tok, "".join(_phrase(tok))) for tok in _COMMAND_TOKENS if _phrase(tok))
 
 
-def _compound_hit(word: str, forms: frozenset[str]) -> bool:
-    """`word` is a forbidden form glued to a COMPOUND_PARTNERS word, either way round (liveorders, positionsync)."""
-    for f in forms:
-        if len(f) < 3 or len(word) <= len(f):
-            continue
-        if word.startswith(f) and word[len(f):] in COMPOUND_PARTNERS:
+def _compound_hit(word: str, forms: frozenset[str], partners: Optional[frozenset[str]] = None) -> bool:
+    """`word` is a forbidden form glued to a COMPOUND_PARTNERS word, either way round (liveorders, positionsync).
+
+    2026-10-10 (gateway /due latency): the same answer as testing every form f (len(f) >= 3, len(word) > len(f))
+    for word == f + partner or partner + f, computed by splitting `word` at each interior point instead
+    (O(len(word)) set lookups, not O(len(forms)) prefix scans): f + partner is a split at k = len(f) >= 3;
+    partner + f a split with len(word) - k >= 3; both sides are non-empty because 1 <= k < len(word).
+    tests/test_gateway_due_latency_20261010.py keeps the old loop as a reference and checks equality."""
+    partners = COMPOUND_PARTNERS if partners is None else partners
+    n = len(word)
+    for k in range(1, n):
+        head, tail = word[:k], word[k:]
+        if k >= 3 and head in forms and tail in partners:
             return True
-        if word.endswith(f) and word[: -len(f)] in COMPOUND_PARTNERS:
+        if n - k >= 3 and tail in forms and head in partners:
             return True
     return False
+
+
+def _compound_candidates(word: str, partners: frozenset[str]) -> set[str]:
+    """Every f such that `word` is f glued to a partner word either way round with len(f) >= 3 — exactly the f
+    for which _compound_hit(word, {f}, partners) is True, so _compound_hit(word, forms, partners) is
+    `not forms.isdisjoint(_compound_candidates(word, partners))`."""
+    n = len(word)
+    out: set[str] = set()
+    for k in range(1, n):
+        head, tail = word[:k], word[k:]
+        if k >= 3 and tail in partners:
+            out.add(head)
+        if n - k >= 3 and head in partners:
+            out.add(tail)
+    return out
 
 
 def forbidden_text_hits(text: str) -> list[str]:
     """Every forbidden token in `text` under whole-word / path-segment matching (module docstring), in
     FORBIDDEN_TOKENS_ALL order then the substring rules. [] when clean. The one matcher behind
-    forbidden_hits / dispatch_eligible and the §23.14 test mirror."""
-    words = _words(text or "")
-    if not words:
-        return []
-    squashed = "".join(words)
-    hits: list[str] = []
-    for tok, phrase in _PHRASES:
-        last = _word_forms(phrase[-1])
-        joined = _word_forms("".join(phrase))
-        n = len(phrase)
-        found = any(w in joined or _compound_hit(w, joined) for w in words)
-        if not found and n > 1:
-            found = any(tuple(words[i:i + n - 1]) == phrase[:-1] and words[i + n - 1] in last
-                        for i in range(len(words) - n + 1))
-        if found and tok not in hits:
-            hits.append(tok)
-    for tok, sub in _SCRIPT_SUBSTRINGS:
-        if sub in squashed and tok not in hits:
-            hits.append(tok)
-    for sub in DISTINCTIVE_SUBSTRINGS:
-        if sub in squashed and sub not in hits:
-            hits.append(sub)
-    return hits
+    forbidden_hits / dispatch_eligible and the §23.14 test mirror.
+
+    2026-10-10 (W0 incident: gateway `due` timed out under 3 concurrent calls; this matcher was ~99% of its CPU):
+    the per-phrase word forms are built once per matcher instead of on every call, and results are memoized per
+    text. Both are pure functions of the text and the module's matcher inputs; the matcher is keyed on those
+    inputs (_word_forms, COMPOUND_PARTNERS, _SCRIPT_SUBSTRINGS, DISTINCTIVE_SUBSTRINGS), so replacing any of
+    them (the mutation tests do) builds a fresh one. A fresh list is returned each call."""
+    match = _matcher(_word_forms, COMPOUND_PARTNERS, _SCRIPT_SUBSTRINGS, DISTINCTIVE_SUBSTRINGS)
+    return list(match(text or ""))
+
+
+@functools.lru_cache(maxsize=4)
+def _matcher(word_forms, partners: frozenset[str], script_substrings: tuple, distinctive: tuple):
+    """A memoized text -> hits function for one set of matcher inputs (see forbidden_text_hits)."""
+    phrase_forms = tuple((tok, phrase, word_forms(phrase[-1]), word_forms("".join(phrase))) for tok, phrase in _PHRASES)
+
+    @functools.lru_cache(maxsize=16384)
+    def match(text: str) -> tuple[str, ...]:
+        words = _words(text)
+        if not words:
+            return ()
+        squashed = "".join(words)
+        # A word matches a phrase's joined forms directly or as one of its compound candidates; one set serves
+        # every phrase (any(w in J or _compound_hit(w, J)) == not J.isdisjoint(words + candidates)).
+        reach = set(words)
+        for w in reach.copy():
+            reach |= _compound_candidates(w, partners)
+        hits: list[str] = []
+        for tok, phrase, last, joined in phrase_forms:
+            n = len(phrase)
+            found = not joined.isdisjoint(reach)
+            if not found and n > 1:
+                found = any(tuple(words[i:i + n - 1]) == phrase[:-1] and words[i + n - 1] in last
+                            for i in range(len(words) - n + 1))
+            if found and tok not in hits:
+                hits.append(tok)
+        for tok, sub in script_substrings:
+            if sub in squashed and tok not in hits:
+                hits.append(tok)
+        for sub in distinctive:
+            if sub in squashed and sub not in hits:
+                hits.append(sub)
+        return tuple(hits)
+
+    return match
 
 
 def forbidden_hits(row: Mapping[str, Any], *, allowlist_argv: Optional[Mapping[str, str]] = None
