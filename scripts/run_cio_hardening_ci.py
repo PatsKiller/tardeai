@@ -3676,6 +3676,11 @@ GATES = [
         "n8n_w0_relay_fix_20261010",
         [
             "tests/test_n8n_w0_relay_fix_20261010.py",
+            # 2026-10-10 (RC11 lesson, gap 4): the contract check also fires N concurrent GET /due with the workflows'
+            # own queries through a scratch relay wired to a scratch gateway held to the gateway unit's CPUQuota
+            # (SIGSTOP/SIGCONT duty cycle); a refused or slow call refuses the import. Hermetic: loopback children
+            # under tmp_path, scratch keys, a stub CPU-burning gateway for the negative case; no live relay/gateway.
+            "tests/test_n8n_relay_concurrency_20261010.py",
         ],
     ),
     (
