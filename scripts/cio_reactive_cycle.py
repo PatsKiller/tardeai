@@ -556,11 +556,8 @@ def _source_sha() -> str | None:
     _SOURCE_SHA_CACHE["sha"] = sha
     return sha
 
-def main() -> int:
-    # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
-    from scripts.lib import assert_single_import_identity
-    assert_single_import_identity()
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--once", action="store_true", default=True)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-wakes", type=int, default=12)
@@ -569,9 +566,23 @@ def main() -> int:
     ap.add_argument("--no-dispatch", action="store_true")
     ap.add_argument("--dispatch", action="store_true",
                     help="claim and dispatch wakes (default: leave them for the sole claimant)")
-    args = ap.parse_args()
-    res = run_once(max_wakes=args.max_wakes,
-                   dispatch=bool(args.dispatch) and not args.no_dispatch)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; no queue claims or writes")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN cio-reactive-cycle: would inspect at most {args.max_wakes} wakes; dispatch={bool(args.dispatch) and not args.no_dispatch}; no queue claims, DB, network or writes")
+        return 0
+    # G2: the real run still refuses dual lib.X / scripts.lib.X identity.
+    from scripts.lib import assert_single_import_identity
+    assert_single_import_identity()
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        res = run_once(max_wakes=args.max_wakes,
+                       dispatch=bool(args.dispatch) and not args.no_dispatch)
+    except Exception as exc:
+        write_lane_receipt("cio-reactive-cycle", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
     if args.json:
         print(json.dumps(res, indent=2, default=str))
     else:
@@ -592,7 +603,11 @@ def main() -> int:
         or str(e).startswith("cursor:")
         or str(e).startswith("wake_store_repair:")
     )]
-    return 0 if not hard else 1
+    code = 0 if not hard else 1
+    write_lane_receipt("cio-reactive-cycle", ok=not bool(errs), exit_code=code,
+                       started_at=started, summary={"enabled": bool(res.get("enabled")),
+                                                  "errors": len(errs), "hard_errors": len(hard)})
+    return code
 
 
 if __name__ == "__main__":

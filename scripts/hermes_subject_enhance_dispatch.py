@@ -288,7 +288,7 @@ def acquire_dispatch_lock(path: str, wait_s: float):
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Run the due hermes_subject_enhance subjects one after the other")
+    ap = argparse.ArgumentParser(description="Run the due hermes_subject_enhance subjects one after the other", allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="run the due subjects (default: print the plan only)")
     ap.add_argument("--now", default=None, help="local minute to evaluate (ISO, e.g. 2026-10-07T09:00); default: now")
     ap.add_argument("--since", default=None, help="window start (ISO local); default: the previous apply receipt's window_end")
@@ -303,7 +303,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--dispatch-lock", default=DISPATCH_LOCK)
     ap.add_argument("--receipt", default=None)
     ap.add_argument("--stats", action="store_true", help="print weekly firings/collisions today vs dispatched and exit")
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply, no child or state access")
     args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN hermes-subject-enhance-dispatch: would sequence due subject jobs with their existing guard, lock and timeout={args.subject_timeout_s}s; no child, model, network or writes")
+        return 0
 
     table = load_table(args.manifest)
     if args.stats:
@@ -346,6 +350,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not due:
         receipt["ok"], receipt["outcome"] = True, "NOTHING_DUE"
         atomic_write_json(receipt_path, receipt)
+        _write_lane_receipt(receipt, 0)
         print(json.dumps({"mode": "apply", "outcome": "NOTHING_DUE", "window": [receipt["window_start"], receipt["window_end"]]}))
         return 0
 
@@ -355,6 +360,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         receipt["window_end"] = window_start.isoformat()
         receipt["outcome"] = "LOCK_WAIT_TIMEOUT"
         atomic_write_json(receipt_path, receipt)
+        _write_lane_receipt(receipt, 1)
         print(json.dumps({"mode": "apply", "outcome": "LOCK_WAIT_TIMEOUT", "dispatch_lock": args.dispatch_lock,
                           "due": [d["subject"] for d in due]}))
         return 1
@@ -375,7 +381,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(json.dumps({"mode": "apply", "outcome": receipt["outcome"],
                       "runs": [(r["subject"], r["outcome"], r.get("rc"), r.get("duration_s")) for r in receipt["runs"]],
                       "receipt": str(receipt_path)}, default=str))
-    return 0 if receipt["ok"] else 1
+    code = 0 if receipt["ok"] else 1
+    _write_lane_receipt(receipt, code)
+    return code
+
+
+def _write_lane_receipt(receipt, code):
+    from scripts.lib.lane_last_receipt import write_lane_receipt
+    runs = receipt.get("runs") or []
+    lock_skips = sum(r.get("outcome") == "LOCK_HELD" for r in runs)
+    deferred = sum(r.get("outcome") == "DEFERRED_GUARD" for r in runs)
+    ok = bool(receipt.get("ok")) and not lock_skips and not deferred
+    write_lane_receipt("hermes-subject-enhance-dispatch", ok=ok, exit_code=code,
+                       started_at=receipt.get("as_of"),
+                       error=None if ok else receipt.get("outcome"),
+                       summary={"outcome": receipt.get("outcome"), "due": len(receipt.get("due") or []),
+                                "completed": sum(r.get("outcome") == "RAN" for r in runs),
+                                "lock_skips": lock_skips, "deferred": deferred})
 
 
 if __name__ == "__main__":

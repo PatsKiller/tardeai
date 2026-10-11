@@ -162,12 +162,23 @@ def _yahoo_closes(symbols: list[str], session: date) -> dict[str, Optional[float
     return out
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--dry-run", action="store_true", help="report only; write no receipt")
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; no DB, reference network, writes or receipt")
     ap.add_argument("--seed", type=int, default=int(datetime.now(timezone.utc).strftime("%Y%m%d")))
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN source-litmus-vs-yahoo: would sample stored closes with seed={args.seed}, compare an independent Yahoo reference and persist a report; no DB, network or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+
+    def finish(code, *, ok, error=None, summary=None):
+        write_lane_receipt("source-litmus-vs-yahoo", ok=ok, exit_code=code,
+                           started_at=started, error=error, summary=summary)
+        return code
+
     try:
         conn = _db()
         cur = conn.cursor()
@@ -186,8 +197,8 @@ def main() -> int:
         print(f"ERROR: could not run: {msg}", file=sys.stderr)
         if soft:
             print("SOFT_SKIP: DB/connectivity unavailable — exit 0 (no flap)", file=sys.stderr)
-            return 0
-        return 2
+            return finish(0, ok=False, error="DB_UNAVAILABLE")
+        return finish(2, ok=False, error=type(exc).__name__)
     result = evaluate(samples, reference)
     compared = sum(st["compared"] for st in result["sources"].values())
     report = {"schema": SCHEMA, "ran_at": datetime.now(timezone.utc).isoformat(), "session": session.isoformat(),
@@ -207,8 +218,8 @@ def main() -> int:
         ref_empty = not reference or all(v in (None, 0) for v in (reference or {}).values())
         if ref_empty:
             print("SOFT_SKIP: independent reference empty/rate-limited — exit 0 (no flap)", file=sys.stderr)
-            return 0
-        return 2
+            return finish(0, ok=False, error="REFERENCE_UNAVAILABLE", summary={"compared": 0})
+        return finish(2, ok=False, error="NO_COMPARISONS", summary={"compared": 0})
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
@@ -221,7 +232,8 @@ def main() -> int:
     if not args.dry_run:
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
-    return 1 if result["block"] else 0
+    code = 1 if result["block"] else 0
+    return finish(code, ok=code == 0, summary={"compared": compared, "blocked_sources": len(result["block"])})
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1999 @@
+{
+  "schema": "N8nCompletionCandidatePacket@v1",
+  "date": "2026-10-11",
+  "branch": "n8nmat/completion-119-01-03-20261011",
+  "base_sha": "65337da5366b469c8478b198187201bd37671bc2",
+  "evidence_class": "SOURCE_ONLY",
+  "runtime": "NOT_MEASURED",
+  "counts": {
+    "DESIGN_ONLY": 8,
+    "OWNER_BLOCKED": 10,
+    "IMPLEMENTED_SOURCE_ADMISSION_HELD": 10,
+    "ALREADY_IMPLEMENTED_SOURCE_HELD": 3
+  },
+  "source_entrypoints_changed": 16,
+  "operational_admissions_added": 0,
+  "contracts_reviewed": 0,
+  "source_acceptance": "BLOCKED_TEST_REFUSAL_AND_OWNER_BOUNDARIES",
+  "rows": [
+    {
+      "lane_id": "cio-nightly-reflection",
+      "shard": "01",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_ACCEPTANCE_NOT_ESTABLISHED)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/lib/cio_nightly_reflection.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-nightly-reflection.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/cio/cio_reflection_candidates.jsonl"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/cio-nightly-reflection_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "cio-nightly-reflection",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/cio/cio_reflection_candidates.jsonl"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/user/tradeai-cio-nightly-reflection.timer",
+        "service": "config/systemd/user/tradeai-cio-nightly-reflection.service",
+        "source_timer_properties": {
+          "OnCalendar": [
+            "*-*-* 21:50:00"
+          ],
+          "Persistent": [
+            "true"
+          ],
+          "Unit": [
+            "tradeai-cio-nightly-reflection.service"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "%h/trade-ai-releases/portfolio-server/CURRENT"
+          ],
+          "ExecStart": [
+            "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/lib/cio_nightly_reflection.py"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "prewarm-finviz-strip-map",
+      "shard": "01",
+      "before": "BLOCKED(HTTP_CACHE_MUTATION_NO_OWNED_WRAPPER_OR_RECEIPT)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "*/8 6-17 * * 1-5",
+        "match": "http://127.0.0.1:7777/api/v2/finviz-strip-map?fresh=1\""
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "none",
+        "reason": "NO_DURABLE_OUTPUT",
+        "detail": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): `curl -s -o /dev/null ... >> log` writes nothing, so the redirect log is 0 bytes (mtime 09-28) while the endpoint answers 200 in 0.14 s. No durable per-run artifact exists; declared NO_DURABLE_OUTPUT until the line gains a `-w` receipt or i"
+      },
+      "remaining": [
+        "Endpoint/cache writer ownership; no owned wrapper, bounded preview, durable receipt or current exact cron proof. Do not call fresh=1."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-steph",
+      "shard": "01",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_OPERATOR_AUTH_QUEUE_BOUNDARY)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@steph.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Shared run_once source belongs integrator. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+        "service": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+        "source_timer_properties": {
+          "OnCalendar": [
+            "*:0/15"
+          ],
+          "RandomizedDelaySec": [
+            "120"
+          ],
+          "Persistent": [
+            "false"
+          ],
+          "AccuracySec": [
+            "30s"
+          ],
+          "Unit": [
+            "tradeai-agent-runtime@steph.service"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+          ],
+          "ExecStart": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent steph --once --max-batch 8"
+          ],
+          "TimeoutStartSec": [
+            "900"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "hermes-subject-enhance-dispatch",
+      "shard": "01",
+      "before": "BLOCKED(PROVIDER_SELECTING_CHILDREN_NO_CORRECT_REGISTERED_BRIDGE_ROUTE)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/hermes_subject_enhance_dispatch.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "0,20,25,30,40 * * * *",
+        "command_text": "hermes_subject_enhance_dispatch.py --apply",
+        "match": "scripts/hermes_subject_enhance_dispatch.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes_subject_enhance_dispatch_last.json",
+        "key": "as_of"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "PY",
+        "TRADEAI_SERVED_SHA"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "0,20,25,30,40 * * * * cd $PROJ && $PY scripts/hermes_subject_enhance_dispatch.py --apply >> logs/hermes_subject_enhance_dispatch.log 2>&1  # TRADEAI_LANE hermes-subject-enhance-dispatch (replaces the six H-enh lines)"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/hermes-subject-enhance-dispatch_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "hermes-subject-enhance-dispatch",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "PY",
+          "TRADEAI_SERVED_SHA"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "json_key",
+          "path": "data/runtime/hermes_subject_enhance_dispatch_last.json",
+          "key": "as_of"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+        ]
+      }
+    },
+    {
+      "lane_id": "health-agent-llm-review",
+      "shard": "01",
+      "before": "BLOCKED(RETIRED_OLLAMA_AND_NO_GOVERNED_HOST_PROCESS_ROUTE)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/health_agent_llm_review.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5",
+        "match": "scripts/health_agent_llm_review.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/health_llm_review.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "LOCAL_LLM_MODEL"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "30 20 * * 1-5 cd $PROJ && $PY scripts/health_agent_llm_review.py >> logs/health_llm_review.log 2>&1"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/health-agent-llm-review_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "health-agent-llm-review",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "LOCAL_LLM_MODEL"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/health_llm_review.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+          "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+        ]
+      }
+    },
+    {
+      "lane_id": "proposal-llm-review-worker",
+      "shard": "01",
+      "before": "BLOCKED(RETIRED_OLLAMA_DIRECT_DOTENV_AND_MODEL_ROUTE)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/proposal_llm_review_worker.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "*/30 6-19 * * 1-5",
+        "match": "scripts/proposal_llm_review_worker.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/proposal_llm_review_worker.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "*/30 6-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/proposal_llm_review_worker.lock timeout 25m $PY scripts/proposal_llm_review_worker.py --run --limit 4 >> logs/proposal_llm_review_worker.log 2>&1  # stage-2b LLM review queue drain (was UNSCHEDULED \u2014 rows sat PENDING for days; added 2026-07-04)"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/proposal-llm-review-worker_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "proposal-llm-review-worker",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/proposal_llm_review_worker.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+          "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+        ]
+      }
+    },
+    {
+      "lane_id": "reconcile-watch-outcomes",
+      "shard": "01",
+      "before": "BLOCKED(PRICE_IMPORT_BOUNDARY_AND_DIRECT_DOTENV_UNVERIFIED)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "50 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_outcomes.lock $PY scripts/reconcile_watch_outcomes.py >> logs/watch_outcomes.log 2>&1",
+        "match": "scripts/reconcile_watch_outcomes.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/watch_outcomes.log"
+      },
+      "remaining": [
+        "Price/financial import boundary unverified and out of authorized child scope; original direct dotenv remains. Requires owner/execution scope decision."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false
+    },
+    {
+      "lane_id": "run-scalp-shadow-logger",
+      "shard": "01",
+      "before": "BLOCKED(CHILD_LIVE_APPLY_AND_FINANCIAL_BOUNDARY_UNPROVEN)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "*/5 6-15 * * 1-5",
+        "match": "scripts/run_scalp_shadow_logger.sh"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/scalp_shadow_logger.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Child invokes financial APPLY path outside owned scope; do not invoke or modify child."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false
+    },
+    {
+      "lane_id": "shadow-batch-generator-at-15-10",
+      "shard": "01",
+      "before": "BLOCKED(MODEL_CHILD_ROUTE_AND_BROAD_CRON_ENV)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/shadow_batch_generator.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "15 10 * * 0",
+        "match": "scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/shadow_batch_status.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "SHADOW_BATCH_CATALYST_CONF",
+        "SHADOW_BATCH_CATALYST_DAYS",
+        "SHADOW_BATCH_CONCURRENCY",
+        "SHADOW_BATCH_FRESH_HOURS",
+        "SHADOW_BATCH_HARD_CAP",
+        "SHADOW_BATCH_MOVE_PCT",
+        "SHADOW_BATCH_MOVE_RVOL",
+        "SHADOW_BATCH_RUN_MODELS",
+        "SHADOW_BATCH_TOP_N"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "15 10 * * 0 cd $PROJ && export $(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV | cut -d= -f1) 2>/dev/null; set -a; . <(grep -E \"^[A-Za-z_][A-Za-z0-9_]*=\" $TRADEAI_ENV) 2>/dev/null; set +a; SHADOW_BATCH_TOP_N=100 SHADOW_BATCH_CONCURRENCY=2 flock -n -E 99 /tmp/shadow_batch_weekly.lock timeout 45m $PY scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] shadow_batch_weekly skipped \u2014 previous still running\" >> $PROJ/logs/shadow_batch_weekly.log  # weekly top-100 shadow review: full LLM critique of highest-evidence symbols; idempotent (fresh<12h skipped)"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/shadow-batch-generator-at-15-10_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "shadow-batch-generator-at-15-10",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "SHADOW_BATCH_CATALYST_CONF",
+          "SHADOW_BATCH_CATALYST_DAYS",
+          "SHADOW_BATCH_CONCURRENCY",
+          "SHADOW_BATCH_FRESH_HOURS",
+          "SHADOW_BATCH_HARD_CAP",
+          "SHADOW_BATCH_MOVE_PCT",
+          "SHADOW_BATCH_MOVE_RVOL",
+          "SHADOW_BATCH_RUN_MODELS",
+          "SHADOW_BATCH_TOP_N"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/runtime/shadow_batch_status.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+        ]
+      }
+    },
+    {
+      "lane_id": "cio-memory-shadow-measure",
+      "shard": "02",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_ACCEPTANCE_NOT_ESTABLISHED)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/run_memory_shadow_measure.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-memory-shadow-measure.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/cio/memory_shadow_measure_latest.json"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/cio-memory-shadow-measure_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "cio-memory-shadow-measure",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/cio/memory_shadow_measure_latest.json"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/user/tradeai-cio-memory-shadow-measure.timer",
+        "service": "config/systemd/user/tradeai-cio-memory-shadow-measure.service",
+        "source_timer_properties": {
+          "OnCalendar": [
+            "*-*-* 06:20:00"
+          ],
+          "Persistent": [
+            "true"
+          ],
+          "AccuracySec": [
+            "1min"
+          ],
+          "Unit": [
+            "tradeai-cio-memory-shadow-measure.service"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "%h/trade-ai-releases/portfolio-server/CURRENT"
+          ],
+          "EnvironmentFile": [
+            "-/run/user/%U/tradeai/env",
+            "-%h/.config/tradeai/cio-operator-live.env"
+          ],
+          "ExecStart": [
+            "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/run_memory_shadow_measure.py"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "aegis-surveillance",
+      "shard": "02",
+      "before": "BLOCKED(MISSING_TIMER_UNIT_AND_STOP_ADJACENT_CLOSURE)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "aegis-surveillance.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/aegis.log",
+        "evidence": "SYSTEMD_STDOUT_APPEND"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "No matching committed timer unit, stop-adjacent closure unowned. Requires execution-engineering/owner review; no code investigation."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "timer_native_design": {
+        "status": "BLOCKED_SOURCE_UNIT_ABSENT",
+        "timer_identity": "aegis-surveillance.timer",
+        "installed_state": "NOT_MEASURED",
+        "cron_expression": null
+      }
+    },
+    {
+      "lane_id": "directive-keyword-enhancer",
+      "shard": "02",
+      "before": "BLOCKED(BRIDGE_IDENTITY_NOT_WIRED_OFFLINE_DRY_RUN_AND_RECEIPT_MISSING)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/directive_keyword_enhancer.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "25,55 * * * *",
+        "match": "scripts/directive_keyword_enhancer.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/directive_keyword_enhancer.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "25,55 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/directive_kw_enhancer.lock $PY scripts/directive_keyword_enhancer.py --backfill --apply >> logs/directive_keyword_enhancer.log 2>&1  # LLM auto-enhance keyword-less trend/sector directives (local+oauth)"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/directive-keyword-enhancer_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "directive-keyword-enhancer",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/directive_keyword_enhancer.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+        ]
+      }
+    },
+    {
+      "lane_id": "hermes-cross-source-synthesizer",
+      "shard": "02",
+      "before": "BLOCKED(DRY_RUN_REACHES_MODEL_AND_DB_BRIDGE_IDENTITY_AND_ENV)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/hermes_cross_source_synthesizer.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "20 18 * * 1,4",
+        "match": "scripts/hermes_cross_source_synthesizer.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_synthesizer.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "DB_PASSWORD"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "20 18 * * 1,4 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_synthesizer.lock timeout 20m $PY scripts/hermes_cross_source_synthesizer.py --apply --json >> logs/hermes_synthesizer.log 2>&1  # Phase 4 cross-source synthesis: off-hours, llm_priority_guard-wrapped (2026-08-04)"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/hermes-cross-source-synthesizer_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "hermes-cross-source-synthesizer",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "DB_PASSWORD"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/hermes_synthesizer.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+        ]
+      }
+    },
+    {
+      "lane_id": "market-regime-collector",
+      "shard": "02",
+      "before": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "result": "ALREADY_IMPLEMENTED_SOURCE_HELD",
+      "source_entrypoint": "scripts/market_regime_collector.py",
+      "source_changed": false,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "5 16 * * 1-5",
+        "match": "scripts/market_regime_collector.py",
+        "schedules": [
+          "5 16 * * 1-5"
+        ]
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/regime_collector.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "30 6 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_market_regime_collector.lock $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1",
+        "5 16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_market_regime_collector.lock $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && flock -n /tmp/tradeai_market_regime_classifier.lock $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/market-regime-collector_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "market-regime-collector",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/regime_collector.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+        ]
+      }
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-weekly",
+      "shard": "02",
+      "before": "BLOCKED(TIER_MODEL_AUTHORITY_DIRECT_DOTENV_AND_HOST_ROUTE)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/multi_tier_trade_reviewer.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "0 10 * * 0",
+        "match": "scripts/multi_tier_trade_reviewer.py --tier weekly"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/weekly_trade_review.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "ANTHROPIC_API_KEY",
+        "CLOUD_REVIEW",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "LLM_FALLBACK_ANTHROPIC",
+        "LLM_FALLBACK_OPENAI"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/multi-tier-trade-reviewer-weekly_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "multi-tier-trade-reviewer-weekly",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "ANTHROPIC_API_KEY",
+          "CLOUD_REVIEW",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "LLM_FALLBACK_ANTHROPIC",
+          "LLM_FALLBACK_OPENAI"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/weekly_trade_review.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+        ]
+      }
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-monthly",
+      "shard": "02",
+      "before": "BLOCKED(TIER_MODEL_AUTHORITY_DIRECT_DOTENV_AND_HOST_ROUTE)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/multi_tier_trade_reviewer.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "0 11 1 * *",
+        "match": "scripts/multi_tier_trade_reviewer.py --tier monthly"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/monthly_trade_review.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Legacy direct Anthropic route remains ungoverned; caller/task/tier authority must be reviewed before n8n admission."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "ANTHROPIC_API_KEY",
+        "CLOUD_REVIEW",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "LLM_FALLBACK_ANTHROPIC",
+        "LLM_FALLBACK_OPENAI"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "0 11 1 * * cd $PROJ && flock -n /tmp/monthly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier monthly >> logs/monthly_trade_review.log 2>&1"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/multi-tier-trade-reviewer-monthly_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "multi-tier-trade-reviewer-monthly",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "ANTHROPIC_API_KEY",
+          "CLOUD_REVIEW",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "LLM_FALLBACK_ANTHROPIC",
+          "LLM_FALLBACK_OPENAI"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/monthly_trade_review.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+          "Legacy direct Anthropic route remains ungoverned; caller/task/tier authority must be reviewed before n8n admission."
+        ]
+      }
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-overnight",
+      "shard": "02",
+      "before": "BLOCKED(TIER_MODEL_AUTHORITY_DIRECT_DOTENV_AND_HOST_ROUTE)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/multi_tier_trade_reviewer.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "30 22 * * 1-5",
+        "match": "scripts/multi_tier_trade_reviewer.py --tier overnight"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "logs/overnight_trade_review.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "ANTHROPIC_API_KEY",
+        "CLOUD_REVIEW",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "LLM_FALLBACK_ANTHROPIC",
+        "LLM_FALLBACK_OPENAI"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "30 22 * * 1-5 cd $PROJ && flock -n /tmp/overnight_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier overnight >> logs/overnight_trade_review.log 2>&1"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/multi-tier-trade-reviewer-overnight_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "multi-tier-trade-reviewer-overnight",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "ANTHROPIC_API_KEY",
+          "CLOUD_REVIEW",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "LLM_FALLBACK_ANTHROPIC",
+          "LLM_FALLBACK_OPENAI"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "logs/overnight_trade_review.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+        ]
+      }
+    },
+    {
+      "lane_id": "portfolio-lookthrough-themes",
+      "shard": "02",
+      "before": "BLOCKED(RETIRED_LOCAL_FALLBACK_AND_UNREGISTERED_HOST_ROUTE)",
+      "result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_entrypoint": "scripts/portfolio_lookthrough_themes.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "40 7 * * 1-5",
+        "match": "scripts/portfolio_lookthrough_themes.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/portfolios/state/lookthrough_themes.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/portfolio_lookthrough_themes.py:287 writes API cache on every global (no --account) run; host mtime 2026-10-09T07:41:07"
+      },
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "40 7 * * 1-5 cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1  # theme look-through + CIO/Risk/Steph/Grok advisories"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/portfolio-lookthrough-themes_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "portfolio-lookthrough-themes",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/portfolios/state/lookthrough_themes.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/portfolio_lookthrough_themes.py:287 writes API cache on every global (no --account) run; host mtime 2026-10-09T07:41:07"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+          "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+        ]
+      }
+    },
+    {
+      "lane_id": "sec-fundamentals-ingest",
+      "shard": "02",
+      "before": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "result": "ALREADY_IMPLEMENTED_SOURCE_HELD",
+      "source_entrypoint": "scripts/sec_fundamentals_ingest.py",
+      "source_changed": false,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "30 21 * * *",
+        "command_text": "sec_fundamentals_ingest.py --apply",
+        "match": "sec_fundamentals_ingest.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/sec_fundamentals_ingest.log"
+      },
+      "remaining": [
+        "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "SEC_USER_AGENT"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "30 21 * * * cd $PROJ && flock -n /tmp/sec_fundamentals_ingest.lock $PY scripts/sec_fundamentals_ingest.py --apply >> logs/sec_fundamentals_ingest.log 2>&1  # TRADEAI_LANE sec-fundamentals-ingest (operator 2026-09-27 fundamentals F1, PR #1292)"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/sec-fundamentals-ingest_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "sec-fundamentals-ingest",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER",
+          "SEC_USER_AGENT"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/sec_fundamentals_ingest.log"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+        ]
+      }
+    },
+    {
+      "lane_id": "wake-selection-feed",
+      "shard": "03",
+      "before": "BLOCKED(EXTERNAL_CAMPAIGN_ENTRYPOINT_UNOWNED)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "55 * * * *",
+        "command_text": ".../wake_selection_feed.py --hours 48",
+        "match": "ops/wake_selection_feed.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/persistent_wake/selection_feed/material_changes.jsonl"
+      },
+      "remaining": [
+        "Entrypoint belongs external campaign ops tree, not this repository; owner must supply bounded preview/receipt."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false
+    },
+    {
+      "lane_id": "cio-reactive-cycle",
+      "shard": "03",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_ACCEPTANCE_NOT_ESTABLISHED)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/cio_reactive_cycle.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-reactive.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/cio_reactive_cycle_last.json"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "CIO_REACTIVE_EVENT_MAX_AGE_HOURS",
+        "CIO_REACTIVE_WAKES",
+        "CURATION_DRAIN_AFTER_EMIT",
+        "CURATION_DRAIN_LIMIT",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/cio-reactive-cycle_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "cio-reactive-cycle",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "CIO_REACTIVE_EVENT_MAX_AGE_HOURS",
+          "CIO_REACTIVE_WAKES",
+          "CURATION_DRAIN_AFTER_EMIT",
+          "CURATION_DRAIN_LIMIT",
+          "DB_HOST",
+          "DB_NAME",
+          "DB_PASSWORD",
+          "DB_PORT",
+          "DB_USER"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/runtime/cio_reactive_cycle_last.json"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/user/tradeai-cio-reactive.timer",
+        "service": "config/systemd/user/tradeai-cio-reactive.service",
+        "source_timer_properties": {
+          "OnBootSec": [
+            "2min"
+          ],
+          "OnUnitActiveSec": [
+            "2min"
+          ],
+          "AccuracySec": [
+            "30s"
+          ],
+          "Persistent": [
+            "true"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+          ],
+          "EnvironmentFile": [
+            "-/home/johnclaw/.config/tradeai/agent-operator.env"
+          ],
+          "ExecStart": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_reactive_cycle.py --once"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "cio-desk-memo-regen",
+      "shard": "03",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_ACCEPTANCE_NOT_ESTABLISHED)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/lib/cio_desk_synthesis.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-desk-memo-regen.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/cio/cio_desk_note_latest.md"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "TRADEAI_PROJECT_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/cio-desk-memo-regen_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "cio-desk-memo-regen",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "TRADEAI_PROJECT_ROOT",
+          "TRADEAI_ROOT"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/cio/cio_desk_note_latest.md"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/user/tradeai-cio-desk-memo-regen.timer",
+        "service": "config/systemd/user/tradeai-cio-desk-memo-regen.service",
+        "source_timer_properties": {
+          "OnCalendar": [
+            "*-*-* 17:45:00 America/New_York"
+          ],
+          "Persistent": [
+            "true"
+          ],
+          "Unit": [
+            "tradeai-cio-desk-memo-regen.service"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+          ],
+          "EnvironmentFile": [
+            "-%t/tradeai/env"
+          ],
+          "ExecStart": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/lib/cio_desk_synthesis.py"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "source-litmus-vs-yahoo",
+      "shard": "03",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_ACCEPTANCE_NOT_ESTABLISHED)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/source_litmus_vs_yahoo.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-source-litmus.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/source_litmus_last_run.json"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/source-litmus-vs-yahoo_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "source-litmus-vs-yahoo",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/runtime/source_litmus_last_run.json"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/user/tradeai-source-litmus.timer",
+        "service": "config/systemd/user/tradeai-source-litmus.service",
+        "source_timer_properties": {
+          "OnCalendar": [
+            "Tue..Sat *-*-* 07:45:00"
+          ],
+          "AccuracySec": [
+            "1min"
+          ],
+          "Persistent": [
+            "true"
+          ],
+          "RandomizedDelaySec": [
+            "120"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+          ],
+          "ExecStart": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/source_litmus_vs_yahoo.py"
+          ],
+          "TimeoutStartSec": [
+            "900"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "advisory-outcome-scorer",
+      "shard": "03",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_ACCEPTANCE_NOT_ESTABLISHED)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/advisory_outcome_scorer.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-advisory-outcome-scorer.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/advisory_outcomes.jsonl"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "TRADEAI_ROOT"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/advisory-outcome-scorer_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "advisory-outcome-scorer",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "TRADEAI_ROOT"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/runtime/advisory_outcomes.jsonl"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/user/tradeai-advisory-outcome-scorer.timer",
+        "service": "config/systemd/user/tradeai-advisory-outcome-scorer.service",
+        "source_timer_properties": {
+          "OnCalendar": [
+            "*-*-* 18:30:00"
+          ],
+          "Persistent": [
+            "true"
+          ],
+          "Unit": [
+            "tradeai-advisory-outcome-scorer.service"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+          ],
+          "ExecStart": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/advisory_outcome_scorer.py --once"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "supervisor-breach-detector",
+      "shard": "03",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_ACCEPTANCE_NOT_ESTABLISHED)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/supervisor_breach_detector.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-supervisor-breach-detector.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/supervisor_breach_detector_latest.json"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/supervisor_breach_detector_latest.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "supervisor-breach-detector",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/runtime/supervisor_breach_detector_latest.json"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/user/tradeai-supervisor-breach-detector.timer",
+        "service": "config/systemd/user/tradeai-supervisor-breach-detector.service",
+        "source_timer_properties": {
+          "OnBootSec": [
+            "3min"
+          ],
+          "OnUnitActiveSec": [
+            "2min"
+          ],
+          "AccuracySec": [
+            "15s"
+          ],
+          "Unit": [
+            "tradeai-supervisor-breach-detector.service"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "%h/trade-ai-releases/portfolio-server/CURRENT"
+          ],
+          "EnvironmentFile": [
+            "-/run/user/%U/tradeai/env",
+            "-%h/.config/tradeai/cio-operator-live.env"
+          ],
+          "ExecStart": [
+            "%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/supervisor_breach_detector.py --write"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      },
+      "receipt_note": "Existing lane-owned recovery receipt retained; canonical alias not fabricated."
+    },
+    {
+      "lane_id": "db-retention-timer",
+      "shard": "03",
+      "before": "BLOCKED(DISABLED_UNRULED_DUPLICATE_DESTRUCTIVE_RETENTION_TIMER)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "db-retention.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/db_retention.log",
+        "evidence": "SYSTEMD_STDOUT_APPEND"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Disabled-unruled duplicate/destructive retention timer; requires operator disposition, never onboard as a second writer."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "timer_native_design": {
+        "status": "BLOCKED_SOURCE_UNIT_ABSENT",
+        "timer_identity": "db-retention.timer",
+        "installed_state": "NOT_MEASURED",
+        "cron_expression": null
+      }
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-alex",
+      "shard": "03",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_AND_OPERATOR_AUTH_QUEUE_BOUNDARY)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": false,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@alex.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Shared run_once source belongs integrator. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "timer_native_design": {
+        "status": "DRAFT_DESIGN_ONLY",
+        "timer": "config/systemd/agent_runtime/tradeai-agent-runtime@.timer",
+        "service": "config/systemd/agent_runtime/tradeai-agent-runtime@.service",
+        "source_timer_properties": {
+          "OnCalendar": [
+            "*:0/15"
+          ],
+          "RandomizedDelaySec": [
+            "120"
+          ],
+          "Persistent": [
+            "false"
+          ],
+          "AccuracySec": [
+            "30s"
+          ],
+          "Unit": [
+            "tradeai-agent-runtime@alex.service"
+          ]
+        },
+        "source_service_properties": {
+          "WorkingDirectory": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+          ],
+          "ExecStart": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent alex --once --max-batch 8"
+          ],
+          "TimeoutStartSec": [
+            "900"
+          ]
+        },
+        "installed_state": "NOT_MEASURED",
+        "ownership": "systemd retained until explicit reviewed cutover packet",
+        "cron_expression": null,
+        "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
+        "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
+      }
+    },
+    {
+      "lane_id": "tradeai-maturity-feeds",
+      "shard": "03",
+      "before": "BLOCKED(TIMER_NATIVE_RECIPE_UNVERIFIED_OUTPUT)",
+      "result": "DESIGN_ONLY",
+      "source_entrypoint": "scripts/hermes_maturity_gates.py",
+      "source_changed": true,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "systemd",
+        "expression": "tradeai-maturity-feeds.timer"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/tradeai-maturity-feeds_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "tradeai-maturity-feeds",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "none",
+          "reason": "UNVERIFIED_OUTPUT",
+          "detail": "no scheduler log redirect and no verified script receipt"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        ]
+      },
+      "timer_native_design": {
+        "status": "BLOCKED_SOURCE_UNIT_ABSENT",
+        "timer_identity": "tradeai-maturity-feeds.timer",
+        "installed_state": "NOT_MEASURED",
+        "cron_expression": null
+      }
+    },
+    {
+      "lane_id": "ask-alerts",
+      "shard": "03",
+      "before": "BLOCKED(EXACT_CRON_COMMENT_TELEGRAM_MATCHER_REFUSAL_REMAINS)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "*/30 8-18 * * 1-5",
+        "match": "scripts/ask_alerts.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/ask_alerts.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/ask_alerts.py:25 STORE; check_alerts() calls _save(d) unconditionally (:122); host mtime 2026-10-09T16:00:01"
+      },
+      "remaining": [
+        "Existing offline CLI prepared; prior exact cron comment Telegram/matcher refusal requires separately approved shared semantics. No retry or stripping."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false
+    },
+    {
+      "lane_id": "hermes-discovery-yield-builder",
+      "shard": "03",
+      "before": "BLOCKED(C1_STAGE_OWNERSHIP_NO_FRESH_STANDALONE_CRON)",
+      "result": "OWNER_BLOCKED",
+      "source_entrypoint": null,
+      "source_changed": false,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "45 3 * * *",
+        "match": "scripts/hermes_discovery_yield_builder.py"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hermes_discovery_yield.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/hermes_discovery_yield_builder.py:28 OUTPUT_PATH written at :245; host mtime 2026-10-04T03:45:01 (STALE: offpeak wrapper logs PEAK_SKIP daily since)"
+      },
+      "remaining": [
+        "Existing offline CLI/receipt prepared; C1 stage already owns work; no fresh approved standalone cron. Retain stage ownership, no duplicate admission."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "shard": "03",
+      "before": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "result": "ALREADY_IMPLEMENTED_SOURCE_HELD",
+      "source_entrypoint": "scripts/opening_intelligence.py",
+      "source_changed": false,
+      "offline_cli": true,
+      "scheduler_unchanged": {
+        "kind": "cron",
+        "expression": "15 9 * * 1-5",
+        "match": "scripts/opening_intelligence.py --persist --render"
+      },
+      "declared_state_unchanged": "ACTIVE",
+      "current_output_signal_unchanged": {
+        "kind": "file_mtime",
+        "path": "data/runtime/opening_intelligence/latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+      },
+      "remaining": [
+        "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime_status": "NOT_MEASURED",
+      "candidate_status": "DRAFT_HELD",
+      "operational_configuration_changed": false,
+      "env_literal_names": [
+        "OPENING_MAX_QUOTE_AGE_SEC"
+      ],
+      "env_closure": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+      "historical_authorized_cron_lines": [
+        "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1"
+      ],
+      "historical_cron_evidence": "STALE_HISTORICAL: authorized snapshot 2026-10-11T14:57:08.697196+00:00; current host cron NOT_MEASURED.",
+      "proposed_receipt": "data/runtime/opening-intelligence-render_last.json",
+      "proposed_candidate": {
+        "schema": "N8nLaneAdmissionCandidate@v1",
+        "lane_id": "opening-intelligence-render",
+        "status": "DRAFT",
+        "dry_run_arg": [
+          "--dry-run"
+        ],
+        "live_arg": null,
+        "admission_enabled": false,
+        "executor": "CURRENT_ONLY",
+        "env_allowlist_mode": "report",
+        "env_names": [
+          "OPENING_MAX_QUOTE_AGE_SEC"
+        ],
+        "env_report_reason": "REQUIRES_RECURSIVE_REVIEW; literals are metadata only, not an enforce-mode claim.",
+        "existing_output": {
+          "kind": "file_mtime",
+          "path": "data/runtime/opening_intelligence/latest.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+        },
+        "reviewer": null,
+        "automatic_promotion": false,
+        "required_reviews": [
+          "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+        ]
+      }
+    }
+  ]
+}

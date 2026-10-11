@@ -1327,7 +1327,7 @@ def render_memo_spine_telegram(data: Optional[dict[str, Any]] = None) -> str:
         f"3) SPCX weight {_fmt_pct(spcx.get('book_weight_pct'))} · "
         f"DD {_fmt_pct(spcx.get('dd_from_basis_pct'))} · awareness-only",
         "────────────────",
-        f"*Recs:* HOLD/STAGE cash · HOLD SCHD"
+        "*Recs:* HOLD/STAGE cash · HOLD SCHD"
         + (" (defer bound)" if schd_prior else "")
         + " · HOLD SPCX observe · no buy-now.",
         "Full memo: `/v3/cio` desk note · plans via `/cio plans`",
@@ -1469,8 +1469,25 @@ def generate_desk_synthesis_v1() -> dict[str, Any]:
     }
 
 
-if __name__ == "__main__":
-    out = generate_desk_synthesis_v1()
+def main(argv=None) -> int:
+    """Offline CLI preview; synthesis and persistence run only after strict parsing."""
+    import argparse
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    parser = argparse.ArgumentParser(description="Generate the governed CIO desk memo", allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true", help="offline plan; no snapshots, DB, network or writes")
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print("DRY-RUN cio-desk-memo-regen: would synthesize the existing desk inputs and persist the memo/spine; no portfolio reads, DB, network or writes")
+        return 0
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        out = generate_desk_synthesis_v1()
+    except Exception as exc:
+        write_lane_receipt("cio-desk-memo-regen", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
     note = out.get("note") or ""
     print(note)
     print("\n======== TELEGRAM SPINE ========\n")
@@ -1520,3 +1537,13 @@ if __name__ == "__main__":
         print(f"[wrote {spine_path}]")
     except Exception as e:
         print(f"[persist skipped: {e}]")
+        write_lane_receipt("cio-desk-memo-regen", ok=False, exit_code=1,
+                           started_at=started, error=type(e).__name__)
+        return 1
+    write_lane_receipt("cio-desk-memo-regen", ok=True, exit_code=0, started_at=started,
+                       summary={"note_chars": len(note), "spine_chars": len(out.get("memo_spine_telegram") or "")})
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

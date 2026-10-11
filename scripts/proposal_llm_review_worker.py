@@ -2,7 +2,8 @@
 """proposal_llm_review_worker.py — Process queued LLM reviews for proposals.
 
 Pulls PENDING rows from proposal_llm_review_queue and runs qwen3:14b review
-via the existing proposal_llm_reviewer.py infrastructure.
+via the existing proposal_llm_reviewer.py infrastructure. That retired local-model child
+remains an owner blocker; the offline CLI preparation neither invokes nor restores it.
 
 Usage:
     .venv/bin/python3 scripts/proposal_llm_review_worker.py --dry-run
@@ -20,16 +21,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-os.environ.setdefault("DOTENV_LOADED", "0")
-if os.environ["DOTENV_LOADED"] == "0":
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(PROJECT_ROOT / ".env")
-        os.environ["DOTENV_LOADED"] = "1"
-    except Exception:
-        pass
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 
-from pipeline_registry import PipelineRun
+
+def _load_env():
+    from lib.env_bootstrap import load_env
+    load_env(names=_ENV_KEYS)
 
 log = logging.getLogger("llm_review_worker")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -139,8 +136,8 @@ def process_one(conn, queue_row, dry_run=False):
         return {'proposal_id': pid, 'symbol': symbol, 'status': 'error', 'error': str(e)}
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Proposal LLM review worker")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Proposal LLM review worker", allow_abbrev=False)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--run", action="store_true")
@@ -148,10 +145,17 @@ def main():
     parser.add_argument("--proposal-id", type=int)
     parser.add_argument("--throttle", type=int, default=10,
                         help="Seconds to wait between reviews (default 10)")
-    args = parser.parse_args()
-
-    conn = get_db()
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN proposal-llm-review-worker: would review pending proposals; limit={args.limit} proposal_id={args.proposal_id}; no queue claims, DB, model, network or writes")
+        return 0
+    from pipeline_registry import PipelineRun
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    conn = None
     try:
+        _load_env()
+        conn = get_db()
         with PipelineRun('proposal_llm_review_worker', triggered_by='cli') as pipe:
             queue = fetch_queue(conn, limit=args.limit, proposal_id=args.proposal_id)
             log.info(f"Found {len(queue)} queued LLM reviews")
@@ -190,9 +194,19 @@ def main():
         print(f"  Errors: {errors}")
         for r in results:
             print(f"  #{r['proposal_id']} {r['symbol']}: {r['status']}")
+        code = 1 if errors else 0
+        write_lane_receipt("proposal-llm-review-worker", ok=code == 0, exit_code=code,
+                           started_at=started, summary={"queued": len(queue), "completed": completed,
+                                                      "failed": errors})
+        return code
+    except Exception as exc:
+        write_lane_receipt("proposal-llm-review-worker", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
