@@ -42,9 +42,17 @@ SETTLE_DAYS = 2          # forward window to measure realized move
 LOOKBACK_DAYS = 120      # history window of catalysts to calibrate on
 MIN_SAMPLES = 10         # per-type minimum before a multiplier is trusted
 _ENV = ROOT / ".env"
+# Copy only _ENV_KEYS: every env name this process reads (its local import closure; tests/
+# test_env_bootstrap_narrow_20261011.py pins it). The file also carries broker credentials (ALPACA_*, SCHWAB_*:
+# config/secret_registry.yaml), which this process must never hold (AGENTS §23.18, N8N_ONBOARDING_STANDARD §2.6).
+_ENV_KEYS = frozenset({
+    "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_STATE_ROOT",
+})
 for ln in (_ENV.read_text().splitlines() if _ENV.exists() else []):  # absent in CI / a bare checkout
     if "=" in ln and not ln.strip().startswith("#"):
-        k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+        k, _, v = ln.partition("=")
+        if k.strip() in _ENV_KEYS:
+            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 import psycopg2
 
 

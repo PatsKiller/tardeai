@@ -93,10 +93,18 @@ Source: refactor waves 1–3 (#1641, #1646, #1658) and AGENTS.md §23.18 (e).
    2026-10-10: L227 called `.venv/bin/python` relative to the release (alerts dead since 10-06); several lanes
    still use checkout-relative paths (REMEDIATION_PLAN §8, open finding).
 6. **No whole-`.env` loading.** Declare `env_names` in the allowlist. `env_allowlist_mode: report` is allowed only
-   with a written `env_report_reason` (today: `db_adapter` → `env_bootstrap.load_env` re-reads the whole rendered
-   env). An admitted R1 lane may not name a broker credential (`SCHWAB`, `ALPACA`, `SNAPTRADE`, `MOOMOO`, `IBKR`).
-   Open finding: several lanes still load the whole `.env` (ALPACA_* names; the incident-notifier line L1052 sources
-   `./.env`).
+   with a written `env_report_reason`. An admitted R1 lane may not name a broker credential (`SCHWAB`, `ALPACA`,
+   `SNAPTRADE`, `MOOMOO`, `IBKR`). A script that reads its own `.env` copies only a literal module-level
+   `_ENV_KEYS` set (the names its closure reads — pattern `finviz_enrichment._load_env`, #1695, and
+   n8nmat/env-bootstrap-narrow); the P7 closure guard (`tests/test_n8n_executor_env_allowlist_20261009.py`) fails an
+   enforced lane whose closure holds `load_dotenv`, `os.environ.update` or a non-literal `os.environ.setdefault`
+   without `_ENV_KEYS`. `env_bootstrap.load_env(names=...)` copies only those names; under enforce the executor sets
+   `TRADEAI_ENV_BOUND_NAMES` (the lane's `env_names`) and every `load_env` in that child — `db_adapter` included,
+   which then asks for DB_* only — copies only bound names and never a broker name (`env_bootstrap.is_broker_name`).
+   The unbound default (cron, the dashboard) is still the whole-file copy: ~460 crontab lines source no env file and
+   rely on it, so narrowing it is an operator decision (§17), not a loader refactor. Open finding: lanes importing
+   `db_adapter` / `lane_registry` still exceed the P7 guard's 10-module closure bar, and many scripts still load the
+   whole `.env` (ALPACA_* names; the incident-notifier line L1052 sources `./.env`).
 7. **No direct Telegram, email or Slack.** A lane writes `alert_events` or a receipt; the host chokepoints
    (`send_telegram`, the incident notifier on the SYSTEM family) send. A lane that sends is class `send` and is not
    eligible (L205/L213 were dropped from wave 3 for this).

@@ -28,10 +28,17 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.append(str(PROJECT_ROOT))  # persistent_state_root imports scripts.lib.*
 _ENV_FILE = PROJECT_ROOT / ".env"
 # A missing .env (worktree / CI) no longer crashes at import; the DB connect then fails honestly (exit 1).
+# Copy only _ENV_KEYS: every env name this process reads (its local import closure; tests/
+# test_env_bootstrap_narrow_20261011.py pins it). The file also carries broker credentials (ALPACA_*, SCHWAB_*:
+# config/secret_registry.yaml), which this process must never hold (AGENTS §23.18, N8N_ONBOARDING_STANDARD §2.6).
+_ENV_KEYS = frozenset({
+    "DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_STATE_ROOT",
+})
 for line in _ENV_FILE.read_text().splitlines() if _ENV_FILE.exists() else []:
     if "=" in line and not line.startswith("#"):
         k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
+        if k.strip() in _ENV_KEYS:
+            os.environ.setdefault(k.strip(), v.strip())
 
 THRESHOLD = 3
 LANE_ID = "classifier-health-check"
