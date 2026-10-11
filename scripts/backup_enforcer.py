@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +51,47 @@ def _expand(p: str) -> Path:
     return Path(os.path.expanduser(p)).resolve()
 
 
+# A dump pg_dump is still writing is small and young, or still named *.part.
+# D8.2: the hourly enforcer used to unlink any file under min_bytes at any age,
+# which deletes a dump that runs past the hour. Skip those. Never unlink a
+# finished dump; move it under archive/ (AGENTS.md §0 rail 6).
+DEFAULT_SKIP_YOUNGER_S = 2 * 60 * 60
+_PART_SUFFIXES = (".part", ".partial")
+
+
+def _is_in_progress(path: Path, *, now: float, min_bytes: int, skip_younger_s: float) -> bool:
+    """A dump still being written, or finished so recently the next hourly pass must not touch it.
+
+    min_bytes is unused for the age test. A file under the size floor is still
+    retired once it is older than skip_younger_s (an abandoned partial).
+    """
+    del min_bytes
+    if path.name.endswith(_PART_SUFFIXES):
+        return True
+    try:
+        st = path.stat()
+    except OSError:
+        return True
+    return (now - st.st_mtime) < skip_younger_s
+
+
+def _archive(path: Path, archive_dir: Path) -> Path:
+    """Move a dump out of the live directory. Never unlink it."""
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    trip = archive_dir / "TRIPWIRE.txt"
+    if not trip.exists():
+        trip.write_text(
+            "Archived pg dumps. If a live dump path is missing, look here before assuming it was deleted.\n"
+            "Do not unlink these files.\n",
+            encoding="utf-8",
+        )
+    dest = archive_dir / path.name
+    if dest.exists():
+        dest = archive_dir / f"{path.stem}.{int(path.stat().st_mtime)}{path.suffix}"
+    path.rename(dest)
+    return dest
+
+
 def list_local_dumps(cfg: dict) -> list[Path]:
     d = _expand(cfg.get("dir") or "~/db_backups")
     pat = cfg.get("pattern") or "trade_ai_*.sql.gz"
@@ -59,46 +101,51 @@ def list_local_dumps(cfg: dict) -> list[Path]:
     return files
 
 
-def enforce_local(cfg: dict, *, dry_run: bool = False) -> dict:
+def enforce_local(cfg: dict, *, dry_run: bool = False, now: float | None = None) -> dict:
     min_bytes = int(cfg.get("min_bytes") or 500_000_000)
     max_count = int(cfg.get("max_count") or 1)
     max_total = int(cfg.get("max_total_bytes") or 5_000_000_000)
+    skip_younger_s = float(cfg.get("skip_younger_than_s") or DEFAULT_SKIP_YOUNGER_S)
+    now = time.time() if now is None else now
+    live_dir = _expand(cfg.get("dir") or "~/db_backups")
+    archive_dir = live_dir / "archive"
     files = list_local_dumps(cfg)
-    deleted: list[str] = []
+    archived: list[str] = []
+    skipped_in_progress: list[str] = []
     partials: list[str] = []
     kept: list[str] = []
 
-    # Drop partials first
+    def _retire(path: Path) -> None:
+        if dry_run:
+            archived.append(f"would_archive:{path}")
+            return
+        try:
+            dest = _archive(path, archive_dir)
+            archived.append(str(dest))
+        except OSError as e:
+            archived.append(f"{path}:archive_fail:{e}")
+
     full: list[Path] = []
     for f in files:
+        if _is_in_progress(f, now=now, min_bytes=min_bytes, skip_younger_s=skip_younger_s):
+            skipped_in_progress.append(str(f))
+            continue
         try:
             sz = f.stat().st_size
         except OSError:
+            skipped_in_progress.append(str(f))
             continue
         if sz < min_bytes:
             partials.append(str(f))
-            if not dry_run:
-                try:
-                    f.unlink()
-                    deleted.append(str(f))
-                except OSError as e:
-                    partials.append(f"{f}:unlink_fail:{e}")
+            _retire(f)
         else:
             full.append(f)
 
-    # Keep newest max_count full dumps
     for i, f in enumerate(full):
         if i < max_count:
             kept.append(str(f))
         else:
-            if not dry_run:
-                try:
-                    f.unlink()
-                    deleted.append(str(f))
-                except OSError as e:
-                    deleted.append(f"{f}:unlink_fail:{e}")
-            else:
-                deleted.append(str(f))
+            _retire(f)
 
     remaining = list_local_dumps(cfg)
     total_bytes = 0
@@ -113,7 +160,9 @@ def enforce_local(cfg: dict, *, dry_run: bool = False) -> dict:
               and total_bytes <= max_total,
         "dry_run": dry_run,
         "kept": kept,
-        "deleted": deleted,
+        "deleted": archived,
+        "archived": archived,
+        "skipped_in_progress": skipped_in_progress,
         "partials_removed": partials,
         "remaining_count": len(remaining),
         "remaining_full": sum(1 for p in remaining if p.stat().st_size >= min_bytes),
