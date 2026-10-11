@@ -3776,6 +3776,12 @@ GATES = [
             # AGENTS 4.4.0 is ACTIVE; refused while PROPOSED, admitted with the status flipped in-test; compute_due
             # week sweep; allowlist live_arg null, lock = cron lock, no broker credential. Hermetic: repo config.
             "tests/test_dispatch_shadow_wave3_r1_20261010.py",
+            # Consolidation W4 provider owners on the dispatcher in SHADOW (R1 ingest, 2026-10-11): finviz-enrichment
+            # (L142), sec-data-ingest (L150), social-ingest-all (L243) admitted by r1_class_admission; dry_run only,
+            # live_arg null, proposed flock lock absent from the cron line (canary blocked until a cron packet adds
+            # it), REVIEWED health contracts, scheduler.match = exactly the one cron line, news-ingest and
+            # sec-filings-feed excluded; compute_due week sweep. Hermetic: repo config read only.
+            "tests/test_w4_provider_owners_shadow_20261011.py",
             # Gateway /due latency (W0 re-run 2026-10-10 ~17:14 ET, relay_gateway_unreachable under 3-4 concurrent
             # /due at CPUQuota=20%): the precomputed / split-lookup / memoized forbidden-token matcher equals a
             # verbatim copy of the old one on every served-registry text and a compound corpus; DueResponse@v1

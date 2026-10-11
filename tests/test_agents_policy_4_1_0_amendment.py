@@ -424,9 +424,15 @@ def test_every_dispatcher_row_is_allowlisted_eligible_and_staged():
         assert sched.get("wave") and sched.get("stage") in {"shadow", "canary", "cutover"}, lane
 
 
-# Allowlist lanes the dispatcher must not relay, with the reason the predicate gives. Empty today: every
-# allowlisted lane is eligible. A lane added here is reported, not silently skipped.
-EXPECTED_INELIGIBLE: dict[str, str] = {}
+# Allowlist lanes the dispatcher must not relay, with the reason the predicate gives. A lane added here is
+# reported, not silently skipped. The two W4 provider owners (2026-10-11) are ingest writers whose script names carry
+# `_ingest`: this 4.1.0 model refuses them by name, and they are dispatched only as AGENTS 4.3.0 §23.18 R1 class
+# `ingest` cron-shadow rows (dry_run, live_arg null) through lane_dispatch.r1_class_admission, pinned by
+# tests/test_w4_provider_owners_shadow_20261011.py. Their cutover PR must reconcile this model with R1.
+EXPECTED_INELIGIBLE: dict[str, str] = {
+    "sec-data-ingest": "sender or ingest writer _ingest",
+    "social-ingest-all": "sender or ingest writer _ingest",
+}
 
 
 def test_every_allowlist_lane_is_eligible_or_explicitly_reported():

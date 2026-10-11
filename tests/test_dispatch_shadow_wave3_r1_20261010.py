@@ -194,7 +194,12 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     doc = dict(REGISTRY, lanes=[_activate(r) if "r1_pending" in r else r for r in REGISTRY["lanes"]])
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "PROPOSED")
     errs = LD.registry_dispatch_errors(doc)
-    assert len(errs) == 19 and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
+    # 19 wave-3 rows + the 3 W4 provider-owner rows (tests/test_w4_provider_owners_shadow_20261011.py): every R1
+    # cron-shadow row on the registry is refused while 4.4.0 is PROPOSED.
+    r1_cron_shadow = [r for r in doc["lanes"] if (r.get("dispatch") or {}).get("class") in LD.R1_ADMITTED_CLASSES
+                      and (r.get("scheduler") or {}).get("kind") == "cron"]
+    assert len(r1_cron_shadow) == 19 + 3
+    assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     assert LD.registry_dispatch_errors(doc) == []
 
