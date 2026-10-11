@@ -39,7 +39,7 @@ PINNED_SECTIONS = {
     ),
     "§2": ("# 2 · Authority rails", "# 2A ·", "5fd247be2571bd2a8c75d4c789bf1f0b59a1068817ed8d541b852b24a512c2af"),
     "§2A": ("# 2A ·", "# 2B ·", "38c78841b9b7cc3bf8ef3dea6be825ad5f892a6d4c7c8209404e4ef3855b79bb"),
-    "§7A": ("# 7A ·", "# 8 ·", "c808d0216d13435c22320b86601885ac535213bf1c69006f6c0452955c3818be"),
+    "§7A": ("# 7A ·", "# 8 ·", "6d20888d1329397351c75a54a4c3e2e7978d5974cef6c3c306dc708580b5ca90"),
     "§17": (
         "# 17 · Operator-only decisions",
         "# 17A ·",
@@ -67,7 +67,10 @@ def _section(text: str, start: str, end: str) -> str:
     assert s, start
     e = re.search(rf"^{re.escape(end)}", text[s.start() + 1 :], re.M)
     assert e, end
-    return text[s.start() : s.start() + 1 + e.start()]
+    block = text[s.start() : s.start() + 1 + e.start()]
+    # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned — same mask as
+    # the 4.1.0/4.3.0/4.4.0 pins (operator 2026-10-10 'Yes, from one to six', item 5; PR #1678).
+    return re.sub(r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)", r"\1\n<generated>\n\2", block, flags=re.S)
 
 
 def _s24() -> str:
