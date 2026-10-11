@@ -34,7 +34,7 @@ def _send_telegram(message):
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram
 
-        send_telegram(message)
+        send_telegram(message, priority="P2", producer="crawl_v3_dashboard")
         try:
             from lib.comms import CommunicationEvent, publish_communication
 

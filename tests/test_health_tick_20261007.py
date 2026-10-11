@@ -100,10 +100,14 @@ def test_snap_floors_a_late_timer_fire_onto_the_grid():
 
 def test_live_table_loads_and_reproduces_the_crontab_weekly_count():
     table = ht.load_table(LIVE_TABLE)
-    assert len(table["steps"]) == 17
+    assert len(table["steps"]) == 16
     counts = ht.firings_per_week(table, datetime.fromisoformat("2026-10-05T00:00:00"))
-    # Hand-computed from the 17 crontab lines (weekday 1166 + weekend 786 per day).
-    assert sum(counts.values()) == 7402
+    # Hand-computed from the 17 crontab lines (weekday 1166 + weekend 786 per day) = 7402, minus the
+    # retired portfolio-live-monitor step (every 20 min, 09-16 weekdays: 24/day x 5 = 120), retire-wave1
+    # W1-7 2026-10-11. Its row is kept verbatim under `retired_steps`.
+    assert sum(counts.values()) == 7402 - 120
+    assert "portfolio-live-monitor" not in counts
+    assert [r["step"]["step_id"] for r in table["retired_steps"]] == ["portfolio-live-monitor"]
     assert counts["cio-bridge-watchdog"] == 2016 and counts["system-health-alerts"] == 10
     assert counts["symbol-news-curation-monitor"] == 168 and counts["pipeline-freshness-slo"] == 30
     gated = [s for s in table["steps"] if s["market_day_gate"]]

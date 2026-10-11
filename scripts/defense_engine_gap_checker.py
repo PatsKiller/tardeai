@@ -109,7 +109,7 @@ def send_telegram_alert(gaps: list, all_stale: list):
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram
-        ok = bool(send_telegram(msg[:4096]))
+        ok = bool(send_telegram(msg[:4096], priority="P2", producer="defense_engine_gap_checker"))
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

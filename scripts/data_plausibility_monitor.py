@@ -333,7 +333,7 @@ def _alert(results: list[dict], blocking: list[dict]) -> None:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import telegram_alert as _ta
 
-        ok = _ta.send_telegram(body, message_class="operator_alert")
+        ok = _ta.send_telegram(body, message_class="operator_alert", priority="P1", producer="data_plausibility_monitor")
         message_id = getattr(_ta, "last_message_id", lambda: None)()
         print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
     except Exception as exc:

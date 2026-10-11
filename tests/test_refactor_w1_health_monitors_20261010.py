@@ -218,13 +218,16 @@ def test_classifier_no_cwd_relative_write_left():
 YT = ROOT / "scripts" / "youtube_cookie_health_check.py"
 
 
-def _run_yt(monkeypatch, argv, *, sent):
+def _run_yt(monkeypatch, argv, *, sent, sent_kw=None):
     """Run the script as __main__ with fake db_adapter / telegram_alert modules."""
 
-    def send(msg):
+    def send(msg, **kw):
+        # SND2 (2026-10-11): the check declares its intent (priority/producer); record both with the text.
         sent.append(msg)
+        sends_kw.append(kw)
         return True
 
+    sends_kw = sent_kw if sent_kw is not None else []
     monkeypatch.setitem(sys.modules, "telegram_alert", types.SimpleNamespace(send_telegram=send))
     # The shadow comms ledger publish after a send must not reach a real store from a test.
     monkeypatch.setitem(
@@ -270,8 +273,11 @@ def test_youtube_no_send_writes_receipt_with_status_and_exit_zero(monkeypatch, s
 
 def test_youtube_default_still_sends_on_red(monkeypatch, state_root, no_cookie):
     sent: list = []
-    assert _run_yt(monkeypatch, [], sent=sent) == 0  # red is a finding, not a failed run
+    kws: list = []
+    assert _run_yt(monkeypatch, [], sent=sent, sent_kw=kws) == 0  # red is a finding, not a failed run
     assert len(sent) == 1 and sent[0].startswith("[RED] YouTube cookies")
+    # RED must page the operator: a declared P1 intent from this producer (SND2, 2026-10-11).
+    assert kws == [{"priority": "P1", "producer": "youtube_cookie_health_check"}]
     doc = json.loads((state_root / "data/runtime/youtube_cookie_health_check_last.json").read_text())
     assert doc["summary"]["sent"] is True
 

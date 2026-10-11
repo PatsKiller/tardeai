@@ -61,9 +61,12 @@ assert_no_level7() {
 }
 
 # --- lock handling (flock; skip cleanly if already held) ---
+# PIPELINE_LOCK_DIR (default /tmp, which every cron line uses) exists for tests only: a dry run of the REAL
+# manifests from two parallel CI gates, or on the live host, must not contend for -- or hold -- the live stage
+# lock (2026-10-11: CI gate premarket_stage_parallel skipped because another gate held /tmp's premarket lock).
 PIPELINE_LOCK_FD=""
 acquire_lock() {
-  local name="$1" lockfile="/tmp/pipeline_${1}.lock"
+  local name="$1" lockfile="${PIPELINE_LOCK_DIR:-/tmp}/pipeline_${1}.lock"
   exec {PIPELINE_LOCK_FD}>"$lockfile"
   if ! flock -n "$PIPELINE_LOCK_FD"; then
     echo "[lock] $name already running ($lockfile held) — skipping this invocation" >&2

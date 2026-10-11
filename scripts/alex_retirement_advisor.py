@@ -807,7 +807,8 @@ Be specific with numbers. Use warm tone. Address disability implications for eve
             try:
                 from telegram_alert import send_telegram as _tg
                 divider = "\u2501" * 24
-                _tg(f"\U0001F4CA *Alex: Monthly Retirement Report*\n_{month_name}_\n{divider}\n\n{report[:1800]}\n\n{divider}\n_via {result.get('provider','?')}_")
+                _tg(f"\U0001F4CA *Alex: Monthly Retirement Report*\n_{month_name}_\n{divider}\n\n{report[:1800]}\n\n{divider}\n_via {result.get('provider','?')}_",
+                    priority="P2", producer="alex_retirement_advisor")
             except Exception:
                 pass
 
@@ -861,7 +862,7 @@ def scan_portfolio_for_alerts(send_telegram: bool = False) -> list:
                     msg = f"*Alex (Retirement Advisor): {sym}*\n_{trigger}_\n\n{result['analysis'][:1500]}\n\n_via {result.get('provider')} (${result.get('cost', 0):.4f})_"
                     try:
                         from telegram_alert import send_telegram as _send
-                        _send(msg)
+                        _send(msg, priority="P2", producer="alex_retirement_advisor")
                     except Exception:
                         pass
 

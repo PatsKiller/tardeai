@@ -219,7 +219,7 @@ def insert_verdict(proposal_id: int, verdict: dict, qualified_reason: str) -> No
 def _send_telegram(msg: str) -> None:
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P2", producer="cloud_consensus_verdict")
     except Exception as e:
         print(f"  [telegram] send failed: {str(e)[:120]}")
 

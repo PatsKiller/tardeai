@@ -174,7 +174,7 @@ def _send_rotation_alert(kind: str, rotation: Dict[str, Any], bridge: Dict[str, 
         return False
 
     try:
-        return bool(send_telegram(msg))
+        return bool(send_telegram(msg, priority="P3", producer="rotation_autopilot"))  # autonomous FYI
     except Exception as exc:
         log.debug("telegram alert skipped: %s", exc)
         return False

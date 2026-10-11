@@ -70,7 +70,7 @@ _Diagnostic only — no trade, no order_"""
                     k, v = line.split('=', 1)
                     os.environ.setdefault(k.strip(), v.strip())
             from telegram_alert import send_telegram
-            result["sent"] = bool(send_telegram(msg))
+            result["sent"] = bool(send_telegram(msg, priority="P2", producer="send_no_leads_diagnostic_alert"))
             try:
                 if str(PROJ) not in sys.path:
                     sys.path.insert(0, str(PROJ))

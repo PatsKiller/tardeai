@@ -2812,7 +2812,8 @@ CRITICAL INSTRUCTIONS:
                         f"\U0001F6A8 *Escalation: {symbol}*\n"
                         f"Synthesis: {parsed['recommendation']} ({parsed['confidence']:.0%} confidence)\n"
                         f"Reasons: {', '.join(escalation_reasons)}\n"
-                        f"Review at: /v2/watchlist?symbol={symbol}"
+                        f"Review at: /v2/watchlist?symbol={symbol}",
+                        priority="P2", producer="process_watchlist_agent_jobs",
                     )
                 except Exception:
                     pass
@@ -3270,7 +3271,7 @@ def process_jobs(limit: int = 10):
                         print(f"  [debate-trigger] {symbol}: {e}")
                 else:
                     msg += f"Consensus: {list(recs.values())[0]}"
-                send_telegram(msg)
+                send_telegram(msg, priority="P3", producer="process_watchlist_agent_jobs")  # analysis FYI
         except Exception:
             pass
 

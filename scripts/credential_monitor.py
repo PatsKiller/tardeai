@@ -37,10 +37,13 @@ def _env(key: str) -> str:
         return os.getenv(key, "").strip()
 
 
-def _send_tg(msg: str):
+def _send_tg(msg: str, *, priority: str = "P3"):
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        # One transport site (tests/test_alarm_fires_batch6_20260922.py covers this file whole): a P1 failure
+        # notice is operator action, so its dedupe is off; any other priority keeps the router default (None).
+        send_telegram(msg, priority=priority, producer="credential_monitor",
+                      dedupe_minutes=0 if priority == "P1" else None)
     except Exception:
         pass
 
@@ -295,7 +298,7 @@ def run_checks(send_telegram: bool = False) -> list:
             if env_key:
                 lines.append(f"`update {env_key} YOUR_NEW_VALUE`")
 
-        _send_tg("\n".join(lines))
+        _send_tg("\n".join(lines), priority="P1")
 
     ok_count = sum(1 for r in results if r["status"] in ("ok", "quota", "warning"))
     fail_count = len(failures)

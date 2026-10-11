@@ -817,7 +817,7 @@ def send_telegram_report_notice(pdf_path: Path, caption: str) -> bool:
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
         from telegram_alert import send_telegram_document
-        ok = bool(send_telegram_document(str(pdf_path), caption=caption, bypass_router=True))
+        ok = bool(send_telegram_document(str(pdf_path), caption=caption, priority="P2", producer="portfolio_report_ms"))
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

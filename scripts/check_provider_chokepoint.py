@@ -164,6 +164,14 @@ def main() -> int:
         # Preserve channels not rescanned when --channel is narrow.
         existing = _load_baseline()
         files_by_channel = dict(existing.get("channels") or {})
+        # Shrink-only (SND2, AGENTS.md §24.1): an update may lower or drop entries, never add or raise one.
+        # A new provider bypass is fixed at the producer, not recorded as debt.
+        grow = {f"{ch}:{k}": _violation_count(v) for ch, found in scanned.items() for k, v in found.items()
+                if _violation_count(v) > int((files_by_channel.get(ch) or {}).get(k, 0))}
+        if grow:
+            print(f"[provider-chokepoint] REFUSED: the baseline only shrinks; these would add or grow: {grow}",
+                  file=sys.stderr)
+            return 1
         for ch, found in scanned.items():
             files_by_channel[ch] = {
                 k: _violation_count(v) for k, v in sorted(found.items())
@@ -226,6 +234,11 @@ def main() -> int:
                 )
             elif n > allowed:
                 failures.append(f"{ch}:{rel} grew {allowed} -> {n}")
+        # Shrink-only: an entry above the measured count must be lowered, so a fix is recorded.
+        for rel, allowed in sorted(ch_base.items()):
+            n = _violation_count(found.get(rel, {}))
+            if n < int(allowed):
+                failures.append(f"{ch}:{rel} shrank {allowed} -> {n}: lower the baseline (--update-baseline)")
 
     if failures:
         print("\n[provider-chokepoint] FAIL", file=sys.stderr)

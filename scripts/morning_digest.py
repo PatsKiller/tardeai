@@ -84,7 +84,7 @@ def _get_env_var(key: str, project_root: Path) -> str:
 def _send_telegram(message: str, project_root: Path) -> bool:
     """Send Telegram message via the shared chokepoint (captures to Reports portal)."""
     from telegram_alert import send_telegram
-    ok = send_telegram(message, bypass_router=True)
+    ok = send_telegram(message, priority="P2", producer="morning_digest")
     if ok:
         print("  [digest] Telegram sent")
     else:

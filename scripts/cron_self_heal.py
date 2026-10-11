@@ -96,7 +96,7 @@ def _log(msg: str) -> None:
 def _notify(msg: str) -> None:
     try:
         from telegram_alert import send_telegram
-        send_telegram(f"🛠️ cron-self-heal: {msg}")
+        send_telegram(f"🛠️ cron-self-heal: {msg}", priority="P3", producer="cron_self_heal")  # FYI
     except Exception:
         pass
 

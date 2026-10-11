@@ -495,10 +495,14 @@ def _log_event(conn, component, event_type, severity, message, action=None, succ
 
 
 def _send_alert(message, urgent=False):
-    """Send alert through central router. NEVER bypass."""
+    """Send alert through central router. NEVER bypass.
+
+    A notification intent: CRITICAL escalations are P1 (time-critical); WARN escalations are P3 -- archived
+    for the digest, as the text classifier already routed them (tests/test_alarm_fires_batch5.py).
+    """
     try:
         from telegram_alert import send_telegram
-        send_telegram(message)
+        send_telegram(message, priority=("P1" if urgent else "P3"), producer="system_health_agent")
     except Exception as e:
         log.error(f"Alert send failed: {e}")
 
@@ -1133,7 +1137,7 @@ def _escalate(comp, check_result, conn):
         msg_lines.append("Fix: Check logs and restart manually")
 
     msg = "\n".join(msg_lines)
-    _send_alert(msg)
+    _send_alert(msg, urgent=(severity == "CRITICAL"))
     _log_event(conn, component, "ESCALATION", severity, msg[:500],
                action="telegram_alert", success=True)
 
@@ -1405,7 +1409,8 @@ def run_health_check(dry_run=True, verbose=False):
             if _dedup_ok:
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram("⚠️ AGENT STALENESS\n" + "\n".join(stale_agents))
+                    send_telegram("⚠️ AGENT STALENESS\n" + "\n".join(stale_agents),
+                                  priority="P3", producer="system_health_agent")
                     _log_event(conn, "agent_staleness", "STALENESS_ALERT", "WARN",
                                "\n".join(stale_agents), success=True)
                 except Exception:
@@ -1713,7 +1718,8 @@ def run_health_check(dry_run=True, verbose=False):
             if _pipe_dedup_ok:
                 try:
                     from telegram_alert import send_telegram
-                    send_telegram("🔴 PIPELINE HEALTH\n" + "\n".join(pipeline_alerts))
+                    send_telegram("🔴 PIPELINE HEALTH\n" + "\n".join(pipeline_alerts),
+                                  priority="P3", producer="system_health_agent")
                     _log_event(conn, "pipeline_output", "PIPELINE_ALERT", "WARN",
                                "\n".join(pipeline_alerts), success=True)
                 except Exception:

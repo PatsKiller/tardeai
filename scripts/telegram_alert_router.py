@@ -660,12 +660,21 @@ def surface_destination(message: str) -> str:
 #       archive (scripts/lib/advice_digest.collect_other). If the hold cannot be persisted, the P2 is
 #       delivered instead — a failure to hold must never become a silent drop (AGENTS.md §9.1).
 #
+#   P3  FYI: never interrupts. Always archived to the same Reports archive under its own report type and
+#       folded by the same digest (SND2, 2026-10-11: "FYI -> P3 digest"). It is what the text classifier's
+#       DIGEST verdict gave these producers, now declared instead of inferred from wording. If the archive
+#       write fails the P3 is delivered instead -- a digest that cannot be written must not become a drop.
+#
 # Not changed: classify_alert, should_send_telegram, DAILY_SEND_BUDGET and every text-routed producer.
 INTENT_P1 = "P1"
 INTENT_P2 = "P2"
-INTENT_PRIORITIES = (INTENT_P1, INTENT_P2)
+INTENT_P3 = "P3"
+INTENT_PRIORITIES = (INTENT_P1, INTENT_P2, INTENT_P3)
 DEFAULT_INTENT_DEDUPE_MINUTES = 60
 HELD_P2_REPORT_TYPE = "notification_intent_p2"
+DIGEST_P3_REPORT_TYPE = "notification_intent_p3"
+# Decision -> the Reports-archive report type a non-delivered intent is stored under for the digest.
+INTENT_ARCHIVE_REPORT_TYPE = {"HELD_QUIET_HOURS": HELD_P2_REPORT_TYPE, "DIGEST": DIGEST_P3_REPORT_TYPE}
 INTENT_RECEIPT_SCHEMA = "NotificationIntentRoute@v1"
 INTENT_RECEIPTS_ENV = "TRADEAI_INTENT_RECEIPTS_PATH"
 _INTENT_RECEIPTS_DEFAULT = PROJ / "data" / "runtime" / "notification_intent_receipts.jsonl"
@@ -738,7 +747,8 @@ def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = No
     """Decide one notification intent. Pure apart from reading the durable dedupe store.
 
     Returns {priority, decision, deliver, dedupe_key, window_minutes, producer, preview}; decision is one of
-    DELIVER, DEDUPED (same body inside the window — already delivered), HELD_QUIET_HOURS (P2 only).
+    DELIVER, DEDUPED (same body inside the window — already delivered), HELD_QUIET_HOURS (P2 only),
+    DIGEST (P3 only: archived for the digest, never an interrupt).
     ``dedupe_minutes=0`` turns dedupe off for a producer that already keeps its own send ledger.
     """
     pr = str(priority or "").strip().upper()
@@ -751,9 +761,22 @@ def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = No
     if window and (time.time() - _intent_sent.get(key, 0) < window * 60
                    or _durable_recently_sent(key, window * 60)):
         return {**route, "decision": "DEDUPED", "deliver": False}
+    if pr == INTENT_P3:
+        return {**route, "decision": "DIGEST", "deliver": False}
     if pr == INTENT_P2 and intent_in_quiet_hours(now):
         return {**route, "decision": "HELD_QUIET_HOURS", "deliver": False}
     return {**route, "decision": "DELIVER", "deliver": True}
+
+
+def intent_archive_report_type(route: dict) -> str:
+    """The Reports-archive type a held or digested intent is stored under.
+
+    A P3 carries its producer (``notification_intent_p3:<producer>``) because the digest groups by report
+    type: one bucket for every FYI producer would fold forty senders into a single line.
+    """
+    base = INTENT_ARCHIVE_REPORT_TYPE[route["decision"]]
+    producer = str(route.get("producer") or "").strip()
+    return f"{base}:{producer}" if route["decision"] == "DIGEST" and producer else base
 
 
 def mark_intent_sent(route: dict) -> None:

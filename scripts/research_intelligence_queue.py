@@ -178,7 +178,7 @@ def drain(cap: int = DRAIN_CAP_DEFAULT) -> dict:
                 + "\n" + "\n".join(f"  ✓ {t}" for t in done[:8])
                 + ("\n" + "\n".join(f"  ✗ {t}" for t in failed[:4]) if failed else "")
             )
-            send_telegram(msg)
+            send_telegram(msg, priority="P3", producer="research_intelligence_queue")  # FYI -> digest
         except Exception:
             pass
 

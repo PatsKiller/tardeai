@@ -98,7 +98,10 @@ def test_superseded_by_names_live_rows():
 
 def test_opening_intelligence_keeps_its_row_and_drops_only_the_0330_schedule():
     r = _rows()["opening-intelligence"]
-    assert r["state"] == "ACTIVE" and "retire_batch" not in r
+    assert "retire_batch" not in r
+    # C1 premarket flip (2026-10-11): the remaining 07:00 line became a premarket-data-pipeline step, so the row is
+    # RETIRED into the stage lane (not by retire batch 1); it still declares the 07:00 line only.
+    assert r["state"] == "ACTIVE" or (r["state"] == "RETIRED" and r["superseded_by"] == "premarket-data-pipeline")
     assert r["scheduler"]["schedules"] == ["0 7 * * 1-5"] and r["scheduler"]["expression"] == "0 7 * * 1-5"
     assert r["scheduler"]["match"] == "scripts/opening_intelligence.py --persist >>"
     assert r["expected_cadence_hours"] == 72.0
@@ -114,7 +117,10 @@ def test_gate_is_green_before_and_aligned_after_the_host_apply():
     staying = "0 7 * * 1-5 cd $PROJ && $PY scripts/opening_intelligence.py --persist >> logs/o.log 2>&1"
     found = {"cron": LR.discover_cron(f"{retiring}\n{staying}"), "systemd": [], "systemd_services": []}
     assert LR.find_undeclared(reg, found, n8n_known_ids=[]) == []
-    lanes = [r for r in reg["lanes"] if r.get("retire_batch") == "retire-batch-1" or r["lane_id"] == "opening-intelligence"]
+    # opening-intelligence is the staying row while it is ACTIVE; once C1 premarket (2026-10-11) retired it into the
+    # stage lane its 07:00 line is the stage's to run, so it is out of this batch's before/after alignment.
+    lanes = [r for r in reg["lanes"] if r.get("retire_batch") == "retire-batch-1"
+             or (r["lane_id"] == "opening-intelligence" and r["state"] == "ACTIVE")]
     before = classify_lanes(lanes, cron_rows=found["cron"], host_state={"timers": {}})
     assert not [r for r in before if r["kind"] == "cron" and r["code"] not in (HC.ALIGNED, HC.UNCLASSIFIED)]
     commented = f"# RETIRED 2026-10-10 inventory cron:L157 {retiring}\n{staying}"

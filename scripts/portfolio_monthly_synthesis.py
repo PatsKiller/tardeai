@@ -298,7 +298,7 @@ def _generate_html(date_str: str, weeklies: List[Dict],
 
 def _send_telegram(message: str) -> None:
     from telegram_alert import send_telegram
-    ok = send_telegram(message, bypass_router=True)
+    ok = send_telegram(message, priority="P2", producer="portfolio_monthly_synthesis")
     if ok:
         print("  [monthly-synthesis] Telegram sent")
     else:

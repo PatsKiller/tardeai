@@ -242,7 +242,7 @@ def run(send_telegram: bool = False, dry_run: bool = False):
 
             lines.append(divider)
             lines.append(f"_Review at /v2/watchlist_")
-            _tg("\n".join(lines))
+            _tg("\n".join(lines), priority="P3", producer="watchlist_hygiene")
         except Exception:
             pass
 

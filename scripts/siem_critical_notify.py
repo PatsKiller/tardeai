@@ -53,7 +53,7 @@ def _save_state(s):
 def _send(msg):
     try:
         from telegram_alert import send_telegram
-        return send_telegram(msg)
+        return send_telegram(msg, priority="P1", producer="siem_critical_notify")  # SIEM P0/P1: time-critical
     except Exception as e:
         print(f"[siem-notify] telegram error: {e}"); return False
 

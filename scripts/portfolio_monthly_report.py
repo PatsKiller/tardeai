@@ -102,7 +102,7 @@ def _oauth_llm(prompt: str, *, task_summary: str, timeout: int = 120) -> str:
 def _send_telegram(message: str) -> None:
     """Send Telegram message via the shared chokepoint (captures to Reports portal)."""
     from telegram_alert import send_telegram
-    ok = send_telegram(message, bypass_router=True)
+    ok = send_telegram(message, priority="P2", producer="portfolio_monthly_report")
     try:
         from lib.comms import CommunicationEvent, publish_communication
         publish_communication(CommunicationEvent(
@@ -128,7 +128,7 @@ def _send_telegram_doc(doc_path: Path, caption: str = "") -> None:
     note = caption or f"Monthly portfolio DOCX ready: {doc_path.name}"
     try:
         from telegram_alert import send_telegram_document
-        ok = bool(send_telegram_document(str(doc_path), caption=note, bypass_router=True))
+        ok = bool(send_telegram_document(str(doc_path), caption=note, priority="P2", producer="portfolio_monthly_report"))
         print("  [monthly-report] Telegram document sent" if ok else "  [monthly-report] Telegram document not sent")
     except Exception as e:
         print(f"  [monthly-report] Telegram document error: {type(e).__name__}: {str(e)[:120]}")

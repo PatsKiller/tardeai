@@ -45,7 +45,7 @@ def _telegram(msg):
     """Send via telegram_alert chokepoint (no raw Bot API)."""
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P2", producer="pro_analyst_monitor")
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

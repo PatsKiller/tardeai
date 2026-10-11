@@ -15,15 +15,12 @@ Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L320 --apply):
 - A real ``--apply`` run writes data/runtime/agent_recommendation_normalizer_last.json
   (LaneRunReceipt@v1, ok_at only on success); any exception still exits non-zero.
 """
-import argparse, json, os, sys, uuid
-from datetime import datetime, timezone
+import argparse, hashlib, json, os, sys
 from decimal import Decimal
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
 
 SECRET_KEYS = {"password", "token", "secret", "api_key", "cookie", "credential", "private_key"}
 
@@ -31,11 +28,20 @@ def _f(v):
     return float(v) if isinstance(v, Decimal) else v
 
 def _get_conn():
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
     from session13_db import get_conn
     return get_conn()
 
-def _uid():
-    return f"AREC_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
+def _recommendation_id(source_table: str, source_id: str) -> str:
+    """Stable id so a second run hits ON CONFLICT DO NOTHING instead of inserting again.
+
+    A fresh UUID per row inserted the same ~6,500 source rows on every run
+    (watchlist limit 5000 + cio 1000 + debates 500). The unique key is
+    recommendation_id, so the id has to be a function of the source row.
+    """
+    digest = hashlib.sha256(f"{source_table}:{source_id}".encode("utf-8")).hexdigest()[:20]
+    return f"AREC_{digest}"
 
 def _redact(payload):
     if not isinstance(payload, dict):
@@ -90,7 +96,7 @@ def normalize_watchlist_results(conn, agent_filter=None, symbol_filter=None):
     for row in cur.fetchall():
         rec_type, rec_action = _map_recommendation(row[3])
         recs.append({
-            "recommendation_id": _uid(),
+            "recommendation_id": _recommendation_id("watchlist_agent_results", str(row[0])),
             "agent_name": row[1] or "unknown",
             "agent_role": "watchlist_analyst",
             "source_table": "watchlist_agent_results",
@@ -124,7 +130,7 @@ def normalize_cio_decisions(conn, agent_filter=None, symbol_filter=None):
             continue  # CIO decisions are system-level
         rec_type, rec_action = _map_recommendation(row[2])
         recs.append({
-            "recommendation_id": _uid(),
+            "recommendation_id": _recommendation_id("cio_decisions", str(row[0])),
             "agent_name": "cio_engine",
             "agent_role": "decision_maker",
             "source_table": "cio_decisions",
@@ -159,7 +165,7 @@ def normalize_debates(conn, agent_filter=None, symbol_filter=None):
         rec_type, rec_action = _map_recommendation(row[3])
         agent_name = ", ".join(participants[:3]) if participants else "debate_group"
         recs.append({
-            "recommendation_id": _uid(),
+            "recommendation_id": _recommendation_id("agent_debate_log", str(row[0])),
             "agent_name": agent_name,
             "agent_role": "debate_consensus",
             "source_table": "agent_debate_log",

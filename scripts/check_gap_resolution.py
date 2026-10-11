@@ -308,7 +308,7 @@ def _alert(report: dict) -> None:
     try:
         from telegram_alert import send_telegram
 
-        ok = send_telegram(body, message_class="operator_alert")
+        ok = send_telegram(body, message_class="operator_alert", priority="P2", producer="check_gap_resolution")
         print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
     except Exception as exc:
         print(f"\n  alert: FAILED to send ({exc}). The findings above still stand.", file=sys.stderr)

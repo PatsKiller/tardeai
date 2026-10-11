@@ -313,22 +313,15 @@ BYPASS_ALLOWLIST = {
     "scripts/lib/cio_operator_renderers.py": 2,
     "scripts/lib/llm_escalation.py": 1,
     "scripts/lib/scalp_advisory_alert.py": 1,
-    "scripts/morning_digest.py": 1,
     "scripts/open_trade_monitor.py": 2,
     "scripts/p1_digest_sender.py": 1,
-    "scripts/portfolio_monthly_report.py": 2,
-    "scripts/portfolio_monthly_synthesis.py": 1,
-    "scripts/portfolio_report_ms.py": 1,
-    "scripts/portfolio_weekly_report.py": 2,
     "scripts/schwab_auto_reauth.py": 1,
     "scripts/secrets/rotation_daemon.py": 1,
     "scripts/secrets_admin.py": 1,
-    "scripts/send_closed_trade_digest.py": 1,
     "scripts/session18_signal_flow_health.py": 1,
     "scripts/telegram_command_handler.py": 1,
     "scripts/verify_fib_proposals.py": 1,
     "scripts/verify_hermes_daily.py": 1,
-    "scripts/weekly_summary_local.py": 1,
 }
 
 _SEND_NAMES = {"send_telegram", "send_telegram_with_id", "send_telegram_document", "_send", "sender_with_id"}

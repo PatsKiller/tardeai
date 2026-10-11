@@ -240,7 +240,7 @@ def main() -> int:
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         from telegram_alert import send_telegram
-        sent = send_telegram(brief["text"])
+        sent = send_telegram(brief["text"], priority="P2", producer="cio_event_brief")
     except Exception as e:
         print(f"[cio_event_brief] telegram send failed: {type(e).__name__}: {str(e)[:160]}")
 

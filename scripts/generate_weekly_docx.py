@@ -390,7 +390,8 @@ def main():
 
     try:
         from telegram_alert import send_telegram
-        send_telegram(f"*Weekly Portfolio Review*\n{stem} generated\nView Reports → Analyst Reports")
+        send_telegram(f"*Weekly Portfolio Review*\n{stem} generated\nView Reports → Analyst Reports",
+                      priority="P2", producer="generate_weekly_docx")
     except Exception:
         pass
 

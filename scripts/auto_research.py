@@ -32,10 +32,10 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
-def _send_tg(msg: str):
+def _send_tg(msg: str, *, priority: str = "P3"):
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority=priority, producer="auto_research")
     except Exception:
         pass
 

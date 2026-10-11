@@ -251,7 +251,7 @@ def _notify_telegram(candidates: list) -> bool:
     lines.append("\n_Review: `python3 scripts/youtube_channel_discovery.py --list-candidates`_")
 
     try:
-        ok = _tg("\n".join(lines))
+        ok = _tg("\n".join(lines), priority="P2", producer="youtube_channel_discovery")
         if ok:
             print("[yt-discover] Telegram notify accepted")
             return True

@@ -249,7 +249,7 @@ def run(send_telegram: bool = False, dry_run: bool = False):
                 strat = d["strategy_tags"][0].replace("_", " ") if d["strategy_tags"] else "?"
                 lines.append(f"  *{d['symbol']}* — {d['mentions']} mentions, Q:{d['quality_avg']:.0f} ({strat})")
             lines.append(f"\n_Auto-added to watchlist. Agent analysis within 15-60 min._")
-            _tg("\n".join(lines))
+            _tg("\n".join(lines), priority="P3", producer="intel_auto_discovery")
         except Exception:
             pass
 

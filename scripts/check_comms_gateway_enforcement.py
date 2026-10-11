@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CHECKS = (
     ("telegram", ROOT / "scripts" / "check_telegram_chokepoint.py"),
     ("provider", ROOT / "scripts" / "check_provider_chokepoint.py"),
+    # AGENTS.md §24.1: senders declare a notification-intent priority; undeclared sends only shrink (SND2).
+    ("intent", ROOT / "scripts" / "check_notification_intents.py"),
 )
 
 

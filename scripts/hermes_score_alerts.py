@@ -44,7 +44,7 @@ def _alert(cur, uid, atype, symbol, severity, text):
 def _telegram(msg):
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P3", producer="hermes_score_alerts")  # batch watchlist FYI -> digest
     except Exception:
         pass
 

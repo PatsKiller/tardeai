@@ -81,7 +81,7 @@ def main() -> int:
            + league)
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P1", dedupe_minutes=0, producer="watch_directive_hygiene")
     except Exception:
         pass
     print(msg)

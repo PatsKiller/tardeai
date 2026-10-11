@@ -8,7 +8,9 @@ Pins the manifest sync that makes the four pipeline manifests flippable to --app
   * the steps whose cron text drifted (flock added, off-peak wrapper dropped) carry the live text again, so the
     step command is the same as what cron runs today;
   * the first flip's registry edit (hermes_learning) retires the 7 absorbed rows into the two stage lanes and
-    takes hermes-config-governor out of dispatcher shadow wave D1b (row and allowlist entry together).
+    takes hermes-config-governor out of dispatcher shadow wave D1b (row and allowlist entry together);
+  * the premarket flip's registry edit (2026-10-11) retires the 36 rows whose every line is a premarket step and
+    keeps market-regime-collector ACTIVE on its 16:05 line (after_close is not admissible).
 """
 from __future__ import annotations
 
@@ -111,6 +113,45 @@ def test_hermes_learning_registry_edit():
     assert gov["dispatch_retired"]["wave"] == "D1b"
     allow = (ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8")
     assert '"lane_id": "hermes-config-governor"' not in allow
-    # the later manifests are NOT flipped in this PR (one registry PR at a time, natural-run proof between)
-    for lane in ("hermes-overnight-pipeline-night", "after-close-pipeline-planning", "premarket-data-pipeline"):
+    # hermes_overnight and after_close are NOT flipped (after_close is not admissible: operator ruling 2026-10-11)
+    for lane in ("hermes-overnight-pipeline-night", "after-close-pipeline-planning"):
         assert reg[lane]["scheduler"]["command_text"].endswith("--dry-run"), lane
+
+
+#: C1 premarket flip (2026-10-11): the 36 rows whose every cron line is a premarket step.
+PREMARKET_RETIRED = (
+    "catalyst-calibration", "catalyst-calibration-monitor", "register-analyst-sources", "overnight-batch-outcomes",
+    "source-outcome-attribution", "indicator-cache-refresh", "run-sec-form4-momentum-context", "mint-identity-registry",
+    "strategy-backtester", "backtest-history-snapshot", "fred-data-ingest", "candidate-discovery-orchestrator",
+    "backtest-results-aggregator", "watch-directives-monitor", "classify-candidates", "market-regime-classifier",
+    "earnings-enrich", "research-intelligence-materialize", "fund-technicals-enrich", "refresh-symbol-cards",
+    "build-lesson-candidates", "distributions-enrich", "sync-watchlist-items-to-db", "build-symbol-profiles-watchlist",
+    "volatility-tier-refresh", "watch-valuation-backfill", "cio-draft-plan-hygiene", "materialize-income-engine",
+    "llm-retry-monitor", "iris-taxonomy-agent-gaps", "opening-intelligence", "research-watchlist-discovery",
+    "sync-dividend-data", "recommendation-intelligence-engine", "price-db-sync", "iris-proposal-curator",
+)
+
+
+def test_premarket_registry_edit():
+    reg = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
+    stage = reg["premarket-data-pipeline"]
+    assert stage["state"] == "ACTIVE" and stage["scheduler"]["command_text"].endswith("--stage premarket --apply")
+    allow = (ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8")
+    for lane in PREMARKET_RETIRED:
+        r = reg[lane]
+        assert r["state"] == "RETIRED" and r["superseded_by"] == "premarket-data-pipeline", lane
+        assert r["reason_confidence"] in ("CORRELATED", "ESTABLISHED"), lane
+        assert r["c1_flip"]["manifest"] == "premarket", lane
+        assert "generated_by" not in r and "dispatch" not in r and "stage" not in r["scheduler"], lane
+        assert f'"lane_id": "{lane}"' not in allow, lane
+    assert sum(1 for r in reg.values() if (r.get("c1_flip") or {}).get("manifest") == "premarket") == 36
+    # market-regime-collector is NOT retired: its 16:05 line (L213, collector && classifier) stays on cron because
+    # after_close is not admissible. Only its 06:30 line (L199) is absorbed; the row keeps the 16:05 slot alone.
+    mrc = reg["market-regime-collector"]
+    assert mrc["state"] == "ACTIVE" and "superseded_by" not in mrc
+    assert mrc["scheduler"]["expression"] == "5 16 * * 1-5" and mrc["scheduler"]["schedules"] == ["5 16 * * 1-5"]
+    assert "L199" in mrc["c1_note"] and "16:05" in mrc["c1_note"]
+    # 37 steps = 36 retired rows + market_regime_collector_am (the kept row's absorbed 06:30 line)
+    steps = pm.load(ROOT / "config" / "pipelines" / "premarket.json")["stages"]["premarket"]["steps"]
+    assert len(steps) == len(PREMARKET_RETIRED) + 1
+    assert "market_regime_collector_am" in {s["id"] for s in steps}

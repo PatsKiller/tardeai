@@ -157,7 +157,9 @@ def main():
                                 _msg = build_telegram_message(_p, _a)
                                 try:
                                     from telegram_alert import send_telegram
-                                    _sent = send_telegram(_msg)  # Respect alert router (no bypass)
+                                    # P3: ATP review alerts are digest material (ALERT-FATIGUE-1).
+                                    _sent = send_telegram(_msg, priority="P3",
+                                                          producer="run_proactive_quote_refresh")
                                     if _sent:
                                         mark_sent(_p, _a)
                                         log.info(f"  ALERT sent: {_p['symbol']} {_a['type']} [{_a['severity']}]")

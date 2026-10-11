@@ -126,7 +126,7 @@ def _notify(msg):
     """Best-effort Telegram via chokepoint (advisory; never raises)."""
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P3", producer="watch_directives_service")  # advisory FYI -> digest
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

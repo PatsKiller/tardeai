@@ -27,14 +27,41 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib.live_project_root import get_live_project_root   # noqa: E402
-PROJECT_ROOT = get_live_project_root()
+def _resolve_project_root() -> Path:
+    """The checkout while tests run. The live release root only outside TRADE_AI_CI.
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(PROJECT_ROOT / ".env")
-except ImportError:
-    pass
+    Import used to call get_live_project_root() and load_dotenv on that tree's .env,
+    so any test that imported this module read the served release environment
+    (backlog E-B1). Under TRADE_AI_CI the live root is never resolved and .env is
+    never loaded.
+    """
+    if os.environ.get("TRADE_AI_CI") == "1":
+        return Path(__file__).resolve().parents[1]
+    from lib.live_project_root import get_live_project_root
+    return get_live_project_root()
+
+
+def _load_release_env(root: Path) -> None:
+    if os.environ.get("TRADE_AI_CI") == "1":
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(root / ".env")
+    except ImportError:
+        pass
+
+
+PROJECT_ROOT = _resolve_project_root()
+_load_release_env(PROJECT_ROOT)
+
+
+def _ensure_scripts_path() -> None:
+    """Do not put the live release's scripts/ on sys.path during tests."""
+    if os.environ.get("TRADE_AI_CI") == "1":
+        return
+    scripts = str(PROJECT_ROOT / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
 
 QUEUE_FILE = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
 STALENESS_QUEUE_FILE = PROJECT_ROOT / "data" / "runtime" / "staleness_escalation_queue.json"
@@ -674,7 +701,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
 
 def _get_conn():
     try:
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from db_adapter import _get_conn as gc
         return gc()
     except Exception:
@@ -709,9 +736,10 @@ def _log_intervention(conn, component, problem, diagnosis="", solution="",
 def _notify(message):
     """Send Telegram notification."""
     try:
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _ensure_scripts_path()
         from telegram_alert import send_telegram
-        send_telegram(message)
+        # P3: escalation progress (investigating / complete / paused) is FYI -> digest.
+        send_telegram(message, priority="P3", producer="claude_escalation_handler")
     except Exception:
         pass
 

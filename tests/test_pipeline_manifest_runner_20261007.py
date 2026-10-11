@@ -244,6 +244,8 @@ def test_committed_runners_dry_run_print_plan_only(tmp_path):
     # Pin a weekday: CI runs in UTC, so from 00:00Z Friday evening ET it is Saturday and every
     # dow=1-5 step is skipped_dow (no "[DRY_RUN] would run"); main went red at 00:09Z 2026-10-10.
     env["PIPELINE_TODAY_DOW"] = "3"
+    # Private stage locks: a parallel gate dry-running the same real manifest must not turn this into a skip.
+    env["PIPELINE_LOCK_DIR"] = str(tmp_path)
     for runner, extra in ((RUNNERS[0], ["--manifest", str(MANIFESTS["after_close"]), "--stage", "close-capture"]),
                           (RUNNERS[1], ["--manifest", str(MANIFESTS["premarket"])]),
                           (RUNNERS[2], ["--manifest", str(MANIFESTS["hermes_overnight"]), "--stage", "night"])):

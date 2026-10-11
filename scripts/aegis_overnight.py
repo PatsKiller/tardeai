@@ -248,7 +248,8 @@ def main():
                 send_telegram(
                     f"*Watchlist Health — {len(llm_broken) + len(stale)} issues*\n"
                     f"LLM errors: {len(llm_broken)} | Stale (48h+): {len(stale)}\n"
-                    f"Auto-queued: {health_queued} jobs for re-analysis"
+                    f"Auto-queued: {health_queued} jobs for re-analysis",
+                    priority="P2", producer="aegis_overnight",
                 )
             except Exception:
                 pass
@@ -282,7 +283,8 @@ def main():
                     f"*Re-entry Signal: {s['symbol']}*\n"
                     f"Price: ${float(s['current_price']):.2f} (zone ${float(s['reentry_zone_low']):.2f}-${float(s['reentry_zone_high']):.2f})\n"
                     f"Last exit: ${float(s['last_exit_price']):.2f} on {s['last_exit_date']}\n"
-                    f"Best trade: +{float(s['best_pnl_pct']):.0f}%"
+                    f"Best trade: +{float(s['best_pnl_pct']):.0f}%",
+                    priority="P2", producer="aegis_overnight",
                 )
                 hcur2.execute("UPDATE previously_traded_watchlist SET last_alerted_date=CURRENT_DATE WHERE symbol=%s", [s['symbol']])
             hconn2.commit()
@@ -354,7 +356,8 @@ def main():
             f"Escalations: {synth.get('steph_escalations',0)}\n"
             f"Steph reviews: {synth.get('steph_reviews',0)} | "
             f"Evidence: {synth.get('evidence_entries',0)}\n"
-            f"Check: /v3/trading"
+            f"Check: /v3/trading",
+            priority="P2", producer="aegis_overnight",
         )
     except Exception:
         pass

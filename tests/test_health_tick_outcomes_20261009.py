@@ -234,7 +234,10 @@ def test_live_table_declares_findings_deadline_and_once():
     for sid in ("system-health-agent", "moomoo-opend-health", "pipeline-liveness-report"):
         assert steps[sid]["finding_rc"] == [EXIT_FINDING], sid
     assert table["tick_budget_s"] <= table["tick_deadline_s"] < 330   # unit TimeoutStartSec
-    plm = steps["portfolio-live-monitor"]
+    # portfolio-live-monitor left the tick 2026-10-11 (retire-wave1 W1-7: 30/32 runs timed out in 7 days).
+    # The tombstone keeps the --once row so a restore is a move, not a rewrite.
+    assert "portfolio-live-monitor" not in steps
+    plm = next(r["step"] for r in table["retired_steps"] if r["step"]["step_id"] == "portfolio-live-monitor")
     assert "--once" in plm["command"] and plm["timeout_s"] < table["tick_budget_s"]
 
 
@@ -250,7 +253,7 @@ def plm(monkeypatch, tmp_path):
         raise AssertionError("--once must never sleep")
 
     monkeypatch.setattr(mod.time, "sleep", _no_sleep)
-    monkeypatch.setattr(mod, "_send_telegram", lambda msg, root: sent.append(msg) or None)
+    monkeypatch.setattr(mod, "_send_telegram", lambda msg, root, **kw: sent.append(msg) or None)
     monkeypatch.setattr(mod, "_fetch_holdings_data", lambda symbols, root: {})
     monkeypatch.setattr(mod, "_morning_brief", lambda p, m, r: "BRIEF")
     monkeypatch.setattr(mod, "_eod_summary", lambda p, m, a, r: "EOD:" + "|".join(a))

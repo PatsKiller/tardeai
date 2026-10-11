@@ -449,7 +449,7 @@ def _alert_new_triggers(cands: list[dict]) -> None:
                      f"stop {c['stop']} tgt {c['target1']} (R:R {c['rr']})")
     lines.append("_Advisory — review in approval queue. Nothing auto-executes._")
     try:
-        send_telegram("\n".join(lines))
+        send_telegram("\n".join(lines), priority="P2", producer="pullback_macd_screener")  # advisory batch
     except Exception:
         pass
 

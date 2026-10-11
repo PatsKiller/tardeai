@@ -284,7 +284,8 @@ def _alert(findings: list[dict]) -> None:
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import telegram_alert as _ta
-        ok = _ta.send_telegram(body, message_class="operator_alert")
+        ok = _ta.send_telegram(body, message_class="operator_alert", priority="P2",
+                               producer="check_served_copy_split")
         message_id = getattr(_ta, "last_message_id", lambda: None)()
     except Exception as exc:  # noqa: BLE001
         transition.rollback()

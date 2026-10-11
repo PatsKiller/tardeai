@@ -49,7 +49,7 @@ def main() -> int:
         try:
             from telegram_alert import send_telegram
             msg = format_telegram(summary, label=f"{args.days}d")
-            if send_telegram(msg, bypass_router=False):
+            if send_telegram(msg, priority="P2", producer="warrior_weekly_audit_cron"):
                 print("  [warrior-audit] Telegram sent")
             else:
                 print("  [warrior-audit] Telegram skipped (router/disabled)")

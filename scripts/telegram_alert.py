@@ -244,8 +244,8 @@ def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | 
     """Route one notification intent, then send it when the route says DELIVER. Returns delivered.
 
     The priority replaces bypass_router=True: P1 is never capped or quiet-held but is deduped (exact body,
-    declared window) and receipted; P2 is also held during the operator's quiet window. A hold that cannot be
-    archived is delivered instead -- never dropped (AGENTS.md §9.1).
+    declared window) and receipted; P2 is also held during the operator's quiet window; P3 (FYI) is always
+    archived for the digest. A hold that cannot be archived is delivered instead -- never dropped (AGENTS.md §9.1).
     """
     _LAST_INTENT_ROUTE.clear()
     try:
@@ -259,16 +259,18 @@ def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | 
         router.record_intent_receipt(route, delivered=False)
         _LAST_INTENT_ROUTE.update(route, accepted=True)
         return False
-    if route["decision"] == "HELD_QUIET_HOURS":
+    if route["decision"] in ("HELD_QUIET_HOURS", "DIGEST"):
+        # P2 in the quiet window, or any P3: archived for the digest. Same never-dropped fallback for both.
         archived = None
+        reason = "intent_p2_quiet_hours" if route["decision"] == "HELD_QUIET_HOURS" else "intent_p3_digest"
         try:
             from report_capture import archive_message
-            archived = archive_message(hold_text or message, suppressed=True, reason="intent_p2_quiet_hours",
-                                       report_type=router.HELD_P2_REPORT_TYPE)
+            archived = archive_message(hold_text or message, suppressed=True, reason=reason,
+                                       report_type=router.intent_archive_report_type(route))
         except Exception:
             archived = None
         if archived:
-            print(f"[telegram] intent P2 held for the digest (quiet hours): {message[:60]}...")
+            print(f"[telegram] intent {route['priority']} archived for the digest ({reason}): {message[:60]}...")
             router.record_intent_receipt(route, delivered=False, archived=archived)
             _LAST_INTENT_ROUTE.update(route, accepted=True)
             return False
@@ -299,7 +301,7 @@ def _legacy_send(
 ) -> bool:
     """Pre-normalization behaviour, unchanged. Requires no new table.
 
-    ``priority`` ("P1"/"P2") makes the message a notification intent: routed by its declared priority
+    ``priority`` ("P1"/"P2"/"P3") makes the message a notification intent: routed by its declared priority
     (telegram_alert_router.route_intent), never by the text classifier and never bypassed.
     """
     targets = chat_ids or _chat_ids()
@@ -718,7 +720,7 @@ def send_telegram(
 ) -> bool:
     """Send/publish an operator alert. Returns True when the event was ACCEPTED.
 
-    ``priority`` "P1"|"P2": a notification intent (telegram_alert_router.route_intent).
+    ``priority`` "P1"|"P2"|"P3": a notification intent (telegram_alert_router.route_intent).
 
     Accepted means the platform has taken responsibility for the event — delivered
     now, queued for a digest, or recorded for Command Center. It deliberately does
@@ -894,7 +896,7 @@ def send_telegram_document(
 ) -> bool:
     """Send a file via the approved transport sendDocument chokepoint.
 
-    ``priority`` "P1"|"P2": routed as a notification intent on the caption (a held P2 archives the
+    ``priority`` "P1"|"P2"|"P3": routed as a notification intent on the caption (a held P2 archives the
     caption and file path); replaces the ``bypass_router=True`` default.
 
     Producers must call this instead of raw Bot API sendDocument. Credentials and

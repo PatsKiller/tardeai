@@ -332,6 +332,7 @@ GATES = [
             "tests/test_alarm_fires_options_intent_20261005.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
             "tests/test_alarm_fires_disk_pressure_20260921.py",
+            "tests/test_alarm_fires_senders_wave3_20261011.py",
             "tests/test_alarm_coverage.py",
         ],
     ),
@@ -3864,6 +3865,11 @@ GATES = [
             # per-script .env loops of the enforced lanes copy only _ENV_KEYS and _ENV_KEYS covers every name their
             # closure reads. Hermetic: fake render/.env in tmp_path, psycopg2 stubbed, synthetic values only.
             "tests/test_env_bootstrap_narrow_20261011.py",
+            # Broker env-name read audit (operator 2026-10-11, step 1 of 3; log only): TRADEAI_BROKER_ENV_AUDIT=1
+            # records which process/module reads each broker NAME (never a value), no-op when unset, recorder
+            # failures swallowed, throttled per (process, name, caller), bulk copies tagged, report aggregation.
+            # Hermetic: subprocesses with synthetic values and a tmp state root.
+            "tests/test_broker_env_audit_20261011.py",
         ],
     ),
     (
@@ -3949,6 +3955,15 @@ GATES = [
         "stage_runner_env_20261010",
         [
             "tests/test_stage_runner_env_20261010.py",
+        ],
+    ),
+    (
+        # Premarket stage bounded concurrency (2026-10-10, before C1 flip 4): groups = cron minutes with a
+        # barrier between them, <= max_concurrency per group, same-lock steps never share a group; a stage
+        # without `parallel` stays serial. Hermetic sleep/echo manifests + the real premarket --dry-run.
+        "premarket_stage_parallel_20261010",
+        [
+            "tests/test_premarket_stage_parallel_20261010.py",
         ],
     ),
     (
@@ -4482,6 +4497,23 @@ GATES = [
         ["tests/test_notification_intents_20261010.py"],
     ),
     (
+        # Notification intents wave 2 (SND2, 2026-10-11): the 40 highest-volume non-broker senders that sent with
+        # no priority declare P1/P2/P3; P3 (FYI) is archived per producer and folded by the digest, delivered
+        # if the archive fails. Shrink-only gates: undeclared sends (check_notification_intents.py) and the
+        # Telegram/provider chokepoint baselines. Transport captured, never sent; tmp state; no .env read.
+        "notification_intents_wave2_20261011",
+        ["tests/test_notification_intents_wave2_20261011.py"],
+    ),
+    (
+        # Sender wave 3: the next 40 BELOW_CAP files declare P1/P2/P3. The escalation
+        # handler's import no longer reads a release .env. Static only for the 40;
+        # claude_escalation_handler is imported only by its own env test, under TRADE_AI_CI.
+        # ANCHOR: NOTIFICATION_INTENTS_WAVE3_20261011
+        "notification_intents_wave3_20261011",
+        ["tests/test_notification_intents_wave3_20261011.py",
+         "tests/test_claude_escalation_env_20261011.py"],
+    ),
+    (
         # Release-pinned daemons (packets/unit-code-roots, 2026-10-10): one-off exact-SHA drop-ins left 4 user
         # daemons on a032116e7 for 4 days because promote rewrote only portfolio-server's. Promote/rollback now
         # rewrite stale pins into 90-release-pin.conf, archive pin-only one-offs (never delete), never touch a
@@ -4512,6 +4544,18 @@ GATES = [
         # Hermetic: tmp state root and ledger, real flock on a tmp lock running /bin/true.
         "w5_event_consumers_20261011",
         ["tests/test_w5_event_consumers_20261011.py"],
+    ),
+    (
+        # G1–G3 and G7 (2026-10-11, local, not live). Backup enforcer archives instead of
+        # unlinking and skips a dump still being written. The recommendation id is a hash
+        # of the source row. approval-escalate is a read-only board. The bridge route
+        # stays off unless TRADEAI_LLM_VIA_BRIDGE is set, and the test never imports
+        # llm_lane (that import reads .env).
+        # ANCHOR: GROK_G1_G7_20261011
+        "grok_g1_g7_20261011",
+        ["tests/test_agent_recommendation_normalizer_dedupe_20261011.py",
+         "tests/test_approval_escalate_20261011.py",
+         "tests/test_llm_bridge_route_20261011.py"],
     ),
 ]
 

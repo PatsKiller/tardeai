@@ -101,7 +101,8 @@ def _report_stage_failures(state_dir):
                       f"{n} stage(s) failed — "
                       + ", ".join(f"{f['stage']} ({f['error_type']})"
                                   for f in _STAGE_FAILURES[:6])
-                      + "\nDashboard sections may be missing or stale.")
+                      + "\nDashboard sections may be missing or stale.",
+                      priority="P2", producer="portfolio_orchestrator")
     except Exception as e:
         print(f"  [stage-failures] alert failed: {type(e).__name__}: {e}")
     return n
@@ -188,7 +189,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                     _sd_err = None
                     try:
                         from telegram_alert import send_telegram as _sd_tg
-                        _sd_ok = _sd_tg(_sd_msg)
+                        _sd_ok = _sd_tg(_sd_msg, priority="P2", producer="portfolio_orchestrator")
                     except Exception as _sd_te:
                         _sd_err = str(_sd_te)
                     save_notification_log_entry({
@@ -736,7 +737,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                     else:
                         try:
                             from telegram_alert import send_telegram as _div_tg
-                            _div_tg(_div_msg)
+                            _div_tg(_div_msg, priority="P3", producer="portfolio_orchestrator")  # FYI
                         except Exception:
                             # AUDITED 2026-07-20: alert delivery only. Deliberately
                             # silent — a Telegram outage must not abort the dividend
@@ -1652,7 +1653,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             else:
                 try:
                     from telegram_alert import send_telegram as _hc_tg
-                    _hc_ok = _hc_tg(_hc_msg)
+                    _hc_ok = _hc_tg(_hc_msg, priority="P3", producer="portfolio_orchestrator")  # draft FYI
                 except Exception as _hc_tge:
                     _hc_err = str(_hc_tge)
             save_notification_log_entry({
@@ -1784,7 +1785,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             else:
                 try:
                     from telegram_alert import send_telegram as _tg_send
-                    _send_ok = _tg_send(_msg)
+                    # Severity-1 urgent escalation on a holding: time-critical (P1); own dedupe log above.
+                    _send_ok = _tg_send(_msg, priority="P1", producer="portfolio_orchestrator")
                 except Exception as _tge:
                     _send_err = str(_tge)
             # Log

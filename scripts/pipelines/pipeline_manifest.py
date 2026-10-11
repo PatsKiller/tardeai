@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +79,31 @@ SHELL_ADDED_ENV = ("PWD", "OLDPWD", "SHLVL", "_")
 #: name prefixes that must never reach a step whose own cron line did not put them there (§0 rail 2)
 BROKER_ENV_PREFIXES = ("ALPACA", "SCHWAB", "SNAPTRADE", "MOOMOO", "IBKR", "TASTY", "ROBINHOOD", "ETRADE", "TRADIER")
 ENV_NAME_RE = r"^[A-Za-z_][A-Za-z0-9_]*$"
+
+# Bounded concurrency (2026-10-10, premarket stage before C1 flip 4). A stage MAY carry
+# `parallel: {"max_concurrency": N}`; then every step carries a `group` label. Groups run in manifest
+# order with a barrier between them (group k+1 starts only after every step of group k ended); inside a
+# group at most N steps run at once. A stage without `parallel` is serial exactly as before (each step is
+# its own group, N = 1). Groups must be contiguous, and no two steps of one group may share a lock path
+# (they would race for it and one would silently skip).
+MAX_CONCURRENCY_CAP = 8
+_LOCK_RE = re.compile(r"(?:\bflock\s+(?:-[A-Za-z]+\s+(?:\d+\s+)?)*|safe_flock\.sh\s+)(/\S+)")
+
+
+def lock_paths(command: str) -> list[str]:
+    """The flock / safe_flock lock files a step command takes (names only)."""
+    return _LOCK_RE.findall(command or "")
+
+
+def stage_concurrency(stage: dict) -> int:
+    par = stage.get("parallel") if isinstance(stage, dict) else None
+    if isinstance(par, dict) and isinstance(par.get("max_concurrency"), int):
+        return par["max_concurrency"]
+    return 1
+
+
+def step_group(stage: dict, st: dict) -> str:
+    return str(st.get("group") or st["id"]) if stage.get("parallel") else str(st["id"])
 TIMEOUT_UNITS = {"": 1, "s": 1, "m": 60, "h": 3600}
 
 
@@ -149,6 +175,39 @@ def validate(manifest: dict) -> list[str]:
             dow = st.get("dow")
             if dow is not None and (not isinstance(dow, list) or not all(isinstance(d, int) and 0 <= d <= 6 for d in dow)):
                 errs.append(f"{where}: dow must be a list of ints 0-6 (cron Sunday=0)")
+        errs.extend(_validate_parallel(stage_name, stage, steps))
+    return errs
+
+
+def _validate_parallel(stage_name: str, stage: dict, steps: list) -> list[str]:
+    par = stage.get("parallel")
+    if par is None:
+        return []
+    where = f"stage {stage_name} parallel"
+    if not isinstance(par, dict):
+        return [f"{where}: must be an object"]
+    n = par.get("max_concurrency")
+    if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= MAX_CONCURRENCY_CAP:
+        return [f"{where}: max_concurrency must be an int 1-{MAX_CONCURRENCY_CAP}"]
+    errs: list[str] = []
+    order: list[str] = []
+    locks: dict[str, dict[str, str]] = {}
+    for st in steps:
+        if not isinstance(st, dict):
+            continue
+        g = st.get("group")
+        if not isinstance(g, str) or not g:
+            errs.append(f"{where}: step {st.get('id')} has no group (every step needs one when parallel is set)")
+            continue
+        if order and order[-1] != g and g in order:
+            errs.append(f"{where}: group {g} is not contiguous (step {st.get('id')})")
+        if not order or order[-1] != g:
+            order.append(g)
+        for lk in lock_paths(str(st.get("command") or "")):
+            other = locks.setdefault(g, {}).get(lk)
+            if other:
+                errs.append(f"{where}: group {g} steps {other} and {st.get('id')} share lock {lk}")
+            locks[g][lk] = str(st.get("id"))
     return errs
 
 
@@ -193,14 +252,69 @@ def stage_steps(manifest: dict, stage: str) -> list[dict]:
 
 
 def plan_records(manifest: dict, stage: str) -> list[str]:
-    """One SEP-delimited record per step: id, cron_line, timeout_s, dow-csv, log, env-names-csv, command."""
+    """One SEP-delimited record per step: id, cron_line, timeout_s, dow-csv, log, group, env-names-csv, command."""
+    spec = (manifest.get("stages") or {}).get(stage) or {}
     out = []
     for st in stage_steps(manifest, stage):
         dow = ",".join(str(d) for d in st["dow"]) if st.get("dow") else "*"
         out.append(SEP.join([
             str(st["id"]), str(st["cron_line"]), str(timeout_seconds(st["timeout"])), dow,
-            str(st.get("log") or ""), ",".join(step_env_names(st)), str(st["command"]).replace("\n", " "),
+            str(st.get("log") or ""), step_group(spec, st), ",".join(step_env_names(st)),
+            str(st["command"]).replace("\n", " "),
         ]))
+    return out
+
+
+def _p95(st: dict) -> tuple[float, bool]:
+    # Same rule as report_tranche_b_readiness.step_duration: a p95 counts as measured only when the
+    # design VERIFIED it; otherwise the PAM upper bound wins over a partial (unverified) p95_s, which can be
+    # a log-span lower bound (e.g. backtest_history_snapshot p95_s 1.0 vs upper bound 444.8).
+    me = st.get("measured") or {}
+    v = me.get("p95_s")
+    if me.get("verified") and isinstance(v, (int, float)):
+        return float(v), True
+    ub = me.get("upper_bound_p95_s")
+    if isinstance(ub, (int, float)):
+        return float(ub), False
+    if isinstance(v, (int, float)):
+        return float(v), False
+    return float(timeout_seconds(st.get("timeout", "0"))), False
+
+
+def wave_plan(manifest: dict, stage: str, today_dow: int | None = None) -> dict:
+    """Groups in run order with each group's p95 makespan under the stage's concurrency (greedy list
+    scheduling, manifest order), the critical path (sum of group makespans) and the serial sum.
+    p95 is the measured value, else the design's upper bound, else the step timeout."""
+    spec = (manifest.get("stages") or {}).get(stage) or {}
+    n = stage_concurrency(spec)
+    groups: list[dict] = []
+    serial = 0.0
+    for st in stage_steps(manifest, stage):
+        if today_dow is not None and st.get("dow") and today_dow not in st["dow"]:
+            continue
+        p, verified = _p95(st)
+        serial += p
+        g = step_group(spec, st)
+        if not groups or groups[-1]["group"] != g:
+            groups.append({"group": g, "steps": []})
+        groups[-1]["steps"].append({"id": st["id"], "p95_s": p, "verified": verified})
+    for g in groups:
+        lanes = [0.0] * n
+        for s in g["steps"]:
+            i = lanes.index(min(lanes))
+            lanes[i] += s["p95_s"]
+        g["makespan_p95_s"] = round(max(lanes), 1)
+    cp = round(sum(g["makespan_p95_s"] for g in groups), 1)
+    return {"stage": stage, "max_concurrency": n, "groups": groups, "critical_path_p95_s": cp,
+            "serial_p95_s": round(serial, 1)}
+
+
+def format_wave_plan(plan: dict) -> list[str]:
+    out = [f"[waves] stage={plan['stage']} max_concurrency={plan['max_concurrency']} groups={len(plan['groups'])} "
+           f"critical_path_p95={plan['critical_path_p95_s']}s serial_p95={plan['serial_p95_s']}s"]
+    for k, g in enumerate(plan["groups"], 1):
+        ids = ", ".join(f"{s['id']}({s['p95_s']:g}{'' if s['verified'] else '≤'})" for s in g["steps"])
+        out.append(f"[waves]  {k:2d}. {g['group']:<8} {g['makespan_p95_s']:>7}s  {ids}")
     return out
 
 
@@ -255,6 +369,9 @@ def main(argv=None) -> int:
     sub.add_argument("--plan", metavar="STAGE")
     sub.add_argument("--validate", action="store_true")
     sub.add_argument("--summary", metavar="STAGE")
+    sub.add_argument("--concurrency", metavar="STAGE", help="print the stage's max_concurrency (1 = serial)")
+    sub.add_argument("--waves", metavar="STAGE", help="print the group/wave plan and p95 critical path")
+    ap.add_argument("--dow", type=int, default=None, help="--waves: drop steps whose dow excludes this day")
     ap.add_argument("--results", help="--summary: step results jsonl written by the runner")
     ap.add_argument("--out", help="--summary: PipelineRun@v1 path")
     ap.add_argument("--dry-run", action="store_true")
@@ -288,6 +405,16 @@ def main(argv=None) -> int:
         except KeyError as e:
             print(f"[manifest] {e}", file=sys.stderr)
             return 2
+        return 0
+    if args.concurrency is not None or args.waves is not None:
+        stage = args.concurrency if args.concurrency is not None else args.waves
+        if stage not in (manifest.get("stages") or {}):
+            print(f"[manifest] stage {stage!r} not in manifest", file=sys.stderr)
+            return 2
+        if args.concurrency is not None:
+            print(stage_concurrency(manifest["stages"][stage]))
+        else:
+            print("\n".join(format_wave_plan(wave_plan(manifest, stage, args.dow))))
         return 0
     if args.summary is not None:
         if not args.results or not args.out:

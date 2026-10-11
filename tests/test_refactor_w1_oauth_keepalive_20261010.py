@@ -99,6 +99,46 @@ def test_real_run_regression_exits_1_and_receipt_carries_ok_at(env, monkeypatch)
     assert st["chatgpt"]["ok"] is False and st["chatgpt"]["consec_fail"] == 1
 
 
+def test_stale_over_two_hours_in_the_session_sends_p1_otherwise_p2(env, monkeypatch):
+    """A lane down more than 2 hours from 09:30–16:00 ET on a trading day sends P1. Otherwise P2."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    sent: list[str] = []
+    fake = type(sys)("telegram_alert")
+    fake.send_telegram = lambda text, **kw: sent.append(kw["priority"]) or True
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake)
+    monkeypatch.setattr(oak, "_ping_lane", lambda lane: (False, "session expired"))
+
+    def at(dt: datetime, *, last_ok_age_s: int) -> None:
+        monkeypatch.setattr(oak.time, "time", lambda: dt.timestamp())
+        env["status"].write_text(json.dumps({
+            "grok": {"ok": True, "last_ok": int(dt.timestamp()) - last_ok_age_s, "last_alert": 0},
+        }))
+
+    session = datetime(2026, 10, 13, 12, 0, tzinfo=ZoneInfo("America/New_York"))
+    at(session, last_ok_age_s=2 * 60 * 60 + 1)
+    assert oak.main(["grok"]) == 1
+    assert sent == ["P1"]
+
+    sent.clear()
+    at(session, last_ok_age_s=2 * 60 * 60)
+    assert oak.main(["grok"]) == 1
+    assert sent == ["P2"]
+
+    sent.clear()
+    after_close = datetime(2026, 10, 13, 16, 0, tzinfo=ZoneInfo("America/New_York"))
+    at(after_close, last_ok_age_s=3 * 60 * 60)
+    assert oak.main(["grok"]) == 1
+    assert sent == ["P2"]
+
+    sent.clear()
+    saturday = datetime(2026, 10, 17, 12, 0, tzinfo=ZoneInfo("America/New_York"))
+    at(saturday, last_ok_age_s=5 * 60 * 60)
+    assert oak.main(["grok"]) == 1
+    assert sent == ["P2"]
+
+
 def test_a_never_set_up_lane_is_not_a_failure(env, monkeypatch):
     monkeypatch.setattr(oak, "_ping_lane", lambda lane: (False, "nous portal not logged in"))
     assert oak.main(["hermes"]) == 0

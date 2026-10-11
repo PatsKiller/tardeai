@@ -35,6 +35,37 @@ def _run(*args: str) -> subprocess.CompletedProcess:
         cwd=str(ROOT), capture_output=True, text=True, timeout=300)
 
 
+def test_package_style_transport_import_is_detected_and_poller_reply_stays_proposed():
+    """E-B2: package imports count. cio_poller_reply is proposed, not approved."""
+    import sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import check_telegram_chokepoint as checker
+
+    assert checker.PROPOSED_INBOUND == {"scripts/lib/cio_poller_reply.py"}
+    assert not (checker.PROPOSED_INBOUND & checker.APPROVED)
+    for src in (
+        "from scripts import telegram_transport\n",
+        "import scripts.telegram_transport\n",
+        "from scripts.telegram_transport import send_message\n",
+    ):
+        assert checker.PATTERNS["transport_import"].search(src), src
+        assert checker._transport_import_is_sending(src), src
+    r = _run()
+    assert r.returncode == 0, r.stderr
+    assert "PROPOSED for APPROVED_INBOUND" in r.stdout
+    assert "scripts/lib/cio_poller_reply.py" in r.stdout
+    for rel in (
+        "tests/test_cio_answer_quality.py",
+        "tests/test_cio_poller_reply.py",
+        "tests/test_cio_telegram_plain_ids.py",
+        "tests/test_comms_editor_transport_20260914.py",
+        "tests/test_desk_reply_delivery_20260914.py",
+        "tests/test_m5_gate_coverage_20260923.py",
+        "tests/test_telegram_operator_presentation.py",
+    ):
+        assert rel in checker.APPROVED_TOOLING, rel
+
+
 def test_the_checker_exists_and_is_runnable():
     assert CHECKER.is_file(), "the chokepoint checker is missing"
     assert BASELINE.is_file(), "the ratchet baseline is missing"

@@ -37,6 +37,26 @@ from typing import Dict, Optional, Any
 DB_ENV_NAMES = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "DB_CONN_TRACE")
 
 
+def _broker_env_audit_hook():
+    """With ``TRADEAI_BROKER_ENV_AUDIT=1`` import env_bootstrap, which installs the broker-name read audit (log only,
+    operator 2026-10-11). Covers processes whose DB_PASSWORD is already set and so never reach the loader below.
+    Unset: nothing. Never raises."""
+    if os.environ.get("TRADEAI_BROKER_ENV_AUDIT") != "1":
+        return
+    try:  # by file path: sys.path is left untouched, so no other import resolves differently
+        import importlib.util as _ilu
+        import sys as _sys
+        _lib = Path(__file__).resolve().parent / "lib"
+        for _name in ("broker_env_audit", "env_bootstrap"):  # env_bootstrap's import installs the audit
+            if _name not in _sys.modules:
+                _spec = _ilu.spec_from_file_location(_name, _lib / f"{_name}.py")
+                _mod = _ilu.module_from_spec(_spec)
+                _sys.modules[_name] = _mod
+                _spec.loader.exec_module(_mod)
+    except Exception:
+        pass
+
+
 def _load_dotenv_if_needed():
     """Load env if DB_PASSWORD not already set (cron-safe).
 
@@ -47,6 +67,7 @@ def _load_dotenv_if_needed():
     crontab lines that source no env file rely on it for names outside DB_* (env_bootstrap module docstring), and
     narrowing that is an operator decision.
     """
+    _broker_env_audit_hook()
     if os.getenv("DB_PASSWORD"):
         return  # already set
     try:

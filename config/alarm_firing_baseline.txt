@@ -141,7 +141,6 @@ scripts/stop_over_consensus_monitor.py 1
 scripts/strategy_weekly_review.py 2
 scripts/system_freshness_monitor.py 1
 scripts/system_health_agent.py 2
-scripts/system_health_alerts.py 1
 scripts/system_rollup_snapshot.py 1
 scripts/technicals_gap_backfill.py 1
 scripts/telegram_cio_summary.py 1

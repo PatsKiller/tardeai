@@ -466,7 +466,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # + 3 W4 provider owners (R1 ingest, 2026-10-11): finviz-enrichment, sec-data-ingest, social-ingest-all.
     # + 15 SW4 R1 rows (shadow wave 4, 2026-10-11): 10 ingest, 5 learn (tests/test_sw4_shadow_wave4_20261011.py).
     # - 1: canary wave 1 (2026-10-11) moves research-insight-extractor to canary.
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS), shadow
+    # - 17: C1 premarket flip (2026-10-11) absorbs 17 shadow rows into premarket-data-pipeline (D1b 7, D2 4, D3 6);
+    # each leaves its wave (dispatch_retired) and its allowlist entry is removed. Both merged in train-migration-2.
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17, shadow
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
 
 
@@ -498,7 +500,9 @@ def test_wave_d2_dispatch_cron_equals_the_row_schedule_and_locks_match_cron():
     """Each D2 row's dispatch.cron is its scheduler.expression (the live crontab schedule); the three
     data-gap-resolver cadences share the one cron lock, so they can never run concurrently from either scheduler."""
     rows = [r for r in _live_rows() if (r.get("scheduler") or {}).get("wave") == "D2"]
-    assert len(rows) == 14
+    # 14 at D2; C1 premarket flip (2026-10-11) moved 4 out (catalyst-calibration-monitor, backtest-results-aggregator,
+    # watch-directives-monitor, cio-draft-plan-hygiene -> dispatch_retired).
+    assert len(rows) == 10
     allow = {e["lane_id"]: e for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     for r in rows:
         assert r["dispatch"]["cron"] == [r["scheduler"]["expression"]], r["lane_id"]

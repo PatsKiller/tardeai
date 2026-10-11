@@ -70,7 +70,7 @@ def test_host_lock_bypasses_the_router(alarm_capture, monkeypatch):
     "⚠️ AGENT STALENESS\nresearch-lane stale for 9h",
     "🔴 PIPELINE HEALTH\nscreener produced 0 rows",
 ])
-def test_health_alerts_are_suppressed_and_never_page_FINDING(alarm_capture, body):
+def test_health_alerts_are_suppressed_and_never_page_FINDING(alarm_capture, body, monkeypatch, tmp_path):
     """FINDING, pinned as current behaviour. These alerts do not reach Telegram.
 
     _send_alert says "Send alert through central router. NEVER bypass", so the
@@ -87,10 +87,25 @@ def test_health_alerts_are_suppressed_and_never_page_FINDING(alarm_capture, body
     the operator, not a fix an agent should take unilaterally. When that decision is
     made, this test flips to assert delivery and the site can be declared covered.
     """
+    import report_capture as RC
     import system_health_agent as SHA
+    import telegram_alert_router as TR
+
+    # SND2 (2026-10-11): _send_alert declares a notification intent; a non-urgent one is P3, which the intent
+    # router archives for the digest under notification_intent_p3:<producer> instead of the text classifier's
+    # suppressed set. The archive record is the proof the alert is kept (and digested), not dropped.
+    archived = []
+    monkeypatch.setattr(RC, "archive_message",
+                        lambda msg, suppressed=False, reason="", report_type=None:
+                        archived.append((msg, suppressed, reason, report_type)) or report_type,
+                        raising=True)
+    monkeypatch.setattr(TR, "_durable_recently_sent", lambda key, ttl: False)
+    monkeypatch.setenv(TR.INTENT_RECEIPTS_ENV, str(tmp_path / "intent_receipts.jsonl"))
     SHA._send_alert(body)
     assert not alarm_capture.fired, (
         "health alerts now reach the transport — good. Flip this test to "
         "assert_fired() and add system_health_agent.py:478 to COVERS."
     )
-    assert alarm_capture.suppressed, "expected the router to record a suppression"
+    assert [(m, rt) for m, _s, _r, rt in archived] == [(body, "notification_intent_p3:system_health_agent")], (
+        f"expected the P3 digest archive record, got {archived}"
+    )

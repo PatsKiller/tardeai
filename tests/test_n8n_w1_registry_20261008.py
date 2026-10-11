@@ -41,6 +41,8 @@ NEW = {
 }
 #: Rows of NEW retired by retire batch 1 (2026-10-09) -> inventory id (n8n-maturity cron inventory).
 RETIRED_BATCH_1 = {"commit-hermes-daily": "cron:L518"}
+#: Rows of NEW whose cron line became a premarket-data-pipeline step (C1 premarket flip, 2026-10-11).
+RETIRED_C1_PREMARKET = {"llm-retry-monitor", "catalyst-calibration-monitor", "watch-directives-monitor"}
 
 
 def test_registry_has_all_21_observed_cron_lanes_without_serialisation_churn():
@@ -59,6 +61,9 @@ def test_registry_has_all_21_observed_cron_lanes_without_serialisation_churn():
             # Operator-approved retire batch 1 (2026-10-09): retired, not removed; the row keeps declaring the line.
             assert row["state"] == "RETIRED" and row["state_since"] == "2026-10-09", lane
             assert row["inventory_id"] == RETIRED_BATCH_1[lane] and row["reason_confidence"] == "ESTABLISHED", lane
+        elif lane in RETIRED_C1_PREMARKET:
+            assert row["state"] == "RETIRED" and row["superseded_by"] == "premarket-data-pipeline", lane
+            assert row["c1_flip"]["manifest"] == "premarket", lane
         else:
             assert row["state"] == "ACTIVE"
             assert row["state_since"] == "2026-10-08"
