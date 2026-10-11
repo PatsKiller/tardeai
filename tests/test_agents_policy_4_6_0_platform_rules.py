@@ -126,8 +126,8 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     # #1666 (4.4.1 + 4.5.0) merged as dd8f4cff1; the banner now names that merge instead of "renumbers to 4.5.0".
     assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
     assert "316700266" in f
-    # 4.6.0 supersedes 4.5.0; a later version (5.0.0, #1686) supersedes 4.6.0.
-    assert _control("Supersedes") == ("4.5.0" if _version() == (4, 6, 0) else "4.6.0")
+    # 4.6.0 supersedes 4.5.0; 5.0.0 (#1686) supersedes 4.6.0; 5.1.0 (PROPOSED) supersedes 5.0.0.
+    assert _control("Supersedes") == ("4.5.0" if _version() == (4, 6, 0) else "4.6.0" if _version() == (5, 0, 0) else "5.0.0")
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
 

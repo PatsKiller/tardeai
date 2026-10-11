@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      5.0.0
+Policy-Version:      5.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-11
-Last-Reviewed:       2026-10-10T22:15:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-11T08:55:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          4.6.0
+Supersedes:          5.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -81,6 +81,34 @@ MINOR, it renumbers to 4.7.0 and nothing else changes. **Numbering dependency:**
 token, and ratifying 5.0.0 does not ratify 4.6.0: merge 4.6.0 first. The guard scope is installed separately, by the operator
 (`~/n8n-maturity-verification/packets/agents-4-7-0/`). Operator approval phrase (§20):
 `APPROVE_AGENTS_POLICY_5_0_0 <pr_number> <head_sha>`.
+
+**5.1.0 is PROPOSED (MINOR) — operator-action messages are P1 notification intents with dedupe off;
+`bypass_router=True` is legacy, allowlisted and shrink-only (§9.1).** Awaiting the operator's
+`APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>` (§20); until it is ratified and merged, nothing here binds and
+the 5.0.0 text governs. §9.1 said anything the operator must act on bypasses the router (`bypass_router=True`). PR
+#1685 (`n8nmat/bypass-senders-to-intents`, head `1d9eba216`, held for this amendment) moves 25 bypass senders to
+notification intents, which §24.1 (4.6.0) already requires of a changed sender. Under 5.1.0 an operator-action
+message is a P1 intent with dedupe off: never capped, quiet-held, archived or suppressed, and receipted.
+`bypass_router=True` stays only on allowlisted legacy sites (`tests/test_notification_intents_20261010.py`), and the
+allowlist only shrinks. The four broker-execution sender units — `alpaca_stop_manager.py` (two sites),
+`defense_execution.py`, `moomoo/opend_health.py` — keep their bypass until an `execution-engineering` grant migrates
+them (§0 rule 2). A P2 intent is held 22:00–07:00 ET to the Reports archive and folded into the advice digest; a hold
+that cannot be archived is delivered. **Why MINOR:** it replaces a mechanism and keeps the guarantee. Everything
+`bypass_router=True` gave an operator-action message — not text-classified, not capped, not held, not suppressed — a
+P1 intent with dedupe off also gives, and it adds a durable receipt for every route decision. For every other sender
+the change adds what §9.1's first bullet already demands (a content dedupe key with a declared window); §9.1 never
+promised informational sends immediate delivery, and a held P2 still reaches a surface (the advice digest) and is
+never dropped. No operator-only boundary, authority rail, role, broker reach or egress changes; §0, §2, §2A, §7A,
+§17 and §23.14 are byte-identical, and no adapter changes. The class could be read higher in one place, the P2 hold
+(an informational send that was immediate can now arrive in the morning digest), and is written so it is not: §9.1
+now requires anything that must reach the operator inside the quiet window to be P1. If the operator reads it as
+MAJOR, the number becomes 6.0.0 and nothing else changes. **Merge order:** PR #1685 first. The rule names code that
+only #1685 brings (`telegram_alert_router.route_intent`, the allowlist test); merged before it, the 25 senders would
+still bypass with no allowlist holding them. **Open item for #1685:** under the §9.1 definition, a P1 sender that
+asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `approval_package_reminder.py`, and
+`stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
+operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
+`Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
 **4.5.0 is ACTIVE (MINOR) — every n8n addition follows the onboarding standard and carries a workflow health
 contract (§23.19).** Ratified by the operator 2026-10-10 (`APPROVE_AGENTS_POLICY_4_5_0 1666 987bf94da`, §20; PR #1666
@@ -2268,7 +2296,9 @@ approval path. The tailnet FQDN in the message shows status; it grants nothing.
 classified the prompt `P1_DIGEST` and suppressed it into an archive nothing delivers — an approval
 request the operator was never shown, reported as sent. Requests now go with `bypass_router=True`
 and report *accepted for interrupt delivery*, never *sent*. See `accepted` is not `delivered`,
-above: this is that rule applied to the one message class where silence blocks the work.
+above: this is that rule applied to the one message class where silence blocks the work. Under 5.1.0 that
+bypass is an allowlisted legacy site (§9.1); migrated, the request is a P1 intent with dedupe off, which gives the
+same guarantee and adds a route receipt.
 
 **This is auditable, not impregnable, and must not be described as more than that.** The agent runs
 as the same OS user. What the mechanism guarantees is that every legitimately obtained grant carries
@@ -2458,10 +2488,33 @@ not depend on n8n — is §24.1 (4.6.0, ACTIVE).
   beside it — the first version of that test read only `send_telegram` and passed while
   `send_telegram_document` settled every row, including failed sends, as delivered. Scope such a
   guard to the module.
-- **Anything the operator must act on bypasses the router.** Approval requests are sent with
-  `bypass_router=True` and report *accepted for interrupt delivery*, never *sent*. The first version
-  printed `telegram=sent` while the router suppressed the prompt into an archive — an approval
-  request the operator was never shown, reported as sent.
+- **Anything the operator must act on is sent as a P1 notification intent with dedupe off** (5.1.0) —
+  `send_telegram(text, priority="P1", dedupe_minutes=0, producer=...)`, routed by
+  `telegram_alert_router.route_intent`. An operator-action message asks the operator to approve, deny or decide
+  something, or carries a button that does. P1 is never text-classified, capped, quiet-held, archived or
+  suppressed. Dedupe off is a declared window of 0: the content key is still computed and receipted, and repeats
+  are bounded by the producer's own ledger (the package ledger for approval reminders) or by notifying on
+  transitions. Every route decision writes a receipt (`NotificationIntentRoute@v1`,
+  `data/runtime/notification_intent_receipts.jsonl`). The request reports *accepted for interrupt delivery*,
+  never *sent*. *Cause: the first version printed `telegram=sent` while the router suppressed the prompt into an
+  archive — an approval request the operator was never shown, reported as sent. `bypass_router=True` fixed that by
+  skipping the router, and with it every dedupe and receipt; the priority keeps the fix and restores both.*
+- **`bypass_router=True` is legacy, allowlisted and shrink-only.** No new site. The allowlist
+  (`BYPASS_ALLOWLIST` in `tests/test_notification_intents_20261010.py`) fails on a new or grown entry and on a
+  stale count, so it can only shrink; a migrated sender declares its priority and never bypasses. The four
+  broker-execution sender units — `scripts/alpaca_stop_manager.py` (two sites), `scripts/defense_execution.py`,
+  `scripts/moomoo/opend_health.py` — and `scripts/active_trader/momentum_alerts.py` in the same block keep their
+  bypass until an operator `execution-engineering` grant names them (§0 rule 2): without it they are not edited.
+  The guard approval request (`scripts/guard_request_approval.py`) is allowlisted too; migrated, it is a P1 intent
+  with dedupe off. *Cause: PR #1685 (operator 2026-10-10, "moving the 30 bypass senders"): 30 scheduled senders
+  passed `bypass_router=True` — straight to the phone, no dedupe, no route receipt; §24.1 (4.6.0) already requires
+  senders to emit notification intents.*
+- **A P2 intent is held in the quiet window, never dropped.** P2 is delivered now except 22:00–07:00
+  America/New_York — the incident notifier's window and env vars, one window, test-pinned. A held P2 is archived to
+  the Reports archive (`telegram_outbox` channel `reports_archive`, report type `notification_intent_p2`) and the
+  advice digest folds it in; a hold that cannot be archived is delivered instead. Anything that must reach the
+  operator inside the quiet window is P1, not P2. *Cause: PR #1685 — scheduled reports and the weekly disk cleanup
+  bypassed the router so the text classifier would not digest them, which also put them on the phone at night.*
 - **An alert is curated before it is sent** (`lib/alert_curation.py`, `AlertCuration@v1`): headline,
   plain English, action, evidence. **The model writes prose only.** `validate_curation` rejects a
   curation that invents a number or drops a lane, and the recommended action is never model-authored.
@@ -4771,9 +4824,9 @@ obligations. It grants nothing: no grant tier, §17 item or allowlist `never` en
 
 # 24 · Platform rules from the 2026-10-10 consolidation (4.6.0 and 5.0.0, ACTIVE)
 
-**Status: PROPOSED (MINOR), awaiting `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>` (§20); §24.10 is PROPOSED
-(MAJOR) separately, awaiting `APPROVE_AGENTS_POLICY_5_0_0 <pr_number> <head_sha>`.** Until each is
-ratified, nothing in this section binds and the previously ACTIVE text governs. §24 is **not** part of the §23 n8n
+**Status: ACTIVE. §24.1–§24.9 are 4.6.0 (MINOR), ratified `APPROVE_AGENTS_POLICY_4_6_0 1682 9dd9e7d6b` (§20; PR
+#1687); §24.10 is 5.0.0 (MAJOR), ratified `APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e` (PR #1688).** (Status line
+corrected in 5.1.0; it still read PROPOSED after both ratifications.) §24 is **not** part of the §23 n8n
 carve-out: §23.1 limits §23 to the `m8m-n8n` compose project, and these rules reach every agent, lane and job. Each of
 §24.1–§24.9 extends the section it names without editing it; for them §0, §2, §2A, §7A, §17 and §23.14 are byte-identical, and
 nothing here grants n8n, a lane or an agent anything. §24.10 is the one exception: it adds one sentence to §0 rule 2
@@ -4804,7 +4857,8 @@ and grants one operational authority, under its own guard scope and its own toke
   dedupe key, `as_of`, body) and never calls a provider. The ~66 existing direct sender jobs are migration work,
   tracked row by row in the cron inventory; one of them is not a finding by itself until its row is scheduled.
   *Cause (§20): operator ruling ~18:40 ET ("66 senders → notification intents"); 66 places that each format, dedupe
-  and send is the shape §9.1's delivery-ledger rules were written against.*
+  and send is the shape §9.1's delivery-ledger rules were written against.* Priorities (P1 / P2), the quiet-window
+  hold and the shrink-only `bypass_router=True` allowlist are in §9.1 (5.1.0).
 
 ## 24.2 Search source routing and the Brave dollar budget (extends §12 "Search providers")
 
@@ -5045,6 +5099,7 @@ needs `execution-engineering` (§22), and A4/A5 stay the operator's and the dete
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 5.1.0 | 2026-10-11 | PROPOSED | MINOR | §9.1 "Anything the operator must act on bypasses the router" replaced: an operator-action message (asks the operator to approve, deny or decide, or carries a button that does) is sent as a P1 notification intent with dedupe off (`send_telegram(..., priority="P1", dedupe_minutes=0)`, `telegram_alert_router.route_intent`) — never text-classified, capped, quiet-held, archived or suppressed, with a `NotificationIntentRoute@v1` receipt per decision, and still reported *accepted for interrupt delivery*, never *sent*. Two bullets added: `bypass_router=True` is legacy, allowlisted and shrink-only (`BYPASS_ALLOWLIST`, `tests/test_notification_intents_20261010.py`), with the four broker-execution sender units (`alpaca_stop_manager.py` ×2, `defense_execution.py`, `moomoo/opend_health.py`) and `active_trader/momentum_alerts.py` keeping their bypass until an `execution-engineering` grant names them, and `guard_request_approval.py` allowlisted; a P2 intent is held 22:00–07:00 ET (the incident notifier's window) to the Reports archive (`notification_intent_p2`) and folded into the advice digest, delivered if the hold cannot be archived, and anything that must reach the operator in the quiet window is P1. One sentence each added to the §8 remote-approval paragraph and the §24.1 "Senders emit notification intents" bullet, pointing to §9.1. Cause: PR #1685 (`n8nmat/bypass-senders-to-intents`, head `1d9eba216`, held for this amendment) moves 25 of the 30 measured `bypass_router=True` senders to intents (operator 2026-10-10). Merge order: #1685 first. Open item for #1685: `stop_decision_brief.py` is P1 with the default 60-minute dedupe; the operator classifies it before #1685 merges. MINOR: it replaces a mechanism with an equal guarantee for operator-action messages plus a receipt, and adds a declared dedupe window and a never-dropped hold for the rest; no authority rail, operator-only boundary, role, broker reach or egress changes. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no adapter, `CLAUDE.md` or `AI_WORK_POLICY.md` change. Read as MAJOR, it becomes 6.0.0 unchanged otherwise. Tests: `tests/test_agents_policy_5_1_0_notification_intents.py`. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 5.0.0 text governs. |
 | 5.0.0 | 2026-10-10 | ACTIVE | MAJOR | §24.10 "Broker-adjacent daemon operations — the `execution-ops` grant" added, and one sentence added to §0 rule 2 pointing to it (binding only once 5.0.0 is ACTIVE). Under a per-incident `execution-ops` guard grant (≤ 6 h, remotely grantable by Telegram `/approve`, reason naming the unit, the actions and the incident), an agent may operate a broker-execution unit — a user unit whose `ExecStart` runs `scripts/active_trader/**` or `scripts/brokers/**`; measured: `tradeai-active-trader-motion.service` only. It may inspect status, journal, cwd and drop-ins (never `Environment` or env files). It may re-point the code root by `95-code-root-current.conf` to `portfolio-server/CURRENT`, archiving the superseded drop-in by rename. It may run `daemon-reload` with the restart, and `restart`. It may create or archive the unit's enable flag only under the operator's home (`/etc` flags stay operator-only). Every mutation runs only while `cio_market_session` says `CLOSED`, failing closed. A quoted preflight comes first: grant, market state, the unit's tests at CURRENT under `TRADE_AI_CI=1`, no store or `output_signal` move (unit-code-roots checks; `STORE_RISK` goes to the operator, §0 rule 5), `systemd-analyze verify`, and a dry run. Proof is by cwd readback and a receipt; rollback restores the archived drop-in. Never code edits, credentials, live/paper flags or modes, a restart into live mode (A4), order, stop, session-grant or 2FA paths, or broker calls. OpenD (`scripts/moomoo/**`), `--mode live` units, system units and root actions are out of reach. Guard scope installed by the operator-run `packets/agents-4-7-0/install_execution_ops_scope.py` (`bin/guard` `ALL_TIERS` plus a 6 h cap, `guard-lib.sh` scope text and classifier, hook rule `broker.execution_ops`); open gaps stated (unit binding is by reason text; other verbs still classify `service`; Claude hook not installed; the remote grant needs the scope in the poller's release). The §0 change is exactly that one sentence: the 4.1.0, 4.3.0, 4.4.0 and 4.6.0 tests strip it before hashing, and their §0 digest is unchanged. §2, §2A, §7A, §17 and §23.14 are byte-identical; the four adapters must carry the same sentence byte for byte (`tests/test_agents_section_zero_parity.py`); the operator applies it with the packet's `apply_adapters.py` before push, because `CLAUDE.md` is the operator's file. Tests: `tests/test_agents_policy_5_0_0_execution_ops.py`. Causes: the 2026-10-10 ~21:30–21:49 ET motion-unit incident (exact-SHA drop-in archived by hand, start skipped on the missing `/etc` flag, unit inactive on the dev-tree root); operator requests of 2026-10-10 ~21:50 and ~21:52 ET. MAJOR: it narrows §0 rule 2 for one operational purpose (version policy: authority rails and broker access, classified by the weakest guarantee); requested as 4.7.0 (MINOR) and renumbered. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e` (operator, PR #1686 comment by PatsKiller 2026-10-11T12:33:56Z, verbatim: "APPROVE_AGENTS_POLICY_5_0_0 1686 d51b6c50e"); merged #1686 as `0ec32048669b6a8329b6ab60818cbf527e01f30b` (operator-merged 2026-10-11T12:33:58Z); ratification edit on the operator's in-session word 2026-10-11 ~08:40 ET ("ratify 5.0.0"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` §0. Effective 2026-10-11. |
 | 4.6.0 | 2026-10-10 | ACTIVE | MINOR | §24 "Platform rules from the 2026-10-10 consolidation" added, outside the §23 carve-out: §24.1 notifications — n8n orchestrates (fires host routing, digest, escalation and callback lanes; decides nothing), the host communications gateway (`send_telegram` + delivery ledger + `check_comms_gateway_enforcement.py` ratchets) is the only sender, the P1 path does not depend on n8n, new or changed senders emit notification intents (~66 direct senders are inventory migration work) (backlog A3); §24.2 search source routing — free lane first, paid Brave only on measured insufficiency, `config/search_routing_policy.json` authoritative once merged (#1676, engine OFF by default), dollar lines $20 account / $18 local ceiling / $15 target / $12 non-priority stop, pools scalp 50% / operator 20% / catalyst 20% / other 10%, request breaker raise approved (≥3,000/month; registry still 120/day 1,500/month), SearXNG never names a Brave engine, one Alpha Vantage owner at ≤23/day with scope A1–A3 + B1 + B2 (#1675), NewsAPI retired (A4); §24.3 data broker — owner lanes are single writers, consumers read `BrokerReadEnvelope@v1` projections, lane-script direct reads become a checked violation (checker extension required), approved domains listed (A5); §24.4 other applications (NYC DOF) are not Trade AI lanes and never use Trade AI resources or the `trade_ai` role (`dof_app`); §0 and §17 still bind (A6); §24.5 no push, PR or remote write from a scheduled job (#1672) (A7); §24.6 tests never touch production state, `TRADE_AI_CI=1` (RC7, RC1 link) (A8); §24.7 agents never read, copy or symlink `.env` or credential files (A9); §24.8 a release grant names the SHA or PR (`ReleaseGrantBinding@v1`) (A10); §24.9 Supabase / n8n Cloud portability (A11). In-place correction (PATCH-level, §12): the `braveapi` engine row records the 2,357 uncounted HTTP 422 calls and the approved, pending disable. One-line pointers to §24 added in §8A, §9.1, §9.3, §12 and the operator-approval section. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no allowlist `never`, `CLAUDE.md` or `AI_WORK_POLICY.md` change. Numbered after 4.4.1 / 4.5.0 in open PR #1666; renumbers to 4.5.0 if #1666 is withdrawn or this is ratified first. Tests: `tests/test_agents_policy_4_6_0_platform_rules.py`. Causes: operator rulings 2026-10-10 ~13:00, ~17:45, ~18:03, ~18:28, ~18:35, ~18:40 ET and two later the same evening (session record; logged as ~19:05 and ~19:45, stamps ahead of the host clock); REMEDIATION_PLAN §8 RC1/RC7; JOB_REDUCTION_DEEP_PASS §11; CONSOLIDATION_PLAN §E; the 2026-10-10 ~17:07 ET release-grant refusal; the `.env` symlink incident. MINOR: every item adds an obligation or a restriction; nothing widens n8n, broker, egress, §17 or role authority (read as MAJOR, it becomes 5.0.0 unchanged otherwise). | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_6_0 1682 9dd9e7d6b` (operator, PR #1682 comment by PatsKiller 2026-10-11T02:58:29Z, verbatim: "APPROVE_AGENTS_POLICY_4_6_0 1682 9dd9e7d6b"); merged #1682 as `6943506029adc622930bf63c189a11729c8e151d` (operator-merged 2026-10-11T03:10:07Z); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
 | 4.5.0 | 2026-10-10 | ACTIVE | MINOR | §23.19 added: `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` is the mandatory procedure for adding or changing anything n8n fires, watches or calls (lane at any stage, dispatch / `r1_pending` row, generic workflow, relay route, gateway lane, executor setting), with the checklist evidence and per-lane template in the PR; no lane enters shadow, canary or cutover without a workflow health contract in `config/n8n_health_contracts.json` (gate `scripts/check_n8n_health_contracts.py`; new lanes REVIEWED before the registry PR; canary/cutover REVIEWED with no UNKNOWN; 2026-10-10 DRAFTs grandfathered at their stage of that day); `scripts/check_n8n_relay_contract.py` passes before any n8n import and import verification never reads an n8n execution status. Adds obligations and grants nothing; §0, §2, §2A, §7A, §17 and §23.14 byte-identical. Tests: `tests/test_n8n_onboarding_standard_20261010.py`, `tests/test_n8n_health_contracts_20261010.py`. Causes: W0 rollback 2026-10-10 15:58 ET (RC8/RC9); operator 2026-10-10 ~16:35, ~16:40, ~16:45 ET. MINOR: a new mandatory operating and evidence rule, weakening nothing. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_5_0 1666 987bf94da` (operator, PR #1666 comment by PatsKiller 2026-10-11T01:46:33Z, verbatim: "APPROVE_AGENTS_POLICY_4_5_0 1666 987bf94da — and yes to the 4.4.1 PATCH"); merged #1666 as `dd8f4cff1f37be5e27d344acdfa7cfbe8a386285`; ratification edit on the operator's in-session word 2026-10-10 ~21:55 ET ("Yes, I ratify 4.50"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. |
