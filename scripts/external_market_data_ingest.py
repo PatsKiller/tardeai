@@ -17,6 +17,10 @@ import json, os, sys, time
 from datetime import datetime, date
 from pathlib import Path
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
+try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
+    from lib.provider_ticker_guard import classify as _ticker_classify
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.provider_ticker_guard import classify as _ticker_classify
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -239,6 +243,8 @@ _FINVIZ_UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 
 def _finviz_quote(sym: str) -> dict:
     """Parse finviz.com/quote.ashx?t=SYM snapshot table -> {price, prev, rvol, volume}. Live values."""
     import requests, re
+    if not _ticker_classify(sym, "finviz")[0]:
+        return {}  # GAP 14: a CUSIP / ISIN / non-ticker is never sent (ingest_finviz_quotes reports it missing)
     r = finviz_get(f"https://finviz.com/quote.ashx?t={sym}", headers=_FINVIZ_UA, timeout=15,
                    raise_on_429=False)
     if r.status_code != 200:

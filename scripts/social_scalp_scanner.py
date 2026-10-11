@@ -31,6 +31,10 @@ from telegram_alert import send_telegram
 from scalp_ws_client import broadcast_scalp_update
 from social_route_policy import route_social_candidate
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
+try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
+    from lib.provider_ticker_guard import partition as _ticker_partition
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.provider_ticker_guard import partition as _ticker_partition
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [SCALP] %(message)s")
 logger = logging.getLogger(__name__)
@@ -67,6 +71,9 @@ def fetch_finviz_base(symbols: list[str]) -> dict[str, dict]:
 
     results: dict[str, dict] = {}
     batch_size = 20
+    symbols, _refused = _ticker_partition(symbols, "finviz")  # GAP 14: never send a CUSIP to Finviz
+    if _refused:
+        logger.warning("refused %d non-ticker symbol(s) before Finviz: %s", len(_refused), _refused[:10])
 
     for i in range(0, len(symbols), batch_size):
         batch = symbols[i : i + batch_size]

@@ -96,5 +96,37 @@
     "www.ubs.com",
     "www.wiley.com",
     "x.com"
-  ]
+  ],
+  "lane_scan": {
+    "_why": "GAP 5 (operator-approved 2026-10-10): scheduled lane scripts (config/lane_registry.json, non-RETIRED) and the scripts/lib modules they import directly, counted as files that read a projection-owned store with FROM <table> or spell the raw enrichment cache file. New ceilings recorded at the 2026-10-10 measurement; each may only fall (--write-baseline keeps min(prior, now)). Every bypass is listed by check_data_source_authority.py --json (lane_bypasses) / --list-bypasses.",
+    "measured_on": "2026-10-10",
+    "measured_at_sha": "7df77950a",
+    "entrypoints": 345,
+    "lib_modules": 210,
+    "bypass_files": 130,
+    "bypass_rows": 176,
+    "pre_recorded": {
+      "social_posts": "7 lane files read social_posts directly, measured 2026-10-10 on a probe merge of this branch + n8nmat/finviz-cache-n8n + n8nmat/broker-domains-q1 (PR #1678 makes social_posts projection-owned via social_feed). Recorded now so either merge order stays green; on main the table has no projection and is not counted."
+    }
+  },
+  "lane_direct_reads": {
+    "market_quotes": 12,
+    "symbol_profiles": 25,
+    "yahoo_analyst_targets_history": 7,
+    "news_articles": 31,
+    "ticker_prices": 13,
+    "sector_rs_daily": 0,
+    "market_regime_snapshots": 5,
+    "options_iv_history": 2,
+    "hermes_research_intelligence": 32,
+    "watch_directives": 9,
+    "watch_candidate_events": 3,
+    "watchlist_agent_results": 18,
+    "agent_debate_log": 2,
+    "ai_reports": 0,
+    "social_posts": 7
+  },
+  "lane_raw_cache_reads": {
+    "ticker_enrichment_cache.json": 17
+  }
 }

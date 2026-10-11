@@ -27,6 +27,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import requests
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
+try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
+    from lib.provider_ticker_guard import partition as _ticker_partition
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.provider_ticker_guard import partition as _ticker_partition
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -225,6 +229,7 @@ def _fetch_finviz_quotes(symbols: List[str]) -> Dict[str, Dict]:
     Does not support index symbols (VIX).
     """
     stock_symbols = [s for s in symbols if s not in INDEX_SYMBOLS]
+    stock_symbols, _refused = _ticker_partition(stock_symbols, "finviz")  # GAP 14: never send a CUSIP to Finviz
     if not stock_symbols:
         return {}
 

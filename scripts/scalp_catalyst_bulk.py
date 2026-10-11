@@ -24,6 +24,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
+    from lib.provider_ticker_guard import partition as _ticker_partition
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.provider_ticker_guard import partition as _ticker_partition
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -77,6 +82,9 @@ def _finviz_articles(symbols: List[str], cfg: Dict[str, Any], http_get: Optional
         return {}
     if http_get is None:
         from finviz_http import finviz_get as http_get
+    symbols, refused = _ticker_partition(symbols, "finviz")  # GAP 14: never send a CUSIP to Finviz
+    if refused:
+        stats["finviz_refused_non_ticker"] = len(refused)
     tz = ZoneInfo(str(cfg["finviz_timezone"]))
     per = int(cfg["finviz_per_symbol"])
     wanted = set(symbols)
