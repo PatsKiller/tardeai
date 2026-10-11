@@ -22,6 +22,10 @@ from typing import Optional
 
 import requests
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
+try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
+    from lib.provider_ticker_guard import classify as _ticker_classify
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.provider_ticker_guard import classify as _ticker_classify
 
 # Pipeline telemetry
 try:
@@ -64,6 +68,10 @@ def fetch_finviz_deep(symbol: str) -> Optional[dict]:
     Fetch all views from Finviz Elite for a single symbol.
     Returns merged dict with technicals, fundamentals, ownership.
     """
+    ok, reason = _ticker_classify(symbol, "finviz")
+    if not ok:  # a CUSIP / ISIN / non-ticker never reaches Finviz (and no credential is read for it)
+        log.warning("[enrichment] %r refused before any Finviz request: %s", symbol, reason)
+        return None
     try:
         try:
             import sys as _sys

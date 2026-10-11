@@ -3678,6 +3678,11 @@ GATES = [
         "n8n_w0_relay_fix_20261010",
         [
             "tests/test_n8n_w0_relay_fix_20261010.py",
+            # 2026-10-10 (RC11 lesson, gap 4): the contract check also fires N concurrent GET /due with the workflows'
+            # own queries through a scratch relay wired to a scratch gateway held to the gateway unit's CPUQuota
+            # (SIGSTOP/SIGCONT duty cycle); a refused or slow call refuses the import. Hermetic: loopback children
+            # under tmp_path, scratch keys, a stub CPU-burning gateway for the negative case; no live relay/gateway.
+            "tests/test_n8n_relay_concurrency_20261010.py",
         ],
     ),
     (
@@ -3714,6 +3719,14 @@ GATES = [
             "tests/test_n8n_agent_identity_parity_20261009.py",
             # incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)
             "tests/test_n8n_incident_fanin_governance_20261009.py",
+            # 2026-10-10 (gap 11): fan-in reader for gateway events on lane n8n-workflow-error (ledger receipts, key
+            # wferr-<wf>-<exec>): one incident per workflow, P1 only for the dispatcher, else contract/P2 (WARN);
+            # notifier plan + SIEM n8n:<workflow> row from the same rows. Hermetic: tmp_path ledgers and relay logs.
+            "tests/test_n8n_incident_fanin_workflow_error_20261010.py",
+            # 2026-10-10 operator "Yes to everything": host-side alert-path watch (relay log only) — P1 when the
+            # incident router errors or stops, or n8n's schedule stops; the notifier (host cron) sends it even with a
+            # stale fan-in, without declaring fan-in recoveries; the relay logs the /due lane filter for attribution.
+            "tests/test_n8n_alert_path_watch_20261010.py",
         ],
     ),
     (
@@ -3860,6 +3873,15 @@ GATES = [
         "c1_manifest_flips_20261010",
         [
             "tests/test_c1_manifest_flips_20261010.py",
+        ],
+    ),
+    (
+        # Stage runner per-step env (2026-10-10, operator "Yes" ~19:45 ET): the manifest runner no longer sources
+        # $PROJ/.env into steps; each step runs under `env -i` with exactly its cron line's names (cron base +
+        # preceding crontab NAME= lines). Fake .env with canary + broker names in a scratch root; names only.
+        "stage_runner_env_20261010",
+        [
+            "tests/test_stage_runner_env_20261010.py",
         ],
     ),
     (
@@ -4166,6 +4188,19 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):
+        # registry rows finviz_enrichment / scalp_list / social_posts / yfinance_info_snapshot with the operator's
+        # grant; StockTwits rate limit; latest_quote projection; quote-only get_best_quote (stored first, first
+        # fresh provider, never the fan-out; legacy mode unchanged for execution-readiness callers); the Data
+        # Broker's dead fallback revived bounded; yfinance_info_snapshot single writer; enrichment-cache merge tool
+        # (dry run read-only; apply through the single writer, archive + tripwire + alias). Hermetic: fake DB,
+        # stub providers, tmp_path stores. Listing it schedules nothing.
+        "broker_domains_q1_20261010",
+        [
+            "tests/test_broker_domains_q1_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: REFACTOR_W3_BUCKET_X1 — 2026-10-10 cron -> n8n refactor wave 3, bucket X1 (ingest: cron L142 L150 L243 L244 L248 L216 L505 L520 L550 — finviz_enrichment, sec_data_ingest, social_ingest, fred_data_ingest, sync_dividend_data, etf_*_enrich, validate_expense_ratios):
         # --dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order
         # pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest
@@ -4245,6 +4280,17 @@ GATES = [
         ["tests/test_finviz_view_contracts_timeout_20261010.py"],
     ),
     (
+        # Broker guards (n8nmat/broker-guards, operator-approved 2026-10-10). GAP 5: check_data_source_authority
+        # counts direct reads of projection-owned stores (FROM <table>, raw enrichment cache file) by scheduled
+        # lane scripts + the lib modules they import; ceilings recorded 2026-10-10 may only fall (even under
+        # --write-baseline); the broker execution file set is never opened. GAP 13: finviz_throttle state resolves
+        # through production_state_root, shared across cron cwd / executor code_root / worktree. GAP 14: one
+        # ticker validator (lib/provider_ticker_guard) before every Finviz request path; CUSIPs never sent or cached.
+        # Hermetic: tmp roots, fake HOME, stubbed HTTP, no DB, no credential.
+        "broker_guards_20261010",
+        ["tests/test_broker_guards_20261010.py"],
+    ),
+    (
         # Coordination gateway allows the relay POST /event lane n8n-workflow-error (RC8, W0 rollback
         # 2026-10-10); existing extra lanes kept. Static unit-file check.
         "gateway_workflow_error_lane_20261010",
@@ -4311,6 +4357,15 @@ GATES = [
         ["tests/test_youtube_channel_id_cache_20261010.py"],
     ),
     (
+        # Alpha Vantage owner (operator 2026-10-10 "use Alpha Vantage for the gaps"): lib/alpha_vantage_owner.py is the only
+        # Alpha Vantage HTTP caller; <= 23/day on both the UTC and ET day, per-job allotments, >= 12 s spacing; refuses up front
+        # (scope not granted in the registry, allotment, cap, provider exhausted, spacing); dry runs send and write nothing;
+        # earnings_calendar / news_sentiment projections carry the read envelope; former callers rerouted; the registry
+        # proposal passes the gate only once granted. Hermetic fakes.
+        "alpha_vantage_owner_20261010",
+        ["tests/test_alpha_vantage_owner_20261010.py"],
+    ),
+    (
         # Desk-loop cost-cap backoff (API overlap Q6, 2026-10-10): after COST_CAP_EXCEEDED inside try_fulfill_pending_replies
         # the pass makes no bridge call until the next America/New_York midnight (the ledger day); under the cap and
         # on interactive asks nothing changes. Before: 15 bridge calls in 5 refused passes; after: 1. Hermetic fakes.
@@ -4324,6 +4379,16 @@ GATES = [
         # asks. Before: 35 model calls in 5 passes over 7 chat-less rows, all left open; after: 0, all closed.
         "desk_loop_pending_drain_20261010",
         ["tests/test_desk_loop_pending_drain_20261010.py"],
+    ),
+    (
+        # Search source routing engine (operator 2026-10-10: $20/month Brave, scalps about to fire first, a
+        # mature engine with rules for which source answers what). Policy validator, table-driven routing
+        # decisions, dollar budget math (pools, shares, pacing, $12/$15/$18 lines), the scalp-priority
+        # classifier, the shared cache, dry run proved at 0 Brave requests, the free lane never naming a Brave
+        # engine, the fan-in P2 source, the rerouted callers; plus the heartbeat fixture that leaked into the
+        # production search ledger. Hermetic.
+        "search_routing_engine_20261010",
+        ["tests/test_search_routing_engine_20261010.py"],
     ),
 ]
 

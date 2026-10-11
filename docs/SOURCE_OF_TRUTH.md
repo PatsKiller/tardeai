@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 52 domains · 22 providers.
+Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 58 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -53,12 +53,12 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **quote_price** | ingested | `market_quotes` | `scripts/lib/writers/market_quotes_writer.py` | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` | operator 2026-09-13 |
 | **symbol_identity** | ingested | `symbol_profiles` | `scripts/lib/writers/symbol_profiles_writer.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` | operator 2026-09-13 |
 | **analyst_opinion** | ingested | `yahoo_analyst_targets_history` | `scripts/pro_analyst_fetch.py` | daily | 168h | `analyst_detail` | yahoo | yfinance_on_demand | fmp, finnhub | `say_so` | operator 2026-09-13 |
-| **catalyst_news** | ingested | `news_articles` | `scripts/lib/writers/news_articles_writer.py` | 00:30 · 12:30 | 18h | `catalyst_record` | finviz | yahoo, brave, searxng | finnhub, newsapi, polygon, fmp | `say_so` | operator 2026-09-13 |
+| **catalyst_news** | ingested | `news_articles` | `scripts/lib/writers/news_articles_writer.py` | 00:30 · 12:30 | 18h | `catalyst_record` | finviz | yahoo, brave, searxng, alpha_vantage | finnhub, newsapi, polygon, fmp | `say_so` | operator 2026-09-13 |
 | **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | `scripts/lib/writers/ticker_prices_writer.py` | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` | operator 2026-09-13 |
 | **sector_momentum** | derived | `sector_rs_daily` · `runtime/sector_momentum_latest.json` | `scripts/sector_rs_daily.py` | 17:20 Mon-Fri | 26h | `sector_momentum` | internal:market_quotes | finviz_sector_view | — | `say_so` | operator 2026-09-13 |
 | **industry_momentum** | ingested | `runtime/industry_momentum_latest.json` | `scripts/finviz_industry_groups.py` | 12:30 · 16:18 | 26h | `sector_momentum` | finviz | — | — | `show_sector_with_industry_unavailable` | operator 2026-09-13 |
 | **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `market_regime` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` | operator 2026-09-13 |
-| **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | — | fmp | `UNKNOWN_blocks_options_gate` | operator 2026-09-13 |
+| **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | alpha_vantage | fmp | `UNKNOWN_blocks_options_gate` | operator 2026-09-13 |
 | **holdings_accounts** | ingested | `portfolios/state/holdings.json` | `scripts/portfolio_loader.py` | broker sync + */15 repricer | 24h | `portfolio_snapshot` | schwab | alpaca | — | `per_account_state_never_zero` | operator 2026-09-13 |
 | **positions_store** | ingested | `positions_current` | `scripts/positions_sync.py` | */15 09:30-16:00 Mon-Fri once installed (cron after the deploy grant); heartbeat = positions_sync_runs | 0.5h | — | schwab | — | — | `per_account_state_never_zero` | operator 2026-10-06 |
 | **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | `option_chain` | schwab | — | — | `call_out_at_read_time` | operator 2026-09-13 |
@@ -102,6 +102,12 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **counterfactual_ledger** | derived | `cio/counterfactual_ledger.jsonl` | `scripts/lib/counterfactual_ledger.py` | daily (scripts/build_counterfactual_ledger.py --apply) | 48h | — | native | — | — | `say_so` | operator 2026-10-03 |
 | **active_trader_microstructure** | ingested | `data/active_trader/micro/<day>/<SYMBOL>.jsonl + <SYMBOL>.bars.json + micro/live_symbols.json` | `scripts/active_trader/microstructure_recorder.py` | every 5 s 06:00-12:00 ET Mon-Fri (recorder windows) | 0.00417h | `active_trader_microstructure` | moomoo | — | — | `say_so` | operator 2026-10-05 |
 | **opportunity_assessment** | derived | `data/cio/cio_opportunity_projection.json` | `scripts/cio_opportunity_curator.py` | */30 09:00-16:00 Mon-Fri + 17:50 once the cron is granted | 26h | `opportunity` | derived | — | — | `say_so` | operator 2026-10-08 |
+| **finviz_enrichment** | ingested | `state/ticker_enrichment_cache.json` | `scripts/finviz_enrichment.py` | 0 13 * * 1-5 (cron L142) + on-demand owner batches (watch-directive servicer prefetch, L442) | 6h | `finviz_enrichment_snapshot` | finviz | — | — | `say_so` | operator 2026-10-10 |
+| **scalp_list** | ingested | `trade_ai/scalp_universe_latest.json` | `scripts/run_trade_ai_scalp_live.py` | */5 09:30-16:00 Mon-Fri (cron L1050, §23.3 lane; unchanged). Premarket 06:00-09:30 hot tier (operator decision §D.4, PR #1671) is code-complete with its knob OFF by default. | 0.25h | `scalp_list` | finviz | — | — | `say_so` | operator 2026-10-10 |
+| **social_posts** | ingested | `social_posts` | UNCONSOLIDATED → `scripts/social_ingest.py` (3 writers today; ceiling may only fall) | 06:00 Mon-Fri --source all (cron L243) + 08:30/10:30/13:30 --source stocktwits --discover (L244) | 26h | `social_feed` | stocktwits | — | — | `say_so` | operator 2026-10-10 |
+| **yfinance_info_snapshot** | ingested | `yfinance_info_snapshot` | `scripts/lib/writers/yfinance_info_snapshot_writer.py` | unscheduled — no producer until the yfinance-reference-ingest owner lane is decided (§D.12); migration migrations/2026_10_10_yfinance_info_snapshot.sql not yet applied | 48h | `yfinance_info` | yfinance | — | fmp | `say_so` | operator 2026-10-10 |
+| **earnings_calendar** | ingested | `runtime/alpha_vantage/earnings_calendar_latest.json` | `scripts/alpha_vantage_owner.py` | 06:05 ET daily (1 EARNINGS_CALENDAR call) — once a cron/n8n grant schedules it | 26h | `earnings_calendar` | alpha_vantage | — | fmp | `say_so` | operator 2026-10-10 |
+| **news_sentiment** | ingested | `runtime/alpha_vantage/news_sentiment_latest.json` | `scripts/alpha_vantage_owner.py` | 14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET — once a cron/n8n grant schedules them | 3h | `news_sentiment` | alpha_vantage | — | newsapi, finnhub, polygon, fmp | `say_so` | operator 2026-10-10 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -113,6 +119,7 @@ module every other writer must call.
 | Domain | Store | Writers today (ceiling) | Consolidation target | Hub direct reads (ceiling) |
 |---|---|---|---|---|
 | **macro** | `fred_economic_series` | 2 | `scripts/external_market_data_ingest.py` | — |
+| **social_posts** | `social_posts` | 3 | `scripts/social_ingest.py` | 7 |
 
 ## Providers
 
@@ -125,7 +132,7 @@ module every other writer must call.
 | **finviz** | live_external | active | screeners, enrichment, industry_groups, sector_perf, news | `finviz.com`, `elite.finviz.com` | operator 2026-09-13 |
 | **sec_edgar** | live_external | active | form4, filings | `sec.gov`, `efts.sec.gov` | operator 2026-09-13 |
 | **fred** | live_external | active | macro | `api.stlouisfed.org`, `FRED_API` | operator 2026-09-13 |
-| **alpha_vantage** | live_external | active | fundamentals | `alphavantage.co`, `ALPHA_VANTAGE` | operator 2026-09-13 |
+| **alpha_vantage** | live_external | active | fundamentals, earnings_calendar, news_sentiment, news_feed, earnings | `alphavantage.co`, `ALPHA_VANTAGE` | operator 2026-10-10 |
 | **brave** | live_external | active_paid | web_search | `api.search.brave.com`, `brave_router`, `BRAVE_API` | operator 2026-09-13 |
 | **searxng** | self_hosted | active | web_search | `searxng`, `SEARXNG_URL` | operator 2026-09-13 |
 | **tavily** | live_external | configured_unused | web_search | `api.tavily.com`, `TAVILY_API` | operator 2026-09-13 |
@@ -145,7 +152,8 @@ module every other writer must call.
 
 Every provider and domain row carries `approval`. The distinct references, and the rows they cover:
 
-- **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep** — 42 rows: provider `alpaca`, provider `schwab`, provider `yfinance`, provider `yahoo`, provider `finviz`, provider `sec_edgar`, provider `fred`, provider `alpha_vantage`, provider `brave`, provider `searxng`, provider `tavily`, provider `ollama`, provider `deepseek`, provider `stocktwits`, provider `reddit`, provider `google_news`, provider `moomoo`, provider `fidelity`, domain `quote_price`, domain `symbol_identity`, domain `analyst_opinion`, domain `catalyst_news`, domain `technicals`, domain `sector_momentum`, domain `industry_momentum`, domain `market_regime`, domain `earnings_date`, domain `holdings_accounts`, domain `options_iv`, domain `research_thesis`, domain `watch_directives`, domain `watch_discovery`, domain `web_search`, domain `private_company`, domain `dividends`, domain `macro`, domain `fundamentals`, domain `agent_opinion`, domain `agent_debate`, domain `ai_reports`, domain `redeploy_analytics`, domain `inverse_stoplights`
+- **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep** — 41 rows: provider `alpaca`, provider `schwab`, provider `yfinance`, provider `yahoo`, provider `finviz`, provider `sec_edgar`, provider `fred`, provider `brave`, provider `searxng`, provider `tavily`, provider `ollama`, provider `deepseek`, provider `stocktwits`, provider `reddit`, provider `google_news`, provider `moomoo`, provider `fidelity`, domain `quote_price`, domain `symbol_identity`, domain `analyst_opinion`, domain `catalyst_news`, domain `technicals`, domain `sector_momentum`, domain `industry_momentum`, domain `market_regime`, domain `earnings_date`, domain `holdings_accounts`, domain `options_iv`, domain `research_thesis`, domain `watch_directives`, domain `watch_discovery`, domain `web_search`, domain `private_company`, domain `dividends`, domain `macro`, domain `fundamentals`, domain `agent_opinion`, domain `agent_debate`, domain `ai_reports`, domain `redeploy_analytics`, domain `inverse_stoplights`
+- **Operator 2026-10-10 ~18:40 ET, verbatim "Yes, from one to six" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: "let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense"** — 3 rows: provider `alpha_vantage`, domain `earnings_calendar`, domain `news_sentiment`
 - **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE** — 4 rows: provider `finnhub`, provider `polygon`, provider `fmp`, provider `newsapi`
 - **Positions Source of Truth plan phase 1 — operator 2026-10-06 'yes start phase 1 and fix all of it' (session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); plan PR #1449, docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md** — 1 rows: domain `positions_store`
 - **Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 ("yess reconect approved"); shipped in PR #998; the desk becomes a caller of the store's one write module** — 1 rows: domain `data_gaps`
@@ -169,6 +177,10 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **Policy Review P3 counterfactual ledger for blocked ideas — operator approved 2026-10-03 (artifact https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1425** — 1 rows: domain `counterfactual_ledger`
 - **Operator HARD RULE 2026-10-05 (Command Center is the source of truth; refreshed by the data broker and spawned out) + Active Trader microstructure recorder approved 2026-10-05 ('yes do 1-4', PR #1444); alert sync PR wt/at-alert-sync-20261005** — 1 rows: domain `active_trader_microstructure`
 - **Investment Command Center plan approved 2026-10-08 (/plan; session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); PR #1516, docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md** — 1 rows: domain `opportunity_assessment`
+- **CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (2) register finviz_enrichment; (3) store of record = data/state copy** — 1 rows: domain `finviz_enrichment`
+- **CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register scalp_list** — 1 rows: domain `scalp_list`
+- **CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register social_posts** — 1 rows: domain `social_posts`
+- **CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (13) create store yfinance_info_snapshot** — 1 rows: domain `yfinance_info_snapshot`
 
 ## Monitors
 

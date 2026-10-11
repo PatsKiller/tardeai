@@ -15,6 +15,10 @@ read-scope `accept_event` to the gateway (the gateway's coordination ledger is t
 sent and nothing is run). W0 published the six generic workflows against a relay without this route and every
 error event came back 404 relay_bad_path. ROUTES is the route table the handler serves; `--routes` prints it so a
 pre-import dry run can check every workflow HTTP node against the relay it will call.
+
+2026-10-10 (alert-path watch): every forwarded /due line and its gateway-unreachable refusal carry `lanes` (the
+query's lane= filter, [] when none). Only the incident router asks for n8n-incident-fanin,incident-notifier, so the
+host-side watch (scripts/lib/n8n_alert_path_watch.py) can see that workflow's cadence and its refusals without n8n.
 """
 
 from __future__ import annotations
@@ -577,7 +581,7 @@ class Relay:
             gateway_status, reply = self.transport(self.gateway_url + "/v1/coordination", payload)
         except (OSError, urllib.error.URLError, TimeoutError):
             self.counts["gateway_unreachable"] += 1
-            return self._refuse("relay_gateway_unreachable", 502, op="due", source=source)
+            return self._refuse("relay_gateway_unreachable", 502, op="due", source=source, lanes=lanes)
         ok = reply.get("schema") == "DueResponse@v1" and reply.get("ok") is True
         items = reply.get("items") if ok and isinstance(reply.get("items"), list) else []
         self._log({
@@ -586,6 +590,7 @@ class Relay:
             "state": "OK" if ok else "REFUSED",
             "reason": None if ok else str(reply.get("reason") or "")[:64],
             "source": source,
+            "lanes": lanes,
             "limit": limit,
             "items": len(items),
             "truncated": reply.get("truncated", 0) if ok else 0,

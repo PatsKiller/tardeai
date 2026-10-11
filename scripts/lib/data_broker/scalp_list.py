@@ -15,8 +15,9 @@ and both candidates' ages. :func:`get_scalp_enrichment` reads the Finviz enrichm
 the hot-tier ``hot_cached_at`` stamp. :func:`freshness_report` judges the four hot-tier SLOs (list ≤5 min, enrichment
 ≤10, research ≤30 after arrival, social ≤15) on market days 06:00–16:00 ET; outside that window it says ``NO_SLO``.
 
-Registry status: ``scalp_list`` is a PROPOSED domain (operator decision D.5, ``proposed_registry_rows.json``); until
-the operator grants it, the windows are passed explicitly and ``source.registry_status`` says PROPOSED_UNREGISTERED.
+Registry status: REGISTERED — the operator granted the ``scalp_list`` domain on 2026-10-10 (~17:45 ET,
+CONSOLIDATION_PLAN.md §D.5; row in ``config/data_source_authority.json``). The windows are still the hot-tier SLOs
+passed explicitly, and ``source.registry_status`` says REGISTERED.
 READ_ONLY_ADVISORY: a list of names to research, never a trade signal.
 """
 
@@ -202,7 +203,7 @@ def get_scalp_list(
         source={
             "projection": PROJECTION,
             "provider": "finviz",
-            "registry_status": "PROPOSED_UNREGISTERED",
+            "registry_status": "REGISTERED",
             "writers": {
                 "l1050_scalp_universe": "scripts/run_trade_ai_scalp_live.py",
                 "hot_tier_premarket_screeners": "scripts/finviz_screener_runner.py "
@@ -288,7 +289,7 @@ def get_scalp_enrichment(
             "writer": snap.WRITER,
             "projection": PROJECTION,
             "provider": "finviz",
-            "registry_status": "PROPOSED_UNREGISTERED",
+            "registry_status": "REGISTERED",
             "as_of_basis": "oldest hot stamp among the requested symbols",
         },
     )

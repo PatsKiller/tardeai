@@ -194,6 +194,22 @@ CALLER_DAILY_CAPS: dict[str, int] = {
 FREE_PROVIDERS: frozenset[str] = frozenset({"searxng"})
 
 
+#: Callers that come through the search routing engine (scripts/lib/search_router.py)
+#: are named ``route.<pool>`` / ``route.<class>``. Their money is rationed by the
+#: DOLLAR policy in config/search_routing_policy.json (pools, shares, daily pacing),
+#: enforced atomically through ``try_consume(gate=...)`` — so the hardcoded per-caller
+#: slices above do not apply to them. The provider's own daily/monthly ceilings
+#: (the registry budget) still do: they remain the request-count circuit breaker.
+ROUTED_CALLER_PREFIX = "route."
+
+#: The routed operator pool answers questions someone is waiting for (on-demand).
+ROUTED_ON_DEMAND_CALLERS: frozenset[str] = frozenset({"route.operator"})
+
+
+def is_routed_caller(caller: str) -> bool:
+    return str(caller or "").startswith(ROUTED_CALLER_PREFIX)
+
+
 def caller_daily_cap(caller: str, provider: Optional[str] = None) -> int:
     """Per-caller daily ceiling.
 
@@ -201,6 +217,8 @@ def caller_daily_cap(caller: str, provider: Optional[str] = None) -> int:
     safe default for a metered provider and keeps every existing call site
     (which passes a caller only) behaving exactly as before.
     """
+    if provider and is_routed_caller(caller):
+        return int(_limits(provider).get("daily", CALLER_DAILY_CAPS["default"]))
     if provider and provider in FREE_PROVIDERS:
         return int(DEFAULT_LIMITS.get(provider, {}).get("daily",
                                                         CALLER_DAILY_CAPS["default"]))
@@ -234,7 +252,7 @@ def effective_monthly_limit(provider: str, caller: str, monthly_limit: int) -> i
     line. An unknown caller is treated as scheduled: fail closed, consistent
     with this module's other refusals.
     """
-    if caller in ON_DEMAND_CALLERS:
+    if caller in ON_DEMAND_CALLERS or caller in ROUTED_ON_DEMAND_CALLERS:
         return monthly_limit
     return max(0, monthly_limit - reserve_for(provider, monthly_limit))
 
@@ -521,14 +539,24 @@ def check(provider: str, *, caller: str = "default",
     return {"allowed": True, "reason": "OK", "status": st}
 
 
+#: ``gate(doc, status, provider, caller, now) -> refusal reason | None`` — an extra
+#: refusal evaluated INSIDE the ledger lock, after the count ceilings and before the
+#: unit is consumed. The search routing engine passes its dollar-budget decision here
+#: so "is there money left?" and "spend it" are one atomic step across processes.
+Gate = Any
+
+
 def try_consume(provider: str, *, caller: str = "default",
                 now: Optional[datetime] = None,
-                root: Optional[Path] = None) -> dict[str, Any]:
+                root: Optional[Path] = None,
+                gate: Optional[Gate] = None) -> dict[str, Any]:
     """Atomically check the budget and consume one unit when allowed.
 
     Holds an exclusive flock for the read-modify-write so two cron processes
     cannot both observe an under-limit counter and both spend. On any error
     establishing or writing the ledger: ``allowed=False`` (never fail open).
+    ``gate`` (optional) can refuse with its own reason; a gate that raises
+    refuses with ``GATE_ERROR`` (never fails open).
     """
     now = now or datetime.now(timezone.utc)
     path = budget_path(root)
@@ -569,6 +597,19 @@ def try_consume(provider: str, *, caller: str = "default",
                     pass
                 return {"allowed": False, "reason": "DAILY_EXHAUSTED", "status":
                         _status_from_doc(provider, doc, now, path)}
+            if gate is not None:
+                try:
+                    refusal = gate(doc, st, provider, caller, now)
+                except Exception as e:  # noqa: BLE001 — a gate that cannot decide refuses
+                    refusal = f"GATE_ERROR:{type(e).__name__}"
+                if refusal:
+                    _apply_record(doc, provider, allowed=False, caller=caller, now=now)
+                    try:
+                        _save(path, doc)
+                    except Exception:
+                        pass
+                    return {"allowed": False, "reason": str(refusal), "status":
+                            _status_from_doc(provider, doc, now, path)}
             _apply_record(doc, provider, allowed=True, caller=caller, now=now)
             try:
                 _save(path, doc)
@@ -688,6 +729,39 @@ def note(provider: str, caller: str = "default", *,
         record(provider, allowed=True, caller=caller, now=now, root=root)
     except Exception:
         pass
+
+
+def ledger_doc(*, root: Optional[Path] = None) -> dict[str, Any]:
+    """Read-only copy of the whole ledger (raises BudgetUnavailable when unreadable)."""
+    return _load(budget_path(root))
+
+
+ROUTING_RECEIPT_SCHEMA = "SearchRoutingReceipt@v1"
+
+
+def routing_receipts_path(root: Optional[Path] = None) -> Path:
+    """``data/runtime/search_routing_receipts.jsonl`` beside the ledger (append-only)."""
+    return budget_path(root).with_name("search_routing_receipts.jsonl")
+
+
+def append_routing_receipt(row: dict[str, Any], *, root: Optional[Path] = None) -> Optional[dict[str, Any]]:
+    """One line per routed question: class, tier chosen, reason, cost, cache hit.
+
+    Written here, beside the counters, so the ledger module stays the one writer of the
+    web_search store (AGENTS.md §7A rule 1). Append-only; never rewritten, never deleted.
+    Never raises: a receipt that cannot be written returns None and the answer stands.
+    """
+    out = dict(row)
+    out.setdefault("schema", ROUTING_RECEIPT_SCHEMA)
+    path = routing_receipts_path(root)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _exclusive(path):
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(out, sort_keys=True, default=str) + "\n")
+        return out
+    except Exception:
+        return None
 
 
 def all_status(*, now: Optional[datetime] = None,
