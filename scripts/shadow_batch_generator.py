@@ -387,7 +387,6 @@ def run(*, top_n: int = TOP_N, dry_run: bool = False, force: bool = False,
 
     if dry_run:
         summary["state"] = "dry_run"
-        _write_status(summary)
         return summary
 
     # Single-writer lock at the GENERATOR level, so no two runs overlap no matter
@@ -436,22 +435,36 @@ def status() -> dict:
         return {"state": "unreadable"}
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Bounded shadow decision-packet batch generator")
-    ap.add_argument("--dry-run", action="store_true", help="print the target set, spend nothing")
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Bounded shadow decision-packet batch generator", allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; no DB, models or writes")
     ap.add_argument("--run", action="store_true", help="generate packets")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--top", type=int, default=TOP_N)
     ap.add_argument("--force", action="store_true", help="ignore freshness, regenerate all")
     ap.add_argument("--json", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN shadow-batch-generator-at-15-10: would select at most top={args.top} plus starred eligible evidence packets; force={args.force}; no DB, model, packet writes or queue effects")
+        return 0
 
     if args.status:
         out = status()
-    elif args.dry_run:
-        out = run(top_n=args.top, dry_run=True)
     elif args.run:
-        out = run(top_n=args.top, force=args.force)
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+        started = now_iso()
+        try:
+            out = run(top_n=args.top, force=args.force)
+        except Exception as exc:
+            write_lane_receipt("shadow-batch-generator-at-15-10", ok=False, exit_code=1,
+                               started_at=started, error=type(exc).__name__)
+            raise
+        skipped = out.get("state") == "skipped_locked"
+        code = 75 if skipped else (1 if out.get("failed") or out.get("error") else 0)
+        write_lane_receipt("shadow-batch-generator-at-15-10", ok=code == 0, exit_code=code,
+                           started_at=started, error="RUN_SKIPPED_LOCK" if skipped else out.get("error"),
+                           summary={"state": out.get("state"), "generated": out.get("generated"),
+                                    "failed": out.get("failed"), "lock_skips": 1 if skipped else 0})
     else:
         out = {"error": "specify --dry-run, --run, or --status"}
 
@@ -486,7 +499,7 @@ def main() -> int:
                       f"rank={n.get('hermes_rank')} rec={n.get('rec')}")
             if len(_next) > 30:
                 print(f"    ... and {len(_next)-30} more")
-        return 0
+    return code if args.run and not args.status else (2 if out.get("error") else 0)
 
 
 if __name__ == "__main__":

@@ -21,22 +21,38 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Phase 2 memory shadow measure (influence OFF)")
+    ap = argparse.ArgumentParser(description="Phase 2 memory shadow measure (influence OFF)", allow_abbrev=False)
     ap.add_argument("--root", default=None, help="Project root (default: repo root)")
     ap.add_argument("--wake-path", default=None)
     ap.add_argument("--trace-path", default=None)
     ap.add_argument("--out", default=None)
     ap.add_argument("--json", action="store_true", help="Print full JSON report")
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; never reads traces or writes a report")
     args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN cio-memory-shadow-measure: would compare wake/trace metadata and write {args.out or 'data/cio/memory_shadow_measure_latest.json'}; influence remains OFF; no reads, DB, network or writes")
+        return 0
 
     from scripts.lib.agent_memory_shadow_measure import run_measure
 
-    report = run_measure(
-        root=args.root,
-        wake_path=args.wake_path,
-        trace_path=args.trace_path,
-        out_path=args.out,
-    )
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        report = run_measure(
+            root=args.root,
+            wake_path=args.wake_path,
+            trace_path=args.trace_path,
+            out_path=args.out,
+        )
+    except Exception as exc:
+        write_lane_receipt("cio-memory-shadow-measure", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
+    ok = bool(report.get("written_to")) and not bool(report.get("write_error"))
+    code = 0 if ok else 1
+    write_lane_receipt("cio-memory-shadow-measure", ok=ok, exit_code=code,
+                       started_at=started, error=None if ok else "REPORT_NOT_PERSISTED",
+                       summary={"report_written": bool(report.get("written_to"))})
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
@@ -50,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"influence_active={m.get('behavior_influence_active')} (must stay False)")
         if report.get("written_to"):
             print(f"wrote={report['written_to']}")
-    return 0
+    return code
 
 
 if __name__ == "__main__":
