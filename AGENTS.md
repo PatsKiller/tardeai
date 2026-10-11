@@ -1,12 +1,12 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      4.6.0
+Policy-Version:      5.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-10-10T18:55:00-04:00
+Last-Reviewed:       2026-10-10T21:55:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          4.4.0
@@ -59,6 +59,26 @@ second takes the other's banner and history rows on rebase and sets `Supersedes`
 base. If #1666 is withdrawn, or this is ratified before 4.5.0, this renumbers to 4.5.0: §24 keeps its number and every
 `4.6.0` / `4_6_0` token in this file and its test is renamed. Operator approval phrase (§20):
 `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>`.
+
+**5.0.0 is PROPOSED (MAJOR) — broker-adjacent daemon operations under a per-incident `execution-ops` grant
+(§24.10; one sentence added to §0 rule 2).** Until the operator ratifies it, the previously ACTIVE text governs, the
+added §0 sentence binds nothing, and a broker-execution unit is operated by the operator alone. With an active
+`execution-ops` grant naming the unit, the actions and the incident (≤ 6 h, grantable at the keyboard or by Telegram
+`/approve`), an agent may inspect that unit's status and journal, re-point its code root to `portfolio-server/CURRENT`
+by drop-in, `daemon-reload` and restart it, and handle its enable flag only when that flag is under the operator's
+home — only while the market calendar says CLOSED, after a quoted preflight (the unit's tests pass at CURRENT, no store
+path moves), with rollback by restoring the archived drop-in. Never its code, a credential, a live/paper flag, an order
+or stop path, or a broker call. **Why MAJOR, and why 5.0.0 rather than the requested 4.7.0:** the operator asked for
+"4.7.0 (MINOR)". The version policy names authority rails and broker access as MAJOR, makes any §0 change
+operator-approved, says a rule that removes a restriction elsewhere is not MINOR, and gives an ambiguous change the
+higher class. The sentence narrows §0 rule 2's "do not modify, test against or investigate it" for one operational
+purpose, so the weakest guarantee after the change is weaker: MAJOR, so the number is 5.0.0. If the operator rules it
+MINOR, it renumbers to 4.7.0 and nothing else changes. **Numbering dependency:** stacked on 4.6.0 (PROPOSED, PR #1682)
+and after 4.4.1 / 4.5.0 (PR #1666); `Supersedes` is the last ACTIVE version of its base (4.4.0 here). 4.6.0 has its own
+token, and ratifying 5.0.0 does not ratify 4.6.0: merge 4.6.0 first. If #1682 is withdrawn, §24.10 rebases onto main as
+the only subsection of §24. The guard scope is installed separately, by the operator
+(`~/n8n-maturity-verification/packets/agents-4-7-0/`). Operator approval phrase (§20):
+`APPROVE_AGENTS_POLICY_5_0_0 <pr_number> <head_sha>`.
 
 **4.3.0 is ACTIVE (MAJOR) — R1: three dispatcher classes — ingest writers, governed LLM jobs,
 learning/memory writers (§23.18).** Ratified by the operator 2026-10-10 (`APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1`, §20,
@@ -262,6 +282,10 @@ agent that reads fifteen lines and stops must still know them.
    replay). Without one, the broker execution subsystem is out of scope: do not modify, test
    against or investigate it. No agent ever calls a live broker, reads a live credential, sets a
    live flag, requests 2FA, calls `place_order`, or POSTs to an order route (AGENTS.md §22).
+   One operational exception, binding only once AGENTS.md 5.0.0 is ACTIVE: with an operator
+   `execution-ops` grant naming the unit, an agent may inspect, re-point, reload and restart that
+   broker-execution unit while markets are closed, and never touch its code, credentials, flags or
+   orders (AGENTS.md §24.10).
 3. **Never route around a permission denial.** Stop and report. No alternate remote, no
    direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
    budget.
@@ -4677,13 +4701,15 @@ holds.
 
 ---
 
-# 24 · Platform rules from the 2026-10-10 consolidation (4.6.0, PROPOSED)
+# 24 · Platform rules from the 2026-10-10 consolidation (4.6.0 and 5.0.0, PROPOSED)
 
-**Status: PROPOSED (MINOR), awaiting `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>` (§20).** Until it is
+**Status: PROPOSED (MINOR), awaiting `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>` (§20); §24.10 is PROPOSED
+(MAJOR) separately, awaiting `APPROVE_AGENTS_POLICY_5_0_0 <pr_number> <head_sha>`.** Until each is
 ratified, nothing in this section binds and the previously ACTIVE text governs. §24 is **not** part of the §23 n8n
-carve-out: §23.1 limits §23 to the `m8m-n8n` compose project, and these rules reach every agent, lane and job. Each
-subsection extends the section it names without editing it. §0, §2, §2A, §7A, §17 and §23.14 are byte-identical, and
-nothing here grants n8n, a lane or an agent anything. The rulings come from the operator's session of 2026-10-10
+carve-out: §23.1 limits §23 to the `m8m-n8n` compose project, and these rules reach every agent, lane and job. Each of
+§24.1–§24.9 extends the section it names without editing it; for them §0, §2, §2A, §7A, §17 and §23.14 are byte-identical, and
+nothing here grants n8n, a lane or an agent anything. §24.10 is the one exception: it adds one sentence to §0 rule 2
+and grants one operational authority, under its own guard scope and its own token. The rulings come from the operator's session of 2026-10-10
 (times ET) and the evidence in the verification workspace (`~/n8n-maturity-verification/`: `REMEDIATION_PLAN.md` §8,
 `CONSOLIDATION_PLAN.md`, `JOB_REDUCTION_DEEP_PASS.md`, the `packets/` READMEs).
 
@@ -4852,12 +4878,106 @@ nothing here grants n8n, a lane or an agent anything. The rulings come from the 
   a 16 GB budget, growing ~0.18 GB/day (`DB_RETENTION_AND_IRIS_STUDY.md`). Retention and the Iris librarian are an
   OPEN item: the Iris runtime was disabled in retire batch 1.*
 
+## 24.10 Broker-adjacent daemon operations — the `execution-ops` grant (5.0.0, PROPOSED; extends §0 rule 2, §10, §22)
+
+**Status: PROPOSED (MAJOR), awaiting `APPROVE_AGENTS_POLICY_5_0_0 <pr_number> <head_sha>` (§20).** Until it is ratified
+it binds nothing, and a broker-execution unit is operated by the operator alone. It is the only exception to §0 rule
+2's "do not modify, test against or investigate it", and it reaches the unit, never the code: A1/A2 code work still
+needs `execution-engineering` (§22), and A4/A5 stay the operator's and the deterministic execution path's.
+
+- **Reach: broker-execution units, and only these.** A broker-execution unit is a systemd **user** unit whose
+  `ExecStart` runs code from the broker execution set, `scripts/active_trader/**` or `scripts/brokers/**`, by path or
+  as a module (`-m active_trader.…`). Measured 2026-10-10: one unit, `tradeai-active-trader-motion.service`
+  (`-m active_trader.motion_runtime`). Out of reach and operator-only: `trade-ai-lab-moomoo-opend` (`scripts/moomoo/**`;
+  OpenD holds the broker login and 2FA), any unit started with `--mode live` (`at-observation-*`), every system unit,
+  and anything that needs root. *Cause (§20): 2026-10-10 ~21:30–21:49 ET — the operator archived the motion unit's
+  exact-SHA drop-in `10-user-exact-sha.conf` (pinned `a032116e7`, four days behind CURRENT) and restarted it by hand.
+  The base unit's `ConditionPathExists=/etc/tardeai/enable-active-trader-motion` was missing, so the start was
+  skipped (it had run since an OOM restart on 2026-10-09 21:03), and the unit was left inactive on the base unit's
+  dev-tree `WorkingDirectory` until the operator added `95-code-root-current.conf`. The unit-code-roots packet
+  (`packets/unit-code-roots/README.md` §3) had excluded the unit as "broker-adjacent: operator decision under §0 rail
+  2"; no agent could help.*
+- **The grant: `execution-ops`, per incident, at most 6 hours.** The agent asks with
+  `bin/guard request execution-ops --for <≤6h> --uses <n> --reason "<unit(s)>; <actions from the list below>;
+  <incident>; rollback: <archived drop-in>"`. The operator approves at the keyboard (`bin/guard grant`) or by Telegram
+  `/approve <CODE>`. The scope is remotely grantable: it is not in `REMOTE_FORBIDDEN_SCOPES`
+  (`scripts/lib/guard_remote_approval.py`). `bin/guard grant` refuses a window over 6 h for this scope. A grant covers
+  only the units and actions its reason names, and only the incident it names; it is never reused for another. The
+  guard ledger binds the scope, not the unit: acting on a unit or with an action the reason does not name is acting
+  without a grant (§0 rule 3). *Cause (§20): operator 2026-10-10 ~21:52 ET, verbatim: "I need a way to grant
+  exceptions for rule number two in situations like this where you can fix it. Please make sure that happens."*
+- **Permitted actions — these and nothing else, on the named unit only.** *Cause (§20): the operator's request of
+  2026-10-10 ~21:50 ET ("only re-point the code root (drop-in to portfolio-server/CURRENT), daemon-reload, and
+  restart"), widened at ~21:52 ET to reading the unit's status and journal ("today's incident needed it") and to its
+  enable flag when that flag is user-writable.*
+  1. **Inspect, at any hour:** `systemctl --user status <unit>`, `systemctl --user show <unit>` for named properties
+     other than `Environment`, `journalctl --user -u <unit>`, `readlink /proc/<MainPID>/cwd`, and the unit's drop-in
+     directory and drop-in files. Never `Environment`, an `EnvironmentFile` target or `/proc/<pid>/environ` (§24.7);
+     the one environment value that may be printed is the `PYTHONPATH` entry, filtered on its own, to prove the code
+     root.
+  2. **Re-point the code root:** write `~/.config/systemd/user/<unit>.d/95-code-root-current.conf`, setting
+     `WorkingDirectory` (and, where the base unit carries a dev-tree code path in `ExecStart` or `PYTHONPATH`, the
+     matching reset-and-set) to `/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT`, the release §10 serves. A
+     drop-in it supersedes is archived by rename to `<name>.archived-<YYYYMMDD>` (§0 rule 6), never deleted.
+  3. **Reload and restart:** `systemctl --user daemon-reload` chained with that unit's restart in the same command,
+     and `systemctl --user restart <unit>`, which also starts an inactive unit.
+  4. **The unit's own enable flag** (its `ConditionPathExists=` path): create it, or archive it by rename, only when
+     the path is under the operator's home. A flag under `/etc` needs root and stays operator-only; measured
+     2026-10-10, the motion unit's flag is `/etc/tardeai/enable-active-trader-motion`.
+
+  Not under this grant: `start` of anything other than through `restart`, `stop`, `kill`, `enable`, `disable`,
+  `mask`, `unmask`, `edit`, `revert`, `set-property`, editing the base unit file, a drop-in with other content, and
+  `sudo`. A `service` grant is never authority over a broker-execution unit.
+- **Markets closed, from the market calendar, failing closed.** Every action in items 2–4 runs only while
+  `scripts/lib/cio_market_session.market_session()["state"]` is `"CLOSED"`: weekends, NYSE holidays, and 20:00–04:00
+  ET on trading days. Pre-market and post-market count as open. A calendar error refuses the action, unlike
+  `scripts/market_day_gate.sh`, which fails open because it gates read-only syncs. Item 1 is allowed at any hour.
+  *Cause (§20): operator request 2026-10-10 ~21:50 ET ("only when markets are closed (market calendar)"); a
+  restart during a session can drop an open position's exit watch.*
+- **Preflight before the first mutation, quoted in the incident record.** (a) The grant is active, and its reason
+  names this unit and these actions. (b) The market state is `CLOSED`. (c) The unit's tests pass at CURRENT, run from
+  `readlink -f ~/trade-ai-releases/portfolio-server/CURRENT` with `TRADE_AI_CI=1` and the interpreter the unit uses:
+  for the motion unit, `tests/test_active_trader_motion_runtime.py` and
+  `tests/test_active_trader_motion_host_proof.py`. Any failure stops the procedure. (d) No store moves: the
+  unit-code-roots checks (`packets/unit-code-roots/repoint.py`) find no `data/`, `docs/` or `logs/` path and no
+  registry `output_signal` that resolves differently under the unit's present root and CURRENT. A `STORE_RISK` or
+  `SIGNAL_MOVES` verdict stops the procedure and goes to the operator (§0 rule 5). (e) `systemd-analyze --user verify`
+  of a merged copy exits 0. (f) A dry run prints the exact drop-in text, every archive rename and every command
+  (§0 rule 7). *Cause (§20): operator request 2026-10-10 ~21:50 ET ("with a preflight that the unit's code at CURRENT
+  passes its tests"); the store check is the unit-code-roots finding of 2026-10-10 19:55 ET that 15 top-level
+  `data/` entries resolve differently in the dev tree and in CURRENT.*
+- **Proof, and rollback by restoring the archived drop-in.** After the restart: `ActiveState=active`; `readlink
+  /proc/<MainPID>/cwd` resolves to the CURRENT release directory; the `PYTHONPATH` entry does not name the dev tree;
+  the journal shows the runtime's own start line. A receipt with the before and after values is written to the
+  incident packet (§0 rule 8). If any check fails, the agent archives the new drop-in by rename, restores the archived
+  one by rename, runs daemon-reload and restart, verifies the old cwd, then stops and reports. *Cause (§20): operator
+  request 2026-10-10 ~21:50 ET ("rollback by restoring the archived drop-in"); §0 rule 8.*
+- **Never, under any grant.** Never read, copy or print a credential or env file (§24.7). Never set, flip or rewrite a
+  live/paper flag or mode, and never restart a unit whose last journal start line shows a live mode, because that is
+  live activation (A4, §17). Never touch an order, stop, session-grant or 2FA path. Never edit a file under
+  `scripts/active_trader/**`, `scripts/brokers/**` or `scripts/moomoo/**`, and never call a broker. Restarting starts
+  the unit with the configuration it already has. *Cause (§20): §0 rules 1–2, §2A, §17, §22; the operator request of
+  2026-10-10 ~21:50 ET ("never reading credentials, changing live/paper flags, touching order/stop paths, or editing
+  that code").*
+- **Mechanics, and what still does not enforce.** The operator installs the scope once with
+  `~/n8n-maturity-verification/packets/agents-4-7-0/install_execution_ops_scope.py`. It adds `execution-ops` to
+  `bin/guard` `ALL_TIERS` with the 6 h cap, and to `.cursor/hooks/guard-lib.sh`. There, `restart`, `try-restart` and
+  `daemon-reload` on a unit matching `tradeai-active-trader-`, and writes or renames under its drop-in directory,
+  classify as `execution-ops` instead of `service`. The script also adds the rule
+  `broker.execution_ops` to `config/agents_guard_hook_rules.json`. Three gaps stay open. The guard binds the scope and
+  not the unit. Other `systemctl` verbs on a broker-execution unit still classify as `service`, so this rule, not the
+  classifier, forbids them. The Claude Code PreToolUse hook is not installed on ms01 (`docs/ops/AGENTS_GUARD_HOOK.md`).
+  The remote `/approve` path grants through the `bin/guard` of the release that runs the callback poller, so a
+  remote grant works only once that release carries the scope. *Cause (§20): measured 2026-10-10 — a `service` grant
+  matched `tradeai-active-trader-*` through `prod_unit_regex`, and no scope existed for this work.*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 5.0.0 | 2026-10-10 | PROPOSED | MAJOR | §24.10 "Broker-adjacent daemon operations — the `execution-ops` grant" added, and one sentence added to §0 rule 2 pointing to it (binding only once 5.0.0 is ACTIVE). Under a per-incident `execution-ops` guard grant (≤ 6 h, remotely grantable by Telegram `/approve`, reason naming the unit, the actions and the incident), an agent may operate a broker-execution unit — a user unit whose `ExecStart` runs `scripts/active_trader/**` or `scripts/brokers/**`; measured: `tradeai-active-trader-motion.service` only. It may inspect status, journal, cwd and drop-ins (never `Environment` or env files). It may re-point the code root by `95-code-root-current.conf` to `portfolio-server/CURRENT`, archiving the superseded drop-in by rename. It may run `daemon-reload` with the restart, and `restart`. It may create or archive the unit's enable flag only under the operator's home (`/etc` flags stay operator-only). Every mutation runs only while `cio_market_session` says `CLOSED`, failing closed. A quoted preflight comes first: grant, market state, the unit's tests at CURRENT under `TRADE_AI_CI=1`, no store or `output_signal` move (unit-code-roots checks; `STORE_RISK` goes to the operator, §0 rule 5), `systemd-analyze verify`, and a dry run. Proof is by cwd readback and a receipt; rollback restores the archived drop-in. Never code edits, credentials, live/paper flags or modes, a restart into live mode (A4), order, stop, session-grant or 2FA paths, or broker calls. OpenD (`scripts/moomoo/**`), `--mode live` units, system units and root actions are out of reach. Guard scope installed by the operator-run `packets/agents-4-7-0/install_execution_ops_scope.py` (`bin/guard` `ALL_TIERS` plus a 6 h cap, `guard-lib.sh` scope text and classifier, hook rule `broker.execution_ops`); open gaps stated (unit binding is by reason text; other verbs still classify `service`; Claude hook not installed; the remote grant needs the scope in the poller's release). The §0 change is exactly that one sentence: the 4.1.0, 4.3.0, 4.4.0 and 4.6.0 tests strip it before hashing, and their §0 digest is unchanged. §2, §2A, §7A, §17 and §23.14 are byte-identical; `CLAUDE.md` and the other three adapters are unchanged until ratification (patch in the packet). Tests: `tests/test_agents_policy_5_0_0_execution_ops.py`. Causes: the 2026-10-10 ~21:30–21:49 ET motion-unit incident (exact-SHA drop-in archived by hand, start skipped on the missing `/etc` flag, unit inactive on the dev-tree root); operator requests of 2026-10-10 ~21:50 and ~21:52 ET. MAJOR: it narrows §0 rule 2 for one operational purpose (version policy: authority rails and broker access, classified by the weakest guarantee); requested as 4.7.0 (MINOR) and renumbered. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_5_0_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` §0. Until then the 4.4.0 text governs (4.5.0/4.4.1 after #1666; 4.6.0 after #1682). |
 | 4.6.0 | 2026-10-10 | PROPOSED | MINOR | §24 "Platform rules from the 2026-10-10 consolidation" added, outside the §23 carve-out: §24.1 notifications — n8n orchestrates (fires host routing, digest, escalation and callback lanes; decides nothing), the host communications gateway (`send_telegram` + delivery ledger + `check_comms_gateway_enforcement.py` ratchets) is the only sender, the P1 path does not depend on n8n, new or changed senders emit notification intents (~66 direct senders are inventory migration work) (backlog A3); §24.2 search source routing — free lane first, paid Brave only on measured insufficiency, `config/search_routing_policy.json` authoritative once merged (#1676, engine OFF by default), dollar lines $20 account / $18 local ceiling / $15 target / $12 non-priority stop, pools scalp 50% / operator 20% / catalyst 20% / other 10%, request breaker raise approved (≥3,000/month; registry still 120/day 1,500/month), SearXNG never names a Brave engine, one Alpha Vantage owner at ≤23/day with scope A1–A3 + B1 + B2 (#1675), NewsAPI retired (A4); §24.3 data broker — owner lanes are single writers, consumers read `BrokerReadEnvelope@v1` projections, lane-script direct reads become a checked violation (checker extension required), approved domains listed (A5); §24.4 other applications (NYC DOF) are not Trade AI lanes and never use Trade AI resources or the `trade_ai` role (`dof_app`); §0 and §17 still bind (A6); §24.5 no push, PR or remote write from a scheduled job (#1672) (A7); §24.6 tests never touch production state, `TRADE_AI_CI=1` (RC7, RC1 link) (A8); §24.7 agents never read, copy or symlink `.env` or credential files (A9); §24.8 a release grant names the SHA or PR (`ReleaseGrantBinding@v1`) (A10); §24.9 Supabase / n8n Cloud portability (A11). In-place correction (PATCH-level, §12): the `braveapi` engine row records the 2,357 uncounted HTTP 422 calls and the approved, pending disable. One-line pointers to §24 added in §8A, §9.1, §9.3, §12 and the operator-approval section. §0, §2, §2A, §7A, §17 and §23.14 byte-identical; no allowlist `never`, `CLAUDE.md` or `AI_WORK_POLICY.md` change. Numbered after 4.4.1 / 4.5.0 in open PR #1666; renumbers to 4.5.0 if #1666 is withdrawn or this is ratified first. Tests: `tests/test_agents_policy_4_6_0_platform_rules.py`. Causes: operator rulings 2026-10-10 ~13:00, ~17:45, ~18:03, ~18:28, ~18:35, ~18:40 ET and two later the same evening (session record; logged as ~19:05 and ~19:45, stamps ahead of the host clock); REMEDIATION_PLAN §8 RC1/RC7; JOB_REDUCTION_DEEP_PASS §11; CONSOLIDATION_PLAN §E; the 2026-10-10 ~17:07 ET release-grant refusal; the `.env` symlink incident. MINOR: every item adds an obligation or a restriction; nothing widens n8n, broker, egress, §17 or role authority (read as MAJOR, it becomes 5.0.0 unchanged otherwise). | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_4_6_0 <pr_number> <head_sha>` (§20); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md`. Until then the 4.4.0 text governs (4.5.0/4.4.1 after #1666). |
 | 4.4.0 | 2026-10-10 | ACTIVE | MAJOR | R1 shadow and canary row shape (§23.11, §23.18 (c)). A §23.11 dispatcher row (`kind: n8n`, `expression: "dispatcher"`) fails `CRON_PRESENT_WHILE_SCHEDULER_N8N` and the inactive-n8n-row check while its cron line is live, which is true through shadow and canary. The shadow wave is therefore built as cron rows, and 4.3.0 §23.18 (c) refused every R1 lane in that shape. Now an `ingest`, `llm` or `learn` lane may use the cron row at `shadow` (`dispatch.mode: dry_run`, allowlist `live_arg` null) and at `canary` (`dispatch.mode: live`, `live_arg` set, `lock_kind: flock`, allowlist lock equal to every `flock` lock in `scheduler.command_text`, so the lock proves no double run, §23.12). Cutover keeps the dispatcher row. Gate in code: `lane_dispatch.r1_shadow_on_cron_shape`, `r1_canary_lock_matches` and `r1_class_admission`, inert until `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`. Every other R1 condition is unchanged: R1 ACTIVE, `dispatch_eligible`, no daemon, `dry_run_arg`, LaneRunReceipt@v1, no broker credential, and for `llm` the governed bridge. Naming: `dispatcher` is the row expression; `tradeai-dispatcher` (the workflow id; design 02 §12.2 wrote it as the expression) is refused by the gate and the registry check, clamped to `dry_run` by the stage clamp, and refused as `_cutover.py --workflow-id`. `--workflow-id dispatcher` leaves the row at stage `cutover`. The allowlist `never` sentence for the three classes names both cron rows; every never-under-any-class entry is word for word. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Tests: `tests/test_agents_policy_4_4_0_r1_shadow_shape.py`, `tests/test_r1_shadow_shape_20261010.py`. Causes: Agent A finding 2026-10-10 (no R1 lane could shadow); operator ruling 2026-10-10 ~14:00 ET ("All yes": extend 4.4.0 to canary). MAJOR: the R1 admission widens by two row shapes, one of them a live fire. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe` (operator, PR #1660 comment by PatsKiller 2026-10-10T20:04:37Z, verbatim: "APPROVE_AGENTS_POLICY_4_4_0 1660 463535dfe"); merged #1660 as `40e445d790c4b8294c3f2e3fb64cbb9f1658e9d9`; approved in principle 2026-10-10 ~14:00 ET ("All yes"); per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` and the allowlist `never` list. The ratifying edit sets `R1_SHADOW_SHAPE_STATUS = "ACTIVE"`. |
 | 4.3.0 | 2026-10-10 | ACTIVE | MAJOR | R1 (§23.18): `ingest`, `llm` and `learn` become dispatcher-eligible classes, always shadow → canary → cutover by §23.11 registry PR and §23.12 waves. Gate in code: `scripts/lib/lane_dispatch.py` `r1_class_admission`. It requires R1 ACTIVE (`R1_STATUS`), `dispatch_eligible`, a dispatcher row at stage shadow/canary/cutover, a non-empty `dry_run_arg`, a `LaneRunReceipt@v1` `output_signal` that matches the allowlist, and no broker credential in `env_names`. An `llm` job also needs `llm_route` via `cio-governed-bridge` with a registered process and no provider/model argv. `n8n_due` and `validate_dispatch_block` both ask the gate, and `send` stays refused. `EXTRA_FORBIDDEN_SUBSTRINGS` gains `render_env`, `rotation_daemon` and `bitwarden` (measured: `render_env.py --write` passed `dispatch_eligible`); this only tightens the matcher. The governed DeepSeek route is approved for L401 overnight only; measured: today it calls `llm_lane` in-process, not the bridge, so it stays on cron until rerouted or ruled. Ruling 4: `alert_events` rows are not a send; `paper_trade_proposals` backtest fields are not paper execution; the L504 `symbol_profiles` and L205 `market_regime` writers are approved for dispatch. Rulings 2 (whole-word/path-segment token matching) and 3 (entry planner via the data broker; no broker credentials in lanes) land as separate code PRs. Allowlist `never` reworded: broker/order/stop/paper/sender/secret/guard/deploy/agent-loop stay never under any class; the three classes are excepted only once 4.3.0 is ACTIVE; "Sole exception: trade-ai-scalp-live" kept. No sentence of §0, §2, §2A, §7A, §17 or §23.14 changes. Numbered after 4.2.0 PROPOSED (#1634). Tests: `tests/test_agents_policy_4_3_0_r1_classes.py`. Causes: the cron inventory of 2026-10-09 (247 active rows needing refactoring, mostly policy-blocked); refactor wave 1 #1641 (36 rows needed dry-run and receipts); wave 2 V3 (L401 governed route missing). MAJOR: the n8n actor may cause three more classes of host work; broker, secret and delete rails unchanged. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1` (operator, 2026-10-10 ~09:10 ET, in session, verbatim: "APPROVE_AGENTS_POLICY_4_3_0 1642 64c9210e1"); re-approved by the operator 2026-10-10 ~09:25 ET, in session, verbatim: "approved", for PR #1642 head `c3d5e895d4de5eb16f43f90ce8f43dc61a0cadfc` after the conflict merge with #1643 (which changed only the forbidden-token list in `scripts/lib/lane_dispatch.py`; `AGENTS.md` and `config/n8n_run_allowlist.json` byte-identical to `64c9210e1`); merged #1642 as `203b469146154c6729620a2428fcb76740a4d0a8`; the ratifying edit sets `R1_STATUS = "ACTIVE"`; per-PR word, excluded from the §23.13 standing merge approval because it changes `AGENTS.md` and the allowlist `never` list. Operator rulings recorded 2026-10-10 ~00:20 ET: (1) ingest writers, governed LLM jobs and learning/memory writers are dispatcher-eligible, always shadow → canary → cutover; governed DeepSeek route approved for L401; (2) whole-word / path-segment forbidden-token matching; (3) entry planner (L473/L474) via the host data broker, no broker credentials in lanes; (4) `alert_events` rows not a sender, `paper_trade_proposals` backtest fields not execution, L504 and L205 approved for n8n. |
