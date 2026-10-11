@@ -37,10 +37,10 @@ def test_text_via_bridge_returns_none_on_refusal(monkeypatch):
 
 def test_text_via_bridge_returns_the_message(monkeypatch):
     def fake_call(messages, *, process_id, timeout_s):
-        return {"choices": [{"message": {"content": "advisory"}}], "governance_pass": True}
+        return {"choices": [{"message": {"content": "advisory"}}], "_tradeai": {"process_id": process_id, "governance_pass": True, "mock": True}}
 
     monkeypatch.setattr(llm_bridge_route, "_call_bridge", fake_call)
-    assert llm_bridge_route.text_via_bridge("topic_curator", "hello") == "advisory"
+    assert llm_bridge_route.text_via_bridge("hermes_usefulness_score", "hello") == "advisory"
 
 
 def test_llm_lane_source_routes_only_when_the_flag_is_on():

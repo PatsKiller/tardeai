@@ -1,16 +1,21 @@
 """session13_db.py — credential-safe DB helper for Session 13 scripts."""
 import os
-import psycopg2
-from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 
 
 def get_conn():
+    # Importing a writer for its offline preview must not read credential files.
+    # The shared loader also honours the executor's per-lane environment bound.
+    try:
+        from scripts.lib.env_bootstrap import load_env
+    except ImportError:
+        from lib.env_bootstrap import load_env
+    load_env(names=_ENV_KEYS)
+    import psycopg2
+
     password = os.getenv("DB_PASSWORD")
     if not password:
-        raise RuntimeError("DB_PASSWORD missing from .env")
+        raise RuntimeError("DB_PASSWORD missing from process configuration")
     import sys
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "127.0.0.1"),
