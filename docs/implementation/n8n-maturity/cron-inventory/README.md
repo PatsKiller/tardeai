@@ -75,3 +75,6 @@ Procedure for any n8n change that this log records: `../N8N_ONBOARDING_STANDARD.
 
 
 | 2026-10-11 (local source packet, not live) | Shard05: six new dry-run-only source admissions; 19 blocked (including one existing reviewed main shadow retained), five sender exclusions, five broker exclusions and two monitor exclusions. Exact approved selected cron lines and all business argv retained; two missing outer flocks proposed only. Contracts DRAFT, SOURCE_ONLY / ledger NOT_MEASURED, runs_considered null; shared env report-mode blockers remain. No cron/service/database/release/model/send/runtime change | 37 assigned lanes, six new proposals | `REFACTOR_SHARD_05_20261011.md`; `n8nmat/refactor-shard-05`; local evidence and inventory_rows_05.tsv |
+### 2026-10-11 refactor shard 08 (source only)
+
+37 lanes assessed; 2 DRAFT offline shadow proposals, 14 broker skips, 3 sender skips, 1 class skip, 17 blocked/retained. No runtime inventory numbers changed. [Source report](../REFACTOR_SHARD_08_20261011.md). One outer cron lock proposed; contracts remain unreviewed.

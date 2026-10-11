@@ -17078,6 +17078,324 @@
         "never": "Source plans or n8n execution status are not runtime work proof. Live inventory must filter deletedAt IS NULL; no live inventory measured here."
       },
       "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "agent-recommendation-normalizer",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "refactor_shard_08_source_proposal",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Normalize advisory agent recommendations into an attributable research registry.",
+        "business_function": "research",
+        "source": "inventory refactor-shard08:agent-recommendation-normalizer"
+      },
+      "owner": "portfolio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/agent_recommendation_normalizer.py --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/agent-recommendation-normalizer.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/agent-recommendation-normalizer_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "watchlist_agent_results, cio_decisions, agent_debate_log",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory refactor-shard08:agent-recommendation-normalizer dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "watchlist_agent_results, cio_decisions, agent_debate_log",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory refactor-shard08:agent-recommendation-normalizer triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "agent_recommendation_registry and narrative subject tags consumed by learning/research readers",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory refactor-shard08:agent-recommendation-normalizer outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/agent-recommendation-normalizer_last.json fresh within 144.0 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 144.0 h but younger than 216.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: watchlist_agent_results, cio_decisions, agent_debate_log (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 216.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 300,
+        "class": "learn",
+        "computed_on": "2026-10-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: live ledger excluded from refactor task; source class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "inventory refactor-shard08:agent-recommendation-normalizer business_function=research (catalogue rule)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/agent-recommendation-normalizer_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='agent-recommendation-normalizer' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:agent-recommendation-normalizer' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/agent-recommendation-normalizer_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "review_by": "2026-10-25"
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "hermes-score-event-feeder",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "refactor_shard_08_source_proposal",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Collect research events into unique pending Hermes scoring work under existing scope policy.",
+        "business_function": "research",
+        "source": "inventory refactor-shard08:hermes-score-event-feeder"
+      },
+      "owner": "research",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/hermes_score_event_feeder.py --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/hermes_event_feeder.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/hermes-score-event-feeder_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "catalyst_events, news_articles, research_reports, paper_trade_proposals (read only), Hermes scope governance",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory refactor-shard08:hermes-score-event-feeder dependencies (DRAFT: free text)"
+        },
+        {
+          "name": "catalyst_events, news_articles, research_reports, paper_trade_proposals (read only), Hermes scope governance",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "inventory refactor-shard08:hermes-score-event-feeder triggers_inputs (DRAFT: free text)"
+        },
+        {
+          "name": "hermes_score_event_queue, watchlist scope labels, scope_governor_audit and existing feeder heartbeat",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "inventory refactor-shard08:hermes-score-event-feeder outputs_downstream (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+        },
+        {
+          "check": "cron_twin_output_fresh",
+          "text": "the live cron line keeps the registry output_signal data/runtime/hermes-score-event-feeder_last.json fresh within 0.16 h (2x cadence)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 0.16 h but younger than 0.24 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "an upstream input is stale: catalyst_events, news_articles, research_reports, paper_trade_proposals (read only), Hermes scope governance (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 0.24 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.16,
+        "freshness_failed_after_h": 0.24,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 300,
+        "class": "ingest",
+        "computed_on": "2026-10-11",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: live ledger excluded from refactor task; source class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "inventory refactor-shard08:hermes-score-event-feeder business_function=research (catalogue rule)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/hermes-score-event-feeder_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-score-event-feeder' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-score-event-feeder' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/hermes-score-event-feeder_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY"
+      },
+      "review_by": "2026-10-25"
     }
   ]
 }

@@ -1,0 +1,22 @@
+{
+  "agent-recommendation-normalizer": {
+    "command": [
+      "$PY",
+      "scripts/agent_recommendation_normalizer.py",
+      "--apply"
+    ],
+    "job_line": "30 8 * * 1-5 cd $PROJ && $PY scripts/agent_recommendation_normalizer.py --apply >> logs/agent_rec_normalizer.log 2>&1",
+    "as_of": "2026-10-11T17:05:28.513179+00:00",
+    "evidence_class": "OBSERVED_HOST"
+  },
+  "hermes-score-event-feeder": {
+    "command": [
+      "$PY",
+      "scripts/hermes_score_event_feeder.py",
+      "--apply"
+    ],
+    "job_line": "*/5 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feeder.py --apply >> logs/hermes_event_feeder.log 2>&1",
+    "as_of": "2026-10-11T17:05:28.513179+00:00",
+    "evidence_class": "OBSERVED_HOST"
+  }
+}

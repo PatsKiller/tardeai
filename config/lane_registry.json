@@ -16336,14 +16336,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "30 8 * * 1-5",
-        "match": "scripts/agent_recommendation_normalizer.py"
+        "match": "scripts/agent_recommendation_normalizer.py",
+        "stage": "shadow",
+        "wave": "R2-08",
+        "command_text": "cd $PROJ && $PY scripts/agent_recommendation_normalizer.py --apply >> logs/agent_rec_normalizer.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/agent_rec_normalizer.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/agent-recommendation-normalizer_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -16357,10 +16360,23 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 8 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Source-only shard08 DRAFT shadow proposal; retain reviewed dispatch intent during reconciliation."
     },
     {
       "lane_id": "event-detector",
@@ -19112,15 +19128,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "*/5 * * * *",
-        "match": "scripts/hermes_score_event_feeder.py"
+        "match": "scripts/hermes_score_event_feeder.py",
+        "stage": "shadow",
+        "wave": "R2-08",
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feeder.py --apply >> logs/hermes_event_feeder.log 2>&1"
       },
       "expected_cadence_hours": 0.08,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/hermes_event_feeder_heartbeat.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/lib/hermes_scope_governor/heartbeat.py:12 FEEDER_HEARTBEAT written by scripts/hermes_score_event_feeder.py:169/244; host mtime 2026-10-09T16:15:03"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-score-event-feeder_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "EVENT_DRIVEN_CANDIDATE",
@@ -19134,10 +19152,23 @@
         "event_driven_candidate": true,
         "f_evidence": "polls */5 * * * *"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "Source-only shard08 DRAFT shadow proposal; retain reviewed dispatch intent during reconciliation."
     },
     {
       "lane_id": "proposal-llm-review-worker",
