@@ -209,33 +209,44 @@ def enforced_policies(doc: dict) -> list[tuple[str, str, int, bool]]:
 
 
 def archive_root() -> "pathlib.Path":
-    from pathlib import Path as _P
-    base = _os.getenv("TRADEAI_STATE_ROOT")
-    root = _P(base) if base else _P.home() / "trade-ai-releases" / "persistent-state"
-    return root / "archive" / "db_retention"
+    """<state>/archive/db_retention (one definition: lib/retention_archive.archive_root)."""
+    return _retention_archive().archive_root()
 
 
-def archive_rows(cur, table: str, col: str, days: int, guard: str) -> tuple[int, str]:
-    """Write the rows about to be deleted to <archive>/<table>/<UTC date>.jsonl.gz. Returns (rows, path)."""
-    import gzip, json as _json
+def archive_rows(cur, table: str, col: str, days: int, guard: str, conn=None) -> tuple[int, str]:
+    """Write the rows about to be deleted to <archive>/<table>/<UTC stamp>.jsonl.gz. Returns (rows, path).
+
+    2026-10-11 (retention-all-managed): rows stream through a server-side cursor when ``conn`` is given
+    (a 90 d content_embeddings night is ~14k rows of ~9 KB; a client-side fetch held all of it in memory),
+    and the file is RE-READ from disk (sha256 + row count against the manifest) before the caller may
+    delete. A failed re-read raises: the caller rolls back and nothing is deleted.
+    """
     from datetime import timezone as _tz
+    _ra = _retention_archive()
     d = archive_root() / table
     d.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(_tz.utc).strftime("%Y%m%dT%H%M%SZ")
     path = d / f"{stamp}.jsonl.gz"
-    cur.execute(f"SELECT row_to_json(t) FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
-    n = 0
-    with gzip.open(path, "wt", encoding="utf-8") as fh:
-        for (row,) in cur:
-            fh.write(_json.dumps(row, default=str) + "\n")
-            n += 1
+    sql = f"SELECT row_to_json(t) FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}"
+    if conn is not None:
+        src = conn.cursor(name=f"db_retention_archive_{table}"[:63])
+        src.itersize = 2000
+    else:
+        src = cur
+    src.execute(sql)
+    n, sha, nbytes = _ra.write_jsonl_gz(src, path)
+    if src is not cur:
+        src.close()
     if n == 0:
         path.unlink(missing_ok=True)
-    else:
-        # 2026-10-09: every archive carries a row count + sha256 manifest (RetentionArchiveManifest@v1).
-        _ra = _retention_archive()
-        _ra.write_manifest(path, table=table, rows=n, sha256=_ra._sha256_file(path), bytes=path.stat().st_size,
-                           predicate=f"{col} < now() - interval '{days} days'")
+        return 0, str(path)
+    # 2026-10-09: every archive carries a row count + sha256 manifest (RetentionArchiveManifest@v1);
+    # 2026-10-11: plus a tripwire line (write_manifest) and a verified re-read before the DELETE.
+    _ra.write_manifest(path, table=table, rows=n, sha256=sha, bytes=nbytes,
+                       predicate=f"{col} < now() - interval '{days} days'")
+    ok, why = _ra.verify_archive(path, expected_rows=n, expected_sha256=sha)
+    if not ok:
+        raise _ra.ArchiveVerifyError(f"{table}: archive re-read failed: {why} (archive {path}); delete refused")
     return n, str(path)
 
 
@@ -449,6 +460,169 @@ def _disk_too_low_for_retention():
     return None
 
 
+# ── File prunes (2026-10-11, retention-all-managed) ──────────────────────────
+# The four globs that used to be hard-coded here (and unlink()ed with no archive) are registry rows now:
+# config/data_retention_policy.json ``file_prune`` (FilePrunePolicy). ``archive: true`` (all four) tars the
+# selected files with a per-member sha256 manifest + tripwire under <state>/archive/file_prune/<id>/,
+# re-reads the tar, and only then unlinks. ``archive: false`` keeps the inherited unlink (rollback lever).
+LEGACY_FILE_PRUNE = [
+    {"id": "raw_snapshots", "dir": "data/portfolios/state/raw_snapshots", "pattern": "*.json", "days": 14},
+    {"id": "ticker_snapshot_history", "dir": "data/portfolios/state/ticker_snapshot_history", "pattern": "*.json",
+     "days": 14},
+    {"id": "ingestion_summaries", "dir": "data/logs", "pattern": "ingestion_summary_*.json", "days": 7},
+    {"id": "catalyst_cache", "dir": "data", "pattern": "catalyst_cache_*.json", "days": 3},
+]
+
+
+def file_prune_policies(doc: dict) -> list[dict]:
+    """Registry ``file_prune`` rows; the legacy list (archive off) only if the registry has none."""
+    rows = doc.get("file_prune")
+    if rows is None:
+        return [{**r, "archive": False} for r in LEGACY_FILE_PRUNE]
+    out = []
+    for r in rows:
+        if not r.get("id") or not r.get("dir") or not r.get("pattern") or not isinstance(r.get("days"), int):
+            raise SystemExit(f"ERROR: file_prune row {r!r} needs id, dir, pattern and int days")
+        out.append(r)
+    return out
+
+
+def select_old_files(directory: "pathlib.Path", pattern: str, days: int, now: float | None = None) -> list:
+    import time
+    cutoff = (now if now is not None else time.time()) - days * 86400
+    return sorted(f for f in directory.glob(pattern) if f.is_file() and f.stat().st_mtime < cutoff)
+
+
+def run_file_prunes(policies: list[dict], project: "pathlib.Path", dry_run: bool,
+                    now: float | None = None) -> tuple[int, list[str]]:
+    """Returns (files pruned or would-prune, failed ids). A failed archive unlinks nothing."""
+    ra = _retention_archive()
+    print(f"\n{'DRY RUN — ' if dry_run else ''}File Pruning")
+    print(f"{'Directory':<55} {'Pattern':<25} {'Days':>5}  {'Pruned' if not dry_run else 'Would':>8}  Action")
+    print("-" * 98)
+    total, failed = 0, []
+    for r in policies:
+        directory = project / r["dir"]
+        if not directory.is_dir():
+            continue
+        old = select_old_files(directory, r["pattern"], int(r["days"]), now=now)
+        if not old:
+            continue
+        archive = r.get("archive") is True
+        action = "ARCHIVE+UNLINK" if archive else "UNLINK (no archive)"
+        if not dry_run:
+            try:
+                if archive:
+                    res = ra.archive_files_then_unlink(old, base_dir=directory, archive_dir=ra.file_archive_root() / r["id"],
+                                                       label=r["id"])
+                    action += f" -> {pathlib.Path(res['archive']).name} ({res['bytes']:,} B)"
+                else:
+                    for f in old:
+                        f.unlink()
+            except Exception as e:  # noqa: BLE001 -- one prune failing must not hide the others
+                failed.append(f"file_prune:{r['id']}")
+                print(f"  ERROR: file_prune {r['id']}: {e}")
+                continue
+        total += len(old)
+        print(f"  {str(directory):<53} {r['pattern']:<25} {int(r['days']):>5}  {len(old):>8}  {action}")
+    print("-" * 98)
+    print(f"  Total {'would prune' if dry_run else 'pruned'}: {total:,} files")
+    return total, failed
+
+
+# ── Archive-growth projection (2026-10-11, read-only) ────────────────────────
+# Per enforced row: rows the next run would remove (tonight), rows/day crossing the window (the week
+# just past the boundary) and rows/day arriving (last 7 d), and compressed archive bytes/row from a
+# gzip of a sample of the rows it would archive -> GB/month if the row archives first. The registry's
+# ``archive_growth_cap_gb_month`` is the operator's budget for all archive-first rows together.
+DEFAULT_ARCHIVE_CAP_GB_MONTH = 2.0
+
+
+def project_row(cur, table: str, col: str, days: int, archive_first: bool, sample_rows: int = 200) -> dict:
+    ra = _retention_archive()
+    out = {"table": table, "ts_column": col, "window_days": days, "archive_first": archive_first}
+    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=%s "
+                "AND column_name=%s", (table, col))
+    if not cur.fetchone():
+        out["status"] = "absent"
+        return out
+    guard = fk_guard(cur, table)
+    cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} < now() - make_interval(days => %s){guard}", (days,))
+    out["tonight_rows"] = int(cur.fetchone()[0])
+    cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} >= now() - make_interval(days => %s) "
+                f"AND t.{col} < now() - make_interval(days => %s)", (days + 7, days))
+    out["boundary_rows_per_day"] = round(int(cur.fetchone()[0]) / 7.0, 1)
+    cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} >= now() - interval '7 days'")
+    out["inflow_rows_per_day"] = round(int(cur.fetchone()[0]) / 7.0, 1)
+    cur.execute(f"SELECT row_to_json(t) FROM {table} t WHERE t.{col} < now() - make_interval(days => %s) LIMIT %s",
+                (days, int(sample_rows)))
+    sample = cur.fetchall()
+    out["sample_basis"] = "eligible"
+    if not sample:
+        cur.execute(f"SELECT row_to_json(t) FROM {table} t ORDER BY t.{col} DESC NULLS LAST LIMIT %s", (int(sample_rows),))
+        sample = cur.fetchall()
+        out["sample_basis"] = "newest"
+    bpr = ra.gz_bytes_per_row(sample)
+    out["sample_rows"] = len(sample)
+    out["gz_bytes_per_row"] = round(bpr, 1) if bpr is not None else None
+    rate = max(out["boundary_rows_per_day"], out["inflow_rows_per_day"])
+    out["rows_per_day"] = rate
+    out["gb_per_month"] = round(rate * 30.0 * (bpr or 0.0) / 1e9, 4)
+    out["tonight_archive_gb"] = round(out["tonight_rows"] * (bpr or 0.0) / 1e9, 4)
+    out["status"] = "ok"
+    return out
+
+
+def archive_projection(conn, registry: dict, sample_rows: int = 200, tables: list[str] | None = None) -> dict:
+    """Read-only. The caller opens the session read-only; this only SELECTs."""
+    cur = conn.cursor()
+    rows, errors = [], []
+    for table, col, days, archive_first in enforced_policies(registry):
+        if tables and table not in tables:
+            continue
+        try:
+            rows.append(project_row(cur, table, col, days, archive_first, sample_rows))
+        except Exception as e:  # noqa: BLE001
+            conn.rollback()
+            errors.append({"table": table, "error": f"{type(e).__name__}: {e}"[:200]})
+    cur.close()
+    cap = float(registry.get("archive_growth_cap_gb_month") or DEFAULT_ARCHIVE_CAP_GB_MONTH)
+    ok = [r for r in rows if r.get("status") == "ok"]
+    archiving = [r for r in ok if r["archive_first"]]
+    hard = [r for r in ok if not r["archive_first"]]
+    total_af = round(sum(r["gb_per_month"] for r in archiving), 4)
+    return {"schema": "RetentionArchiveProjection@v1", "as_of": datetime.now().astimezone().isoformat(),
+            "cap_gb_month": cap, "rows": rows, "errors": errors,
+            "archive_first_gb_month": total_af, "hard_delete_gb_month_if_archived": round(sum(r["gb_per_month"] for r in hard), 4),
+            "within_cap": total_af <= cap,
+            "over_cap_rows": sorted([r["table"] for r in archiving if r["gb_per_month"] > cap])}
+
+
+def run_projection(as_json: bool = False, sample_rows: int = 200, tables: list[str] | None = None) -> int:
+    import json as _json
+    conn = _connect()
+    conn.set_session(readonly=True)
+    try:
+        conn.cursor().execute("SET statement_timeout = '120s'")
+        rep = archive_projection(conn, load_registry(), sample_rows=sample_rows, tables=tables)
+    finally:
+        conn.rollback()
+        conn.close()
+    if as_json:
+        print(_json.dumps(rep, indent=1, default=str))
+        return 0 if rep["within_cap"] and not rep["errors"] else 1
+    print(f"ARCHIVE PROJECTION (read-only) — cap {rep['cap_gb_month']} GB/month")
+    print(f"{'Table':<45} {'af':>3} {'days':>5} {'tonight':>9} {'rows/d':>9} {'gzB/row':>8} {'GB/mo':>8}")
+    for r in sorted(rep["rows"], key=lambda r: -(r.get("gb_per_month") or 0)):
+        if r.get("status") != "ok":
+            continue
+        print(f"  {r['table']:<43} {'Y' if r['archive_first'] else '-':>3} {r['window_days']:>5} {r['tonight_rows']:>9} "
+              f"{r['rows_per_day']:>9} {r['gz_bytes_per_row'] or 0:>8.0f} {r['gb_per_month']:>8.4f}")
+    print(f"  archive-first total {rep['archive_first_gb_month']} GB/month (cap {rep['cap_gb_month']}); "
+          f"hard-delete rows if archived: {rep['hard_delete_gb_month_if_archived']} GB/month; errors {len(rep['errors'])}")
+    return 0 if rep["within_cap"] and not rep["errors"] else 1
+
+
 def run(dry_run: bool = False):
     blocked = _disk_too_low_for_retention()
     if blocked and not dry_run:
@@ -457,13 +631,17 @@ def run(dry_run: bool = False):
         return {"ok": False, "skipped": True, "reason": blocked, "deleted": 0}
 
     conn = _connect()
+    if dry_run:
+        # 2026-10-11: a dry run must not be able to REACH a mutation (AGENTS.md §6) -- the session itself
+        # refuses writes, so a code path that forgot to check dry_run fails instead of deleting.
+        conn.set_session(readonly=True)
     cur = conn.cursor()
     total_deleted = 0
     failures: list[str] = []
 
     print(f"{'DRY RUN — ' if dry_run else ''}DB Retention Policy — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"{'Table':<45} {'Column':<18} {'Days':>5}  {'Deleted':>8}")
-    print("-" * 82)
+    print(f"{'Table':<45} {'Column':<18} {'Days':>5}  {'Deleted' if not dry_run else 'Would':>8}  Action")
+    print("-" * 98)
 
     registry = load_registry()
     enforced = enforced_policies(registry)
@@ -489,18 +667,27 @@ def run(dry_run: bool = False):
             if dry_run:
                 count = matching
             else:
+                n_arch = None
                 if archive_first and matching > 0:
-                    n_arch, path = archive_rows(cur, table, col, days, guard)
+                    n_arch, path = archive_rows(cur, table, col, days, guard, conn=conn)
                     if n_arch != matching:
                         raise RuntimeError(f"archived {n_arch} != matching {matching}; delete refused (archive {path})")
-                    archived_total += n_arch
                 cur.execute(f"DELETE FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
                 count = cur.rowcount
+                if n_arch is not None and count != n_arch:
+                    # 2026-10-11: a row that matched between the archive SELECT and the DELETE would be
+                    # deleted unarchived. Roll back; the next night archives the whole set again.
+                    raise RuntimeError(f"deleted {count} != archived {n_arch}; rolled back (archive {path} kept)")
                 conn.commit()
+                if n_arch:
+                    archived_total += n_arch
 
             if count > 0:
                 total_deleted += count
-                print(f"  {table:<43} {col:<18} {days:>5}  {count:>8}")
+                if dry_run and archive_first:
+                    archived_total += count
+                action = "ARCHIVE+DELETE" if archive_first else "DELETE (no archive)"
+                print(f"  {table:<43} {col:<18} {days:>5}  {count:>8}  {action}")
         except Exception as e:
             conn.rollback()
             failures.append(table)
@@ -510,40 +697,24 @@ def run(dry_run: bool = False):
     total_deleted += sw_total
     failures.extend(sw_failed)
 
-    print("-" * 82)
-    print(f"  Total {'would delete' if dry_run else 'deleted'}: {total_deleted:,} rows; archived first: {archived_total:,}"
-          f" (+{sw_total:,} source-window rows, archive-first)")
+    print("-" * 98)
+    # The "Total …: N rows; archived first: M" shape is parsed (report_lane_governance_packet._RET_TOTAL,
+    # weekly_disk_cleanup_notify); a dry run archives nothing, so it reports 0 there and the plan after it.
+    print(f"  Total {'would delete' if dry_run else 'deleted'}: {total_deleted:,} rows; "
+          f"archived first: {0 if dry_run else archived_total:,}"
+          f" (+{sw_total:,} source-window rows, archive-first)"
+          + (f"; would archive first: {archived_total:,}" if dry_run else ""))
+    unarchived = [t for t, _c, _d, af in enforced if not af]
+    print(f"  rows with archive_first: {sum(1 for *_x, af in enforced if af)} of {len(enforced)};"
+          f" hard DELETE (no archive): {len(unarchived)}")
     cur.close()
     conn.close()
 
-    # ── File pruning ─────────────────────────────────────────────
-    import glob, pathlib
+    # ── File pruning (registry ``file_prune``; 2026-10-11 archive-then-unlink) ─────────────────
+    import pathlib
     project = pathlib.Path(os.getenv("PROJECT_ROOT", "."))
-    FILE_PRUNE = [
-        (project / "data/portfolios/state/raw_snapshots", "*.json", 14),
-        (project / "data/portfolios/state/ticker_snapshot_history", "*.json", 14),
-        (project / "data/logs", "ingestion_summary_*.json", 7),
-        (project / "data", "catalyst_cache_*.json", 3),
-    ]
-    print(f"\n{'DRY RUN — ' if dry_run else ''}File Pruning")
-    print(f"{'Directory':<55} {'Pattern':<25} {'Days':>5}  {'Pruned':>8}")
-    print("-" * 98)
-    total_pruned = 0
-    for directory, pattern, days in FILE_PRUNE:
-        if not directory.is_dir():
-            continue
-        import time
-        cutoff = time.time() - days * 86400
-        files = list(directory.glob(pattern))
-        old = [f for f in files if f.stat().st_mtime < cutoff]
-        if old:
-            if not dry_run:
-                for f in old:
-                    f.unlink()
-            total_pruned += len(old)
-            print(f"  {str(directory):<53} {pattern:<25} {days:>5}  {len(old):>8}")
-    print("-" * 98)
-    print(f"  Total {'would prune' if dry_run else 'pruned'}: {total_pruned:,} files")
+    _p_total, p_failed = run_file_prunes(file_prune_policies(registry), project, dry_run)
+    failures.extend(p_failed)
 
     # A table that errors is a policy that is NOT being enforced. This used to
     # print ERROR and still exit 0, so aegis_steph_escalations and
@@ -568,7 +739,14 @@ if __name__ == "__main__":
                              "TRADEAI_DB_WRITE_GRANT=<active db-write grant id>; recorded in the receipt")
     parser.add_argument("--batch-rows", type=int, default=DEFAULT_SOURCE_BATCH_ROWS)
     parser.add_argument("--max-rows", type=int, default=200000, help="per-run cap for the one-time mode")
+    parser.add_argument("--archive-projection", action="store_true",
+                        help="READ-ONLY: per registry row, rows tonight, rows/day, gzip bytes/row and archive GB/month "
+                             "against archive_growth_cap_gb_month. Nothing else runs.")
+    parser.add_argument("--json", action="store_true", help="with --archive-projection: JSON report")
+    parser.add_argument("--table", action="append", help="with --archive-projection: limit to these tables")
     args = parser.parse_args()
+    if args.archive_projection:
+        raise SystemExit(run_projection(as_json=args.json, tables=args.table))
     if args.junk_fused_signal_embeddings:
         raise SystemExit(purge_junk_fused_embeddings(apply=args.apply and not args.dry_run,
                                                      batch_rows=args.batch_rows, max_rows=args.max_rows))

@@ -18,6 +18,11 @@ turns into open incidents until they are fixed:
   ARCHIVE_MISSING      a TRIPWIRE.jsonl record names an archive file that is gone
   TRIPWIRE_UNREADABLE  a TRIPWIRE.jsonl line does not parse
                        (the last three: scripts/lib/retention_tripwire.py; files only, no DB)
+  ARCHIVE_GROWTH       (P2) the retention archive (same disk as the DB) grew faster than the registry's
+                       archive_growth_cap_gb_month over the last 30 d, holds more than archive_total_budget_gb,
+                       or free disk is under 20 GB. Report only: no job deletes an archive (AGENTS.md §0
+                       rule 6); an off-box copy is an operator decision (§17). The size/age table is in the
+                       report as ``archive_usage`` (RetentionArchiveUsage@v1).
 
     python3 scripts/report_db_hygiene.py [--write] [--min-table-mb 20]
 
@@ -76,6 +81,20 @@ def tripwire_findings() -> list[dict]:
                  "detail": f"tripwire reader failed: {type(e).__name__}: {e}"[:160]}]
 
 
+def archive_findings(reg: dict) -> tuple[list[dict], dict | None]:
+    """ARCHIVE_GROWTH (2026-10-11). Files only; never fails the report."""
+    try:
+        import shutil
+        from scripts.lib.retention_archive import archive_growth_findings, archive_usage
+        usage = archive_usage(state_root() / "archive")
+        free = shutil.disk_usage(str(state_root())).free if state_root().exists() else None
+        return archive_growth_findings(usage, cap_gb_month=reg.get("archive_growth_cap_gb_month"),
+                                       total_budget_gb=reg.get("archive_total_budget_gb"), disk_free_bytes=free), usage
+    except Exception as e:  # noqa: BLE001
+        return [{"code": "ARCHIVE_GROWTH", "item": "archive_usage", "severity": "P3",
+                 "detail": f"archive usage reader failed: {type(e).__name__}: {e}"[:160]}], None
+
+
 def collect(reg: dict, min_table_mb: int) -> dict:
     findings: list[dict] = []
     policies = {r["table"]: r for r in reg.get("policies") or []}
@@ -123,11 +142,13 @@ def collect(reg: dict, min_table_mb: int) -> dict:
     if len(sched) == 2 and sched[0] != "0" and sched[1] != "0":
         findings.append({"code": "RETENTION_SCHEDULERS", "item": "db_retention", "severity": "P2", "detail": f"cron lines {sched[0]} AND timers {sched[1]}: one scheduler only"})
     findings.extend(tripwire_findings())
+    arch_f, arch_usage = archive_findings(reg)
+    findings.extend(arch_f)
     by = {}
     for f in findings:
         by[f["code"]] = by.get(f["code"], 0) + 1
     return {"schema": SCHEMA, "authority": "READ_ONLY_ADVISORY", "as_of": datetime.now(timezone.utc).isoformat(), "db_bytes": db_bytes,
-            "size_budget_gb": budget, "tables": len(tables), "policies": len(policies), "findings": findings, "by_code": by,
+            "size_budget_gb": budget, "tables": len(tables), "policies": len(policies), "findings": findings, "by_code": by, "archive_usage": arch_usage,
             "ok": not any(f["severity"] in {"P1", "P2"} for f in findings)}
 
 

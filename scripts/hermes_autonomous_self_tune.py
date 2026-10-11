@@ -182,6 +182,19 @@ def _purge(cur, label: str, sql: str, params=(), apply: bool = True, count_sql: 
     return cur.rowcount
 
 
+def _archived_purge(cur, label: str, table: str, where_sql: str, params=(), apply: bool = True) -> int:
+    """2026-10-11 (retention-all-managed): archive + manifest + tripwire before the DELETE
+    (lib.retention_archive.managed_purge); a dry run counts. ``where_sql`` uses alias ``t``."""
+    try:
+        from lib.retention_archive import managed_purge
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from lib.retention_archive import managed_purge
+    r = managed_purge(cur.connection, table=table, where_sql=where_sql, params=params,
+                      label=f"self_tune_{label}", writer="hermes_autonomous_self_tune", apply=apply)
+    return r["deleted"] if apply else r["eligible"]
+
+
 def self_purge(cur, apply: bool) -> dict:
     out = {}
     # 1. jammed/stale queues
@@ -194,26 +207,31 @@ def self_purge(cur, apply: bool) -> dict:
     rq = _purge(cur, "embed_requeue", """UPDATE hermes_embedding_queue SET embedding_status='pending'
               WHERE embedding_status='failed' AND created_at >= NOW() - (%s||' days')::interval""",
               (EMBED_DROP_DAYS,), apply)
-    dr = _purge(cur, "embed_drop", """DELETE FROM hermes_embedding_queue
-              WHERE embedding_status='failed' AND created_at < NOW() - (%s||' days')::interval""",
+    dr = _archived_purge(cur, "embed_drop", "hermes_embedding_queue",
+              "t.embedding_status='failed' AND t.created_at < NOW() - (%s||' days')::interval",
               (EMBED_DROP_DAYS,), apply)
     out["embeddings_requeued"], out["embeddings_dropped"] = rq, dr
     # 3. aged rows
-    out["score_history_purged"] = _purge(cur, "score_hist",
-        "DELETE FROM hermes_score_history WHERE scored_at < NOW() - (%s||' days')::interval", (SCORE_HISTORY_DAYS,), apply)
-    out["research_purged"] = _purge(cur, "research",
-        "DELETE FROM hermes_research_intelligence WHERE created_at < NOW() - (%s||' days')::interval AND status IN ('rejected','superseded','expired')",
+    out["score_history_purged"] = _archived_purge(cur, "score_hist", "hermes_score_history",
+        "t.scored_at < NOW() - (%s||' days')::interval", (SCORE_HISTORY_DAYS,), apply)
+    out["research_purged"] = _archived_purge(cur, "research", "hermes_research_intelligence",
+        "t.created_at < NOW() - (%s||' days')::interval AND t.status IN ('rejected','superseded','expired')",
         (RESEARCH_DAYS,), apply)
-    out["external_purged"] = _purge(cur, "external",
-        "DELETE FROM hermes_external_research WHERE created_at < NOW() - (%s||' days')::interval", (EXTERNAL_DAYS,), apply)
-    # 4. dead legacy tables
+    out["external_purged"] = _archived_purge(cur, "external", "hermes_external_research",
+        "t.created_at < NOW() - (%s||' days')::interval", (EXTERNAL_DAYS,), apply)
+    # 4. dead legacy tables -- 2026-10-11: archived DELETE of every row instead of TRUNCATE (rule 6); the
+    #    tables held 0 rows when measured, so this is the same no-op until something writes to them again.
     out["dead_tables_truncated"] = []
     for t in DEAD_TABLES:
         try:
-            if apply:
-                cur.execute(f"TRUNCATE TABLE {t}")
+            cur.execute("SELECT to_regclass(%s)", (t,))
+            if cur.fetchone()[0] is None:
+                out.setdefault("dead_table_errors", []).append(f"{t}: absent")
+                continue
+            _archived_purge(cur, "dead_table", t, "TRUE", (), apply)
             out["dead_tables_truncated"].append(t)
         except Exception as e:
+            cur.connection.rollback()
             out.setdefault("dead_table_errors", []).append(f"{t}: {str(e)[:60]}")
     if apply:
         _audit(cur, "self_purge", out, sum(v for v in out.values() if isinstance(v, int)))

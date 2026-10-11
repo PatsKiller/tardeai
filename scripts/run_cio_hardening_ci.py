@@ -2152,6 +2152,8 @@ GATES = [
             "tests/test_agents_policy_5_0_0_execution_ops.py",
             # AGENTS.md 5.1.0 (PROPOSED 2026-10-11): §9.1 operator-action messages are P1 intents, bypass is legacy.
             "tests/test_agents_policy_5_1_0_notification_intents.py",
+            # AGENTS.md 5.2.0 (PROPOSED 2026-10-11): §8.1 working = tests + dry run + forced run; natural fires monitored.
+            "tests/test_agents_policy_5_2_0_validation.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -4062,6 +4064,14 @@ GATES = [
         # content_embeddings 90 d rail (librarian defers), archive_first registry flag default OFF.
         "db_retention_hardening_20261011",
         ["tests/test_retention_hardening_20261011.py"],
+    ),
+    (
+        # Retention all managed 2026-10-11 (operator: "Add, enable, and manage all deletes and purges"):
+        # archive_first on 93/96 DELETE rows, managed_purge for every converted owner (librarian, siem,
+        # protection prune, research critique, self-tune), file_prune archive-then-unlink, archive projection
+        # + ARCHIVE_GROWTH, purge_paths registry + unregistered-deleter gate.
+        "retention_all_managed_20261011",
+        ["tests/test_retention_all_managed_20261011.py"],
     ),
     (
         # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
