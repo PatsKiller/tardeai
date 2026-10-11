@@ -51,14 +51,14 @@
   }
  },
  "summary": {
-  "lanes": 114,
+  "lanes": 113,
   "actions": 165,
   "lanes_with_auto_rerun": 50,
-  "lanes_suggest_only": 64,
+  "lanes_suggest_only": 63,
   "by_severity": {
    "Critical": 19,
    "High": 21,
-   "Medium": 56,
+   "Medium": 55,
    "Low": 18
   }
  },
@@ -6197,39 +6197,6 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": null
-  },
-  {
-   "schema": "N8nLaneRemediation@v1",
-   "lane_id": "sec-filings-feed",
-   "severity": "Medium",
-   "severity_basis": "cron:L999: business_function=research",
-   "inv_ids": [
-    "cron:L999"
-   ],
-   "classification": [
-    "Not Recommended for Migration"
-   ],
-   "migration_risk": [
-    "Low"
-   ],
-   "known_issues": [
-    {
-     "inv_id": "cron:L999",
-     "known_issues": "None measured (20 runs/0 failures per base).",
-     "custom_work_required": "None (already beats a heartbeat)"
-    }
-   ],
-   "registry": {
-    "present": true,
-    "state": "ACTIVE",
-    "scheduler_kind": "cron",
-    "stage": "shadow"
-   },
-   "allowlisted": true,
-   "allowlist_source": "config/n8n_run_allowlist.json",
-   "actions": [],
-   "default_action": "suggest_only",
-   "suggest_only_reason": "inventory must_remain_outside_n8n=yes"
   },
   {
    "schema": "N8nLaneRemediation@v1",

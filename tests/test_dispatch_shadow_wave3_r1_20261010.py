@@ -223,9 +223,10 @@ def test_activated_registry_has_no_dispatch_issue_once_active(monkeypatch):
     # + 10 refactor train 3 rows (shards 01-04, 2026-10-11; tests/test_refactor_shard_0[1-4]_20261011.py): 13 proposed,
     # 3 (register-analyst-sources, source-outcome-attribution, research-intelligence-materialize) stay RETIRED into the
     # premarket C1 stage (train 2), so they are not shadow rows.
-    # + 12 train 4 rows (shards 05-08, 2026-10-11; tests/test_refactor_shard_0[5-8]_20261011.py): 22 proposed, 5 stay
-    # RETIRED into the premarket C1 stage (train 2) and 5 are SW4 EXCLUDED (tests/test_sw4_shadow_wave4_20261011.py).
-    assert len(r1_cron_shadow) == len(WAVE3_LIVE) + 3 + 15 + 10 + 12
+    # + 11 train 4 rows (shards 05-08, 2026-10-11; tests/test_refactor_shard_0[5-8]_20261011.py): 22 proposed, 5 stay
+    # RETIRED into the premarket C1 stage (train 2), 5 are SW4 EXCLUDED (tests/test_sw4_shadow_wave4_20261011.py) and
+    # sec-filings-feed is W4 provider-owner EXCLUDED (tests/test_w4_provider_owners_shadow_20261011.py).
+    assert len(r1_cron_shadow) == len(WAVE3_LIVE) + 3 + 15 + 10 + 11
     assert len(errs) == len(r1_cron_shadow) and all("shadow_on_cron_not_ratified" in x for x in errs), errs[:3]
     monkeypatch.setattr(LD, "R1_SHADOW_SHAPE_STATUS", "ACTIVE")
     assert LD.registry_dispatch_errors(doc) == []

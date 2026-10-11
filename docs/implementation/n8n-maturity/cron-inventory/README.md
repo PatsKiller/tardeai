@@ -100,9 +100,10 @@ No cron, systemd, n8n or runtime change; release remains blocked by operator rev
 
 ### 2026-10-11 merge train 4 (shards 05–08 integrated, source only)
 
-Of the 17 ACTIVE shard 05–08 proposals, 12 are admitted as shadow rows (DRAFT contracts, allowlist report mode,
+Of the 17 ACTIVE shard 05–08 proposals, 11 are admitted as shadow rows (DRAFT contracts, allowlist report mode,
 `live_arg` null). Held with train 2's rows (no allowlist entry, no contract): the five lanes train 2 RETIRED into the
 premarket C1 stage (price-db-sync, sync-dividend-data, iris-proposal-curator, run-sec-form4-momentum-context,
 watch-valuation-backfill) and the five SW4-excluded lanes (agent-recommendation-normalizer,
 build-symbol-profiles-at-0-19, social-ingest-stocktwits with its social-ingest-scalp-hot split,
-cio-stance-classification-drain, drain-discovery-backlog). Shard source changes are kept. No cron, systemd or n8n change.
+cio-stance-classification-drain, drain-discovery-backlog) and sec-filings-feed (W4 provider-owner EXCLUDED: "refactor
+first, then a W4 row"; shard 06 did the refactor, re-admission is the owner's call). Shard source changes are kept. No cron, systemd or n8n change.

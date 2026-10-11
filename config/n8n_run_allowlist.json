@@ -2394,39 +2394,6 @@
       "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1"
     },
     {
-      "lane_id": "sec-filings-feed",
-      "command": [
-        "$PY",
-        "scripts/sec_filings_feed.py",
-        "--apply"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "lock": "/tmp/tradeai_sec_filings_feed.lock",
-      "lock_kind": "flock",
-      "timeout_s": 600,
-      "market_gate": false,
-      "output_signal": "data/runtime/sec-filings-feed_last.json",
-      "env_names": [
-        "DB_CONN_TRACE",
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "PGAPPNAME",
-        "SEC_USER_AGENT",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT"
-      ],
-      "env_allowlist_mode": "report",
-      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
-      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
-      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 20 8,12,17,21 * * 1-5 CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> /home/johnclaw/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1"
-    },
-    {
       "lane_id": "trade-thesis-review-engine",
       "command": [
         "$PY",

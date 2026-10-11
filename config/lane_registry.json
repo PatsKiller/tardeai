@@ -5493,10 +5493,8 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 8,12,17,21 * * 1-5",
-        "command_text": "20 8,12,17,21 * * 1-5 CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> /home/johnclaw/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1",
-        "match": "sec_filings_feed.py",
-        "stage": "shadow",
-        "wave": "R2-06"
+        "command_text": "sec_filings_feed.py --apply",
+        "match": "sec_filings_feed.py"
       },
       "expected_cadence_hours": 6.0,
       "active_days": [
@@ -5512,9 +5510,8 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "first run: 67 symbols, 51 fetched, 49 FilingEvent@v1 rows (10 high) in data/cio/sec_filing_events.jsonl; projector applied 49 EVENT nodes + 49 AFFECTED_BY edges (intelligence.gir_entity/gir_edge); SLA row seeded",
       "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/sec-filings-feed_last.json",
-        "key": "ok_at"
+        "kind": "file_mtime",
+        "path": "data/runtime/sec_filings_feed_latest.json"
       },
       "note": "Wave 2 item 5 (02 §2 Market class): free EDGAR submissions feed → FilingEvent@v1 (append-only JSONL) → EVENT nodes + AFFECTED_BY edges in the GIR (projector) and MaterialChange kind sec_filing via the detector (the Market owner). One request per symbol per run, fair-access User-Agent.",
       "value_class": "Operationally Important",
@@ -5529,20 +5526,7 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "20 8,12,17,21 * * 1-5"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
-      },
-      "adopted_on": "2026-10-11",
-      "adopted_reason": "SOURCE_ONLY shard06 proposal; exact approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00; no runtime or natural schedule observation; cron continues doing real work"
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
       "lane_id": "contradiction-adjudicator",

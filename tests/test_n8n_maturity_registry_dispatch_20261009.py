@@ -471,12 +471,13 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # + 10: refactor train 3 (shards 01-04, 2026-10-11) source shadow rows (R1 ingest/learn, dry_run, live_arg null);
     # 3 of the 13 proposals stay RETIRED into the premarket C1 stage (train 2).
     # + 12: train 4 (shards 05-08, 2026-10-11). The shards proposed 6 + 7 + 7 + 2 = 22; five stay RETIRED into the
-    # premarket C1 stage (train 2 rows win) and five are pinned off the dispatcher by SW4 EXCLUDED
-    # (tests/test_sw4_shadow_wave4_20261011.py): 22 - 5 - 5 = 12 shadow rows.
+    # premarket C1 stage (train 2 rows win), five are pinned off the dispatcher by SW4 EXCLUDED
+    # (tests/test_sw4_shadow_wave4_20261011.py) and sec-filings-feed by the W4 provider-owner EXCLUDED list
+    # (tests/test_w4_provider_owners_shadow_20261011.py): 22 - 5 - 5 - 1 = 11 shadow rows.
     refactor = {r["lane_id"] for r in rows if (r.get("scheduler") or {}).get("wave") in
                 {"R2-05", "R2-06", "R2-07", "R2-08"}}
-    assert len(refactor) == 12 and refactor <= set(shadow), refactor
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 12, shadow
+    assert len(refactor) == 11 and refactor <= set(shadow), refactor
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11, shadow
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
 
 
