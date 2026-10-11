@@ -116,7 +116,7 @@ def test_version_row_is_major_and_waits_for_the_operator():
 
 
 def test_banner_explains_the_class_and_the_number():
-    start = AGENTS.index("**5.0.0 is PROPOSED (MAJOR)")
+    start = AGENTS.index("**5.0.0 is ")  # PROPOSED until ratified; ACTIVE after (#1686, 0ec320486)
     f = _flat(AGENTS[start : AGENTS.index("**4.3.0 is ACTIVE", start)])
     for frag in ("Why MAJOR", "4.7.0", "weakest guarantee", "PR #1682", "PR #1666", "does not ratify 4.6.0",
                  f"{TOKEN} <pr_number> <head_sha>", "execution-ops", "≤ 6 h"):
