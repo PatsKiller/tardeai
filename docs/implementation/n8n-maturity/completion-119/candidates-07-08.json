@@ -1,7 +1,7 @@
 {
   "schema": "RefactorCompletionCandidates@v1",
-  "as_of": "2026-10-11T21:43:17.340147+00:00",
-  "base_sha": "c15b7b98caa3909665ac5abb878f02eb558d6ff6",
+  "as_of": "2026-10-11T21:53:40.456464+00:00",
+  "base_sha": "65337da5366b469c8478b198187201bd37671bc2",
   "branch": "n8nmat/completion-119-07-08-20261011",
   "evidence_class": "SOURCE_ONLY",
   "runtime": "NOT_MEASURED",
@@ -1866,14 +1866,27 @@
   "operational_configs_changed": false,
   "new_reviewed_contracts": 0,
   "validation": {
-    "targeted": "STOPPED_ON_REFUSAL",
-    "refused_path": "/run/user/1000/tradeai/env",
-    "attribution": "NOT_MEASURED",
-    "artifact": "reassess-gates/targeted.json",
+    "targeted": "PASS",
+    "tested_head": "ae36b8c5ca836bccbac237dd05a3c0d533a66ab6",
+    "targeted_tests_passed": 165,
+    "affected_w3_rag_tests_passed": 6,
+    "refusals_on_corrected_head": [],
     "descendants_reaped_to_empty": true,
+    "artifact": "docs/implementation/n8n-maturity/completion-119/validation-07-08.json",
+    "prior_refused_attempt": {
+      "status": "STOPPED_ON_REFUSAL",
+      "refused_path": "/run/user/1000/tradeai/env",
+      "attribution": "NOT_MEASURED",
+      "artifact": "reassess-gates/targeted.json",
+      "descendants_reaped_to_empty": true,
+      "accepted": false
+    },
     "ruff": "PASS",
     "ast": "PASS",
     "crlf": "PASS",
+    "lie_expectations": "PENDING_AGENT04_SOURCE_INTEGRATION",
     "full_ci_profile": "INTEGRATOR_PENDING"
-  }
+  },
+  "main_observed_at_validation": "c15b7b98caa3909665ac5abb878f02eb558d6ff6",
+  "shared_prerequisite_sha": "910fbe0ab"
 }
