@@ -111,8 +111,14 @@ def test_job_coverage_db_checks_all_carried_with_their_cadence_on_an_active_prod
         assert f"MAX({sig['column']}) FROM {sig['table']}" in sql, (name, sql)
         if "where" in sig and " OR " not in sig["where"]:
             assert sig["where"] in sql
-        sched = json.dumps(LANES[c["lane_id"]].get("scheduler")) + json.dumps(LANES[c["lane_id"]].get("exec_start") or "")
-        assert job["schedule_match"] in sched, (name, c["lane_id"])
+        producer = c["lane_id"]
+        if c.get("producer_before_c1"):
+            # C1 premarket flip (2026-10-11): the producer row is RETIRED into the stage lane that now runs its cron
+            # line verbatim; the contract follows the stage lane (a RETIRED lane_id is never judged).
+            producer = c["producer_before_c1"]
+            assert LANES[producer]["state"] == "RETIRED" and LANES[producer]["superseded_by"] == c["lane_id"], name
+        sched = json.dumps(LANES[producer].get("scheduler")) + json.dumps(LANES[producer].get("exec_start") or "")
+        assert job["schedule_match"] in sched, (name, producer)
 
 
 def test_candidate_discovery_or_clause_is_the_same_set_as_the_in_list():

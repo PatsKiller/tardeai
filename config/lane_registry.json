@@ -21530,7 +21530,7 @@
     },
     {
       "key": "jcm.research_watchlist_discovery",
-      "lane_id": "research-watchlist-discovery",
+      "lane_id": "premarket-data-pipeline",
       "signal": {
         "kind": "db_max",
         "table": "data_source_health",
@@ -21543,7 +21543,9 @@
       "source": "scripts/job_coverage_monitor.py:126-127 research_watchlist_discovery",
       "replaces": [
         "job-coverage-monitor"
-      ]
+      ],
+      "producer_before_c1": "research-watchlist-discovery",
+      "producer_note": "C1 premarket flip 2026-10-11: the producer row is RETIRED into premarket-data-pipeline (its cron line runs verbatim as a stage step), so lane_due follows the stage lane; a RETIRED lane_id would make supervisor_breach_detector skip this contract."
     },
     {
       "key": "jcm.sync_social_to_intelligence",
@@ -21581,7 +21583,7 @@
     },
     {
       "key": "jcm.candidate_discovery_orchestrator",
-      "lane_id": "candidate-discovery-orchestrator",
+      "lane_id": "premarket-data-pipeline",
       "signal": {
         "kind": "db_max",
         "table": "data_source_health",
@@ -21595,7 +21597,9 @@
       "replaces": [
         "job-coverage-monitor"
       ],
-      "note": "job_coverage's IN (...) list written as OR: lane_registry._SAFE_WHERE admits no comma"
+      "note": "job_coverage's IN (...) list written as OR: lane_registry._SAFE_WHERE admits no comma",
+      "producer_before_c1": "candidate-discovery-orchestrator",
+      "producer_note": "C1 premarket flip 2026-10-11: the producer row is RETIRED into premarket-data-pipeline (its cron line runs verbatim as a stage step), so lane_due follows the stage lane; a RETIRED lane_id would make supervisor_breach_detector skip this contract."
     },
     {
       "key": "pfm.ticker_snapshot_daily",
