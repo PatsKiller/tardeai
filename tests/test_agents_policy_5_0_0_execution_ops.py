@@ -178,7 +178,8 @@ def test_adapters_carry_rule_2_and_at_most_the_exact_sentence(adapter):
 def test_24_10_is_proposed_with_its_own_token_and_every_bullet_cites_a_cause():
     s = _s2410()
     head = _flat(s[:700])
-    if _control("Status") == "PROPOSED":
+    # Only while 5.0.0 itself is the PROPOSED header; a later PROPOSED version (5.1.0) leaves §24.10 ACTIVE.
+    if _version() == (5, 0, 0) and _control("Status") == "PROPOSED":
         assert "PROPOSED (MAJOR)" in head and f"{TOKEN} <pr_number> <head_sha>" in head
         assert "binds nothing" in head
     bullets = re.split(r"\n- ", s)[1:]

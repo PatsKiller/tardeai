@@ -2150,6 +2150,8 @@ GATES = [
             "tests/test_agents_policy_4_6_0_platform_rules.py",
             # AGENTS.md 5.0.0 (2026-10-10): operator-run adapter sync + execution-ops guard scope (§24.10).
             "tests/test_agents_policy_5_0_0_execution_ops.py",
+            # AGENTS.md 5.1.0 (PROPOSED 2026-10-11): §9.1 operator-action messages are P1 intents, bypass is legacy.
+            "tests/test_agents_policy_5_1_0_notification_intents.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
