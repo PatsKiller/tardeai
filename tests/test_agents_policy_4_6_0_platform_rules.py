@@ -70,7 +70,12 @@ def _section(text: str, start: str, end: str) -> str:
     block = text[s.start() : s.start() + 1 + e.start()]
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned — same mask as
     # the 4.1.0/4.3.0/4.4.0 pins (operator 2026-10-10 'Yes, from one to six', item 5; PR #1678).
-    return re.sub(r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)", r"\1\n<generated>\n\2", block, flags=re.S)
+    return re.sub(
+        r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)",
+        r"\1\n<generated>\n\2",
+        block,
+        flags=re.S,
+    )
 
 
 def _s24() -> str:
@@ -107,7 +112,8 @@ def test_version_row_waits_for_the_operator_with_the_exact_phrase():
 def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     start = AGENTS.index("**4.6.0 is PROPOSED (MINOR)")
     f = _flat(AGENTS[start : AGENTS.index("**4.3.0 is ACTIVE", start)])
-    assert "PR #1666" in f and "renumbers to 4.5.0" in f and "becomes 5.0.0" in f
+    # #1666 (4.4.1 + 4.5.0) merged as dd8f4cff1; the banner now names that merge instead of "renumbers to 4.5.0".
+    assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
 
