@@ -8270,8 +8270,8 @@
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
    "status": "DRAFT",
-   "target_reason": "stage:shadow",
-   "stage": "shadow",
+   "target_reason": "stage:canary",
+   "stage": "canary",
    "purpose": {
     "text": "06:50/12:50/18:50: extract structured insights (strategy type, thesis, horizon, confidence) from recent news and catalysts",
     "business_function": "research",
@@ -8330,16 +8330,16 @@
    ],
    "healthy": [
     {
-     "check": "shadow_dry_run_done",
-     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+     "check": "last_live_run_done",
+     "text": "the latest live run is RUN_DONE in the coordination ledger"
     },
     {
-     "check": "dry_run_writes_nothing",
-     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+     "check": "output_advanced",
+     "text": "data/runtime/research-insight-extractor_last.json advanced on that run (RunReceipt output_signal_mtime_after > before, or LaneRunReceipt ok_at moved)"
     },
     {
-     "check": "cron_twin_output_fresh",
-     "text": "the live cron line keeps the registry output_signal data/runtime/research-insight-extractor_last.json fresh within 24.0 h (2x cadence)"
+     "check": "fresh",
+     "text": "the output_signal is younger than 24.0 h (2x cadence)"
     },
     {
      "check": "duration_within_baseline",
@@ -8394,8 +8394,8 @@
      "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is missing or malformed, or the as_of is in the future) for more than one input cadence"
     },
     {
-     "check": "dry_run_wrote",
-     "text": "a dry_run changed its output_signal or any durable state"
+     "check": "stale_output",
+     "text": "RUN_DONE but the output_signal did not advance"
     }
    ],
    "baseline": {
@@ -8404,7 +8404,7 @@
     "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
     "timeout_s": 300,
     "class": "ingest",
-    "computed_on": "2026-10-10",
+    "computed_on": "2026-10-11",
     "basis": "CLASS_DEFAULT_PROVISIONAL",
     "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
     "runs_considered": 0,

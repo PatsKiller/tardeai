@@ -3800,6 +3800,11 @@ GATES = [
             # SW4 env narrowing: nine lane scripts copy only named keys from <checkout>/.env (no broker credential
             # reaches os.environ); etf_performance_enrich strict argparse. Hermetic: scratch .env, monkeypatched env.
             "tests/test_sw4_env_narrowing_20261011.py",
+            # Canary wave 1 (2026-10-11): research-insight-extractor (L418) at the §23.18 (c) canary-on-cron shape
+            # (stage canary, dispatch.mode live, live_arg [] == the cron argv, flock lock == the cron line's lock),
+            # canary health contract present, gate refusals for lock mismatch / safe_flock / no cron lock / null
+            # live_arg; no other R1 shadow row gains a live argv. Hermetic: repo config read only.
+            "tests/test_canary_wave1_20261011.py",
             # W4 canary blocker (2026-10-11): finviz_enrichment._load_env copies only the six FINVIZ_* names (= the
             # lane's allowlist FINVIZ_* env_names) from the tmpfs render / .env into os.environ, never ALPACA_* /
             # SCHWAB_* / any other render name, on both the resolve_secret and the fallback path; it is the module's

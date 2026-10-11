@@ -51,6 +51,8 @@ W5_LANES = {
     ],
     "research-insight-extractor": [{"source": "run_done", "lane_id": "news-to-catalyst"}],
 }
+#: W5 trigger rows that canary wave 1 moved to canary (live cron slots; event fires inert while live).
+W5_CANARY_LANES = frozenset({"research-insight-extractor"})
 
 
 # ── fixtures and helpers ────────────────────────────────────────────────────────────────────────
@@ -509,8 +511,16 @@ def test_w5_registry_rows_are_shadow_dry_run_with_their_triggers():
     for lane, trig in W5_LANES.items():
         row = by_id[lane]
         block = LD.parse_dispatch_block(row)
-        assert row["dispatch"]["triggers"] == trig and block.mode == "dry_run" and block.min_interval_s >= 900
-        assert row["scheduler"]["stage"] == "shadow" and allow[lane]["live_arg"] is None
+        assert row["dispatch"]["triggers"] == trig and block.min_interval_s >= 900
+        if lane in W5_CANARY_LANES:
+            # canary wave 1 (2026-10-11, merged in train-migration-20261011) moved this row to canary: dispatch.mode
+            # live on its cron slots; its triggers stay inert (n8n_due.EVENT_MODES is dry_run only) until the
+            # operator rules an event canary.
+            assert block.mode == "live" and block.mode not in D.EVENT_MODES
+            assert row["scheduler"]["stage"] == "canary" and allow[lane]["live_arg"] is not None
+        else:
+            assert block.mode == "dry_run"
+            assert row["scheduler"]["stage"] == "shadow" and allow[lane]["live_arg"] is None
         assert LD.dispatch_eligible(row)[0] and LD.r1_class_admission(row, allow[lane])[0]
         assert all(t.domain in AS.DOMAINS for t in block.triggers if t.source == "broker_as_of")
         assert LD.validate_dispatch_block(row, known_lane_ids=set(by_id), retry_policy_names={"none"}) == []

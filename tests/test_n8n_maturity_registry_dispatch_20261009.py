@@ -441,6 +441,10 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
         lane = row["lane_id"]
         assert LD.validate_dispatch_block(row, known_lane_ids=known) == [], lane
         mode = LD.dispatch_mode(row)
+        if lane in CANARY_ROWS:  # canary wave 1 (2026-10-11): the §23.18 (c) canary shape, tests/test_canary_wave1_20261011.py
+            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
+            assert LD.r1_class_admission(row, allow[lane]) == (True, "r1_admitted:ingest"), lane
+            continue
         assert mode in ("off", "dry_run"), lane
         if mode == "off":
             continue
@@ -461,7 +465,13 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # hermes-config-governor (L671) into stage hermes-learning-pipeline-learn; its row leaves D1b (dispatch_retired).
     # + 3 W4 provider owners (R1 ingest, 2026-10-11): finviz-enrichment, sec-data-ingest, social-ingest-all.
     # + 15 SW4 R1 rows (shadow wave 4, 2026-10-11): 10 ingest, 5 learn (tests/test_sw4_shadow_wave4_20261011.py).
-    assert len(shadow) == 54 + 3 + 15, shadow
+    # - 1: canary wave 1 (2026-10-11) moves research-insight-extractor to canary.
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS), shadow
+    assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
+
+
+#: canary wave 1 (2026-10-11): the only rows at dispatch.mode live (stage canary, the cron line's flock lock).
+CANARY_ROWS = frozenset({"research-insight-extractor"})
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.
