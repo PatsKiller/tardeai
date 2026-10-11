@@ -3864,6 +3864,11 @@ GATES = [
             # per-script .env loops of the enforced lanes copy only _ENV_KEYS and _ENV_KEYS covers every name their
             # closure reads. Hermetic: fake render/.env in tmp_path, psycopg2 stubbed, synthetic values only.
             "tests/test_env_bootstrap_narrow_20261011.py",
+            # Broker env-name read audit (operator 2026-10-11, step 1 of 3; log only): TRADEAI_BROKER_ENV_AUDIT=1
+            # records which process/module reads each broker NAME (never a value), no-op when unset, recorder
+            # failures swallowed, throttled per (process, name, caller), bulk copies tagged, report aggregation.
+            # Hermetic: subprocesses with synthetic values and a tmp state root.
+            "tests/test_broker_env_audit_20261011.py",
         ],
     ),
     (
