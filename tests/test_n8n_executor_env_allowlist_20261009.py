@@ -425,4 +425,8 @@ def test_enforced_inventories_cover_every_literal_read_in_the_import_closure(lan
 def test_lane_mode_counts_match_the_pr():
     modes = [e["env_allowlist_mode"] for e in LANES.values()]
     # 7 (P7) + 10 flipped 2026-10-11 once their env-file loaders were narrowed (test_env_bootstrap_narrow_20261011).
+    # 2026-10-11 G8: cio_production_eligibility's state-root reads are literals. That clears the
+    # unresolved-read failure for the report lanes that import it. Re-measured in
+    # tests/test_grok_g8_g9_env_20261011.py: every one of those closures is still above 10 modules,
+    # so the enforce count stays 17.
     assert modes.count("enforce") == 17 and modes.count("report") == len(LANES) - 17

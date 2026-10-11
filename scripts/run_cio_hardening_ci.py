@@ -3867,6 +3867,13 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: GROK_G8_G9_ENV_20261011 — literal state-root reads in cio_production_eligibility,
+        # and DB-only env copies in the hermes bridges and catalyst_momentum_engine. Hermetic:
+        # tmp env files, synthetic values. The closure re-measure pins that no report lane flips.
+        "grok_g8_g9_env_20261011",
+        ["tests/test_grok_g8_g9_env_20261011.py"],
+    ),
+    (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
         # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
