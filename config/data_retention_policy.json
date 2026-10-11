@@ -345,9 +345,9 @@
    "class": "DELETE",
    "window_days": 90,
    "archive": false,
-   "archive_first": false,
+   "archive_first": true,
    "owner": "platform",
-   "reason": "db_retention is the SOLE owner of the 90 d age rail (2026-10-11: the hermes librarian's duplicate 90 d purge defers to it, config/hermes_librarian_policy.yaml content_embeddings.max_age_owner); archive_first=false keeps the inherited hard DELETE, set true to archive + tripwire before the delete (takes effect at the next release); source_windows (fused_signal/social_post 30 d) declared but OFF (source_windows_enabled=false, 2026-10-09 audit F: windows on embedding created_at loop; social_post deletion not approved); the one-time junk fused_signal purge stays manual under a db-write grant (TRADEAI_DB_WRITE_GRANT)",
+   "reason": "db_retention is the SOLE owner of the 90 d age rail (2026-10-11: the hermes librarian's duplicate 90 d purge defers to it, config/hermes_librarian_policy.yaml content_embeddings.max_age_owner); archive_first=true (operator 2026-10-11: archive the 90 d rows, then delete): every 90 d delete is archived + manifested + tripwired first; false restores the inherited hard DELETE (takes effect at the next release); source_windows (fused_signal/social_post 30 d) declared but OFF (source_windows_enabled=false, 2026-10-09 audit F: windows on embedding created_at loop; social_post deletion not approved); the one-time junk fused_signal purge stays manual under a db-write grant (TRADEAI_DB_WRITE_GRANT)",
    "since": "2026-10-07",
    "source_windows": {
     "fused_signal": 30,
