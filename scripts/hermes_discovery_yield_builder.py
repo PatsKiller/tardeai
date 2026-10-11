@@ -11,6 +11,11 @@ Linkage paths (in priority order):
 
 Every path is advisory-only, zero broker imports.
 
+Shard03: explicit --dry-run prints an offline plan and opens no DB or credential file.
+Real runs leave a LaneRunReceipt@v1 under TRADEAI_STATE_ROOT; failures preserve the previous
+ok_at. A kill-switch skip does not refresh ok_at. This lane already belongs to C1 learning;
+this source change does not create a second scheduler.
+
 Usage:
   python scripts/hermes_discovery_yield_builder.py [--apply] [--dry-run]
 """
@@ -34,10 +39,11 @@ LOOKBACK_DAYS = 90  # outcome window
 
 def get_db():
     env_path = PROJECT_ROOT / ".env"
-    db_pass = None
-    for line in env_path.read_text().splitlines():
-        if line.startswith("DB_PASSWORD="):
-            db_pass = line.split("=", 1)[1]
+    db_pass = os.getenv("DB_PASSWORD")
+    if not db_pass:
+        for line in env_path.read_text().splitlines():
+            if line.startswith("DB_PASSWORD="):
+                db_pass = line.split("=", 1)[1]
     if not db_pass:
         raise RuntimeError("DB_PASSWORD not found")
     import psycopg2
@@ -250,15 +256,33 @@ def compute_yield_file(*, apply: bool = False) -> dict:
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
-def main():
-    parser = argparse.ArgumentParser(description="Hermes Discovery Yield Builder (Phase 5)")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Hermes Discovery Yield Builder (Phase 5)", allow_abbrev=False)
     parser.add_argument("--apply", action="store_true", help="Write yield file (default: dry-run)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true", help="Output JSON")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if args.dry_run:
+        print("DRY-RUN hermes-discovery-yield-builder: would compute discovery/outcome yield "
+              f"over {LOOKBACK_DAYS} days (min samples {MIN_SAMPLES}); "
+              "write hermes_discovery_yield.json only with --apply and record the live receipt; "
+              "no DB or credential file opened")
+        return 0
 
     apply = args.apply and not args.dry_run
-    result = compute_yield_file(apply=apply)
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        result = compute_yield_file(apply=apply)
+    except Exception as exc:
+        write_lane_receipt("hermes-discovery-yield-builder", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
+    write_lane_receipt("hermes-discovery-yield-builder", ok=result.get("status") != "kill_switch",
+                       exit_code=0, started_at=started,
+                       summary={"entries": result.get("entries", 0), "apply": apply,
+                                "skipped": result.get("status") == "kill_switch"})
 
     if args.json:
         # Summary only (full yield map can be large)
@@ -279,4 +303,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

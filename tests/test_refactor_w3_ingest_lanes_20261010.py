@@ -664,21 +664,21 @@ def test_etf_performance_dry_run_and_no_fetch_run_no_ddl(tmp_path, monkeypatch, 
     monkeypatch.setattr(sys, "argv", ["etf_performance_enrich.py", flag])
     assert epe.main() == 0
     out = capsys.readouterr().out
-    assert "DRY-RUN" in out and '"would_fetch": 3' in out and '"would_run_ddl": false' in out
-    assert conn.readonly and conn.writes() == [] and conn.commits == 0 and _no_receipts(tmp_path)
+    assert "DRY-RUN etf-performance-enrich:" in out and "symbol_profiles" in out
+    assert not conn.readonly and conn.sql == [] and conn.commits == 0 and _no_receipts(tmp_path)
 
 
 def test_etf_performance_dry_run_respects_symbols(monkeypatch, capsys):
     monkeypatch.setattr(epe, "_get_conn", lambda: _perf_conn())
     monkeypatch.setattr(sys, "argv", ["x", "--dry-run", "--symbols", "VTI"])
     epe.main()
-    assert '"would_fetch": 1' in capsys.readouterr().out
+    assert "would select VTI" in capsys.readouterr().out
 
 
 def test_etf_performance_ddl_is_not_reachable_from_dry_run():
     src = inspect.getsource(epe.main)
     assert (
-        src.index('"--dry-run" in sys.argv or "--no-fetch" in sys.argv')
+        src.index("if args.dry_run or args.no_fetch:")
         < src.index("return 0")
         < src.index("res = enrich()")
     )

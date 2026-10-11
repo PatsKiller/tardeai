@@ -17,11 +17,11 @@ Usage:
     python3 scripts/hermes_social_sentiment.py --dry-run
     python3 scripts/hermes_social_sentiment.py --apply --max-symbols 25
 
-Dry run (n8n refactor wave 3, 2026-10-10): ``--dry-run`` WINS over ``--apply``; no ``--apply`` is still a
-dry run. It resolves the universe exactly like a real run (the tracked resolver's db_adapter session is
-made READ ONLY at the server first), then reports the SearXNG queries it WOULD send instead of sending
-them (SearXNG fans out to rate-limited public engines), and returns BEFORE ``persist`` / ``report_source``
-are reachable. It writes no receipt.
+Explicit --dry-run CLI (shard03, 2026-10-11) WINS over --apply and prints an offline
+universe/cap plan; no credential loader, DB, SearXNG request, persist or receipt is reached.
+The no--apply legacy library/CLI form remains the READ ONLY universe preview. Own env loading
+is scoped to declared names and deferred until that legacy preview or a real apply run; the
+shared db_adapter/universe-resolver closure remains an integration dependency.
 
 A REAL (``--apply``) run writes LaneRunReceipt@v1 ``<state_root>/data/runtime/hermes-social-sentiment_last.json``
 (``ok_at`` only on success). Exit codes: 0 = ran (an empty universe or zero forum hits is a finding,
@@ -47,16 +47,18 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:18888/search")
 
-# Load .env
-_env_path = PROJECT_ROOT / ".env"
-if _env_path.exists():
-    for line in _env_path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, _, v = line.partition("=")
-            k, v = k.strip(), v.strip()
-            if k and v and k not in os.environ:
-                os.environ[k] = v
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "SEARXNG_URL"})
+
+
+def _load_env():
+    """Copy only names used by this lane; the shared db_adapter closure is reported separately."""
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.strip() and not line.lstrip().startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                if key.strip() in _ENV_KEYS:
+                    os.environ.setdefault(key.strip(), value.strip())
 
 RUN_ID = f"hermes-social-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 LANE_ID = "hermes-social-sentiment"
@@ -285,7 +287,7 @@ def _dry_run(args) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true",
                     help="resolve the universe + report the would-send queries; no SearXNG, no write; wins over --apply")
     ap.add_argument("--apply", action="store_true")
@@ -294,6 +296,14 @@ def main(argv=None) -> int:
                     help="tracked = portfolio/watch universe (default); scalp = today's social-scalp "
                          "candidates, so the scalp scanner sees Hermes forum mentions pre-market")
     args = ap.parse_args(argv)
+
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would resolve {args.universe} universe (cap {args.max_symbols}); "
+              "query SearXNG, persist forum sentiment and report source health with --apply; "
+              "no DB, credential file or network opened")
+        return 0
+
+    _load_env()
 
     print(f"[hermes-social] starting — {RUN_ID} (universe={args.universe})")
     if args.dry_run or not args.apply:

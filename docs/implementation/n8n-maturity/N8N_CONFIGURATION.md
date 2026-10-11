@@ -490,3 +490,11 @@ Set node; the DB stays lean (size drives Supabase cost). A design that would blo
 | 28 | NYC DOF to its own n8n instance + DOF-only runner; `dof_app` DB role first | operator (DOF design packet) |
 | 29 | DB retention / Iris (§6.8) — decisions pending | operator |
 | 30 | AGENTS.md 4.5.0 (this PR) and 4.6.0 (branch `n8nmat/agents-4-6-0`) ratification | `APPROVE_AGENTS_POLICY_4_5_0` / `_4_6_0 <pr> <sha>` |
+
+
+### 2026-10-11 — shard 03 source preparation
+
+Eight additional cron rows prepared for dry-run-only shadow (R2-03 provenance, W4 dispatch
+enum), null live argv and DRAFT health contracts. Three missing flock locks remain operator
+packet work. No runtime activation/import/deployment. Details and exclusions:
+[REFACTOR_SHARD_03_20261011.md](REFACTOR_SHARD_03_20261011.md).

@@ -376,9 +376,9 @@ def test_hss_dry_run_sends_no_searxng_and_persists_nothing(monkeypatch, capsys, 
     monkeypatch.setattr(hss, "persist", _boom)
     monkeypatch.setattr(hss.urllib.request, "urlopen", _boom)
     assert hss.main(["--apply", "--dry-run", "--max-symbols", "2"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["universe"] == 2 and rep["summary"]["would_fetch_searxng_queries"] == 6
-    assert conn.readonly is True and sources == [] and _no_runtime_files(_state)
+    out = capsys.readouterr().out
+    assert "DRY-RUN hermes-social-sentiment:" in out and "cap 2" in out
+    assert conn.readonly is None and conn.sql == [] and sources == [] and _no_runtime_files(_state)
 
 
 def test_hss_dry_run_varies_with_cap(monkeypatch, capsys):

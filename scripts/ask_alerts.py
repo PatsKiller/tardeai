@@ -11,6 +11,10 @@ Kinds:
   • price      — public ticker with a target price. Fires when current price crosses it.
 Storage: data/runtime/ask_alerts.json (idempotent, append). NOT a hallucination source — the alert just
 records the operator's intent; firing requires a real news/price hit.
+
+Shard03: --dry-run reports active alert count without DB/provider writes; unknown flags exit 2.
+Real CLI runs leave a LaneRunReceipt@v1, preserving ok_at on exception. Shadow admission remains
+blocked by the exact live cron comment; no scheduler or sender authority changed.
 """
 from __future__ import annotations
 
@@ -123,13 +127,34 @@ def check_alerts() -> list:
     return fired
 
 
-if __name__ == "__main__":
+def main(argv=None):
     import argparse
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--list", action="store_true")
-    a = ap.parse_args()
-    if a.check:
-        print(json.dumps({"fired": check_alerts()}, indent=2))
-    else:
-        print(json.dumps(list_alerts(), indent=2))
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        active = sum(r.get("status") == "active" for r in list_alerts())
+        print(f"DRY-RUN ask-alerts: would {'check' if a.check else 'list'} {active} active alert(s); "
+              "check news/prices, enqueue alert_events on a hit and save alert status with --check; "
+              "no DB, provider request, store write or live receipt")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        result = {"fired": check_alerts()} if a.check else list_alerts()
+        print(json.dumps(result, indent=2))
+    except Exception as exc:
+        write_lane_receipt("ask-alerts", ok=False, exit_code=1, started_at=started,
+                           error=type(exc).__name__)
+        raise
+    write_lane_receipt("ask-alerts", ok=True, exit_code=0, started_at=started,
+                       summary={"checked": a.check,
+                                "fired": len(result["fired"]) if a.check else 0,
+                                "listed": 0 if a.check else len(result)})
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

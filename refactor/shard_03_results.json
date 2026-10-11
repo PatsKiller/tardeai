@@ -1,0 +1,372 @@
+[
+  {
+    "lane_id": "wake-selection-feed",
+    "kind": "cron",
+    "script": ".../wake_selection_feed.py",
+    "expression": "55 * * * *",
+    "result": "BLOCKED",
+    "note": "External campaign ops script is outside this repo; no owned script available for patch/test.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "ops-weekly-learning-report",
+    "kind": "cron",
+    "script": ".openclaw/skills/tradeai-health-inspect/scripts/ops_weekly_learning_report.py",
+    "expression": "30 9 * * 0",
+    "result": "SKIP_SENDER",
+    "note": "External OpenClaw script; registry declares Telegram sending. External source unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "cio-reactive-cycle",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "tradeai-cio-reactive.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "cio-desk-memo-regen",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "tradeai-cio-desk-memo-regen.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "source-litmus-vs-yahoo",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "tradeai-source-litmus.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "advisory-outcome-scorer",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "tradeai-advisory-outcome-scorer.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "supervisor-breach-detector",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "tradeai-supervisor-breach-detector.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "db-retention-timer",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "db-retention.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "tradeai-agent-runtime-alex",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "tradeai-agent-runtime@alex.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "tradeai-maturity-feeds",
+    "kind": "systemd",
+    "script": "?",
+    "expression": "tradeai-maturity-feeds.timer",
+    "result": "BLOCKED",
+    "note": "Systemd inventory supplies no owned script/exact cron line; §3.7 cron shadow recipe cannot safely represent this timer. Retain scheduler unchanged.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "goal-gate-bridge",
+    "kind": "cron",
+    "script": "cio_gate_measurement_bridge.py",
+    "expression": "35 * * * *",
+    "result": "SKIP_CLASS",
+    "note": "Measurement/governance monitor; outside the recipe ingest/llm/learn classes.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "plan-drift-revalidator",
+    "kind": "cron",
+    "script": "plan_drift_revalidator.py",
+    "expression": "0 10,13 * * 1-5 + 25 17 * * 1-5",
+    "result": "SKIP_SENDER",
+    "note": "Invokes watchlist_entry_planner without --no-alert; child has a send path.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "run-pullback-macd-monitor",
+    "kind": "cron",
+    "script": "run_pullback_macd_monitor.sh",
+    "expression": "35 9-15 * * 1-5",
+    "result": "SKIP_BROKER",
+    "note": "Paper proposal lifecycle monitor behind market-day gate; excluded paper/safety path.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "aegis-social-sentiment",
+    "kind": "cron",
+    "script": "scripts/aegis_social_sentiment.py",
+    "expression": "0 11,15 * * 1-5",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "agent-router-cron-light",
+    "kind": "cron",
+    "script": "scripts/agent_router_cron.sh",
+    "expression": "0 10-15 * * 1-5",
+    "result": "SKIP_BROKER",
+    "note": "Shared context refresher launches portfolio producer family; hidden dev-tree root and outside-shard dependency.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "agent-router-cron-full",
+    "kind": "cron",
+    "script": "scripts/agent_router_cron.sh",
+    "expression": "15 6 * * 1-5",
+    "result": "SKIP_BROKER",
+    "note": "Context refresher runs portfolio_risk/stops.json producers; excluded risk/stop path.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "agent-router-cron-deep",
+    "kind": "cron",
+    "script": "scripts/agent_router_cron.sh",
+    "expression": "30 7 * * 0",
+    "result": "SKIP_BROKER",
+    "note": "Context refresher runs portfolio_risk/stops.json producers; excluded risk/stop path.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "agent-watchlist-engine",
+    "kind": "cron",
+    "script": "scripts/agent_watchlist_engine.py",
+    "expression": "0 7 * * *",
+    "result": "SKIP_SENDER",
+    "note": "Whole script contains Telegram branches; cron currently runs --status only. Separate read-only entry needed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "ask-alerts",
+    "kind": "cron",
+    "script": "scripts/ask_alerts.py",
+    "expression": "*/30 8-18 * * 1-5",
+    "result": "BLOCKED",
+    "note": "Source dry-run/receipt added, but exact approved cron comment contains Telegram: forbidden_token:telegram@scheduler.command_text. No shadow admission.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "cleanup-stale-locks",
+    "kind": "cron",
+    "script": "scripts/cleanup_stale_locks.sh",
+    "expression": "*/5 * * * *",
+    "result": "SKIP_CLASS",
+    "note": "Independent lock maintenance/recovery; not an ingest/llm/learn class. Retain with reason.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "etf-performance-enrich",
+    "kind": "cron",
+    "script": "scripts/etf_performance_enrich.py",
+    "expression": "15 7 * * 6",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "hermes-discovery-yield-builder",
+    "kind": "cron",
+    "script": "scripts/hermes_discovery_yield_builder.py",
+    "expression": "45 3 * * *",
+    "result": "BLOCKED",
+    "note": "No active exact cron line in approved current snapshot; now part of C1 learning stage. Source dry-run/receipt improved; no shadow row.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "hermes-social-sentiment",
+    "kind": "cron",
+    "script": "scripts/hermes_social_sentiment.py",
+    "expression": "15 11,15 * * 1-5",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "hermes-tag-lift-discovery",
+    "kind": "cron",
+    "script": "scripts/hermes_tag_lift_discovery.py",
+    "expression": "50 3 * * *",
+    "result": "BLOCKED",
+    "note": "No active exact cron line in approved current snapshot; C1 learning stage already owns scheduling. No duplicate scheduler proposed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "investment-costs",
+    "kind": "cron",
+    "script": "scripts/investment_costs.py",
+    "expression": "5 17 * * 1-5",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "opening-intelligence",
+    "kind": "cron",
+    "script": "scripts/opening_intelligence.py",
+    "expression": "0 7 * * 1-5",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "opening-intelligence-render",
+    "kind": "cron",
+    "script": "scripts/opening_intelligence.py",
+    "expression": "15 9 * * 1-5",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "pro-analyst-fetch",
+    "kind": "cron",
+    "script": "scripts/pro_analyst_fetch.py",
+    "expression": "10 6 * * *",
+    "result": "SKIP_SENDER",
+    "note": "Exact cron line is a three-step chain ending pro_analyst_monitor.py --send; do not admit just its first step.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "register-analyst-sources",
+    "kind": "cron",
+    "script": "scripts/register_analyst_sources.py",
+    "expression": "40 5 * * *",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "run-scheduled-stale-proposal-sweeper-at-25-8",
+    "kind": "cron",
+    "script": "scripts/run_scheduled_stale_proposal_sweeper.sh",
+    "expression": "25 8 * * 1-5",
+    "result": "SKIP_BROKER",
+    "note": "PAPER ONLY wrapper reads safety flags and paper holdings guard; excluded paper/safety path.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "trade-backtest-engine",
+    "kind": "cron",
+    "script": "scripts/trade_backtest_engine.py",
+    "expression": "30 18 * * 1-5",
+    "result": "SHADOW_READY",
+    "note": "SOURCE_ONLY; exact approved cron line; dry_run only; null live_arg; DRAFT contract; operator review/runtime proof still owed.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "watch-directive-hygiene",
+    "kind": "cron",
+    "script": "scripts/watch_directive_hygiene.py",
+    "expression": "30 10 * * 0",
+    "result": "SKIP_SENDER",
+    "note": "Explicit send_telegram summary path.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "watchlist-entry-planner-limit",
+    "kind": "cron",
+    "script": "scripts/watchlist_entry_planner.py",
+    "expression": "35 17 * * 1-5",
+    "result": "SKIP_SENDER",
+    "note": "Default planner alerts are enabled; cron omits --no-alert. Separate notification-intent migration.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "watchlist-entry-planner-scope",
+    "kind": "cron",
+    "script": "scripts/watchlist_entry_planner.py",
+    "expression": "45 17 * * 1-5",
+    "result": "SKIP_SENDER",
+    "note": "Default planner alerts are enabled; cron omits --no-alert. Separate notification-intent migration.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "watchlist-hygiene",
+    "kind": "cron",
+    "script": "scripts/watchlist_hygiene.py",
+    "expression": "30 9 * * 0",
+    "result": "SKIP_SENDER",
+    "note": "Cron explicitly includes --telegram.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "youtube-transcript-ingest",
+    "kind": "cron",
+    "script": "scripts/youtube_transcript_ingest.py",
+    "expression": "0 19 * * 1-5",
+    "result": "SKIP_SENDER",
+    "note": "--all-channels failure path directly calls send_telegram.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  },
+  {
+    "lane_id": "warm-caches",
+    "kind": "cron",
+    "script": "warm_caches.py",
+    "expression": "*/8 * * * *",
+    "result": "SKIP_BROKER",
+    "note": "Rotation warm step writes stop-related cache and invokes an autopilot with proposal/Telegram side effects; leave untouched.",
+    "branch": "n8nmat/refactor-shard-03",
+    "evidence": "REFACTOR_EVIDENCE_03.md"
+  }
+]

@@ -20,6 +20,10 @@ PROVIDER AUDIT (2026-07-20, empirical):
 
 Canonical internal names are vendor-independent; the vendor symbol is stored
 alongside so a provider swap cannot silently change meaning.
+
+Shard03: --dry-run is an offline flag/action plan, never a provider call or persist.
+The two cron modes leave distinct LaneRunReceipt@v1 artifacts, sharing their existing output
+and cron lock. DATA_INSUFFICIENT remains a visible business finding; no execution authority.
 """
 from __future__ import annotations
 
@@ -335,21 +339,43 @@ def render_opening_read(snap: dict) -> str:
     return "\n".join(lines)
 
 
-if __name__ == "__main__":
+def main(argv=None):
     import argparse
-    ap = argparse.ArgumentParser(description="Opening intelligence (advisory only)")
+    ap = argparse.ArgumentParser(description="Opening intelligence (advisory only)", allow_abbrev=False)
     ap.add_argument("--capability", action="store_true")
     ap.add_argument("--snapshot", action="store_true")
     ap.add_argument("--persist", action="store_true")
     ap.add_argument("--render", action="store_true")
-    a = ap.parse_args()
-    if a.capability:
-        print(json.dumps(YFinanceOpeningProvider().health(), indent=1, default=str))
-    else:
-        s = build_snapshot()
-        if a.persist:
-            print("persisted:", persist(s))
-        if a.render:
-            print(render_opening_read(s))
-        if a.snapshot or not (a.persist or a.render):
-            print(json.dumps(s, indent=1, default=str)[:2500])
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args(argv)
+    lane = "opening-intelligence-render" if a.render else "opening-intelligence"
+    if a.dry_run:
+        print(f"DRY-RUN {lane}: would {'probe capability' if a.capability else 'fetch futures, ETF proxies and cross-asset quotes'}; "
+              f"persist={a.persist}, render={a.render}, snapshot={a.snapshot}; "
+              "write the selected live receipt; no provider requests or files written")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    summary = {"persist": a.persist, "render": a.render, "capability": a.capability}
+    try:
+        if a.capability:
+            print(json.dumps(YFinanceOpeningProvider().health(), indent=1, default=str))
+        else:
+            s = build_snapshot()
+            if a.persist:
+                print("persisted:", persist(s))
+            if a.render:
+                print(render_opening_read(s))
+            if a.snapshot or not (a.persist or a.render):
+                print(json.dumps(s, indent=1, default=str)[:2500])
+            summary.update(evidence=len(s.get("evidence", [])), conflicts=len(s.get("conflicts", [])),
+                           source_kind=s.get("source_kind"), opening_bias=s.get("opening_bias"))
+    except Exception as exc:
+        write_lane_receipt(lane, ok=False, exit_code=1, started_at=started, error=type(exc).__name__)
+        raise
+    write_lane_receipt(lane, ok=True, exit_code=0, started_at=started, summary=summary)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
