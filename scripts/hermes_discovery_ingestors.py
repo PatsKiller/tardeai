@@ -494,7 +494,7 @@ def _critical_alert(message: str, *, dry_run: bool) -> bool:
     try:
         from telegram_alert import send_telegram
         ok = send_telegram(f"[hermes-discovery] CRITICAL scheduled intake exception: "
-                           f"{message[:300]}")
+                           f"{message[:300]}", priority="P2", producer="hermes_discovery_ingestors")
         ALERT_THROTTLE_PATH.parent.mkdir(parents=True, exist_ok=True)
         ALERT_THROTTLE_PATH.write_text(json.dumps({"last_sent": now,
                                                    "message": message[:300]}),

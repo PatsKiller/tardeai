@@ -451,7 +451,7 @@ def _alert(off: list[dict]) -> None:
         # "was bad, now healthy" -- and without passing it every incident opens
         # and none ever closes (41 open / 0 resolved, measured 2026-09-21).
         ok = _ta.send_telegram(body, message_class="operator_alert",
-                               resolving=t.recovered)
+                               resolving=t.recovered, priority="P2", producer="check_data_source_health")
         message_id = getattr(_ta, "last_message_id", lambda: None)()
         print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
     except Exception as exc:

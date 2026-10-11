@@ -1172,7 +1172,8 @@ def _held_chunks() -> list[dict]:
     return list(last_held_chunks() or [])
 
 
-def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) -> tuple[bool, dict]:
+def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None,
+                   priority: str = "P1") -> tuple[bool, dict]:
     """Send one operator notice. Returns (delivered, report).
 
     Extracted from main() so the alarm can be FIRED by a test. An alarm that has
@@ -1204,7 +1205,10 @@ def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) 
     if not gateway_notice_enabled():
         from telegram_alert import send_telegram
 
-        accepted = bool(send_telegram(message, message_class="operator_alert", **extra))
+        # Intent (SND2): a page is P1, the daily digest P2. Dedupe off: the pending-row ledger already decides
+        # what is resent, and an editor-held page must be retried, never deduped against itself.
+        accepted = bool(send_telegram(message, message_class="operator_alert", priority=priority,
+                                      dedupe_minutes=0, producer="notify_material_change", **extra))
         held = _held_chunks() if accepted else []
         report = {"attempted": False, "held": held}
         return accepted and not held, report
@@ -1391,7 +1395,8 @@ def run_digest(cur, conn, entries: list[tuple[dict, dict, dict]], *, apply: bool
         # One Command Center link in the footer; no per-symbol Finviz/Yahoo link dump (operator 2026-10-05).
         token = _no_symbol_links()
         try:
-            accepted, _gw = deliver_notice(ch["text"], subject_key=notice_key(ch["guids"] or [f"digest-header-{i}"]))
+            accepted, _gw = deliver_notice(ch["text"], subject_key=notice_key(ch["guids"] or [f"digest-header-{i}"]),
+                                            priority="P2")
         finally:
             _reset_symbol_links(token)
         if accepted:

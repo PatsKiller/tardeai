@@ -23,7 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-COVERS = ["scripts/system_health_agent.py:501"]  # line moved 2026-10-07: _resolve_log() added above _send_alert
+COVERS = ["scripts/system_health_agent.py:505"]  # line moved 2026-10-11 (SND2 intent docstring); 2026-10-07: _resolve_log() added above _send_alert
 
 # The exact body shapes the nine sites emit.
 BODIES = {
@@ -81,8 +81,9 @@ def test_health_send_alert_is_archived_end_to_end(alarm_capture, monkeypatch):
     """system_health_agent._send_alert: driven, and its fate observed.
 
     It does not page -- its contract says "NEVER bypass" -- so the observation is
-    that it is suppressed AND archived under P1_DIGEST, which is what makes the
-    digest deliver it. Both halves are asserted: silence at the transport is only
+    that it is suppressed AND archived for the digest, which is what makes the
+    digest deliver it. Since SND2 (2026-10-11) a WARN escalation is a declared P3
+    notification intent, archived as notification_intent_p3:system_health_agent. Both halves are asserted: silence at the transport is only
     acceptable because the archive step is proven.
     """
     import report_capture as RC
@@ -90,11 +91,12 @@ def test_health_send_alert_is_archived_end_to_end(alarm_capture, monkeypatch):
 
     calls = []
     monkeypatch.setattr(RC, "archive_message",
-                        lambda msg, suppressed=False, reason="": calls.append((suppressed, reason)),
+                        lambda msg, suppressed=False, reason="", report_type=None:
+                        calls.append((suppressed, reason)) or report_type,
                         raising=True)
 
     SHA._send_alert(BODIES["health:pipeline_health"])
     assert not alarm_capture.fired, "unexpectedly paged; update the contract and COVERS"
-    assert calls == [(True, "P1_DIGEST")], (
+    assert calls == [(True, "intent_p3_digest")], (
         f"not archived, so the digest can never deliver it: {calls}"
     )

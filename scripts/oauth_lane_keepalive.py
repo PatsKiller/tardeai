@@ -162,7 +162,7 @@ def main(argv=None):
                + "\n".join(alerts) + "\n\nMonitor: /v3/rotation → Independent Oversight lane strip.")
         try:
             from telegram_alert import send_telegram
-            send_telegram(msg)
+            send_telegram(msg, priority="P2", producer="oauth_lane_keepalive")
         except Exception as e:
             print("telegram send failed:", e)
 

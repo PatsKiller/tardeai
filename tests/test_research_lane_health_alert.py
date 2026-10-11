@@ -98,13 +98,16 @@ def test_deliver_telegram_does_not_bypass_router(monkeypatch):
     import telegram_alert as _ta
     captured = {}
 
-    def _fake_send(msg, bypass_router=True, **kw):
+    def _fake_send(msg, bypass_router=False, **kw):
         captured["bypass_router"] = bypass_router
+        captured.update(kw)
         return True
 
     monkeypatch.setattr(_ta, "send_telegram", _fake_send, raising=True)
     hl._deliver_telegram("⚠️ *Research lane RAW-store health*")
     assert captured.get("bypass_router") is False
+    # SND2 (2026-10-11): declared, not inferred -- a P3 intent (FYI -> digest), never an interrupt.
+    assert captured.get("priority") == "P3" and captured.get("producer") == "research_lane_health"
 
 
 def test_alert_suppressed_to_digest_not_transported(alarm_capture, tmp_path, monkeypatch):
@@ -116,6 +119,14 @@ def test_alert_suppressed_to_digest_not_transported(alarm_capture, tmp_path, mon
     """
     monkeypatch.setattr(hl, "STATUS_PATH", tmp_path / "health.json")
     monkeypatch.setattr(hl, "ALERT_DEDUP_SEC", 6 * 3600)
+    import report_capture
+    import telegram_alert_router as _tr
+    archived = []
+    monkeypatch.setattr(report_capture, "archive_message",
+                        lambda message, suppressed=False, reason="", report_type=None:
+                        archived.append((message, report_type)) or report_type)
+    monkeypatch.setattr(_tr, "_durable_recently_sent", lambda key, ttl: False)
+    monkeypatch.setenv(_tr.INTENT_RECEIPTS_ENV, str(tmp_path / "intent_receipts.jsonl"))
     report = {
         "as_of": "now",
         "ok": False,
@@ -130,9 +141,11 @@ def test_alert_suppressed_to_digest_not_transported(alarm_capture, tmp_path, mon
         "RAW-store health must not page the phone; it should route to digest. "
         f"{len(alarm_capture.transport)} message(s) reached the transport."
     )
-    assert any("RAW-store health" in s for s in alarm_capture.suppressed), (
-        "expected the heartbeat in the router's suppressed/digest set, got "
-        f"{alarm_capture.suppressed[:2]}"
+    # SND2 (2026-10-11): a declared P3 intent -- archived for the digest by the intent router, so the text
+    # classifier's suppressed set is no longer where it lands; the archive is.
+    assert any("RAW-store health" in m for m, _rt in archived), (
+        "expected the heartbeat archived for the digest, got "
+        f"{archived[:2]}"
     )
 
 

@@ -117,7 +117,8 @@ def run(telegram=False):
     if findings and telegram:
         try:
             from telegram_alert import send_telegram
-            send_telegram("⚠️ PIPELINE FRESHNESS SLO\n" + "\n".join(findings[:6]))
+            send_telegram("⚠️ PIPELINE FRESHNESS SLO\n" + "\n".join(findings[:6]),
+                          priority="P2", producer="pipeline_freshness_slo")
         except Exception:
             pass
     return out

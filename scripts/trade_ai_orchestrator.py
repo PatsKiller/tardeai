@@ -946,7 +946,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
                 # alarm raised ImportError and printed to a log file 171 times while the
                 # Strategy Desk sat empty for 24 days. An alarm that cannot raise is not an alarm.
                 from telegram_alert import send_telegram
-                _alert_ok = send_telegram(_alert_text)
+                _alert_ok = send_telegram(_alert_text, priority="P2", producer="trade_ai_orchestrator")
                 if not _alert_ok:
                     print(f"  ⚠️ ALERT NOT DELIVERED (send_telegram returned False): {_alert_text}")
             except Exception as _alert_exc:

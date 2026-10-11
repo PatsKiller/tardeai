@@ -84,7 +84,7 @@ def telegram(msg):
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram
-        ok = bool(send_telegram(msg))
+        ok = bool(send_telegram(msg, priority="P1", producer="freshness_watchdog_heartbeat"))  # watchdog down
         try:
             if ROOT not in sys.path:
                 sys.path.insert(0, ROOT)

@@ -206,7 +206,8 @@ def main():
                 lines.append(f"• {f['rule']}: {'; '.join(f['reasons'])} [{acts}]")
             if not enabled:
                 lines.append("Set REAP_ENABLED=1 to auto-kill.")
-            send_telegram("\n".join(lines))
+            # P3: reaper report is ops FYI -> digest (SND2, AGENTS.md §24.1 intents).
+            send_telegram("\n".join(lines), priority="P3", producer="process_reaper")
         except Exception:
             pass
 

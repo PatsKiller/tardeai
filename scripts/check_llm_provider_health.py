@@ -222,7 +222,7 @@ def main() -> int:
             recorded = False
             try:
                 from telegram_alert import send_telegram
-                sent = send_telegram(message)
+                sent = send_telegram(message, priority="P2", producer="check_llm_provider_health")
             except Exception as e:
                 _record_delivery_failure(heartbeat, f"{type(e).__name__}: {e}", fresh)
                 sent = False

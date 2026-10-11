@@ -711,7 +711,8 @@ def _notify(message):
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         from telegram_alert import send_telegram
-        send_telegram(message)
+        # P3: escalation progress (investigating / complete / paused) is FYI -> digest.
+        send_telegram(message, priority="P3", producer="claude_escalation_handler")
     except Exception:
         pass
 

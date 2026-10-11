@@ -934,7 +934,8 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                 log.info(f"[alert] #{new_id} {symbol}: proposal alert held ({_g.held_reason})")
             else:
                 from telegram_alert import send_telegram
-                send_telegram(_g.text)
+                # Operator-action (a proposal to approve or reject): P1 intent, dedupe off (AGENTS.md §9.1).
+                send_telegram(_g.text, priority="P1", dedupe_minutes=0, producer="incubator_proposal_promoter")
         except Exception as _ae:
             log.warning(f"[alert] Telegram alert failed for #{new_id}: {_ae}")
         results.append(f"PROMOTED: {symbol} ({strategy_key}, score={score}, {screener_name})")
@@ -964,7 +965,7 @@ def _send_pipeline_alert(message):
     try:
         sys.path.insert(0, os.path.dirname(__file__))
         from telegram_alert import send_telegram
-        send_telegram(message)
+        send_telegram(message, priority="P2", producer="incubator_proposal_promoter")  # pipeline failure
     except Exception as e:
         log.error(f"[promoter] Telegram alert failed: {e}")
 

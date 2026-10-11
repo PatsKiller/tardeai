@@ -4443,6 +4443,14 @@ GATES = [
         ["tests/test_notification_intents_20261010.py"],
     ),
     (
+        # Notification intents wave 2 (SND2, 2026-10-11): the 40 highest-volume non-broker senders that sent with
+        # no priority declare P1/P2/P3; P3 (FYI) is archived per producer and folded by the digest, delivered
+        # if the archive fails. Shrink-only gates: undeclared sends (check_notification_intents.py) and the
+        # Telegram/provider chokepoint baselines. Transport captured, never sent; tmp state; no .env read.
+        "notification_intents_wave2_20261011",
+        ["tests/test_notification_intents_wave2_20261011.py"],
+    ),
+    (
         # Release-pinned daemons (packets/unit-code-roots, 2026-10-10): one-off exact-SHA drop-ins left 4 user
         # daemons on a032116e7 for 4 days because promote rewrote only portfolio-server's. Promote/rollback now
         # rewrite stale pins into 90-release-pin.conf, archive pin-only one-offs (never delete), never touch a

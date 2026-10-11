@@ -187,7 +187,8 @@ def run_once(
     if apply and (decision["alert"] or restarted is not None):
         if sender is None:
             from telegram_alert import send_telegram as sender  # noqa: PLC0415
-        alerted = bool(sender(alert_text(decision, p, restarted, after), message_class="ops"))
+        alerted = bool(sender(alert_text(decision, p, restarted, after), message_class="ops",
+                             priority="P1", producer="cio_bridge_watchdog"))  # P1: bridge down = no replies
     receipt = {
         "schema": "CioBridgeWatchdog@v1",
         "authority": AUTHORITY,

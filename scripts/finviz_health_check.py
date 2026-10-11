@@ -205,7 +205,8 @@ def main():
     if args.telegram and result["status"] != "healthy":
         try:
             from telegram_alert import send_telegram
-            send_telegram(f"Finviz Health: {result['status']} — {result.get('error', 'unknown')}")
+            send_telegram(f"Finviz Health: {result['status']} — {result.get('error', 'unknown')}",
+                          priority="P2", producer="finviz_health_check")
         except Exception:
             pass
 

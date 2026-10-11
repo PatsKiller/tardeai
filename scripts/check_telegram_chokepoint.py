@@ -224,6 +224,16 @@ def main() -> int:
                 totals[k] = totals.get(k, 0) + v
 
     if a.update_baseline:
+        # Shrink-only (SND2, AGENTS.md §24.1): an update may lower or drop entries, never add or raise one.
+        # A new chokepoint bypass is fixed at the producer, not recorded as debt.
+        old_files = json.loads(BASELINE.read_text()).get("files", {}) if BASELINE.is_file() else None
+        if old_files is not None:
+            grow = {k: _violation_count(v) for k, v in found.items()
+                    if _violation_count(v) > int(old_files.get(k, 0))}
+            if grow:
+                print(f"[telegram-chokepoint] REFUSED: the baseline only shrinks; these would add or grow: "
+                      f"{grow}", file=sys.stderr)
+                return 1
         BASELINE.parent.mkdir(parents=True, exist_ok=True)
         BASELINE.write_text(json.dumps(
             {"_note": "Known Telegram chokepoint bypasses. Ratchet only — may shrink, never grow.",
@@ -264,6 +274,11 @@ def main() -> int:
             failures.append(f"NEW bypass in {rel} ({n}) — route via publish_event()/send_telegram()")
         elif n > allowed:
             failures.append(f"{rel} grew {allowed} -> {n}")
+    # Shrink-only: an entry above the measured count must be lowered, so a fix is recorded.
+    for rel, allowed in sorted(base.items()):
+        n = _violation_count(found.get(rel, {}))
+        if n < int(allowed):
+            failures.append(f"{rel} shrank {allowed} -> {n}: lower the baseline (--update-baseline)")
     if failures:
         print("\n[telegram-chokepoint] FAIL", file=sys.stderr)
         for f in failures:
