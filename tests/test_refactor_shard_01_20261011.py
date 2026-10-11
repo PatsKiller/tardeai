@@ -288,12 +288,28 @@ def test_finviz_soft_write_failure_is_not_fresh_success(monkeypatch, scratch):
     assert rec["status"] == "failed" and rec["ok_at"] == "2026-10-01T00:00:00Z"
 
 
+# Operator ruling 2026-10-11 ("yes to all 4 for train 3"): lanes another wave already owns (SW4 in train 2, with
+# operator-REVIEWED contracts) or that the train held back keep their owner's rows; shard assertions apply only to
+# rows this shard actually admitted. A contract may be DRAFT or operator-REVIEWED.
+def _owned_here(row, wave):
+    return (row or {}).get("scheduler", {}).get("wave") == wave
+
+
+def _contract_ok(contract):
+    if contract.get("status") == "DRAFT":
+        return "reviewer" not in contract
+    review = contract.get("review") or {}
+    return contract.get("status") == "REVIEWED" and "operator" in str(review.get("reviewed_by", "")).lower()
+
+
 def test_prepared_allowlist_has_no_broker_names_or_live_authority():
     entries = {e["lane_id"]: e for e in json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     rows = {e["lane_id"]: e for e in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
     health = {e["id"]: e for e in json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]}
     policies = json.loads((ROOT / "config/n8n_retry_policies.json").read_text())["policies"]
     for lane, argv in PREPARED.values():
+        if lane not in entries or not _owned_here(rows.get(lane), "R2-01"):
+            continue
         entry = entries[lane]
         assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
         assert entry["command"][2:] == argv

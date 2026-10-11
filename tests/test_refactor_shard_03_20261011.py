@@ -160,9 +160,11 @@ def test_fake_real_run_writes_durable_receipt_and_failure_preserves_ok_at(lane, 
     mod, source = module(script)
     calls = setup_fake(mod, script, monkeypatch)
     assert invoke(mod, source, script, args, monkeypatch) in (None, 0)
-    receipt = tmp_path / "state" / "data" / "runtime" / f"{lane}_last.json"
+    # trade-backtest-engine keeps train 2's receipt name (its operator-REVIEWED contract names it)
+    receipt_id = {"trade-backtest-engine": "trade_backtest_engine"}.get(lane, lane)
+    receipt = tmp_path / "state" / "data" / "runtime" / f"{receipt_id}_last.json"
     good = json.loads(receipt.read_text())
-    assert good["schema"] == "LaneRunReceipt@v1" and good["lane_id"] == lane
+    assert good["schema"] == "LaneRunReceipt@v1" and good["lane_id"] in (lane, receipt_id)
     assert good["status"] == "ok" and good["ok_at"] and calls
     failing = {"aegis_social_sentiment": "main", "etf_performance_enrich": "enrich",
                "hermes_discovery_yield_builder": "compute_yield_file", "hermes_social_sentiment": "_resolve",
@@ -197,6 +199,20 @@ def test_legacy_cron_argv_preserves_business_calls_and_stdout(lane, script, args
         assert new_calls == old_calls
 
 
+# Operator ruling 2026-10-11 ("yes to all 4 for train 3"): lanes another wave already owns (SW4 in train 2, with
+# operator-REVIEWED contracts) or that the train held back keep their owner's rows; shard assertions apply only to
+# rows this shard actually admitted. A contract may be DRAFT or operator-REVIEWED.
+def _owned_here(row, wave):
+    return (row or {}).get("scheduler", {}).get("wave") == wave
+
+
+def _contract_ok(contract):
+    if contract.get("status") == "DRAFT":
+        return "reviewer" not in contract
+    review = contract.get("review") or {}
+    return contract.get("status") == "REVIEWED" and "operator" in str(review.get("reviewed_by", "")).lower()
+
+
 def test_admission_and_draft_contracts_keep_operator_boundaries():
     from scripts.lib.lane_dispatch import r1_class_admission, validate_dispatch_block
     registry = json.loads((ROOT / "config/lane_registry.json").read_text())
@@ -204,7 +220,9 @@ def test_admission_and_draft_contracts_keep_operator_boundaries():
     contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())
     for lane in SHADOW:
         row = next(r for r in registry["lanes"] if r["lane_id"] == lane)
-        entry = next(r for r in allowlist["lanes"] if r["lane_id"] == lane)
+        entry = next((r for r in allowlist["lanes"] if r["lane_id"] == lane), None)
+        if entry is None or not _owned_here(row, "R2-03"):
+            continue
         contract = next(r for r in contracts["contracts"] if r["id"] == lane)
         assert r1_class_admission(row, entry=entry)[0]
         assert not validate_dispatch_block(row)
@@ -214,7 +232,7 @@ def test_admission_and_draft_contracts_keep_operator_boundaries():
         assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
         assert not any(name.startswith(("ALPACA", "SCHWAB", "SNAPTRADE", "MOOMOO", "IBKR"))
                        for name in entry["env_names"])
-        assert contract["status"] == "DRAFT" and "reviewer" not in contract
+        assert _contract_ok(contract)
         assert "UNKNOWN" not in json.dumps(contract)
         assert contract["baseline"]["evidence_class"] == "SOURCE_ONLY"
         assert contract["evidence"]["runtime_evidence_class"] == "NOT_MEASURED"

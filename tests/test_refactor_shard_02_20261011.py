@@ -206,6 +206,20 @@ def test_fake_real_run_receipt_failure_carries_prior_ok_at(lane, monkeypatch, tm
     assert after["status"] == "failed" and after["ok_at"] == before["ok_at"] and after["exit"] == 1
 
 
+# Operator ruling 2026-10-11 ("yes to all 4 for train 3"): lanes another wave already owns (SW4 in train 2, with
+# operator-REVIEWED contracts) or that the train held back keep their owner's rows; shard assertions apply only to
+# rows this shard actually admitted. A contract may be DRAFT or operator-REVIEWED.
+def _owned_here(row, wave):
+    return (row or {}).get("scheduler", {}).get("wave") == wave
+
+
+def _contract_ok(contract):
+    if contract.get("status") == "DRAFT":
+        return "reviewer" not in contract
+    review = contract.get("review") or {}
+    return contract.get("status") == "REVIEWED" and "operator" in str(review.get("reviewed_by", "")).lower()
+
+
 def test_registry_admission_is_shadow_only_and_contracts_are_draft():
     from scripts.lib.lane_dispatch import validate_dispatch_block
     registry = {r["lane_id"]: r for r in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
@@ -214,6 +228,8 @@ def test_registry_admission_is_shadow_only_and_contracts_are_draft():
     forbidden = ("ALPACA", "MOOMOO", "BROKER", "TELEGRAM", "TOKEN", "OPENAI", "DEEPSEEK", "GROK", "OAUTH")
     for lane in LANES:
         name = lane["lane_id"]
+        if name not in allow or not _owned_here(registry.get(name), "R2-02"):
+            continue
         row, entry, contract = registry[name], allow[name], contracts[name]
         assert row["dispatch"]["retry_policy"] == "none"
         assert validate_dispatch_block(row, known_lane_ids=registry, retry_policy_names={"none"}) == []
