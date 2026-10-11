@@ -154,8 +154,10 @@ def under_test_isolation() -> bool:
 
 
 def cio_state_root() -> Path:
-    for key in ("CIO_STATE_ROOT", "TRADEAI_ROOT", "MATURITY_CONTROL_ROOT"):
-        val = (os.environ.get(key) or "").strip()
+    # Literal reads let the environment-closure audit prove this process's names.
+    for value in (os.environ.get("CIO_STATE_ROOT"), os.environ.get("TRADEAI_ROOT"),
+                  os.environ.get("MATURITY_CONTROL_ROOT")):
+        val = (value or "").strip()
         if val:
             return Path(val)
     return PROJECT_ROOT

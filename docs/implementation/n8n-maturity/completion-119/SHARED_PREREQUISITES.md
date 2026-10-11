@@ -11,6 +11,8 @@ The train starts from main `65337da5366b469c8478b198187201bd37671bc2`. It keeps 
 - Defer Session 13 and pipeline heartbeat credential loading until an actual connection request and declare only the DB names each helper uses. Importing either helper loads no secrets or database driver.
 - Resolve named model requests to existing server-approved caller/task pairs, validate returned process identity/governance/cost proof, and bind the executor's validated route metadata into the child environment. No new process registrations, model choices, provider calls or credentials are added.
 - Agent-runtime `--dry-run` describes an invocation before backend import and authorization-consuming work; actual authorization and default-disabled behavior stay intact.
+- Manifest stage previews validate the stage and print its ordered waves before creating directories, locks, temporary files or invoking children. Real runs wait for every child and report failure for failed workers, failed/timeout steps or incomplete receipts. Each child's existing lock, timeout and failure isolation remain in place. Child interpreter resolution no longer falls back to the development checkout's virtualenv.
+- CIO state-root lookup keeps its existing precedence while using explicit literal environment names.
 
 ## Preserved authority and refusal
 
@@ -21,5 +23,7 @@ The shared test bootstrap is reused from local commit `13c9919eb766273dc23658c96
 ## Initial verification
 
 The isolated shared regression command covers bootstrap, route identity, executor environment policy and existing model-job/executor behavior: 87 tests passed, zero external capability refusals, all owned descendants reaped. This tests the modified worktree; final-head full PR-profile proof is recorded separately after lane integration.
+
+The pipeline/shared follow-up passed 47 tests, including artifact-free previews, strict flags, failure propagation, incomplete receipt refusal, parallel-stage ordering and environment precedence. Command: `python3 run-isolated-completion.py manifest-final .venv/bin/python -m pytest -q tests/test_pipeline_manifest_runner_20261007.py tests/test_premarket_stage_parallel_20261010.py tests/test_completion_119_shared_20261011.py`. Evidence is `reassess-gates/manifest-final.{json,log}` in the integration worktree; zero capability refusals and all owned descendants reaped. This measured a worktree correction and is not final-head acceptance.
 
 Source-only work never authorizes push, REVIEWED contract state, runtime execution, model egress, activation, release or scheduler cutover.

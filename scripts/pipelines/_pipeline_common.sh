@@ -6,7 +6,6 @@ set -euo pipefail
 
 PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="$PROJ/logs/pipelines"
-mkdir -p "$LOG_DIR"
 
 # --- arg parse: default DRY_RUN=1 unless --apply ---
 DRY_RUN="${DRY_RUN:-1}"
@@ -79,6 +78,7 @@ acquire_lock() {
 PIPELINE_NAME=""
 pipeline_start() {
   PIPELINE_NAME="$1"
+  mkdir -p "$LOG_DIR"
   local logf="$LOG_DIR/${PIPELINE_NAME}.log"
   exec > >(tee -a "$logf") 2>&1
   echo "=================================================================="

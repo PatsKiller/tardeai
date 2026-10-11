@@ -331,7 +331,12 @@ def write_summary(manifest_path: str, stage: str, results_path: str, out_path: s
             if line.strip():
                 steps.append(json.loads(line))
     statuses = {s.get("status") for s in steps}
-    if not steps:
+    expected_ids = [step["id"] for step in stage_steps(manifest, stage)]
+    actual_ids = [step.get("id") for step in steps]
+    complete = len(actual_ids) == len(expected_ids) and set(actual_ids) == set(expected_ids)
+    if not dry_run and not complete:
+        overall = "degraded"
+    elif not steps:
         overall = "empty"
     elif dry_run:
         overall = "dry_run"
@@ -352,6 +357,8 @@ def write_summary(manifest_path: str, stage: str, results_path: str, out_path: s
         "executed_any": any(s.get("status") in ("ok", "failed", "timeout") for s in steps),
         "overall_status": overall,
         "step_count": len(steps),
+        "expected_step_count": len(expected_ids),
+        "receipt_complete": complete,
         "steps": steps,
         "log": log_path,
     }

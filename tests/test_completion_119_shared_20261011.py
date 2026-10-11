@@ -122,3 +122,19 @@ def test_agent_preview_rejects_abbreviated_flags():
     with pytest.raises(SystemExit) as error:
         run_once.main(["--agent", "sentinel", "--dry"])
     assert error.value.code == 2
+
+
+def test_cio_state_root_keeps_precedence_with_literal_environment_reads(monkeypatch, tmp_path):
+    from scripts.lib import cio_production_eligibility as eligibility
+    for name in ("CIO_STATE_ROOT", "TRADEAI_ROOT", "MATURITY_CONTROL_ROOT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MATURITY_CONTROL_ROOT", str(tmp_path / "last"))
+    monkeypatch.setenv("TRADEAI_ROOT", str(tmp_path / "second"))
+    assert eligibility.cio_state_root() == tmp_path / "second"
+    monkeypatch.setenv("CIO_STATE_ROOT", str(tmp_path / "first"))
+    assert eligibility.cio_state_root() == tmp_path / "first"
+    tree = ast.parse((ROOT / "scripts/lib/cio_production_eligibility.py").read_text())
+    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "cio_state_root")
+    reads = [n.args[0] for n in ast.walk(function) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Attribute) and n.func.attr == "get"]
+    assert all(isinstance(name, ast.Constant) for name in reads)

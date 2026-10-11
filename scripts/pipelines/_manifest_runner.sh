@@ -17,7 +17,7 @@
 #     never aborts the stage; it is recorded).
 #   * the stage never wraps itself in an LLM guard or off-peak wrapper (cap accounting stays per step).
 #   * summary JSON (PipelineRun@v1) at data/runtime/pipeline_<pipeline>_<stage>_last.json is the
-#     lane's output_signal: it is written on every invocation, dry-run included.
+#     lane's output_signal: it is written on real invocations only; previews write nothing.
 #
 # Usage (from a runner):   manifest_pipeline_main <default-manifest-relpath> "$@"
 #   --stage NAME          stage to run (required unless the manifest has exactly one stage)
@@ -34,7 +34,7 @@ MANIFEST_PY="$_MR_DIR/pipeline_manifest.py"
 
 _mr_resolve_py() {
   local cand
-  for cand in "${PY:-}" "$PROJ/.venv/bin/python" "$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"; do
+  for cand in "${PY:-}" "$PROJ/.venv/bin/python"; do
     [ -n "$cand" ] && [ -x "$cand" ] && { echo "$cand"; return 0; }
   done
   command -v python3
@@ -140,7 +140,7 @@ manifest_pipeline_main() {
       --dry-run) DRY_RUN=1; shift ;;
       --list-stages) LIST=1; shift ;;
       -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; return 0 ;;
-      *) echo "[ERROR] unknown argument: $1" >&2; return 64 ;;
+      *) echo "[ERROR] unknown argument: $1" >&2; return 2 ;;
     esac
   done
   [ -n "$MANIFEST" ] || MANIFEST="$PROJ/$default_manifest"
@@ -164,6 +164,14 @@ manifest_pipeline_main() {
   for s in $STAGES; do [ "$s" = "$STAGE" ] && known=1; done
   if [ "$known" = 0 ]; then
     echo "[ERROR] unknown stage '$STAGE' (one of: $STAGES)" >&2; return 64
+  fi
+
+  # Preview returns before logs, temp files, lock probes, env loading or children.
+  # Existing real-run safety checks remain below and are never bypassed by --apply.
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "DRY-RUN pipeline=$PIPELINE stage=$STAGE: would execute the manifest's ordered steps with their own locks, timeouts and receipts; no children or writes"
+    "$PY3" "$MANIFEST_PY" "$MANIFEST" --waves "$STAGE" --dow "${PIPELINE_TODAY_DOW:-$(date +%w)}"
+    return 0
   fi
 
   local NAME="${PIPELINE}-${STAGE}"
@@ -207,7 +215,8 @@ manifest_pipeline_main() {
   "$PY3" "$MANIFEST_PY" "$MANIFEST" --waves "$STAGE" --dow "$TODAY_DOW" || true
 
   local line id cron_line tmo dow logrel grp envnames cmd prev_grp="" _first=1
-  local -a _pids=()
+  local -a _pids=() _group_pids=()
+  local worker_error=0 _wait_pid
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     IFS=$'\x1f' read -r id cron_line tmo dow logrel grp envnames cmd <<<"$line"
@@ -216,7 +225,10 @@ manifest_pipeline_main() {
       continue
     fi
     if [ "$_first" = 0 ] && [ "$grp" != "$prev_grp" ]; then
-      [ "${#_pids[@]}" -gt 0 ] && wait "${_pids[@]}" || true
+      for _wait_pid in "${_group_pids[@]}"; do
+        wait "$_wait_pid" || worker_error=1
+      done
+      _group_pids=()
       _pids=()
       echo "  ==== group $prev_grp done; next group $grp ===="
     fi
@@ -230,8 +242,11 @@ manifest_pipeline_main() {
     done
     _mr_step &
     _pids+=("$!")
+    _group_pids+=("$!")
   done <<<"$plan"
-  [ "${#_pids[@]}" -gt 0 ] && wait "${_pids[@]}" || true
+  for _wait_pid in "${_group_pids[@]}"; do
+    wait "$_wait_pid" || worker_error=1
+  done
 
   local -a sumflags=()
   [ "$DRY_RUN" = 1 ] && sumflags+=(--dry-run)
@@ -241,5 +256,17 @@ manifest_pipeline_main() {
   rm -f "$RESULTS"
   echo "[summary] wrote $SUMMARY"
   echo "[$(_ts)] END pipeline=$PIPELINE stage=$STAGE DRY_RUN=$DRY_RUN steps=$n_steps"
+  if [ "$worker_error" = 1 ]; then
+    echo "[ERROR] a step worker failed before completing its receipt" >&2
+    return 1
+  fi
+  "$PY3" - "$SUMMARY" "$n_steps" <<'PY'
+import json, sys
+summary = json.load(open(sys.argv[1]))
+steps = summary.get("steps", [])
+expected = int(sys.argv[2])
+if len(steps) != expected or summary.get("overall_status") in {"failed", "timeout", "degraded"}:
+    raise SystemExit(1)
+PY
   return 0
 }
