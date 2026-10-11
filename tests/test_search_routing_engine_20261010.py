@@ -529,8 +529,10 @@ def test_quality_rule_counts(policy):
 
 
 def test_alpha_vantage_tier_is_skipped_until_granted(tmp_path, policy):
+    # The live registry grants news_sentiment since #1675; pin an ungranted registry for this half.
+    reg_ungranted = {"providers": {"alpha_vantage": {"supplies": ["fundamentals"]}}}
     resp = _route(tmp_path, policy, caller="hermes_momentum_catalyst", query="ACME stock latest news", symbol="ACME",
-                  free=Free([]), paid=None)
+                  free=Free([]), paid=None, registry=reg_ungranted)
     assert "alpha_vantage_news:NOT_GRANTED" in resp.receipt["attempts"]
     reg = {"providers": {"alpha_vantage": {"supplies": ["fundamentals", "news_sentiment"]}}}
     store = tmp_path / "state/data/runtime/alpha_vantage/news_sentiment_latest.json"
