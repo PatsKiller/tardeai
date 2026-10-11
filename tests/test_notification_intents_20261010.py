@@ -215,6 +215,8 @@ def test_stop_decision_brief_is_p1(intents):
     import stop_decision_brief
     mid = stop_decision_brief.send_stop_brief_telegram({"telegram_msg": "STOP BRIEF probe"})
     assert mid and _route_priorities(intents) == [("P1", "stop_decision_brief")]
+    # Operator ruling 2026-10-11: the stop decision brief is an operator-action message — never deduped.
+    assert intents.routes[0]["window_minutes"] == 0
 
 
 def test_alpaca_live_read_sync_broker_health_is_p1(intents):
