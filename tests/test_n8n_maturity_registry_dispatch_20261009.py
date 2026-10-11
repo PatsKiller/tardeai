@@ -468,8 +468,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # - 1: canary wave 1 (2026-10-11) moves research-insight-extractor to canary.
     # - 17: C1 premarket flip (2026-10-11) absorbs 17 shadow rows into premarket-data-pipeline (D1b 7, D2 4, D3 6);
     # each leaves its wave (dispatch_retired) and its allowlist entry is removed. Both merged in train-migration-2.
-    # + 13: refactor train 3 (shards 01-04, 2026-10-11) source shadow rows (R1 ingest/learn, dry_run, live_arg null).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 13, shadow
+    # + 10: refactor train 3 (shards 01-04, 2026-10-11) source shadow rows (R1 ingest/learn, dry_run, live_arg null);
+    # 3 of the 13 proposals stay RETIRED into the premarket C1 stage (train 2).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10, shadow
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
 
 

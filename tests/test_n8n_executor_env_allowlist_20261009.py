@@ -430,4 +430,5 @@ def test_lane_mode_counts_match_the_pr():
     # llm-retry-monitor, sync-watchlist-items-to-db, classify-candidates, backtest-history-snapshot,
     # catalyst-calibration): 17 - 8 = 9. Refactor train 3 adds 1 enforced entry (shard 02
     # source-outcome-attribution): 9 + 1 = 10.
-    assert modes.count("enforce") == 10 and modes.count("report") == len(LANES) - 10
+    # 10 -> 9 (2026-10-11 train 3): research-intelligence-materialize (enforce) stays RETIRED into the premarket C1 stage.
+    assert modes.count("enforce") == 9 and modes.count("report") == len(LANES) - 9

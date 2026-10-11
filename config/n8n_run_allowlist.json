@@ -2000,62 +2000,6 @@
       "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
     },
     {
-      "lane_id": "research-intelligence-materialize",
-      "env_names": [
-        "DB_CONN_TRACE",
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
-      ],
-      "env_allowlist_mode": "report",
-      "env_evidence": "scripts/research_intelligence_materialize.py named settings and import-closure source inspection; no broker or model credential names admitted.",
-      "env_report_reason": "db_adapter import closure uses env_bootstrap; shared narrowing belongs to the integrator. The explicit dry run returns before these imports.",
-      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
-      "command": [
-        "$PY",
-        "scripts/research_intelligence_materialize.py"
-      ],
-      "lock": "/tmp/ri_materialize_cron.lock",
-      "lock_kind": "flock",
-      "timeout_s": 300,
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "market_gate": false,
-      "output_signal": "data/runtime/research-intelligence-materialize_last.json"
-    },
-    {
-      "lane_id": "source-outcome-attribution",
-      "env_names": [
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
-      ],
-      "env_allowlist_mode": "enforce",
-      "env_evidence": "scripts/source_outcome_attribution.py named settings and import-closure source inspection; no broker or model credential names admitted. Train 3: TRADEAI_PERSISTENT_STATE_ROOT added — the lane receipt library in the import closure reads it (test_n8n_executor_env_allowlist closure guard).",
-      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
-      "command": [
-        "$PY",
-        "scripts/source_outcome_attribution.py"
-      ],
-      "lock": "/tmp/source_maturity.lock",
-      "lock_kind": "flock",
-      "timeout_s": 300,
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "market_gate": false,
-      "output_signal": "data/runtime/source-outcome-attribution_last.json"
-    },
-    {
       "lane_id": "weekly-incubator-builder",
       "env_names": [
         "DB_HOST",
@@ -2110,34 +2054,6 @@
       "market_gate": false,
       "output_signal": "data/runtime/investment-costs_last.json",
       "source": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1",
-      "env_report_reason": "Shared db_adapter/env_bootstrap and imported research/provider libraries are not fully bounded on this base; shared closure fix belongs to integrator. Own direct loaders copy only declared names. Dry-run exits before those imports/calls."
-    },
-    {
-      "lane_id": "register-analyst-sources",
-      "command": [
-        "$PY",
-        "scripts/register_analyst_sources.py",
-        "--apply"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "env_names": [
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER"
-      ],
-      "env_allowlist_mode": "report",
-      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
-      "lock": "/tmp/register-analyst-sources.lock",
-      "lock_kind": "flock",
-      "timeout_s": 300,
-      "market_gate": false,
-      "output_signal": "data/runtime/register-analyst-sources_last.json",
-      "source": "40 5 * * * cd $PROJ && $PY scripts/register_analyst_sources.py --apply >> logs/analyst_sources.log 2>&1",
       "env_report_reason": "Shared db_adapter/env_bootstrap and imported research/provider libraries are not fully bounded on this base; shared closure fix belongs to integrator. Own direct loaders copy only declared names. Dry-run exits before those imports/calls."
     },
     {

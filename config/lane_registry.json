@@ -13315,17 +13315,15 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 5 * * *",
-        "match": "scripts/source_outcome_attribution.py",
-        "command_text": "45 5 * * * cd $PROJ && flock -n /tmp/source_maturity.lock bash -c \"$PY scripts/source_outcome_attribution.py && $PY scripts/source_maturity.py && $PY scripts/source_vetting_ladder.py\" >> logs/source_maturity.log 2>&1",
-        "stage": "shadow",
-        "wave": "R2-02"
+        "match": "scripts/source_outcome_attribution.py"
       },
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/source-outcome-attribution_last.json",
-        "key": "ok_at"
+        "kind": "file_mtime",
+        "path": "data/runtime/source_vetting_actions_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/source_vetting_ladder.py:18,63 ACTIONS.write_text(updated_at, actions) - last step of the attribution->maturity->vetting chain (source_maturity.py:21,126 also writes source_maturity_latest.json); host mtime 2026-10-09T05:45:02"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P13",
@@ -13340,7 +13338,7 @@
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "state_since": "2026-10-11",
       "superseded_by": "premarket-data-pipeline",
@@ -13353,34 +13351,6 @@
         "stage": "premarket",
         "step_id": "source_outcome_attribution",
         "on": "2026-10-11"
-      },
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "45 5 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "learn",
-        "priority": 5,
-        "retry_policy": "none"
-      },
-      "previous_output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/source_vetting_actions_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/source_vetting_ladder.py:18,63 ACTIONS.write_text(updated_at, actions) - last step of the attribution->maturity->vetting chain (source_maturity.py:21,126 also writes source_maturity_latest.json); host mtime 2026-10-09T05:45:02"
-      },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-11",
-      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
-      "refactor_evidence": {
-        "class": "SOURCE_ONLY",
-        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
-        "native_approval": true,
-        "worktree": "refactor-shard-02",
-        "runtime_activation": "NOT_PERFORMED",
-        "contract_status": "DRAFT"
       }
     },
     {
@@ -13433,17 +13403,14 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 5 * * *",
-        "match": "scripts/register_analyst_sources.py",
-        "stage": "shadow",
-        "wave": "R2-03",
-        "command_text": "40 5 * * * cd $PROJ && $PY scripts/register_analyst_sources.py --apply >> logs/analyst_sources.log 2>&1"
+        "match": "scripts/register_analyst_sources.py"
       },
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/register-analyst-sources_last.json",
-        "key": "ok_at"
+        "kind": "file_mtime",
+        "path": "logs/analyst_sources.log",
+        "evidence": "CRON_LOG_REDIRECT"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P03",
@@ -13471,19 +13438,7 @@
         "stage": "premarket",
         "step_id": "register_analyst_sources",
         "on": "2026-10-11"
-      },
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "40 5 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "learn",
-        "priority": 3,
-        "retry_policy": "none"
-      },
-      "refactor_source_note": "R2-03 source preparation only; live cron ownership unchanged. Dry CLI is an offline plan, not runtime output/consumer proof; contract remains DRAFT."
+      }
     },
     {
       "lane_id": "overnight-batch-outcomes",
@@ -13628,17 +13583,15 @@
       "scheduler": {
         "kind": "cron",
         "expression": "35 6 * * *",
-        "match": "scripts/research_intelligence_materialize.py",
-        "command_text": "35 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_materialize_cron.lock $PY scripts/research_intelligence_materialize.py >> logs/ri_materialize.log 2>&1  # RI v3.1 snapshot rebuild after overnight content",
-        "stage": "shadow",
-        "wave": "R2-02"
+        "match": "scripts/research_intelligence_materialize.py"
       },
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/research-intelligence-materialize_last.json",
-        "key": "ok_at"
+        "kind": "file_mtime",
+        "path": "data/runtime/ri_snapshots/top.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/research_intelligence_materialize.py:36 SNAP_DIR, per-lane {lane}.json written at :96-98 (top.json); host mtime 2026-10-09T06:35:02"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P10",
@@ -13653,7 +13606,7 @@
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "state_since": "2026-10-11",
       "superseded_by": "premarket-data-pipeline",
@@ -13666,34 +13619,6 @@
         "stage": "premarket",
         "step_id": "research_intelligence_materialize",
         "on": "2026-10-11"
-      },
-      "dispatch": {
-        "mode": "dry_run",
-        "cron": [
-          "35 6 * * *"
-        ],
-        "tz": "America/New_York",
-        "wave": "W4",
-        "class": "ingest",
-        "priority": 5,
-        "retry_policy": "none"
-      },
-      "previous_output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/ri_snapshots/top.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/research_intelligence_materialize.py:36 SNAP_DIR, per-lane {lane}.json written at :96-98 (top.json); host mtime 2026-10-09T06:35:02"
-      },
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-11",
-      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
-      "refactor_evidence": {
-        "class": "SOURCE_ONLY",
-        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
-        "native_approval": true,
-        "worktree": "refactor-shard-02",
-        "runtime_activation": "NOT_PERFORMED",
-        "contract_status": "DRAFT"
       }
     },
     {
