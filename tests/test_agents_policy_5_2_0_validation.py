@@ -279,10 +279,15 @@ def test_pointers_in_6_8_9_3_16_23_12_and_23_19():
 
 def test_onboarding_standard_restates_8_1_and_keeps_its_natural_gates():
     f = _flat(ONBOARDING)
+    # 6.0.0 (PROPOSED, tests/test_agents_policy_6_0_0_step8.py) lets step 8's shadow fire be forced; from 6.0.0 the
+    # step reads "natural or forced" and the other natural gates are unchanged.
+    step8 = "Prove the shadow fire** on the natural schedule" if _version() < (6, 0, 0) else (
+        "Prove the shadow fire** — natural or forced"
+    )
     for frag in (
         "AGENTS.md 5.2.0 §8.1",
         "forced",
-        "Prove the shadow fire** on the natural schedule",
+        step8,
         "Natural-schedule evidence after cutover",
         "monitored, not awaited",
     ):

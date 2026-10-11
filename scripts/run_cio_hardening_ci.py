@@ -2154,6 +2154,8 @@ GATES = [
             "tests/test_agents_policy_5_1_0_notification_intents.py",
             # AGENTS.md 5.2.0 (PROPOSED 2026-10-11): §8.1 working = tests + dry run + forced run; natural fires monitored.
             "tests/test_agents_policy_5_2_0_validation.py",
+            # AGENTS.md 6.0.0 (PROPOSED 2026-10-11): onboarding step 8 accepts a forced shadow fire (§8.1).
+            "tests/test_agents_policy_6_0_0_step8.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
