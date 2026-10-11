@@ -283,7 +283,13 @@ def _searxng_transport(query: str, kind: str, count: int) -> list[dict[str, Any]
         from scripts.lib.searxng_client import searx_search
     except ImportError:
         from lib.searxng_client import searx_search  # type: ignore
-    hits = searx_search(query, categories="news" if kind == "news" else "general", limit=int(count))
+    try:
+        from scripts.lib.free_search import free_engines
+    except ImportError:
+        from lib.free_search import free_engines  # type: ignore
+    cats = "news" if kind == "news" else "general"
+    # Named engines, never a Brave one: SearXNG's general category includes the PAID braveapi (2026-10-10).
+    hits = searx_search(query, categories=cats, limit=int(count), engines=free_engines(cats))
     errors = [h for h in hits if isinstance(h, dict) and h.get("error") and not h.get("url")]
     if errors and len(errors) == len(hits):
         raise RuntimeError(f"searxng: {errors[0].get('error')}")
@@ -492,11 +498,14 @@ def reserve(
     clock: Clock,
     root: Optional[Path] = None,
     units: int = 1,
+    gate: Any = None,
 ) -> Reservation:
     """Atomically reserve budget and record a reservation row.
 
     Fail-closed on corrupt ledger. Replay of the same idempotency_key returns
     the existing reservation without double-spending when already RESERVED/SETTLED.
+    ``gate`` is threaded to ``search_budget.try_consume`` (the routing engine's dollar
+    decision, evaluated inside the ledger lock); None keeps the historic behaviour.
     """
     now = clock()
     path = reservation_path(root)
@@ -523,7 +532,10 @@ def reserve(
                     pass
 
         try:
-            verdict = try_consume(PROVIDER, caller=caller, now=now, root=root)
+            if gate is None:
+                verdict = try_consume(PROVIDER, caller=caller, now=now, root=root)
+            else:
+                verdict = try_consume(PROVIDER, caller=caller, now=now, root=root, gate=gate)
         except BudgetUnavailable as exc:
             raise QuotaCorrupt(str(exc)) from exc
         except Exception as exc:
@@ -711,8 +723,17 @@ def search(
     cache_ttl_s: Optional[int] = None,
     no_spill: bool = False,
     spill_transport: Optional[SpillTransport] = None,
+    budget_gate: Any = None,
+    goggles: Optional[str] = None,
+    extra_snippets: bool = False,
 ) -> RouterResponse:
     """Governed search. Cache hit → no allocation. Miss → reserve → call → settle|refund.
+
+    ``budget_gate`` / ``goggles`` / ``extra_snippets`` (2026-10-10) are set only by the
+    search routing engine (scripts/lib/search_router.py): the gate is its dollar-budget
+    decision taken inside the ledger lock; ``goggles`` (a hosted goggle URL) and
+    ``extra_snippets`` are sent only on the web endpoint and only when the routing policy
+    enables them (both off today). Every other caller's request is byte-for-byte unchanged.
 
     A Brave denial for a reason in the registry's ``web_search.spill_on``
     (DAILY_EXHAUSTED, MONTHLY_EXHAUSTED, HTTP 429) spills to the registry's
@@ -736,6 +757,8 @@ def search(
 
     ttl = cache_ttl_s if cache_ttl_s is not None else (3600 if kind == "news" else 300)
     ck = _cache_key(kind, query, freshness, count)
+    if kind == "web" and (goggles or extra_snippets):
+        ck = hashlib.sha256(f"{ck}|g={goggles or ''}|x={int(bool(extra_snippets))}".encode("utf-8")).hexdigest()
     cached = _read_cache(root, ck, now=now, ttl_s=ttl)
     if cached is not None:
         health = write_health(
@@ -756,7 +779,7 @@ def search(
     try:
         res = reserve(
             caller=caller, purpose=purpose, idempotency_key=idem,
-            clock=clock, root=root,
+            clock=clock, root=root, gate=budget_gate,
         )
     except BudgetRefused as exc:
         return _deny_or_spill(
@@ -793,6 +816,10 @@ def search(
         params["freshness"] = freshness
     if kind == "web":
         params["text_decorations"] = "false"
+        if goggles:
+            params["goggles"] = str(goggles)
+        if extra_snippets:
+            params["extra_snippets"] = "true"
         url = f"{BRAVE_WEB_URL}?{urlencode(params)}"
     else:
         url = f"{BRAVE_NEWS_URL}?{urlencode(params)}"

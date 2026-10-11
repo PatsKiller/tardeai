@@ -1,7 +1,7 @@
 # Feature-to-live deploy runbook (single-approval)
 
 Status:      ACTIVE
-as_of:       2026-10-09T21:00:00Z
+as_of:       2026-10-10T22:55:00Z (n8n bound-unit drop-ins, grant binding, post-promote n8n steps); 2026-10-09T21:00:00Z otherwise
 Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
 Verified:    exact-SHA gate at 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96 (PRs #1442, #1443)
 Authority:   AGENTS.md §Local gates / docs/GIT_HYGIENE.md / RELEASE_COORDINATOR boundary
@@ -37,6 +37,11 @@ The release-write reason has to name this release and the actions. `prepare` and
 both appear: a reason that only says "promote" refuses the prepare step. The reason must also
 contain `#<PR number>` or the merge SHA (at least 9 hex characters). Set `TRADEAI_RELEASE_PR` to
 that PR number on the prepare and promote commands. `TRADEAI_RELEASE_GRANT_BINDING` stays `enforce`.
+**Measured 2026-10-10 ~17:07 ET:** a generic 6 h release grant (7792ff3948d8d2d9) was refused by
+`scripts/lib/release_grant_binding.py` (`ReleaseGrantBinding@v1`: "no SHA named"); the re-requested grant named
+`e8a4a6815524…` and #1665 and matched (`matched_by: sha:…`, `status-20261010/release-e8a4a6815-promote.log`). Ask for
+the grant with the exact merged SHA and the PR numbers in the reason the first time; a campaign grant never stands in
+for a specific release.
 
 `git-push` covers push + PR open + merge. `release-write` covers the immutable release write +
 systemd promote. `maintree` is **not** required — the primary tree fast-forwards with a plain
@@ -193,6 +198,42 @@ pid=$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)
 readlink /proc/$pid/cwd        # must equal: readlink -f ~/trade-ai-releases/portfolio-server/CURRENT
 ```
 
+**Release-pinned daemons (since 2026-10-10).** A user unit can be pinned to one concrete release by a
+one-off drop-in (`<unit>.service.d/20-exact-sha-release.conf` or `10-user-exact-sha.conf` with
+`WorkingDirectory=<release dir>`). Promote used to rewrite only portfolio-server's, so
+`chatgpt-oauth-proxy`, `grok-oauth-proxy`, `heartbeat-receiver` and `tradeai-active-trader-motion` ran
+`a032116e7` (2026-10-06) for four days (packet `unit-code-roots`). Promote now runs
+`scripts/release_pin_daemons.py` through `release_pin_step`:
+
+- **before activation**, a dry-run plan (`pins:` lines in the promote log);
+- **after the health check, before the bound-unit restart**, `apply`: every user unit whose *effective*
+  `WorkingDirectory` / `ExecStart*` / `Environment` names a `portfolio-server/<release>` other than the new
+  one gets those pins rewritten into one managed drop-in, `90-release-pin.conf`. Pin-only one-offs are
+  archived under `~/.config/systemd/user/.release-pin-archive/<ts>/` next to a `TRIPWIRE.README`
+  (never deleted). A one-off that also carries other directives is kept, and the managed file overrides
+  it. Then one `daemon-reload`.
+- **Broker-adjacent units are never touched.** A unit whose code path matches the broker execution file
+  set (`broker.execution_code_edit` path globs in `config/agents_guard_hook_rules.json`, e.g.
+  `scripts/active_trader/**`, `scripts/brokers/**`) or is listed in `config/release_pin_daemons.json` is
+  reported `pinned-broker-adjacent: operator action`.
+- **Restarts.** Bound units (above) are restarted by the deploy as before. A unit on `restart_allowlist`
+  in `config/release_pin_daemons.json` (default empty) is restarted by the pin step. Every other rewritten
+  unit is reported `restart pending`: the new pin lands on its next restart.
+- `portfolio-server.service` is excluded (the deploy writes its drop-in itself). A pin a later drop-in
+  already overrides (e.g. `95-code-root-current.conf`) is reported `SHADOWED` and left alone. A stale pin
+  in a mixed drop-in that sorts after `90-release-pin.conf` is `BLOCKED: operator action`.
+
+The receipt (`ReleasePinReceipt@v1`) is `~/.local/state/cio-phase2-exact-main/release_pins/apply-<ts>.json`
+(each archived file with its sha256). The deploy receipt names it in `release_pin_receipt`.
+`TRADEAI_RELEASE_PIN_MODE=warn` lists stale pins without rewriting them; `off` skips the step and says so.
+`apply`/`restore` refuse the real systemd user dir under `TRADE_AI_CI=1`.
+
+```bash
+bash scripts/cio_phase2_exact_main_deploy.sh pins            # DRY RUN vs CURRENT; writes nothing
+bash scripts/cio_phase2_exact_main_deploy.sh pins <release>  # DRY RUN vs a prepared release
+python3 scripts/release_pin_daemons.py tripwire              # a live unit must not reference the archive
+```
+
 Two things it does not do (`AGENTS.md` §9.3, §10):
 
 1. **Install a new user unit.** A `config/systemd/user/*.timer` added by the PR is copied into the release
@@ -218,11 +259,32 @@ Two things it does not do (`AGENTS.md` §9.3, §10):
    `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. Editing the crontab is operator-only.
 
 3. **Turn on an opt-in mode of a bound unit.** Promote restarts `tradeai-n8n-run-executor.service` with the
-   environment the installed unit already has. The repo unit sets no `TRADEAI_N8N_EXECUTOR_WORKERS`, so the
-   executor stays on the v1 serial drain (RunReceipt@v1) after every promote. Executor v2 (#1598: N workers,
-   per-lane lock, reaper, RunReceipt@v2, limits in `config/n8n_executor.json`) starts only on an explicit
-   value of 2 or more. Setting it is a grant-gated edit of the installed unit (`Environment=TRADEAI_N8N_EXECUTOR_WORKERS=3`,
-   then `daemon-reload` and a restart of that unit). Rollback is in `docs/ops/ROLLBACK_COMMANDS.md`.
+   environment the installed unit and its drop-ins already have; it never reinstalls a unit. The repo unit sets no
+   `TRADEAI_N8N_EXECUTOR_WORKERS`. **Since 2026-10-10 13:07 ET executor v2 runs with 3 workers** from the installed
+   drop-in `~/.config/systemd/user/tradeai-n8n-run-executor.service.d/10-executor-v2.conf` (service grant
+   eebd4ca0a6b31bd2), so it survives every promote. The gateway likewise takes `TRADEAI_N8N_GATEWAY_EXTRA_LANES`
+   (incl. `n8n-workflow-error`) from the drop-in `tradeai-n8n-coordination-gateway.service.d/20-workflow-error-lane.conf`
+   (2026-10-10 16:27 ET). Changing either is a grant-gated edit of the drop-in (`config-write`), then `daemon-reload`
+   and a restart of that unit (`service`). Reinstalling a unit file from CURRENT keeps its `.service.d/` drop-ins.
+   Rollback is in `docs/ops/ROLLBACK_COMMANDS.md`; the full n8n configuration is
+   `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md`.
+
+4. **n8n workflows are not part of promote.** A release that changes the relay, the gateway or `coordination/due`
+   is promoted first; publishing or re-publishing a generic workflow is a separate step under a `cron` grant naming
+   the workflow ids (`N8N_ONBOARDING_STANDARD.md` §5). When more than one workflow calls the gateway in the same
+   minute, publish **one at a time** and read the relay log for `relay_gateway_unreachable` between them — the
+   one-call-at-a-time relay contract check missed RC11 (2026-10-10 17:14–17:20 ET; fixed by #1667, released in
+   `8ddf2ad59`, then the three routers were re-published 18:40, 18:44 and 18:47 ET).
+
+5. **A promoted flag-gated feature is still off.** `8ddf2ad59` carries the scalp hot tier with `SCALP_HOT_TIER`
+   unset (and a kill file path, `persistent-state/data/runtime/SCALP_HOT_TIER_DISABLED`); the search routing engine
+   (#1676) ships behind `SEARCH_ROUTING_ENGINE`; step 1's broker read path has kill switches
+   `DIRECTIVE_ENRICH_VIA_BROKER=0` and `DIRECTIVE_ENRICH_PREFETCH=0`. Turning a flag on in a crontab line or unit is
+   its own operator step under a `cron` or `config-write` grant, from its packet, after the release that carries the
+   code is live — never inside the promote.
+
+6. **Scheduled jobs never push.** Since #1672 `coder_dispatch` (L556) and `backup_generated_docs.sh` (L541) commit
+   locally only; a release does not add a push path to any cron line, timer or n8n lane.
 
 ## Failure / rollback
 
@@ -231,8 +293,10 @@ A `prepare` refused with `CURRENT pin check tree_diff:N` means the release overl
 files (`tree_diff:4`). #1620 includes `docs/**/data/` before the excludes. Root `data/` (runtime) stays
 excluded. Find the differing paths before retrying. Do not retry blind.
 
-`promote` already auto-rolls back to `PREV_RELEASE` on a failed health check. Manual rollback
-restarts the bound units and rewrites the expected-release pin. See `docs/ops/ROLLBACK_COMMANDS.md`.
+`promote` already auto-rolls back to `PREV_RELEASE` on a failed health check (the pin step has not run
+yet at that point, so no drop-in changed). Manual rollback restarts the bound units, rewrites the
+expected-release pin and restores the drop-ins the undone promote archived. See
+`docs/ops/ROLLBACK_COMMANDS.md`.
 
 ```bash
 bash scripts/cio_phase2_exact_main_deploy.sh rollback

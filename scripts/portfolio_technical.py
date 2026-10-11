@@ -48,6 +48,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
+try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
+    from lib.provider_ticker_guard import partition as _ticker_partition
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.provider_ticker_guard import partition as _ticker_partition
 try:
     from lib.finviz_csv import FinvizContractError, parse_export, to_number
 except ImportError:  # pragma: no cover -- repo-root import path
@@ -551,6 +555,10 @@ def _finviz_cookie_batch(
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
     results: Dict[str, Dict] = {}
+    tickers, _refused = _ticker_partition(tickers, "finviz")
+    if _refused:
+        print(f"  [technical] refused {len(_refused)} non-ticker symbol(s) before Finviz: "
+              f"{[r['symbol'] + ':' + r['reason'] for r in _refused[:10]]}")
 
     for ticker in tickers:
         # Skip mutual funds — Finviz has no quote.ashx page (returns 404)

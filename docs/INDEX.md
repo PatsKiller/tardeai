@@ -49,7 +49,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `8cc2fedef6cc` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `97c91ac7c77d` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -103,7 +103,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `294da182ba99` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `2eda5e703f8c` |
 | `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | Staging vs V2 bitemporal database — status report | review_required | OK | `809ec60535eb` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
@@ -717,6 +717,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/sender-inventory.md` | Communications Gateway — Sender Inventory | review_required | MISSING HEADER | `af5b68183139` |
 | `docs/audit/telegram-bypass-zero-closeout.md` | Telegram chokepoint — zero bypass closeout | review_required | OK | `73423300bcac` |
 | `docs/audit/wave-c-inbound-implementation.md` | Wave C — Communications Gateway, inbound half (implementation) | review_required | OK | `ca9edc237fc0` |
+| `docs/audits/ALPHA_VANTAGE_GAPS_AND_NEWSAPI_2026-10-10.md` | Alpha Vantage for the gaps, and the NewsAPI test | review_required | OK | `bf3eb1c68b48` |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 | review_required | OK | `9f1bdc8d2d08` |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND | review_required | OK | `18392c652fe2` |
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |
@@ -1425,14 +1426,18 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
-| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `c66360a217a5` |
+| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `9c43aea80082` |
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
-| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `a0b63667851f` |
+| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `ded275de4568` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `d6a1c8730cc0` |
+| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `d690ff834154` |
+| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `0346adae4715` |
+| `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `da2dacdebcd3` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `7695ab20454e` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |
@@ -1457,7 +1462,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md` | Cron consolidation — the 487 lines, what overlaps, what to merge, what to leave alone | review_required | MISSING HEADER | `054270f4802e` |
 | `docs/implementation/n8n-parallel/14-execution-week-20261008.md` | Execution plan — cron close-out and n8n Phase 2 in one week (2026-10-07 → 2026-10-14) | review_required | MISSING HEADER | `bd4d849645a2` |
 | `docs/implementation/n8n-parallel/15-pgvector-migration-decision-20261008.md` | pgvector migration of `content_embeddings` — decision packet (2026-10-08) | review_required | MISSING HEADER | `aa88f58c8ec5` |
-| `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | review_required | OK | `53caf4884e21` |
+| `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | archive_superseded | OK | `a1046cd30ee4` |
 | `docs/implementation/n8n-parallel/18-ai-routing-architecture-20261008.md` | AI routing architecture — governed bridge (n8n program W4, 2026-10-08) | review_required | OK | `07fb8b3ad106` |
 | `docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md` | 19 — N1 cutover packet (2026-10-08) | review_required | OK | `1c12618061f9` |
 | `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |
@@ -1832,7 +1837,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `7e712136efd9` |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `6addbfc81c7f` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota | review_required | OK | `1d1b620b91db` |
@@ -1876,6 +1881,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | APPROVED RETIRE — operator settle (AGENTS.md §17 / §9.3) | review_required | OK | `211e36d63272` |
 | `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` | CONFIRMED — live crontab verified (AGENTS.md §9.3) | review_required | OK | `daa12f930371` |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron | review_required | OK | `a4a573fe18a8` |
+| `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed | review_required | OK | `5be80145a2fd` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |
 | `docs/ops/R13_INSTITUTIONAL_MATURITY_CLOSEOUT_2026-08-25.md` | R13 Institutional maturity closeout | review_required | OK | `58eb48120061` |
@@ -1904,7 +1910,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_PROVENANCE_AND_ELIGIBILITY_CONTRACT.md` | Research Provenance and Eligibility Contract | review_required | OK | `02b38e898e6d` |
 | `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | Research quality, thesis mint gap, alarms — 2026-08-22 | review_required | OK | `6310c0e41813` |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM | review_required | OK | `28c7d73a7129` |
-| `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `0efb618ff91b` |
+| `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `e1ff15601de5` |
 | `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md` | Scalp lane bulk catalyst read — 2026-10-09 | review_required | MISSING HEADER | `a5dd57667b7a` |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 | review_required | OK | `22febcb04ade` |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery | review_required | OK | `3cc1521e57e5` |
@@ -2249,6 +2255,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/AIF_FINANCIAL_SENSES_SHADOW.md` | Runbook — AIF ↔ Financial Senses shadow | review_required | OK | `8509647d1d08` |
 | `docs/runbooks/BARE_METAL_RECOVERY.md` | Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit) | review_required | OK | `80d205a4c45f` |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `4105584e570c` |
+| `docs/runbooks/DB_RETENTION.md` | DB retention — owners, archive + tripwire, grants | review_required | OK | `24ad24a7b083` |
 | `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `b3f47d44596c` |
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `0de9b8a462fb` |

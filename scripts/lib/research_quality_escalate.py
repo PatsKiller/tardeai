@@ -213,11 +213,23 @@ def maybe_escalate(
             return receipt
 
         fn = search_fn
+        routed = False
         if fn is None:
-            from scripts.lib import free_search as fs
+            from scripts.lib import search_router
 
-            def fn(q: str, **kwargs: Any) -> Any:
-                return fs.search(q, caller=CALLER, kind="web", count=5, root=root, **kwargs)
+            if search_router.engine_enabled(env):
+                # Search routing engine (2026-10-10), class quality_escalation: cache + SearXNG with
+                # named engines; free only by policy.
+                routed = True
+
+                def fn(q: str, **kwargs: Any) -> Any:
+                    return search_router.route_query(q, caller=CALLER, symbol=symbol or None, kind="web",
+                                                     count=5, root=root, env=env, enabled=True)
+            else:
+                from scripts.lib import free_search as fs
+
+                def fn(q: str, **kwargs: Any) -> Any:
+                    return fs.search(q, caller=CALLER, kind="web", count=5, root=root, **kwargs)
 
         resp = fn(str(question).strip() or str(symbol or "research"))
         ok = bool(getattr(resp, "ok", False) if not isinstance(resp, dict) else resp.get("ok"))
@@ -231,7 +243,10 @@ def maybe_escalate(
             if not isinstance(resp, dict)
             else (resp.get("reason") or "")
         )
-        receipt["provider"] = "searxng"
+        receipt["provider"] = (str(getattr(resp, "provider", "") or "search_router") if routed else "searxng")
+        if routed:
+            receipt["route_class"] = getattr(resp, "question_class", None)
+            receipt["route_tier"] = getattr(resp, "tier", None)
         receipt["search_ok"] = ok
         receipt["search_reason"] = reason
         receipt["hit_count"] = len(hits)

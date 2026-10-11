@@ -328,10 +328,10 @@ def _quote(symbol: str) -> dict[str, Any]:
     """Single-symbol quote via Data Broker (prefer batch path in build_decision_desk)."""
     _scripts_path()
     try:
-        from lib.data_broker.market_quote import get_price_batch
-        # db_query not available here — use null batch with get_best_quote only via broker helper
-        from market_quote_provider import get_best_quote
-        q = get_best_quote(symbol) or {}
+        # db_query not available here — quote-only get_best_quote (CONSOLIDATION_PLAN §D.6):
+        # the stored quote first through the latest_quote projection, a provider only when stale.
+        from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS, get_best_quote
+        q = get_best_quote(symbol, max_age_seconds=QUOTE_ONLY_MAX_AGE_SECONDS) or {}
         price = _f(q.get("last_price") if q.get("last_price") is not None else q.get("price"))
         return {
             "price": price,

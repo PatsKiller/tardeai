@@ -77,6 +77,11 @@ from typing import Any, Dict, List, Optional, Set
 
 import requests
 
+try:  # GAP 14 (2026-10-10): one shared ticker check before any Finviz request
+    from lib.provider_ticker_guard import partition as _ticker_partition
+except ImportError:  # imported as scripts.finviz_enrichment
+    from scripts.lib.provider_ticker_guard import partition as _ticker_partition
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 CACHE_FILE = "data/state/ticker_enrichment_cache.json"
 CACHE_TTL_HOURS = 6          # refresh if older than 6 hours
@@ -511,6 +516,12 @@ def _fetch_view(tickers: List[str], view: int, root: Path, *, col_map: Optional[
 
     results: Dict[str, Dict] = {}
     col_map = col_map if col_map is not None else VIEWS.get(view, {})
+    # A CUSIP / ISIN / non-ticker never reaches Finviz (GAP 14): it is dropped here, the one HTTP site in
+    # this module, and named once so the caller's universe can be fixed at the source.
+    tickers, _rejected = _ticker_partition(tickers, "finviz")
+    if _rejected:
+        print(f"  [finviz-enrich] v={view} refused {len(_rejected)} non-ticker symbol(s): "
+              f"{[r['symbol'] + ':' + r['reason'] for r in _rejected[:10]]}")
 
     for i in range(0, len(tickers), BATCH_SIZE):
         batch = tickers[i:i + BATCH_SIZE]
@@ -634,10 +645,18 @@ def enrich_tickers(
     if views is None:
         views = _default_views(skip_fundamentals)
 
+    # Not a ticker -> no request and no cache record (GAP 14: 12507E201 was cached as a symbol).
+    requested = len(symbols)
+    symbols, rejected = _ticker_partition(symbols, "finviz")
+    if rejected:
+        print(f"  [finviz-enrich] refused {len(rejected)} non-ticker symbol(s) before any request: "
+              f"{[r['symbol'] + ':' + r['reason'] for r in rejected[:10]]}")
+
     # Find tickers that need refreshing
     stale = _stale_symbols(symbols, cache, force_refresh)
     _RUN_STATS.clear()
-    _RUN_STATS.update({"symbols": len(symbols), "stale": len(stale), "views": {}})
+    _RUN_STATS.update({"symbols": requested, "stale": len(stale), "views": {},
+                       "rejected_non_ticker": len(rejected)})
 
     if stale:
         print(f"  [finviz-enrich] Fetching {len(stale)} tickers "
@@ -757,8 +776,12 @@ def enrich_tickers(
             pass
         # === END WRITE-BACK ===
 
-    # Return requested symbols from cache
-    return {s: cache.get(s, {"symbol": s}) for s in symbols}
+    # Return requested symbols from cache; a refused non-ticker is answered (never cached) so callers that
+    # index by what they asked for still find a key, and the reason says why there is no data.
+    out = {s: cache.get(s, {"symbol": s}) for s in symbols}
+    for r in rejected:
+        out.setdefault(r["symbol"], {"symbol": r["symbol"], "rejected_non_ticker": r["reason"]})
+    return out
 
 
 # ── Scalp hot tier (operator decision (4), 2026-10-10) ───────────────────────

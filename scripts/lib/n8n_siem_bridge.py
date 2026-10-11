@@ -105,6 +105,8 @@ def lane_kind(source: str, item: str) -> tuple[str, str]:
         return "n8n-run-relay", ("RELAY_DOWN" if item == "relay:down" else _kind(item.split(":", 1)[-1]))
     if source == "n8n_lab_watchdog":
         return "n8n-lab-watchdog", "N8N_DOWN"
+    if source == "n8n_workflow_error" and item.startswith("wferr:") and len(item) > 6:
+        return item[6:], "WORKFLOW_ERROR"  # fan-in groups per workflow: component n8n:<workflow_id> (gap 11)
     if source in ("breach_detector", "runs", "scalp_lane") and ":" in item:
         lane, kind = item.rsplit(":", 1)
         return lane, _kind(kind)
@@ -334,6 +336,10 @@ def fanin_findings(
         lane, kind = lane_kind(str(inc.get("source") or ""), str(inc.get("item") or ""))
         run = latest.get(lane) or {}
         wf, ex = parse_run_id(run.get("run_id"), run.get("requested_by")) if run else (None, None)
+        if inc.get("workflow_id"):  # a grouped workflow-error incident names its workflow and executions
+            keys = [str(k) for k in inc.get("event_keys") or []]
+            wf = str(inc["workflow_id"])
+            ex = keys[-1].rsplit("-", 1)[-1] if keys else ex
         out.append(
             _finding(
                 lane,

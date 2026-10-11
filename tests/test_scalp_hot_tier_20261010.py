@@ -298,7 +298,8 @@ def test_freshness_report_no_slo_off_window_and_statuses_in_window(state):
 
 def test_catalog_lists_the_projection():
     row = next(p for p in catalog.PROJECTIONS if p["id"] == "scalp_list")
-    assert row["read_only"] and row["provider_calls"] == 0 and row["authority_domain"] is None
+    # registered by the operator 2026-10-10 (CONSOLIDATION_PLAN §D.5, branch n8nmat/broker-domains-q1)
+    assert row["read_only"] and row["provider_calls"] == 0 and row["authority_domain"] == "scalp_list"
 
 
 # ── enrichment owner hot path ─────────────────────────────────────────────────

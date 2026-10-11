@@ -7,11 +7,23 @@ Lifecycle: live → hidden/flagged → archived → purge (never deletes live ro
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 POLICY_PATH = ROOT / "config" / "hermes_librarian_policy.yaml"
+
+# The 90 d content_embeddings age rail has ONE owner (2026-10-11): scripts/db_retention.py, registry row
+# content_embeddings in config/data_retention_policy.json (archive_first flag, tripwire on archive).
+AGE_RAIL_OWNER = "db_retention"
+AGE_RAIL_POINTER = (
+    "hermes-librarian retention: content_embeddings purge_by_age DEFERRED to db_retention "
+    "(config/data_retention_policy.json row content_embeddings; scripts/db_retention.py, step db_retention of "
+    "tradeai-platform-maintenance-nightly 01:15). Set content_embeddings.max_age_owner: librarian in "
+    "config/hermes_librarian_policy.yaml to restore the old purge."
+)
 
 DEFAULT_RETENTION = {
     "hermes_research_intelligence": {
@@ -28,6 +40,7 @@ DEFAULT_RETENTION = {
     "content_embeddings": {
         "orphan_purge_days": 30,  # purge embeddings whose source row is gone
         "max_age_days": 90,       # age rail — regenerable vectors
+        "max_age_owner": "db_retention",  # 2026-10-11: one scheduler for the 90 d rail (see step 6)
     },
     "hermes_embedding_queue": {
         "failed_purge_days": 14,
@@ -169,9 +182,21 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
                     "count": hermes_orphans, "threshold_days": orphan_cfg})
 
     # 6. Age purge for content_embeddings (largest disk consumer when orphans=0)
+    # 2026-10-11 (DB retention study §2.6 #4): this 90 d DELETE duplicated db_retention's registry row
+    # (config/data_retention_policy.json, platform-maintenance-nightly 01:15) and neither archived.
+    # db_retention is the one owner; with max_age_owner=db_retention (default) this step is a no-op
+    # that logs a pointer. max_age_owner=librarian restores the old hard DELETE (rollback lever).
+    age_cfg = int(policy.get("content_embeddings", {}).get("max_age_days", 90) or 90)
+    age_owner = str(policy.get("content_embeddings", {}).get("max_age_owner") or AGE_RAIL_OWNER)
+    if age_owner != "librarian":
+        print(AGE_RAIL_POINTER, file=sys.stderr)
+        actions.append({"table": "content_embeddings", "action": "purge_by_age", "count": 0,
+                        "threshold_days": age_cfg, "deferred_to": age_owner, "pointer": AGE_RAIL_POINTER})
+        cur.close()
+        return {"mode": "dry-run" if dry_run else "apply",
+                "total_affected": sum(a["count"] for a in actions), "actions": actions}
     # Use now()-interval, not CURRENT_DATE-int: the date form silently under-counts
     # near the boundary (2026-09-18: CURRENT_DATE-90 → 0 rows, now()-90d → ~4k).
-    age_cfg = int(policy.get("content_embeddings", {}).get("max_age_days", 90) or 90)
     cur.execute(
         """
         SELECT COUNT(*) FROM content_embeddings

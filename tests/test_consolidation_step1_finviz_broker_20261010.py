@@ -115,7 +115,7 @@ def test_projection_reports_fresh_stale_and_missing_with_an_envelope():
     for key in ("as_of", "age_hours", "source", "stale", "stale_after_hours"):
         assert key in out
     assert out["source"]["writer"] == "scripts/finviz_enrichment.py"
-    assert out["source"]["registry_status"] == "PROPOSED_UNREGISTERED"
+    assert out["source"]["registry_status"] == "REGISTERED"  # operator registered the domain 2026-10-10 (§D.2)
     assert out["stale"] is False  # newest requested record is 1 h old
 
 

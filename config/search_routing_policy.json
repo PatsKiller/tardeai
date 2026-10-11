@@ -1,0 +1,225 @@
+{
+  "schema": "SearchRoutingPolicy@v1",
+  "as_of": "2026-10-10T18:30:00-04:00",
+  "authority": "READ_ONLY_ADVISORY",
+  "status": "PROPOSED - inert until SEARCH_ROUTING_ENGINE=1 is set for a lane (see docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md)",
+  "registry_domain": "web_search",
+  "engine_module": "scripts/lib/search_router.py",
+  "operator_direction": {
+    "quote": "I have $20 maximum a month on Brave already, trying not to use it all, and we need to prioritize the search for scalps that are about to fire and make sense. And we have the free lane, we just need to make sure that we have a mature engine and rules about which source to use for what so we're conserving the spend.",
+    "on": "2026-10-10",
+    "via": "operator to Agent V session brief (ms01-openclaw, ~18:03 ET)"
+  },
+  "flags": {
+    "engine": "SEARCH_ROUTING_ENGINE",
+    "dry_run": "SEARCH_ROUTING_DRY_RUN",
+    "paid_live": "BRAVE_ROUTER_LIVE",
+    "_why": "SEARCH_ROUTING_ENGINE=1 makes a rerouted caller ask this engine instead of its legacy path. The engine never opens a paid socket unless brave_router's own BRAVE_ROUTER_LIVE arm is also set. SEARCH_ROUTING_DRY_RUN=1 plans every decision and calls nothing."
+  },
+  "pricing": {
+    "provider": "brave",
+    "plan": "Brave Search API - Search plan",
+    "usd_per_request": 0.005,
+    "free_credit_usd_per_month": 5.0,
+    "provider_rate_limit_per_second": 50,
+    "evidence": "operator brief 2026-10-10 ($5 per 1,000 requests, $5 monthly credit); per_second 50 and per_month limit 0 (= unmetered) from data/runtime/brave_provider_capacity_history.jsonl response headers"
+  },
+  "budget": {
+    "account_cap_usd": 20.0,
+    "local_ceiling_usd": 18.0,
+    "working_target_usd": 15.0,
+    "non_priority_stop_usd": 12.0,
+    "alert_at_pct_of_target": 80,
+    "caps_basis": "gross",
+    "_caps_basis_why": "Every dollar line below is compared to GROSS spend (requests x price) before the $5 monthly credit. That is the conservative reading: the credit only ever makes the billed amount smaller. The spend report shows gross, credit and net billed side by side.",
+    "pacing": {
+      "basis": "nyse_trading_days",
+      "carry_over_max_days": 1.0,
+      "floor_fraction_of_base": 0.25,
+      "non_trading_day_fraction_of_base": 0.25,
+      "_why": "base = working_target / trading days in the month. Unspent pace carries forward by at most one day's base; an overspent pace is repaid from the next day's allowance, never below the floor so a priority scalp is never starved to zero by yesterday."
+    },
+    "pools": {
+      "scalp": {"share": 0.5, "first_claim": true, "month_line": "working_target_usd", "may_borrow_unused_daily_from": ["catalyst", "other"]},
+      "operator": {"share": 0.2, "reserve": true, "bypass_daily_pacing": true, "month_line": "local_ceiling_usd"},
+      "catalyst": {"share": 0.2, "month_line": "non_priority_stop_usd"},
+      "other": {"share": 0.1, "month_line": "non_priority_stop_usd"}
+    },
+    "_pools_why": "scalp has first claim: background pools (catalyst, other) may spend only their own share of the day and month, so they can never consume the scalp share or the operator reserve; scalp may use any unspent background allowance of the day and may run to the $15 working target; operator questions bypass daily pacing and may run to the $18 local ceiling. Nothing runs past $18."
+  },
+  "free_lane": {
+    "searxng": {
+      "engines": {
+        "web": ["bing", "seznam", "yandex", "yep", "wikipedia"],
+        "news": ["bing news", "duckduckgo news", "reuters", "yahoo news", "google news", "wikinews"]
+      },
+      "never_engines": ["braveapi", "brave", "brave.news"],
+      "enforce_engine_allowlist": true,
+      "_why": "Measured 2026-10-10 on http://127.0.0.1:18888/config: braveapi (the PAID Brave API, keyed by scripts/install_searxng_config.sh) is enabled in the general category, so every categories=general query through the 'free' lane also spends a Brave request that lib/search_budget never sees. The free lane therefore always names its engines and never names a Brave engine."
+    }
+  },
+  "sources": {
+    "cache": {"tier": 0, "cost_class": "free", "kind": "shared_cache"},
+    "internal_news": {"tier": 1, "cost_class": "free", "kind": "broker_projection", "projection": "catalyst_record.get_symbol_news", "registry_domain": "catalyst_news", "requires_symbol": true},
+    "searxng": {"tier": 1, "cost_class": "free", "kind": "self_hosted", "registry_provider": "searxng"},
+    "alpha_vantage_news": {
+      "tier": 1,
+      "cost_class": "free",
+      "kind": "owner_store",
+      "registry_provider": "alpha_vantage",
+      "requires_supplies_any": ["news_sentiment", "catalyst_news"],
+      "store": "data/runtime/alpha_vantage/news_sentiment_latest.json",
+      "owner": "scripts/lib/alpha_vantage_owner.py (branch n8nmat/av-newsapi, Agent U)",
+      "requires_symbol": true,
+      "_why": "Reads the AV owner's rolling 72 h NewsSentimentIndex@v1 store. It never sends an Alpha Vantage request (the owner is the only AV caller and spends the 25/day). Skipped with NOT_GRANTED until providers.alpha_vantage.supplies includes news_sentiment or catalyst_news, and with NO_STORE until the owner writes the index."
+    },
+    "brave": {"tier": 2, "cost_class": "paid", "kind": "http", "registry_provider": "brave", "via": "scripts/lib/brave_router.py"}
+  },
+  "goggles": {
+    "financial": {
+      "enabled": false,
+      "goggle_url": null,
+      "endpoints": ["web"],
+      "_why": "Brave Goggles re-rank web results toward named hosts. A goggle must be hosted at a public URL; none is hosted yet, so this stays off and no request carries a goggles parameter. Enabling it is a policy edit (url + enabled) after the operator approves hosting the goggle file."
+    }
+  },
+  "extra_snippets": {
+    "enabled": false,
+    "_why": "Brave extra_snippets is not verified on the Search plan; no test call was spent to verify it (2026-10-10). Off until verified."
+  },
+  "quality": {
+    "trusted_domains": [
+      "reuters.com", "bloomberg.com", "wsj.com", "cnbc.com", "marketwatch.com", "finance.yahoo.com",
+      "barrons.com", "ft.com", "seekingalpha.com", "investing.com", "nasdaq.com", "sec.gov",
+      "businesswire.com", "prnewswire.com", "globenewswire.com", "accesswire.com", "newsfilecorp.com",
+      "benzinga.com", "fool.com", "zacks.com", "investors.com", "thestreet.com", "morningstar.com",
+      "finviz.com", "stocktitan.net", "tipranks.com", "apnews.com", "marketbeat.com", "fiercebiotech.com",
+      "fiercepharma.com", "biopharmadive.com", "investopedia.com", "kiplinger.com", "forbes.com"
+    ],
+    "default": {"min_results": 3, "min_trusted": 1, "min_relevant": 2, "freshness_hours": null, "min_fresh": 0},
+    "_rule": "A free answer is SUFFICIENT when every count meets its minimum: results with a URL; results whose host is (a subdomain of) a trusted domain; results that mention the symbol (word match, case-sensitive for tickers) or at least half of the query's key terms in title or snippet; and, when freshness_hours is set, results whose published time is known and within the window. Anything less is INSUFFICIENT and may escalate to the paid tier if the class allows it."
+  },
+  "classes": {
+    "scalp_priority": {
+      "description": "A scalp that is about to fire (scripts/lib/scalp_priority.py classifier): research the catalyst now.",
+      "pool": "scalp",
+      "kind": "news",
+      "cache_ttl_s": 1200,
+      "free_tiers": ["internal_news", "searxng", "alpha_vantage_news"],
+      "paid": {"allowed": true, "trigger": "insufficient_free", "kind": "news", "freshness": "pd", "count": 5, "goggle": null},
+      "quality": {"min_results": 2, "min_trusted": 1, "min_relevant": 1, "freshness_hours": 24, "min_fresh": 1},
+      "no_coverage": "say_so"
+    },
+    "catalyst_confirmation": {
+      "description": "Catalyst check for a scalp or momentum name that is NOT about to fire, and the catalyst_news search backup.",
+      "pool": "catalyst",
+      "kind": "news",
+      "cache_ttl_s": 7200,
+      "free_tiers": ["internal_news", "searxng", "alpha_vantage_news"],
+      "paid": {"allowed": true, "trigger": "insufficient_free", "kind": "news", "freshness": "pw", "count": 5, "goggle": null},
+      "quality": {"min_results": 2, "min_trusted": 1, "min_relevant": 1, "freshness_hours": 72, "min_fresh": 1},
+      "no_coverage": "say_so"
+    },
+    "operator": {
+      "description": "A question the operator asked and is waiting for (web_research, intel_query, manual).",
+      "pool": "operator",
+      "kind": "web",
+      "cache_ttl_s": 1800,
+      "free_tiers": ["searxng"],
+      "paid": {"allowed": true, "trigger": "insufficient_free", "kind": "web", "freshness": null, "count": 5, "goggle": "financial"},
+      "quality": {"min_results": 3, "min_trusted": 1, "min_relevant": 2, "freshness_hours": null, "min_fresh": 0},
+      "no_coverage": "say_so"
+    },
+    "research": {
+      "description": "Scheduled thesis / wake research (governed_research_producer, hermes_cio_research).",
+      "pool": "other",
+      "kind": "web",
+      "cache_ttl_s": 21600,
+      "free_tiers": ["searxng"],
+      "paid": {"allowed": true, "trigger": "insufficient_free", "kind": "web", "freshness": null, "count": 3, "goggle": "financial"},
+      "quality": {"min_results": 3, "min_trusted": 1, "min_relevant": 2, "freshness_hours": null, "min_fresh": 0},
+      "no_coverage": "say_so"
+    },
+    "gap_fill": {
+      "description": "Data-gap residual web search (gap_resolver). Free only: a gap is a background question.",
+      "pool": "other",
+      "kind": "web",
+      "cache_ttl_s": 21600,
+      "free_tiers": ["searxng"],
+      "paid": {"allowed": false},
+      "quality": {"min_results": 1, "min_trusted": 0, "min_relevant": 1, "freshness_hours": null, "min_fresh": 0},
+      "no_coverage": "declared_gap"
+    },
+    "quality_escalation": {
+      "description": "A thin research answer climbing one rung (research_quality_escalate). Free only.",
+      "pool": "other",
+      "kind": "web",
+      "cache_ttl_s": 21600,
+      "free_tiers": ["searxng"],
+      "paid": {"allowed": false},
+      "quality": {"min_results": 1, "min_trusted": 0, "min_relevant": 1, "freshness_hours": null, "min_fresh": 0},
+      "no_coverage": "say_so"
+    },
+    "social_discovery": {
+      "description": "Aegis social mention discovery (aegis_social_sentiment, only when AEGIS_BRAVE_ENABLED=1). Free only.",
+      "pool": "other",
+      "kind": "web",
+      "cache_ttl_s": 21600,
+      "free_tiers": ["searxng"],
+      "paid": {"allowed": false},
+      "quality": {"min_results": 1, "min_trusted": 0, "min_relevant": 1, "freshness_hours": null, "min_fresh": 0},
+      "no_coverage": "say_so"
+    },
+    "transcript_discovery": {
+      "description": "Aegis transcript / commentary discovery (aegis_transcript_discovery, only when AEGIS_BRAVE_ENABLED=1). Free only.",
+      "pool": "other",
+      "kind": "web",
+      "cache_ttl_s": 21600,
+      "free_tiers": ["searxng"],
+      "paid": {"allowed": false},
+      "quality": {"min_results": 1, "min_trusted": 0, "min_relevant": 1, "freshness_hours": null, "min_fresh": 0},
+      "no_coverage": "say_so"
+    }
+  },
+  "callers": {
+    "scalp_hot_tier": "scalp_priority",
+    "hermes_momentum_catalyst": "catalyst_confirmation",
+    "hermes_scalp_catalyst": "catalyst_confirmation",
+    "catalyst_momentum_engine": "catalyst_confirmation",
+    "catalyst_intelligence": "catalyst_confirmation",
+    "web_research": "operator",
+    "intel_query": "operator",
+    "operator": "operator",
+    "manual": "operator",
+    "governed_research_producer": "research",
+    "hermes_cio_research": "research",
+    "gap_resolver": "gap_fill",
+    "research_quality_escalate": "quality_escalation",
+    "aegis_social_sentiment": "social_discovery",
+    "aegis_transcript_discovery": "transcript_discovery"
+  },
+  "_callers_why": "A caller names itself; the policy names its class. A caller with a symbol that the scalp-priority classifier marks about-to-fire is promoted to scalp_priority (promotable_to_priority below). A caller absent from this map is refused UNKNOWN_CALLER - no default class, so a new caller cannot spend by accident.",
+  "promotable_to_priority": ["scalp_hot_tier", "hermes_scalp_catalyst", "hermes_momentum_catalyst", "catalyst_momentum_engine", "catalyst_intelligence"],
+  "priority": {
+    "scalp": {
+      "sessions_et": {"premarket": ["04:00", "09:30"], "rth": ["09:30", "16:00"]},
+      "list_projection": "data/trade_ai/scalp_universe_latest.json",
+      "max_list_age_min": 15,
+      "eligible_decisions": ["GO", "MANUAL_REVIEW", "WAIT"],
+      "go_min_score_source": "assets/weights.yaml decision_rules.GO.min_score",
+      "go_min_score_default": 40,
+      "trigger_proximity_points": 5,
+      "momentum_override": {"min_rvol": 3.0, "min_gap_pct": 5.0, "min_change_pct": 10.0},
+      "research_stale_after_min": 30,
+      "max_per_cycle": 5,
+      "_why": "About to fire = on the current scalp list (projection no older than 15 min, or a candidate the calling lane hands in), inside premarket or RTH on an NYSE trading day, not AVOID, and either within 5 points of the GO line (score >= go_min - 5) or showing momentum (RVOL >= 3 with a gap >= 5% or a move >= 10%), and not researched in the last 30 minutes. The top 5 by score per cycle."
+    }
+  },
+  "receipts": {
+    "path": "data/runtime/search_routing_receipts.jsonl",
+    "writer": "scripts/lib/search_budget.py (append_routing_receipt)",
+    "fields": ["ts", "caller", "class", "pool", "tier", "source", "reason", "cost_usd", "cache_hit", "units_paid", "units_free", "symbol", "priority", "latency_ms", "quality"]
+  },
+  "cache": {"path": "data/runtime/search_routing_cache.json", "max_entries": 2000, "max_age_s": 86400},
+  "spend_report": {"path": "data/runtime/search_spend_last.json", "writer": "scripts/search_spend_report.py"}
+}

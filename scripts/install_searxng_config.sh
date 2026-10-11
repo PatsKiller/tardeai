@@ -104,7 +104,16 @@ PY
   say "carried forward the existing secret_key"
 fi
 
-# Inject the key and enable braveapi, only when a key exists.
+# braveapi is the PAID Brave API. Operator 2026-10-10 ~18:40 ET ("Yes, from one to six", item 1): it is
+# disabled in the pool — measured that day, every categories=general query through the "free" lane also asked
+# api.search.brave.com, outside lib/search_budget (2,357 requests 10-01..10-10). Paid Brave goes only through
+# scripts/lib/brave_router.py (the routing engine's tier 2). A re-install must not silently re-enable it, so the
+# key is injected and the engine enabled ONLY when SEARXNG_ENABLE_BRAVEAPI=1 is set explicitly.
+if [[ -n "$KEY" && "${SEARXNG_ENABLE_BRAVEAPI:-0}" != "1" ]]; then
+  say "braveapi stays DISABLED (paid engine; set SEARXNG_ENABLE_BRAVEAPI=1 only with an operator decision)"
+  KEY=""
+fi
+# Inject the key and enable braveapi, only when a key exists (and the opt-in above is set).
 if [[ -n "$KEY" ]]; then
   BRAVE_KEY="$KEY" python3 - "$TMP" <<'PY'
 import os, re, sys

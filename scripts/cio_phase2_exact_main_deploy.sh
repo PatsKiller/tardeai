@@ -6,6 +6,7 @@
 # promote  — point CURRENT + systemd at the prepared release, restart, health
 # rollback — restore PREV recorded in state
 # status
+# pins     — DRY RUN: list user units pinned to a release other than [dir] (default CURRENT); writes nothing
 # stamp    — (re)stamp provenance artifacts for a release dir: SOURCE_COMMIT, BUILD_SHA,
 #            GIT_SHA, BUILD_STAMP.json, and build-meta.json (no npm/network/systemd)
 #
@@ -98,7 +99,7 @@ write_deploy_receipt() {
   local prev="${PREV_RELEASE:-}"
   local pr="${CIO_SOURCE_PR:-}"
   OK_FLAG="$ok_flag" MODE="$mode" HEALTH="$health" ROLLED="$rolled" EXTRA="$extra" \
-  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" RECEIPT_FILE="$RECEIPT_FILE" CI_RECEIPT_FILE="$CI_RECEIPT_FILE" python3 - <<'PY'
+  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" PIN_RECEIPT="${RELEASE_PIN_RECEIPT:-}" RECEIPT_FILE="$RECEIPT_FILE" CI_RECEIPT_FILE="$CI_RECEIPT_FILE" python3 - <<'PY'
 import json, os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -114,6 +115,7 @@ rec = {
     "release_dir": os.environ.get("DIR") or "",
     "prev_release": os.environ.get("PREV") or "",
     "extra": os.environ.get("EXTRA") or "",
+    "release_pin_receipt": os.environ.get("PIN_RECEIPT") or "",
     "at": datetime.now(timezone.utc).isoformat(),
     "authority": "READ_ONLY_ADVISORY",
     "script": "cio_phase2_exact_main_deploy.sh",
@@ -574,6 +576,55 @@ worker_pin_check() {
   fi
 }
 
+# Release-pinned daemons (2026-10-10, packets/unit-code-roots). One-off exact-SHA drop-ins
+# (<unit>.service.d/20-exact-sha-release.conf, 10-user-exact-sha.conf: WorkingDirectory=<release dir>)
+# were never rewritten by promote, which wrote only portfolio-server's: chatgpt-oauth-proxy,
+# grok-oauth-proxy, heartbeat-receiver and tradeai-active-trader-motion ran a032116e7 for four days.
+# scripts/release_pin_daemons.py finds every user unit whose effective WorkingDirectory/ExecStart/
+# Environment names a portfolio-server/<release> other than the one being activated, rewrites those
+# pins into one managed drop-in (90-release-pin.conf), ARCHIVES pin-only one-offs (never deletes) and
+# daemon-reloads. Broker-adjacent units (AGENTS.md §0 rule 2) are listed, never modified. Units the
+# deploy restarts itself are passed through; others are reported "restart pending".
+# TRADEAI_RELEASE_PIN_MODE=apply (default) | warn (plan only, loud) | off. `pins [dir]` is the dry run.
+RELEASE_PIN_RECEIPT=""
+release_pin_step() {
+  local action="$1" dir="$2" from="${3:-}"
+  local tool="${ROOT}/scripts/release_pin_daemons.py"
+  local mode="${TRADEAI_RELEASE_PIN_MODE:-apply}"
+  if [[ ! -f "$tool" ]]; then
+    log "release pin step: $tool absent — stale daemon pins NOT checked"
+    return 0
+  fi
+  if [[ "$mode" == "off" ]]; then
+    log "WARN release pin step OFF (TRADEAI_RELEASE_PIN_MODE=off) — stale daemon pins NOT checked"
+    return 0
+  fi
+  # The deploy restarts its bound units right after this step; pass them so they are not reported pending.
+  # (The default list is read from restart_root_frozen_units, its one home; tools parse that literal.)
+  local key="TRADEAI_CURRENT_BOUND_UNITS" bound
+  bound="${!key:-}"
+  [[ -n "$bound" ]] || bound="$(declare -f restart_root_frozen_units | sed -n "s/.*${key}:-\([^}]*\)}.*/\1/p" | head -1)"
+  local out rc=0
+  if [[ "$action" == "plan" || "$mode" == "warn" ]]; then
+    out="$("$VENV_PYTHON" "$tool" plan --target "$dir" 2>&1)" || rc=$?
+  elif [[ "$action" == "rollback" ]]; then
+    out="$("$VENV_PYTHON" "$tool" rollback --target "$dir" --from "$from" --deploy-restarted "$bound" 2>&1)" || rc=$?
+  else
+    out="$("$VENV_PYTHON" "$tool" apply --target "$dir" --deploy-restarted "$bound" 2>&1)" || rc=$?
+  fi
+  while IFS= read -r line; do log "  pins: $line"; done <<<"$out"
+  RELEASE_PIN_RECEIPT="$(sed -n 's/^receipt → //p; s/^restore receipt → //p' <<<"$out" | tail -1)"
+  case "$rc" in
+    0) ;;
+    3) log "WARN release pins: stale pins remain that need an operator (blocked/tripwire) — see pins: lines above" ;;
+    *) log "FAIL release pin step rc=$rc — daemons pinned to an old release were NOT re-pointed" ;;
+  esac
+  if [[ "$mode" == "warn" ]] && grep -q "STALE PINS" <<<"$out"; then
+    log "WARN TRADEAI_RELEASE_PIN_MODE=warn: stale daemon pins listed above were NOT rewritten"
+  fi
+  return 0
+}
+
 cmd_prepare() {
   command -v rsync >/dev/null || die "rsync missing"
   require_head_is_origin_main
@@ -664,6 +715,7 @@ cmd_promote() {
       die "exact-SHA push-to-main checks are not completed successfully; activation refused"
     fi
   fi
+  release_pin_step plan "$dir"
   write_state
   activate_release "$dir" "$sha"
   if ! health_check "promote"; then
@@ -679,6 +731,7 @@ cmd_promote() {
     fi
     die "promote health failed — not claiming promote OK"
   fi
+  release_pin_step apply "$dir"
   restart_root_frozen_units "$dir"
   write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "$promote_note"
@@ -800,6 +853,8 @@ cmd_rollback() {
   local sha="unknown"
   [[ -f "${target}/BUILD_SHA" ]] && sha="$(tr -d '[:space:]' <"${target}/BUILD_SHA")"
   log "Rolling back to $target (sha=$sha)"
+  local rolled_from
+  rolled_from="$(current_release)"
   activate_release "$target" "$sha"
   if ! health_check "rollback"; then
     write_deploy_receipt false rollback fail false "rollback_health_failed"
@@ -808,6 +863,8 @@ cmd_rollback() {
   # CURRENT moved. Bound units keep the concrete directory they resolved at
   # start, so a rollback that only flips the symlink leaves them on the
   # release that was just rolled away. Same restart and pin write as promote.
+  # Pins written by the promote being undone are restored from its receipt (archived drop-ins moved back).
+  release_pin_step rollback "$target" "$rolled_from"
   restart_root_frozen_units "$target"
   write_expected_release_pin "$target"
   write_deploy_receipt true rollback ok false "rollback_ok"
@@ -828,12 +885,13 @@ case "$MODE" in
   promote)  cmd_promote "${2:-}" ;;
   rollback) cmd_rollback "${2:-}" ;;
   status)   cmd_status ;;
+  pins)     release_pin_step plan "${2:-$(current_release)}" ;;
   stamp)    [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: $0 stamp <release-dir> <full-40-char-sha>"
             stamp_build "$2" "$3"
             write_build_meta "$2" "$3"
             log "stamped provenance for $2 -> $3" ;;
   *)
-    echo "Usage: $0 {prepare|promote|rollback|status|stamp} [path]"
+    echo "Usage: $0 {prepare|promote|rollback|status|pins|stamp} [path]"
     exit 2
     ;;
 esac

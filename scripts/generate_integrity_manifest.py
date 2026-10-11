@@ -66,8 +66,10 @@ DEFAULT_FILES: list[dict[str, Any]] = [
     },
     {
         "key": "ticker_enrichment_cache",
-        "canonical_path": "data/portfolios/state/ticker_enrichment_cache.json",
-        "source_pipeline": "ticker_enrichment_engine.py",
+        # store of record = data/state (operator decision 2026-10-10, CONSOLIDATION_PLAN §D.3);
+        # the single writer is finviz_enrichment.py (config/data_source_authority.json finviz_enrichment)
+        "canonical_path": "data/state/ticker_enrichment_cache.json",
+        "source_pipeline": "finviz_enrichment.py",
         "max_age_minutes": 360,
         "consumers": ["watch_intelligence", "symbol_profiles", "screening"],
     },

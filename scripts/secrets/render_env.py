@@ -311,7 +311,7 @@ def _telegram(msg: str) -> None:
                             os.environ[k] = v
                 break
         from telegram_alert import send_telegram
-        send_telegram(msg, bypass_router=True)
+        send_telegram(msg, priority="P1", producer="sm_render_env")
     except Exception as e:
         print(f"telegram_fail: {e}", file=sys.stderr)
 

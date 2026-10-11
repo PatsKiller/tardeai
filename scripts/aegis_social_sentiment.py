@@ -224,27 +224,39 @@ def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, d
         print("  [brave] retired default — reddit+stocktwits only; "
               "set AEGIS_BRAVE_ENABLED=1 to re-enable")
         return {}
-    if not BRAVE_KEY:
+    try:
+        from scripts.lib import search_router as _sr
+    except ImportError:
+        from lib import search_router as _sr  # type: ignore
+    routed = _sr.engine_enabled()
+    if not routed and not BRAVE_KEY:
         print("  [brave] No BRAVE_SEARCH_API_KEY — skipping")
         return {}
 
     results: dict[str, dict] = {}
-    # Lane C: governed Brave router is the only provider path.
+    # Lane C: governed Brave router is the only provider path. With SEARCH_ROUTING_ENGINE=1 the
+    # search routing engine answers instead (class social_discovery: cache + SearXNG, free only).
     try:
         from scripts.lib.brave_router import search as _governed, router_enabled
     except ImportError:
         from lib.brave_router import search as _governed, router_enabled  # type: ignore
-    if not router_enabled():
+    if not routed and not router_enabled():
         print("  [brave] router OFF — no provider calls")
         return {}
     for sym in symbols[:max_queries]:
         try:
             q = f"{sym} stock sentiment reddit OR stocktwits"
-            resp = _governed(
-                q, kind="web", count=5, freshness="pd",
-                caller="aegis_social_sentiment", purpose="aegis.social",
-                api_key=BRAVE_KEY, enabled=True,
-            )
+            if routed:
+                resp = _sr.route_query(q, caller="aegis_social_sentiment", symbol=sym, kind="web",
+                                       count=5, enabled=True)
+                if not resp.ok and str(resp.reason).startswith("NO_COVERAGE"):
+                    continue
+            else:
+                resp = _governed(
+                    q, kind="web", count=5, freshness="pd",
+                    caller="aegis_social_sentiment", purpose="aegis.social",
+                    api_key=BRAVE_KEY, enabled=True,
+                )
             if not resp.ok:
                 print(f"  [brave] governed deny ({resp.reason}) — stopping at {sym}")
                 break

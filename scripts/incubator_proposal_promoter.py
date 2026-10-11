@@ -637,8 +637,9 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             scan_price = extract_evidence_price(c.get('evidence_payload'))
         if scan_price is None:
             try:
-                from market_quote_provider import get_best_quote
-                _lq = get_best_quote(symbol)
+                # Quote-only (CONSOLIDATION_PLAN §D.6): stored quote first, a provider only when stale.
+                from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS, get_best_quote
+                _lq = get_best_quote(symbol, max_age_seconds=QUOTE_ONLY_MAX_AGE_SECONDS)
                 if _lq and _lq.get('last_price') and _lq['last_price'] > 0:
                     scan_price = _lq['last_price']
                     screener_label = f"live_quote_{_lq.get('provider', 'unknown')}"
@@ -655,8 +656,9 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
 
         # Live price validation — reject if scan price drifted >3% from live
         try:
+            from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS as _qo_age
             from market_quote_provider import get_best_quote as _gpq
-            _live = _gpq(symbol)
+            _live = _gpq(symbol, max_age_seconds=_qo_age)
             if _live and _live.get('last_price') and _live['last_price'] > 0:
                 _live_px = float(_live['last_price'])
                 _drift = abs(_live_px - scan_price) / scan_price * 100

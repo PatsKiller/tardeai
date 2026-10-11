@@ -1,0 +1,183 @@
+{
+  "schema": "AlphaVantageOwnerConfig@v1",
+  "as_of": "2026-10-10T18:30:00-04:00",
+  "status": "PROPOSED — the owner module is the only Alpha Vantage HTTP caller. Scheduled news/earnings jobs stay inert until (1) the operator grants the registry scope (config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json) and (2) a cron/n8n grant schedules them (AGENTS.md §17). Until then the owner refuses them up front in the receipt.",
+  "provider": "alpha_vantage",
+  "operator_direction": {
+    "quote": "let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense",
+    "on": "2026-10-10",
+    "via": "operator to Agent U session brief (ms01-openclaw, ~18:00 ET)",
+    "grants": "the direction only; the registry scope widening is a separate operator approval"
+  },
+  "provider_limits": {
+    "requests_per_day": 25,
+    "requests_per_minute": 5,
+    "evidence": "operator brief 2026-10-10 (verified that day); free key"
+  },
+  "budget": {
+    "hard_daily_cap": 23,
+    "_hard_daily_cap_why": "25/day free key minus 2 margin for any caller outside this owner (data_source_health showed an alpha_vantage success 10-09 21:47 that no known caller explains). The loader refuses a cap above 23.",
+    "count_days": ["UTC", "America/New_York"],
+    "_count_days_why": "Alpha Vantage does not document which midnight resets the 25. A call counts against BOTH the UTC day and the ET day, and both must be under the cap, so no 24h reset convention can see more than 23 from this owner.",
+    "min_spacing_s": 12,
+    "_min_spacing_why": "5 requests/minute = one per 12 s. Persisted across processes in the ledger, under a file lock.",
+    "max_wait_s": 30,
+    "_max_wait_why": "A caller that would have to wait longer than this for its spacing slot is refused (reason spacing_wait_exceeded), never queued indefinitely."
+  },
+  "jobs": {
+    "earnings_calendar": {
+      "priority": 1,
+      "domain": "earnings_calendar",
+      "function": "EARNINGS_CALENDAR",
+      "params": {"horizon": "3month"},
+      "daily_allotment": 1,
+      "class": "scheduled",
+      "slots_et": ["06:05"],
+      "why": "One call returns the whole US market for 3 months with reportDate, estimate and timeOfTheDay (pre/post market). symbol_profiles carries next_earnings_date for 1,260 of 3,337 profiles and no timing at all (read-only query 2026-10-10)."
+    },
+    "news_sentiment_window": {
+      "priority": 2,
+      "domain": "news_sentiment",
+      "function": "NEWS_SENTIMENT",
+      "params": {"sort": "LATEST", "limit": 1000},
+      "daily_allotment": 14,
+      "class": "scheduled",
+      "slots_et": ["06:00", "07:00", "08:00", "09:00", "09:45", "10:30", "11:30", "12:30", "13:30", "14:30", "15:30", "16:30", "18:00", "20:00"],
+      "cursor": "each pull asks time_from = the previous pull's time_to (no tickers filter: a multi-ticker query is an AND, verified 2026-10-10), so the day is covered without gaps; a first pull or a cursor older than 24 h starts at now-24h",
+      "why": "0 of 7,492 news_articles rows written in the last 3 days carry a sentiment_score (read-only query 2026-10-10). Each broad pull returns every article in the window with per-ticker relevance and sentiment for every ticker it mentions."
+    },
+    "fundamentals_overview": {
+      "priority": 3,
+      "domain": "fundamentals",
+      "function": "OVERVIEW",
+      "daily_allotment": 5,
+      "class": "scheduled_lane",
+      "caller": "scripts/external_market_data_ingest.py --fundamentals (cron L162, Mon 08:00; registry writer of fundamental_data)",
+      "why": "Already granted scope (may supply: fundamentals). fundamental_data holds 21 symbols, last fetch 2026-10-05 (read-only query 2026-10-10)."
+    },
+    "scalp_float": {
+      "priority": 4,
+      "domain": "fundamentals",
+      "function": "OVERVIEW",
+      "daily_allotment": 2,
+      "class": "on_demand_reserve",
+      "caller": "scripts/scalp_float_lookup.py (Finviz first; AV only for floats Finviz lacks)",
+      "why": "Ran every 5 min 06:00-15:55 with up to 2 AV calls per run and no budget at all; now drawn from a 2/day reserve."
+    },
+    "key_check": {
+      "priority": 5,
+      "domain": null,
+      "function": "GLOBAL_QUOTE",
+      "params": {"symbol": "IBM"},
+      "daily_allotment": 1,
+      "class": "on_demand_reserve",
+      "caller": "scripts/credential_monitor.py, scripts/secret_validators.py — only when the owner has no successful call in key_check_fresh_hours",
+      "why": "Both validators spent a GLOBAL_QUOTE (1 of 25) on every credential check. They now read the owner's last success first."
+    },
+    "top_movers": {
+      "priority": 6,
+      "domain": "market_movers",
+      "function": "TOP_GAINERS_LOSERS",
+      "daily_allotment": 0,
+      "class": "disabled",
+      "why": "Verified on the documented demo URL 2026-10-10 (20 gainers/losers/most active, last_updated 2026-10-09 16:15:57 US/Eastern, end of day). Finviz already writes market_movers top_gainers 3,234 rows / top_losers 3,288 rows in 7 days. Low value; 0 allotment."
+    }
+  },
+  "_allotment_sum": "1 + 14 + 5 + 2 + 1 + 0 = 23 = hard_daily_cap (the loader enforces sum <= cap)",
+  "key_check_fresh_hours": 36,
+  "news_sentiment": {
+    "index_window_hours": 72,
+    "min_relevance": 0.3,
+    "first_pull_lookback_hours": 24,
+    "time_published_tz": "UNVERIFIED — Alpha Vantage does not state the zone of time_published; treated as UTC (as catalyst_enrichment always has). Cursor windows use the same convention, so coverage is contiguous either way; ages may be off by the ET offset if the provider is ET."
+  },
+  "stores": {
+    "dir": "data/runtime/alpha_vantage (served dir: persistent-state/data/runtime)",
+    "budget_ledger": "budget_ledger.json",
+    "receipts": "receipts_YYYYMM.jsonl (append-only, one line per decision: refused, dry_run, called)",
+    "earnings_calendar": "earnings_calendar_latest.json (EarningsCalendar@v1)",
+    "news_sentiment_index": "news_sentiment_latest.json (NewsSentimentIndex@v1, rolling 72 h)",
+    "news_sentiment_articles": "news_sentiment_articles_YYYYMM.jsonl (append-only history)"
+  },
+  "health_contracts": [
+    {
+      "schema": "N8nHealthContract@v1",
+      "_shape_note": "Same fields as config/n8n_health_contracts.json (branch n8nmat/w0-siem-followups, not merged on 2026-10-10). Copy these in when that file lands.",
+      "id": "alpha-vantage-owner-news-sentiment",
+      "kind": "owner",
+      "status": "DRAFT",
+      "stage": "proposed",
+      "purpose": {"text": "14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET; per-ticker sentiment for every article into data/runtime/alpha_vantage/news_sentiment_latest.json", "business_function": "catalyst news / scalp sentiment", "source": "config/alpha_vantage_owner.json jobs.news_sentiment_window"},
+      "owner": "data_broker",
+      "connects_to": [
+        {"name": "https://www.alphavantage.co/query (NEWS_SENTIMENT)", "kind": "provider", "direction": "calls", "source": "scripts/lib/alpha_vantage_owner.py"},
+        {"name": "data/runtime/alpha_vantage/budget_ledger.json", "kind": "lock", "direction": "read_write", "source": "owner ledger (flock)"},
+        {"name": "data/runtime/alpha_vantage/news_sentiment_latest.json", "kind": "output_signal", "direction": "write", "source": "owner publish"},
+        {"name": "lib.data_broker.news_sentiment", "kind": "projection", "direction": "read", "source": "scripts/lib/data_broker/catalog.py"}
+      ],
+      "healthy": [
+        {"check": "index_fresh", "text": "news_sentiment_latest.json as_of within 3 h between 06:00 and 21:00 ET, within 13 h otherwise"},
+        {"check": "budget_within_cap", "text": "news_sentiment_window calls today <= 14 and owner total <= 23 on both the UTC and the ET day"},
+        {"check": "receipt_per_slot", "text": "every scheduled slot leaves exactly one receipt (called, refused or dry_run)"}
+      ],
+      "degraded": [
+        {"check": "late", "text": "index as_of older than 3 h in the trading window but younger than 13 h"},
+        {"check": "truncated", "text": "a pull returned limit (1000) articles: the window was larger than one call"},
+        {"check": "burst_notice", "text": "a response carried the per-second notice (spacing defect)"}
+      ],
+      "failed": [
+        {"check": "quota_notice", "text": "provider returned the daily-limit notice: owner marks the day exhausted, projection answers no_coverage (say_so)"},
+        {"check": "scope_refused", "text": "registry scope for news_sentiment not granted: every slot refused up front (expected until the operator grants it)"},
+        {"check": "stale", "text": "index older than 13 h"}
+      ]
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "alpha-vantage-owner-earnings-calendar",
+      "kind": "owner",
+      "status": "DRAFT",
+      "stage": "proposed",
+      "purpose": {"text": "one EARNINGS_CALENDAR (horizon 3month) per day at 06:05 ET into data/runtime/alpha_vantage/earnings_calendar_latest.json", "business_function": "earnings timing for catalysts, scalps and the options gate", "source": "config/alpha_vantage_owner.json jobs.earnings_calendar"},
+      "owner": "data_broker",
+      "connects_to": [
+        {"name": "https://www.alphavantage.co/query (EARNINGS_CALENDAR)", "kind": "provider", "direction": "calls", "source": "scripts/lib/alpha_vantage_owner.py"},
+        {"name": "data/runtime/alpha_vantage/earnings_calendar_latest.json", "kind": "output_signal", "direction": "write", "source": "owner publish"},
+        {"name": "lib.data_broker.earnings_calendar", "kind": "projection", "direction": "read", "source": "scripts/lib/data_broker/catalog.py"}
+      ],
+      "healthy": [
+        {"check": "calendar_fresh", "text": "earnings_calendar_latest.json as_of within 26 h"},
+        {"check": "rows_plausible", "text": "rows >= 500 (a 3-month whole-market calendar); fewer means a notice or a truncated CSV"}
+      ],
+      "degraded": [
+        {"check": "late", "text": "as_of older than 26 h but younger than 50 h (one missed day)"}
+      ],
+      "failed": [
+        {"check": "notice_in_csv", "text": "the CSV endpoint returned a notice (observed 2026-10-10 on the demo key: header then 'I,n,f,o,r,m,a'); previous calendar kept, receipt says so"},
+        {"check": "stale", "text": "older than 50 h: projection answers stale with age, never as current"}
+      ]
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "alpha-vantage-owner-budget",
+      "kind": "owner",
+      "status": "DRAFT",
+      "stage": "proposed",
+      "purpose": {"text": "single Alpha Vantage budget: <= 23/day on both the UTC and ET day, >= 12 s spacing, per-job allotments", "business_function": "provider budget", "source": "config/alpha_vantage_owner.json budget"},
+      "owner": "data_broker",
+      "connects_to": [
+        {"name": "data/runtime/alpha_vantage/budget_ledger.json", "kind": "ledger", "direction": "read_write", "source": "owner"},
+        {"name": "data/runtime/alpha_vantage/receipts_YYYYMM.jsonl", "kind": "receipt", "direction": "write", "source": "owner"}
+      ],
+      "healthy": [
+        {"check": "under_cap", "text": "calls today <= 23 on both days; no job above its allotment"},
+        {"check": "no_phantom", "text": "every counted call has a receipt with an HTTP status (refusals and dry runs count 0)"}
+      ],
+      "degraded": [
+        {"check": "reserve_spent", "text": "on-demand reserve (scalp_float 2, key_check 1) exhausted before 16:00 ET"}
+      ],
+      "failed": [
+        {"check": "over_cap", "text": "any day above 23 — a caller bypassed the owner (grep for alphavantage.co outside scripts/lib/alpha_vantage_owner.py)"}
+      ]
+    }
+  ]
+}

@@ -67,15 +67,15 @@ def finviz_fetch(symbols: list[str]) -> dict:
 
 
 def alpha_vantage_float(symbol: str) -> Optional[float]:
-    """SharesFloat from AV OVERVIEW, in millions. None on missing key, quota notice or error."""
-    from external_market_data_ingest import _av_overview, _av_burst_notice, _env, AV_MIN_INTERVAL_S
-    key = _env("ALPHA_VANTAGE_API_KEY")
-    if not key:
+    """SharesFloat from AV OVERVIEW, in millions. None on missing key, refusal, quota notice or error.
+
+    2026-10-10: through the Alpha Vantage owner's ``scalp_float`` job (2/day reserve, 12 s spacing,
+    receipts). This ran every 5 minutes 06:00-15:55 with up to 2 calls a run and no budget at all.
+    """
+    from external_market_data_ingest import _av_overview
+    data = _av_overview(symbol, job="scalp_float")
+    if "Information" in data or "Note" in data:
         return None
-    data = _av_overview(symbol, key)
-    if _av_burst_notice(data) or "Information" in data or "Note" in data:
-        return None
-    time.sleep(AV_MIN_INTERVAL_S)
     sf = _positive(data.get("SharesFloat"))
     return round(sf / 1e6, 4) if sf else None
 

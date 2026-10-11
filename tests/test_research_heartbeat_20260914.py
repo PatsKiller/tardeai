@@ -39,6 +39,24 @@ COVERS = [
 NOW = datetime(2026, 9, 14, 17, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _offline_search_and_temp_state_root(monkeypatch, tmp_path):
+    """RC1-class leak fix (2026-10-10). ``BridgeHermesResearchBackend.run`` gathers live web results first
+    (``hermes_web_research.gather``; ``options_desk_settings.web_research.enabled_reasons = ['*']``), so the
+    bridge tests below made real SearXNG requests and wrote ``hermes_cio_research`` rows — some under
+    future dates — into the PRODUCTION ``data/runtime/search_budget.json`` (searxng 10-11 … 12-25, brave
+    refunds the same days, measured 2026-10-10). Every test here now runs against a temp state root and
+    the web gather is stubbed offline: a unit test must never spend or count a real search."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    monkeypatch.delenv("SEARCH_ROUTING_ENGINE", raising=False)
+    try:
+        from scripts.lib import hermes_bridge_backend as _hbb
+        monkeypatch.setattr(_hbb, "_gather_web", lambda request: {"used": False, "reason": "test_offline"})
+    except Exception:  # noqa: BLE001 — module absent: nothing to stub
+        pass
+    yield
+
+
 # ── the guard: facts pass, advice still refuses ─────────────────────────────
 
 @pytest.mark.parametrize("fact", [
@@ -289,3 +307,16 @@ def test_bridge_backend_withholds_advice_when_the_rewrite_still_says_buy(monkeyp
     assert "buy" not in body["answers"][0]["summary"].lower()
     assert body["answers"][0]["status"] == "unanswered"
     assert any("order language withheld" in x for x in body.get("limitations") or [])
+
+
+def test_bridge_backend_tests_never_touch_the_production_search_ledger(tmp_path):
+    """Regression for the fixture above: the ledger path resolves under the temp root, and a bridge run
+    leaves no ledger at all (the web gather is stubbed)."""
+    from scripts.lib import search_budget
+    from scripts.lib.hermes_bridge_backend import BridgeHermesResearchBackend
+
+    assert str(search_budget.budget_path()).startswith(str(tmp_path))
+    be = BridgeHermesResearchBackend()
+    be._chat_completions = lambda messages: _body("The thesis strengthens if margins hold.")
+    be.run(_request())
+    assert not search_budget.budget_path().exists()

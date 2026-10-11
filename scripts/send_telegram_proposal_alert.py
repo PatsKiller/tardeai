@@ -139,8 +139,9 @@ def main():
                 if _age_min >= 120:
                     from proposal_lifecycle import get_price_drift_threshold
                     _drift_max = get_price_drift_threshold(pr.get("strategy_id") or "")
+                    from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS as _qo_age
                     from market_quote_provider import get_best_quote as _abq
-                    _lq = _abq(pr.get("symbol", ""))
+                    _lq = _abq(pr.get("symbol", ""), max_age_seconds=_qo_age)
                     if _lq and _lq.get("last_price") and _lq["last_price"] > 0:
                         _drift = abs(float(_lq["last_price"]) - _entry) / _entry * 100
                         if _drift > _drift_max:

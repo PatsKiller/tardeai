@@ -26,14 +26,29 @@ def searx_search(
     limit: int = 6,
     timeout: float = 12.0,
     searx_url: Optional[str] = None,
+    engines: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
-    """Return normalized hit dicts: title, snippet, url, domain, query."""
+    """Return normalized hit dicts: title, snippet, url, domain, query, published.
+
+    ``engines`` (2026-10-10, search routing engine): an explicit engine allowlist. When
+    given, ``categories`` is NOT sent — SearXNG unions a category's engines with the
+    ``engines`` list, so sending both re-admits every engine in the category. Measured
+    2026-10-10 on the local instance: ``categories=general`` includes ``braveapi``, the
+    PAID Brave API keyed into SearXNG, so a "free" general query spends one Brave request
+    that ``lib/search_budget`` never counts. ``engines=bing,seznam`` returned only bing and
+    seznam rows. ``published`` carries SearXNG's ``publishedDate`` when the engine gave one.
+    """
     url_base = (searx_url or DEFAULT_SEARXNG).rstrip("/")
     if not url_base.endswith("/search"):
         # allow host-only env
         if "://" in url_base and "/search" not in url_base:
             url_base = url_base + "/search"
-    params = urllib.parse.urlencode({"q": query, "format": "json", "categories": categories})
+    query_params = {"q": query, "format": "json"}
+    if engines:
+        query_params["engines"] = ",".join(str(e).strip() for e in engines if str(e).strip())
+    else:
+        query_params["categories"] = categories
+    params = urllib.parse.urlencode(query_params)
     req = urllib.request.Request(
         f"{url_base}?{params}",
         headers={"User-Agent": "TradeAI-SharedSearx/1.0"},
@@ -57,6 +72,8 @@ def searx_search(
                 "domain": domain,
                 "query": query,
                 "engine": "searxng",
+                "engines": list(hit.get("engines") or ([hit["engine"]] if hit.get("engine") else [])),
+                "published": str(hit.get("publishedDate") or ""),
                 "authority": AUTHORITY,
             })
     except Exception as exc:

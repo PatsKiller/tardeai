@@ -192,8 +192,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     if a.send:
         from telegram_alert import send_telegram  # type: ignore
         # One line a day, operator-requested (plan: "a daily progress line"); the text router would fold it into
-        # a digest, so it bypasses the router like the other scheduled operator reports.
-        send_telegram(row_line, bypass_router=True, message_class="report")
+        # a digest, so it is a P2 intent: routed by its declared priority, never by the text classifier.
+        send_telegram(row_line, message_class="report", priority="P2", producer="positions_proof_daily")
     return 0 if row["pass"] else 1
 
 

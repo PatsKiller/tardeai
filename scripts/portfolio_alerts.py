@@ -519,7 +519,8 @@ def _send_telegram_document(file_path: "Path", caption: str, project_root: "Path
     sys.path.insert(0, str(project_root / "scripts"))
     try:
         from telegram_alert import send_telegram_document
-        ok = bool(send_telegram_document(str(file_path), caption=caption or file_path.name, bypass_router=True))
+        ok = bool(send_telegram_document(str(file_path), caption=caption or file_path.name,
+                                         priority="P2", producer="portfolio_alerts"))
     except Exception:
         ok = False
     try:

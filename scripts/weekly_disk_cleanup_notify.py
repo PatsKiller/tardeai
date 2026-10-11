@@ -288,7 +288,7 @@ def run(*, apply: bool, notify: bool) -> dict:
         msg = build_telegram(summary)
         try:
             from telegram_alert import send_telegram
-            sent = send_telegram(msg, bypass_router=True, message_class="operator_alert")
+            sent = send_telegram(msg, message_class="operator_alert", priority="P2", producer="weekly_disk_cleanup")
             summary["telegram"] = "accepted" if sent else "send_returned_false"
         except Exception as e:
             summary["telegram"] = f"error:{type(e).__name__}:{e}"

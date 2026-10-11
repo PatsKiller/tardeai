@@ -452,8 +452,138 @@ def _quote_sort_key(quote: dict) -> tuple:
     return (0 if is_rt else 1, age_key, priority)
 
 
-def get_best_quote(symbol: str) -> dict:
-    """Try each provider; return freshest real-time quote (Schwab beats stale Alpaca after hours)."""
+#: quote_price.stale_after_hours (0.25 h) in config/data_source_authority.json. The bound quote-only
+#: callers pass; tests assert it still equals the registry value.
+QUOTE_ONLY_MAX_AGE_SECONDS = 900
+
+
+def quote_only_enabled() -> bool:
+    """Kill switch: ``QUOTE_ONLY_MODE=0`` restores the pre-2026-10-10 behaviour everywhere — callers
+    passing ``max_age_seconds`` get the legacy fan-out and the Data Broker's live fallback is
+    dead again (``lib.data_broker.market_quote._best_quote`` returns None)."""
+    return os.environ.get("QUOTE_ONLY_MODE", "1").strip() != "0"
+
+
+def _stored_quote_db_query():
+    """A read-only ``db_query(sql, params)`` over this module's own connection (closed per call)."""
+    def _q(sql, params=None, fetch="all"):
+        import psycopg2.extras
+        conn = get_conn()
+        try:
+            conn.set_session(readonly=True, autocommit=True)
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                return cur.fetchall()
+        finally:
+            conn.close()
+    return _q
+
+
+def _read_stored_quote(symbol: str, max_age_seconds: float, db_query=None) -> dict | None:
+    """The newest stored quote for ``symbol`` through the latest_quote projection, or None."""
+    try:
+        from lib.data_broker.latest_quote import get_latest_quote
+        return get_latest_quote(db_query or _stored_quote_db_query(), symbol,
+                                max_age_seconds=float(max_age_seconds))
+    except Exception as e:  # noqa: BLE001 - no stored answer; the provider chain decides
+        log.debug(f"stored quote read failed for {symbol}: {e}")
+        return None
+
+
+def _stored_result(stored: dict, tried: list) -> dict:
+    """A stored quote in get_best_quote's shape. Never execution-eligible: it has no bid/ask and
+    its provider is the store, not a real-time feed (so after-hours real-time checks refuse it)."""
+    out = _make_result(
+        provider="market_quotes", priority=0,
+        last_price=stored.get("price"),
+        day_volume=stored.get("volume"),
+        quote_timestamp=stored.get("as_of"),
+        is_delayed=False,
+        raw_payload={"prev_close": stored.get("prev_close"), "change_pct": stored.get("chg_pct"),
+                     "stored_provider": stored.get("provider")},
+    )
+    out.update({
+        "day_change_pct": stored.get("chg_pct"),
+        "source": stored.get("source"),
+        "as_of": stored.get("as_of"),
+        "age_seconds": stored.get("age_seconds"),
+        "stale": bool(stored.get("stale")),
+        "quote_mode": "quote_only",
+        "providers_tried": list(tried),
+    })
+    return out
+
+
+def _quote_only(symbol: str, max_age_seconds: float, db_query=None, skip_stored: bool = False) -> dict:
+    """Q1 (operator decision 2026-10-10, CONSOLIDATION_PLAN.md §D.6): stored first, providers only on stale.
+
+    1. The stored quote (``latest_quote`` projection over ``market_quotes``). Fresh within
+       ``max_age_seconds`` -> returned; zero provider calls.
+    2. Otherwise the providers in PROVIDER_CHAIN order, **stopping at the first fresh answer** (a
+       price whose quote_timestamp is within the bound). Never the whole-chain fan-out unless no
+       provider has a fresh answer.
+    3. Nothing fresh anywhere -> the freshest answer seen (a provider's or the stored row), marked
+       ``stale: True``. The domain's declared no_coverage is ``last_price_with_age_and_source``.
+    """
+    sym = (symbol or "").upper().strip()
+    stored = None if skip_stored else _read_stored_quote(sym, max_age_seconds, db_query)
+    if stored and not stored.get("stale"):
+        return _stored_result(stored, [])
+    tried: list = []
+    seen: list = []
+    for name, fetcher in PROVIDER_CHAIN:
+        try:
+            result = _normalize_provider_result(fetcher(sym), name)
+        except Exception as e:
+            tried.append(f"{name}:error")
+            log.debug(f"Provider {name} failed for {sym}: {e}")
+            continue
+        if not result:
+            tried.append(name)
+            continue
+        age_min = quote_age_minutes(result)
+        result["quote_mode"] = "quote_only"
+        result["age_seconds"] = round(age_min * 60.0, 1) if age_min is not None else None
+        result["stale"] = age_min is None or age_min * 60.0 > float(max_age_seconds)
+        if not result["stale"]:
+            result["providers_tried"] = tried + [name]
+            return result
+        tried.append(f"{name}:stale")
+        seen.append(result)
+    if seen:
+        best = min(seen, key=lambda q: q["age_seconds"] if q.get("age_seconds") is not None else 1e12)
+        if stored and stored.get("age_seconds") is not None and (
+                best.get("age_seconds") is None or stored["age_seconds"] < best["age_seconds"]):
+            return _stored_result(stored, tried)
+        best["providers_tried"] = tried
+        return best
+    if stored:
+        return _stored_result(stored, tried)
+    return {
+        "provider": "none", "provider_priority": 99, "last_price": None,
+        "bid": None, "ask": None, "spread": None, "spread_pct": None,
+        "day_volume": None, "quote_timestamp": None, "is_delayed": True,
+        "is_execution_eligible": False, "providers_tried": tried, "raw_payload": {},
+        "quote_mode": "quote_only", "stale": True,
+    }
+
+
+def get_best_quote(symbol: str, *, max_age_seconds: float | None = None, db_query=None,
+                   skip_stored: bool = False) -> dict:
+    """Best quote for ``symbol``. Two modes.
+
+    Quote-only (``max_age_seconds`` given) — for callers that need a price, not an executable
+    bid/ask: the stored quote first, providers only when it is stale, stopping at the first fresh
+    answer (:func:`_quote_only`). ``db_query`` reuses the caller's read handle; ``skip_stored``
+    skips the stored read when the caller has just made it (the Data Broker's own fallback).
+
+    Legacy (no ``max_age_seconds``) — unchanged: every provider is asked and the freshest
+    real-time quote wins (Schwab beats stale Alpaca after hours). Kept for the execution-readiness
+    callers (check_fresh_quote, proposal_execution_readiness, broker_trade_plan_gate — the last is
+    propose-only, §D.6) that need a real-time bid/ask.
+    """
+    if max_age_seconds is not None and quote_only_enabled():
+        return _quote_only(symbol, float(max_age_seconds), db_query=db_query, skip_stored=skip_stored)
     tried = []
     candidates = []
     for name, fetcher in PROVIDER_CHAIN:

@@ -1,6 +1,7 @@
 # n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08)
 
-**Status:** PROPOSED — workflow JSON generated and committed; nothing imported, nothing activated, no cron line retired
+**Status:** SUPERSEDED BY docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md — 2026-10-10. The per-lane workflow model below was replaced by the six generic workflows and registry-driven dispatch (AGENTS.md 4.1.0 §23.11, 4.4.0). Historical: as of 2026-10-10, 10 per-lane workflows are active (4 live, 6 shadow; see `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` §3.2), 4 cron lines are `# RETIRED 2026-10-09 n8n-cutover`, and the 16 `RELAY_HOST` imports were archived 2026-10-09. Do not import from this package.
+**Original status (2026-10-08):** PROPOSED — workflow JSON generated and committed; nothing imported, nothing activated, no cron line retired
 **Owner:** platform (workstream H, plan `streamed-humming-wolf` 2026-10-08; operator John)
 **Scope:** the 70 unique lanes of doc 16 §4.2 tranches N1–N6 (doc 16 counts 71 because `portfolio-backup-cadence` is listed under both N2 and N5)
 **Depends on:** run relay + executor + allowlist (workstream B), registry kind `n8n` + `_cutover.py --lane` (D), projection `source=runs` + Migration board (G), AGENTS.md 2.0.0 carve-out + ADR (E) — all in flight on 2026-10-08, none merged when this was written

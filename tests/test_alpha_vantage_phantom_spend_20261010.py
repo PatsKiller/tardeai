@@ -60,13 +60,17 @@ def test_missing_key_records_no_budget_spend(monkeypatch):
     assert calls == []
 
 
-def test_enabled_path_still_spends_once_and_honours_exhaustion(monkeypatch):
+def test_enabled_path_reads_the_owner_store_and_spends_nothing(monkeypatch):
+    # 2026-10-10 (AV owner): the slot no longer sends its own request, so it no longer spends from
+    # api_budget either. The one Alpha Vantage budget is the owner's (lib/alpha_vantage_owner.py).
     calls = _spy_budget(monkeypatch, allow=False)
     _no_network(monkeypatch)
     monkeypatch.setattr(ce, "_env", lambda k, d="": {"ENABLE_ALPHA_VANTAGE_CATALYST": "true",
                                                       "ALPHA_VANTAGE_API_KEY": "k"}.get(k, d))
-    assert ce._fetch_alpha_vantage("AAPL") == []  # budget refused -> no request
-    assert calls == ["alphavantage"]
+    from lib.data_broker import news_sentiment as ns
+    monkeypatch.setattr(ns, "_load", lambda base: None)
+    assert ce._fetch_alpha_vantage("AAPL") == []  # empty store -> nothing, and no request
+    assert calls == []
 
 
 class _Cur:

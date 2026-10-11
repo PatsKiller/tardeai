@@ -175,7 +175,7 @@ def test_go_alert_sends_the_rich_layout_with_buttons_and_chart(monkeypatch):
     calls = []
     assert g._send_go(lambda text, **kw: calls.append((text, kw)) or True, item)
     text, kw = calls[0]
-    assert kw["bypass_router"] is True
+    assert kw["priority"] == "P1" and "bypass_router" not in kw   # P1 intent replaced the bypass (2026-10-10)
     assert "<b>" in text and "/v3/trading?tab=Scalp&amp;symbol=ARMP" in text and "&amp; label" in text
     assert CHART in kw["link_preview_options"]["url"]
     assert kw["reply_markup"]["inline_keyboard"][0][0]["url"].endswith("/v3/trading?tab=Scalp&symbol=ARMP")

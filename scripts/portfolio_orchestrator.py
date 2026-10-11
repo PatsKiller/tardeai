@@ -866,10 +866,13 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     server_live = root / "reports" / "portfolio_live.html"
     server_live.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(dash_path, server_live)
-    # Sync enrichment cache to portfolios/state for server serving
+    # Sync enrichment cache to portfolios/state for server serving. The store of record is data/state
+    # (operator decision 2026-10-10, CONSOLIDATION_PLAN §D.3); once scripts/merge_enrichment_cache.py
+    # --apply has archived the copy and left an alias (a symlink to the store), copying onto it would
+    # be a SameFileError, so the copy is skipped then.
     enrich_src = root / 'data' / 'state' / 'ticker_enrichment_cache.json'
     enrich_dst = root / 'data' / 'portfolios' / 'state' / 'ticker_enrichment_cache.json'
-    if enrich_src.exists():
+    if enrich_src.exists() and not enrich_dst.is_symlink():
         shutil.copy2(enrich_src, enrich_dst)
     print(f"  ✅ {dash_path.name}")
 

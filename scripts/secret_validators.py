@@ -109,16 +109,26 @@ def _polygon(k):
 
 
 def _newsapi(k):
-    r = _get(f"https://newsapi.org/v2/top-headlines?country=us&pageSize=1&apiKey={k}")
-    return _ok(r), f"HTTP {r.status_code}"
+    # Key in the X-Api-Key header, never in the URL (2026-10-10): a URL with the key ends up in
+    # exception text and logs. NewsAPI is RETIRED as a data source (registry 2026-09-13); this only
+    # tells the operator whether the key still works. The body's "code" (apiKeyInvalid,
+    # rateLimited, upgradeRequired ...) is the plan/limit signal; HTTP status alone hides it.
+    r = _get("https://newsapi.org/v2/top-headlines?country=us&pageSize=1", headers={"X-Api-Key": k})
+    try:
+        body = r.json()
+    except ValueError:
+        body = {}
+    code = body.get("code") if isinstance(body, dict) else None
+    return _ok(r), f"HTTP {r.status_code}" + (f" {code}" if code else "")
 
 
 def _alphavantage(k):
-    r = _get(f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey={k}")
-    body = r.json() if r.status_code == 200 else {}
-    if "Error Message" in body or "Information" in body and "rate limit" not in str(body).lower():
-        return False, "rejected by provider"
-    return r.status_code == 200, f"HTTP {r.status_code}"
+    """Through the Alpha Vantage owner (2026-10-10): its last real call answers first, so a key
+    check no longer spends one of the 25 daily requests; one GLOBAL_QUOTE from the owner's 1/day
+    key_check reserve only when the owner has no recent success. ``k`` is unused (the owner
+    resolves the key itself); ``None`` means unknown and renders as not_validatable."""
+    from lib.alpha_vantage_owner import validate_key_via_owner
+    return validate_key_via_owner()
 
 
 def _brave(k):
@@ -238,7 +248,9 @@ def validate(name: str) -> dict:
                     "detail": detail + " — key recognized; plan/quota issue, not an auth failure"}
         return {"name": name, "status": "valid" if ok else "INVALID", "detail": detail}
     except Exception as e:
-        return {"name": name, "status": "check_failed", "detail": str(e)[:120]}
+        # requests/urllib errors embed the request URL, and several validators put the key in the
+        # query string: never return it (2026-10-10).
+        return {"name": name, "status": "check_failed", "detail": str(e).replace(k, "<KEY>")[:120]}
 
 
 if __name__ == "__main__":

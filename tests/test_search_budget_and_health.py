@@ -97,7 +97,10 @@ def test_the_monthly_cap_binds_even_when_the_daily_one_does_not(tmp_path, monkey
 def test_a_malformed_env_override_keeps_the_safe_default(tmp_path, monkeypatch):
     monkeypatch.setenv("SEARCH_BUDGET_BRAVE_MONTHLY", "not-a-number")
     st = sb.status("brave", now=NOW, root=tmp_path)
-    assert st["monthly_limit"] == sb.DEFAULT_LIMITS["brave"]["monthly"]
+    # The bad override is ignored: the cap is the registry's (or, when silent, DEFAULT_LIMITS) — never the junk.
+    # The registry raised brave to 3,600/month on 2026-10-10 (operator "Yes, from one to six", item 3).
+    monkeypatch.delenv("SEARCH_BUDGET_BRAVE_MONTHLY")
+    assert st["monthly_limit"] == sb.limits("brave")["monthly"]
 
 
 # ── the ledger survives a process, and is not release-relative ────────────

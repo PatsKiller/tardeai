@@ -307,8 +307,8 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
                 atr = float(enrich_fallback['atr'])
             if not current_price and enrich_fallback.get('available'):
                 try:
-                    from market_quote_provider import get_best_quote
-                    q = get_best_quote(symbol) or {}
+                    from market_quote_provider import QUOTE_ONLY_MAX_AGE_SECONDS, get_best_quote
+                    q = get_best_quote(symbol, max_age_seconds=QUOTE_ONLY_MAX_AGE_SECONDS) or {}
                     current_price = float(q.get('last_price') or q.get('last') or 0) or current_price
                 except Exception:
                     pass

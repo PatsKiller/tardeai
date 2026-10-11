@@ -4,7 +4,7 @@
 Lane approval-package-reminder (hourly). Reads the ledger, and for every package in SUBMITTED or
 PARTIAL: records (once each) a REMINDER_4H / REMINDER_12H note with the reminder text, and at
 expires_at marks the undecided items EXPIRED (package → EXPIRED when nothing decidable remains).
-Sending goes through telegram_alert.send_telegram(bypass_router=True) — the chokepoint — and only
+Sending goes through telegram_alert.send_telegram(priority="P1", dedupe_minutes=0) — the chokepoint — and only
 with --send; the default is a dry run that prints what it would send. Never re-mints guard requests.
 
 Approval: pkg-20260927-cogx-w1-d9e1 item 4. Authority: READ_ONLY_ADVISORY.
@@ -233,7 +233,9 @@ def write_run_receipt(path: Path, receipt: dict, *, before_replace=None) -> None
 def send_reminder_text(text: str) -> None:
     from telegram_alert import send_telegram  # type: ignore
 
-    send_telegram(text, bypass_router=True)
+    # P1 intent: the operator must act. Never capped or quiet-held; dedupe off because the package ledger
+    # already schedules each reminder (AGENTS.md §9.1: an approval prompt is never suppressed).
+    send_telegram(text, priority="P1", dedupe_minutes=0, producer="approval_package_reminder")
 
 from approval_package import Ledger, REMINDERS_HOURS, ledger_path  # noqa: E402
 
@@ -296,7 +298,7 @@ def main(argv: list[str] | None = None, *, sender=None, provider_ids=None) -> in
     ap.add_argument("--ledger")
     ap.add_argument("--receipt", help="run receipt path; default data/runtime/approval_package_reminder_last.json under this tree")
     ap.add_argument("--transport", help="transport rows path; default data/runtime/approval_reminder_transport.jsonl under this tree")
-    ap.add_argument("--send", action="store_true", help="send reminders via telegram_alert (router bypassed); default dry run")
+    ap.add_argument("--send", action="store_true", help="send reminders via telegram_alert (P1 notification intent); default dry run")
     ap.add_argument("--record", action="store_true", help="record NOTE/EXPIRED rows even without sending")
     a = ap.parse_args(argv)
     led = Ledger(Path(a.ledger) if a.ledger else ledger_path())

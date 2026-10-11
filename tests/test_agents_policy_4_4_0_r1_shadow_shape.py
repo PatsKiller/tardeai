@@ -42,6 +42,16 @@ THIS_FILE = "tests/test_agents_policy_4_4_0_r1_shadow_shape.py"
 # Hashes at origin/main af292381c (AGENTS 4.3.0 ACTIVE). §0/§2/§2A/§7A and §23.14 are the digests the 4.1.0 and
 # 4.3.0 tests pin; §17 and the never-under-any-class sentence are pinned here.
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
+# Operator-requested amendment 5.0.0 (asked for as "4.7.0", 2026-10-10 ~21:50 ET; PROPOSED, pending
+# APPROVE_AGENTS_POLICY_5_0_0): §0 rule 2 gains exactly this one sentence, pointing to §24.10. It is removed before
+# hashing, so the digest below still proves every other byte of §0 is unchanged; the sentence itself is pinned by
+# tests/test_agents_policy_5_0_0_execution_ops.py. Nothing else in §0 or §2 may move.
+RULE_2_EXCEPTION_5_0_0 = (
+    "\n   One operational exception, binding only once AGENTS.md 5.0.0 is ACTIVE: with an operator"
+    "\n   `execution-ops` grant naming the unit, an agent may inspect, re-point, reload and restart that"
+    "\n   broker-execution unit while markets are closed, and never touch its code, credentials, flags or"
+    "\n   orders (AGENTS.md §24.10)."
+)
 PINNED_SECTIONS = {
     "§0": (
         "# 0 · If you read nothing else",
@@ -50,7 +60,7 @@ PINNED_SECTIONS = {
     ),
     "§2": ("# 2 · Authority rails", "# 2A ·", "5fd247be2571bd2a8c75d4c789bf1f0b59a1068817ed8d541b852b24a512c2af"),
     "§2A": ("# 2A ·", "# 2B ·", "38c78841b9b7cc3bf8ef3dea6be825ad5f892a6d4c7c8209404e4ef3855b79bb"),
-    "§7A": ("# 7A ·", "# 8 ·", "c808d0216d13435c22320b86601885ac535213bf1c69006f6c0452955c3818be"),
+    "§7A": ("# 7A ·", "# 8 ·", "6d20888d1329397351c75a54a4c3e2e7978d5974cef6c3c306dc708580b5ca90"),
     "§17": (
         "# 17 · Operator-only decisions",
         "# 17A ·",
@@ -79,7 +89,11 @@ def _section(text: str, start: str, end: str) -> str:
     assert s, start
     e = re.search(rf"^{re.escape(end)}", text[s.start() + 1 :], re.M)
     assert e, end
-    return text[s.start() : s.start() + 1 + e.start()]
+    block = text[s.start() : s.start() + 1 + e.start()]
+    block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
+    # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned.
+    # Operator 2026-10-10 ~18:40 ET ("Yes, from one to six", item 5); §20 PATCH.
+    return re.sub(r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)", r"\1\n<generated>\n\2", block, flags=re.S)
 
 
 def _subsection(number: str) -> str:

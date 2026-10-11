@@ -3,7 +3,8 @@
 Status: DESIGN (spec only; no code, config, crontab, unit or workflow is changed by this document)
 **Owner:** Agent A (architecture); build owner B3 (dispatcher, executor, workflows), B2 (notifier), C2 (retry/DLQ tests)
 **Date:** 2026-10-09
-**Authority:** program plan "N8N Maturity Acceleration" (Agent A); AGENTS.md 3.0.0 §23 governs until 3.1.0 is ratified
+**Authority:** program plan "N8N Maturity Acceleration" (Agent A). *Amended 2026-10-10:* AGENTS.md **4.4.0** §23 governs (the "3.1.0" this design proposed became 4.1.0 §23.11–§23.14, then 4.3.0 §23.18 and 4.4.0); where this design and AGENTS.md differ, AGENTS.md wins.
+**Built state and procedure (2026-10-10):** [`N8N_CONFIGURATION.md`](N8N_CONFIGURATION.md) (what is configured), [`N8N_ONBOARDING_STANDARD.md`](N8N_ONBOARDING_STANDARD.md) (how to add a lane or workflow), [`N8N_MONITORING_AND_REMEDIATION_STANDARD.md`](N8N_MONITORING_AND_REMEDIATION_STANDARD.md). This file stays the design record.
 Inputs: due-diligence audits A–F (2026-10-09), rationalization F §6–§9, full migration plan E §1–§7, and six read-only code studies of `origin/main` at 306f583f0 (one per workflow area).
 
 Schemas: [`schemas/due-response.schema.json`](schemas/due-response.schema.json),
@@ -100,7 +101,8 @@ Rules:
 - A lane is runnable only if **all three** hold: it has a registry row with `dispatch.mode ≠ off`, it has an allowlist entry, and the allowlist `never` test passes. Registry and allowlist arrive in the same PR. This replaces the relay env `TRADEAI_N8N_RELAY_LIVE_LANES`, which becomes derived (`dispatch.mode == live`) and is kept only as an emergency deny-list.
 - `class` ∈ {`monitor`, `report`, `hygiene`, `pipeline`, `heavy`, `llm`, `ingest`, `send`, `learn`}.
   - `heavy` is implied when `timeout_s ≥ 1800`.
-  - `llm`, `ingest`, `send` and `learn` are refused by CI until AGENTS rules R1/R2 (E §3) are ratified.
+  - `llm`, `ingest`, `send` and `learn` are refused by CI until AGENTS rules R1/R2 (E §3) are ratified. *Amended 2026-10-10:* R1 is ratified (AGENTS.md 4.3.0 §23.18): `ingest`, `llm` and `learn` are admitted by `lane_dispatch.r1_class_admission`; `send` (R2) stays refused.
+- *Amended 2026-10-10 (AGENTS.md 4.4.0):* while its cron line is live, a lane at `shadow` or `canary` stays a **cron row** (`scheduler.kind: cron`, `scheduler.stage`, `dispatch.mode` `dry_run` / `live`); only cutover uses the dispatcher row (`kind: n8n`, `expression: "dispatcher"`). See the onboarding standard §3.
 - `watch` applies to **every** row, including cron/systemd stay-behinds. Its defaults are factor 2.0, severity from class (§8 table), and `max_run_s` from the allowlist `timeout_s` or 600.
 
 ## 3. Component 1 — gateway read route `coordination/due`
@@ -164,6 +166,16 @@ For each registry row with `dispatch.mode ≠ off` whose lane is in the allowlis
 5. **Ordering.** Ascending `(priority, slot)`, truncated to `limit`.
 
 The response is [`schemas/due-response.schema.json`](schemas/due-response.schema.json). Each item carries only `lane_id`, `mode`, `idempotency_key`, `attempt`, `slot_local`, `reason` and `priority`. The command, lock, argv, timeout and output_signal **never leave the host** (§23.3).
+
+*Amended 2026-10-10 (RC11, #1667):* `compute_due` must be cheap under concurrency. The served gateway runs at
+`CPUQuota=20%` behind a relay `urlopen(timeout=5)`, and it is GIL-serialised under `ThreadingHTTPServer`. When the
+event router, incident router and digest scheduler joined the dispatcher at 17:14 ET, the calls that landed in the
+same minute were refused `relay_gateway_unreachable`. 99% of the CPU went to `lane_dispatch.forbidden_text_hits` /
+`_compound_hit`, which rebuilt ~160 word-form sets for ~560 command texts on every call. The matcher is now built once
+and keyed on its inputs, with a per-text memo; one call takes 510 → 10 ms and four concurrent calls 1.61 s → 38 ms,
+with byte-identical verdicts. `tests/test_gateway_due_latency_20261010.py` holds a CPU-budget gate. Any change to
+`compute_due` or the eligibility predicate keeps that gate green, and the relay-contract check (one call at a time)
+is not evidence of concurrency.
 
 ### 3.3 `_run` additions and ledger changes (additive)
 
@@ -253,7 +265,7 @@ One workflow serves all scheduled lanes. Its nodes:
 
 | Control | Rule | Where enforced |
 |---|---|---|
-| Workers | `N = TRADEAI_N8N_EXECUTOR_WORKERS`, default 1 (the v1 serial drain; v2 is opt-in with `N >= 2`, an invalid value is 1 with a logged warning), maximum 8. Intervals and limits: `config/n8n_executor.json`. | executor |
+| Workers | `N = TRADEAI_N8N_EXECUTOR_WORKERS`, default 1 (the v1 serial drain; v2 is opt-in with `N >= 2`, an invalid value is 1 with a logged warning), maximum 8. Intervals and limits: `config/n8n_executor.json`. *Live since 2026-10-10 13:07 ET: N = 3 via the installed drop-in `tradeai-n8n-run-executor.service.d/10-executor-v2.conf` (service grant eebd4ca0a6b31bd2); the repo unit still sets none.* | executor |
 | Per-lane lock | `claim_next` claims only lanes with no RUNNING row (`NOT EXISTS (SELECT 1 FROM runs r2 WHERE r2.lane_id = runs.lane_id AND r2.state='RUNNING')`) inside `BEGIN IMMEDIATE`. The lane's own flock/safe_flock stays as the cross-scheduler guard against cron. | ledger + lane lock |
 | Global cap | `min(N, class_caps.global)` RUNNING rows in the ledger | executor |
 | Class caps | `heavy` 1, `llm` 1, `ingest` 1, `send` 1, `pipeline` 2, `learn` 1; `monitor`/`report`/`hygiene` share the global cap. Read from `config/n8n_retry_policies.json#class_caps`. | `claim_next(exclude_classes=full)` |
@@ -449,6 +461,13 @@ sequenceDiagram
 
 ## 9. Component 7 — digest scheduler workflow (`tradeai-digest-scheduler`)
 
+*Amended 2026-10-10 (operator notification model, approved ~18:40 ET):* n8n orchestrates notifications — this
+workflow, the incident router and the approval router fire the host lanes that route, batch digests, escalate and
+handle button callbacks — and the host communications gateway (`send_telegram`, the delivery ledger and the approved
+adapters) is the only sender. The P1 path does not depend on n8n: the incident notifier (L1052) and the SIEM bridge
+stay on host cron. Sender jobs migrate to notification intents handed to the gateway. Nothing in §23.3 or §23.11
+changes (AGENTS.md 4.6.0 §24.1, PROPOSED).
+
 **Anchor.** The `advice-digest` lane (`scripts/send_advice_digest.py`, slots 10/15/17 ET in `config/advice_digest.yaml`) is already a watermark-pull digest. It reads `communication_events`, held CIO notes and P1 archives, and five digest lines were folded into it on 10-08. The scheduler builds on it instead of replacing it.
 
 **Windows.** A new DigestWindows@v1 config holds windows and members. It is not in the repo yet (planned path: config/digest_windows.json, lands with the digest-scheduler PR):
@@ -530,7 +549,7 @@ These are generated **once** by `python3 scripts/n8n_workflow_templates.py build
 
 | Wave | Lanes | Cron lines | Timers | Prerequisites |
 |---|---|---:|---:|---|
-| **W0 Foundation** | 0 moved: `due` route, relay `/due` `/event`, executor v2, retry policies, DLQ, ledger columns, 6 workflows imported and activated with **every row `dispatch.mode: off`** (a proven no-op: dispatcher ticks, `/due` returns `[]`) | 0 | 0 | AGENTS 3.1.0; one config-write grant for the 6 activations; one release |
+| **W0 Foundation** | 0 moved: `due` route, relay `/due` `/event`, executor v2, retry policies, DLQ, ledger columns, 6 workflows imported and activated with **every row `dispatch.mode: off`** (a proven no-op: dispatcher ticks, `/due` returns `[]`) | 0 | 0 | AGENTS 3.1.0; one config-write grant for the 6 activations; one release. *Amended 2026-10-10:* the grant tier is **`cron`** naming the six ids (AGENTS.md 4.1.0 §23.2, §23.11; `check_n8n_activation_grants.py` accepts `cron` only). W0 ran 15:53 ET and was rolled back 15:58 ET (RC8); re-run 17:14 ET with four ids, partial rollback 17:20 ET to the dispatcher alone (RC11, §3.2 amendment); after the RC11 fix (#1667, served 18:40 ET) the event router, incident router and digest scheduler were re-published one at a time (18:40, 18:44, 18:47 ET). Heartbeat watcher and approval router wait for their registry rows. |
 | **W1 Watch + self** | `heartbeat-watch`, `incident-fanin`, `incident-notify`, `approval-escalate` (or fallback), plus the 18 allowlist lanes, including the 4 live per-lane workflows re-pointed to the dispatcher and the 6 proposed ops lanes | 6 | 2 | B1 rows for all 438 lines (baseline → 0); B2 notifier |
 | **W2 Pipelines** | 8 pipeline stage lanes with `after` edges (close-capture → broker-truth → planning; learn → tune; close → night; premarket). 86 member lines retire as stages go `--apply`. | 8 (+86 retire) | 7 | stage parity, 1 dry + 1 live receipt each (B2) |
 | **W3 A lanes + events** | 70 A standalone lanes; event triggers rows 1, 2, 5, 6, 7; digest preparers that are A class; 6 prewarms → 3 triggers, 2 eliminated | 70 (+6) | 21 | per-script contract: `--dry-run`, receipt, lock (4 ready, 62 M-effort, 10 need a send split) |
@@ -575,6 +594,8 @@ stateDiagram-v2
    - Automatic trigger: in the first 2 cadences after cutover, `STALE_2X` or DLQ on a cut lane pages P1 with the exact rollback command. The cutover grant's 12 h window covers running it. No unattended crontab write happens without a grant.
 
 ## 13. Component 10 — AGENTS.md 3.1.0: what it must say
+
+*Superseded 2026-10-10:* ratified as AGENTS.md 4.1.0 §23.11–§23.14 (2026-10-09), extended by 4.3.0 §23.18 and 4.4.0. The grant for the six is `cron`, not `config-write` (item 1 below). Read AGENTS.md §23, not this list.
 
 These are proposed replacement sentences for §23.2 and §23.3. The §0 rails are unchanged.
 
@@ -642,8 +663,8 @@ These are proposed replacement sentences for §23.2 and §23.3. The §0 rails ar
 
 ## 17. Open decisions for the operator
 
-1. 3.1.0 carve-out for the read-only guard projection (§10), or the systemd fallback.
-2. Executor default workers (3 proposed) given host load.
-3. P2 quiet hours 22:00–07:00 ET (proposed) — none exist today.
+1. 3.1.0 carve-out for the read-only guard projection (§10), or the systemd fallback. *Decided 2026-10-09 16:40 ET: carve-out (AGENTS.md 4.1.0 §23.14).*
+2. Executor default workers (3 proposed) given host load. *Decided 2026-10-10: 3 workers live since 13:07 ET (installed drop-in).*
+3. P2 quiet hours 22:00–07:00 ET (proposed) — none exist today. *Built: `scripts/incident_notifier.py` holds P2 22:00–07:00 ET (operator decision 2026-10-09); P1 is never held.*
 4. Weekend digest windows Sat 09:00 / Sun 18:00 (proposed).
 5. Whether automatic rollback (no human) is ever wanted; this design pages instead, because a crontab write needs a grant.

@@ -171,6 +171,9 @@ POLICIES = [
 # ARCHIVE_THEN_DELETE rows are copied to persistent-state/archive/db_retention/<table>/
 # as jsonl.gz BEFORE the delete, and the delete runs only when the archived row count
 # equals the matching count. A missing or malformed registry stops the run loudly.
+# 2026-10-11: every archive file also gets a tripwire record (<table>/TRIPWIRE.jsonl, written by
+# lib/retention_archive.write_manifest); lib/retention_tripwire.py reads it nightly through
+# report_db_hygiene.py. DELETE rows may opt in to the same path with archive_first: true.
 REGISTRY_PATH = _os.getenv("TRADEAI_RETENTION_REGISTRY") or str(
     __import__("pathlib").Path(__file__).resolve().parent.parent / "config" / "data_retention_policy.json")
 
@@ -185,7 +188,14 @@ def load_registry(path: str | None = None) -> dict:
 
 
 def enforced_policies(doc: dict) -> list[tuple[str, str, int, bool]]:
-    """(table, column, days, archive_first) for rows the run loop may delete from."""
+    """(table, column, days, archive_first) for rows the run loop may delete from.
+
+    2026-10-11: a DELETE row may carry ``archive_first: true`` -- the same archive + manifest +
+    tripwire + count-equality path as ARCHIVE_THEN_DELETE, switched per row so a large regenerable
+    table (content_embeddings) can be moved to archive-first by a one-line registry change. The
+    flag defaults OFF (absent/false = the inherited hard DELETE). db_retention runs from CURRENT and
+    reads CURRENT's registry, so flipping it changes nothing live until a release ships it.
+    """
     out = []
     for r in doc["policies"]:
         cls = r.get("class")
@@ -193,7 +203,8 @@ def enforced_policies(doc: dict) -> list[tuple[str, str, int, bool]]:
             continue
         if cls not in ("DELETE", "ARCHIVE_THEN_DELETE"):
             raise SystemExit(f"ERROR: registry row {r.get('table')} has unknown class {cls!r}")
-        out.append((r["table"], r["ts_column"], int(r["window_days"]), cls == "ARCHIVE_THEN_DELETE"))
+        archive_first = cls == "ARCHIVE_THEN_DELETE" or r.get("archive_first") is True
+        out.append((r["table"], r["ts_column"], int(r["window_days"]), archive_first))
     return out
 
 
@@ -315,6 +326,17 @@ JUNK_FUSED_TITLE_RE = r"^\S+ signal: *$"
 JUNK_FUSED_WHERE = "t.source_type = 'fused_signal' AND t.title ~ %s"
 
 
+def _verify_db_write_grant() -> dict:
+    """--apply authority (2026-10-11, overnight finding 4): the operator's db-write grant id from
+    TRADEAI_DB_WRITE_GRANT, checked against the ACTIVE guard-ledger record (read-only peek)."""
+    from pathlib import Path as _P
+    _scripts = str(_P(__file__).resolve().parent)
+    if _scripts not in sys.path:
+        sys.path.insert(0, _scripts)
+    from lib import db_write_grant
+    return db_write_grant.verify(os.environ.get(db_write_grant.ENV))
+
+
 def purge_junk_fused_embeddings(apply: bool = False, batch_rows: int = DEFAULT_SOURCE_BATCH_ROWS,
                                 max_rows: int = 200000, sample_rows: int = 500) -> int:
     import json as _json
@@ -325,6 +347,13 @@ def purge_junk_fused_embeddings(apply: bool = False, batch_rows: int = DEFAULT_S
                "table": "content_embeddings", "predicate": JUNK_FUSED_WHERE, "title_regex": JUNK_FUSED_TITLE_RE,
                "batch_rows": int(batch_rows), "max_rows_per_run": int(max_rows)}
     if apply:
+        # Grant first: a refused run opens no connection and writes nothing. Dry run needs none.
+        grant = _verify_db_write_grant()
+        receipt["grant"] = grant
+        if not grant.get("ok"):
+            receipt.update(status="refused", reason=f"db-write grant: {grant.get('reason')}")
+            print(_json.dumps(receipt, indent=1, default=str, sort_keys=True))
+            return 2
         blocked = _disk_too_low_for_retention()
         if blocked:
             receipt.update(status="refused", reason=f"disk below critical floor: {blocked}")
@@ -534,7 +563,9 @@ if __name__ == "__main__":
     parser.add_argument("--junk-fused-signal-embeddings", action="store_true",
                         help="ONE-TIME mode: archive-then-delete content_embeddings fused_signal rows whose title is "
                              "the blank template 'SYM signal: '. Dry run unless --apply. Nothing else runs.")
-    parser.add_argument("--apply", action="store_true", help="with --junk-fused-signal-embeddings: archive, verify, delete")
+    parser.add_argument("--apply", action="store_true",
+                        help="with --junk-fused-signal-embeddings: archive, verify, delete. Requires "
+                             "TRADEAI_DB_WRITE_GRANT=<active db-write grant id>; recorded in the receipt")
     parser.add_argument("--batch-rows", type=int, default=DEFAULT_SOURCE_BATCH_ROWS)
     parser.add_argument("--max-rows", type=int, default=200000, help="per-run cap for the one-time mode")
     args = parser.parse_args()

@@ -450,15 +450,31 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
                                                                                         "acked": len(ledger["acked_event_ids"])},
         "messages": [], "p2_batch": None, "acked_keys": [], "open_notifiable": 0, "flaps": None, "ok": True,
     }
+    # The alerting path itself (operator 2026-10-10): read here, on host cron, so a P1 for an erroring or stopped
+    # incident router or n8n schedule never depends on the n8n-dispatched fan-in (AGENTS.md §24.1 proposed).
+    host_rows, host_note = alert_path_rows(root, now, env)
+    receipt["alert_path"] = {"note": host_note, "open": [r["item"] for r in host_rows]}
+    work = state                                   # the state the planner reads and apply_result writes
+    host_only = False
     if fanin["status"] != "OK":
-        receipt["status"] = f"NO_INPUT:{fanin['status']}"   # never declare recovery or alert from a stale/missing input
-        receipt["cap"] = {"day": day, "used": used, "limit": cfg["daily_cap"]}
-        return receipt
-    open_now, acked = open_incidents(fanin, set(ledger["acked_event_ids"]))
+        host_records = {k: v for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE}
+        if not host_rows and not any(v.get("open", True) for v in host_records.values()):
+            receipt["status"] = f"NO_INPUT:{fanin['status']}"   # never declare recovery or alert from a stale/missing input
+            receipt["cap"] = {"day": day, "used": used, "limit": cfg["daily_cap"]}
+            return receipt
+        # Host-only run: plan the alert-path incidents alone, against their own records, so no fan-in incident is
+        # declared recovered from a stale or missing fan-in receipt.
+        host_only = True
+        work = {**state, "notified": dict(host_records)}
+        view = {**fanin, "incidents": host_rows, "by_severity": {"P1": len(host_rows)}}
+        open_now, acked = open_incidents(view, set())
+    else:
+        view = {**fanin, "incidents": list(fanin["incidents"]) + host_rows}
+        open_now, acked = open_incidents(view, set(ledger["acked_event_ids"]))
     receipt["acked_keys"] = acked
     receipt["open_notifiable"] = len(open_now)
-    receipt["flaps"] = reconcile(open_now, set(acked), state, now, cfg)
-    msgs, batch = plan_messages(open_now, state, now, cfg, fanin, set(acked))
+    receipt["flaps"] = reconcile(open_now, set(acked), work, now, cfg)
+    msgs, batch = plan_messages(open_now, work, now, cfg, view, set(acked))
     receipt["p2_batch"] = batch
     send = sender if sender is not None else (_default_sender() if live else None)
     preview = previewer if previewer is not None else (None if live else _default_previewer())
@@ -490,7 +506,7 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
                 row["status"] = "HELD"        # the comms editor held or dropped it: not delivered, not counted, retried
             elif res.get("ok") and res.get("deduped") and res.get("message_id") is not None:
                 row["status"] = "ALREADY_DELIVERED"   # this exact identity was delivered before; record, do not count
-                apply_result(state, m, now)
+                apply_result(work, m, now)
             elif res.get("ok") and res.get("deduped"):
                 # A dedupe with no message_id proves no delivery: never mark notified on it. Not counted, retried
                 # next run, and the run exits 1 so the gap is visible.
@@ -499,20 +515,40 @@ def run(*, live: bool, root: Optional[Path] = None, now: Optional[datetime] = No
             elif res.get("ok"):
                 row["status"] = "SENT"
                 used += 1
-                apply_result(state, m, now)
+                apply_result(work, m, now)
             else:
                 row["status"] = "FAILED"
                 failed = True
         receipt["messages"].append(row)
+    if host_only:                                  # fold the alert-path records back; fan-in records untouched
+        for k in [k for k, v in state["notified"].items() if v.get("source") == ALERT_PATH_SOURCE]:
+            if k not in work["notified"]:
+                state["notified"].pop(k)           # dropped by the record TTL in reconcile
+        state["notified"].update(work["notified"])
     if live:
         state["sends_by_day"][day] = used
     receipt["cap"] = {"day": day, "tz": cfg["tz"], "used": used, "limit": cfg["daily_cap"],
                       "capped": sum(1 for r in receipt["messages"] if r["status"] == "CAPPED")}
-    receipt["status"] = "FAILED" if failed else "OK"
+    receipt["status"] = "FAILED" if failed else (f"HOST_ONLY:{fanin['status']}" if host_only else "OK")
     receipt["ok"] = not failed
     if live:
         atomic_write_json(root / STATE_REL, {**state, "as_of": now.isoformat()}, indent=1)
     return receipt
+
+
+ALERT_PATH_SOURCE = "n8n_alert_path"   # scripts/lib/n8n_alert_path_watch.SOURCE (pinned by a test)
+
+
+def alert_path_rows(root: Path, now: datetime, env: Optional[dict] = None) -> tuple[list[dict], str]:
+    """Fan-in-shaped P1 rows from the host-side alert-path watch (relay log only); fail-soft to a note."""
+    try:
+        from scripts.lib.n8n_alert_path_watch import findings
+        found, note = findings(root, now, env=None if env is None else {**os.environ, **env})
+    except Exception as exc:  # noqa: BLE001 — a broken watch is a note on the receipt, never a crash of the notifier
+        return [], f"unavailable:{type(exc).__name__}"
+    rows = [{k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")} | {"state": "HOST_WATCH"}
+            for f in found]
+    return rows, note
 
 
 def write_receipt(root: Path, receipt: dict[str, Any]) -> Path:

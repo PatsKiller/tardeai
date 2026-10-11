@@ -23,6 +23,16 @@ either made EVERY caller sleep its whole throttle timeout before each request: o
 something wrote ``last_request`` = 2026-12-25T07:26:01Z, and the finviz-view-contracts n8n dry run (two
 views, 300 s throttle wait each) was killed at its 300 s lane timeout on 2026-10-10 13:11Z. The discarded
 value is kept in the state file under ``discarded`` as evidence.
+
+Where the state lives (2026-10-10, GAP 13): ``throttle_state_path()`` -> ``<state root>/data/state/
+finviz_throttle.json`` under the shared persistent-state root (``canonical_store_registry.
+production_state_root``), never the code checkout. It was ``Path(__file__).parent.parent / data/state``:
+correct only while the checkout's ``data/state`` is a symlink into persistent-state (the dev tree, the
+served release). A git worktree, a scratch release or an agent run had a private throttle -- not rate-limited
+together with production, and a stale/corrupt timestamp in one copy went unnoticed beside the other (RC1).
+The resolver follows the pattern of ``scripts/lib/enrichment_cache_store.state_root`` (branch
+n8nmat/finviz-cache-n8n, NOT merged here; this module depends only on main): a code checkout (a tree with
+``scripts/``) is never the state root while the persistent-state marker exists.
 """
 import fcntl
 import json
@@ -31,7 +41,51 @@ import sys
 import time
 from pathlib import Path
 
-_STATE = Path(__file__).resolve().parent.parent / "data" / "state" / "finviz_throttle.json"
+_CODE_ROOT = Path(__file__).resolve().parent.parent
+STATE_REL = Path("data") / "state" / "finviz_throttle.json"
+#: The persistent-state marker production_state_root() also keys on.
+PERSISTENT_MARKER = "PERSISTENT_STATE_ROOT.json"
+
+
+def _is_code_checkout(path) -> bool:
+    try:
+        return (Path(path) / "scripts").is_dir()
+    except OSError:
+        return False
+
+
+def _persistent_default():
+    pref = Path.home() / "trade-ai-releases" / "persistent-state"
+    return pref if (pref / PERSISTENT_MARKER).is_file() else None
+
+
+def throttle_state_root():
+    """The shared state root every Finviz caller on this host agrees on (cron cwd, n8n executor, worktree).
+
+    ``production_state_root()`` (TRADEAI_STATE_ROOT -> non-release TRADEAI_ROOT -> TRADEAI_PERSISTENT_STATE_ROOT
+    -> the persistent-state marker -> CURRENT -> repo). When that lands on a code checkout (TRADEAI_ROOT pointed
+    at a worktree, or the repo fallback) and the persistent-state marker exists, the marker wins: a checkout's
+    ``data/`` is the shared store only by symlink accident. Import failure falls back to the same marker rule.
+    """
+    try:
+        if str(_CODE_ROOT) not in sys.path:
+            sys.path.insert(0, str(_CODE_ROOT))
+        from scripts.lib.canonical_store_registry import production_state_root
+        root = Path(production_state_root())
+    except Exception as exc:  # noqa: BLE001 - the throttle must load even when the registry cannot
+        print(f"[finviz_throttle] production_state_root unavailable ({type(exc).__name__}); "
+              f"using the persistent-state marker", file=sys.stderr)
+        root = _persistent_default() or _CODE_ROOT
+    if _is_code_checkout(root):
+        root = _persistent_default() or root
+    return root
+
+
+def throttle_state_path():
+    return throttle_state_root() / STATE_REL
+
+
+_STATE = throttle_state_path()
 _LOCK = _STATE.with_suffix(".lock")
 MIN_INTERVAL = float(os.getenv("FINVIZ_MIN_INTERVAL", "2.5"))
 COOLDOWN_DEFAULT = float(os.getenv("FINVIZ_COOLDOWN_DEFAULT", "60"))
@@ -141,4 +195,4 @@ def status():
             "cooldown_remaining_s": max(0, round(float(honest.get("cooldown_until", 0)) - now, 1)),
             "last_request_age_s": (round(now - float(honest["last_request"]), 1)
                                    if honest.get("last_request") else None),
-            "min_interval_s": MIN_INTERVAL}
+            "min_interval_s": MIN_INTERVAL, "state_path": str(_STATE)}

@@ -88,7 +88,12 @@ SPLIT_DIRS = ("audit", "cio", "health", "paper_trading", "portfolios/state", "ru
 ARCHIVE_ROOT = "/home/johnclaw/trade-ai-releases/archive/served_copy_split_20260913"
 # 2026-10-04: pre-rechain copy of the forked CIO event bus (scripts/repair_cio_event_bus_fork.py).
 # Nothing live may read it; the tripwire below covers every root in this tuple.
-ARCHIVE_ROOTS = (ARCHIVE_ROOT, "/home/johnclaw/trade-ai-releases/archive/cio_event_bus_fork_20261004")
+# 2026-10-10: the non-record Finviz enrichment cache copy (data/portfolios/state/ticker_enrichment_cache.json),
+# archived by scripts/merge_enrichment_cache.py --apply after its entries are merged into the store of record
+# (operator decision CONSOLIDATION_PLAN.md §D.3). The tool imports this constant; nothing else may name it.
+ENRICHMENT_CACHE_ARCHIVE_ROOT = "/home/johnclaw/trade-ai-releases/archive/enrichment_cache_merge_20261010"
+ARCHIVE_ROOTS = (ARCHIVE_ROOT, "/home/johnclaw/trade-ai-releases/archive/cio_event_bus_fork_20261004",
+                 ENRICHMENT_CACHE_ARCHIVE_ROOT)
 
 #: mtimes closer than this are the same write (filesystems round differently).
 MTIME_TOLERANCE_S = 2.0
