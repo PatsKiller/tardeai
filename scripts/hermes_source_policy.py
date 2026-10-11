@@ -60,6 +60,21 @@ _CACHE: dict | None = None
 _CACHE_AT: float = 0.0
 _CACHE_TTL = 300.0
 
+#: The .env names :func:`_db_rows` needs to open its read connection.
+DB_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
+#: Which checkout-.env names :func:`_db_rows` copies into ``os.environ`` (setdefault). ``None`` is the legacy
+#: behaviour: every name in the file, which puts unrelated secrets (the broker pairs among them) into the
+#: environment of whatever process asked for a source policy. A lane that must carry no broker credential
+#: (AGENTS.md §23.18 ruling 3; scripts/news_ingestion.py) calls :func:`limit_env_loading` before its first
+#: lookup. Opt-in per process, so the long-running importers (api_v2) keep their current environment.
+ENV_LOAD_KEYS: frozenset[str] | None = None
+
+
+def limit_env_loading(keys: frozenset[str] = DB_ENV_KEYS) -> None:
+    """Restrict this process's .env loading in :func:`_db_rows` to ``keys`` (default: the DB connection names)."""
+    global ENV_LOAD_KEYS
+    ENV_LOAD_KEYS = frozenset(keys)
+
 
 @dataclass
 class SourcePolicy:
@@ -126,6 +141,8 @@ def _db_rows() -> list[dict]:
         for ln in (ROOT / ".env").read_text().splitlines():
             if "=" in ln and not ln.strip().startswith("#"):
                 k, _, v = ln.partition("=")
+                if ENV_LOAD_KEYS is not None and k.strip() not in ENV_LOAD_KEYS:
+                    continue
                 os.environ.setdefault(k.strip(), v.strip().strip("'\""))
         conn = psycopg2.connect(
             host=os.getenv("DB_HOST", "127.0.0.1"),

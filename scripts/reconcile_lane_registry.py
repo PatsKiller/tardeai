@@ -22,6 +22,10 @@ ran. This generator closes that gap deterministically:
          per-run artifact, e.g. a ``curl -o /dev/null`` prewarm, gets kind none + flag NO_DURABLE_OUTPUT.)
   * Rows that already exist keep every hand-written field; the generator only refreshes the
     ``rationalization`` block (value_class/recommendation copied from the rationalization).
+  * An existing row's ``operator_ruling`` {recommendation, ruled_on, text} overrides the recommendation the
+    rationalization gives (top level and ``rationalization.recommendation``; ``f_recommendation`` keeps the
+    F text). It never lifts a forced ``stay_on_cron`` (broker / order / secret / daemon class): that row stays
+    KEEP_ON_CRON whatever the ruling says (:func:`apply_operator_ruling`).
   * ``undeclared_baseline`` and ``inherited_tranches`` are removed: nothing is exempt any more.
 
 ``--dry-run`` (the default) prints the plan and writes nothing. ``--write`` rewrites
@@ -1047,6 +1051,24 @@ def annotate_existing(reg: dict[str, Any], lines: list[str], raw_lines: list[str
         row["rationalization"] = _rationalization_block(f, f_rec)
         if stay:
             row["stay_on_cron"] = stay
+        apply_operator_ruling(row, stay)
+
+
+def apply_operator_ruling(row: dict[str, Any], stay: Optional[dict[str, str]]) -> None:
+    """An operator ruling recorded on a hand-written row (``operator_ruling.recommendation``) replaces the
+    rationalization's normalised recommendation, e.g. news ingest leaving KEEP_ON_CRON for W4 (operator
+    2026-10-11). The F text stays in ``rationalization.f_recommendation``. A forced stay_on_cron is never
+    lifted: that class is an operator decision under the policy-exception file, not a registry note."""
+    ruling = row.get("operator_ruling")
+    if stay or not isinstance(ruling, dict):
+        return
+    rec = str(ruling.get("recommendation") or "").strip()
+    if not rec or rec == REC_KEEP:
+        return
+    row["recommendation"] = rec
+    rat = row.get("rationalization")
+    if isinstance(rat, dict):
+        rat["recommendation"] = rec
 
 
 # ── mapping ───────────────────────────────────────────────────────────────────────────────────

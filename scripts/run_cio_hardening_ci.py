@@ -3788,6 +3788,12 @@ GATES = [
             # only os.environ writer; social_ingest / sec_data_ingest write os.environ nowhere. Hermetic: fake
             # render + fake .env in tmp_path.
             "tests/test_finviz_load_env_narrowing_20261011.py",
+            # News ingest joins W4 (operator ruling 2026-10-11): scripts/news_ingestion.py argparse (unknown flag exit 2,
+            # no fall-through to the live --priority run), a write-free --dry-run, LaneRunReceipt@v1 per real lane run;
+            # every cron and caller argv reaches ingest() exactly as the pre-W4 dispatch did; hermes_source_policy
+            # loads only DB_* from .env in this process; news-ingestion / -overnight / -tail shadow rows admitted by
+            # r1_class_admission with REVIEWED contracts. Hermetic: fakes + tmp state root, repo config read only.
+            "tests/test_news_ingest_w4_20261011.py",
             # Gateway /due latency (W0 re-run 2026-10-10 ~17:14 ET, relay_gateway_unreachable under 3-4 concurrent
             # /due at CPUQuota=20%): the precomputed / split-lookup / memoized forbidden-token matcher equals a
             # verbatim copy of the old one on every served-registry text and a compound corpus; DueResponse@v1

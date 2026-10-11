@@ -460,7 +460,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # 22 D1b + 14 D2 + 19 D3 (R1, activated 2026-10-10 under AGENTS 4.4.0) - 1: C1 hermes_learning flip (2026-10-10) absorbs
     # hermes-config-governor (L671) into stage hermes-learning-pipeline-learn; its row leaves D1b (dispatch_retired).
     # + 3 W4 provider owners (R1 ingest, 2026-10-11): finviz-enrichment, sec-data-ingest, social-ingest-all.
-    assert len(shadow) == 54 + 3, shadow
+    # + 3 news-ingest W4 rows (R1 ingest, operator ruling 2026-10-11): news-ingestion (L193), news-ingestion-overnight
+    # (L649, split out of the multi-schedule news-ingestion row), news-ingestion-tail (L650).
+    assert len(shadow) == 54 + 3 + 3, shadow
 
 
 #: wave D2: allowlist entries that existed (with a live_arg) before the dispatcher row was added.

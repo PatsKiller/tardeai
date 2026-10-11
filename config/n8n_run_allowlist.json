@@ -1801,6 +1801,111 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/social-ingest-all_last.json"
+    },
+    {
+      "lane_id": "news-ingestion",
+      "env_names": [
+        "BENZINGA_API_KEY",
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "HERMES_SCORER_ALWAYS_CAP",
+        "NEWS_INGEST_MAX",
+        "NEWS_TAIL_BATCH",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "WATCHLIST_OFF_HOURS_TOP_N"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/news_ingestion.py: DB_PASSWORD from the checkout .env line by line (_get_conn :80-86; also pipeline_registry.py :15-19 and content_scoring._emb_conn); BENZINGA_API_KEY from the environment, else the .env line (ingest :556-559); NEWS_INGEST_MAX / NEWS_TAIL_BATCH (ingest, _resolve_symbols); WATCHLIST_OFF_HOURS_TOP_N / HERMES_SCORER_ALWAYS_CAP (lib/watchlist_priority.py :19-21); DB_HOST/PORT/NAME/USER/PASSWORD (hermes_source_policy._db_rows, narrowed to these five names by limit_env_loading() in main: before this PR it setdefault'ed EVERY .env name, broker pairs included); TRADEAI_PERSISTENT_STATE_ROOT (lane receipt via persistent_state_root); TRADEAI_STATE_ROOT and XDG_RUNTIME_DIR are implicit executor base names. Yahoo / Google News RSS need no key. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "DB_PASSWORD and the BENZINGA_API_KEY fallback come from the checkout-relative .env (_get_conn :83, ingest :557), not from the environment, so the inventory cannot be enforced until the script resolves them through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
+      "source": "consolidation W4 news-ingest owner (CONSOLIDATION_PLAN §B.3 W4, R1 class ingest; operator ruling 2026-10-11 dropped KEEP_ON_CRON), cron:L193 (crontab -l 2026-10-11, inventory cron:L193: `30 12 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. The live cron line has NO flock: lock is the PROPOSED `flock -n /tmp/news_priority_overnight.lock` that a cron-granted packet must add to L193 before canary (r1_canary_lock_matches). The cron line's live argument is (none beyond the command). Measured: heartbeat 16:32:58-16:34:07Z on 2026-10-05..10-09 for the 12:30 ET fire, i.e. 2.5-4.1 min (60-85 symbols). Dry run 2026-10-11 from the worktree under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: exit 0, no DB connection, no request, no .env read; 0 tracked or state files changed.",
+      "command": [
+        "$PY",
+        "scripts/news_ingestion.py",
+        "--priority"
+      ],
+      "lock": "/tmp/news_priority_overnight.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/news-ingestion_last.json"
+    },
+    {
+      "lane_id": "news-ingestion-overnight",
+      "env_names": [
+        "BENZINGA_API_KEY",
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "HERMES_SCORER_ALWAYS_CAP",
+        "NEWS_INGEST_MAX",
+        "NEWS_TAIL_BATCH",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "WATCHLIST_OFF_HOURS_TOP_N"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/news_ingestion.py: DB_PASSWORD from the checkout .env line by line (_get_conn :80-86; also pipeline_registry.py :15-19 and content_scoring._emb_conn); BENZINGA_API_KEY from the environment, else the .env line (ingest :556-559); NEWS_INGEST_MAX / NEWS_TAIL_BATCH (ingest, _resolve_symbols); WATCHLIST_OFF_HOURS_TOP_N / HERMES_SCORER_ALWAYS_CAP (lib/watchlist_priority.py :19-21); DB_HOST/PORT/NAME/USER/PASSWORD (hermes_source_policy._db_rows, narrowed to these five names by limit_env_loading() in main: before this PR it setdefault'ed EVERY .env name, broker pairs included); TRADEAI_PERSISTENT_STATE_ROOT (lane receipt via persistent_state_root); TRADEAI_STATE_ROOT and XDG_RUNTIME_DIR are implicit executor base names. Yahoo / Google News RSS need no key. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "DB_PASSWORD and the BENZINGA_API_KEY fallback come from the checkout-relative .env (_get_conn :83, ingest :557), not from the environment, so the inventory cannot be enforced until the script resolves them through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
+      "source": "consolidation W4 news-ingest owner (CONSOLIDATION_PLAN §B.3 W4, R1 class ingest; operator ruling 2026-10-11 dropped KEEP_ON_CRON), cron:L649 (crontab -l 2026-10-11, inventory cron:L646: `30 0 * * * cd $PROJ && flock -n /tmp/news_priority_overnight.lock timeout 45m $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. lock = the live cron line's own `flock -n /tmp/news_priority_overnight.lock` (r1_canary_lock_matches already holds; canary still needs live_arg and its own registry PR). The cron line's live argument is (none beyond the command). Measured: heartbeat 04:32:19-04:33:24Z on 2026-10-02..10-11 for the 00:30 ET fire, i.e. 2.3-3.4 min; cron timeout 45m. Dry run 2026-10-11 from the worktree under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: exit 0, no DB connection, no request, no .env read; 0 tracked or state files changed.",
+      "command": [
+        "$PY",
+        "scripts/news_ingestion.py",
+        "--priority"
+      ],
+      "lock": "/tmp/news_priority_overnight.lock",
+      "lock_kind": "flock",
+      "timeout_s": 2700,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/news-ingestion_last.json"
+    },
+    {
+      "lane_id": "news-ingestion-tail",
+      "env_names": [
+        "BENZINGA_API_KEY",
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "HERMES_SCORER_ALWAYS_CAP",
+        "NEWS_INGEST_MAX",
+        "NEWS_TAIL_BATCH",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "WATCHLIST_OFF_HOURS_TOP_N"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/news_ingestion.py: DB_PASSWORD from the checkout .env line by line (_get_conn :80-86; also pipeline_registry.py :15-19 and content_scoring._emb_conn); BENZINGA_API_KEY from the environment, else the .env line (ingest :556-559); NEWS_INGEST_MAX / NEWS_TAIL_BATCH (ingest, _resolve_symbols); WATCHLIST_OFF_HOURS_TOP_N / HERMES_SCORER_ALWAYS_CAP (lib/watchlist_priority.py :19-21); DB_HOST/PORT/NAME/USER/PASSWORD (hermes_source_policy._db_rows, narrowed to these five names by limit_env_loading() in main: before this PR it setdefault'ed EVERY .env name, broker pairs included); TRADEAI_PERSISTENT_STATE_ROOT (lane receipt via persistent_state_root); TRADEAI_STATE_ROOT and XDG_RUNTIME_DIR are implicit executor base names. Yahoo / Google News RSS need no key. No broker credential name (AGENTS §23.18 ruling 3).",
+      "env_report_reason": "DB_PASSWORD and the BENZINGA_API_KEY fallback come from the checkout-relative .env (_get_conn :83, ingest :557), not from the environment, so the inventory cannot be enforced until the script resolves them through the env (N8N_ONBOARDING_STANDARD §2 rules 5-6, open finding); report until then.",
+      "source": "consolidation W4 news-ingest owner (CONSOLIDATION_PLAN §B.3 W4, R1 class ingest; operator ruling 2026-10-11 dropped KEEP_ON_CRON), cron:L650 (crontab -l 2026-10-11, inventory cron:L647: `0 10,14,18 * * 0,6 cd $PROJ && flock -n /tmp/news_tail_rotate.lock timeout 90m $PY scripts/news_ingestion.py --tail-rotate >> logs/news_ingestion.log 2>&1`). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run, scheduler.stage shadow (4.4.0 cron-row shape); the cron line keeps doing the real work. lock = the live cron line's own `flock -n /tmp/news_tail_rotate.lock` (r1_canary_lock_matches already holds; canary still needs live_arg and its own registry PR). The cron line's live argument is (none beyond the command). Measured: heartbeat :05:09-:06:05 after each 10/14/18:00 ET weekend fire (2026-10-03/04/10), i.e. 5-6 min for 500 symbols; cron timeout 90m. Dry run 2026-10-11 from the worktree under TRADE_AI_CI=1 with a scratch TRADEAI_STATE_ROOT: exit 0, no DB connection, no request, no .env read; 0 tracked or state files changed.",
+      "command": [
+        "$PY",
+        "scripts/news_ingestion.py",
+        "--tail-rotate"
+      ],
+      "lock": "/tmp/news_tail_rotate.lock",
+      "lock_kind": "flock",
+      "timeout_s": 5400,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/news-ingestion-tail_last.json"
     }
   ],
   "blocked_reasons": {
