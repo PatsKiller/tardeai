@@ -11,7 +11,7 @@ What this pins:
     digests the 4.4.0 test pins (measured at origin/main 7df77950a, AGENTS 4.4.0 ACTIVE);
   * §24 has subsections 24.1–24.9, each bullet citing its cause, and the numbers and names the rules rely on exist.
 
-Numbering: 4.4.1 / 4.5.0 are in open PR #1666. If this renumbers to 4.5.0, rename TOKEN and this file.
+Numbering: 4.4.1 / 4.5.0 merged in PR #1666 (dd8f4cff1); 4.5.0 ratified (316700266), so Supersedes is 4.5.0.
 """
 
 from __future__ import annotations
@@ -81,7 +81,12 @@ def _section(text: str, start: str, end: str) -> str:
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned — same mask as
     # the 4.1.0/4.3.0/4.4.0 pins (operator 2026-10-10 'Yes, from one to six', item 5; PR #1678).
-    return re.sub(r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)", r"\1\n<generated>\n\2", block, flags=re.S)
+    return re.sub(
+        r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)",
+        r"\1\n<generated>\n\2",
+        block,
+        flags=re.S,
+    )
 
 
 def _s24() -> str:
@@ -118,7 +123,10 @@ def test_version_row_waits_for_the_operator_with_the_exact_phrase():
 def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     start = AGENTS.index("**4.6.0 is PROPOSED (MINOR)")
     f = _flat(AGENTS[start : AGENTS.index("**4.3.0 is ACTIVE", start)])
-    assert "PR #1666" in f and "renumbers to 4.5.0" in f and "becomes 5.0.0" in f
+    # #1666 (4.4.1 + 4.5.0) merged as dd8f4cff1; the banner now names that merge instead of "renumbers to 4.5.0".
+    assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
+    assert "316700266" in f
+    assert _control("Supersedes") == "4.5.0"
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
 
