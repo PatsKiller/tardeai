@@ -584,7 +584,7 @@ def main():
                         if r.get('verdict') == 'DROP':
                             reasoning = (r.get('result') or {}).get('reasoning', '')
                             lines.append(f"  {r['symbol']} grade={r.get('grade')} — {reasoning}")
-                send_telegram("\n".join(lines))
+                send_telegram("\n".join(lines), priority="P2", producer="incubator_llm_screener")
             except Exception as e:
                 log.debug(f"Telegram notification failed: {e}")
 

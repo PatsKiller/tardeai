@@ -253,7 +253,7 @@ def alert_critical_violations(result: dict, *, dedupe_path=None, now=None) -> bo
     message = "\n".join(lines)
     try:
         from telegram_alert import send_telegram
-        send_telegram(message)
+        send_telegram(message, priority="P1", producer="portfolio_level_qa")
         _mark_sent(key, now=now, path=dedupe_path)
         return True
     except Exception as exc:
@@ -272,7 +272,8 @@ def _alert_crash(exc: Exception) -> None:
     try:
         from telegram_alert import send_telegram
         send_telegram(f"\U0001f6a8 portfolio_level_qa.py CRASHED: "
-                      f"{type(exc).__name__}: {str(exc)[:300]}")
+                      f"{type(exc).__name__}: {str(exc)[:300]}",
+                      priority="P1", producer="portfolio_level_qa")
     except Exception:
         pass
 

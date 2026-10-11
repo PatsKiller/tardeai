@@ -166,7 +166,7 @@ def _alert(dead):
     )
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority="P2", producer="technicals_gap_backfill")
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

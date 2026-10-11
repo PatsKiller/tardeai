@@ -641,7 +641,7 @@ def _deliver_live_alert(state: "CycleState", triggers: List[Dict], time_str: str
     _reset_telegram_message_ids()
     try:
         from telegram_alert import send_telegram
-        accepted = bool(send_telegram(msg))
+        accepted = bool(send_telegram(msg, priority="P1", producer="continuous_runner"))
     except Exception as _e:
         cs.setdefault("errors", []).append(f"alert: {type(_e).__name__}: {_e}"[:200])
     if not accepted and _telegram_delivered_ids():

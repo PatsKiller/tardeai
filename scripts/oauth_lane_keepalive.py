@@ -140,6 +140,37 @@ def dry_run(lanes):
     return 0
 
 
+def _nyse_session(now: int) -> bool:
+    """Weekday 09:30–16:00 America/New_York. Holidays are not modeled."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    dt = datetime.fromtimestamp(now, ZoneInfo("America/New_York"))
+    if dt.weekday() >= 5:
+        return False
+    minutes = dt.hour * 60 + dt.minute
+    return (9 * 60 + 30) <= minutes < 16 * 60
+
+
+def _priority_for_alerts(records: dict, now: int) -> str:
+    """P2 while a lane is merely down. P1 after it has been down more than 2 hours in the session.
+
+    Operator ruling 2026-10-11: keep ordinary stale alerts at P2; a lane stale more than
+    2 hours during market hours is P1.
+    """
+    if not _nyse_session(now):
+        return "P2"
+    for rec in records.values():
+        if rec.get("ok"):
+            continue
+        last_ok = rec.get("last_ok")
+        if not last_ok:
+            continue
+        if now - int(last_ok) > 2 * 60 * 60:
+            return "P1"
+    return "P2"
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     pos = [a for a in argv if not a.startswith("--")]
@@ -162,7 +193,11 @@ def main(argv=None):
                + "\n".join(alerts) + "\n\nMonitor: /v3/rotation → Independent Oversight lane strip.")
         try:
             from telegram_alert import send_telegram
-            send_telegram(msg, priority="P2", producer="oauth_lane_keepalive")
+            priority = _priority_for_alerts(out, now)
+            if priority == "P1":
+                send_telegram(msg, priority="P1", producer="oauth_lane_keepalive")
+            else:
+                send_telegram(msg, priority="P2", producer="oauth_lane_keepalive")
         except Exception as e:
             print("telegram send failed:", e)
 

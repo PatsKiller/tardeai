@@ -3,7 +3,7 @@
 
 Modes:
   --dry-run   (default) Build message, classify, report what would happen.
-  --send-test Prepend [TEST], send via send_telegram(bypass_router=True).
+  --send-test Prepend [TEST], send via send_telegram(priority="P2").
   --send      Send only if classify_alert returns P1_DIGEST.
 
 Logs delivery to closed_trade_digest_log. No trades, no orders.
@@ -124,7 +124,7 @@ def run(args):
         test_message = f"[TEST] {message}"
         print(f"[SEND-TEST] Sending test digest...")
         try:
-            ok = send_telegram(test_message, bypass_router=True)
+            ok = send_telegram(test_message, priority="P2", producer="send_closed_trade_digest")
             status = "sent_test" if ok else "failed_test"
             print(f"  Result: {status}")
             report["delivery_status"] = status
@@ -140,7 +140,7 @@ def run(args):
         if route_level == "P1_DIGEST":
             print(f"[SEND] Sending live digest (route={route_level})...")
             try:
-                ok = send_telegram(message)
+                ok = send_telegram(message, priority="P2", producer="send_closed_trade_digest")
                 status = "sent" if ok else "failed"
                 print(f"  Result: {status}")
                 report["delivery_status"] = status

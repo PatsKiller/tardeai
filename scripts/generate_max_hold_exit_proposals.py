@@ -55,7 +55,8 @@ def _send_proposal_alert(pid, symbol, strategy, hold_days, max_hold_days, overdu
                 {"text": "✖ Dismiss", "callback_data": f"texitreject:{pid}"},
             ]]
         }
-        send_telegram(txt, reply_markup=keyboard)
+        send_telegram(txt, reply_markup=keyboard, priority="P1", dedupe_minutes=0,
+                      producer="generate_max_hold_exit_proposals")
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

@@ -458,14 +458,14 @@ If the NVMe dies tomorrow, this zip + a fresh Ubuntu install = full recovery.
             return None
 
 
-def _notify_telegram(message):
+def _notify_telegram(message, *, priority: str = "P3"):
     """Send backup status via telegram_alert.send_telegram chokepoint (no raw Bot API)."""
     try:
         scripts_dir = str(PROJECT_ROOT / "scripts")
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram
-        send_telegram(message)
+        send_telegram(message, priority=priority, producer="full_system_backup")
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(
@@ -490,5 +490,5 @@ if __name__ == "__main__":
             size_mb = os.path.getsize(result) / 1e6
             _notify_telegram(f"Backup complete: {Path(result).name} ({size_mb:.1f} MB)")
     except Exception as e:
-        _notify_telegram(f"BACKUP FAILED: {e}")
+        _notify_telegram(f"BACKUP FAILED: {e}", priority="P1")
         raise

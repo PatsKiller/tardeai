@@ -298,7 +298,7 @@ MIGRATED_WAVE2 = {
     "scripts/check_operator_answer_quality.py": {"P2"},
     "scripts/freshness_watchdog_heartbeat.py": {"P1"},
     "scripts/hermes_score_alerts.py": {"P3"},
-    "scripts/oauth_lane_keepalive.py": {"P2"},
+    "scripts/oauth_lane_keepalive.py": {"P1", "P2"},  # >2h in session is P1 (operator 2026-10-11)
     "scripts/process_watchlist_agent_jobs.py": {"P2", "P3"},
     "scripts/cron_self_heal.py": {"P3"},
     "scripts/rotation_autopilot.py": {"P3"},

@@ -174,7 +174,7 @@ def _tg_send(text: str, *, producer: str, subject_key: str) -> bool:
     """Send via telegram_alert chokepoint (no raw Bot API / token selection)."""
     try:
         from telegram_alert import send_telegram
-        ok = bool(send_telegram(text))
+        ok = bool(send_telegram(text, priority="P2", producer="audit_position_basis"))
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

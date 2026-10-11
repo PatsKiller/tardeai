@@ -278,7 +278,7 @@ def run(dry_run: bool = False, send_tg: bool = True) -> dict:
             logger.info('No strategies in registry -- nothing to review.')
             report_lines.append('_No strategies registered._')
             if send_tg:
-                send_telegram('\n'.join(report_lines))
+                send_telegram('\n'.join(report_lines), priority="P2", producer="strategy_weekly_review")
             return stats
 
         for strat in strategies:
@@ -452,7 +452,7 @@ def run(dry_run: bool = False, send_tg: bool = True) -> dict:
         if dry_run or not send_tg:
             print(report_text)
         if send_tg and not dry_run:
-            send_telegram(report_text)
+            send_telegram(report_text, priority="P2", producer="strategy_weekly_review")
             logger.info('Telegram report sent')
 
     except Exception as exc:

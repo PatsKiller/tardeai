@@ -24,10 +24,10 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
-def _send_tg(msg: str):
+def _send_tg(msg: str, *, priority: str = "P3"):
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        send_telegram(msg, priority=priority, producer="overnight_batch")
     except Exception:
         pass
 
@@ -684,7 +684,7 @@ def send_journal_reminder():
                 f"Unannotated trades have no setup type, entry reason, or lessons.\n"
                 f"👉 https://ms01-openclaw.tail163d14.ts.net/v3/journal"
             )
-            _send_tg(msg)
+            _send_tg(msg, priority="P2")
             try:
                 from lib.comms import CommunicationEvent, publish_communication
                 publish_communication(CommunicationEvent(

@@ -690,7 +690,7 @@ def _alert(sym, p, urg, price) -> bool:
             from scripts.lib.comms_editor import set_primary_symbols, reset_primary_symbols as _reset  # type: ignore
         reset_primary = _reset
         token = set_primary_symbols([str(sym).upper()])
-        return bool(send_telegram(g.text, **extra))
+        return bool(send_telegram(g.text, priority="P2", producer="watchlist_entry_planner", **extra))
     except Exception:
         return False
     finally:

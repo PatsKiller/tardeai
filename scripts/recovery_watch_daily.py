@@ -799,7 +799,7 @@ def send_notifications(escalated: list[dict]):
             if e.get("allocation"):
                 lines.append(f"Capital: {e['allocation'].replace('_', ' ')}")
             lines.append(f"Review at: /v3/risk")
-            send_telegram("\n".join(lines))
+            send_telegram("\n".join(lines), priority="P2", producer="recovery_watch_daily")
         except Exception as ex:
             print(f"  [recovery] Telegram send failed: {ex}")
 
@@ -878,7 +878,7 @@ def send_stop_reminders(reminders: list[dict]):
     msg = "\n".join(lines)
 
     try:
-        send_telegram(msg)
+        send_telegram(msg, priority="P1", dedupe_minutes=0, producer="recovery_watch_daily")
     except Exception as ex:
         print(f"  [recovery] Stop reminder Telegram failed: {ex}")
 

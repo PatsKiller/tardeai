@@ -140,7 +140,7 @@ def _alert(directive_gaps):
     msg = _alert_message(directive_gaps)
     try:
         from telegram_alert import send_telegram
-        ok = bool(send_telegram(msg))
+        ok = bool(send_telegram(msg, priority="P2", producer="audit_enrichment_coverage"))
         try:
             from lib.comms import CommunicationEvent, publish_communication
             publish_communication(CommunicationEvent(

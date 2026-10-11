@@ -249,7 +249,7 @@ def _alert_transitions(results):
             from telegram_alert import send_telegram
             send_telegram("📈 STRATEGY LIFECYCLE\n" + "\n".join(
                 f"{sid}: {old} → {new} (review when ready — promotion needs your approval)"
-                for sid, old, new in ups))
+                for sid, old, new in ups), priority="P1", dedupe_minutes=0, producer="paper_performance_governance")
         except Exception:
             pass
     return [{"strategy_id": s_, "from": o, "to": n} for s_, o, n in transitions]

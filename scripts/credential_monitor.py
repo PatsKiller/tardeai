@@ -37,10 +37,13 @@ def _env(key: str) -> str:
         return os.getenv(key, "").strip()
 
 
-def _send_tg(msg: str):
+def _send_tg(msg: str, *, priority: str = "P3"):
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg)
+        if priority == "P1":
+            send_telegram(msg, priority="P1", dedupe_minutes=0, producer="credential_monitor")
+        else:
+            send_telegram(msg, priority=priority, producer="credential_monitor")
     except Exception:
         pass
 
@@ -295,7 +298,7 @@ def run_checks(send_telegram: bool = False) -> list:
             if env_key:
                 lines.append(f"`update {env_key} YOUR_NEW_VALUE`")
 
-        _send_tg("\n".join(lines))
+        _send_tg("\n".join(lines), priority="P1")
 
     ok_count = sum(1 for r in results if r["status"] in ("ok", "quota", "warning"))
     fail_count = len(failures)

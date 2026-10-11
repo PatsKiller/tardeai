@@ -103,7 +103,7 @@ Mention YTD context. Flag if cash is unusually high (>5% of portfolio)."""
 def send_telegram(message: str):
     """Send message via the shared chokepoint (captures to Reports portal)."""
     from telegram_alert import send_telegram as _send
-    ok = _send(message, bypass_router=True)
+    ok = _send(message, priority="P2", producer="weekly_summary_local")
     if ok:
         print("  [weekly-summary] Telegram sent")
     else:

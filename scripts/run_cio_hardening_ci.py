@@ -4451,6 +4451,15 @@ GATES = [
         ["tests/test_notification_intents_wave2_20261011.py"],
     ),
     (
+        # Sender wave 3: the next 40 BELOW_CAP files declare P1/P2/P3. The escalation
+        # handler's import no longer reads a release .env. Static only for the 40;
+        # claude_escalation_handler is imported only by its own env test, under TRADE_AI_CI.
+        # ANCHOR: NOTIFICATION_INTENTS_WAVE3_20261011
+        "notification_intents_wave3_20261011",
+        ["tests/test_notification_intents_wave3_20261011.py",
+         "tests/test_claude_escalation_env_20261011.py"],
+    ),
+    (
         # Release-pinned daemons (packets/unit-code-roots, 2026-10-10): one-off exact-SHA drop-ins left 4 user
         # daemons on a032116e7 for 4 days because promote rewrote only portfolio-server's. Promote/rollback now
         # rewrite stale pins into 90-release-pin.conf, archive pin-only one-offs (never delete), never touch a

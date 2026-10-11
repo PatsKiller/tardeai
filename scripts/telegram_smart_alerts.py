@@ -22,10 +22,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
-def _send_tg(msg: str) -> bool:
+def _send_tg(msg: str, *, priority: str = "P3") -> bool:
     try:
         from telegram_alert import send_telegram
-        return send_telegram(msg)
+        return send_telegram(msg, priority=priority, producer="telegram_smart_alerts")
     except Exception as e:
         print(f"[smart-alert] Telegram error: {e}")
         return False
@@ -66,7 +66,7 @@ def check_roth_reminder(send: bool = False) -> dict:
     result = {"alert": len(alerts) > 0, "count": len(alerts)}
     if alerts and send:
         for a in alerts:
-            _send_tg(a)
+            _send_tg(a, priority="P2" if "Bracket Room" in a else "P3")
         result["sent"] = True
     if alerts:
         print(f"[smart-alert] Roth reminder: {len(alerts)} alert(s)")
@@ -101,7 +101,7 @@ def check_income_milestone(send: bool = False) -> dict:
 
     result = {"alert": len(alerts) > 0, "income": income}
     if alerts and send:
-        _send_tg(alerts[0])
+        _send_tg(alerts[0], priority="P3")
         result["sent"] = True
     return result
 
@@ -148,7 +148,7 @@ def check_agent_conflicts(send: bool = False) -> dict:
         result = {"alert": len(alerts) > 0, "conflicts": len(conflicts)}
         if alerts and send:
             for a in alerts:
-                _send_tg(a)
+                _send_tg(a, priority="P2")
             result["sent"] = True
         if conflicts:
             print(f"[smart-alert] {len(conflicts)} agent conflict(s)")
@@ -187,7 +187,7 @@ def check_stop_proximity(send: bool = False) -> dict:
 
         result = {"alert": len(alerts) > 0, "count": len(close_stops)}
         if alerts and send:
-            _send_tg(alerts[0])
+            _send_tg(alerts[0], priority="P1")
             result["sent"] = True
         if close_stops:
             print(f"[smart-alert] {len(close_stops)} position(s) near stop")
@@ -221,7 +221,7 @@ def check_medicare_countdown(send: bool = False) -> dict:
 
     result = {"alert": True, "days_left": days_left}
     if send:
-        _send_tg(msg)
+        _send_tg(msg, priority="P3")
         result["sent"] = True
     print(f"[smart-alert] Medicare countdown: {days_left} days")
     return result

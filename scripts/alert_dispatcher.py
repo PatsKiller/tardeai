@@ -156,11 +156,11 @@ def _already_sent(conn, dedupe_key: str) -> bool:
         return False
 
 
-def _send_telegram(message: str) -> bool:
+def _send_telegram(message: str, *, priority: str = "P2") -> bool:
     """Send via Telegram. Uses the existing telegram_alert module."""
     try:
         from telegram_alert import send_telegram
-        return send_telegram(message)
+        return send_telegram(message, priority=priority, producer="alert_dispatcher")
     except Exception as e:
         log.error(f"Telegram send failed: {e}")
         return False
@@ -234,7 +234,7 @@ def dispatch_alert(
     if not conn:
         # No DB — fall through to direct Telegram
         if tier in (TIER_ALERT, TIER_URGENT):
-            sent = _send_telegram(body)
+            sent = _send_telegram(body, priority="P1" if tier == TIER_URGENT else "P2")
             return {"sent": sent, "reason": "no_db_fallback", "tier": tier, "fatigued": False}
         return {"sent": False, "reason": "info_tier_no_db", "tier": tier, "fatigued": False}
 
@@ -261,7 +261,7 @@ def dispatch_alert(
                     f"Resolve the underlying condition or dismiss the alert."
                 )
                 if _check_rate_limit(conn):
-                    _send_telegram(meta_body)
+                    _send_telegram(meta_body, priority="P2")
                 _log_notification(conn, "alert_fatigue_meta", TIER_ALERT,
                                   f"Alert Fatigue: {alert_type} ({symbol or 'system'})",
                                   meta_body, meta_dk, "telegram", "alert_dispatcher",
@@ -297,7 +297,7 @@ def dispatch_alert(
         elif tier == TIER_ALERT:
             channel = "telegram"
             if _check_rate_limit(conn):
-                sent = _send_telegram(body)
+                sent = _send_telegram(body, priority="P2")
                 if not sent:
                     error = "telegram_send_failed"
             else:
@@ -307,7 +307,7 @@ def dispatch_alert(
         elif tier == TIER_URGENT:
             channel = "telegram"
             # Urgent alerts bypass rate limit
-            sent = _send_telegram(body)
+            sent = _send_telegram(body, priority="P1")
             if not sent:
                 error = "telegram_send_failed"
 
