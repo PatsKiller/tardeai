@@ -220,6 +220,71 @@ def _raw_send_telegram(
     )
 
 
+# The last notification intent's route (telegram_alert_router.route_intent) in this process. A DEDUPED or
+# HELD intent is ACCEPTED (the platform took responsibility: it was delivered earlier, or it is archived for
+# the digest) but not delivered; callers on the keyboard branch read this to report that honestly.
+_LAST_INTENT_ROUTE: dict = {}
+
+
+def last_intent_route() -> dict:
+    """The route of the most recent intent send in this process ({} when the last send was not an intent)."""
+    return dict(_LAST_INTENT_ROUTE)
+
+
+def _intent_router():
+    try:
+        import telegram_alert_router as router
+    except ImportError:
+        from scripts import telegram_alert_router as router  # type: ignore
+    return router
+
+
+def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | None = None,
+                 producer: str | None = None, hold_text: str | None = None) -> bool:
+    """Route one notification intent, then send it when the route says DELIVER. Returns delivered.
+
+    The priority replaces bypass_router=True: P1 is never capped or quiet-held but is deduped (exact body,
+    declared window) and receipted; P2 is also held during the operator's quiet window. A hold that cannot be
+    archived is delivered instead -- never dropped (AGENTS.md §9.1).
+    """
+    _LAST_INTENT_ROUTE.clear()
+    try:
+        router = _intent_router()
+    except ImportError:
+        print("[telegram] intent router unavailable — delivering")
+        return bool(send_fn())
+    route = router.route_intent(message, priority, dedupe_minutes=dedupe_minutes, producer=producer)
+    if route["decision"] == "DEDUPED":
+        print(f"[telegram] intent {route['priority']} deduped ({route['window_minutes']}m): {message[:60]}...")
+        router.record_intent_receipt(route, delivered=False)
+        _LAST_INTENT_ROUTE.update(route, accepted=True)
+        return False
+    if route["decision"] == "HELD_QUIET_HOURS":
+        archived = None
+        try:
+            from report_capture import archive_message
+            archived = archive_message(hold_text or message, suppressed=True, reason="intent_p2_quiet_hours",
+                                       report_type=router.HELD_P2_REPORT_TYPE)
+        except Exception:
+            archived = None
+        if archived:
+            print(f"[telegram] intent P2 held for the digest (quiet hours): {message[:60]}...")
+            router.record_intent_receipt(route, delivered=False, archived=archived)
+            _LAST_INTENT_ROUTE.update(route, accepted=True)
+            return False
+        route = {**route, "decision": "HOLD_UNPERSISTED_DELIVERED", "deliver": True}
+    ok = bool(send_fn())
+    if ok:
+        router.mark_intent_sent(route)
+    router.record_intent_receipt(route, delivered=ok)
+    _LAST_INTENT_ROUTE.update(route, accepted=ok)
+    return ok
+
+
+def _intent_accepted() -> bool:
+    return bool(_LAST_INTENT_ROUTE.get("accepted"))
+
+
 def _legacy_send(
     message: str,
     bypass_router: bool,
@@ -228,12 +293,26 @@ def _legacy_send(
     chat_ids: list | None = None,
     thread_id: str | None = None,
     link_preview_options: dict | None = None,
+    priority: str | None = None,
+    dedupe_minutes: int | None = None,
+    producer: str | None = None,
 ) -> bool:
-    """Pre-normalization behaviour, unchanged. Requires no new table."""
+    """Pre-normalization behaviour, unchanged. Requires no new table.
+
+    ``priority`` ("P1"/"P2") makes the message a notification intent: routed by its declared priority
+    (telegram_alert_router.route_intent), never by the text classifier and never bypassed.
+    """
     targets = chat_ids or _chat_ids()
     if not _token() or not targets:
         print("[telegram] Skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
         return False
+    if priority:
+        return _intent_send(
+            message, priority,
+            lambda: _raw_send_telegram_result(
+                message, targets, reply_markup=reply_markup, thread_id=thread_id,
+                link_preview_options=link_preview_options).get("ok"),
+            dedupe_minutes=dedupe_minutes, producer=producer)
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
@@ -277,7 +356,8 @@ def _legacy_send(
 
 def publish_operator_message(message: str, *, bypass_router: bool = False,
                              source_producer: str = "legacy_send_telegram",
-                             resolving: bool = False) -> dict:
+                             resolving: bool = False, priority: str | None = None,
+                             dedupe_minutes: int | None = None, producer: str | None = None) -> dict:
     """Mode-aware publish. Returns the structured PublishResult mapping.
 
     OFF     legacy router + legacy sender; the normalized tables are never touched.
@@ -290,17 +370,27 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
 
     mode = get_mode()
 
+    # Only an intent passes intent kwargs, so every non-intent call keeps its exact pre-intent shape.
+    intent = ({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer}
+              if priority else {})
+    # ACTIVE/SHADOW persist the declared priority beside the observation; a P1 intent asks for immediate
+    # delivery exactly as bypass_router=True did.
+    outbox_bypass = bool(bypass_router or priority == "P1")
+
     if mode == MODE_OFF:
-        delivered = _legacy_send(message, bypass_router)
+        delivered = _legacy_send(message, bypass_router, **intent)
+        reason = "legacy_delivery" if delivered else "legacy_router_suppressed_or_unconfigured"
+        if priority and _LAST_INTENT_ROUTE:
+            reason = f"intent_{_LAST_INTENT_ROUTE.get('priority')}_{_LAST_INTENT_ROUTE.get('decision')}"
         return {
             "accepted": True, "route_mode": "LEGACY", "runtime_mode": MODE_OFF,
             "queued": False, "delivered": bool(delivered), "suppressed": not delivered,
-            "reason": "legacy_delivery" if delivered else "legacy_router_suppressed_or_unconfigured",
+            "reason": reason,
             "alert_id": None, "incident_id": None,
         }
 
     if mode == MODE_SHADOW:
-        delivered = _legacy_send(message, bypass_router)
+        delivered = _legacy_send(message, bypass_router, **intent)
         shadow: dict = {"persisted": False}
         try:
             from alert_runtime_mode import can_persist_shadow
@@ -308,7 +398,8 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
                 from alert_outbox import publish_legacy_message
                 shadow = publish_legacy_message(
                     message, source_producer=source_producer,
-                    bypass_router=bypass_router, resolving=resolving)
+                    bypass_router=outbox_bypass, resolving=resolving,
+                    **({"intent_priority": priority} if priority else {}))
                 shadow["persisted"] = True
         except Exception as e:
             # Never let shadow bookkeeping affect the operator's alert.
@@ -326,7 +417,8 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
     require_active_capability()
     from alert_outbox import publish_legacy_message
     return publish_legacy_message(message, source_producer=source_producer,
-                                  bypass_router=bypass_router, resolving=resolving)
+                                  bypass_router=outbox_bypass, resolving=resolving,
+                                  **({"intent_priority": priority} if priority else {}))
 
 
 def _comms_gateway_owns(message_class: str) -> bool:
@@ -620,8 +712,13 @@ def send_telegram(
     _gateway_owned: bool = False,
     link_preview_options: dict | None = None,
     resolving: bool = False,
+    priority: str | None = None,
+    dedupe_minutes: int | None = None,
+    producer: str | None = None,
 ) -> bool:
     """Send/publish an operator alert. Returns True when the event was ACCEPTED.
+
+    ``priority`` "P1"|"P2": a notification intent (telegram_alert_router.route_intent).
 
     Accepted means the platform has taken responsibility for the event — delivered
     now, queued for a digest, or recorded for Command Center. It deliberately does
@@ -645,6 +742,10 @@ def send_telegram(
     # `last_message_id()` afterwards could be handed the id of an EARLIER message
     # and staple it to this alert. An absent id must stay absent.
     reset_last_message_ids()
+    _LAST_INTENT_ROUTE.clear()
+    # Only an intent passes intent kwargs, so every non-intent call keeps its exact pre-intent shape.
+    intent = ({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer}
+              if priority else {})
     # Investment Command Center (operator 2026-10-08): opportunity/risk alerts that name a curated symbol carry one
     # line from CIO memory — conviction, rank, R:R, upside, stance + a link. Read-only; returns the message
     # unchanged on any problem (scripts/lib/opportunity_alert.py, config/opportunity_conviction.yaml `telegram`).
@@ -665,14 +766,16 @@ def send_telegram(
 
     # Recursion guard: never re-enter send_via_gateway from a gateway-owned call.
     if _gateway_owned:
-        return _legacy_send(
+        ok = _legacy_send(
             message,
             bypass_router,
             reply_markup=reply_markup,
             chat_ids=chat_ids,
             thread_id=thread_id,
             link_preview_options=link_preview_options,
+            **intent,
         )
+        return ok or (bool(priority) and _intent_accepted())
 
     mc = (message_class or "operator_alert").strip() or "operator_alert"
     if _comms_gateway_owns(mc):
@@ -702,9 +805,11 @@ def send_telegram(
             chat_ids=chat_ids,
             thread_id=thread_id,
             link_preview_options=link_preview_options,
+            **intent,
         )
         _best_effort_comms_publish(message, message_class=mc, delivered=bool(ok))
-        return ok
+        # A deduped or held intent was accepted (delivered earlier / archived for the digest), not failed.
+        return ok or (bool(priority) and _intent_accepted())
     try:
         # `resolving` says the condition ENDED. Without it every incident in the
         # normalized plane opens and none ever closes -- 41 open / 0 resolved,
@@ -712,15 +817,15 @@ def send_telegram(
         # above short-circuits to _legacy_send and never reaches here, so a
         # recovery sent with a keyboard still will not resolve its incident.
         result = publish_operator_message(message, bypass_router=bypass_router,
-                                          resolving=resolving)
+                                          resolving=resolving, **intent)
     except Exception as e:
         # ACTIVE with a missing migration lands here. Loud, and NOT silently dropped:
         # fall back to legacy delivery so the operator still gets the alert.
         print(f"[telegram] normalized publish failed ({type(e).__name__}: {str(e)[:160]}) "
               f"— falling back to legacy delivery")
-        ok = _legacy_send(message, bypass_router)
+        ok = _legacy_send(message, bypass_router, **intent)
         _best_effort_comms_publish(message, message_class=mc, delivered=bool(ok))
-        return ok
+        return ok or (bool(priority) and _intent_accepted())
     # The answer is right here in `result`; the old code read it on the NEXT line
     # and still published without it.
     _best_effort_comms_publish(message, message_class=mc,
@@ -739,6 +844,9 @@ def send_telegram_with_id(
     thread_id: str | None = None,
     message_class: str = "operator_alert",
     link_preview_options: dict | None = None,
+    priority: str | None = None,
+    dedupe_minutes: int | None = None,
+    producer: str | None = None,
 ) -> dict:
     """send_telegram(), plus the provider message id it already had.
 
@@ -763,6 +871,7 @@ def send_telegram_with_id(
         thread_id=thread_id,
         message_class=message_class,
         link_preview_options=link_preview_options,
+        **({"priority": priority, "dedupe_minutes": dedupe_minutes, "producer": producer} if priority else {}),
     )
     ids = last_message_ids()
     return {
@@ -779,8 +888,14 @@ def send_telegram_document(
     bypass_router: bool = True,
     chat_ids: list | None = None,
     message_class: str = "operator_alert",
+    priority: str | None = None,
+    dedupe_minutes: int | None = None,
+    producer: str | None = None,
 ) -> bool:
     """Send a file via the approved transport sendDocument chokepoint.
+
+    ``priority`` "P1"|"P2": routed as a notification intent on the caption (a held P2 archives the
+    caption and file path); replaces the ``bypass_router=True`` default.
 
     Producers must call this instead of raw Bot API sendDocument. Credentials and
     chat selection stay inside telegram_alert / telegram_transport.
@@ -808,6 +923,17 @@ def send_telegram_document(
         cap = publicize_message(cap)
     except Exception:
         pass
+    _LAST_INTENT_ROUTE.clear()
+    if priority:
+        if not _token() or not (chat_ids or _chat_ids()):
+            print("[telegram] document skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+            return False
+        sent = _intent_send(
+            cap, priority,
+            lambda: send_telegram_document(str(path), caption=cap, bypass_router=True, chat_ids=chat_ids,
+                                           message_class=message_class),
+            dedupe_minutes=dedupe_minutes, producer=producer, hold_text=f"{cap}\nfile: {path}")
+        return sent or _intent_accepted()
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert

@@ -65,10 +65,10 @@ def holdings() -> list:
 
 def telegram_send(text: str) -> bool:
     """The operator asked for this standing watch himself and the digest is throttled per intent
-    (digest.min_interval_min), so it goes out now instead of waiting in the router's P1 batch —
+    (digest.min_interval_min), so it goes out now (P1 intent) instead of waiting in the router's text-classified digest —
     same reasoning as the Active Trader scalp alerts. Still through the one chokepoint + editor."""
     from telegram_alert import send_telegram
-    return bool(send_telegram(text, bypass_router=True, message_class=MESSAGE_CLASS))
+    return bool(send_telegram(text, message_class=MESSAGE_CLASS, priority="P1", producer="options_intent_matcher"))
 
 
 def _read_json(p: Path, default):

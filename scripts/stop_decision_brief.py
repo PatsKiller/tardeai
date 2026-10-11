@@ -354,7 +354,7 @@ def send_stop_brief_telegram(result: Dict) -> Optional[str]:
         return None
 
     from telegram_alert import send_telegram_with_id
-    return send_telegram_with_id(msg, bypass_router=True).get("message_id")
+    return send_telegram_with_id(msg, priority="P1", producer="stop_decision_brief").get("message_id")
 
 
 def process_stop_alerts(danger_list: List[Dict], state_dir: str, root: str = ".") -> List[Dict]:

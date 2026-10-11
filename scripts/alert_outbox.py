@@ -121,7 +121,8 @@ def _delivery_fingerprint(message: str) -> str:
 
 def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_telegram",
                            bypass_router: bool = False,
-                           resolving: bool = False) -> dict[str, Any]:
+                           resolving: bool = False,
+                           intent_priority: str | None = None) -> dict[str, Any]:
     """Publish one legacy message as an observation.
 
     ``resolving`` says this observation reports the condition ENDING, not
@@ -141,6 +142,10 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
     event = classify_legacy_message(message, source_producer=source_producer)
     payload = dict(event.payload)
     payload["bypass_router_requested"] = bool(bypass_router)
+    if intent_priority:
+        # The sender's declared notification-intent priority (telegram_alert_router.route_intent), kept beside
+        # the observation so the normalized plane can see what the producer asked for.
+        payload["intent_priority"] = str(intent_priority)
     event = AlertEvent(**{**event.__dict__, "payload": payload})
     return publish_event(event, resolving=resolving)
 

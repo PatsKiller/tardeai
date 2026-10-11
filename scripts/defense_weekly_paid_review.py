@@ -58,7 +58,7 @@ def auto_seat(cfg=None) -> str:
 
 def _telegram(send_telegram, text: str) -> None:
     try:
-        send_telegram(text, bypass_router=True)
+        send_telegram(text, priority="P2", producer="defense_weekly_paid_review")
     except TypeError:
         send_telegram(text)
     except Exception as e:
