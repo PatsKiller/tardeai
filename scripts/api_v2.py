@@ -17414,11 +17414,15 @@ def _trim_packet_for_list(pkt: dict) -> dict:
 def _watch_decision_refresh_start(body):
     """POST /api/v2/watch/decision/refresh — V5 canonical strategy refresh (enqueue only,
     returns <250ms). Body: {symbols, scope, analysis_tier, include_options, force,
-    requested_by, reason}. Advisory-only; no order/2FA surface."""
+    requested_by, reason}. Advisory-only; no order/2FA surface.
+
+    Wave B (2026-10-11): publishes a watch-refresh ``started`` coordination event
+    (default dry_run). Workers remain systemd-run / PG jobs — n8n does not replace them.
+    """
     b = body or {}
     import watch_decision_refresh as wdr
 
-    return wdr.enqueue_run(
+    result = wdr.enqueue_run(
         b.get("symbols") or ([b["symbol"]] if b.get("symbol") else []),
         scope=str(b.get("scope") or "FULL_STRATEGY").upper(),
         analysis_tier=str(b.get("analysis_tier") or "LOCAL_QUANT").upper(),
@@ -17427,6 +17431,22 @@ def _watch_decision_refresh_start(body):
         requested_by=str(b.get("requested_by") or "operator")[:60],
         reason=str(b.get("reason") or "")[:400],
     )
+    if isinstance(result, dict) and result.get("ok") and result.get("run_id") is not None:
+        try:
+            from lib.n8n_cc_wave_b_emit import safe_emit_watch_refresh
+
+            result = dict(result)
+            result["coordination"] = safe_emit_watch_refresh(
+                run_id=result["run_id"],
+                phase="started",
+                symbols=list(result.get("symbols") or []),
+                requested_by=str(b.get("requested_by") or "operator")[:60],
+                reason=str(b.get("reason") or "")[:400],
+            )
+        except Exception as _emit_exc:  # fail-soft
+            result = dict(result)
+            result["coordination"] = {"ok": False, "error": type(_emit_exc).__name__}
+    return result
 
 
 def _watch_decision_refresh_status(query=None):
@@ -28399,7 +28419,11 @@ def _research_intelligence_rebuild(body=None):
 def _research_intelligence_run_topic(body=None):
     """POST /api/v2/research-intelligence/run-topic {topic_id} | {category} —
     enqueue a topic (or a coverage-gap category's stalest monitors) for the
-    after-close research drain. RTH-safe: nothing runs until the cron drain."""
+    after-close research drain. RTH-safe: nothing runs until the cron drain.
+
+    Wave B (2026-10-11): additive coordination emit (default dry_run) so Research
+    Intake shows on Coordination; the host enqueue path is unchanged. n8n never sends.
+    """
     try:
         import sys as _s
 
@@ -28409,7 +28433,22 @@ def _research_intelligence_run_topic(body=None):
         b = body or {}
         who = str(b.get("requested_by") or "operator")[:60]
         if b.get("topic_id"):
-            return enqueue(str(b["topic_id"]), requested_by=who)
+            topic_id = str(b["topic_id"])
+            result = enqueue(topic_id, requested_by=who)
+            try:
+                from lib.n8n_cc_wave_b_emit import safe_emit_research_intake
+
+                result = dict(result) if isinstance(result, dict) else {"ok": True, "result": result}
+                result["coordination"] = safe_emit_research_intake(
+                    subject=topic_id,
+                    request_type="topic",
+                    requested_by=who if who in {"cio-wake", "operator", "maria"} else "operator",
+                    reason=str(b.get("reason") or "cc run-topic")[:500],
+                )
+            except Exception as _emit_exc:  # fail-soft
+                if isinstance(result, dict):
+                    result["coordination"] = {"ok": False, "error": type(_emit_exc).__name__}
+            return result
         if b.get("category"):
             return enqueue_category(str(b["category"]), requested_by=who)
         return {"ok": False, "error": "topic_id or category required"}

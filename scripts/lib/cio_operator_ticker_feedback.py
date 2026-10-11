@@ -311,6 +311,26 @@ def maybe_enqueue_need_data(
             "error": f"{type(exc).__name__}:{exc}"[:200],
         }
 
+    # Wave B (2026-10-11): additive research-intake coordination emit (default dry_run).
+    # Consumer has no per-request enqueue for Hermes subject types today — the ledger
+    # records typed_refusal:no_enqueue_path when apply is on, which is the honest gap.
+    try:
+        from scripts.lib.n8n_cc_wave_b_emit import safe_emit_research_intake
+
+        out["coordination"] = safe_emit_research_intake(
+            subject=sym,
+            request_type="position",
+            requested_by="operator",
+            reason=(
+                f"NEED_DATA {sym}: "
+                f"{str(feedback.get('reason') or 'additional evidence requested')[:240]}"
+            ),
+            priority="P2",
+            root=root_p,
+        )
+    except Exception as exc:
+        out["coordination"] = {"ok": False, "error": f"{type(exc).__name__}:{exc}"[:200]}
+
     # Overall ok if at least one path succeeded (or both soft-failed — still advisory).
     hc_ok = isinstance(out.get("held_coverage"), dict) and out["held_coverage"].get("ok") is not False
     hm_ok = isinstance(out.get("hermes"), dict) and out["hermes"].get("ok") is True
