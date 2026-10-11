@@ -432,6 +432,8 @@ def test_every_dispatcher_row_is_allowlisted_eligible_and_staged():
 EXPECTED_INELIGIBLE: dict[str, str] = {
     "sec-data-ingest": "sender or ingest writer _ingest",
     "social-ingest-all": "sender or ingest writer _ingest",
+    # SW4 (2026-10-11): same R1 rationale; pinned by tests/test_sw4_shadow_wave4_20261011.py.
+    "aegis-nightly-ingestion": "sender or ingest writer _ingest",
 }
 
 

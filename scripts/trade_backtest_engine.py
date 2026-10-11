@@ -521,8 +521,8 @@ def main(argv=None):
     import json
 
     ap = argparse.ArgumentParser(description='Backtest closed trades into trade_backtest_results.')
-    ap.add_argument('--dry-run', action='store_true', help='read-only preview; writes nothing')
-    ap.add_argument('--limit', type=int, default=None, help='only the first N trades (default: all)')
+    ap.add_argument("--dry-run", action="store_true", help='read-only preview; writes nothing')
+    ap.add_argument("--limit", type=int, default=None, help='only the first N trades (default: all)')
     args = ap.parse_args(argv)
     if args.dry_run:
         print(json.dumps(preview(limit=args.limit), indent=2, default=str))
