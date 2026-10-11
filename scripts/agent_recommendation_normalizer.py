@@ -307,10 +307,6 @@ def main(argv=None):
             print(json.dumps(out, indent=2, default=str))
         else:
             print(f"Normalizer: {out['total_extracted']} recommendations ({out['mode']})")
-        if not dry_run:
-            _write_run_receipts(ok=True, exit_code=0, started_at=started_at,
-                                summary={"extracted": out["total_extracted"], "inserted": out["inserted"],
-                                         "sources": out["sources"]})
     except Exception as exc:
         if not dry_run:
             _write_run_receipts(ok=False, exit_code=1, started_at=started_at,
@@ -318,7 +314,17 @@ def main(argv=None):
         raise
     finally:
         if conn is not None:
-            conn.close()
+            try:
+                conn.close()
+            except Exception as exc:
+                if not dry_run:
+                    _write_run_receipts(ok=False, exit_code=1, started_at=started_at,
+                                        error=f"{type(exc).__name__}: {exc}")
+                raise
+    if not dry_run:
+        _write_run_receipts(ok=True, exit_code=0, started_at=started_at,
+                            summary={"extracted": out["total_extracted"], "inserted": out["inserted"],
+                                     "sources": out["sources"]})
     return 0
 
 

@@ -6,7 +6,7 @@ Owner: Codex refactor shard 08
 
 Frozen source base `9f602186a958df4c2d9f36f04a0ad1809bfce808`; branch `n8nmat/refactor-shard-08`. Two new DRAFT proposals among 37 assigned lanes. Existing reviewed rows remain unchanged. No scheduler, release, n8n import, sends or broker changes.
 
-`agent-recommendation-normalizer --apply --dry-run` now returns before env/DB access. Its implicit no-apply READ ONLY database preview remains available. Real runs retain the legacy underscore receipt and add the canonical lane-id receipt; connection/loader failures keep previous ok_at and raise the original error. Its own loader names DB fields only; shared session13_db dotenv loading remains report-mode debt.
+`agent-recommendation-normalizer --apply --dry-run` now returns before env/DB access. Its implicit no-apply READ ONLY database preview remains available. Real runs retain the legacy underscore receipt and add the canonical lane-id receipt; connection/loader/close failures keep previous ok_at and raise the original error. Its own loader names DB fields only; shared session13_db dotenv loading remains report-mode debt.
 
 `hermes-score-event-feeder --apply --dry-run` returns before config, kill-switch, DB and heartbeat access. Real runs preserve queue deduplication, scope policy, stdout and exit behavior, adding a canonical receipt. Soft kill-switch failure keeps exit0 and does not advance ok_at. Existing heartbeat is preserved; queue is hermes_score_event_queue, not a new queue abstraction.
 
@@ -57,3 +57,7 @@ Evidence: local REFACTOR_EVIDENCE_08.md, refactor-gates-08/summary.json, tests/f
 | hermes-shadow-scorer | BLOCKED | Systemd shape and versioned execution root require runtime/timer evidence; no host state inferred. |
 | topic-ingestion | BLOCKED | Actual approved family runner owns cadence; child paid/cookie/model closure cannot become a second scheduler. |
 | youtube-cookie-health-check | SKIP_SENDER | Sender call path excluded; notification-intent migration is separate. |
+
+## Validation boundary
+
+Focused affected/shard tests:41passed with zero capability blocks. Source registry, authority, coverage, host paths, dark contracts, comms, docs index, ruff and line endings pass within scoped evidence. Two new contracts are refused as DRAFT_NOT_GRANDFATHERED. The mandatory full PR profile on the checkpoint SHA encountered safety guard refusals in inherited suites and was stopped (native exit130); it is not a pass. Partial profile/static-count/fixture debts are in the local evidence packet. No push, live deploy or cutover is allowed by this result.

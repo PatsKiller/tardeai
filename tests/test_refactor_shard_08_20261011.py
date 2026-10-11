@@ -239,3 +239,21 @@ def test_normalizer_prior_startup_failure_had_no_canonical_receipt(state, monkey
         mod.main(["--apply"])
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "failed" and receipt["ok_at"] is None and receipt["exit"] == 1
+
+
+def test_normalizer_close_failure_cannot_advance_success(state, monkeypatch):
+    mod = load("agent_recommendation_normalizer.py")
+    fake_work(mod, "agent_recommendation_normalizer.py", monkeypatch)
+    assert mod.main(["--apply"]) == 0
+    path = state / "data/runtime/agent-recommendation-normalizer_last.json"
+    previous = json.loads(path.read_text())["ok_at"]
+
+    class CloseFailure:
+        def close(self):
+            raise RuntimeError("fake close failure")
+
+    monkeypatch.setattr(mod, "_get_conn", CloseFailure)
+    with pytest.raises(RuntimeError, match="fake close failure"):
+        mod.main(["--apply"])
+    receipt = json.loads(path.read_text())
+    assert receipt["status"] == "failed" and receipt["ok_at"] == previous and receipt["exit"] == 1
