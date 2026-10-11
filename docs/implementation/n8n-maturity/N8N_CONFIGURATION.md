@@ -146,6 +146,17 @@ All six: relay `http://172.19.0.1:18092` through one `Relay` Set node, credentia
 scheduler are live; heartbeat watcher and approval router are held** (inactive) until their host lanes
 `heartbeat-watch` / `approval-escalate` have registry rows (open item 2).
 
+**Heartbeat watcher, re-checked 2026-10-11 09:20 ET (Agent PP, read-only):** still held for the same single reason —
+`heartbeat-watch` is not a registry row, and the lane does not exist yet (no allowlist entry, no host script; design
+02 §7's `supervisor_breach_detector.py --factor-from-registry` was never built). `check_n8n_relay_contract.py
+--require-concurrency` against CURRENT `464524b1b` refuses `lane_filter_unknown`; against a scratch registry carrying a
+draft `heartbeat-watch` row it passes, including five concurrent `GET /due` (cold max 0.306 s, budget 2.5 s), so
+concurrency (RC11), the relay routes (#1663), executor v2 and the fan-in reader (#1679) are no longer blockers. The
+stored n8n row predates F4 (`saveManualExecutions: true`), so activation re-imports the file. The workflow has an
+observe mode: while the lane is at stage `shadow` the assert returns `skipped: dispatched_dry_run`. It is additive, not
+the P1 path (§24.1): its alerts reach the operator only through the fan-in and the notifier it would watch. Packet:
+`~/n8n-maturity-verification/packets/heartbeat-watcher-activate/`.
+
 | When (ET) | Step | Grant / evidence (`packets/w0-import-six/`) |
 |---|---|---|
 | 15:53 | all six imported inactive and published | f9c459a230d3bc58; `apply-20261010.txt`, `publish-20261010.txt` |
@@ -461,7 +472,7 @@ Set node; the DB stays lean (size drives Supabase cost). A design that would blo
 | # | Item | Owner / authority |
 |---|---|---|
 | 1 | ~~W0 re-run with 4 ids~~ **done** 18:40–18:47 ET (four live); keep the publish-one-at-a-time rule until item 19 | — |
-| 2 | Registry rows for `heartbeat-watch` and `approval-escalate` (heartbeat watcher / approval router out of W0 until then) | registry PR |
+| 2 | Registry rows for `heartbeat-watch` and `approval-escalate` (heartbeat watcher / approval router out of W0 until then). `heartbeat-watch` also needs its host script, allowlist entry, inventory row and an owner-REVIEWED lane contract first (packet `heartbeat-watcher-activate`, 2026-10-11) | agent PR (lane) + owner review + registry PR |
 | 3 | Fan-in reader for `n8n-workflow-error` events (served since 17:13 ET; they reach neither SIEM nor Telegram yet) | agent PR |
 | 4 | Install SIEM bridge, then diagnoser ~2 h later; flip rows PAUSED → ACTIVE | `cron` grants + registry PR |
 | 5 | L6: registry `severity` per lane (RUN_* all WARN today) | registry PR |
