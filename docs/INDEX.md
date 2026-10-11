@@ -1426,15 +1426,18 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
-| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `c66360a217a5` |
+| `docs/implementation/n8n-maturity/00-MASTER-PROGRAM.md` | 00 — N8N Maturity Acceleration: program index | review_required | OK | `9c43aea80082` |
 | `docs/implementation/n8n-maturity/01-registry-reconciliation.md` | 01 — Lane registry reconciliation (B1) | review_required | OK | `7ef9d42aa3c9` |
-| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `a0b63667851f` |
+| `docs/implementation/n8n-maturity/02-six-workflow-architecture.md` | N8N Maturity — 02: six-workflow architecture (registry-driven dispatch) | review_required | OK | `ded275de4568` |
 | `docs/implementation/n8n-maturity/03-momentum-scalp-lanes.md` | 03 — Momentum-scalp lanes under n8n: inventory, root cause, dispatch design, monitoring | review_required | OK | `3ea31aa32eee` |
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `d6a1c8730cc0` |
+| `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `d690ff834154` |
+| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `0346adae4715` |
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `da2dacdebcd3` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `7695ab20454e` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |
@@ -1459,7 +1462,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md` | Cron consolidation — the 487 lines, what overlaps, what to merge, what to leave alone | review_required | MISSING HEADER | `054270f4802e` |
 | `docs/implementation/n8n-parallel/14-execution-week-20261008.md` | Execution plan — cron close-out and n8n Phase 2 in one week (2026-10-07 → 2026-10-14) | review_required | MISSING HEADER | `bd4d849645a2` |
 | `docs/implementation/n8n-parallel/15-pgvector-migration-decision-20261008.md` | pgvector migration of `content_embeddings` — decision packet (2026-10-08) | review_required | MISSING HEADER | `aa88f58c8ec5` |
-| `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | review_required | OK | `53caf4884e21` |
+| `docs/implementation/n8n-parallel/17-n8n-operating-model-20261008.md` | n8n as scheduler-of-record — operating model (architecture package part 1, 2026-10-08) | archive_superseded | OK | `a1046cd30ee4` |
 | `docs/implementation/n8n-parallel/18-ai-routing-architecture-20261008.md` | AI routing architecture — governed bridge (n8n program W4, 2026-10-08) | review_required | OK | `07fb8b3ad106` |
 | `docs/implementation/n8n-parallel/19-n1-cutover-packet-20261008.md` | 19 — N1 cutover packet (2026-10-08) | review_required | OK | `1c12618061f9` |
 | `docs/implementation/n8n-parallel/20-agent2-w1-registry-20261008.md` | Agent 2 W1 — registry and safe run contracts | review_required | OK | `a81dc074b255` |
@@ -1834,7 +1837,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `7e712136efd9` |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `fa5920bf1954` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota | review_required | OK | `1d1b620b91db` |
@@ -1907,7 +1910,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_PROVENANCE_AND_ELIGIBILITY_CONTRACT.md` | Research Provenance and Eligibility Contract | review_required | OK | `02b38e898e6d` |
 | `docs/ops/RESEARCH_QUALITY_AND_THESIS_GAP_2026-08-22.md` | Research quality, thesis mint gap, alarms — 2026-08-22 | review_required | OK | `6310c0e41813` |
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM | review_required | OK | `28c7d73a7129` |
-| `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `0efb618ff91b` |
+| `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `3830b4ce995b` |
 | `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md` | Scalp lane bulk catalyst read — 2026-10-09 | review_required | MISSING HEADER | `a5dd57667b7a` |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 | review_required | OK | `22febcb04ade` |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery | review_required | OK | `3cc1521e57e5` |
