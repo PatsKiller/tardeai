@@ -144,7 +144,8 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
     cat = json.loads((ROOT / "config" / "n8n_remediation_catalogue.json").read_text(encoding="utf-8"))
     # 80 / 33 after #1681; 2026-10-11 rebuild: +3 W4 provider owners, -6 lanes absorbed by the C1 premarket stage
     # (their rows RETIRED, allowlist entries removed) -> 77 lanes, 34 with an automatic dry-run rerun.
-    assert cat["summary"]["lanes"] == 77 and cat["summary"]["lanes_with_auto_rerun"] == 34
+    # Train 3 rebuild (operator 2026-10-11): + SW4 (15) and shard 01-04 (13) lanes -> 105 lanes, 46 auto dry-run.
+    assert cat["summary"]["lanes"] == 105 and cat["summary"]["lanes_with_auto_rerun"] == 46
 
 
 def test_class_caps_quoted_equal_the_retry_policies():

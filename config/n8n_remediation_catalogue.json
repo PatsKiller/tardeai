@@ -51,18 +51,258 @@
   }
  },
  "summary": {
-  "lanes": 77,
-  "actions": 101,
-  "lanes_with_auto_rerun": 34,
-  "lanes_suggest_only": 43,
+  "lanes": 105,
+  "actions": 155,
+  "lanes_with_auto_rerun": 46,
+  "lanes_suggest_only": 59,
   "by_severity": {
-   "Critical": 17,
-   "High": 12,
-   "Medium": 32,
-   "Low": 16
+   "Critical": 22,
+   "High": 19,
+   "Medium": 47,
+   "Low": 17
   }
  },
  "lanes": [
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "aegis-nightly-ingestion",
+   "severity": "Medium",
+   "severity_basis": "cron:L308: business_function=research",
+   "inv_ids": [
+    "cron:L308"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L308",
+     "known_issues": "none measured (40/40 persisted 10-09 19:00)",
+     "custom_work_required": "add --receipt (SCRIPT_RECEIPT under data/runtime) and a --dry-run path; return non-zero on step failure; registry dispatch block + config/n8n_run_allowlist.json entry whose lock = the cron line's lock; declare after-edge to L306"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/aegis_nightly_ingestion.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/aegis_nightly_ingestion.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/aegis-nightly-ingestion_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/aegis_nightly_ingestion.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/aegis-nightly-ingestion_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "aegis-social-sentiment",
+   "severity": "Medium",
+   "severity_basis": "cron:L289: business_function=research",
+   "inv_ids": [
+    "cron:L289"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L289",
+     "known_issues": "Reddit returns 0 symbols; only StockTwits contributes",
+     "custom_work_required": "add --receipt (SCRIPT_RECEIPT under data/runtime) and a --dry-run path; return non-zero on step failure; registry dispatch block + config/n8n_run_allowlist.json entry whose lock = the cron line's lock"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/aegis_social_sentiment.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/aegis_social_sentiment.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/aegis-social-sentiment_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/aegis_social_sentiment.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/aegis-social-sentiment_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "aegis-transcript-discovery",
+   "severity": "Medium",
+   "severity_basis": "cron:L291: business_function=research",
+   "inv_ids": [
+    "cron:L291"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L291",
+     "known_issues": "Brave path retired by default (AEGIS_BRAVE_ENABLED=0) so discovery half returns 0",
+     "custom_work_required": "add --receipt (SCRIPT_RECEIPT under data/runtime) and a --dry-run path; return non-zero on step failure; registry dispatch block + config/n8n_run_allowlist.json entry whose lock = the cron line's lock"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/aegis_transcript_discovery.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/aegis_transcript_discovery.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/aegis-transcript-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/aegis_transcript_discovery.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/aegis-transcript-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
   {
    "schema": "N8nLaneRemediation@v1",
    "lane_id": "agent-calibration-engine",
@@ -301,6 +541,86 @@
      "lock": "/tmp/agent_outcome_linker.lock",
      "timeout_s": 180,
      "output_signal": "data/runtime/agent-outcome-linker_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "agent-outcome-scorer",
+   "severity": "Medium",
+   "severity_basis": "cron:L275: business_function=research",
+   "inv_ids": [
+    "cron:L275"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L275",
+     "known_issues": "docstring says 'Cron: 5:30 AM daily' but schedule is weekly Sunday 11:00",
+     "custom_work_required": "--dry-run; receipt; lock"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/agent_outcome_scorer.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/agent_outcome_scorer.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/agent-outcome-scorer_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/agent_outcome_scorer.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/agent-outcome-scorer_last.json",
      "max_per_incident": 1,
      "max_per_lane_per_day": 3
     }
@@ -1176,6 +1496,87 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "daily-incubator-refresh",
+   "severity": "Critical",
+   "severity_basis": "cron:L224: business_function=trading-adjacent",
+   "inv_ids": [
+    "cron:L224"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Medium"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L224",
+     "known_issues": "3 'failures' in 7d (error lines; UNVERIFIED as process failures); 56 'No data' of 1611",
+     "custom_work_required": "flock; receipt; --dry-run exists"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/daily_incubator_refresh.py",
+       "--apply",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/daily-incubator-refresh.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/daily-incubator-refresh_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/daily-incubator-refresh.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/daily-incubator-refresh_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "data-gap-resolver-at-0-10-16",
    "severity": "Medium",
    "severity_basis": "cron:L137: business_function=research",
@@ -1585,6 +1986,166 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "etf-analyst-enrich",
+   "severity": "High",
+   "severity_basis": "cron:L505: business_function=portfolio data",
+   "inv_ids": [
+    "cron:L505"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L505",
+     "known_issues": "low yield: 10-03 run constituents_fetched 0, etfs_with_holdings 38/417, with_analyst_view 31; yfinance 404s for delisted symbols; registry signal is log mtime only",
+     "custom_work_required": "receipt file + registry output_signal; --dry-run; exit nonzero when 0 constituents fetched"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/etf_analyst_enrich.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/etf_analyst.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/etf-analyst-enrich_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/etf_analyst.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/etf-analyst-enrich_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "etf-performance-enrich",
+   "severity": "High",
+   "severity_basis": "cron:L520: business_function=portfolio data",
+   "inv_ids": [
+    "cron:L520"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L520",
+     "known_issues": "10-03 run updated 300/417; yfinance 404/delisted noise; per-run DDL can contend for symbol_profiles locks; log-mtime signal",
+     "custom_work_required": "receipt signal; move DDL to a migration; --dry-run"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/etf_performance_enrich.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/etf_perf.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/etf-performance-enrich_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/etf_perf.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/etf-performance-enrich_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "fee-efficiency-analyzer",
    "severity": "High",
    "severity_basis": "cron:L549: business_function=reporting",
@@ -1662,6 +2223,86 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "feedback-loop-processor",
+   "severity": "Medium",
+   "severity_basis": "cron:L197: business_function=research",
+   "inv_ids": [
+    "cron:L197"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L197",
+     "known_issues": "none measured (10-09: 6 alerts scored, 0 strategy snapshots)",
+     "custom_work_required": "receipt; dry-run exists"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/feedback_loop_processor.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/feedback_loop.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/feedback-loop-processor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/feedback_loop.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/feedback-loop-processor_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -1822,6 +2463,120 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "finviz-proactive-research",
+   "severity": "Medium",
+   "severity_basis": "cron:L522: business_function=research",
+   "inv_ids": [
+    "cron:L522"
+   ],
+   "classification": [
+    "Retain as Existing Cron Job"
+   ],
+   "migration_risk": [
+    "Medium"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L522",
+     "known_issues": "last run 15:30 10-09 saved 25, covered 12 of 400 symbols; log-mtime signal",
+     "custom_work_required": "receipt signal (has --dry-run :108)"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "inventory must_remain_outside_n8n=yes"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "finviz-screener-runner",
+   "severity": "Medium",
+   "severity_basis": "cron:L133: business_function=research",
+   "inv_ids": [
+    "cron:L133"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Medium"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L133",
+     "known_issues": "large auto-adds per run (e.g. value_income 137 NEW, sector_leaders 52 NEW on 10-09) feed watchlist growth that watchlist_hygiene (L203) later removes (89 removed 10-04)",
+     "custom_work_required": "--dry-run; receipt (counts per screener); non-zero exit on fetch failure"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/finviz_screener_runner.py",
+       "--run",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 1800 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/finviz_screener.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/finviz-screener-runner_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/finviz_screener.lock",
+     "timeout_s": 1800,
+     "output_signal": "data/runtime/finviz-screener-runner_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 1800 > 600: a rerun would hold the single executor worker; human approval"
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -2392,6 +3147,88 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-momentum-catalyst-scalp",
+   "severity": "Medium",
+   "severity_basis": "cron:L708: business_function=research",
+   "inv_ids": [
+    "cron:L708"
+   ],
+   "classification": [
+    "Retain as Existing Cron Job"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L708",
+     "known_issues": "Runs hourly 06:25–15:25 weekdays; last run 11 tickers, 4 with catalyst",
+     "custom_work_required": "Non-zero exit on failure"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_momentum_catalyst_researcher.py",
+       "--source",
+       "scalp",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_scalp_catalyst.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_scalp_catalyst.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "hermes-news-bridge",
    "severity": "Medium",
    "severity_basis": "cron:L413: business_function=research",
@@ -2505,6 +3342,331 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-research-agenda-at-45-7",
+   "severity": "Medium",
+   "severity_basis": "cron:L821: business_function=research",
+   "inv_ids": [
+    "cron:L821"
+   ],
+   "classification": [
+    "Retain as Existing Cron Job"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L821",
+     "known_issues": "Only slot that does work (see L822)",
+     "custom_work_required": "None in code"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_research_agenda.py",
+       "--json",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_agenda.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-research-agenda-at-45-7_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_agenda.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-research-agenda-at-45-7_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-research-worker-pool",
+   "severity": "Medium",
+   "severity_basis": "cron:L688: business_function=research",
+   "inv_ids": [
+    "cron:L688"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L688",
+     "known_issues": "Log-mtime signal; 0 tracebacks",
+     "custom_work_required": "receipt / registry output_signal"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_research_worker_pool.py",
+       "--run",
+       "--json",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_worker_pool.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/hermes-research-worker-pool_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_worker_pool.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/hermes-research-worker-pool_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-social-sentiment",
+   "severity": "Medium",
+   "severity_basis": "cron:L860: business_function=research",
+   "inv_ids": [
+    "cron:L860"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L860",
+     "known_issues": "No lock",
+     "custom_work_required": "Add lock; explicit exit"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_social_sentiment.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_social_sentiment.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes-social-sentiment_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_social_sentiment.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/hermes-social-sentiment_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "hermes-tag-lift-discovery",
+   "severity": "High",
+   "severity_basis": "cron:L684: business_function=research; critical path CP4 -> High",
+   "inv_ids": [
+    "cron:L684"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L684",
+     "known_issues": "Skipped every weekday: 10 'PEAK_SKIP gate=--gate-official' since 2026-09-28; real runs only on weekends (generated_at 2026-10-03/04) — effectively a weekend job (same class as ri_overnight in V2)",
+     "custom_work_required": "move cadence inside the window (or declare weekend-only cadence in registry); receipt"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/hermes_tag_lift_discovery.py",
+       "--run",
+       "--json",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/hermes_tag_lift.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-tag-lift-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/hermes_tag_lift.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/hermes-tag-lift-discovery_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "hermes-topic-monitor-bridge",
    "severity": "Medium",
    "severity_basis": "cron:L420: business_function=research",
@@ -2584,6 +3746,167 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "identity-sweep-stage0",
+   "severity": "Medium",
+   "severity_basis": "cron:L926: business_function=research",
+   "inv_ids": [
+    "cron:L926"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L926",
+     "known_issues": "Low resolution yield: last run resolved 6/1050, 0/149, 0/22, 0/1312, 0/1448 symbols (identity_sweep.log 22:00 10-09); ~10.3k rows stamped over last ~336 runs. Log is 1 MB+ and grows every 30 min. Output signal = log mtime.",
+     "custom_work_required": "Receipt file with rows_stamped/as_of; consider lower cadence given yield; allowlist entry (dry run = no --apply)"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/backfill_subject_identity.py",
+       "--all",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/identity_sweep.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/identity_sweep.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "investment-costs",
+   "severity": "High",
+   "severity_basis": "cron:L770: business_function=portfolio data",
+   "inv_ids": [
+    "cron:L770"
+   ],
+   "classification": [
+    "Ready for Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L770",
+     "known_issues": "Reconciliation all_ok=false each run: ledger_fees_vs_normalized raw_ledger 85.27 vs normalized_events 85.68",
+     "custom_work_required": "In-script env bootstrap; optionally non-zero exit when reconciliation fails; investigate the $0.41 fee mismatch"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/investment_costs.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/inv_costs.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/investment-costs_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/inv_costs.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/investment-costs_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -3853,6 +5176,86 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "record-decision-outcome",
+   "severity": "Medium",
+   "severity_basis": "cron:L218: business_function=research",
+   "inv_ids": [
+    "cron:L218"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L218",
+     "known_issues": "none measured (5–26 outcomes/run)",
+     "custom_work_required": "--dry-run; lock; receipt"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/record_decision_outcome.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/record_decision_outcome.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/record-decision-outcome_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/record_decision_outcome.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/record-decision-outcome_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "refresh-symbol-cards",
    "severity": "Critical",
    "severity_basis": "cron:L502: business_function=portfolio data; critical path CP1 -> Critical",
@@ -3886,6 +5289,87 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "register-analyst-sources",
+   "severity": "Critical",
+   "severity_basis": "cron:L589: business_function=research; critical path CP1 -> Critical",
+   "inv_ids": [
+    "cron:L589"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L589",
+     "known_issues": "Every run 'APPLIED — {added: 0, updated: 5}': a re-pin of static config; useful only if the maturity ladder deactivates them (UNKNOWN); no lock",
+     "custom_work_required": "Prefer moving the pin into the source-maturity ladder config; else add lock + receipt"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "RETIRED",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/register_analyst_sources.py",
+       "--apply",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/register-analyst-sources.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/register-analyst-sources_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/register-analyst-sources.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/register-analyst-sources_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "research-insight-extractor",
    "severity": "Medium",
    "severity_basis": "cron:L418: business_function=research",
@@ -3909,7 +5393,7 @@
     "present": true,
     "state": "ACTIVE",
     "scheduler_kind": "cron",
-    "stage": "shadow"
+    "stage": "canary"
    },
    "allowlisted": true,
    "allowlist_source": "config/n8n_run_allowlist.json",
@@ -3963,6 +5447,168 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": null
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "research-intelligence-materialize",
+   "severity": "Critical",
+   "severity_basis": "cron:L741: business_function=research; critical path CP1 -> Critical",
+   "inv_ids": [
+    "cron:L741"
+   ],
+   "classification": [
+    "Ready for Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L741",
+     "known_issues": "None measured (2026-10-09 06:35 run built all lanes)",
+     "custom_work_required": "None in code; dispatch row + allowlist entry with lock /tmp/ri_materialize_cron.lock"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "RETIRED",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/research_intelligence_materialize.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/ri_materialize_cron.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/research-intelligence-materialize_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/ri_materialize_cron.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/research-intelligence-materialize_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "resolve-due-checkpoints",
+   "severity": "Medium",
+   "severity_basis": "cron:L875: business_function=research",
+   "inv_ids": [
+    "cron:L875"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L875",
+     "known_issues": "Recent runs resolved 0, expired 0; log 907 KB; no lock; 168 runs/7d all 'success'",
+     "custom_work_required": "Add lock; explicit exit"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/resolve_due_checkpoints.py",
+       "--apply",
+       "--apply-pending-data",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/resolve-due-checkpoints.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/resolve-due-checkpoints_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/resolve-due-checkpoints.lock",
+     "timeout_s": 900,
+     "output_signal": "data/runtime/resolve-due-checkpoints_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval"
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -4228,7 +5874,7 @@
    ],
    "registry": {
     "present": true,
-    "state": "ACTIVE",
+    "state": "RETIRED",
     "scheduler_kind": "cron",
     "stage": null
    },
@@ -4522,6 +6168,86 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "source-outcome-attribution",
+   "severity": "Critical",
+   "severity_basis": "cron:L431: business_function=research; critical path CP1 -> Critical",
+   "inv_ids": [
+    "cron:L431"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L431",
+     "known_issues": "10-09: 1,218 tier_updates, 2 new candidates, 0 vetting actions; vetting ladder can autonomously activate sources (no operator gate)",
+     "custom_work_required": "split into 3 steps or one wrapper with receipt; dry-run for the ladder's --apply"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "RETIRED",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/source_outcome_attribution.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/source_maturity.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/source-outcome-attribution_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/source_maturity.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/source-outcome-attribution_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "storage-watch",
    "severity": "Low",
    "severity_basis": "default Low (no inventory row)",
@@ -4624,6 +6350,86 @@
    "actions": [],
    "default_action": "suggest_only",
    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "sync-social-to-intelligence",
+   "severity": "Medium",
+   "severity_basis": "cron:L859: business_function=research",
+   "inv_ids": [
+    "cron:L859"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L859",
+     "known_issues": "Runs 15 min after L860 (implicit ordering, no dependency check); no lock",
+     "custom_work_required": "Add lock; declare `after` edge to hermes-social-sentiment"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/sync_social_to_intelligence.py",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/sync_social_to_intelligence.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/sync-social-to-intelligence_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/sync_social_to_intelligence.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/sync-social-to-intelligence_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -4732,6 +6538,88 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "trade-backtest-engine",
+   "severity": "High",
+   "severity_basis": "cron:L365: business_function=research; critical path CP3 -> High",
+   "inv_ids": [
+    "cron:L365"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L365",
+     "known_issues": "Base 5/5 failures = yfinance 'possibly delisted' noise (81 'Failed download'); summary 'Total left on table (20d): $2,139,018' with D-grade $2,085,939 (46 trades, $45,346 avg) looks implausible — probable units/qty defect (UNVERIFIED)",
+     "custom_work_required": "verify left-on-table math; dry-run flag; receipt"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/trade_backtest_engine.py",
+       "--dry-run",
+       "--limit",
+       "25"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/trade_backtest_engine.lock",
+     "timeout_s": 1200,
+     "output_signal": "data/runtime/trade_backtest_engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/trade_backtest_engine.lock",
+     "timeout_s": 1200,
+     "output_signal": "data/runtime/trade_backtest_engine_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "update-agent-performance",
    "severity": "Medium",
    "severity_basis": "cron:L427: business_function=research",
@@ -4812,6 +6700,166 @@
   },
   {
    "schema": "N8nLaneRemediation@v1",
+   "lane_id": "update-lockup-earnings-dates",
+   "severity": "High",
+   "severity_basis": "cron:L490: business_function=portfolio data",
+   "inv_ids": [
+    "cron:L490"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L490",
+     "known_issues": "Writes CFG = ROOT/config/ipo_lockups.json (update_lockup_earnings_dates.py:19,87) inside the RELEASE directory (not symlinked) — any snapped date is lost at the next promote (§9.4 served-path class); utcfromtimestamp DeprecationWarning; 'changed': [] so far",
+     "custom_work_required": "move ipo_lockups.json state to persistent_state_root; receipt; dry-run"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/update_lockup_earnings_dates.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/lockup_earnings.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/update_lockup_earnings_dates_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/lockup_earnings.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/update_lockup_earnings_dates_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "validate-expense-ratios",
+   "severity": "High",
+   "severity_basis": "cron:L550: business_function=portfolio data",
+   "inv_ids": [
+    "cron:L550"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L550",
+     "known_issues": "10-01 run: 9 symbols, changed [], flagged [] — low activity; log-mtime signal",
+     "custom_work_required": "receipt signal (dry-run = omit --apply, already supported :115)"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/validate_expense_ratios.py",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity High: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/expense_ratio_validate.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/validate-expense-ratios_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/expense_ratio_validate.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/validate-expense-ratios_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity High: human approval (V9 §6.4)"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
    "lane_id": "warm-caches",
    "severity": "Medium",
    "severity_basis": "cron:L516: business_function=maintenance; migration_risk=Medium",
@@ -4882,6 +6930,87 @@
    "actions": [],
    "default_action": "suggest_only",
    "suggest_only_reason": "no config/n8n_run_allowlist.json entry: the executor cannot run it; regenerate after its allowlist PR"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "watch-goods-consistency",
+   "severity": "Low",
+   "severity_basis": "cron:L971: business_function=monitoring",
+   "inv_ids": [
+    "cron:L971"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Low"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L971",
+     "known_issues": "--apply-proposal-backfill writes paper_trade_proposals (a proposals/paper store) from a 'check' lane; F/registry: Duplicated, merge into P12 health plane.",
+     "custom_work_required": "Split the backfill out (or drop it); keep the check as a monitor lane with its receipt"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/watch_goods_consistency_check.py",
+       "--apply-proposal-backfill",
+       "--dry-run"
+      ]
+     },
+     "auto": true,
+     "approval_reason": null,
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/watch_goods_consistency.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/watch-goods-consistency_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/watch_goods_consistency.lock",
+     "timeout_s": 300,
+     "output_signal": "data/runtime/watch-goods-consistency_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": null
   },
   {
    "schema": "N8nLaneRemediation@v1",
@@ -4963,6 +7092,89 @@
    ],
    "default_action": "suggest_only",
    "suggest_only_reason": "timeout_s 900 > 600: a rerun would hold the single executor worker; human approval"
+  },
+  {
+   "schema": "N8nLaneRemediation@v1",
+   "lane_id": "weekly-incubator-builder",
+   "severity": "Critical",
+   "severity_basis": "cron:L225: business_function=trading-adjacent",
+   "inv_ids": [
+    "cron:L225"
+   ],
+   "classification": [
+    "Requires Refactoring Before Migration"
+   ],
+   "migration_risk": [
+    "Medium"
+   ],
+   "known_issues": [
+    {
+     "inv_id": "cron:L225",
+     "known_issues": "none measured; --llm (qwen3) path off in cron",
+     "custom_work_required": "flock; receipt; --dry-run exists"
+    }
+   ],
+   "registry": {
+    "present": true,
+    "state": "ACTIVE",
+    "scheduler_kind": "cron",
+    "stage": "shadow"
+   },
+   "allowlisted": true,
+   "allowlist_source": "config/n8n_run_allowlist.json",
+   "actions": [
+    {
+     "action_id": "rerun_dry_run",
+     "handler": "ledger_request_run",
+     "mode_sequence": [
+      "dry_run"
+     ],
+     "argv": {
+      "dry_run": [
+       "$PY",
+       "scripts/weekly_incubator_builder.py",
+       "--run-label",
+       "1900",
+       "--apply",
+       "--dry-run"
+      ]
+     },
+     "auto": false,
+     "approval_reason": "severity Critical: human approval (V9 §6.4)",
+     "via": "coordination/run (host_run_request, mode=dry_run) -> tradeai-n8n-run-executor runs the allowlist argv under the lane lock, stage-clamped",
+     "preconditions": [
+      "lane in config/n8n_run_allowlist.json with dry_run_arg",
+      "no REQUESTED/RUNNING row for the lane",
+      "per-incident and per-lane-day caps not reached"
+     ],
+     "lock": "/tmp/weekly-incubator-builder.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/weekly-incubator-builder_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    },
+    {
+     "action_id": "reap_orphan_run",
+     "handler": "ledger_reap_orphan",
+     "mode_sequence": [],
+     "argv": {},
+     "auto": true,
+     "approval_reason": null,
+     "via": "LedgerRunStore.finish(run_id, state=RUN_TIMEOUT, receipt.reason=executor_lost) — the executor v2 reaper's receipt",
+     "preconditions": [
+      "row RUNNING and started_at + 2 x timeout_s < now",
+      "heartbeat_at older than timeout_s (or absent)",
+      "row pid not alive on this host"
+     ],
+     "lock": "/tmp/weekly-incubator-builder.lock",
+     "timeout_s": 600,
+     "output_signal": "data/runtime/weekly-incubator-builder_last.json",
+     "max_per_incident": 1,
+     "max_per_lane_per_day": 3
+    }
+   ],
+   "default_action": "suggest_only",
+   "suggest_only_reason": "severity Critical: human approval (V9 §6.4)"
   },
   {
    "schema": "N8nLaneRemediation@v1",
