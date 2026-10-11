@@ -48,6 +48,12 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "MonitorFoldParity@v1"
+NO_CONSUMER_REASON = (
+    "W1-9 parallel-run evidence (rulings R1/R11, 2026-10-11): run by hand or by an agent once per trading day through "
+    "~/n8n-maturity-verification/packets/fold-job-coverage-monitor/run_parity.sh, which writes the documents to the "
+    "packet's parity/ dir; the packet's parity_gate.py reads them before the L389 / health-tick fold. No repo caller and "
+    "no schedule on purpose (cron freeze, operator 2026-10-09); it retires with the fold."
+)
 PROJ = Path(__file__).resolve().parents[1]
 
 JCM_LOG = "logs/job_coverage_monitor.log"
