@@ -2575,7 +2575,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "scripts/heartbeat_watch.py reads no environment itself; its import closure (lane_registry -> lane_dispatch -> n8n_due/gateway modules, 18 modules) reads TRADEAI_STATE_ROOT (base) plus the five names listed, all path or URL settings, no credential. No DB, no network, no subprocess (no systemd_result signal is in the watch set). Measured with tests/test_n8n_executor_env_allowlist_20261009.py _env_reads on 2026-10-11.",
       "env_report_reason": "the import closure is 18 modules, over the 10-module bound under which an enforce inventory is accepted (test_enforced_inventories_cover_every_literal_read_in_the_import_closure); report until lane_registry's import of lane_dispatch is made lazy or the closure is re-inventoried.",
-      "source": "n8n-native host lane (2026-10-11, packet heartbeat-watcher-activate): fired by tradeai-heartbeat-watcher and tradeai-dispatcher; no cron line exists, so the lock is the lane's own. SHADOW ONLY: live_arg null until a canary registry PR.",
+      "source": "n8n-native host lane (2026-10-11, packet heartbeat-watcher-activate): fired by tradeai-heartbeat-watcher and tradeai-dispatcher; no cron line exists, so the lock is the lane's own. CANARY: live_arg [] (script default writes LaneRunReceipt + breach rows); dry_run_arg --dry-run kept for clamp/rollback.",
       "command": [
         "$PY",
         "scripts/heartbeat_watch.py"
@@ -2586,7 +2586,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/heartbeat-watch_last.json"
     }

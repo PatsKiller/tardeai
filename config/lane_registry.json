@@ -14266,13 +14266,13 @@
         "expression": "dispatcher",
         "match": "scripts/heartbeat_watch.py",
         "cadence": "*/5 * * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W1"
       },
       "expected_cadence_hours": 0.0833,
       "state": "ACTIVE",
       "state_since": "2026-10-11",
-      "state_reason": "Host lane of n8n generic workflow tradeai-heartbeat-watcher (design 02 §7, phase 1): dead-man over the six health-plane output signals at 2x cadence; detect-and-record into supervisor_breaches.jsonl (STALE_2X, P1 in the fan-in), sends nothing. n8n-native: no cron line ever existed (scheduler.match names the script only for host-conflict detection). Stage shadow = dispatch dry_run (observe mode); canary/live is a later registry PR. Packet ~/n8n-maturity-verification/packets/heartbeat-watcher-activate.",
+      "state_reason": "Host lane of n8n generic workflow tradeai-heartbeat-watcher (design 02 §7, phase 1): dead-man over the six health-plane output signals at 2x cadence; detect-and-record into supervisor_breaches.jsonl (STALE_2X, P1 in the fan-in), sends nothing. n8n-native: no cron line ever existed (scheduler.match names the script only for host-conflict detection). Stage canary = dispatch live (LaneRunReceipt@v1); shadow dry_run was proven before activate. Packet ~/n8n-maturity-verification/packets/heartbeat-watcher-activate.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/heartbeat-watch_last.json",
@@ -14280,7 +14280,7 @@
       },
       "severity": "Critical",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/5 * * * *"
         ],
