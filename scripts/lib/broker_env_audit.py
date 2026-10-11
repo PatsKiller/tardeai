@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import sys
 import sysconfig
@@ -49,6 +50,16 @@ MAX_LINES_PER_PROCESS = 1000
 # Frames in these files are infrastructure, not the reader: the loader's own reads are not a "need".
 _SELF_FILES = ("broker_env_audit.py", "env_bootstrap.py")
 _BULK_OPS = frozenset({"CALL", "CALL_KW", "CALL_FUNCTION_EX", "DICT_UPDATE", "DICT_MERGE"})
+
+# Broker execution processes are EXCLUDED by design (AGENTS §0 rule 2: out of scope; they obviously need broker
+# names): install() is a no-op in a process whose script is under one of these dirs, or whose script (path after the
+# last scripts/, else basename) or systemd unit matches BROKER_TOKEN_PATTERN. ONE list, shared with the systemd
+# packet (packets/broker-env-audit/systemd/build.sh reads it via `python3 broker_env_audit.py --broker-tokens`) and
+# the report's source scan.
+BROKER_SCRIPT_DIRS = ("scripts/active_trader/", "scripts/brokers/", "scripts/moomoo/")
+BROKER_TOKEN_PATTERN = (r"active_trader|active-trader|/brokers/|moomoo|opend|alpaca|schwab|snaptrade|ibkr|broker|order"
+                        r"|stop_manager|paper_trade|trade_closer")
+_BROKER_TOKEN_RE = re.compile(BROKER_TOKEN_PATTERN, re.IGNORECASE)
 
 _ORIG_CLASS = os._Environ
 _ORIG_GETITEM = os._Environ.__getitem__
@@ -289,6 +300,33 @@ class _AuditEnviron(os._Environ):
         return True
 
 
+def broker_process_reason(argv0: str | None = None, unit: str | None = None) -> str | None:
+    """Why this process is a broker execution process (excluded from the audit), or None. Pure over its inputs;
+    defaults read sys.argv[0] (resolved) and the systemd unit from /proc/self/cgroup."""
+    if argv0 is None:
+        argv0 = sys.argv[0] if sys.argv else ""
+    path = str(argv0 or "")
+    if path and not path.startswith("-"):
+        try:
+            path = os.path.realpath(path)
+        except Exception:  # noqa: BLE001
+            pass
+    path = path.replace(os.sep, "/")
+    for d in BROKER_SCRIPT_DIRS:
+        if "/" + d in path or path.startswith(d):
+            return f"dir:{d}"
+    rel = path.rsplit("/scripts/", 1)[1] if "/scripts/" in path else path.rsplit("/", 1)[-1]
+    m = _BROKER_TOKEN_RE.search(rel)
+    if m:
+        return f"script_token:{m.group(0).lower()}"
+    if unit is None:
+        unit = _unit()
+    m = _BROKER_TOKEN_RE.search(str(unit or ""))
+    if m:
+        return f"unit_token:{m.group(0).lower()}"
+    return None
+
+
 def installed() -> bool:
     return type(os.environ) is _AuditEnviron or bool(getattr(type(os.environ), "_broker_env_audit", False))
 
@@ -301,6 +339,8 @@ def install(classifier: Callable[[str], bool]) -> bool:
             _classifier = classifier
         if installed():
             return True
+        if broker_process_reason() is not None:
+            return False  # broker execution process: excluded by design (AGENTS §0 rule 2)
         if type(os.environ) is not _ORIG_CLASS:
             return False  # someone else replaced os.environ; do not stack on it
         os.environ.__class__ = _AuditEnviron
@@ -337,3 +377,11 @@ def _reset_for_tests() -> None:
     _proc_cache.clear()
     _class_cache.clear()
     _stats["swallowed"] = 0
+
+
+if __name__ == "__main__":  # `--broker-tokens`: the shared exclusion list, for the systemd packet's build.sh
+    if sys.argv[1:] == ["--broker-tokens"]:
+        print(BROKER_TOKEN_PATTERN)
+        sys.exit(0)
+    print("usage: broker_env_audit.py --broker-tokens", file=sys.stderr)
+    sys.exit(2)

@@ -43,6 +43,25 @@ A read of a broker name through `[]`, `get`, `in` or `os.getenv` appends one JSO
 
 **No line ever holds a value, its length or its presence.** The record path never touches the value.
 
+**Broker execution processes are excluded by design** (AGENTS §0 rule 2). They obviously need broker names, and
+they are out of scope. `install()` is a no-op, so the class is never swapped and nothing is logged, in a process
+that matches any of these:
+
+- its resolved `sys.argv[0]` lies under `scripts/active_trader/`, `scripts/brokers/` or `scripts/moomoo/`;
+- its script path below the last `scripts/` matches `BROKER_TOKEN_PATTERN`;
+- its systemd unit matches `BROKER_TOKEN_PATTERN`.
+
+`BROKER_TOKEN_PATTERN` is `active_trader|active-trader|/brokers/|moomoo|opend|alpaca|schwab|snaptrade|ibkr|broker|order|stop_manager|paper_trade|trade_closer`.
+The match is conservative, so some non-execution scripts named after a broker are excluded too.
+
+There is ONE list (`BROKER_SCRIPT_DIRS` plus `BROKER_TOKEN_PATTERN` in `broker_env_audit.py`), shared by:
+
+- the in-process guard;
+- the systemd packet's unit exclusion (`build.sh` reads `broker_env_audit.py --broker-tokens`);
+- the report's source scan.
+
+The crontab header variable does reach broker cron lines, but the guard makes it inert there.
+
 The loader's own reads are not recorded. That covers `env_bootstrap`'s `k not in os.environ` while copying.
 
 ## Guarantees (tests: `tests/test_broker_env_audit_20261011.py`)
@@ -82,7 +101,7 @@ This report is read-only and writes only the paths it is given. It produces four
 - Shell expansions of `$ALPACA_*`.
 - Executor children under enforce. The flag is not in `CHILD_ENV_BASE_NAMES`; these children are broker-denied
   anyway.
-- Broker-token units, which the packet excludes.
+- Broker execution processes and broker-token units: excluded by design, not a gap.
 - Long-running services that are not restarted.
 - Lanes that did not run in the window.
 

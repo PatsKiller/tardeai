@@ -129,7 +129,7 @@ def registry_resolver(registry_path: Path | None) -> Callable[[dict[str, Any]], 
 
 # Source scan (a floor, not proof): literal broker names in an env-read position. The broker execution subsystem is
 # not read (AGENTS §0 rule 2: out of scope without a grant); its need for broker names is presumed.
-STATIC_EXCLUDED_DIRS = ("scripts/active_trader/", "scripts/brokers/", "scripts/moomoo/")
+STATIC_EXCLUDED_DIRS = BEA.BROKER_SCRIPT_DIRS
 _STATIC_RES = (
     re.compile(r"""(?:environ(?:\.get|\.setdefault|\.pop)?\s*[\[(]\s*|getenv\s*\(\s*)["']([A-Z][A-Z0-9_]+)["']"""),
     re.compile(r"""["']([A-Z][A-Z0-9_]+)["']\s+(?:not\s+)?in\s+(?:os\.)?environ\b"""),

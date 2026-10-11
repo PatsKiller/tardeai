@@ -27,7 +27,7 @@ Narrowing (2026-10-11, canary blocker — AGENTS §23.18, N8N_ONBOARDING_STANDAR
 
 Broker-name read audit (step 1 of 3, operator 2026-10-11): with ``TRADEAI_BROKER_ENV_AUDIT=1`` this module installs
 ``broker_env_audit`` at import and after every ``load_env``. It LOGS which process/module reads each broker name
-(names only, never values) and blocks nothing; unset, it is a no-op. docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md.
+(names only, never values) and blocks nothing; unset, it is a no-op. Broker execution processes are excluded by design. docs/implementation/n8n-maturity/BROKER_ENV_AUDIT.md.
 """
 from __future__ import annotations
 

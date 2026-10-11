@@ -380,3 +380,46 @@ def test_report_static_scan_excludes_broker_subsystem_and_compares_runtime(tmp_p
     assert rows["scripts/a.py"]["not_observed_anywhere"] == ["ALPACA_SECRET_KEY"]
     assert rows["scripts/lib/m.py"]["not_observed_anywhere"] == ["SCHWAB_APP_KEY"]
     assert R.name_kind("ALPACA_API_KEY") == "credential" and R.name_kind("BROKER_PRICE_MAX_AGE_MIN") == "config"
+
+
+# ── broker execution processes are excluded by design (AGENTS §0 rule 2) ───────────────────────────────────────
+
+
+@pytest.mark.parametrize("rel", ["scripts/active_trader/probe.py", "scripts/brokers/probe.py", "scripts/moomoo/probe.py",
+                                 "scripts/alpaca_stop_manager.py", "scripts/schwab_auto_reauth.py",
+                                 "scripts/paper_trade_closer.py", "scripts/lib/broker_probe.py"])
+def test_broker_process_never_installs_and_logs_nothing(tmp_path, rel):
+    p = _run(tmp_path, READS + "\nprint(BEA.installed(), type(os.environ) is os._Environ, BEA.broker_process_reason())\n",
+             name=rel.removeprefix("scripts/"))
+    last = p.stdout.splitlines()[-1].split(" ", 2)
+    assert last[:2] == ["False", "True"] and last[2].startswith(("dir:", "script_token:"))
+    assert json.loads(p.stdout.splitlines()[0])[0] == FAKE + "ALPACA_API_KEY"  # reads unchanged
+    assert _lines(tmp_path) == [] and not (tmp_path / "state" / "data").exists()
+
+
+def test_broker_unit_never_installs(tmp_path):
+    p = _run(tmp_path, """
+        BEA.uninstall()
+        BEA._unit = lambda: "tradeai-active-trader-motion.service"
+        print(BEA.maybe_install(env_bootstrap.is_broker_name), BEA.installed(), BEA.broker_process_reason())
+        os.environ.get("ALPACA_API_KEY")
+    """)
+    assert p.stdout.split() == ["False", "False", "unit_token:active-trader"]
+    assert _lines(tmp_path) == []
+
+
+def test_broker_process_reason_is_pure_and_scoped():
+    r = BEA.broker_process_reason
+    assert r("/x/CURRENT/scripts/brokers/alpaca_credentials.py", unit="cron.service") == "dir:scripts/brokers/"
+    assert r("/x/CURRENT/scripts/order_router.py", unit="cron.service") == "script_token:order"
+    # tokens are matched on the path below the last scripts/ only: a parent dir name cannot exclude a process
+    assert r("/tmp/test_recorder_failures0/scripts/probe.py", unit="session-1.scope") is None
+    assert r("-c", unit="tradeai-moomoo-opend.service") == "unit_token:moomoo"
+    assert r("/x/scripts/finviz_enrichment.py", unit="cron.service") is None
+
+
+def test_shared_token_list_cli_matches_module():
+    out = subprocess.run([sys.executable, str(ROOT / "scripts" / "lib" / "broker_env_audit.py"), "--broker-tokens"],
+                         capture_output=True, text=True, timeout=30, check=True).stdout.strip()
+    assert out == BEA.BROKER_TOKEN_PATTERN
+    assert R.STATIC_EXCLUDED_DIRS == BEA.BROKER_SCRIPT_DIRS
