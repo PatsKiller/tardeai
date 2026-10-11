@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Record a non-secret compound-lane result after an owned child has finished.
 
-Private child of agent intelligence, inference and research overnight runners.
+Private child of agent intelligence, inference, research overnight and cost runners.
 This CLI schedules nothing and stores only explicit lane/step/exit metadata.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-NO_CONSUMER_REASON = "private receipt child of the three compound cron entrypoints"
+NO_CONSUMER_REASON = "private receipt child of the owned compound cron/timer entrypoints"
 
 
 def main(argv=None) -> int:

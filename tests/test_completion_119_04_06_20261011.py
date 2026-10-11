@@ -186,6 +186,38 @@ def test_deep_research_cost_deferral_preserves_success(scratch, monkeypatch):
     assert receipt["summary"]["status"] == "EXPECTED_SILENT"
 
 
+def test_provider_cost_child_failure_attempts_both_steps_and_fails_parent(scratch):
+    """The prior launcher masked both child failures with `|| true`."""
+    project = scratch / "project"
+    project.mkdir()
+    helper = project / "scripts"
+    helper.mkdir()
+    (helper / "completion_compound_receipt.py").write_bytes(
+        (ROOT / "scripts/completion_compound_receipt.py").read_bytes())
+    # The real helper needs the receipt library; business children remain fake.
+    (project / "scripts/__init__.py").write_text("")
+    (helper / "lib").symlink_to(ROOT / "scripts/lib", target_is_directory=True)
+    fake_python = scratch / "fake-python"
+    fake_python.write_text(
+        '#!/usr/bin/env bash\n'
+        'if [[ "$1" == */completion_compound_receipt.py ]]; then exec "$REAL_PYTHON" "$@"; fi\n'
+        'printf "%s\\n" "$1" >> "$CHILD_CALLS"\n'
+        'if [[ "$1" == */provider_cost_reconcile.py ]]; then exit 13; fi\n'
+        'exit 0\n')
+    fake_python.chmod(0o755)
+    calls = scratch / "children.txt"
+    env = dict(os.environ, TRADEAI_ROOT=str(project), TRADEAI_PYTHON=str(fake_python),
+               REAL_PYTHON=sys.executable, CHILD_CALLS=str(calls))
+    result = subprocess.run(["bash", str(ROOT / "linux_launchers/run_provider_cost_daily.sh")],
+                            cwd=scratch, env=env, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert calls.read_text().splitlines() == [
+        str(project / "scripts/provider_cost_reconcile.py"),
+        str(project / "scripts/provider_cost_export.py")]
+    receipt = json.loads((scratch / "data/runtime/provider-cost-reconcile_last.json").read_text())
+    assert receipt["status"] == "failed" and receipt["ok_at"] is None
+
+
 def test_pilot_unavailable_result_does_not_write_success(scratch, monkeypatch):
     import types
     module = load("run_goal_pilot_material_change")
