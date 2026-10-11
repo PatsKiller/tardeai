@@ -4388,6 +4388,14 @@ GATES = [
         "search_routing_engine_20261010",
         ["tests/test_search_routing_engine_20261010.py"],
     ),
+    (
+        # Release-pinned daemons (packets/unit-code-roots, 2026-10-10): one-off exact-SHA drop-ins left 4 user
+        # daemons on a032116e7 for 4 days because promote rewrote only portfolio-server's. Promote/rollback now
+        # rewrite stale pins into 90-release-pin.conf, archive pin-only one-offs (never delete), never touch a
+        # broker-adjacent unit, and rollback restores the archived drop-ins. Fake systemd tree + fake systemctl.
+        "release_pin_daemons_20261010",
+        ["tests/test_release_pin_daemons_20261010.py"],
+    ),
 ]
 
 
