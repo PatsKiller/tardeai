@@ -288,7 +288,7 @@ def test_lie_db_down_exits_1_with_failed_receipt_and_unknown_section_is_usage(mo
     receipt = _receipt(_state, "llm-intelligence-enrichment")
     assert receipt["status"] == "failed" and receipt["exit"] == 1
     assert receipt["ok_at"] == previous
-    assert receipt["error"] == "RuntimeError: db connect"
+    assert receipt["error"] == "RuntimeError"  # durable errors retain type, never connection text
 
 
 def test_lie_section_run_uses_its_own_lane_id(monkeypatch, tmp_path, _state):

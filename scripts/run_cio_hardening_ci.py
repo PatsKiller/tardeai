@@ -3715,6 +3715,17 @@ GATES = [
         ["tests/test_hermetic_test_guard_20261011.py", "tests/test_completion_119_shared_20261011.py"],
     ),
     (
+        "completion_119_lanes_20261011",
+        [
+            "tests/test_completion_119_01_03_20261011.py",
+            "tests/test_completion_119_04_06_20261011.py",
+            "tests/test_refactor_shard_05_20261011.py",
+            "tests/test_refactor_shard_06_20261011.py",
+            "tests/test_completion_119_shards_07_08_20261011.py",
+            "tests/test_completion_119_candidates_20261011.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_HEALTH_CONTRACTS (2026-10-10, operator ~16:45 ET): every n8n lane / generic workflow / host
         # monitor has an N8nHealthContract@v1 in config/n8n_health_contracts.json (purpose, connects_to, healthy /
         # degraded / failed, baseline, alerting, remediation); scripts/check_n8n_health_contracts.py fails a lane that

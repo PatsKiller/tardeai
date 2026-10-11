@@ -1,0 +1,2693 @@
+{
+  "schema": "Completion119BeforeAfter@v1",
+  "audited_source_base_sha": "65337da5366b469c8478b198187201bd37671bc2",
+  "origin_main_observed": "c15b7b98caa3909665ac5abb878f02eb558d6ff6",
+  "integrated_source_head_before_report": "8db905742fe3a05e0f888f643680ca918a3e65f9",
+  "evidence_class": "SOURCE_ONLY",
+  "runtime": "NOT_MEASURED",
+  "config_changes_applied": false,
+  "contracts_reviewed": 0,
+  "operational_admissions_added": 0,
+  "counts": {
+    "SOURCE_CHANGED_ADMISSION_HELD": 84,
+    "OWNER_OR_AUTHORITY_BLOCKED": 31,
+    "SOURCE_RETAINED_HELD": 4
+  },
+  "rows": [
+    {
+      "lane_id": "cio-nightly-reflection",
+      "shard": "01",
+      "before": "BLOCKED(SYSTEMD_RECIPE_HAS_NO_EXACT_CRON)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-nightly-reflection.timer"
+      },
+      "source_entrypoint": "scripts/lib/cio_nightly_reflection.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "health-agent-llm-review",
+      "shard": "01",
+      "before": "BLOCKED(RETIRED_OLLAMA_AND_MISSING_GOVERNED_ROUTE)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5",
+        "match": "scripts/health_agent_llm_review.py"
+      },
+      "source_entrypoint": "scripts/health_agent_llm_review.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "hermes-subject-enhance-dispatch",
+      "shard": "01",
+      "before": "BLOCKED(LLM_BRIDGE_ROUTE_MISSING)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0,20,25,30,40 * * * *",
+        "command_text": "hermes_subject_enhance_dispatch.py --apply",
+        "match": "scripts/hermes_subject_enhance_dispatch.py"
+      },
+      "source_entrypoint": "scripts/hermes_subject_enhance_dispatch.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "prewarm-finviz-strip-map",
+      "shard": "01",
+      "before": "BLOCKED(NO_SHARD_SCRIPT_FOR_HTTP_CACHE_ENDPOINT)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/8 6-17 * * 1-5",
+        "match": "http://127.0.0.1:7777/api/v2/finviz-strip-map?fresh=1\""
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Endpoint/cache writer ownership; no owned wrapper, bounded preview, durable receipt or current exact cron proof. Do not call fresh=1."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "proposal-llm-review-worker",
+      "shard": "01",
+      "before": "BLOCKED(RETIRED_OLLAMA_AND_MISSING_GOVERNED_ROUTE)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 6-19 * * 1-5",
+        "match": "scripts/proposal_llm_review_worker.py"
+      },
+      "source_entrypoint": "scripts/proposal_llm_review_worker.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "reconcile-watch-outcomes",
+      "shard": "01",
+      "before": "BLOCKED(PRICE_IMPORT_BOUNDARY_UNVERIFIED)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_outcomes.lock $PY scripts/reconcile_watch_outcomes.py >> logs/watch_outcomes.log 2>&1",
+        "match": "scripts/reconcile_watch_outcomes.py"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Price/financial import boundary unverified and out of authorized child scope; original direct dotenv remains. Requires owner/execution scope decision."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "run-scalp-shadow-logger",
+      "shard": "01",
+      "before": "BLOCKED(OUT_OF_SHARD_CHILD_DRY_RUN_UNPROVEN)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 6-15 * * 1-5",
+        "match": "scripts/run_scalp_shadow_logger.sh"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Child invokes financial APPLY path outside owned scope; do not invoke or modify child."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "shadow-batch-generator-at-15-10",
+      "shard": "01",
+      "before": "BLOCKED(LLM_BRIDGE_ROUTE_MISSING)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 10 * * 0",
+        "match": "scripts/shadow_batch_generator.py --run >> logs/shadow_batch_weekly.log"
+      },
+      "source_entrypoint": "scripts/shadow_batch_generator.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Historical weekly cron sources the whole rendered environment and has a distinct outer weekly lock; current cron/env/import closure and exact lock ownership need operator reconciliation before admission."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-steph",
+      "shard": "01",
+      "before": "BLOCKED(SYSTEMD_RECIPE_HAS_NO_EXACT_CRON)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@steph.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Integrator shared run_once offline CLI is available; authorization/queue execution is not admitted. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "aegis-surveillance",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "aegis-surveillance.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "No matching committed timer unit, stop-adjacent closure unowned. Requires execution-engineering/owner review; no code investigation."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "cio-memory-shadow-measure",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-memory-shadow-measure.timer"
+      },
+      "source_entrypoint": "scripts/run_memory_shadow_measure.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "directive-keyword-enhancer",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25,55 * * * *",
+        "match": "scripts/directive_keyword_enhancer.py"
+      },
+      "source_entrypoint": "scripts/directive_keyword_enhancer.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "hermes-cross-source-synthesizer",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 18 * * 1,4",
+        "match": "scripts/hermes_cross_source_synthesizer.py"
+      },
+      "source_entrypoint": "scripts/hermes_cross_source_synthesizer.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "market-regime-collector",
+      "shard": "02",
+      "before": "SHADOW_READY",
+      "before_disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "source_result": "SOURCE_RETAINED_HELD",
+      "detail_result": "ALREADY_IMPLEMENTED_SOURCE_HELD",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 16 * * 1-5",
+        "match": "scripts/market_regime_collector.py",
+        "schedules": [
+          "5 16 * * 1-5"
+        ]
+      },
+      "source_entrypoint": "scripts/market_regime_collector.py",
+      "remaining": [
+        "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-monthly",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 11 1 * *",
+        "match": "scripts/multi_tier_trade_reviewer.py --tier monthly"
+      },
+      "source_entrypoint": "scripts/multi_tier_trade_reviewer.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Legacy direct Anthropic route remains ungoverned; caller/task/tier authority must be reviewed before n8n admission."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-overnight",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 22 * * 1-5",
+        "match": "scripts/multi_tier_trade_reviewer.py --tier overnight"
+      },
+      "source_entrypoint": "scripts/multi_tier_trade_reviewer.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "multi-tier-trade-reviewer-weekly",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 10 * * 0",
+        "match": "scripts/multi_tier_trade_reviewer.py --tier weekly"
+      },
+      "source_entrypoint": "scripts/multi_tier_trade_reviewer.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "portfolio-lookthrough-themes",
+      "shard": "02",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 7 * * 1-5",
+        "match": "scripts/portfolio_lookthrough_themes.py"
+      },
+      "source_entrypoint": "scripts/portfolio_lookthrough_themes.py",
+      "remaining": [
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "sec-fundamentals-ingest",
+      "shard": "02",
+      "before": "SHADOW_READY",
+      "before_disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "source_result": "SOURCE_RETAINED_HELD",
+      "detail_result": "ALREADY_IMPLEMENTED_SOURCE_HELD",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 21 * * *",
+        "command_text": "sec_fundamentals_ingest.py --apply",
+        "match": "sec_fundamentals_ingest.py"
+      },
+      "source_entrypoint": "scripts/sec_fundamentals_ingest.py",
+      "remaining": [
+        "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "advisory-outcome-scorer",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-advisory-outcome-scorer.timer"
+      },
+      "source_entrypoint": "scripts/advisory_outcome_scorer.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "ask-alerts",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 8-18 * * 1-5",
+        "match": "scripts/ask_alerts.py"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Existing offline CLI prepared; prior exact cron comment Telegram/matcher refusal requires separately approved shared semantics. No retry or stripping."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "cio-desk-memo-regen",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-desk-memo-regen.timer"
+      },
+      "source_entrypoint": "scripts/lib/cio_desk_synthesis.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "cio-reactive-cycle",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-reactive.timer"
+      },
+      "source_entrypoint": "scripts/cio_reactive_cycle.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "db-retention-timer",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "db-retention.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Disabled-unruled duplicate/destructive retention timer; requires operator disposition, never onboard as a second writer."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "hermes-discovery-yield-builder",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 3 * * *",
+        "match": "scripts/hermes_discovery_yield_builder.py"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Existing offline CLI/receipt prepared; C1 stage already owns work; no fresh approved standalone cron. Retain stage ownership, no duplicate admission."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "shard": "03",
+      "before": "SHADOW_READY",
+      "before_disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "source_result": "SOURCE_RETAINED_HELD",
+      "detail_result": "ALREADY_IMPLEMENTED_SOURCE_HELD",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 9 * * 1-5",
+        "match": "scripts/opening_intelligence.py --persist --render"
+      },
+      "source_entrypoint": "scripts/opening_intelligence.py",
+      "remaining": [
+        "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "source-litmus-vs-yahoo",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-source-litmus.timer"
+      },
+      "source_entrypoint": "scripts/source_litmus_vs_yahoo.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "supervisor-breach-detector",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-supervisor-breach-detector.timer"
+      },
+      "source_entrypoint": "scripts/supervisor_breach_detector.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-alex",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@alex.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Integrator shared run_once offline CLI is available; authorization/queue execution is not admitted. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "tradeai-maturity-feeds",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "DESIGN_ONLY",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-maturity-feeds.timer"
+      },
+      "source_entrypoint": "scripts/hermes_maturity_gates.py",
+      "remaining": [
+        "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "wake-selection-feed",
+      "shard": "03",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "OWNER_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "55 * * * *",
+        "command_text": ".../wake_selection_feed.py --hours 48",
+        "match": "ops/wake_selection_feed.py"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "Entrypoint belongs external campaign ops tree, not this repository; owner must supply bounded preview/receipt."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-01-03.json"
+    },
+    {
+      "lane_id": "advisory-lessons-reflect",
+      "shard": "04",
+      "before": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-advisory-lessons-reflect.timer"
+      },
+      "source_entrypoint": "?",
+      "remaining": [
+        "Source unit executes reflect -> ratify-safe -> auto-retire. Automatic ratification/class semantics require an operator ruling; no policy or writer edits.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "agent-intelligence-cron-daily",
+      "shard": "04",
+      "before": "BLOCKED(cross-shard child launcher masks child failures and has no step receipts)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 6 * * 1-5",
+        "match": "scripts/agent_intelligence_cron.sh daily"
+      },
+      "source_entrypoint": "scripts/agent_intelligence_cron.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "agent-intelligence-cron-deep",
+      "shard": "04",
+      "before": "BLOCKED(cross-shard child launcher masks child failures and has no step receipts)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 8 * * 0",
+        "match": "scripts/agent_intelligence_cron.sh deep"
+      },
+      "source_entrypoint": "scripts/agent_intelligence_cron.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "agent-intelligence-cron-intraday",
+      "shard": "04",
+      "before": "BLOCKED(cross-shard child launcher masks child failures and has no step receipts)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 11,14 * * 1-5",
+        "match": "scripts/agent_intelligence_cron.sh intraday"
+      },
+      "source_entrypoint": "scripts/agent_intelligence_cron.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "cio-wake-turn-effects",
+      "shard": "04",
+      "before": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-cio-reactive.timer"
+      },
+      "source_entrypoint": "scripts/cio_reactive_cycle.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "eod-consolidated-close-sync",
+      "shard": "04",
+      "before": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-eod-consolidated-close.timer"
+      },
+      "source_entrypoint": "scripts/eod_consolidated_close_sync.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "generate-analyst-reports-autonomous-full",
+      "shard": "04",
+      "before": "BLOCKED(shared reporting engine calls provider-named llm_lane rather than a reviewed process route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 21 1 * *",
+        "match": "scripts/generate_analyst_reports_autonomous.py --mode full"
+      },
+      "source_entrypoint": "scripts/generate_analyst_reports_autonomous.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "generate-analyst-reports-autonomous-weekly",
+      "shard": "04",
+      "before": "BLOCKED(shared reporting engine calls provider-named llm_lane rather than a reviewed process route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 21 * * 0",
+        "match": "scripts/generate_analyst_reports_autonomous.py --mode weekly"
+      },
+      "source_entrypoint": "scripts/generate_analyst_reports_autonomous.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "gir-projector",
+      "shard": "04",
+      "before": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-gir-projector.timer"
+      },
+      "source_entrypoint": "scripts/gir_projector.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "goal-pilot-material-change",
+      "shard": "04",
+      "before": "BLOCKED(host-side paid pilot routing and truthful failure contract require separate review)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 * * * *",
+        "command_text": "run_goal_pilot_material_change.py",
+        "match": "run_goal_pilot_material_change.py"
+      },
+      "source_entrypoint": "scripts/run_goal_pilot_material_change.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-backlog-health-check",
+      "shard": "04",
+      "before": "BLOCKED(systemd monitor has no cron shadow shape and class is outside allowed set)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-backlog-health-check.timer"
+      },
+      "source_entrypoint": "scripts/hermes_backlog_health_check.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-coordinator",
+      "shard": "04",
+      "before": "BLOCKED(cross-shard child executor and embedding/promotion closure require separate governed runner review)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "scripts/hermes_coordinator.py"
+      },
+      "source_entrypoint": "scripts/hermes_coordinator.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "shard": "04",
+      "before": "SHADOW_READY",
+      "before_disposition": "PREPARED_SOURCE_HELD_ON_MAIN",
+      "source_result": "SOURCE_RETAINED_HELD",
+      "detail_result": "REVALIDATED_HELD_MAIN_SOURCE",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 5 * * *",
+        "match": "scripts/hermes_discovery_scorecard.py"
+      },
+      "source_entrypoint": "scripts/hermes_discovery_scorecard.py",
+      "remaining": [
+        "Missing cron/executor lock parity and environment closure; source held-main candidate is not operational admission."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "provider-cost-reconcile",
+      "shard": "04",
+      "before": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-provider-cost-reconcile.timer"
+      },
+      "source_entrypoint": "linux_launchers/run_provider_cost_daily.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-atlas",
+      "shard": "04",
+      "before": "BLOCKED(disabled unknown-agent timer requires operator ruling; no cron shadow shape)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@atlas.timer"
+      },
+      "source_entrypoint": "?",
+      "remaining": [
+        "DISABLED_UNRULED agent runtime requires operator state/class ruling and timer-native policy; shared agent runtime is not this worker-owned source.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "tradeai-watch-decision-scheduler",
+      "shard": "04",
+      "before": "BLOCKED(systemd lane has no cron shadow shape under current R1 gate)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-watch-decision-scheduler.timer"
+      },
+      "source_entrypoint": "scripts/watch_decision_scheduler.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "aegis-synthesis",
+      "shard": "05",
+      "before": "BLOCKED(direct provider/model routing requires named governed bridge; shard does not invoke a model)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 20 * * *",
+        "match": "scripts/aegis_synthesis.py"
+      },
+      "source_entrypoint": "scripts/aegis_synthesis.py",
+      "remaining": [
+        "Owned script includes covered-call/rotation/stop-coverage advisory financial decision semantics; source admission requires execution/financial owner boundary and governed model/prompt review. Not edited."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "build-symbol-profiles-at-0-19",
+      "shard": "05",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 19 * * 0",
+        "match": "scripts/build_symbol_profiles.py >>"
+      },
+      "source_entrypoint": "scripts/build_symbol_profiles.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "cio-stance-classification-drain",
+      "shard": "05",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 7,19 * * 1-5",
+        "command_text": "drain_cio_stance_classification.py --apply",
+        "match": "drain_cio_stance_classification.py"
+      },
+      "source_entrypoint": "scripts/drain_cio_stance_classification.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "commitment-outcome-sweep",
+      "shard": "05",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 18 * * *",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+        "match": "scripts/sweep_commitment_outcomes.py --apply"
+      },
+      "source_entrypoint": "scripts/sweep_commitment_outcomes.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "dormant-lane-consumers",
+      "shard": "05",
+      "before": "BLOCKED(orchestrates child scripts owned by other shards; child argv/env/receipt proof needed)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 * * * *",
+        "command_text": "run_dormant_lane_consumers.py",
+        "match": "run_dormant_lane_consumers.py"
+      },
+      "source_entrypoint": "scripts/run_dormant_lane_consumers.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "shard": "05",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 6 * * 1-5",
+        "match": "scripts/drain_discovery_backlog.py"
+      },
+      "source_entrypoint": "scripts/drain_discovery_backlog.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "shard": "05",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 10,16 * * 1-5",
+        "match": "scripts/finviz_sector_research.py"
+      },
+      "source_entrypoint": "scripts/finviz_sector_research.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "free-first-circulation",
+      "shard": "05",
+      "before": "BLOCKED(systemd timer has no cron R1 shadow admission shape; shared circulation/model closure requires its owner)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-free-first-circulation.timer"
+      },
+      "source_entrypoint": "scripts/run_free_first_circulation.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "generate-analyst-daily-digest",
+      "shard": "05",
+      "before": "BLOCKED(shared report-builder provider closure requires named governed model engine)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 7 * * 1-5",
+        "match": "scripts/generate_analyst_daily_digest.py"
+      },
+      "source_entrypoint": "scripts/generate_analyst_daily_digest.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-analyst-coverage",
+      "shard": "05",
+      "before": "BLOCKED(direct llm_lane selection and chained cron child need governed bridge and child evidence)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 13 * * 1-5",
+        "match": "scripts/hermes_analyst_coverage.py"
+      },
+      "source_entrypoint": "scripts/hermes_analyst_coverage.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-deep-research-local",
+      "shard": "05",
+      "before": "BLOCKED(systemd timer shape and direct local model-route ownership require governed admission)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-deep-research-local.timer"
+      },
+      "source_entrypoint": "scripts/hermes_deep_research_local.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-directive-discovery",
+      "shard": "05",
+      "before": "BLOCKED(REFUSED: exact cron llm_priority_guard.sh is forbidden_token:guard@scheduler.command_text; no exception or token stripping)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 * * * *",
+        "match": "scripts/hermes_directive_discovery.py"
+      },
+      "source_entrypoint": "scripts/hermes_directive_discovery.py",
+      "remaining": [
+        "Earlier exact-command admission refused forbidden_token:guard; action remains stopped. No token stripping, exception or rerun."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-source-curation",
+      "shard": "05",
+      "before": "BLOCKED(direct llm_lane source-validation model route needs governed bridge)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 23 * * *",
+        "match": "scripts/hermes_source_curation.py"
+      },
+      "source_entrypoint": "scripts/hermes_source_curation.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "material-change-detector-stage1",
+      "shard": "05",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/30 * * * *",
+        "command_text": ".../material_change_detector.py --apply",
+        "match": "scripts/material_change_detector.py --apply"
+      },
+      "source_entrypoint": "scripts/material_change_detector.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "premarket-data-pipeline",
+      "shard": "05",
+      "before": "BLOCKED(cross-shard premarket stage children and C1 ownership must be reconciled by integration owner)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "SHARED_MANIFEST_SOURCE_REPAIRED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 5 * * *",
+        "command_text": "run_premarket_data_pipeline.sh --stage premarket --apply",
+        "match": "run_premarket_data_pipeline.sh --stage premarket"
+      },
+      "source_entrypoint": "scripts/pipelines/run_premarket_data_pipeline.sh",
+      "remaining": [
+        "Source manifest preview/failure/receipt defects repaired; whole stage env/child closure, exact scheduler identity, DRAFT review and final profile still required."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "run-inference-cycle-midday",
+      "shard": "05",
+      "before": "BLOCKED(same shared inference shell; repeated schedule retained unchanged)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 13 * * 1-5",
+        "match": "run_inference_cycle.sh cron_midday"
+      },
+      "source_entrypoint": "linux_launchers/run_inference_cycle.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "run-inference-cycle-postclose",
+      "shard": "05",
+      "before": "BLOCKED(same shared inference shell; repeated schedule retained unchanged)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 16 * * 1-5",
+        "match": "run_inference_cycle.sh cron_postclose"
+      },
+      "source_entrypoint": "linux_launchers/run_inference_cycle.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "run-inference-cycle-preopen",
+      "shard": "05",
+      "before": "BLOCKED(shared inference shell launches cross-shard model children; governed bridge/child proof needed)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 8 * * 1-5",
+        "match": "run_inference_cycle.sh cron_preopen"
+      },
+      "source_entrypoint": "linux_launchers/run_inference_cycle.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "run-research-intelligence-overnight",
+      "shard": "05",
+      "before": "BLOCKED(cross-shard model child orchestration with masked failures; all repeated cron schedules retained)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5 + 15 2 * * *",
+        "match": "scripts/run_research_intelligence_overnight.sh --phase full",
+        "schedules": [
+          "30 20 * * 1-5",
+          "15 2 * * *"
+        ]
+      },
+      "source_entrypoint": "scripts/run_research_intelligence_overnight.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "run-research-intelligence-overnight-archive",
+      "shard": "05",
+      "before": "BLOCKED(same shared shell and masked child failures; receipt closure not established)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 5 * * *",
+        "match": "scripts/run_research_intelligence_overnight.sh --phase archive"
+      },
+      "source_entrypoint": "scripts/run_research_intelligence_overnight.sh",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "set-purge-dates",
+      "shard": "05",
+      "before": "BLOCKED(inline secret-bearing retention command has no owned script; no secret read or scheduler edit)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 3 1 * *",
+        "match": "from transcript_processor import set_purge_dates;"
+      },
+      "source_entrypoint": "?",
+      "remaining": [
+        "Inline secret-bearing retention command has no owned entrypoint; no rendered env, scheduler/retention or live DB action."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "siem-to-hermes-backlog",
+      "shard": "05",
+      "before": "BLOCKED(NO_APPROVED_CRON_MATCH: safe offline preview, strict argv, narrow loader and fake receipt tests added; no registry/allowlist/contract admission)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 6 * * *",
+        "match": "scripts/siem_to_hermes_backlog.py"
+      },
+      "source_entrypoint": "scripts/siem_to_hermes_backlog.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-concierge",
+      "shard": "05",
+      "before": "BLOCKED(disabled agent runtime timer requires operator class/state ruling and a supported timer admission shape)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@concierge.timer"
+      },
+      "source_entrypoint": "?",
+      "remaining": [
+        "DISABLED_UNRULED agent runtime requires operator state/class ruling and timer-native policy; shared agent runtime is not this worker-owned source.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "wire-advisory-lessons",
+      "shard": "05",
+      "before": "BLOCKED(cross-shard rollup/learning child argv, env and output proof required)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 */6 * * *",
+        "match": "scripts/wire_advisory_lessons.py"
+      },
+      "source_entrypoint": "scripts/wire_advisory_lessons.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "finviz-market-movers",
+      "shard": "06",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 6-16 * * 1-5",
+        "match": "scripts/finviz_market_movers.py\""
+      },
+      "source_entrypoint": "scripts/finviz_market_movers.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-librarian-backlog-loop",
+      "shard": "06",
+      "before": "BLOCKED(SYSTEMD_SHAPE)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-librarian-backlog-loop.timer"
+      },
+      "source_entrypoint": "scripts/hermes_autonomous_librarian_backlog_loop.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "hermes-overnight-pipeline-night",
+      "shard": "06",
+      "before": "BLOCKED(SHARED_CHILD_CHAIN)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "SHARED_MANIFEST_SOURCE_REPAIRED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 2 * * *",
+        "command_text": "hermes_overnight.json --stage night --dry-run",
+        "match": "hermes_overnight.json --stage night"
+      },
+      "source_entrypoint": "scripts/pipelines/_manifest_runner.sh",
+      "remaining": [
+        "Source manifest preview/failure/receipt defects repaired; whole stage env/child closure, exact scheduler identity, DRAFT review and final profile still required."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "holdings-agent-enqueue",
+      "shard": "06",
+      "before": "BLOCKED(SYSTEMD_SHAPE)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-holdings-agent-enqueue.timer"
+      },
+      "source_entrypoint": "scripts/enqueue_holdings_agent_opinions.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "holdings-llm-refresh",
+      "shard": "06",
+      "before": "BLOCKED(GOVERNED_ROUTE_EGRESS)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 7 * * 1-5",
+        "match": "scripts/holdings_llm_refresh.py"
+      },
+      "source_entrypoint": "scripts/holdings_llm_refresh.py",
+      "remaining": [
+        "Historical account/position-dollar prompt egress needs operator classification plus named process route; financial prompt implementation left untouched."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "instrument-belief-writer",
+      "shard": "06",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 18 * * *",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1",
+        "match": "scripts/write_instrument_beliefs.py --apply"
+      },
+      "source_entrypoint": "scripts/write_instrument_beliefs.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "llm-intelligence-enrichment",
+      "shard": "06",
+      "before": "BLOCKED(GOVERNED_ROUTE)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 7 * * 1-5 + 20 16 * * 1-5 + 20 12 * * 1-5",
+        "match": "scripts/llm_intelligence_enrichment.py >>",
+        "schedules": [
+          "20 7 * * 1-5",
+          "20 16 * * 1-5",
+          "20 12 * * 1-5"
+        ]
+      },
+      "source_entrypoint": "scripts/llm_intelligence_enrichment.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "llm-intelligence-enrichment-section",
+      "shard": "06",
+      "before": "BLOCKED(GOVERNED_ROUTE)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 8 * * 1-5",
+        "match": "scripts/llm_intelligence_enrichment.py --section"
+      },
+      "source_entrypoint": "scripts/llm_intelligence_enrichment.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "pattern-extractor",
+      "shard": "06",
+      "before": "BLOCKED(BEHAVIOR_WRITE_SEMANTICS)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 9 1 * *",
+        "match": "scripts/pattern_extractor.py"
+      },
+      "source_entrypoint": "scripts/pattern_extractor.py",
+      "remaining": [
+        "scoring_bonus/scoring_adjustment writer affects behavior classification; no policy/scoring or financial consumer edits."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "proposal-backtest-engine",
+      "shard": "06",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 10-15/2 * * 1-5",
+        "match": "scripts/proposal_backtest_engine.py"
+      },
+      "source_entrypoint": "scripts/proposal_backtest_engine.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "sec-filings-feed",
+      "shard": "06",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 8,12,17,21 * * 1-5",
+        "command_text": "sec_filings_feed.py --apply",
+        "match": "sec_filings_feed.py"
+      },
+      "source_entrypoint": "scripts/sec_filings_feed.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "social-ingest-stocktwits",
+      "shard": "06",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 8,10,13 * * 1-5",
+        "match": "scripts/social_ingest.py --source stocktwits"
+      },
+      "source_entrypoint": "scripts/social_ingest.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "trade-thesis-review-engine",
+      "shard": "06",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_CANDIDATE_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 18 * * 1-5",
+        "match": "scripts/trade_thesis_review_engine.py"
+      },
+      "source_entrypoint": "scripts/trade_thesis_review_engine.py",
+      "remaining": [
+        "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "tradeai-aec-command-center-cycle",
+      "shard": "06",
+      "before": "BLOCKED(SYSTEMD_CHILD_CLOSURE)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "IMPLEMENTED_SOURCE_ADMISSION_HELD",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-aec-command-center-cycle.timer"
+      },
+      "source_entrypoint": "scripts/aec_command_center_cycle.py",
+      "remaining": [
+        "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
+        "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-hermes",
+      "shard": "06",
+      "before": "BLOCKED(DISABLED_UNRULED)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "BLOCKED_OPERATOR_OR_AUTHORITY",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@hermes.timer"
+      },
+      "source_entrypoint": "?",
+      "remaining": [
+        "DISABLED_UNRULED agent runtime requires operator state/class ruling and timer-native policy; shared agent runtime is not this worker-owned source.",
+        "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-04-06.json"
+    },
+    {
+      "lane_id": "aegis-evening-packet",
+      "shard": "07",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 19 * * *",
+        "match": "scripts/aegis_evening_packet.py"
+      },
+      "source_entrypoint": "scripts/aegis_evening_packet.py",
+      "remaining": [
+        "DRAFT contract review, final train CI and import-closure proof; no operational config applied"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "contradiction-adjudicator",
+      "shard": "07",
+      "before": "BLOCKED(systemd_and_model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-contradiction-adjudicator.timer"
+      },
+      "source_entrypoint": "scripts/contradiction_adjudicator.py",
+      "remaining": [
+        "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus direct in-process paid judge; bridge helper does not replace gate_and_generate."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "document-mentions-backfill",
+      "shard": "07",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 * * * *",
+        "command_text": ".../backfill_document_mentions.py --all --limit 4000 --apply",
+        "match": "scripts/backfill_document_mentions.py --all"
+      },
+      "source_entrypoint": "scripts/backfill_document_mentions.py",
+      "remaining": [
+        "DRAFT contract review, final train CI and import-closure proof; no operational config applied"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "hermes-overnight-pipeline-close",
+      "shard": "07",
+      "before": "BLOCKED(compound_child_ownership)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "13 23 * * *",
+        "command_text": "hermes_overnight.json --stage close --dry-run",
+        "match": "hermes_overnight.json --stage close"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "COMPOUND_MODEL_WRAPPER_CLOSURE_UNCHANGED; actual close stage is a pipeline planner, outside \u00a73 R1-only class recipe."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "hermes-scope-governor",
+      "shard": "07",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "7,37 * * * *",
+        "match": "scripts/hermes_scope_governor.py"
+      },
+      "source_entrypoint": "scripts/hermes_scope_governor.py",
+      "remaining": [
+        "DRAFT contract review, final train CI and import-closure proof; no operational config applied"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "hermes-update-check",
+      "shard": "07",
+      "before": "BLOCKED(systemd_source_unresolved)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-update-check.timer"
+      },
+      "source_entrypoint": "scripts/check_hermes_update_available.py",
+      "remaining": [
+        "Timer-native admission design and monitor-class owner decision; capability destination ownership remains pending"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "journal-review-builder",
+      "shard": "07",
+      "before": "BLOCKED(model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 18 * * 1-5",
+        "match": "scripts/journal_review_builder.py"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "MISSING_REGISTERED_CALL_PROCESS and in-process/local fallback; prompt contains account/shares/P&L requiring egress review."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "llm-deferred-drain",
+      "shard": "07",
+      "before": "BLOCKED(model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 10,13,16,19 * * *",
+        "command_text": "cd $PROJ && $PY scripts/drain_llm_deferred.py",
+        "match": "scripts/drain_llm_deferred.py"
+      },
+      "source_entrypoint": "scripts/drain_llm_deferred.py",
+      "remaining": [
+        "Dynamic queued process/server route, shared consumption/deferral closure and supervised receipt semantics for clock deferral remain pending; scheduler unchanged"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "reconcile-exit-advisory-outcomes",
+      "shard": "07",
+      "before": "BLOCKED(unowned_price_closure)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
+        "match": "scripts/reconcile_exit_advisory_outcomes.py"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "UNOWNED_FINANCIAL_PRICE_CLOSURE_UNCHANGED; holdings_gain_guardian boundary still imported. Broker-adjacent closure not investigated."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "run-scheduled-two-way-curation-desk",
+      "shard": "07",
+      "before": "BLOCKED(unowned_curation_child)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 10 * * 1-5",
+        "match": "scripts/run_scheduled_two_way_curation.sh desk-emit"
+      },
+      "source_entrypoint": "scripts/run_scheduled_two_way_curation.sh",
+      "remaining": [
+        "Wrapper offline preview fixed; shared child/environment/typed outcome/receipt ownership still pending; no financial child changed"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "run-scheduled-two-way-curation-options",
+      "shard": "07",
+      "before": "BLOCKED(unowned_options_child)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 15 * * 1-5",
+        "match": "scripts/run_scheduled_two_way_curation.sh options-edge"
+      },
+      "source_entrypoint": "scripts/run_scheduled_two_way_curation.sh",
+      "remaining": [
+        "Wrapper offline preview fixed; shared child/environment/typed outcome/receipt ownership still pending; no financial child changed"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "run-watchlist-agent-jobs-offpeak",
+      "shard": "07",
+      "before": "BLOCKED(compound_model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 10-20 * * *",
+        "match": "scripts/run_watchlist_agent_jobs_offpeak.sh"
+      },
+      "source_entrypoint": "scripts/run_watchlist_agent_jobs_offpeak.sh",
+      "remaining": [
+        "Explicit preview/unknown flags fixed; live secret-source, child model/cap/containment and receipt closure remain shared owner-blocked"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "symbol-enrichment",
+      "shard": "07",
+      "before": "BLOCKED(env_and_untyped_provider_failures)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 7 * * 1-5",
+        "match": "scripts/symbol_enrichment.py"
+      },
+      "source_entrypoint": "scripts/symbol_enrichment.py",
+      "remaining": [
+        "Shared provider/telemetry closure plus typed per-provider outcomes and truthful real-run receipt; do not invent health from hidden exceptions"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "topic-curator-at-30-9-13",
+      "shard": "07",
+      "before": "BLOCKED(model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 9,13 * * *",
+        "match": "scripts/topic_curator.py >>"
+      },
+      "source_entrypoint": "scripts/topic_curator.py",
+      "remaining": [
+        "Governed process identity mapping, retired local/embedding closure and per-schedule receipt identity remain pending"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "topic-curator-ensemble",
+      "shard": "07",
+      "before": "BLOCKED(model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 18 * * *",
+        "match": "scripts/topic_curator.py --ensemble"
+      },
+      "source_entrypoint": "scripts/topic_curator.py",
+      "remaining": [
+        "Governed process identity mapping, retired local/embedding closure and per-schedule receipt identity remain pending"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-morgan",
+      "shard": "07",
+      "before": "BLOCKED(systemd_and_model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@morgan.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; prepare-only authorization/backend closure remains unresolved. The runner itself has no direct model transport, so prior generic model-route claim is narrowed."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "watch-review-workers",
+      "shard": "07",
+      "before": "BLOCKED(model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 16 * * 1,3,5",
+        "command_text": "run_watch_review_workers.py --mode execute --allow-execute --role maria",
+        "match": "run_watch_review_workers.py --mode execute --allow-execute --role maria"
+      },
+      "source_entrypoint": "scripts/run_watch_review_workers.py",
+      "remaining": [
+        "DIRECT_PROVIDER_EXECUTOR_CLOSURE_UNCHANGED; model helper is not integrated into run_agent_call and auth/provider policy remains shared."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "watch-review-workers-cio",
+      "shard": "07",
+      "before": "BLOCKED(model_route)",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 16 * * 1,3,5",
+        "command_text": "run_watch_review_workers.py --mode execute --allow-execute --role cio",
+        "match": "run_watch_review_workers.py --mode execute --allow-execute --role cio"
+      },
+      "source_entrypoint": "scripts/run_watch_review_workers.py",
+      "remaining": [
+        "DIRECT_PROVIDER_EXECUTOR_CLOSURE_UNCHANGED; model helper is not integrated into run_agent_call and auth/provider policy remains shared."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "agent-recommendation-normalizer",
+      "shard": "08",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 8 * * 1-5",
+        "match": "scripts/agent_recommendation_normalizer.py"
+      },
+      "source_entrypoint": "scripts/agent_recommendation_normalizer.py",
+      "remaining": [
+        "DRAFT contract review, final train CI and import-closure proof; no operational config applied"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "autonomy-watchdog",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-autonomy-watchdog.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus monitor class and possible sender path; no R1 recipe admission."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "due-diligence-questions",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/20 * * * *",
+        "command_text": "run_with_deepseek_offpeak.sh --scheduled -- .../due_diligence_questions.py --apply --route",
+        "match": "scripts/due_diligence_questions.py --apply --route"
+      },
+      "source_entrypoint": "scripts/due_diligence_questions.py",
+      "remaining": [
+        "SHARED_OFFPEAK_AND_PROVIDER_RESEARCH_CHILD_UNCHANGED; model/job/helper is not a replacement for named research dispatch."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "hermes-score-event-feeder",
+      "shard": "08",
+      "before": "SHADOW_READY",
+      "before_disposition": "LOCAL_SOURCE_PROPOSAL_NEEDS_INTEGRATION_REVIEW_CI",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "LOCAL_PROPOSAL_SOURCE_INTEGRATED_PENDING_VALIDATION",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "scripts/hermes_score_event_feeder.py"
+      },
+      "source_entrypoint": "scripts/hermes_score_event_feeder.py",
+      "remaining": [
+        "DRAFT contract review, final train CI and import-closure proof; no operational config applied"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "hermes-shadow-scorer",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "hermes-shadow-scorer.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; unit evidence points at checkout JSON destination, distinct from the pinned-release/state contract."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "hermes-top20-external-intel",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 */2 * * *",
+        "command_text": ".../hermes_top20_external_intel.py --top 20 --lanes grok,chatgpt --apply",
+        "match": "scripts/hermes_top20_external_intel.py --top 20"
+      },
+      "source_entrypoint": "scripts/hermes_top20_external_intel.py",
+      "remaining": [
+        "PROVIDER_SELECTING_ARGV_AND_CHILD_ROUTE_UNCHANGED; --lanes grok,chatgpt still selects provider and child external researcher owns its own transports."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "hermes-usefulness-backfill",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 * * * *",
+        "command_text": "run_with_deepseek_offpeak.sh --scheduled -- .../hermes_external_feedback_loop.py --apply --max-rows 2000",
+        "match": "scripts/hermes_external_feedback_loop.py --apply"
+      },
+      "source_entrypoint": "scripts/hermes_external_feedback_loop.py",
+      "remaining": [
+        "Shared offpeak wrapper and bridge envelope/process-identity proof; realized-outcome model egress decision remains pending"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "operator-answer-quality-audit",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-operator-answer-quality.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED plus monitor/sender boundary; R1-only recipe excluded."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "portfolio-price-cache",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "portfolio-price-cache.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; separate portfolio price-store ownership and live-fetch closure remain."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "rag-indexer",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 */4 * * *",
+        "match": "scripts/rag_indexer.py"
+      },
+      "source_entrypoint": "scripts/rag_indexer.py",
+      "remaining": [
+        "Operator selection of supported embedding runtime and shared retrieval owner; retired Ollama is not restored"
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "reconcile-pullback-outcomes",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 9 * * 0",
+        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scripts/reconcile_pullback_outcomes.py >> logs/pullback_outcomes.log 2>&1",
+        "match": "scripts/reconcile_pullback_outcomes.py"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "UNOWNED_FINANCIAL_PRICE_CLOSURE_UNCHANGED; guardian helper remains outside broker-investigation scope."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "reporting-engine",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 6-17 * * 1-5",
+        "match": "import reporting_engine as r;r.eligible_report_payload(use_cache=False)\""
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "INLINE_SHARED_ENTRYPOINT_UNCHANGED; eligible cache writer exists, but cron still calls Python -c and CLI does not represent that exact inline prewarm."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "slo-burn-rate",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "SOURCE_CHANGED_ADMISSION_HELD",
+      "detail_result": "PARTIAL_SOURCE_FIX_ADMISSION_BLOCKED",
+      "source_changed": true,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-slo-burn-rate.timer"
+      },
+      "source_entrypoint": "scripts/report_slo_burn_rate.py",
+      "remaining": [
+        "SYSTEMD_SHADOW_SHAPE_UNSUPPORTED; monitor/report class outside \u00a73 R1-only recipe."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "topic-ingestion",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 20 * * 1-5 + 45 2 * * 0,6",
+        "command_text": "cd $PROJ && $PY scripts/run_family_slot.py --family topic-ingestion >> logs/run_family_slot.log 2>&1",
+        "match": "scripts/run_family_slot.py --family topic-ingestion",
+        "schedules": [
+          "45 20 * * 1-5",
+          "45 2 * * 0,6"
+        ]
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "FAMILY_OWNER_AND_CHILD_MODEL_COOKIE_CLOSURE_UNCHANGED; historical child is not current scheduled entry point."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-pulse",
+      "shard": "08",
+      "before": "BLOCKED",
+      "before_disposition": "BLOCKED_OR_RETAINED_NEEDS_OWNER_RECONCILIATION",
+      "source_result": "OWNER_OR_AUTHORITY_BLOCKED",
+      "detail_result": "RETAINED_OWNER_OR_AUTHORITY_BLOCKED",
+      "source_changed": false,
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@pulse.timer"
+      },
+      "source_entrypoint": null,
+      "remaining": [
+        "DISABLED_UNRULED_UNKNOWN_PERSONA_TIMER; no supported R1 shadow shape, no operator retirement ruling."
+      ],
+      "evidence_class": "SOURCE_ONLY",
+      "runtime": "NOT_MEASURED",
+      "operational_admission": false,
+      "evidence": "candidates-07-08.json"
+    }
+  ]
+}

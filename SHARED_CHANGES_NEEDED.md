@@ -7,3 +7,7 @@ Evidence class: SOURCE_ONLY / TEST_ONLY. Runtime: NOT_MEASURED.
 - Register tests/test_refactor_shard_05_20261011.py, tests/test_refactor_shard_06_20261011.py and tests/test_completion_119_04_06_20261011.py in the PR profile. Run final native profile once on the combined train, and regenerate docs/INDEX.md after staging.
 - Agent 07 owns shared W3 LLM regression expectations for the new strictly offline llm_intelligence_enrichment CLI; lower-level section dry-run functions remain unchanged.
 - Operator owns timer-native admission ratification, DRAFT reviews, exact host argv/lock/env closure, unresolved model-process routes and unruled agent/financial/behavior/retention/refused boundaries. No operational admission is claimed.
+
+## Integrated source follow-up
+
+The common manifest preview/failure/receipt repairs are integrated by the root train, including dry-run precedence and durable worker-failure summaries. All owned tests are registered. W3 CLI/component expectations are integrated with fake real DB-failure coverage retained. The final native profile and source-only documentation live under `docs/implementation/n8n-maturity/completion-119/`; whole-stage import/env/child proof and operational admission remain held.
