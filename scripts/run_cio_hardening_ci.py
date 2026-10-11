@@ -4230,6 +4230,7 @@ GATES = [
         # hermes_directive_discovery, earnings_enrich, ipo_lockup_alert. Hermetic: fake DB, tmp state root.
         "refactor_w2_bucket_v1_20261010",
         [
+            "tests/test_refactor_shard_08_20261011.py",
             "tests/test_refactor_w2_signal_fusion_20261010.py",
             "tests/test_refactor_w2_learning_lanes_20261010.py",
             "tests/test_refactor_w2_ingest_alert_lanes_20261010.py",

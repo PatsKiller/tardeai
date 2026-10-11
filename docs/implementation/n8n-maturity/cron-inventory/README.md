@@ -69,3 +69,7 @@ land with the next builder run (`n8nmat/cron-inventory-*`).
 
 Procedure for any n8n change that this log records: `../N8N_ONBOARDING_STANDARD.md`; configuration reference:
 `../N8N_CONFIGURATION.md`.
+
+### 2026-10-11 refactor shard 08 (source only)
+
+37 lanes assessed; 2 DRAFT offline shadow proposals, 14 broker skips, 3 sender skips, 1 class skip, 17 blocked/retained. No runtime inventory numbers changed. [Source report](../REFACTOR_SHARD_08_20261011.md). One outer cron lock proposed; contracts remain unreviewed.

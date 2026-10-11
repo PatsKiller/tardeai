@@ -2291,6 +2291,74 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/etf-performance-enrich_last.json"
+    },
+    {
+      "lane_id": "agent-recommendation-normalizer",
+      "command": [
+        "$PY",
+        "scripts/agent_recommendation_normalizer.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/agent-recommendation-normalizer.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/agent-recommendation-normalizer_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "session13_db imports dotenv.load_dotenv without a name bound; shared narrowing belongs to integrator. Own loader uses DB names only.",
+      "env_evidence": "SOURCE_ONLY import-closure audit; explicit preview has no env loader reach; TEST_ONLY fakes.",
+      "source": "OBSERVED_HOST scoped approved crontab snapshot 2026-10-11T17:05:28.513179+00:00; SOURCE_ONLY DRAFT proposal; no runtime deployment or scheduling change."
+    },
+    {
+      "lane_id": "hermes-score-event-feeder",
+      "command": [
+        "$PY",
+        "scripts/hermes_score_event_feeder.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_event_feeder.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-score-event-feeder_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter legacy unbound cron loader and governor outcome-bus closure need integrator review. No model or broker credentials are named.",
+      "env_evidence": "SOURCE_ONLY import-closure audit; explicit preview has no env loader reach; TEST_ONLY fakes.",
+      "source": "OBSERVED_HOST scoped approved crontab snapshot 2026-10-11T17:05:28.513179+00:00; SOURCE_ONLY DRAFT proposal; no runtime deployment or scheduling change."
     }
   ],
   "blocked_reasons": {
