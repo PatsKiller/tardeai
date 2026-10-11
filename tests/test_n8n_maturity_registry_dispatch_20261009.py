@@ -415,6 +415,10 @@ def test_registry_dispatch_errors_hook():
 
 # ── live registry (read-only) ────────────────────────────────────────────────────────────────────
 
+#: n8n-native lanes (no host line): shadow rows in the dispatcher shape (2026-10-11, heartbeat-watch).
+N8N_NATIVE_SHADOW = frozenset({"heartbeat-watch"})
+
+
 def _live_rows():
     return json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]
 
@@ -450,7 +454,12 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             continue
         shadow.append(lane)
         sched = row["scheduler"]
-        assert sched["kind"] == "cron" and sched.get("stage") == "shadow", lane
+        if lane in N8N_NATIVE_SHADOW:
+            # 2026-10-11: an n8n-native lane has no cron line to stay on; its shadow row is the dispatcher shape at
+            # stage shadow (the clamp still runs it dry), and its allowlist entry has no live mode.
+            assert (sched["kind"], sched["expression"], sched.get("stage")) == ("n8n", "dispatcher", "shadow"), lane
+        else:
+            assert sched["kind"] == "cron" and sched.get("stage") == "shadow", lane
         assert LD.dispatchable(row), lane
         assert clamp_mode(lane, "live", rows)["effective_mode"] == "dry_run", lane
         entry = allow[lane]
@@ -470,7 +479,8 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # each leaves its wave (dispatch_retired) and its allowlist entry is removed. Both merged in train-migration-2.
     # + 10: refactor train 3 (shards 01-04, 2026-10-11) source shadow rows (R1 ingest/learn, dry_run, live_arg null);
     # 3 of the 13 proposals stay RETIRED into the premarket C1 stage (train 2).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10, shadow
+    # + 1 (2026-10-11): heartbeat-watch, the n8n-native shadow row (N8N_NATIVE_SHADOW).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 1, shadow
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(CANARY_ROWS)
 
 

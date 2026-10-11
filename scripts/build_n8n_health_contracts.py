@@ -500,6 +500,76 @@ GENERIC = {
 }
 
 
+#: Per-workflow state as measured in n8n (read-only workflow_entity) and the W0 packets; the default stands for any
+#: generic workflow without an entry. Facts only; a change of state is a change to this table.
+GENERIC_STATE = {
+    "dispatcher": "published 2026-10-10 17:14 ET (W0 re-run, grant c90266247a4c4cd4; packets/w0-import-six)",
+    "event-router": "published 2026-10-10 18:40 ET (grant 4b3623125f6b6d7e; packets/w0-import-six)",
+    "incident-router": "published 2026-10-10 18:44 ET (grant 4b3623125f6b6d7e; packets/w0-import-six)",
+    "digest-scheduler": "published 2026-10-10 18:47 ET (grant 4b3623125f6b6d7e; packets/w0-import-six)",
+    "heartbeat-watcher": "imported inactive and unpublished since 2026-10-10 15:58 ET (W0 rollback, grant "
+    "f9c459a230d3bc58); the stored row predates F4 (saveManualExecutions true), so activation re-imports the file. "
+    "Its lane heartbeat-watch (scripts/heartbeat_watch.py, registry stage shadow) lands by registry PR on branch "
+    "n8nmat/heartbeat-watcher-activation; activation then waits for the owner's REVIEWED flip of this contract and the "
+    "lane's, a promote, the shadow-fire proof and a cron grant. "
+    "Activation packet: ~/n8n-maturity-verification/packets/heartbeat-watcher-activate",
+    "approval-router": "HELD, imported inactive and unpublished since 2026-10-10 15:58 ET (W0 rollback, grant "
+    "f9c459a230d3bc58): its GET /due filter names lane approval-escalate, which has no registry row",
+}
+GENERIC_STATE_DEFAULT = "state not recorded in build_n8n_health_contracts.GENERIC_STATE"
+
+#: Extra contract facts for one generic workflow, merged after the shared ones (edges, criteria, remediation note).
+GENERIC_EXTRA: dict[str, dict[str, Any]] = {
+    "heartbeat-watcher": {
+        "connects_to": [
+            ("host lane heartbeat-watch (scripts/heartbeat_watch.py; registry stage shadow)", "lane", "calls",
+             "design 02 §7"),
+            ("relay POST /event lane n8n-workflow-error (as this workflow's errorWorkflow posts it)", "relay_route",
+             "calls", "scripts/n8n_run_relay.py EVENT_LANE"),
+            ("fan-in incident wferr:tradeai-heartbeat-watcher, P1 (WFERR_P1_WORKFLOWS) -> incident-notifier",
+             "lane", "read", "scripts/n8n_incident_fanin.py _wferr_severity"),
+        ],
+        "healthy": [
+            {
+                "check": "observe_mode_skip",
+                "text": "while heartbeat-watch is at stage shadow (dispatch dry_run) every tick posts its run and "
+                "'Assert heartbeat fresh' returns skipped=dispatched_dry_run: healthy, but it proves only the "
+                "n8n -> relay -> gateway -> executor path, not lane freshness",
+            },
+            {
+                "check": "live_run_fresh",
+                "text": "at stage canary or cutover: GET /runs/heartbeat-watch/last?mode=live is RUN_DONE and "
+                "finished within 600 s (MAX_AGE_S in the workflow)",
+            },
+        ],
+        "failed": [
+            {
+                "check": "lane_unregistered",
+                "text": "GET /due answers 403 bad_lane_filter when heartbeat-watch is not a registry row of the "
+                "served release (the W0 cause; true until the lane's registry row is promoted, and "
+                "check_n8n_relay_contract refuses lane_filter_unknown until then)",
+            },
+            {
+                "check": "no_live_run",
+                "text": "at stage canary or cutover: no live RUN_DONE of heartbeat-watch within 600 s (Stop And Error "
+                "'no live RUN_DONE'), i.e. the executor, the lane or its receipt stopped",
+            },
+        ],
+        "remediation_note": "Additive dead-man, not the P1 path (AGENTS.md §24.1): its only alert route is the "
+        "health plane it watches (relay POST /event -> gateway -> fan-in, which itself runs on n8n -> incident-notifier "
+        "on host cron), so it cannot page when the notifier or host cron is down; the host-side floor stays "
+        "tradeai-n8n-lab-watchdog.timer, the notifier's own fan-in age check and supervisor-breach-detector.timer. "
+        "Rollback = unpublish (packets/heartbeat-watcher-activate/rollback.sh) under the activation's cron grant.",
+    },
+}
+
+WFERR_REMEDIATION = (
+    "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event); the fan-in reads them "
+    "since #1679 as one incident wferr:<workflow_id> per UTC day (P1 for the dispatcher, incident router and "
+    "heartbeat watcher; others P2 unless the contract raises them) and closes it 60 min after the last error"
+)
+
+
 def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
     kind = str(wf.get("kind"))
     text, src = GENERIC.get(kind, (H.UNKNOWN, "none"))
@@ -510,6 +580,8 @@ def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
     calls.append(_edge("credential tradeai-run-relay (relay bearer)", "credential", "read", "AGENTS.md §23.5"))
     if wf.get("error_workflow"):
         calls.append(_edge(f"errorWorkflow {wf['error_workflow']}", "workflow", "calls", "workflows/INDEX.json"))
+    extra = GENERIC_EXTRA.get(kind, {})
+    calls += [_edge(*e) for e in extra.get("connects_to", ())]
     critical = kind in ("dispatcher", "incident-router", "heartbeat-watcher")
     sev = "Critical" if critical else "High"
     return {
@@ -520,8 +592,7 @@ def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
         "status": "DRAFT",
         "target_reason": "generic workflow (AGENTS.md §23.11)",
         "stage": None,
-        "state_note": "imported inactive; published 15:53 ET and unpublished 15:58 ET on 2026-10-10 (W0 rollback, "
-        "grant f9c459a230d3bc58); re-import waits for the relay fix release (#1663/#1664)",
+        "state_note": GENERIC_STATE.get(kind, GENERIC_STATE_DEFAULT),
         "purpose": {"text": text, "business_function": "alerts-ops" if critical else "monitoring", "source": src},
         "owner": "platform",
         "connects_to": calls,
@@ -536,7 +607,8 @@ def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
                 "check": "no_error_executions",
                 "text": "no execution with status 'error' and \"deletedAt\" IS NULL since the last check",
             },
-        ],
+        ]
+        + list(extra.get("healthy", [])),
         "degraded": [
             {
                 "check": "partial_refusals",
@@ -557,7 +629,8 @@ def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
                 "(dispatcher:silent in the fan-in)",
             },
             {"check": "inactive", "text": "workflow_entity.active = false outside a granted rollback"},
-        ],
+        ]
+        + list(extra.get("failed", [])),
         "baseline": {
             "basis": "CLASS_DEFAULT_PROVISIONAL",
             "source": "no live history: the six ran 5 minutes on 2026-10-10 before the rollback",
@@ -570,8 +643,10 @@ def generic_contract(wf: Mapping[str, Any], as_of: date) -> dict[str, Any]:
         "remediation": {
             "catalogue_entry": False,
             "diagnosis_excluded": False,
-            "note": "workflow errors become gateway events on lane n8n-workflow-error (relay POST /event; the "
-            "fan-in has no reader for them yet); rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)",
+            "note": WFERR_REMEDIATION + "; " + extra.get(
+                "remediation_note",
+                "rollback = unpublish + archive under a cron grant (packets/w0-import-six/rollback.sh)",
+            ),
         },
         "evidence": {
             "receipt": "relay_log.jsonl + coordination ledger",
