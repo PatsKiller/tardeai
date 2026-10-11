@@ -12,6 +12,8 @@ Advisory/visibility only — never trades, never proposes. Cadence: cron ~12 min
 import csv
 import io
 import json
+import os
+import argparse
 import re
 import sys
 import urllib.request
@@ -20,6 +22,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 try:
     from finviz_throttle import acquire as _fv_acquire, cooldown as _fv_cooldown
@@ -42,27 +46,15 @@ SIGNALS = [
     ("insider_buying", "it_latestbuys",    "Insider Buying"),
 ]
 TOP_N = 15
-SNAP = ROOT / "data" / "runtime" / "market_movers_latest.json"
+SNAP = Path(os.environ.get("TRADEAI_STATE_ROOT") or ROOT) / "data" / "runtime" / "market_movers_latest.json"
+LANE_ID = "finviz-market-movers"
+_LAST_COUNTS = {}
 
 
 def _cookie() -> str:
-    import os
-    import sys
-    try:
-        _sec = ROOT / "scripts" / "secrets"
-        if str(_sec) not in sys.path:
-            sys.path.insert(0, str(_sec))
-        from resolve_secret import resolve_secret
-        return resolve_secret("FINVIZ_COOKIE", "")
-    except Exception:
-        try:
-            for line in (ROOT / ".env").read_text().splitlines():
-                if line.startswith("FINVIZ_COOKIE="):
-                    return line.split("=", 1)[1].strip().strip('"\'')
-        except Exception:
-            pass
-        return os.environ.get("FINVIZ_COOKIE", "").strip().strip('"\'')
-
+    # Selected logical name only; never copy a secret render into the process environment.
+    from finviz_auth import finviz_secret
+    return finviz_secret("FINVIZ_COOKIE")
 
 def _get_csv(url: str, headers: dict) -> str:
     _fv_acquire()
@@ -123,7 +115,7 @@ def _parse_rows(content: str) -> list[dict]:
     return rows
 
 
-def main() -> int:
+def _execute() -> int:
     from db_adapter import _get_conn
     from finviz_auth import finviz_secret, redact
     cookie = _cookie()
@@ -171,7 +163,31 @@ def main() -> int:
     tmp.replace(SNAP)
     ok = len(snap["signals"])
     print(f"[movers] snapshot: {ok}/{len(SIGNALS)} signals, {SNAP.stat().st_size//1024}KB")
+    _LAST_COUNTS.update(signals=ok, rows=sum(len(s["rows"]) for s in snap["signals"].values()),
+                        errors=len(snap["errors"]))
     return 0 if ok else 1
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="Finviz signal board ingestion", allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would fetch {len(SIGNALS)} Finviz screens, upsert market_movers, "
+              "apply existing retention and write market_movers_latest.json; no auth, DB, network or writes")
+        return 0
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    _LAST_COUNTS.clear()
+    try:
+        rc = _execute()
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                           script="finviz_market_movers.py", error=type(exc).__name__)
+        raise
+    write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                       script="finviz_market_movers.py", summary=_LAST_COUNTS)
+    return rc
 
 
 if __name__ == "__main__":
