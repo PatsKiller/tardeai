@@ -29,14 +29,16 @@ The [shared prerequisites](SHARED_PREREQUISITES.md), group reports and candidate
 All new tests are registered in the native CI runner. The combined targeted integration suite passed under the unchanged isolated launcher after correcting two legacy preview expectations and retaining their fake DB-failure/component coverage. The accepted full PR-profile command is:
 
 ```sh
-python3 run-isolated-completion.py final-pr-profile-corrected .venv/bin/python scripts/run_cio_hardening_ci.py --profile pr --base origin/main
+python3 run-isolated-completion.py final-pr-profile-isolated .venv/bin/python scripts/run_cio_hardening_ci.py --profile pr --base origin/main
 ```
 
 The launcher sets TRADE_AI_CI=1, M2_SKIP_DOCKER=1, the `.nodeps` PYTHONPATH, empty dotenv inputs and fixture state roots before imports. Each attempt has a distinct tag and retained `reassess-gates/<tag>.{json,log}` artifact in the integration worktree. A final exact-head run must exit 0 with zero capability refusals and all owned children reaped before a source-green claim. Static gate, Ruff, line-ending and configuration-preservation results are in the same local evidence directory and summarized with the exact accepted tag in untracked `PR_BODY.md`. These local files are review artifacts and do not imply CI on GitHub.
 
 Earlier attempts that hit `/run/user/1000/tradeai/env` or a production state-root argv were stopped and are retained as nonaccepted evidence. Source fixture handling was corrected before new-head validation; guards were not widened. Server caller-map extraction was refused because of inherited mixed line endings; that server file remains untouched and the client map is tested against it. Successful terminal stream-fd warnings are recorded once and are not action refusals.
 
-The first native profile at21a7a3afc stopped on a host-crontab call and exposed a legacy migration test copying canonical checkout state. That run remains rejected. The migration rehearsal now uses synthetic stores and ledgers, retaining every conflict/hash/quarantine/rollback assertion; the unknown-lane-count CLI test now injects a discovery fixture. Guards, exemptions and native test selection are unchanged. The corrected migration suite passed62 tests and the corrected registry case passed; final profile acceptance remains required.
+The first native profile at `21a7a3afc` stopped on a host-crontab call and exposed a legacy migration test copying canonical checkout state. That run remains rejected. The migration rehearsal now uses synthetic stores and ledgers, retaining every conflict/hash/quarantine/rollback assertion; the unknown-lane-count CLI test now injects a discovery fixture. Guards, exemptions and native test selection are unchanged. The corrected migration suite passed 62 tests and the corrected registry case passed; final profile acceptance remains required.
+
+The second profile at `82c14f376` passed the migration gate, then stopped at another inherited host-crontab probe. Persistent-wake and schedule-contract tests now use scratch cron/unit snapshots plus process-call spies and mutation-negative controls; 46 tests passed. Goal-loop scheduling checks use the committed source snapshot with good/bad/comment controls; 27 tests passed. Source tests make no installed-scheduler claim. Both stopped profiles remain nonaccepted, and the guards stay unchanged.
 
 No frontend or live browser acceptance is claimed: this train changes lane source and test integration, not Command Center or runtime. Deployment and natural-fire evidence remain separate prerequisites.
 
@@ -50,4 +52,4 @@ Recommended next 30 days: finish owner/closure reviews and missing timer fragmen
 
 ## Documentation and inventory
 
-Each group supplies row-by-row source candidates and unchanged-stage inventory overlays. The integrator records the combined 119-row overlay and a separate source-only inventory workbook. The global workbook builder is not run here: it inspects live crontab/systemd, CURRENT and the canonical checkout, which are outside this isolated source train. Global live scoreboard numbers are therefore unchanged. Its later rebuild requires fresh runtime evidence; no Drive sync or email is performed.
+Each group supplies row-by-row source candidates and unchanged-stage inventory overlays. The integrator records [the combined 119-row overlay](inventory_rows_completion_119.tsv) and a separate source-only workbook at `inventory-review/COMPLETION_SOURCE_119_20261011.xlsx`. The global workbook builder is not run here: it inspects live crontab/systemd, CURRENT and the canonical checkout, which are outside this isolated source train. Global live scoreboard numbers are therefore unchanged. Its later rebuild requires fresh runtime evidence; no Drive sync or email is performed.

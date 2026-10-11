@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import csv
 import json
 
 import pytest
@@ -46,3 +47,12 @@ def test_bad_packet_is_refused(mutation):
 
 def test_unreadable_packets_are_not_a_pass(tmp_path):
     assert main(["--directory", str(tmp_path)]) == 2
+
+
+def test_inventory_accounts_for_scope_without_promoting_a_stage():
+    scope, _ = packets()
+    with (PACKETS / "inventory_rows_completion_119.tsv").open() as file:
+        rows = list(csv.DictReader(file, delimiter="\t"))
+    assert len(rows) == 119
+    assert {row["lane_id"] for row in rows} == {row["lane_id"] for row in scope["rows"]}
+    assert all(row["new_stage"] == "unchanged" for row in rows)

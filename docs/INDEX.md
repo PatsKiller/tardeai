@@ -1443,7 +1443,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `82db6193e3cb` |
 | `docs/implementation/n8n-maturity/completion-119/BEFORE_AFTER_119.md` | 119-lane source completion: before and after | review_required | OK | `b9366b8315fa` |
-| `docs/implementation/n8n-maturity/completion-119/README.md` | Completion train for the 119 outstanding source/integration lanes | review_required | OK | `f05a300aa0b8` |
+| `docs/implementation/n8n-maturity/completion-119/README.md` | Completion train for the 119 outstanding source/integration lanes | review_required | OK | `04cb3d01ed94` |
 | `docs/implementation/n8n-maturity/completion-119/REMEDIATION_04_06_20261011.md` | Completion119 source remediation, shards04–06 | review_required | OK | `4e664d2a828c` |
 | `docs/implementation/n8n-maturity/completion-119/SHARDS_01_03_SOURCE_PREPARATION.md` | Completion 119: source preparation for shards 01–03 | review_required | OK | `cfd637021087` |
 | `docs/implementation/n8n-maturity/completion-119/SHARDS_07_08_SOURCE_REMEDIATION_20261011.md` | Completion tranche: original shards 07–08 | review_required | OK | `a51e09334803` |
