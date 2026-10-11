@@ -35,8 +35,15 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
+# DB_PASSWORD only (AGENTS.md §23.18): load_dotenv copied the whole env file, broker credentials included, into
+# os.environ. _get_conn reads nothing else (host, port, db and user are fixed below).
+_env_path = PROJECT_ROOT / ".env"
+if not os.getenv("DB_PASSWORD") and _env_path.exists():
+    for _line in _env_path.read_text().splitlines():
+        _k, _sep, _v = _line.strip().partition("=")
+        if _sep and _k.strip() == "DB_PASSWORD" and not _line.strip().startswith("#"):
+            os.environ["DB_PASSWORD"] = _v.strip().strip("'\"")
+            break
 
 LANE_ID = "feedback-loop-processor"
 

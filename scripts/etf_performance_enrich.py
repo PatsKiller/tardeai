@@ -24,12 +24,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 ROOT = Path(__file__).resolve().parent.parent
-if not __import__("os").getenv("DB_PASSWORD"):
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(ROOT / ".env")
-    except Exception:
-        pass
+if not __import__("os").getenv("DB_PASSWORD") and (ROOT / ".env").exists():
+    # DB_* only (AGENTS.md §23.18): load_dotenv copied the whole env file, broker credentials included, into
+    # os.environ. With DB_PASSWORD set here, db_adapter also skips env_bootstrap's whole-render load.
+    for _line in (ROOT / ".env").read_text().splitlines():
+        _k, _sep, _v = _line.strip().partition("=")
+        if _sep and _k.strip().startswith("DB_") and not _line.strip().startswith("#"):
+            __import__("os").environ.setdefault(_k.strip(), _v.strip().strip("'\""))
 from db_adapter import _get_conn
 from lib.writers.symbol_profiles_writer import upsert_profile
 
@@ -140,9 +141,21 @@ def run_failed(res: dict) -> bool:
     return res["attempted"] > 0 and (res["errors"] + res["empty"]) >= res["attempted"]
 
 
-def main() -> int:
+def parse_args(argv):
+    """Strict flags: an unknown or misspelled flag (e.g. ``--dryrun``) exits 2 instead of running live."""
+    import argparse
+    ap = argparse.ArgumentParser(description="ETF/fund YTD, yield and TTM dividend from yfinance into symbol_profiles",
+                                 allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="READ ONLY preview: no DDL, no fetch, no write, no receipt")
+    ap.add_argument("--no-fetch", action="store_true", help="older alias of --dry-run")
+    ap.add_argument("--symbols", default=None, help="comma list to target (default: every etf/fund/inverse_etf)")
+    return ap.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
     lr = _receipt_lib()
-    if "--dry-run" in sys.argv or "--no-fetch" in sys.argv:
+    if args.dry_run or args.no_fetch:
         # Structural (AGENTS.md §6): enrich() -- DDL, yfinance, upserts -- is not reachable from this branch.
         plan = preview()
         lr.dry_run_report(

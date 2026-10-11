@@ -23,10 +23,12 @@ log = logging.getLogger(__name__)
 RECEIPT_NAME = 'trade_backtest_engine'
 
 if (ROOT / '.env').exists():  # absent in a bare checkout/test tree; the served release symlinks it
+    # DB_* only (AGENTS.md §23.18): never copy the whole env file, which also carries broker credentials.
     for line in (ROOT / '.env').read_text().splitlines():
         if '=' in line and not line.startswith('#'):
             k, v = line.split('=', 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            if k.strip().startswith('DB_'):
+                os.environ.setdefault(k.strip(), v.strip())
 
 import psycopg2
 from psycopg2.extras import RealDictCursor

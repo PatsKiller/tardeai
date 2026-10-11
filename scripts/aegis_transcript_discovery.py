@@ -38,7 +38,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-# Load .env
+# Load only the named keys from .env (AGENTS.md §23.18: a lane never copies the whole env file, which also carries
+# broker credentials, into os.environ). DB_* for db_adapter (set first, so db_adapter never falls back to env_bootstrap's whole-render load) and the Brave switches this lane reads.
+_ENV_NAMES = ('DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD', 'BRAVE_SEARCH_API_KEY', 'AEGIS_BRAVE_ENABLED', 'BRAVE_ROUTER_ENABLED', 'SEARCH_ROUTING_ENGINE')
 _env_path = PROJECT_ROOT / ".env"
 if _env_path.exists():
     for line in _env_path.read_text().splitlines():
@@ -46,7 +48,7 @@ if _env_path.exists():
         if line and not line.startswith("#") and "=" in line:
             k, _, v = line.partition("=")
             k, v = k.strip(), v.strip()
-            if k and v and k not in os.environ:
+            if k in _ENV_NAMES and v and k not in os.environ:
                 os.environ[k] = v
 
 AGENT = "aegis"
