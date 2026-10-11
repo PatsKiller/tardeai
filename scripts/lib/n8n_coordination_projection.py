@@ -15,6 +15,9 @@ from typing import Any, Optional
 
 NO_CONSUMER_REASON = "read by GET /api/v2/coordination/events (?source=runs for the runs table) in scripts/api_v2.py; no scheduled lane"
 SCHEMA = "N8nCoordinationProjection@v1"
+#: Wave B CC orchestrate lanes — Coordination UI spotlights these receipts first.
+WAVE_B_LANES = ("research-intake", "watch-refresh", "incident-fanin")
+WAVE_B_RUN_LANES = ("n8n-research-intake-consumer", "n8n-incident-fanin")
 STATE_TEXT = {
     "EXPECTED": "waiting for the source to accept",
     "ACCEPTED": "accepted by the gateway, waiting to be claimed",
@@ -39,6 +42,79 @@ def ledger_path(env: Optional[dict] = None) -> Path:
         return Path(explicit)
     root = env.get("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
     return Path(root) / "data" / "governance" / "n8n_coordination_ledger.sqlite"
+
+
+def state_root(env: Optional[dict] = None) -> Path:
+    env = os.environ if env is None else env
+    return Path(env.get("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state"))
+
+
+def _read_json(path: Path) -> Optional[dict[str, Any]]:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def lane_spotlights(env: Optional[dict] = None, *, now: Optional[_dt.datetime] = None) -> list[dict[str, Any]]:
+    """Fail-soft spotlights for Wave B lanes + known host last.json receipts (never invent success)."""
+    now = now or _dt.datetime.now(_dt.timezone.utc)
+    root = state_root(env)
+    out: list[dict[str, Any]] = []
+    # Wave B shadow/apply spotlights written by scripts/lib/n8n_cc_wave_b_emit.py
+    spot = _read_json(root / "data" / "runtime" / "n8n_cc_wave_b" / "spotlights.json")
+    lanes = (spot or {}).get("lanes") if isinstance((spot or {}).get("lanes"), dict) else {}
+    for lane_id in WAVE_B_LANES:
+        entry = lanes.get(lane_id) if isinstance(lanes.get(lane_id), dict) else None
+        if entry:
+            out.append({
+                "lane_id": lane_id, "source": "wave_b_spotlight",
+                "as_of": entry.get("as_of"), "mode": entry.get("mode"),
+                "gateway_state": entry.get("gateway_state"),
+                "idempotency_key": entry.get("idempotency_key"),
+                "event_id": entry.get("event_id"),
+                "summary": _spotlight_summary(lane_id, entry),
+                "age_s": _age_s(entry.get("as_of"), now),
+            })
+    # Host consumer / fan-in last receipts (prove from files, not n8n execution status — W0 RC8)
+    for rel, lane_id in (
+        ("data/runtime/n8n_research_intake_last.json", "n8n-research-intake-consumer"),
+        ("data/runtime/n8n_incident_fanin_last.json", "n8n-incident-fanin"),
+    ):
+        doc = _read_json(root / rel)
+        if not doc:
+            continue
+        as_of = doc.get("ok_at") or doc.get("as_of") or doc.get("finished_at") or doc.get("recorded_at")
+        out.append({
+            "lane_id": lane_id, "source": "host_receipt",
+            "as_of": as_of, "mode": doc.get("mode"),
+            "ok": doc.get("ok"), "summary": _host_receipt_summary(lane_id, doc),
+            "age_s": _age_s(str(as_of) if as_of else None, now),
+            "path": rel,
+        })
+    return out
+
+
+def _spotlight_summary(lane_id: str, entry: dict[str, Any]) -> str:
+    if lane_id == "research-intake":
+        return f"{entry.get('request_type') or '?'} {entry.get('subject') or ''} · {entry.get('gateway_state') or '—'}"
+    if lane_id == "watch-refresh":
+        phase = entry.get("phase") or "?"
+        rid = entry.get("run_id")
+        term = entry.get("terminal_state")
+        return f"run {rid} {phase}" + (f" → {term}" if term else "") + f" · {entry.get('gateway_state') or '—'}"
+    return str(entry.get("gateway_state") or entry.get("idempotency_key") or lane_id)
+
+
+def _host_receipt_summary(lane_id: str, doc: dict[str, Any]) -> str:
+    if lane_id == "n8n-research-intake-consumer":
+        listed = doc.get("listed") if doc.get("listed") is not None else doc.get("count")
+        enq = doc.get("enqueued_today")
+        return f"ok={doc.get('ok')} listed={listed} enqueued_today={enq}"
+    if lane_id == "n8n-incident-fanin":
+        return f"ok={doc.get('ok')} mode={doc.get('mode') or '—'}"
+    return f"ok={doc.get('ok')}"
 
 
 def _age_s(iso: Optional[str], now: _dt.datetime) -> Optional[int]:
@@ -73,7 +149,11 @@ def project(path: Optional[Path] = None, *, lane_id: Optional[str] = None, state
         return project_runs(path, lane_id=lane_id, state=state, limit=limit, now=now)
     now = now or _dt.datetime.now(_dt.timezone.utc)
     p = path or ledger_path()
-    out: dict[str, Any] = {"schema": SCHEMA, "as_of": now.isoformat(), "ledger": str(p), "items": [], "count": 0}
+    out: dict[str, Any] = {
+        "schema": SCHEMA, "as_of": now.isoformat(), "ledger": str(p), "items": [], "count": 0,
+        "wave_b_lanes": list(WAVE_B_LANES), "wave_b_run_lanes": list(WAVE_B_RUN_LANES),
+        "spotlights": lane_spotlights(now=now),
+    }
     if not p.is_file():
         out["status"] = "NO_LEDGER"
         out["note"] = "the coordination gateway has not written a ledger here; nothing is waiting"
@@ -102,15 +182,19 @@ def project(path: Optional[Path] = None, *, lane_id: Optional[str] = None, state
         rec = json.loads(r["receipt_json"])
         key = f"{rec.get('source_project')}:{rec.get('idempotency_key')}"
         st = str(rec.get("state") or "")
+        art = arts.get(key) or rec.get("artifact_ref")
         out["items"].append({
             "event_id": rec.get("event_id"), "lane_id": rec.get("lane_id"), "project": rec.get("source_project"),
+            "idempotency_key": rec.get("idempotency_key"),
             "state": st, "state_text": STATE_TEXT.get(st, st.lower()),
             "reason": rec.get("reason"), "owner": "cron (incumbent); n8n coordinates only",
             "updated_at": r["updated_at"], "age_s": _age_s(r["updated_at"], now),
             "recorded_at": rec.get("recorded_at"), "origin_sha": rec.get("origin_sha"),
-            "artifact": arts.get(key) or rec.get("artifact_ref"),
+            "artifact": art,
+            "artifact_ref": art,  # Coordination UI historically read artifact_ref
             "consumer": rec.get("consumer"), "consumer_receipt_id": rec.get("consumer_receipt_id"),
             "durable": rec.get("durable"), "evidence": f"ledger:{p.name}#{key}",
+            "wave_b": rec.get("lane_id") in WAVE_B_LANES,
         })
     out["count"] = len(out["items"])
     out["status"] = "OK"
