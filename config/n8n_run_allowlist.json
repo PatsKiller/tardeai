@@ -2205,6 +2205,108 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/sec-fundamentals-ingest_last.json"
+    },
+    {
+      "lane_id": "investment-costs",
+      "command": [
+        "$PY",
+        "scripts/investment_costs.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
+      "lock": "/tmp/inv_costs.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/investment-costs_last.json",
+      "source": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1",
+      "env_report_reason": "Shared db_adapter/env_bootstrap and imported research/provider libraries are not fully bounded on this base; shared closure fix belongs to integrator. Own direct loaders copy only declared names. Dry-run exits before those imports/calls."
+    },
+    {
+      "lane_id": "opening-intelligence",
+      "command": [
+        "$PY",
+        "scripts/opening_intelligence.py",
+        "--persist"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "OPENING_MAX_QUOTE_AGE_SEC"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
+      "lock": "/tmp/opening_intel.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/opening-intelligence_last.json",
+      "source": "0 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1"
+    },
+    {
+      "lane_id": "opening-intelligence-render",
+      "command": [
+        "$PY",
+        "scripts/opening_intelligence.py",
+        "--persist",
+        "--render"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "OPENING_MAX_QUOTE_AGE_SEC"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
+      "lock": "/tmp/opening_intel.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/opening-intelligence-render_last.json",
+      "source": "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1"
+    },
+    {
+      "lane_id": "register-analyst-sources",
+      "command": [
+        "$PY",
+        "scripts/register_analyst_sources.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
+      "lock": "/tmp/register-analyst-sources.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/register-analyst-sources_last.json",
+      "source": "40 5 * * * cd $PROJ && $PY scripts/register_analyst_sources.py --apply >> logs/analyst_sources.log 2>&1",
+      "env_report_reason": "Shared db_adapter/env_bootstrap and imported research/provider libraries are not fully bounded on this base; shared closure fix belongs to integrator. Own direct loaders copy only declared names. Dry-run exits before those imports/calls."
     }
   ],
   "blocked_reasons": {

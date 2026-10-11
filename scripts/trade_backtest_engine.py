@@ -5,14 +5,35 @@ Grades entry quality (A-D) and exit quality (A-D) using historical OHLCV from yf
   python3 scripts/trade_backtest_engine.py                       # live: upsert every closed trade
   python3 scripts/trade_backtest_engine.py --dry-run --limit 25  # read-only preview of 25 trades
 
---dry-run selects the trades on a READ ONLY session, backtests them (yfinance reads only) and returns
-BEFORE upsert_result / commit are reachable, printing what it would upsert (AGENTS.md §6). A real run
-writes data/runtime/trade_backtest_engine_last.json (LaneRunReceipt@v1; ok_at only on success) under
-the persistent state root and exits 1 on failure. Per-trade data gaps ('insufficient'/'error') are
+--dry-run CLI (shard03, 2026-10-11) prints an offline limit/action plan before heavy imports,
+credential files, DB or yfinance. The older preview() remains available to explicit library
+callers; it is not the dispatcher CLI. A real run writes data/runtime/trade-backtest-engine_last.json
+(LaneRunReceipt@v1; ok_at only on success) under the persistent state root and exits 1 on failure.
+Per-trade data gaps ('insufficient'/'error') are
 findings in the counts, not a failed run."""
 import os, sys, time, logging
 from datetime import timedelta
 from pathlib import Path
+
+
+def _arguments(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description='Backtest closed trades into trade_backtest_results.',
+                                     allow_abbrev=False)
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--limit', type=int, default=None)
+    return parser.parse_args(argv)
+
+
+def _plan(args):
+    print(f"DRY-RUN trade-backtest-engine: would select closed trades (limit={args.limit}); "
+          "fetch historical bars, reconstruct entry/exit context, upsert trade_backtest_results "
+          "and write the live receipt; no DB, credential file or provider request")
+
+
+if __name__ == '__main__' and _arguments().dry_run:
+    _plan(_arguments())
+    raise SystemExit(0)
 
 sys.path.insert(0, str(Path(__file__).parent))
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,7 +41,7 @@ ROOT = Path(__file__).resolve().parent.parent
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
-RECEIPT_NAME = 'trade_backtest_engine'
+RECEIPT_NAME = 'trade-backtest-engine'
 
 if (ROOT / '.env').exists():  # absent in a bare checkout/test tree; the served release symlinks it
     # DB_* only (AGENTS.md §23.18): never copy the whole env file, which also carries broker credentials.
@@ -29,6 +50,16 @@ if (ROOT / '.env').exists():  # absent in a bare checkout/test tree; the served 
             k, v = line.split('=', 1)
             if k.strip().startswith('DB_'):
                 os.environ.setdefault(k.strip(), v.strip())
+_ENV_KEYS = frozenset({'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'})
+
+
+def _load_env():
+    if (ROOT / '.env').exists():
+        for line in (ROOT / '.env').read_text().splitlines():
+            if '=' in line and not line.startswith('#'):
+                key, value = line.split('=', 1)
+                if key.strip() in _ENV_KEYS:
+                    os.environ.setdefault(key.strip(), value.strip())
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -46,7 +77,14 @@ DB_CONFIG = {
 
 
 def get_db():
-    return psycopg2.connect(**DB_CONFIG)
+    _load_env()
+    config = dict(DB_CONFIG)
+    config.update(host=os.getenv('DB_HOST', config['host']),
+                  port=int(os.getenv('DB_PORT', config['port'])),
+                  dbname=os.getenv('DB_NAME', config['dbname']),
+                  user=os.getenv('DB_USER', config['user']),
+                  password=os.getenv('DB_PASSWORD', config['password']))
+    return psycopg2.connect(**config)
 
 
 def compute_rsi(closes, period=14):
@@ -517,15 +555,9 @@ def print_summary():
 
 
 def main(argv=None):
-    import argparse
-    import json
-
-    ap = argparse.ArgumentParser(description='Backtest closed trades into trade_backtest_results.')
-    ap.add_argument("--dry-run", action="store_true", help='read-only preview; writes nothing')
-    ap.add_argument("--limit", type=int, default=None, help='only the first N trades (default: all)')
-    args = ap.parse_args(argv)
+    args = _arguments(argv)
     if args.dry_run:
-        print(json.dumps(preview(limit=args.limit), indent=2, default=str))
+        _plan(args)
         return 0
     from lib.lane_last_receipt import now_iso, write_receipt
 
@@ -534,10 +566,10 @@ def main(argv=None):
         counts = run_all(limit=args.limit)
         print_summary()
     except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
-        write_receipt(RECEIPT_NAME, ok=False, error=f'{type(exc).__name__}: {exc}', started_at=started)
+        write_receipt(RECEIPT_NAME, ok=False, exit_code=1, error=f'{type(exc).__name__}: {exc}', started_at=started)
         log.error(f'backtest FAILED: {type(exc).__name__}: {exc}')
         return 1
-    write_receipt(RECEIPT_NAME, ok=True, summary={'counts': counts, 'trades': sum(counts.values())},
+    write_receipt(RECEIPT_NAME, ok=True, exit_code=0, summary={'counts': counts, 'trades': sum(counts.values())},
                   started_at=started)
     return 0
 

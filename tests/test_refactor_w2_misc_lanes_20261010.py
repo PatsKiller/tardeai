@@ -148,7 +148,7 @@ def test_backtest_dry_run_never_upserts(monkeypatch):
     assert len(conns) == 1 and ("set_session", {"readonly": True}) in conns[0].log
     assert conns[0].writes() == [] and ("commit",) not in conns[0].log
     assert tbe.main(["--dry-run", "--limit", "2"]) == 0
-    assert not llr.receipt_path("trade_backtest_engine").exists()
+    assert not llr.receipt_path("trade-backtest-engine").exists()
 
 
 def test_backtest_preview_source_never_names_the_writer():
@@ -160,7 +160,7 @@ def test_backtest_receipt_and_exit(monkeypatch):
     monkeypatch.setattr(tbe, "run_all", lambda limit=None: {"full": 2, "partial": 0, "insufficient": 1, "error": 1})
     monkeypatch.setattr(tbe, "print_summary", lambda: None)
     assert tbe.main([]) == 0  # per-trade data gaps are findings
-    r = _receipt("trade_backtest_engine")
+    r = _receipt("trade-backtest-engine")
     assert r["status"] == "ok" and r["summary"]["trades"] == 4
 
     def boom(limit=None):
@@ -168,7 +168,7 @@ def test_backtest_receipt_and_exit(monkeypatch):
 
     monkeypatch.setattr(tbe, "run_all", boom)
     assert tbe.main([]) == 1
-    r2 = _receipt("trade_backtest_engine")
+    r2 = _receipt("trade-backtest-engine")
     assert r2["status"] == "failed" and r2["ok_at"] == r["ok_at"]
 
 

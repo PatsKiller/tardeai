@@ -71,3 +71,11 @@ land with the next builder run (`n8nmat/cron-inventory-*`).
 
 Procedure for any n8n change that this log records: `../N8N_ONBOARDING_STANDARD.md`; configuration reference:
 `../N8N_CONFIGURATION.md`.
+
+
+## 2026-10-11 — refactor shard 03 (source only)
+
+Eight proposed shadow rows; 12 blockers, 9 sender skips, 6 broker/safety-family skips and 2
+class skips. No host scheduler changes. All new contracts DRAFT. The per-lane report is
+[REFACTOR_SHARD_03_20261011.md](../REFACTOR_SHARD_03_20261011.md); inventory overlay
+`refactor/inventory_rows_03.tsv`. Only the integrator rebuilds the workbook and optionally syncs Drive.

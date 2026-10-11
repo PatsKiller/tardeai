@@ -12,6 +12,10 @@ options_fill_evidence (option commissions/fees), fund_expense_rate_history
 (operator/feed-filled rates; missing rate = visible gap, never a guess).
 Reconciliation (P14) is INDEPENDENT: normalized events re-summed against raw
 ledger totals and option outcome fees — not against themselves.
+
+Shard03: --dry-run prints an offline action plan. Real runs retain the existing
+financial normalization/stdout and record count-only LaneRunReceipt@v1. Exceptions preserve
+ok_at; failed reconciliation/accrual findings do not advance ok_at even with legacy exit 0.
 """
 from __future__ import annotations
 
@@ -331,11 +335,44 @@ def costs_reconciliation(cur, query: dict | None = None) -> dict:
     return {"checks": out, "all_ok": all(c["ok"] for c in out)}
 
 
-if __name__ == "__main__":
+def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description="Normalize and reconcile the advisory investment-cost ledger",
+                                     allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print("DRY-RUN investment-costs: would ensure investment_cost_events, normalize existing fees, "
+              "accrue fund expense estimates and report reconciliation; write the live receipt; "
+              "no DB, credential file, broker call or file write")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
     from db_adapter import _get_conn
-    conn = _get_conn(); cur = conn.cursor()
-    ensure_cost_tables(cur, conn)
-    print("cost tables ensured")
-    print(ingest_actual_fees(cur, conn))
-    print(accrue_fund_expenses(cur, conn))
-    print(json.dumps(costs_reconciliation(cur), indent=1))
+    started = now_iso()
+    try:
+        conn = _get_conn(); cur = conn.cursor()
+        ensure_cost_tables(cur, conn)
+        print("cost tables ensured")
+        fees = ingest_actual_fees(cur, conn)
+        print(fees)
+        accruals = accrue_fund_expenses(cur, conn)
+        print(accruals)
+        reconciliation = costs_reconciliation(cur)
+        print(json.dumps(reconciliation, indent=1))
+    except Exception as exc:
+        write_lane_receipt("investment-costs", ok=False, exit_code=1, started_at=started,
+                           error=type(exc).__name__)
+        raise
+    write_lane_receipt("investment-costs", ok=not accruals.get("error") and bool(reconciliation.get("all_ok")),
+                       exit_code=0, started_at=started,
+                       summary={"ingested_new": fees.get("ingested_new"),
+                                "accrued_rows": accruals.get("accrued_rows"),
+                                "missing_rate_count": len(accruals.get("missing_expense_ratio", [])),
+                                "stale_rate_count": len(accruals.get("stale_rates", [])),
+                                "reconciliation_checks": len(reconciliation.get("checks", [])),
+                                "reconciliation_ok": reconciliation.get("all_ok")})
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

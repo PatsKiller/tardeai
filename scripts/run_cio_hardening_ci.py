@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
     (
         "options_workflow",
         [

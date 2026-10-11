@@ -10,6 +10,9 @@ credibility-seeded `analyst` sources so they're weighted and yield-tracked by th
 
 Anchored on Yahoo consensus (authoritative); these add public analyst *commentary/ratings* breadth.
 Idempotent: upserts by source_url. Re-runnable from cron to keep them pinned active.
+
+Shard03: explicit --dry-run prints an offline plan; --apply retains its existing
+source definitions/business calls and records LaneRunReceipt@v1. Exceptions preserve ok_at.
 """
 from __future__ import annotations
 
@@ -54,14 +57,29 @@ def register(apply: bool) -> dict:
     return {"added": added, "updated": updated}
 
 
-def main() -> int:
+def main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write to research_sources (default dry-run)")
-    a = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        print(f"DRY-RUN register-analyst-sources: would upsert {len(ANALYST_SOURCES)} existing "
+              "analyst aggregators into research_sources with --apply; no DB or receipt writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
     print(f"[analyst-sources] registering {len(ANALYST_SOURCES)} analyst aggregators (apply={a.apply})")
-    res = register(a.apply)
+    try:
+        res = register(a.apply)
+    except Exception as exc:
+        write_lane_receipt("register-analyst-sources", ok=False, exit_code=1,
+                           started_at=started, error=type(exc).__name__)
+        raise
     print(f"[analyst-sources] {'APPLIED' if a.apply else 'DRY'} — {res}")
+    if a.apply:
+        write_lane_receipt("register-analyst-sources", ok=True, exit_code=0,
+                           started_at=started, summary=res)
     return 0
 
 

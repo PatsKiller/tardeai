@@ -7,11 +7,11 @@ YTD = price return (year-start close → latest close). Yield = trailing dividen
 Read-only re: trading. Bounded + polite. --symbols X,Y to target; default = all etf/fund/inverse_etf on
 symbol_profiles. Cron weekly alongside classify_instruments/etf_analyst.
 
-Lane ``etf-performance-enrich`` (cron L520). ``--dry-run`` (and the older ``--no-fetch``, now the same thing)
-opens a READ ONLY session and runs only SELECTs: the target symbols and whether the four performance
-columns exist. It returns before the per-run ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` (which
-``--no-fetch`` used to execute and commit: a "no-op" that ran DDL), before any yfinance request and before
-any symbol_profiles write. Moving the DDL to a migration is a follow-up. No receipt.
+Lane ``etf-performance-enrich`` (cron L520). ``--dry-run`` and the older ``--no-fetch``
+now print an offline plan before any DB, credential loader, DDL, provider or profile writer.
+Unknown/abbreviated flags exit 2. preview() remains the older explicit READ ONLY SELECT preview
+for library callers. The dispatch CLI does not open the live DB to prove a plan. Own env loading
+is name-bounded and delayed until a real run; the db_adapter shared loader remains separate.
 
 A real run writes ``<state_root>/data/runtime/etf-performance-enrich_last.json`` (LaneRunReceipt@v1;
 ``ok_at`` only on success). Exit codes: 0 = ran (some symbols without data, or zero target symbols, are
@@ -19,6 +19,8 @@ findings); 1 = the run failed: crash / DB unavailable (failed receipt, exception
 were attempted and every one raised or came back with no YTD, yield or dividend value (nothing could be
 fetched when work existed); 2 = usage error.
 """
+import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -31,8 +33,39 @@ if not __import__("os").getenv("DB_PASSWORD") and (ROOT / ".env").exists():
         _k, _sep, _v = _line.strip().partition("=")
         if _sep and _k.strip().startswith("DB_") and not _line.strip().startswith("#"):
             __import__("os").environ.setdefault(_k.strip(), _v.strip().strip("'\""))
-from db_adapter import _get_conn
-from lib.writers.symbol_profiles_writer import upsert_profile
+
+
+def _arguments(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--no-fetch", action="store_true")
+    parser.add_argument("--symbols")
+    return parser.parse_args(argv)
+
+
+def _get_conn():
+    """db_adapter is imported here, after the DB_*-only loader above, so a dry run or usage error never loads it."""
+    from db_adapter import _get_conn as connect
+    return connect()
+
+
+def upsert_profile(*args, **kwargs):
+    from lib.writers.symbol_profiles_writer import upsert_profile as write
+    return write(*args, **kwargs)
+
+
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
+
+
+def _load_env():
+    if not os.getenv("DB_PASSWORD"):
+        try:
+            from dotenv import dotenv_values
+            for key, value in dotenv_values(ROOT / ".env").items():
+                if key in _ENV_KEYS and value is not None:
+                    os.environ.setdefault(key, value)
+        except Exception:
+            pass
 
 LANE_ID = "etf-performance-enrich"
 SYMBOL_CAP = 300
@@ -141,28 +174,16 @@ def run_failed(res: dict) -> bool:
     return res["attempted"] > 0 and (res["errors"] + res["empty"]) >= res["attempted"]
 
 
-def parse_args(argv):
-    """Strict flags: an unknown or misspelled flag (e.g. ``--dryrun``) exits 2 instead of running live."""
-    import argparse
-    ap = argparse.ArgumentParser(description="ETF/fund YTD, yield and TTM dividend from yfinance into symbol_profiles",
-                                 allow_abbrev=False)
-    ap.add_argument("--dry-run", action="store_true", help="READ ONLY preview: no DDL, no fetch, no write, no receipt")
-    ap.add_argument("--no-fetch", action="store_true", help="older alias of --dry-run")
-    ap.add_argument("--symbols", default=None, help="comma list to target (default: every etf/fund/inverse_etf)")
-    return ap.parse_args(argv)
-
-
 def main(argv=None) -> int:
-    args = parse_args(sys.argv[1:] if argv is None else argv)
+    args = _arguments(argv)
     lr = _receipt_lib()
     if args.dry_run or args.no_fetch:
-        # Structural (AGENTS.md §6): enrich() -- DDL, yfinance, upserts -- is not reachable from this branch.
-        plan = preview()
-        lr.dry_run_report(
-            LANE_ID, plan,
-            would_write=([] if not plan["would_run_ddl"] else ["ALTER TABLE symbol_profiles ADD COLUMN (perf cols)"])
-            + [f"symbol_profiles ytd_return_pct/dividend_yield_pct/ttm_dividend (<= {plan['would_fetch']} rows)"])
+        target = args.symbols or "ETF/fund/inverse_etf symbols from symbol_profiles"
+        print(f"DRY-RUN {LANE_ID}: would select {target}; fetch at most {SYMBOL_CAP} symbols; "
+              "ensure performance columns, persist through the symbol_profiles writer and write a live receipt; "
+              "no DB, credential file or network opened")
         return 0
+    _load_env()
     started = lr.now_iso()
     try:
         res = enrich()

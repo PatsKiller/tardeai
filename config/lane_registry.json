@@ -8122,15 +8122,17 @@
         "match": "scripts/opening_intelligence.py --persist >>",
         "schedules": [
           "0 7 * * 1-5"
-        ]
+        ],
+        "stage": "shadow",
+        "wave": "R2-03",
+        "command_text": "0 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist >> logs/opening_intelligence.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/opening_intelligence/latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+        "kind": "json_key",
+        "path": "data/runtime/opening-intelligence_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -8169,7 +8171,19 @@
         "stage": "premarket",
         "step_id": "opening_intelligence",
         "on": "2026-10-11"
-      }
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 7 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 3,
+        "retry_policy": "none"
+      },
+      "refactor_source_note": "R2-03 source preparation only; live cron ownership unchanged. Dry CLI is an offline plan, not runtime output/consumer proof; contract remains DRAFT."
     },
     {
       "lane_id": "opening-intelligence-render",
@@ -8177,15 +8191,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "15 9 * * 1-5",
-        "match": "scripts/opening_intelligence.py --persist --render"
+        "match": "scripts/opening_intelligence.py --persist --render",
+        "stage": "shadow",
+        "wave": "R2-03",
+        "command_text": "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/opening_intelligence/latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+        "kind": "json_key",
+        "path": "data/runtime/opening-intelligence-render_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -8206,7 +8222,19 @@
       },
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "15 9 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 3,
+        "retry_policy": "none"
+      },
+      "refactor_source_note": "R2-03 source preparation only; live cron ownership unchanged. Dry CLI is an offline plan, not runtime output/consumer proof; contract remains DRAFT."
     },
     {
       "lane_id": "hermes-research-agenda-at-45-7",
@@ -13489,14 +13517,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 5 * * *",
-        "match": "scripts/register_analyst_sources.py"
+        "match": "scripts/register_analyst_sources.py",
+        "stage": "shadow",
+        "wave": "R2-03",
+        "command_text": "40 5 * * * cd $PROJ && $PY scripts/register_analyst_sources.py --apply >> logs/analyst_sources.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/analyst_sources.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/register-analyst-sources_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P03",
@@ -13524,7 +13555,19 @@
         "stage": "premarket",
         "step_id": "register_analyst_sources",
         "on": "2026-10-11"
-      }
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "40 5 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 3,
+        "retry_policy": "none"
+      },
+      "refactor_source_note": "R2-03 source preparation only; live cron ownership unchanged. Dry CLI is an offline plan, not runtime output/consumer proof; contract remains DRAFT."
     },
     {
       "lane_id": "overnight-batch-outcomes",
@@ -19918,14 +19961,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "5 17 * * 1-5",
-        "match": "scripts/investment_costs.py\""
+        "match": "scripts/investment_costs.py\"",
+        "stage": "shadow",
+        "wave": "R2-03",
+        "command_text": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/investment_costs.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/investment-costs_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
@@ -19942,7 +19988,19 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 17 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 3,
+        "retry_policy": "none"
+      },
+      "refactor_source_note": "R2-03 source preparation only; live cron ownership unchanged. Dry CLI is an offline plan, not runtime output/consumer proof; contract remains DRAFT."
     },
     {
       "lane_id": "schwab-econfirm-reconcile",
