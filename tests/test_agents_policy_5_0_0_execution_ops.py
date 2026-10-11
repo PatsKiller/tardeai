@@ -214,7 +214,9 @@ def test_remote_approval_does_not_forbid_the_scope_and_its_ceiling_is_at_least_6
 def test_24_10_permitted_actions_are_the_operator_list_and_nothing_else():
     f = _flat(_s2410())
     for frag in ("`journalctl --user -u <unit>`", "readlink /proc/<MainPID>/cwd", "Never `Environment`",
-                 "`95-code-root-current.conf`", "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT",
+                 # Host prefix elided on purpose (scripts/check_test_host_paths.py, baseline 0): the
+                 # suffix still pins the operator release root named in §24.10.
+                 "`95-code-root-current.conf`", "/trade-ai-releases/portfolio-server/CURRENT",
                  "archived by rename", "never deleted", "`systemctl --user daemon-reload` chained with that unit's restart",
                  "`systemctl --user restart <unit>`", "under the operator's home", "stays operator-only",
                  "/etc/tardeai/enable-active-trader-motion"):
