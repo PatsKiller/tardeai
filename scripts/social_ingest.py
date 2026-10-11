@@ -647,7 +647,10 @@ def _scalp_hot_main(argv: list, now=None) -> int:
 
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    _cli_parser().parse_args(argv)  # reject unknown/abbreviated flags before work
+    try:
+        _cli_parser().parse_args(argv)  # reject unknown/abbreviated flags before work
+    except SystemExit as exc:  # library callers get the usage exit code (2), as before (refactor W3 contract)
+        return exc.code if isinstance(exc.code, int) else 2
     source = "stocktwits"
     symbols = []
 

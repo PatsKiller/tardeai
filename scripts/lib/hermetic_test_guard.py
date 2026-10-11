@@ -368,6 +368,12 @@ def install(*, home: str | None = None) -> dict:
                 os.environ[var] = str(target)
         # HOME is the root of most host state (~/trade-ai-releases, ~/.config/systemd, ~/.cursor grants,
         # ~/.pgpass): point it at an empty fixture home, as on a CI runner. Git keeps a fixture identity.
+        # Child interpreters keep the real user site-packages (code, not host state): on a host where pytest is a
+        # --user install (~/.local), a child `python -m pytest` would otherwise fail to import (train 4, 2026-10-11).
+        if not os.environ.get("PYTHONUSERBASE"):
+            import site
+
+            os.environ["PYTHONUSERBASE"] = site.getuserbase()
         os.environ["HOME"] = str(fake_home)
         # The rendered secrets live under $XDG_RUNTIME_DIR/tradeai (scripts/secrets/resolve_secret.py and friends).
         if _RUNTIME_ENV_RE.match(_norm(os.path.join(xdg or "/nonexistent", "tradeai"))):
