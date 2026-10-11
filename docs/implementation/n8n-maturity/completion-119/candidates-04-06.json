@@ -24,7 +24,7 @@
       },
       "source_script": "scripts/cio_reactive_cycle.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -96,7 +96,7 @@
       },
       "source_script": "linux_launchers/run_provider_cost_daily.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -162,7 +162,7 @@
       },
       "source_script": "scripts/eod_consolidated_close_sync.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -302,7 +302,7 @@
       },
       "source_script": "scripts/gir_projector.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -421,7 +421,7 @@
       },
       "source_script": "scripts/watch_decision_scheduler.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -498,7 +498,7 @@
       },
       "source_script": "scripts/run_goal_pilot_material_change.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
@@ -528,7 +528,7 @@
       },
       "source_script": "scripts/agent_intelligence_cron.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -558,7 +558,7 @@
       },
       "source_script": "scripts/agent_intelligence_cron.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -588,7 +588,7 @@
       },
       "source_script": "scripts/agent_intelligence_cron.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -618,7 +618,7 @@
       },
       "source_script": "scripts/generate_analyst_reports_autonomous.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
@@ -648,7 +648,7 @@
       },
       "source_script": "scripts/generate_analyst_reports_autonomous.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
@@ -677,7 +677,7 @@
       },
       "source_script": "scripts/hermes_backlog_health_check.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -720,7 +720,7 @@
       },
       "source_script": "scripts/hermes_coordinator.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -1287,7 +1287,7 @@
       },
       "source_script": "scripts/material_change_detector.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -1315,7 +1315,7 @@
       },
       "source_script": "scripts/run_free_first_circulation.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output.",
@@ -1419,7 +1419,7 @@
       },
       "source_script": "scripts/hermes_deep_research_local.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked.",
@@ -1787,7 +1787,7 @@
       },
       "source_script": "scripts/drain_cio_stance_classification.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -1817,7 +1817,7 @@
       },
       "source_script": "scripts/run_dormant_lane_consumers.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -1847,7 +1847,7 @@
       },
       "source_script": "linux_launchers/run_inference_cycle.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -1877,7 +1877,7 @@
       },
       "source_script": "linux_launchers/run_inference_cycle.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -1907,7 +1907,7 @@
       },
       "source_script": "linux_launchers/run_inference_cycle.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -2251,7 +2251,7 @@
       },
       "source_script": "scripts/build_symbol_profiles.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -2524,7 +2524,7 @@
       },
       "source_script": "scripts/drain_discovery_backlog.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -2804,7 +2804,7 @@
       },
       "source_script": "scripts/finviz_sector_research.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -2833,7 +2833,7 @@
       },
       "source_script": "scripts/generate_analyst_daily_digest.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain."
       ],
@@ -2862,7 +2862,7 @@
       },
       "source_script": "scripts/hermes_analyst_coverage.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
@@ -2921,7 +2921,7 @@
       },
       "source_script": "scripts/hermes_source_curation.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
@@ -2955,7 +2955,7 @@
       },
       "source_script": "scripts/run_research_intelligence_overnight.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -2985,7 +2985,7 @@
       },
       "source_script": "scripts/run_research_intelligence_overnight.sh",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -3015,7 +3015,7 @@
       },
       "source_script": "scripts/siem_to_hermes_backlog.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain."
       ],
@@ -3303,7 +3303,7 @@
       },
       "source_script": "scripts/sweep_commitment_outcomes.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -3332,7 +3332,7 @@
       },
       "source_script": "scripts/wire_advisory_lessons.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output."
@@ -3361,7 +3361,7 @@
       },
       "source_script": "scripts/enqueue_holdings_agent_opinions.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -3432,7 +3432,7 @@
       },
       "source_script": "scripts/aec_command_center_cycle.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Child receipts/env/import ownership still needed for full closure; wrapper invocation proof does not prove every child output.",
@@ -3811,7 +3811,7 @@
       },
       "source_script": "scripts/finviz_market_movers.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -3839,7 +3839,7 @@
       },
       "source_script": "scripts/hermes_autonomous_librarian_backlog_loop.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Timer-native scheduler admission design requires ratification, exact host unit evidence and calendar/DST/lock proof."
@@ -3916,7 +3916,7 @@
       },
       "source_script": "scripts/llm_intelligence_enrichment.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
@@ -3946,7 +3946,7 @@
       },
       "source_script": "scripts/llm_intelligence_enrichment.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Current exact argv/lock and env closure must be verified before admission; DRAFT review and accepted integrated CI remain.",
         "Existing model/process owner must supply reviewed server-approved route and prompt egress proof; no provider/model selected or invoked."
@@ -4237,7 +4237,7 @@
       },
       "source_script": "scripts/proposal_backtest_engine.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -4499,7 +4499,7 @@
       },
       "source_script": "scripts/social_ingest.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -4760,7 +4760,7 @@
       },
       "source_script": "scripts/trade_thesis_review_engine.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -5025,7 +5025,7 @@
       },
       "source_script": "scripts/write_instrument_beliefs.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -5296,7 +5296,7 @@
       },
       "source_script": "scripts/sec_filings_feed.py",
       "implemented_source": true,
-      "validation": "PENDING_HARDENED_LAUNCHER",
+      "validation": "TARGETED_ISOLATED_PASS_INTEGRATED_CI_PENDING",
       "remaining": [
         "Operator contract review, current scheduler argv/lock proof, env import-closure enforcement, integrated full CI, separately authorized runtime ladder."
       ],
@@ -5332,5 +5332,15 @@
       "detail": "production path /run/user/1000/tradeai/env",
       "resolution": "Stopped; root hermetic bootstrap prerequisite remains."
     }
-  ]
+  ],
+  "worktree_base_sha": "65337da5366b469c8478b198187201bd37671bc2",
+  "validated_source_head": "9356f8a62ec7e320e5556e1401b6123322c6d737",
+  "validation": {
+    "evidence_class": "TEST_ONLY",
+    "targeted_tests": 227,
+    "existing_regressions": 106,
+    "refusals": [],
+    "full_integrated_pr_profile": "PENDING_ROOT",
+    "runtime": "NOT_MEASURED"
+  }
 }
