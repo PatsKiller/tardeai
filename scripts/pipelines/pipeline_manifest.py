@@ -64,6 +64,20 @@ FORBIDDEN_COMMAND_TOKENS = (
 LLM_WRAPPERS = ("run_with_deepseek_offpeak.sh", "llm_priority_guard.sh")
 
 REQUIRED_STEP_KEYS = ("id", "cron_line", "command", "timeout")
+
+# ── per-step environment (2026-10-10, operator "Yes" ~19:45 ET: fix the runner's whole-.env sourcing) ──────────
+# A step must see exactly the environment its cron line had, never the runner's. Debian cron 3.0pl1 builds a
+# job's environment from PAM (pam_env: /etc/environment, /etc/default/locale), then the cron defaults (HOME,
+# LOGNAME, SHELL, PATH=/usr/bin:/bin) and the crontab's own NAME=value lines that PRECEDE the entry (vixie cron
+# copies the environment at parse time, so an assignment applies only to the lines below it). Anything else a
+# step needs (an inline VAR=..., `set -a; . ./.env`, a wrapper that sources a file) is in its verbatim command.
+#: names cron itself gives every job on this host (values come from the runner's own cron-launched environment)
+CRON_BASE_ENV = ("HOME", "LANG", "LOGNAME", "PATH", "SHELL")
+#: variables bash adds by itself in both worlds (cron's /bin/bash -c and the runner's bash -c); never compared
+SHELL_ADDED_ENV = ("PWD", "OLDPWD", "SHLVL", "_")
+#: name prefixes that must never reach a step whose own cron line did not put them there (§0 rail 2)
+BROKER_ENV_PREFIXES = ("ALPACA", "SCHWAB", "SNAPTRADE", "MOOMOO", "IBKR", "TASTY", "ROBINHOOD", "ETRADE", "TRADIER")
+ENV_NAME_RE = r"^[A-Za-z_][A-Za-z0-9_]*$"
 TIMEOUT_UNITS = {"": 1, "s": 1, "m": 60, "h": 3600}
 
 
@@ -131,10 +145,44 @@ def validate(manifest: dict) -> list[str]:
                 timeout_seconds(st.get("timeout", ""))
             except ValueError as e:
                 errs.append(f"{where}: {e}")
+            errs.extend(f"{where}: {e}" for e in validate_env_spec(st.get("env")))
             dow = st.get("dow")
             if dow is not None and (not isinstance(dow, list) or not all(isinstance(d, int) and 0 <= d <= 6 for d in dow)):
                 errs.append(f"{where}: dow must be a list of ints 0-6 (cron Sunday=0)")
     return errs
+
+
+def validate_env_spec(spec) -> list[str]:
+    """Problems with a step's `env` block (None == absent, which the runner treats as the cron base only)."""
+    import re
+    if spec is None:
+        return []
+    if not isinstance(spec, dict) or spec.get("inherit") != "cron":
+        return ["env must be an object with inherit: cron"]
+    errs = []
+    for key in ("cron_base", "crontab_vars", "inline", "sources", "wrappers"):
+        v = spec.get(key, [])
+        if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+            errs.append(f"env.{key} must be a list of strings")
+    for key in ("cron_base", "crontab_vars", "inline"):
+        for n in spec.get(key) or []:
+            if not re.match(ENV_NAME_RE, n):
+                errs.append(f"env.{key}: bad name {n!r}")
+    for n in (spec.get("crontab_vars") or []) + (spec.get("cron_base") or []):
+        if any(n.upper().startswith(p) for p in BROKER_ENV_PREFIXES):
+            errs.append(f"env passes broker name {n} from the runner; only the step's own command may source it")
+    return errs
+
+
+def step_env_names(st: dict) -> list[str]:
+    """The names the runner hands a step (before bash adds SHELL_ADDED_ENV), in order."""
+    # no env block: the cron base plus PROJ, which the runner's own `cd "$PROJ" && <command>` needs
+    spec = st.get("env") or {"inherit": "cron", "cron_base": list(CRON_BASE_ENV), "crontab_vars": ["PROJ"]}
+    out: list[str] = []
+    for n in list(spec.get("cron_base") or []) + list(spec.get("crontab_vars") or []):
+        if n not in out:
+            out.append(n)
+    return out
 
 
 def stage_steps(manifest: dict, stage: str) -> list[dict]:
@@ -145,13 +193,13 @@ def stage_steps(manifest: dict, stage: str) -> list[dict]:
 
 
 def plan_records(manifest: dict, stage: str) -> list[str]:
-    """One SEP-delimited record per step: id, cron_line, timeout_s, dow-csv, log, command."""
+    """One SEP-delimited record per step: id, cron_line, timeout_s, dow-csv, log, env-names-csv, command."""
     out = []
     for st in stage_steps(manifest, stage):
         dow = ",".join(str(d) for d in st["dow"]) if st.get("dow") else "*"
         out.append(SEP.join([
             str(st["id"]), str(st["cron_line"]), str(timeout_seconds(st["timeout"])), dow,
-            str(st.get("log") or ""), str(st["command"]).replace("\n", " "),
+            str(st.get("log") or ""), ",".join(step_env_names(st)), str(st["command"]).replace("\n", " "),
         ]))
     return out
 

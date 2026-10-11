@@ -32,7 +32,8 @@ def test_web_search_backup_is_searxng_then_tavily():
 
 
 def test_catalyst_news_backup_is_yahoo_then_the_search_chain():
-    assert dsa.resolve_backup("catalyst_news") == ["yahoo", "brave", "searxng"]
+    # + alpha_vantage (B2, operator 2026-10-10 "Yes, from one to six"): supply tag news_feed answers catalyst_news.
+    assert dsa.resolve_backup("catalyst_news") == ["yahoo", "brave", "searxng", "alpha_vantage"]
 
 
 def test_web_search_spill_reasons():
@@ -123,7 +124,7 @@ def test_with_the_proposed_phase5_patch_the_live_chains_still_resolve():
         elif op["op"] == "set_provider_field":
             reg["providers"][op["provider"]][op["field"]] = op["value"]
     assert dsa.resolve_backup("web_search", registry=reg) == ["searxng", "tavily"]
-    assert dsa.resolve_backup("catalyst_news", registry=reg) == ["yahoo", "brave", "searxng"]
+    assert dsa.resolve_backup("catalyst_news", registry=reg) == ["yahoo", "brave", "searxng", "alpha_vantage"]
     assert dsa.resolve_backup("analyst_opinion", registry=reg) == ["yfinance_on_demand"]
 
 
@@ -131,7 +132,7 @@ def test_with_the_proposed_phase5_patch_the_live_chains_still_resolve():
 
 
 def test_provider_budget_reads_only_declared_keys():
-    assert dsa.provider_budget("brave") == {"daily": 120, "monthly": 1500}
+    assert dsa.provider_budget("brave") == {"daily": 300, "monthly": 3600}  # operator 2026-10-10 "Yes, from one to six" (item 3)
     assert dsa.provider_budget("searxng") == {"daily": 10000, "monthly": 300000}
     assert dsa.provider_budget("not_a_provider") == {}
     reg = _reg([], {"x": {"budget": {"daily": "12", "monthly": "abc"}}})

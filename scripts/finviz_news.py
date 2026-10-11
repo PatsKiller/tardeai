@@ -29,6 +29,11 @@ from typing import Optional
 import requests
 from dotenv import load_dotenv
 
+try:  # GAP 14: the one shared ticker check before any provider call
+    from lib.provider_ticker_guard import classify as _ticker_classify
+except ImportError:  # imported as scripts.finviz_news
+    from scripts.lib.provider_ticker_guard import classify as _ticker_classify
+
 load_dotenv()
 log = logging.getLogger(__name__)
 
@@ -130,6 +135,11 @@ def fetch_finviz_news(
         return []
 
     ticker = ticker.upper().strip()
+    # GAP 14 (2026-10-10): a CUSIP / ISIN / non-ticker never costs a Finviz request.
+    ok, reason = _ticker_classify(ticker, "finviz")
+    if not ok:
+        log.warning("[finviz_news] %r refused before any request: %s", ticker, reason)
+        return []
 
     # ── Cache check ───────────────────────────────────────────────────────────
     cache_key = f"{ticker}:{lookback_hours}"

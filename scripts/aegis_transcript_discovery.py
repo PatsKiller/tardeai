@@ -54,8 +54,28 @@ RUN_ID = f"aegis-transcript-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 BRAVE_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
 LANE_ID = "aegis-transcript-discovery"
 
+def _routing_on() -> bool:
+    try:
+        from scripts.lib.search_router import engine_enabled
+    except ImportError:
+        from lib.search_router import engine_enabled  # type: ignore
+    return engine_enabled()
+
+
 def _governed_brave_web(query: str, *, count: int = 3, freshness: str = "pw"):
-    """Lane C chokepoint — no direct Brave HTTP from this module."""
+    """Lane C chokepoint — no direct Brave HTTP from this module.
+
+    With SEARCH_ROUTING_ENGINE=1 the question goes to the search routing engine instead (class
+    transcript_discovery: cache + SearXNG with named engines, free only by policy, 2026-10-10)."""
+    if _routing_on():
+        try:
+            from scripts.lib.search_router import route_query
+        except ImportError:
+            from lib.search_router import route_query  # type: ignore
+        resp = route_query(query, caller="aegis_transcript_discovery", kind="web", count=count, enabled=True)
+        if resp.ok:
+            return list(resp.results or []), "OK"
+        return ([], resp.reason) if str(resp.reason).startswith("NO_COVERAGE") else (None, resp.reason)
     try:
         from scripts.lib.brave_router import search as _governed, router_enabled
     except ImportError:
@@ -240,7 +260,7 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1, netwo
         print("  [youtube] youtube_transcript_api not available — using DB/article fallback only")
         return records
 
-    if not BRAVE_KEY:
+    if not BRAVE_KEY and not _routing_on():
         print("  [youtube] No Brave key — skipping live YouTube discovery (DB path retained)")
         return records
 
@@ -332,7 +352,7 @@ def fetch_brave_discovery(symbols: list[str], themes: list[dict]) -> list[dict]:
     if os.getenv("AEGIS_BRAVE_ENABLED", "0").lower() not in ("1", "true", "yes"):
         print("  [brave-disc] retired default — set AEGIS_BRAVE_ENABLED=1 to re-enable")
         return []
-    if not BRAVE_KEY:
+    if not BRAVE_KEY and not _routing_on():
         print("  [brave-disc] No Brave key — skipping live discovery")
         return []
 

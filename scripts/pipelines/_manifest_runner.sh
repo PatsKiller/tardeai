@@ -40,6 +40,44 @@ _mr_resolve_py() {
   command -v python3
 }
 
+# The environment cron gave THIS runner, captured before anything here touches it. A step receives only the
+# names its manifest `env` block lists (cron base + the crontab NAME=value lines that precede its own line), with
+# the values cron gave the runner; PROJ and PY are the runner's resolved values (equal under cron).
+declare -A _MR_CRON_ENV=()
+for _mr_n in $(compgen -e); do _MR_CRON_ENV[$_mr_n]="${!_mr_n}"; done
+unset _mr_n
+
+_mr_step_env() {
+  local names="$1" n
+  [ -n "$names" ] || names="HOME,LANG,LOGNAME,PATH,SHELL,PROJ"
+  stepenv=()
+  for n in ${names//,/ }; do
+    case "$n" in
+      PROJ) stepenv+=("PROJ=$PROJ") ;;
+      PY) stepenv+=("PY=$PY") ;;
+      *) [ -n "${_MR_CRON_ENV[$n]+x}" ] && stepenv+=("$n=${_MR_CRON_ENV[$n]}") ;;
+    esac
+  done
+  return 0
+}
+
+# Safety flags only. The corrupted-.env pre-flight is kept (fail loudly, EX_CONFIG); the values of these six
+# names are read in a throwaway process and set as NON-exported shell variables; nothing else leaves .env.
+_mr_load_safety_env() {
+  [ -f "$PROJ/.env" ] || return 0
+  if ! bash -c 'set -euo pipefail; set -a; . "$1"; set +a' _ "$PROJ/.env" >/dev/null 2>"$PROJ/logs/env_source_error.txt"; then
+    echo "[FATAL] $PROJ/.env failed to source — file is corrupted (see logs/env_source_error.txt). Refusing to run." >&2
+    return 78
+  fi
+  rm -f "$PROJ/logs/env_source_error.txt"
+  local flags
+  flags="$(bash -c 'set -a; . "$1" >/dev/null 2>&1; set +a
+    for n in ALPACA_MODE LIVE_TRADING_ENABLED LIVE_TRADING LEVEL7 LEVEL_7 ENABLE_LEVEL7; do
+      [ -n "${!n+x}" ] && printf "%s=%q\n" "$n" "${!n}"; done' _ "$PROJ/.env")" || true
+  eval "$flags"
+  return 0
+}
+
 manifest_pipeline_main() {
   local default_manifest="$1"; shift
   local STAGE="" MANIFEST="" APPLY_REQUESTED=0 LIST=0
@@ -92,7 +130,9 @@ manifest_pipeline_main() {
   exec > >(tee -a "$RUN_LOG") 2>&1
   echo "=================================================================="
   echo "[$STARTED_AT] START pipeline=$PIPELINE stage=$STAGE DRY_RUN=$DRY_RUN manifest=$MANIFEST log=$RUN_LOG"
-  load_env
+  # 2026-10-10: the runner no longer sources $PROJ/.env into itself or its steps. It reads ONLY the safety
+  # flags below from it (never exported); each step runs under `env -i` with exactly its cron line's env.
+  _mr_load_safety_env || return $?
   assert_no_live_trading || return $?
   assert_no_level7 || return $?
   echo "[safety] manifest steps run VERBATIM with their own locks/timeouts/wrappers; no broker, stop, order or market_day_gate line is admissible (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS) ✓"
@@ -112,10 +152,10 @@ manifest_pipeline_main() {
     echo "[plan] manifest has no steps for stage=$STAGE — nothing to execute (apply_requested=$APPLY_REQUESTED)"
   fi
 
-  local line id cron_line tmo dow logrel cmd
+  local line id cron_line tmo dow logrel envnames cmd
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    IFS=$'\x1f' read -r id cron_line tmo dow logrel cmd <<<"$line"
+    IFS=$'\x1f' read -r id cron_line tmo dow logrel envnames cmd <<<"$line"
     local status rc ms start end
     start=${EPOCHREALTIME/./}
     if [ "$dow" != "*" ] && ! grep -qw -- "$TODAY_DOW" <<<"${dow//,/ }"; then
@@ -124,6 +164,7 @@ manifest_pipeline_main() {
     elif [ "$DRY_RUN" = "1" ]; then
       status="dry_run"; rc=0
       echo "  ---- step $id (L$cron_line, timeout ${tmo}s, dow=$dow) [DRY_RUN] would run: $cmd"
+      echo "       env (env -i, names only): ${envnames}"
     else
       echo "  ---- step $id (L$cron_line, timeout ${tmo}s) START $(_ts) ----"
       local steplog="$RUN_LOG"
@@ -133,7 +174,9 @@ manifest_pipeline_main() {
         mkdir -p "$(dirname "$steplog")" 2>/dev/null || steplog="$RUN_LOG"
       fi
       set +e
-      flock -n "/tmp/pipeline_step_${PIPELINE}_${id}.lock" \
+      local -a stepenv=()
+      _mr_step_env "$envnames"
+      env -i "${stepenv[@]}" flock -n "/tmp/pipeline_step_${PIPELINE}_${id}.lock" \
         timeout -k 30 "${tmo}s" bash -c "cd \"\$PROJ\" && $cmd" < /dev/null >> "$steplog" 2>&1
       rc=$?
       set -e

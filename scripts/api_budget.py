@@ -23,7 +23,7 @@ DEFAULT_CAPS = {
     # newsapi / finnhub / polygon / fmp retired 2026-09-13 — config/data_source_authority.json
     "brave": 25,          # existing budget honored
     "finviz_news": 1500,  # token-based, polite cap
-    "alphavantage": 22,   # 25/day free — tight
+    "alphavantage": 22,   # no caller since 2026-10-10: the Alpha Vantage owner (lib/alpha_vantage_owner.py) holds the one AV budget
 }
 
 
