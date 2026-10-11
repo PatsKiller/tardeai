@@ -35,10 +35,22 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from dotenv import load_dotenv
-load_dotenv(PROJECT_ROOT / ".env")
-
 LANE_ID = "feedback-loop-processor"
+_ENV_KEYS = frozenset({"DB_PASSWORD"})
+
+
+def _load_env():
+    """Preserve the legacy DB fallback while admitting only this script's key."""
+    if all(os.environ.get(name) for name in _ENV_KEYS):
+        return
+    try:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            name, sep, value = line.partition("=")
+            name = name.strip()
+            if sep and name in _ENV_KEYS and name not in os.environ:
+                os.environ[name] = value.strip().strip("\"'")
+    except OSError:
+        pass
 
 
 def _receipt_lib():
@@ -54,6 +66,7 @@ def _f(v):
 
 
 def _get_conn():
+    _load_env()
     import psycopg2
     pw = os.getenv("DB_PASSWORD", "")
     return psycopg2.connect(host="127.0.0.1", port=5432,
@@ -517,7 +530,7 @@ WOULD_WRITE = [
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Feedback Loop Processor")
+    parser = argparse.ArgumentParser(description="Feedback Loop Processor", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true",
                         help="SELECT and count only (READ ONLY session); no write, no receipt")
     args = parser.parse_args(argv)
@@ -560,5 +573,17 @@ def main(argv=None) -> int:
     return 0
 
 
+def cli(argv=None) -> int:
+    """Offline dispatcher plan; main retains the existing injectable SQL preview."""
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would run " + ", ".join(key for key, _, _ in STEPS)
+              + "; write counts and lane receipt; input counts NOT_MEASURED (no connection)")
+        return 0
+    return main(argv)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli())

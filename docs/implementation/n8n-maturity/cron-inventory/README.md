@@ -30,6 +30,7 @@ that record. It is updated **every time a job is retired, consolidated or cut ov
 
 | Date (ET) | Change | Rows | Evidence |
 |---|---|---|---|
+| 2026-10-11 (local source, not live) | Shard 01: six offline CLI/receipt source proposals, exact approved cron argv and existing/proposed locks; all new contracts DRAFT, live_arg null. All 38 lanes classified (11 sender, 5 broker, 2 class skips; 14 blocked). No cron/systemd/n8n change; inventory workbook not rebuilt | 6 prepared registry rows; 38 classified | [Shard 01 source report](../REFACTOR_SHARD_01_20261011.md); n8nmat/refactor-shard-01 |
 | 2026-10-09 22:54 | Baseline inventory (676 units; 560 active) | all | builder run; enrichment S1–S6 |
 | 2026-10-09 22:30 | maturity-remeasure: n8n live workflow e18d7849b4142927 unpublished (operator option b); cron L1000 single scheduler | cron:L1000, n8n:e18d7849b4142927 | grant 26b8747d6cc949bb |
 | 2026-10-09 22:55 | 16 RELAY_HOST shadow workflows archived (V8 F1) | 16 n8n rows | grant ee4dfdf11479cd3c; operator-run packets/archive-16.sh |

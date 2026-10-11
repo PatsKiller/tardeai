@@ -9,6 +9,7 @@ Usage:
     python3 scripts/finviz_screener_runner.py --screener dividend_growth [--json]
     python3 scripts/finviz_screener_runner.py --dry-run [--json]
 """
+import argparse
 import json, os, re, sys, time, urllib.request, urllib.error
 from datetime import datetime
 from pathlib import Path
@@ -20,11 +21,21 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 # GLOBAL Finviz rate limiter (cross-process). The screener runner previously bypassed this and
 # hammered Finviz unthrottled — 29 screeners × (CSV + HTML fallback) tripped HTTP 429 storms that
 # collapsed the daily universe to ~40-70 symbols → 0 GO/A+ scans → 0 signals. Fail-open if missing.
-try:
-    from finviz_throttle import acquire as _fv_acquire, cooldown as _fv_cooldown
-except Exception:
-    def _fv_acquire(*a, **k): return 0.0
-    def _fv_cooldown(*a, **k): pass
+def _fv_acquire(*args, **kwargs):
+    # Throttle import resolves host state paths; keep it off source-plan imports.
+    try:
+        from finviz_throttle import acquire
+    except Exception:
+        return 0.0
+    return acquire(*args, **kwargs)
+
+
+def _fv_cooldown(*args, **kwargs):
+    try:
+        from finviz_throttle import cooldown
+    except Exception:
+        return None
+    return cooldown(*args, **kwargs)
 
 
 class _RateLimited(Exception):
@@ -246,6 +257,13 @@ def _update_screener_membership(cur, screener_id, present, run_id):
 
 def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
     """Run one or all screeners. Returns discovery summary."""
+    # The former dry run fetched paid Finviz data and read credentials before
+    # suppressing only INSERTs. This source plan cannot reach those effects.
+    if dry_run:
+        print(f"DRY-RUN finviz-screener-runner: would fetch {screener_id or 'active'} screeners,"
+              " classify new symbols, refresh membership and write receipts; counts NOT_MEASURED")
+        return {"mode": "dry_run", "screener_id": screener_id,
+                "screeners_run": None, "total_new_tickers": None, "results": []}
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -427,7 +445,20 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
     return summary
 
 
-if __name__ == "__main__":
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--run", action="store_true", help="legacy explicit run flag; bare invocation also runs")
+    parser.add_argument("--screener")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        result = run_screener(screener_id=args.screener, dry_run=True)
+        if args.json:
+            print(json.dumps(result, indent=2, default=str))
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
     _run_id = None
     try:
         from pipeline_registry import run_start, run_complete, run_fail
@@ -436,14 +467,9 @@ if __name__ == "__main__":
         pass
 
     try:
-        dry = "--dry-run" in sys.argv
-        sid = None
-        if "--screener" in sys.argv:
-            sid = sys.argv[sys.argv.index("--screener") + 1]
+        result = run_screener(screener_id=args.screener, dry_run=False)
 
-        result = run_screener(screener_id=sid, dry_run=dry)
-
-        if "--json" in sys.argv:
+        if args.json:
             print(json.dumps(result, indent=2, default=str))
         else:
             for r in result.get("results", []):
@@ -456,9 +482,22 @@ if __name__ == "__main__":
                 run_complete(_run_id, rows_processed=total_new)
         except Exception:
             pass
+        complete = not (result.get("membership_failures") or result.get("db_write_failures"))
+        write_lane_receipt("finviz-screener-runner", ok=complete, exit_code=0,
+                           started_at=started, script="finviz_screener_runner.py",
+                           summary={key: result.get(key) for key in
+                                    ("screeners_run", "total_new_tickers", "membership_failures", "db_write_failures")})
+        return 0
     except Exception as _e:
+        write_lane_receipt("finviz-screener-runner", ok=False, exit_code=1,
+                           started_at=started, script="finviz_screener_runner.py",
+                           error=type(_e).__name__)
         try:
             if _run_id: run_fail(_run_id, str(_e))
         except Exception:
             pass
         raise
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

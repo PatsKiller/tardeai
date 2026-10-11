@@ -2349,6 +2349,13 @@ GATES = [
         ],
     ),
     (
+        # 2026-10-11: shard 01 offline CLI plans, original cron argv and scratch lane receipts.
+        "refactor_shard_01",
+        [
+            "tests/test_refactor_shard_01_20261011.py",
+        ],
+    ),
+    (
         # 2026-09-15: the incubator promoter proposed flat 2R geometry that the gate refused; nothing promoted since 07-01.
         "incubator_promoter_authoritative_levels",
         [

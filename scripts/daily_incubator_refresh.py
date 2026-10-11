@@ -18,17 +18,11 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from session13_db import get_conn
-
-# Pipeline telemetry
-try:
-    from pipeline_registry import PipelineRun
-except ImportError:
-    class PipelineRun:
-        def __init__(self, *a, **k): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def rows(self, n): pass
+def get_conn():
+    # Shared session13_db currently imports the entire dotenv. Keep that
+    # import behind the real-run boundary; the integrator owns narrowing it.
+    from session13_db import get_conn as connect
+    return connect()
 
 log = logging.getLogger("daily_incubator_refresh")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -187,16 +181,36 @@ def _ensure_conn(conn):
     return get_conn()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Daily incubator refresh")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Daily incubator refresh", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing to DB")
     parser.add_argument("--apply", action="store_true", help="Write changes to DB")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if args.dry_run:
+        print("DRY-RUN daily-incubator-refresh: would refresh active scan scores, record incubator events,"
+              " refresh up to 30 stale catalysts and write lane receipt; counts NOT_MEASURED")
+        return 0
 
     if not args.dry_run and not args.apply:
         log.error("Must specify --dry-run or --apply")
         sys.exit(1)
 
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        counts = _run(args)
+    except (Exception, SystemExit) as exc:
+        rc = exc.code if isinstance(exc, SystemExit) and isinstance(exc.code, int) else 1
+        write_lane_receipt("daily-incubator-refresh", ok=False, exit_code=rc,
+                           started_at=started, script="daily_incubator_refresh.py", error=type(exc).__name__)
+        raise
+    write_lane_receipt("daily-incubator-refresh", ok=True, exit_code=0, started_at=started,
+                       script="daily_incubator_refresh.py", summary=counts)
+    return 0
+
+
+def _run(args):
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -292,6 +306,7 @@ def main():
         log.info("Catalyst refreshed: %d", catalyst_refreshed)
         log.info("Total processed:    %d", len(active))
         log.info("Mode:               %s", "DRY-RUN" if args.dry_run else "APPLIED")
+        return {**counts, "processed": len(active), "catalyst_refreshed": catalyst_refreshed}
 
     except Exception:
         conn.rollback()
@@ -301,7 +316,23 @@ def main():
         conn.close()
 
 
+def cli(argv=None):
+    raw = list(sys.argv[1:] if argv is None else argv)
+    # Validate before telemetry imports (which otherwise read .env on import).
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--apply", action="store_true")
+    args = parser.parse_args(raw)
+    if args.dry_run:
+        return main(raw)
+    try:
+        from pipeline_registry import PipelineRun
+    except ImportError:
+        return main(raw)
+    with PipelineRun("daily_incubator_refresh"):
+        return main(raw)
+
+
 if __name__ == "__main__":
-    with PipelineRun("daily_incubator_refresh") as _run:
-        main()
+    raise SystemExit(cli())
 
