@@ -4513,6 +4513,13 @@ GATES = [
         "w5_event_consumers_20261011",
         ["tests/test_w5_event_consumers_20261011.py"],
     ),
+    (
+        # Shard06 source-only previews: exact approved cron argv against frozen old entrypoints;
+        # no auth/DB/provider work or state writes in previews; fake real receipts retain prior ok_at
+        # on failure. Seven DRAFT admissions, no broker env, existing reviewed rows preserved.
+        "refactor_shard_06_20261011",
+        ["tests/test_refactor_shard_06_20261011.py"],
+    ),
 ]
 
 

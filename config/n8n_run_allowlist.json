@@ -2291,6 +2291,256 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/etf-performance-enrich_last.json"
+    },
+    {
+      "lane_id": "finviz-market-movers",
+      "command": [
+        "$PY",
+        "scripts/finviz_market_movers.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "FINVIZ_COOKIE",
+        "FINVIZ_COOLDOWN_DEFAULT",
+        "FINVIZ_MAX_COOLDOWN_S",
+        "FINVIZ_MIN_INTERVAL",
+        "PGAPPNAME",
+        "TRADEAI_ENV_BOUND_NAMES",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
+      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
+      "lock": "/tmp/finviz_market_movers.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/finviz-market-movers_last.json",
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: */15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min — premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window"
+    },
+    {
+      "lane_id": "proposal-backtest-engine",
+      "command": [
+        "$PY",
+        "scripts/proposal_backtest_engine.py",
+        "--all-pending",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PGAPPNAME",
+        "TRADEAI_ENV_BOUND_NAMES",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
+      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
+      "lock": "/tmp/proposal_backtest.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/proposal-backtest-engine_last.json",
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)"
+    },
+    {
+      "lane_id": "run-sec-form4-momentum-context",
+      "command": [
+        "$PY",
+        "scripts/run_sec_form4_momentum_context.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PGAPPNAME",
+        "SEC_USER_AGENT",
+        "TRADEAI_ENV_BOUND_NAMES",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
+      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
+      "lock": "/tmp/tradeai_sec_form4_ctx.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/run-sec-form4-momentum-context_last.json",
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 45 5 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_sec_form4_ctx.lock $PY scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1"
+    },
+    {
+      "lane_id": "social-ingest-stocktwits",
+      "command": [
+        "$PY",
+        "scripts/social_ingest.py",
+        "--source",
+        "stocktwits",
+        "--discover"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PGAPPNAME",
+        "TRADEAI_ENV_BOUND_NAMES",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
+      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
+      "lock": "/tmp/social-ingest-stocktwits.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/social-ingest-stocktwits_last.json",
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 30 8,10,13 * * 1-5 cd $PROJ && $PY scripts/social_ingest.py --source stocktwits --discover >> logs/social_ingest.log 2>&1"
+    },
+    {
+      "lane_id": "instrument-belief-writer",
+      "command": [
+        "$PY",
+        "scripts/write_instrument_beliefs.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PGAPPNAME",
+        "TRADEAI_ENV_BOUND_NAMES",
+        "TRADEAI_OPTIONS_OUTCOME_LOADER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT",
+        "TRADEAI_WAKE_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
+      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
+      "lock": "/tmp/instrument-belief-writer.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/instrument-belief-writer_last.json",
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1"
+    },
+    {
+      "lane_id": "sec-filings-feed",
+      "command": [
+        "$PY",
+        "scripts/sec_filings_feed.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PGAPPNAME",
+        "SEC_USER_AGENT",
+        "TRADEAI_ENV_BOUND_NAMES",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
+      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
+      "lock": "/tmp/tradeai_sec_filings_feed.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/sec-filings-feed_last.json",
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 20 8,12,17,21 * * 1-5 CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> /home/johnclaw/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1"
+    },
+    {
+      "lane_id": "trade-thesis-review-engine",
+      "command": [
+        "$PY",
+        "scripts/trade_thesis_review_engine.py",
+        "--apply",
+        "--json"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PGAPPNAME",
+        "TRADEAI_ENV_BOUND_NAMES",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Selected source names only; own CLI preview returns before DB, auth, provider, model or mutation",
+      "env_report_reason": "SOURCE_ONLY: lazy DB, provider, telemetry and cognition import closure not fully inventoried; shared loader/optional driver work belongs to the integrator. No canary until closure proof and bound enforcement.",
+      "lock": "/tmp/thesis_review_engine.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/trade-thesis-review-engine_last.json",
+      "source": "SOURCE_ONLY exact approved cron 2026-10-11T17:05:28.513179+00:00: 40 18 * * 1-5 cd $PROJ && flock -n /tmp/thesis_review_engine.lock $PY scripts/trade_thesis_review_engine.py --apply --json >> logs/trade_thesis_review_engine.log 2>&1  # scored thesis review -> journal-learning (idempotent safety-net)"
     }
   ],
   "blocked_reasons": {

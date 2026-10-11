@@ -11,10 +11,9 @@ Lanes (lane id derived from argv): ``--source all`` -> ``social-ingest-all`` (cr
 ``--source stocktwits --discover`` -> ``social-ingest-stocktwits`` (cron L244). Any other argv form
 (manual --symbols / --holdings / reddit runs) is not a lane run and writes no receipt.
 
-``--dry-run`` returns before pipeline_registry.run_start (no pipeline_runs row), before any StockTwits /
-Reddit request and before any DB connection; it does not resolve the Reddit credentials. It prints the
-symbol sets and subreddits a real run would query (from holdings.json and the static discovery lists;
-the StockTwits trending list is network-only and is reported as "would fetch"). No receipt.
+The CLI ``--dry-run`` returns before state/universe reads, pipeline_registry.run_start (no pipeline_runs
+row), StockTwits/Reddit requests, credentials or DB connections. It prints the selected source and flags
+as a one-line plan; actual symbol discovery remains real-run work. No receipt is written for a preview.
 
 A real lane run writes ``<state_root>/data/runtime/<lane_id>_last.json`` (LaneRunReceipt@v1; ``ok_at``
 only on success) with a per-source summary. Exit codes: 0 = ran (posts already stored, Reddit not
@@ -26,9 +25,11 @@ SCALP HOT TIER (``--source stocktwits --scalp-list`` -> lane ``social-ingest-sca
 2026-10-10): every 10 min on market days 06:00-11:00 ET, StockTwits for the names on the scalp list
 (``lib.data_broker.scalp_list``, cap 25) into ``social_posts`` through the same ``ingest_stocktwits`` (this module
 stays the single writer). Inert unless ``SCALP_HOT_TIER=1`` and no kill file (SKIPPED_FLAG_OFF, exit 0). An empty
-list is a successful poll (receipt ok, 0 symbols). ``--dry-run`` reads the list only and prints the symbols.
+list is a successful poll (receipt ok, 0 symbols). The CLI ``--dry-run`` prints the plan without reading the list.
 """
 import json, sys, time, hashlib
+import argparse
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,13 +37,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+
+
 def _get_conn():
     import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="):
-            pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    from lib.env_bootstrap import load_env
+    if not os.environ.get("DB_PASSWORD"):
+        load_env(names=_ENV_KEYS)
+    return psycopg2.connect(host=os.environ.get("DB_HOST", "localhost"),
+                            port=os.environ.get("DB_PORT", "5432"),
+                            dbname=os.environ.get("DB_NAME", "trade_ai"),
+                            user=os.environ.get("DB_USER", "trade_ai"),
+                            password=os.environ.get("DB_PASSWORD", ""))
 
 
 def _get_holdings_symbols():
@@ -640,6 +647,7 @@ def _scalp_hot_main(argv: list, now=None) -> int:
 
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    _cli_parser().parse_args(argv)  # reject unknown/abbreviated flags before work
     source = "stocktwits"
     symbols = []
 
@@ -771,5 +779,32 @@ def main(argv=None) -> int:
     return rc
 
 
+def _cli_parser():
+    parser = argparse.ArgumentParser(description="Social source ingest", allow_abbrev=False)
+    parser.add_argument("--source", choices=("stocktwits", "reddit", "all"), default="stocktwits")
+    parser.add_argument("--symbols")
+    parser.add_argument("--holdings", action="store_true")
+    parser.add_argument("--discover", action="store_true")
+    parser.add_argument("--scalp-list", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    return parser
+
+
+def cli(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = _cli_parser()
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        if args.scalp_list and (args.source != "stocktwits" or args.discover or args.symbols or args.holdings):
+            parser.error("--scalp-list takes only --source stocktwits")
+        lane = "social-ingest-scalp-hot" if args.scalp_list else lane_id_for(args.source, args.discover)
+        print(f"DRY-RUN {lane or 'social-ingest-manual'}: would ingest source={args.source} "
+              f"discover={args.discover} symbols={args.symbols or 'configured universe'} "
+              f"holdings={args.holdings} scalp_list={args.scalp_list}; read universe during real work and "
+              "insert deduplicated social_posts; no state read, DB, auth, provider or writes")
+        return 0
+    return main(argv)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli())

@@ -14118,6 +14118,1063 @@
     "prepared_by": "operator PatsKiller 2026-10-11",
     "status": "REVIEWED"
    }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "finviz-market-movers",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Finviz public signal screens populate market_movers and the operator signal-board snapshot.",
+    "business_function": "research",
+    "source": "scripts/finviz_market_movers.py plus approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "scalp",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/finviz_market_movers.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/finviz_market_movers.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/finviz-market-movers_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "source inputs for finviz_market_movers.py",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory shard06:finviz-market-movers dependencies (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "cron twin receipt ok_at fresh within provisional 63.25h schedule window (source calendar, unreviewed)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "receipt older than provisional 63.25h but younger than 63.5h"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 480.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: source inputs for finviz_market_movers.py (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "receipt older than provisional 63.5h; runtime SLO requires operator review"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 63.25,
+    "freshness_failed_after_h": 63.5,
+    "freshness_rule": "Provisional source calendar: max one-slot/two-slot gaps over fixed 21-day October calendar +2h; America/New_York weekdays/weekends preserved; holiday calendar and runtime receipt SLO NOT_MEASURED",
+    "timeout_s": 600,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY calendar computation from approved cron snapshot; coordination ledger NOT_MEASURED; no runtime samples",
+    "runs_considered": null,
+    "duration_degraded_above_s": 480.0,
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory shard06:finviz-market-movers business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/finviz-market-movers_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='finviz-market-movers' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:finviz-market-movers' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/finviz-market-movers_last.json"
+    ],
+    "never": "An n8n execution status alone; runtime deletedAt/soft-delete state NOT_MEASURED in this source refactor",
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED",
+    "runtime": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "proposal-backtest-engine",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Compute local historical proposal backtest evidence and persist snapshots and strategy results; never execute a proposal.",
+    "business_function": "research",
+    "source": "scripts/proposal_backtest_engine.py plus approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "proposals",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/proposal_backtest_engine.py --all-pending --apply",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/proposal_backtest.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/proposal-backtest-engine_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "source inputs for proposal_backtest_engine.py",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory shard06:proposal-backtest-engine dependencies (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "cron twin receipt ok_at fresh within provisional 70.0h schedule window (source calendar, unreviewed)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "receipt older than provisional 70.0h but younger than 72.0h"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 480.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: source inputs for proposal_backtest_engine.py (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "receipt older than provisional 72.0h; runtime SLO requires operator review"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 70.0,
+    "freshness_failed_after_h": 72.0,
+    "freshness_rule": "Provisional source calendar: max one-slot/two-slot gaps over fixed 21-day October calendar +2h; America/New_York weekdays/weekends preserved; holiday calendar and runtime receipt SLO NOT_MEASURED",
+    "timeout_s": 600,
+    "class": "learn",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY calendar computation from approved cron snapshot; coordination ledger NOT_MEASURED; no runtime samples",
+    "runs_considered": null,
+    "duration_degraded_above_s": 480.0,
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory shard06:proposal-backtest-engine business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/proposal-backtest-engine_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='proposal-backtest-engine' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:proposal-backtest-engine' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/proposal-backtest-engine_last.json"
+    ],
+    "never": "An n8n execution status alone; runtime deletedAt/soft-delete state NOT_MEASURED in this source refactor",
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED",
+    "runtime": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "run-sec-form4-momentum-context",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Refresh public SEC Form 4 evidence and persist supporting insider context for recent momentum symbols.",
+    "business_function": "research",
+    "source": "scripts/run_sec_form4_momentum_context.py plus approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/run_sec_form4_momentum_context.py --apply",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/tradeai_sec_form4_ctx.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/run-sec-form4-momentum-context_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "source inputs for run_sec_form4_momentum_context.py",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory shard06:run-sec-form4-momentum-context dependencies (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "cron twin receipt ok_at fresh within provisional 74.0h schedule window (source calendar, unreviewed)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "receipt older than provisional 74.0h but younger than 98.0h"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 480.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: source inputs for run_sec_form4_momentum_context.py (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "receipt older than provisional 98.0h; runtime SLO requires operator review"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 74.0,
+    "freshness_failed_after_h": 98.0,
+    "freshness_rule": "Provisional source calendar: max one-slot/two-slot gaps over fixed 21-day October calendar +2h; America/New_York weekdays/weekends preserved; holiday calendar and runtime receipt SLO NOT_MEASURED",
+    "timeout_s": 600,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY calendar computation from approved cron snapshot; coordination ledger NOT_MEASURED; no runtime samples",
+    "runs_considered": null,
+    "duration_degraded_above_s": 480.0,
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory shard06:run-sec-form4-momentum-context business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/run-sec-form4-momentum-context_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='run-sec-form4-momentum-context' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:run-sec-form4-momentum-context' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/run-sec-form4-momentum-context_last.json"
+    ],
+    "never": "An n8n execution status alone; runtime deletedAt/soft-delete state NOT_MEASURED in this source refactor",
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED",
+    "runtime": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "social-ingest-stocktwits",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "StockTwits discovery ingest stores deduplicated social posts for downstream research.",
+    "business_function": "research",
+    "source": "scripts/social_ingest.py plus approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/social_ingest.py --source stocktwits --discover",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/social-ingest-stocktwits.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/social-ingest-stocktwits_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "source inputs for social_ingest.py",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory shard06:social-ingest-stocktwits dependencies (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "cron twin receipt ok_at fresh within provisional 69.0h schedule window (source calendar, unreviewed)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "receipt older than provisional 69.0h but younger than 72.0h"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 480.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: source inputs for social_ingest.py (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "receipt older than provisional 72.0h; runtime SLO requires operator review"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 69.0,
+    "freshness_failed_after_h": 72.0,
+    "freshness_rule": "Provisional source calendar: max one-slot/two-slot gaps over fixed 21-day October calendar +2h; America/New_York weekdays/weekends preserved; holiday calendar and runtime receipt SLO NOT_MEASURED",
+    "timeout_s": 600,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY calendar computation from approved cron snapshot; coordination ledger NOT_MEASURED; no runtime samples",
+    "runs_considered": null,
+    "duration_degraded_above_s": 480.0,
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory shard06:social-ingest-stocktwits business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/social-ingest-stocktwits_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='social-ingest-stocktwits' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:social-ingest-stocktwits' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/social-ingest-stocktwits_last.json"
+    ],
+    "never": "An n8n execution status alone; runtime deletedAt/soft-delete state NOT_MEASURED in this source refactor",
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED",
+    "runtime": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "instrument-belief-writer",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Turn settled outcomes and ratified lessons into cognition-only InstrumentRecord beliefs using the existing behavior rail.",
+    "business_function": "research",
+    "source": "scripts/write_instrument_beliefs.py plus approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "cio",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/write_instrument_beliefs.py --apply",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/instrument-belief-writer.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/instrument-belief-writer_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "source inputs for write_instrument_beliefs.py",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory shard06:instrument-belief-writer dependencies (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "cron twin receipt ok_at fresh within provisional 26.0h schedule window (source calendar, unreviewed)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "receipt older than provisional 26.0h but younger than 50.0h"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 480.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: source inputs for write_instrument_beliefs.py (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "receipt older than provisional 50.0h; runtime SLO requires operator review"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 26.0,
+    "freshness_failed_after_h": 50.0,
+    "freshness_rule": "Provisional source calendar: max one-slot/two-slot gaps over fixed 21-day October calendar +2h; America/New_York weekdays/weekends preserved; holiday calendar and runtime receipt SLO NOT_MEASURED",
+    "timeout_s": 600,
+    "class": "learn",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY calendar computation from approved cron snapshot; coordination ledger NOT_MEASURED; no runtime samples",
+    "runs_considered": null,
+    "duration_degraded_above_s": 480.0,
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory shard06:instrument-belief-writer business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/instrument-belief-writer_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='instrument-belief-writer' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:instrument-belief-writer' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/instrument-belief-writer_last.json"
+    ],
+    "never": "An n8n execution status alone; runtime deletedAt/soft-delete state NOT_MEASURED in this source refactor",
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED",
+    "runtime": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "sec-filings-feed",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Public SEC EDGAR filings produce append-only filing events, a latest summary and downstream GIR/material-change inputs.",
+    "business_function": "research",
+    "source": "scripts/sec_filings_feed.py plus approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "cio",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/sec_filings_feed.py --apply",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/tradeai_sec_filings_feed.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/sec-filings-feed_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "source inputs for sec_filings_feed.py",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory shard06:sec-filings-feed dependencies (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "cron twin receipt ok_at fresh within provisional 61.0h schedule window (source calendar, unreviewed)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "receipt older than provisional 61.0h but younger than 65.0h"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 480.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: source inputs for sec_filings_feed.py (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "receipt older than provisional 65.0h; runtime SLO requires operator review"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 61.0,
+    "freshness_failed_after_h": 65.0,
+    "freshness_rule": "Provisional source calendar: max one-slot/two-slot gaps over fixed 21-day October calendar +2h; America/New_York weekdays/weekends preserved; holiday calendar and runtime receipt SLO NOT_MEASURED",
+    "timeout_s": 600,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY calendar computation from approved cron snapshot; coordination ledger NOT_MEASURED; no runtime samples",
+    "runs_considered": null,
+    "duration_degraded_above_s": 480.0,
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory shard06:sec-filings-feed business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/sec-filings-feed_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='sec-filings-feed' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:sec-filings-feed' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/sec-filings-feed_last.json"
+    ],
+    "never": "An n8n execution status alone; runtime deletedAt/soft-delete state NOT_MEASURED in this source refactor",
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED",
+    "runtime": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "trade-thesis-review-engine",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "stage:shadow",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Score closed or cancelled historical trade thesis outcomes into learning reviews; never change orders, stops or risk policy.",
+    "business_function": "research",
+    "source": "scripts/trade_thesis_review_engine.py plus approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00"
+   },
+   "owner": "learning",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/trade_thesis_review_engine.py --apply --json",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/thesis_review_engine.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/trade-thesis-review-engine_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "source inputs for trade_thesis_review_engine.py",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory shard06:trade-thesis-review-engine dependencies (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "cron twin receipt ok_at fresh within provisional 74.0h schedule window (source calendar, unreviewed)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "receipt older than provisional 74.0h but younger than 98.0h"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 480.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: source inputs for trade_thesis_review_engine.py (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "receipt older than provisional 98.0h; runtime SLO requires operator review"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 74.0,
+    "freshness_failed_after_h": 98.0,
+    "freshness_rule": "Provisional source calendar: max one-slot/two-slot gaps over fixed 21-day October calendar +2h; America/New_York weekdays/weekends preserved; holiday calendar and runtime receipt SLO NOT_MEASURED",
+    "timeout_s": 600,
+    "class": "learn",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY calendar computation from approved cron snapshot; coordination ledger NOT_MEASURED; no runtime samples",
+    "runs_considered": null,
+    "duration_degraded_above_s": 480.0,
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED"
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory shard06:trade-thesis-review-engine business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/trade-thesis-review-engine_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='trade-thesis-review-engine' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:trade-thesis-review-engine' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/trade-thesis-review-engine_last.json"
+    ],
+    "never": "An n8n execution status alone; runtime deletedAt/soft-delete state NOT_MEASURED in this source refactor",
+    "evidence_class": "SOURCE_ONLY",
+    "ledger": "NOT_MEASURED",
+    "runtime": "NOT_MEASURED"
+   },
+   "review_by": "2026-10-25"
   }
  ]
 }
