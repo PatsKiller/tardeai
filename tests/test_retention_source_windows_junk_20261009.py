@@ -187,6 +187,10 @@ def _dr(monkeypatch, tmp_path, table):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     monkeypatch.setattr(dr, "_connect", lambda: _Conn(table))
     monkeypatch.setattr(dr, "_disk_too_low_for_retention", lambda: None)
+    # 2026-10-11: --apply needs a verified db-write grant; stub the guard-ledger peek (tested on its own
+    # in tests/test_retention_hardening_20261011.py) so these tests never read the host's ledger.
+    monkeypatch.setattr(dr, "_verify_db_write_grant",
+                        lambda: {"schema": "DbWriteGrantCheck@v1", "ok": True, "grant_id": "ab" * 16})
     return dr
 
 

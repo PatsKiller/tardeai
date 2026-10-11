@@ -10,7 +10,8 @@ Rules (exit 1 on violation, 2 if the gate cannot run):
      rows need archive=true; KEEP_FOREVER rows need window_days null and a reason ≥ 20 chars.
   3. The four tax/brokerage tables are KEEP_FOREVER (a DELETE row on them is the 2026-10-07 defect).
   4. No duplicate table rows. 5. size_budget_gb present and > 0.
-  6. Every table db_retention.py would delete from must be in the registry (db_retention reads
+  6. archive_first (optional) is a bool and only on DELETE rows (2026-10-11).
+  7. Every table db_retention.py would delete from must be in the registry (db_retention reads
      the registry, so this is a self-consistency check on the fallback list if one remains).
 Same shape as check_lane_registry.py: declare, gate, let it only shrink.
 """
@@ -54,6 +55,12 @@ def validate(doc: dict) -> list[str]:
                 errs.append(f"{t}: window_days must be an int >= 7 for {cls}")
             if cls == "ARCHIVE_THEN_DELETE" and r.get("archive") is not True:
                 errs.append(f"{t}: ARCHIVE_THEN_DELETE requires archive=true")
+        if "archive_first" in r:
+            # 2026-10-11: per-row archive-first switch for DELETE rows (db_retention.enforced_policies).
+            if not isinstance(r["archive_first"], bool):
+                errs.append(f"{t}: archive_first must be true or false")
+            elif cls != "DELETE":
+                errs.append(f"{t}: archive_first applies to DELETE rows only (ARCHIVE_THEN_DELETE always archives)")
         if cls == "EXTERNAL_POLICY" and len(str(r.get("reason") or "")) < 20:
             errs.append(f"{t}: EXTERNAL_POLICY must name the job that enforces it (reason >= 20 chars)")
         if cls == "KEEP_FOREVER":
