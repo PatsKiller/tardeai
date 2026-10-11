@@ -395,8 +395,7 @@
       "live_arg": [],
       "market_gate": true,
       "output_signal": "data/runtime/trade_ai_scalp_live_last.json"
-    }
-,
+    },
     {
       "lane_id": "classifier-health-check",
       "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
@@ -1874,6 +1873,167 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/etf-performance-enrich_last.json"
+    },
+    {
+      "lane_id": "watch-goods-consistency",
+      "command": [
+        "$PY",
+        "scripts/watch_goods_consistency_check.py",
+        "--apply-proposal-backfill"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "DB_CONN_TRACE",
+        "TRADEAI_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "watch_goods_consistency_check.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/watch_goods_consistency.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/watch-goods-consistency_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "command": [
+        "$PY",
+        "scripts/finviz_screener_runner.py",
+        "--run"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "DB_CONN_TRACE",
+        "FINVIZ_COOKIE",
+        "FINVIZ_API_TOKEN",
+        "TRADEAI_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "finviz_screener_runner.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/finviz_screener.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/finviz-screener-runner_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "research-watchlist-discovery",
+      "command": [
+        "$PY",
+        "scripts/research_watchlist_discovery.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "DB_CONN_TRACE",
+        "TRADEAI_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "research_watchlist_discovery.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/research-watchlist-discovery.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/research-watchlist-discovery_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "command": [
+        "$PY",
+        "scripts/daily_incubator_refresh.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "daily_incubator_refresh.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/daily-incubator-refresh.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/daily-incubator-refresh_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "resolve-due-checkpoints",
+      "command": [
+        "$PY",
+        "scripts/resolve_due_checkpoints.py",
+        "--apply",
+        "--apply-pending-data"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_PORT",
+        "DB_NAME",
+        "DB_USER",
+        "DB_PASSWORD",
+        "DB_CONN_TRACE",
+        "TRADEAI_PENDING_DATA_APPLY",
+        "TRADEAI_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "resolve_due_checkpoints.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/resolve-due-checkpoints.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "market_gate": false,
+      "output_signal": "data/runtime/resolve-due-checkpoints_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
     }
   ],
   "blocked_reasons": {

@@ -4114,17 +4114,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 8,12,16 * * 1-5",
-        "command_text": "watch_goods_consistency_check.py --apply-proposal-backfill",
-        "match": "watch_goods_consistency_check.py"
+        "command_text": "40 8,12,16 * * 1-5 cd $PROJ && flock -n /tmp/watch_goods_consistency.lock $PY scripts/watch_goods_consistency_check.py --apply-proposal-backfill >> logs/watch_goods_consistency.log 2>&1  # lane watch-goods-consistency",
+        "match": "watch_goods_consistency_check.py",
+        "stage": "shadow",
+        "wave": "R2-01"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "data/runtime/watch_goods_consistency_last_run.json",
-        "key": "as_of"
+        "path": "data/runtime/watch-goods-consistency_last.json",
+        "key": "ok_at"
       },
-      "note": "2026-09-15 operator: all goods tracked consistently across watchlist and proposals. Coverage of 12 goods per active watchlist symbol, proposal-vs-watchlist mismatches, fills EMPTY proposal sector/industry/float/rvol only. No model calls.",
+      "note": "2026-09-15 operator: all goods tracked consistently across watchlist and proposals. Coverage of 12 goods per active watchlist symbol, proposal-vs-watchlist mismatches, fills EMPTY proposal sector/industry/float/rvol only. No model calls. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P12",
       "rationalization": {
@@ -4137,7 +4139,18 @@
         "event_driven_candidate": false,
         "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "40 8,12,16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "cio-entry-state",
@@ -4666,16 +4679,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "20 * * * *",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_PENDING_DATA_APPLY=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/resolve_due_checkpoints.py --apply --apply-pending-data >> logs/resolve_due_checkpoints.log 2>&1",
-        "match": "scripts/resolve_due_checkpoints.py --apply"
+        "command_text": "20 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_PENDING_DATA_APPLY=1 $PY scripts/resolve_due_checkpoints.py --apply --apply-pending-data >> logs/resolve_due_checkpoints.log 2>&1",
+        "match": "scripts/resolve_due_checkpoints.py --apply",
+        "stage": "shadow",
+        "wave": "R2-01"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/resolve_due_checkpoints.log"
+        "kind": "json_key",
+        "path": "data/runtime/resolve-due-checkpoints_last.json",
+        "key": "ok_at"
       },
-      "note": "Declared 2026-09-24 (agentic-memory tranche 1): was in undeclared_baseline while resolving outcome checkpoints hourly. Settlement hop 1 of the learning loop; feeds the belief writer through outcome_observations. 2026-10-03 operator decision: also --apply-pending-data with TRADEAI_PENDING_DATA_APPLY=1 so OUTCOME_PENDING_DATA rows whose prices now exist settle (dry run: 7 would resolve, 0 expire; append-only).",
+      "note": "Declared 2026-09-24 (agentic-memory tranche 1): was in undeclared_baseline while resolving outcome checkpoints hourly. Settlement hop 1 of the learning loop; feeds the belief writer through outcome_observations. 2026-10-03 operator decision: also --apply-pending-data with TRADEAI_PENDING_DATA_APPLY=1 so OUTCOME_PENDING_DATA rows whose prices now exist settle (dry run: 7 would resolve, 0 expire; append-only). | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P13",
       "rationalization": {
@@ -4689,7 +4705,18 @@
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "output_signal_note": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): was file_mtime data/cio/outcome_observations.jsonl, append-only and grows only when something resolves (last 10-08); the hourly run logs 'due N / resolved N' every run. Why nothing was due for ~30h is a separate question (triage)."
+      "output_signal_note": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): was file_mtime data/cio/outcome_observations.jsonl, append-only and grows only when something resolves (last 10-08); the hourly run logs 'due N / resolved N' every run. Why nothing was due for ~30h is a separate question (triage).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "alert-quality",
@@ -13661,14 +13688,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 7 * * 1-5",
-        "match": "scripts/research_watchlist_discovery.py"
+        "match": "scripts/research_watchlist_discovery.py",
+        "stage": "shadow",
+        "wave": "R2-01",
+        "command_text": "0 7 * * 1-5 cd $PROJ && $PY scripts/research_watchlist_discovery.py --apply >> logs/research_watchlist_discovery.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/research_watchlist_discovery.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/research-watchlist-discovery_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P10",
@@ -13683,7 +13713,7 @@
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "state_since": "2026-10-11",
       "superseded_by": "premarket-data-pipeline",
@@ -13696,6 +13726,17 @@
         "stage": "premarket",
         "step_id": "research_watchlist_discovery",
         "on": "2026-10-11"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 7 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
       }
     },
     {
@@ -14107,14 +14148,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 10 * * 1-5",
-        "match": "scripts/finviz_screener_runner.py"
+        "match": "scripts/finviz_screener_runner.py",
+        "stage": "shadow",
+        "wave": "R2-01",
+        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/finviz_screener.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/finviz-screener-runner_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P02",
@@ -14130,8 +14174,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 10 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "youtube-channel-discovery",
@@ -15070,14 +15125,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "15 8 * * 1-5",
-        "match": "scripts/daily_incubator_refresh.py"
+        "match": "scripts/daily_incubator_refresh.py",
+        "stage": "shadow",
+        "wave": "R2-01",
+        "command_text": "15 8 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/incubator_refresh.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/daily-incubator-refresh_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P07",
@@ -15093,8 +15151,19 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. | Refactor shard 01: SOURCE_ONLY shadow proposal; native-approved cron snapshot 2026-10-11T14:57:08.697196+00:00. Scheduler wave R2-01 is shard provenance; dispatch W4 is the existing allowed wave. Health contract remains DRAFT; no host changes.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "15 8 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "weekly-incubator-builder",

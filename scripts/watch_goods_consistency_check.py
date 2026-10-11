@@ -196,11 +196,34 @@ def backfill_proposals(cur, src: dict[str, dict], proposals: list[dict]) -> int:
     return n
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply-proposal-backfill", action="store_true")
     ap.add_argument("--json", action="store_true", help="print the full report including per-symbol lists")
-    a = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="plan only; no connection, backfill, or receipt")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        print("DRY-RUN watch-goods-consistency: would measure watchlist/proposal goods"
+              + (" and backfill empty proposal metadata" if a.apply_proposal_backfill else "")
+              + "; write coverage and lane receipts; no DB or files read in this source plan")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        report = _run(a)
+    except Exception as exc:
+        write_lane_receipt("watch-goods-consistency", ok=False, exit_code=1,
+                           started_at=started, script="watch_goods_consistency_check.py",
+                           error=type(exc).__name__)
+        raise
+    write_lane_receipt("watch-goods-consistency", ok=True, exit_code=0, started_at=started,
+                       script="watch_goods_consistency_check.py",
+                       summary={k: report[k] for k in ("watchlist_symbols", "symbols_missing_any",
+                                                      "proposals_with_mismatch")})
+    return 0
+
+
+def _run(a) -> dict:
     conn = _conn()
     cur = conn.cursor()
     src, proposals = gather(cur)
@@ -215,7 +238,7 @@ def main() -> int:
     brief = {k: v for k, v in report.items() if k not in ("missing_by_symbol", "proposal_mismatches")}
     brief["sample_mismatches"] = dict(list(report["proposal_mismatches"].items())[:5])
     print(json.dumps(report if a.json else brief, indent=2, default=str))
-    return 0
+    return report
 
 
 if __name__ == "__main__":
