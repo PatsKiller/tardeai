@@ -4540,10 +4540,19 @@ GATES = [
         # "event" fires a registry row with dispatch.triggers when its Data Broker domain as_of (file-only readers,
         # lib/data_broker/as_of_signal.py; news_ingestion emits catalyst_news) or an upstream RUN_DONE advances past
         # the consumer's receipt watermark. dry_run only (shadow), one coalesced e: key per as_of minute, debounce,
-        # a due/in-flight schedule slot absorbs the event, the cron line's flock lock skips a concurrent fire.
+        # a due/in-flight schedule slot absorbs the event, the cron line's flock lock skips a concurrent LIVE fire
+        # (a dry_run takes <lock>.dryrun since shadow_lock_isolation_20261011).
         # Hermetic: tmp state root and ledger, real flock on a tmp lock running /bin/true.
         "w5_event_consumers_20261011",
         ["tests/test_w5_event_consumers_20261011.py"],
+    ),
+    (
+        # Shadow lock isolation (2026-10-11, Agent LK, LOCK_STEAL finding): a dry_run fire takes <lock>.dryrun and
+        # never the lane's live lock (a same-minute shadow fire used to make the real cron `flock -n` skip: 8 real
+        # runs on 6 lanes in ~17 h); a live fire still contends on the shared lock; the receipt records the lock.
+        # Hermetic: tmp locks, real flock and safe_flock.sh, /bin/echo as the command.
+        "shadow_lock_isolation_20261011",
+        ["tests/test_shadow_lock_isolation_20261011.py"],
     ),
     (
         # G1–G3 and G7 (2026-10-11, local, not live). Backup enforcer archives instead of
