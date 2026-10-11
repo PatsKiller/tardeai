@@ -202,3 +202,14 @@ def test_every_live_log_job_maps_to_an_active_lane_in_this_checkout():
     reg = json.loads((ROOT / mfp.REGISTRY).read_text())
     lanes = mfp.job_log_lanes(mfp._jcm_jobs(), reg["lanes"])
     assert lanes and all(lanes.values()), sorted(j for j, v in lanes.items() if not v)
+
+
+def test_job_log_lanes_follows_superseded_by_to_the_active_family_lane():
+    jobs = [{"name": "topic_ingestion", "schedule_match": "topic_ingestion.py", "signal": ("log", "topic_ingestion.log")}]
+    lanes = [
+        {"lane_id": "topic-ingestion-cron-lines", "state": "RETIRED", "superseded_by": "topic-ingestion",
+         "scheduler": {"command_text": "$PY scripts/topic_ingestion.py"}},
+        {"lane_id": "topic-ingestion", "state": "ACTIVE", "scheduler": {"command_text": "run_family_slot.py"}},
+        {"lane_id": "old", "state": "RETIRED", "superseded_by": "gone", "scheduler": {"command_text": "topic_ingestion.py"}},
+    ]
+    assert mfp.job_log_lanes(jobs, lanes) == {"topic_ingestion": {"topic-ingestion"}}
