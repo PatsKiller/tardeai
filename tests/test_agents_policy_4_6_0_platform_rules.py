@@ -154,7 +154,8 @@ def test_23_14_is_byte_identical():
 
 
 def test_claude_md_adapter_restates_no_new_rule():
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(RULE_2_EXCEPTION_5_0_0, "")
     assert "n8n" not in text.lower() and "§24" not in text
 
 

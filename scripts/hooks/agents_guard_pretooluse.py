@@ -1007,10 +1007,16 @@ def check_segment(seg: Segment, ctx: Ctx, cwd: str) -> None:
             units = [u for u in units if not u.startswith("-")]
             if verb in sv.get("verbs", []):
                 if verb in sv.get("no_unit_verbs", []) or not units:
-                    ctx.add("liveops.service", f"{p} {verb}")
+                    _bx = r.get("broker.execution_ops")
+                    _eo = bool(_bx and verb in _bx.get("verbs", []) and ctx.grant("execution-ops")[0])
+                    ctx.add("liveops.service", f"{p} {verb}", tier="execution-ops" if _eo else None)
+                # AGENTS.md 5.0.0 §24.10: restart/daemon-reload of a broker-execution unit needs execution-ops.
+                bx = r.get("broker.execution_ops")
+                brx = r.rx("broker.execution_ops", "unit_regex") if bx else None
                 for u in units:
                     if (prx and prx.match(u)) or "*" in u:
-                        ctx.add("liveops.service", f"{p} {verb} {u}")
+                        eo = bool(brx and brx.match(u) and verb in bx.get("verbs", []))
+                        ctx.add("liveops.service", f"{p} {verb} {u}", tier="execution-ops" if eo else None)
         if p in ("docker", "docker-compose", "podman"):
             crx = r.rx("liveops.service", "docker_prod_container_regex")
             sub = a[0] if a else ""
