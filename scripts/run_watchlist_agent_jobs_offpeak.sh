@@ -19,6 +19,18 @@
 #   - Never unlink a held lock
 #
 set -euo pipefail
+# Explicit CLI preview is offline; preserve the legacy environment-only preview below.
+_cli_dry_run=0
+for _cli_arg in "$@"; do
+  case "$_cli_arg" in
+    --dry-run) _cli_dry_run=1 ;;
+    *) printf 'usage: unknown argument %s\n' "$_cli_arg" >&2; exit 2 ;;
+  esac
+done
+if [[ "$_cli_dry_run" == 1 ]]; then
+  printf '%s\n' 'DRY-RUN run-watchlist-agent-jobs-offpeak: would drain existing governed jobs under window/cap/lock; no env, logs, subprocess or writes'
+  exit 0
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJ="${PROJ:-$(cd "$SCRIPT_DIR/.." && pwd)}"

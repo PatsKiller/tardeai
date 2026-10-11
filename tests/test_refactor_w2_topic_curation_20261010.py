@@ -125,16 +125,9 @@ def test_curator_dry_run_reaches_no_write_llm_or_subprocess(monkeypatch, capsys,
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     monkeypatch.setattr(sys, "argv", ["topic_curator.py", "--dry-run", "--ensemble", "--improve-queries"])
     assert tc.main() == 0
-    assert conn.readonly is True and conn.commits == 0 and conn.writes() == []
-    assert all(s.startswith("SELECT") for s in conn.sql)
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["lane_id"] == "topic-curator"
-    assert rep["summary"]["would_auto_approve"] == 7
-    assert rep["summary"]["would_llm_rate_articles"] == 3
-    assert rep["summary"]["would_enqueue_agent_events"] == 4
-    assert any("topic_ingestion.py" in w for w in rep["would_write"])
+    assert conn.readonly is None and conn.sql == [] and conn.commits == 0
+    assert "DRY-RUN topic-curator-ensemble:" in capsys.readouterr().out
     assert not (_state / "data" / "runtime").exists()
-
 
 def test_curator_dry_run_report_follows_the_data(monkeypatch, capsys):
     """Mutation test (AGENTS.md §6): change the store, the report changes with it."""
@@ -142,7 +135,8 @@ def test_curator_dry_run_report_follows_the_data(monkeypatch, capsys):
         conn = FakeConn(_curator_counts(counts))
         monkeypatch.setattr(tc, "_get_conn", lambda c=conn: c)
         monkeypatch.setattr(sys, "argv", ["topic_curator.py", "--dry-run"])
-        assert tc.main() == 0
+        from types import SimpleNamespace
+        assert tc._dry_run(SimpleNamespace(topic=None, ensemble=False, no_llm=False, improve_queries=False, reindex=False)) == 0
         rep = _dry_line(capsys.readouterr().out)["summary"]
         assert rep["would_auto_approve"] == counts[0]
         assert rep["would_llm_rate_articles"] == min(counts[1], 200)

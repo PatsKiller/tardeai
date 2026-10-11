@@ -12,12 +12,28 @@
 #   bash scripts/run_scheduled_two_way_curation.sh all
 #
 set -euo pipefail
+# Validate every argument before cwd, log, env, clock or child work.
+MODE=options-edge
+_cli_mode_seen=0
+_cli_dry_run=0
+for _cli_arg in "$@"; do
+  case "$_cli_arg" in
+    --dry-run) _cli_dry_run=1 ;;
+    options-edge|options|edge|desk-emit|desk|emit|all)
+      [[ "$_cli_mode_seen" == 0 ]] || { printf '%s\n' 'usage: one curation mode only' >&2; exit 2; }
+      MODE="$_cli_arg"; _cli_mode_seen=1 ;;
+    *) printf 'usage: unknown argument %s\n' "$_cli_arg" >&2; exit 2 ;;
+  esac
+done
+if [[ "$_cli_dry_run" == 1 ]]; then
+  printf 'DRY-RUN two-way-curation: would run mode=%s; no cwd, env, log or child writes\n' "$MODE"
+  exit 0
+fi
 PROJ="${PROJ:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
 cd "$PROJ"
 PY="${PY:-$PROJ/.venv/bin/python}"
 LOG_DIR="$PROJ/logs"
 mkdir -p "$LOG_DIR"
-MODE="${1:-options-edge}"
 TS="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
 # Load secrets: SM tmpfs first (shell-valid keys only), then disk .env fallback.

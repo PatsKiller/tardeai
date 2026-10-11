@@ -145,8 +145,6 @@ def test_a_mapped_refusal_is_logged_without_a_traceback():
 
 @pytest.fixture(scope="module")
 def loop():
-    if not (ROOT / ".env").is_file():
-        pytest.skip("module reads .env at import time")
     import hermes_external_feedback_loop as m
 
     return m
@@ -271,6 +269,7 @@ def _run_main(loop, monkeypatch, *, rows: int):
         def close(self):
             pass
 
+    monkeypatch.setattr(loop, "_load_env", lambda: None)
     monkeypatch.setattr(loop, "_db", lambda: _Conn())
     monkeypatch.setattr(loop, "_outcome", lambda *a, **k: None)
     monkeypatch.setattr(sys, "argv", ["x", "--max-rows", str(rows)])

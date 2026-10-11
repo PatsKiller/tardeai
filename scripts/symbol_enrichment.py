@@ -20,6 +20,24 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
+import argparse
+import sys
+
+
+def _parse_cli(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument("symbol", nargs="?", default="AMD")
+    parser.add_argument("score", nargs="?", type=int, default=45)
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args(argv)
+
+
+if __name__ == "__main__":
+    _cli_args = _parse_cli()
+    if _cli_args.dry_run:
+        print(f"DRY-RUN symbol-enrichment: would enrich {_cli_args.symbol.upper()} score={_cli_args.score}; no provider, telemetry, env, DB or writes")
+        raise SystemExit(0)
+
 import requests
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
 try:  # GAP 14 (2026-10-10): the one shared ticker check before any Finviz request
@@ -41,19 +59,13 @@ log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+_ENV_KEYS = ("DB_PASSWORD", "FINVIZ_API_TOKEN", "FINVIZ_COOKIE", "FINVIZ_USER_AGENT", "YOUTUBE_API_KEY")
+
+
 def _load_env():
-    """Load .env vars into os.environ if not already set."""
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                if k.strip() not in os.environ:
-                    os.environ[k.strip()] = v.strip()
-
-
-_load_env()
+    """Bind this owner to its explicit environment names on real enrichment only."""
+    from lib.env_bootstrap import load_env
+    return load_env(names=_ENV_KEYS)
 
 
 # ─────────────────────────────────────────────
@@ -615,6 +627,7 @@ def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> di
     Main entry point. Orchestrates all enrichment tiers.
     Called from trade_ai_orchestrator on_symbol_surfaced() for GO signals.
     """
+    _load_env()
     start = time.time()
     summary = {'symbol': symbol, 'score': score, 'finviz': None,
                'articles': 0, 'social': 0, 'youtube': 0, 'sources': []}
@@ -694,14 +707,13 @@ def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> di
 
 
 if __name__ == '__main__':
+    _load_env()
     with PipelineRun("symbol_enrichment") as _run:
         import sys, psycopg2
         logging.basicConfig(level=logging.INFO)
-        symbol = sys.argv[1].upper() if len(sys.argv) > 1 else 'AMD'
-        score = int(sys.argv[2]) if len(sys.argv) > 2 else 45
-        pw = ''
-        for line in (PROJECT_ROOT / '.env').read_text().splitlines():
-            if line.startswith('DB_PASSWORD='): pw = line.split('=', 1)[1].strip()
+        symbol = _cli_args.symbol.upper()
+        score = _cli_args.score
+        pw = os.getenv('DB_PASSWORD', '')
         conn = psycopg2.connect(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai', password=pw)
         result = enrich_symbol(symbol, score, conn, force_full=True)
         print(f"\n=== ENRICHMENT: {symbol} (score={score}) ===")

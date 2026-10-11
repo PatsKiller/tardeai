@@ -9,11 +9,12 @@ Usage:
     .venv/bin/python scripts/agent_recommendation_normalizer.py --apply --json
     .venv/bin/python scripts/agent_recommendation_normalizer.py --agent Maria --dry-run --json
 
-Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L320 --apply):
-- ``--dry-run`` wins over ``--apply`` and runs on a READ ONLY session; ``save_recommendations`` returns
-  before its INSERT/commit, and it reports the rows it would have written. No receipt.
+Refactor shard 08 (source proposal, 2026-10-11):
+- Explicit ``--dry-run`` returns an offline plan before env loading or a DB connection.
+- Without ``--apply``, the existing READ ONLY database preview remains available.
 - A real ``--apply`` run writes data/runtime/agent_recommendation_normalizer_last.json
-  (LaneRunReceipt@v1, ok_at only on success); any exception still exits non-zero.
+  and agent-recommendation-normalizer_last.json (LaneRunReceipt@v1, ok_at only on success).
+  Any exception still exits non-zero; the underscore name preserves existing consumers.
 """
 import argparse, hashlib, json, os, sys
 from decimal import Decimal
@@ -21,6 +22,22 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+LANE_ID = "agent-recommendation-normalizer"
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+
+
+def _load_env():
+    from lib.env_bootstrap import load_env
+
+    return load_env(names=_ENV_KEYS)
+
+
+def _write_run_receipts(**kwargs):
+    from lib.lane_last_receipt import write_receipt
+
+    # Keep the legacy spelling for its existing readers and expose the registry lane id.
+    write_receipt("agent_recommendation_normalizer", **kwargs)
+    write_receipt(LANE_ID, **kwargs)
 
 SECRET_KEYS = {"password", "token", "secret", "api_key", "cookie", "credential", "private_key"}
 
@@ -28,8 +45,7 @@ def _f(v):
     return float(v) if isinstance(v, Decimal) else v
 
 def _get_conn():
-    from dotenv import load_dotenv
-    load_dotenv(PROJECT_ROOT / ".env")
+    _load_env()
     from session13_db import get_conn
     return get_conn()
 
@@ -238,7 +254,7 @@ def _tag_recommendation(cur, r: dict) -> None:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Agent Recommendation Normalizer")
+    parser = argparse.ArgumentParser(description="Agent Recommendation Normalizer", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--agent", help="Filter by agent name")
@@ -246,18 +262,24 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
-    dry_run = args.dry_run or not args.apply  # --dry-run wins; no --apply is a dry run (unchanged)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would normalize agent recommendations and write a run receipt")
+        return 0
+
+    dry_run = not args.apply  # implicit database preview remains READ ONLY
     started_at = None
     if not dry_run:
         from lib.lane_last_receipt import now_iso
 
         started_at = now_iso()
-    conn = _get_conn()
-    if dry_run:
-        from lib.lane_last_receipt import enforce_readonly
-
-        enforce_readonly(conn)  # the server refuses any write (AGENTS.md §6)
+    conn = None
     try:
+        _load_env()
+        conn = _get_conn()
+        if dry_run:
+            from lib.lane_last_receipt import enforce_readonly
+
+            enforce_readonly(conn)  # the server refuses any write (AGENTS.md §6)
         all_recs = []
         all_recs.extend(normalize_watchlist_results(conn, args.agent, args.symbol))
         all_recs.extend(normalize_cio_decisions(conn, args.agent, args.symbol))
@@ -292,21 +314,24 @@ def main(argv=None):
             print(json.dumps(out, indent=2, default=str))
         else:
             print(f"Normalizer: {out['total_extracted']} recommendations ({out['mode']})")
-        if not dry_run:
-            from lib.lane_last_receipt import write_receipt
-
-            write_receipt("agent_recommendation_normalizer", ok=True, started_at=started_at,
-                          summary={"extracted": out["total_extracted"], "inserted": out["inserted"],
-                                   "sources": out["sources"]})
     except Exception as exc:
         if not dry_run:
-            from lib.lane_last_receipt import write_receipt
-
-            write_receipt("agent_recommendation_normalizer", ok=False, started_at=started_at,
-                          error=f"{type(exc).__name__}: {exc}")
+            _write_run_receipts(ok=False, exit_code=1, started_at=started_at,
+                                error=f"{type(exc).__name__}: {exc}")
         raise
     finally:
-        conn.close()
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as exc:
+                if not dry_run:
+                    _write_run_receipts(ok=False, exit_code=1, started_at=started_at,
+                                        error=f"{type(exc).__name__}: {exc}")
+                raise
+    if not dry_run:
+        _write_run_receipts(ok=True, exit_code=0, started_at=started_at,
+                            summary={"extracted": out["total_extracted"], "inserted": out["inserted"],
+                                     "sources": out["sources"]})
     return 0
 
 

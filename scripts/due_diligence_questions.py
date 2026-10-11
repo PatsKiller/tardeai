@@ -745,13 +745,17 @@ def route(cur, limit: int) -> dict:
     return out
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; takes precedence over --apply/--route")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--route", action="store_true",
                     help="also send the top questions out for research")
     ap.add_argument("--limit", type=int, default=MAX_CHANGES)
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN due-diligence-questions: would curate up to {args.limit} changes route={args.route}; no lock, DB, schema, researcher, model or writes")
+        return 0
 
     conn = _db()
     cur = conn.cursor()
