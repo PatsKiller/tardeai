@@ -431,4 +431,6 @@ def test_lane_mode_counts_match_the_pr():
     # catalyst-calibration): 17 - 8 = 9. Refactor train 3 adds 1 enforced entry (shard 02
     # source-outcome-attribution): 9 + 1 = 10.
     # 10 -> 9 (2026-10-11 train 3): research-intelligence-materialize (enforce) stays RETIRED into the premarket C1 stage.
+    # 2026-10-11 G8 (grok-g8-g9-env, train 4): cio_production_eligibility's state-root reads are literals; the
+    # re-measure in tests/test_grok_g8_g9_env_20261011.py shows no report lane flips, so the count is unchanged (9).
     assert modes.count("enforce") == 9 and modes.count("report") == len(LANES) - 9

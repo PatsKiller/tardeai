@@ -18,8 +18,10 @@ LIVE scoring. Now:
   ``<state_root>/data/runtime/agent-outcome-scorer_last.json`` (``ok_at`` only on success).
 
 Exit codes: 0 = ran (0 unscored pairs is a finding, still 0); 1 = the run failed (DB unavailable or a
-stage raised; EVERY outcome insert failed when there were pairs to save; or the source-performance
-stage failed); 2 = usage error. A single per-agent rule write failure is a soft failure.
+stage raised; any outcome insert failed; any calibration rule write failed; or the source-performance
+stage failed); 2 = usage error. One failed insert used to leave the transaction aborted and still
+exit 0 when any earlier insert had been counted. Each row is its own savepoint, and any failure
+exits 1.
 """
 import argparse
 import json
@@ -193,6 +195,9 @@ def save_outcomes(conn, scored: list, stats: dict | None = None) -> int:
     failed = 0
     for p in scored:
         try:
+            # One bad row must not abort the transaction (Postgres keeps the connection failed
+            # until ROLLBACK). The savepoint lets the other rows commit, and the caller exits 1.
+            cur.execute("SAVEPOINT aos_outcome")
             cur.execute("""
                 INSERT INTO agent_recommendation_outcomes (
                     agent_name, symbol, recommendation, confidence,
@@ -206,9 +211,15 @@ def save_outcomes(conn, scored: list, stats: dict | None = None) -> int:
                   p.get('trade_id'), p.get('entry_date'), p.get('exit_date'),
                   p.get('entry_price'), p.get('exit_price'), p.get('realized_pnl'),
                   p.get('pnl_pct'), p['verdict'], p['verdict_score'], p.get('delta_days')])
+            cur.execute("RELEASE SAVEPOINT aos_outcome")
             saved += 1
         except Exception:
             failed += 1
+            try:
+                cur.execute("ROLLBACK TO SAVEPOINT aos_outcome")
+            except Exception:
+                conn.rollback()
+                break
     conn.commit()
     if stats is not None:
         stats["save_failed"] = failed
@@ -315,6 +326,7 @@ def write_calibration_to_rules(conn, stats: dict | None = None):
                 f"Calibrate confidence to match. If <50%, be conservative.\n"
                 f"{'=' * 40}")
         try:
+            cur.execute("SAVEPOINT aos_rule")
             cur.execute("""
                 INSERT INTO agent_intelligence_rules (rule_type, rule_key, config, changed_by, updated_at)
                 VALUES ('calibration_stats', %s, %s::jsonb, 'outcome_scorer', NOW())
@@ -325,10 +337,16 @@ def write_calibration_to_rules(conn, stats: dict | None = None):
                 'avg_pnl': float(avg_pnl) if avg_pnl else 0,
                 'text': text, 'updated': datetime.now().isoformat(),
             })])
+            cur.execute("RELEASE SAVEPOINT aos_rule")
         except Exception as e:
             if stats is not None:
                 stats["rule_write_failed"] += 1
             log.error(f"Write calibration for {agent} failed: {e}")
+            try:
+                cur.execute("ROLLBACK TO SAVEPOINT aos_rule")
+            except Exception:
+                conn.rollback()
+                break
 
     conn.commit()
 
@@ -441,8 +459,15 @@ def run_scoring() -> dict:
 
 
 def _exit_code(summary: dict) -> int:
-    all_saves_failed = summary["unscored_pairs"] > 0 and summary["saved"] == 0
-    return 1 if (all_saves_failed or not summary["source_performance_ok"]) else 0
+    """1 when any scored row failed to save, any calibration rule failed to write, or the
+    source-performance stage failed. Zero unscored pairs is a finding, exit 0."""
+    if summary.get("save_failed", 0) > 0:
+        return 1
+    if summary.get("rule_write_failed", 0) > 0:
+        return 1
+    if not summary["source_performance_ok"]:
+        return 1
+    return 0
 
 
 def main(argv=None) -> int:

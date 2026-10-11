@@ -7,15 +7,38 @@ answers with the real dates), and a near-expiry alert. A lockup expiry is a genu
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
 from pathlib import Path
 
 _CFG = Path(__file__).resolve().parent.parent / "config" / "ipo_lockups.json"
 
 
+def _under_test() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CIO_TEST_ISOLATION")
+                or os.environ.get("TRADE_AI_CI") == "1")
+
+
+def resolve_lockup_cfg(state: Path, seed: Path, *, under_test: bool) -> Path:
+    """State copy when it exists and this is not a test. Otherwise the shipped seed."""
+    if under_test or not state.is_file():
+        return seed
+    return state
+
+
+def _cfg_path() -> Path:
+    if _under_test():
+        return _CFG
+    try:
+        from lib.persistent_state_root import good_persistent_root
+    except ImportError:
+        from scripts.lib.persistent_state_root import good_persistent_root
+    return resolve_lockup_cfg(good_persistent_root() / "config" / "ipo_lockups.json", _CFG, under_test=False)
+
+
 def _load() -> dict:
     try:
-        return json.loads(_CFG.read_text()).get("lockups", {})
+        return json.loads(_cfg_path().read_text()).get("lockups", {})
     except Exception:
         return {}
 

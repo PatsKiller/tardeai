@@ -34,6 +34,10 @@ BRIDGE_TYPES = ("momentum_catalyst",)
 RECEIPT_NAME = "hermes_news_bridge"
 
 
+# Names this bridge reads. The env file also holds broker credentials; those are not copied.
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
+
+
 def load_env():
     p = os.path.join(ROOT, ".env")
     if not os.path.exists(p):
@@ -43,7 +47,9 @@ def load_env():
         if line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        os.environ.setdefault(k, v.strip().strip('"').strip("'"))
+        k = k.strip()
+        if k in _ENV_KEYS:
+            os.environ.setdefault(k, v.strip().strip('"').strip("'"))
 
 
 def db():

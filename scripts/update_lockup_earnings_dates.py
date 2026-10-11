@@ -13,6 +13,10 @@ schedule. Conservative: only snaps when the announced date is within ±75 days o
 A real run writes data/runtime/update_lockup_earnings_dates_last.json (LaneRunReceipt@v1, ok_at only on
 success) under the persistent state root and exits 1 on failure. A dry run returns before the config
 write and the alert rows are reachable (AGENTS.md §6).
+
+The snapped config is written under the persistent state root (config/ipo_lockups.json). The checkout
+copy is the seed, read only when the state copy is absent, and is never written. An earnings-lookup
+error exits 1. No announced date is a finding, exit 0.
 """
 from __future__ import annotations
 
@@ -23,9 +27,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-CFG = ROOT / "config" / "ipo_lockups.json"
+SEED_CFG = ROOT / "config" / "ipo_lockups.json"
+# Tests point CFG at their own file. Production leaves it on the seed; the write then goes to state.
+CFG = SEED_CFG
 WINDOW_DAYS = 75
 RECEIPT_NAME = "update_lockup_earnings_dates"
+
+
+def _state_cfg() -> Path:
+    from lib.persistent_state_root import good_persistent_root
+    return good_persistent_root() / "config" / "ipo_lockups.json"
+
+
+def _read_write_paths() -> tuple[Path, Path]:
+    """(read_path, write_path). A CFG other than the seed is a test file, used for both.
+    Production reads the state copy when it exists, else the shipped seed, and writes only state."""
+    if CFG != SEED_CFG:
+        return CFG, CFG
+    state = _state_cfg()
+    return (state if state.is_file() else SEED_CFG), state
 
 
 def _plus_trading_days(d: date, n: int) -> date:
@@ -39,24 +59,23 @@ def _plus_trading_days(d: date, n: int) -> date:
 
 
 def _next_earnings(symbol: str):
-    """Return the next announced earnings date (date) for a symbol, or None."""
-    try:
-        import yfinance as yf
-        t = yf.Ticker(symbol)
-        info = t.info or {}
-        ts = info.get("earningsTimestamp") or info.get("earningsTimestampStart")
-        if ts:
-            d = datetime.fromtimestamp(int(ts), timezone.utc).date()
-            if d >= date.today():
-                return d
-        cal = t.calendar
-        if isinstance(cal, dict):
-            eds = cal.get("Earnings Date") or []
-            future = sorted(x for x in eds if hasattr(x, "year") and x >= date.today())
-            if future:
-                return future[0]
-    except Exception:
-        pass
+    """Return the next announced earnings date (date) for a symbol, or None when none is announced.
+
+    A lookup error propagates. Swallowing it used to leave main() at exit 0."""
+    import yfinance as yf
+    t = yf.Ticker(symbol)
+    info = t.info or {}
+    ts = info.get("earningsTimestamp") or info.get("earningsTimestampStart")
+    if ts:
+        d = datetime.fromtimestamp(int(ts), timezone.utc).date()
+        if d >= date.today():
+            return d
+    cal = t.calendar
+    if isinstance(cal, dict):
+        eds = cal.get("Earnings Date") or []
+        future = sorted(x for x in eds if hasattr(x, "year") and x >= date.today())
+        if future:
+            return future[0]
     return None
 
 
@@ -93,9 +112,10 @@ def plan_snaps(cfg: dict) -> list[dict]:
     return changed
 
 
-def _apply(cfg: dict, changed: list[dict]) -> dict:
-    """The only writer: the config file, then one alert_events row per snap."""
-    CFG.write_text(json.dumps(cfg, indent=2))
+def _apply(cfg: dict, changed: list[dict], dest: Path) -> dict:
+    """The only writer: the state config file, then one alert_events row per snap."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(cfg, indent=2))
     alert_errors = 0
     try:
         from alert_event_writer import save_alert_event
@@ -111,16 +131,17 @@ def _apply(cfg: dict, changed: list[dict]) -> dict:
 
 
 def run(dry_run: bool = False) -> dict:
-    cfg = json.loads(CFG.read_text())
+    read_path, write_path = _read_write_paths()
+    cfg = json.loads(read_path.read_text())
     changed = plan_snaps(cfg)
-    out = {"changed": changed, "config_path": str(CFG)}
+    out = {"changed": changed, "config_path": str(write_path)}
     if dry_run:
         out["dry_run"] = True
-        out["would_write"] = str(CFG) if changed else None
+        out["would_write"] = str(write_path) if changed else None
         out["would_alert"] = len(changed)
         return out
     if changed:
-        out.update(_apply(cfg, changed))
+        out.update(_apply(cfg, changed, write_path))
     return out
 
 
