@@ -532,22 +532,23 @@ def _ladder_l4_l5(rows: list[dict], sla_by_lane: dict, now, runtime_dir: Path, *
     return out
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(allow_abbrev=False)
+def main() -> int:
+    ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=str(PROJ), help="code root (lane registry, silos)")
     ap.add_argument("--state-root", help="persistent-state root for output signals (default: production)")
     ap.add_argument("--write", action="store_true")
-    ap.add_argument("--dry-run", action="store_true", help="offline plan; overrides --write and every live flag")
+    ap.add_argument("--dry-run", action="store_true", help="detect and print only; overrides --write and every live flag")
     ap.add_argument("--enqueue-escalations", action="store_true", help="L3: append to the health agent's escalation queue (off by default)")
     ap.add_argument("--ladder", action="store_true", help="L4/L5 live: page the operator / write the orchestration proposal (default: shadow receipts only)")
     ap.add_argument("--heal", action="store_true", help="L1/L2 live: restart the lane's --user unit / start its alternate (default: shadow Recovery rows)")
     ap.add_argument("--slow-checks", choices=("auto", "always", "never"), default="auto",
                     help="freshness contracts (STALE_OUTPUT) and input starvation (INPUT_STARVATION): auto = at most "
                          "every 30 min (SLOW_CHECK_EVERY_S), always = this tick, never = skip")
-    a = ap.parse_args(argv)
+    a = ap.parse_args()
+    if a.dry_run and (a.write or a.heal or a.ladder or a.enqueue_escalations):
+        print("--dry-run given: ignoring --write/--heal/--ladder/--enqueue-escalations", file=sys.stderr)
     if a.dry_run:
-        print(f"DRY-RUN supervisor-breach-detector: would detect scheduler/output breaches; slow_checks={a.slow_checks}; no DB, state reads, recovery, sends or writes")
-        return 0
+        a.write = a.heal = a.ladder = a.enqueue_escalations = False
     root = Path(a.root)
     env = os.environ
     now = _dt.datetime.now(_dt.timezone.utc)

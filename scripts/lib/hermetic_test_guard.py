@@ -104,7 +104,7 @@ def m2_opted_in(env=None) -> bool:
 
 
 def _norm(p: str) -> str:
-    return os.path.realpath(os.path.abspath(p))
+    return os.path.normpath(os.path.abspath(p))
 
 
 def _under(path: str, root: str) -> bool:

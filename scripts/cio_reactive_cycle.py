@@ -631,10 +631,7 @@ def main(argv=None) -> int:
     if args.dry_run:
         print(f"DRY-RUN {lane}: would enqueue event and goal wakes under existing dispatch flags; no state, queue claim or child execution; options={vars(args)}; inputs NOT_MEASURED")
         return 0
-    try:
-        from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
-    except ImportError:
-        from lib.lane_last_receipt import now_iso, write_lane_receipt
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
     previous = sys.argv
     sys.argv = [previous[0], *argv]

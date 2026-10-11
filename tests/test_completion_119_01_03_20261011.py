@@ -6,7 +6,7 @@ scripts/multi_tier_trade_reviewer.py, scripts/portfolio_lookthrough_themes.py,
 scripts/shadow_batch_generator.py, scripts/hermes_subject_enhance_dispatch.py,
 scripts/run_memory_shadow_measure.py, scripts/cio_reactive_cycle.py,
 scripts/advisory_outcome_scorer.py, scripts/hermes_maturity_gates.py,
-scripts/source_litmus_vs_yahoo.py, scripts/supervisor_breach_detector.py,
+scripts/source_litmus_vs_yahoo.py,
 scripts/lib/cio_nightly_reflection.py, scripts/lib/cio_desk_synthesis.py.
 """
 from __future__ import annotations
@@ -39,7 +39,9 @@ CASES = [
     ("scripts/advisory_outcome_scorer.py", ["--once", "--max", "7"], ["score_pending_outcomes", "run_outcome_cycle", "_run"]),
     ("scripts/hermes_maturity_gates.py", ["--snapshot"], ["run", "_conn"]),
     ("scripts/source_litmus_vs_yahoo.py", ["--json", "--seed", "6"], ["_db", "_yahoo_closes"]),
-    ("scripts/supervisor_breach_detector.py", ["--write", "--heal", "--ladder"], ["_read_only_db_query", "_self_heal_l1_l2", "_ladder_l4_l5"]),
+    # supervisor_breach_detector.py is not here: train 5 keeps main's data dry run (evaluate, write nothing), which
+    # the R11 monitor-fold parity run depends on (tests/test_monitor_fold_coverage_20261011.py,
+    # tests/test_refactor_w1_breach_detector_20261010.py pin it). An offline-only preview is an owner decision.
     ("scripts/lib/cio_nightly_reflection.py", [], ["reflect", "materialize_cases", "persist_reflection"]),
     ("scripts/lib/cio_desk_synthesis.py", [], ["generate_desk_synthesis_v1", "collect_desk_inputs"]),
     ("scripts/market_regime_collector.py", ["--apply", "--json"], ["_load_env", "_get_conn", "collect_vix"]),
