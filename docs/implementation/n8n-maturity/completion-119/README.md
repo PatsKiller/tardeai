@@ -44,6 +44,10 @@ The third profile at `c665ddf3d` stopped on four Git mutation refusals outside t
 
 Independent source review traced the four refusals to the CURRENT-pin fixture's implicit working directory. That fixture and the emergency-release helper now set their scratch repository as `cwd`; spy and mutation controls reject the previous implicit-cwd behavior. Their corrected committed heads passed nine and 24 tests respectively under the unchanged launcher. All release-integrity and emergency-authority assertions remain. The assembled head still needs its full profile result.
 
+The fourth profile at `7fb6f1648` stopped on a host-crontab call from a Python child, exit -15, with owned children reaped. Two malformed-registry CLI tests supplied no discovery fixture, so the registry checker attempted host discovery even while rejecting their malformed rows. These tests need explicit scratch discovery inputs; their exit-1 assertions and negative mutations remain required. This attempt stays rejected and does not establish scheduler or full-profile acceptance.
+
+The registry CLI test helper now requires an explicit discovery fixture. Its source-report test also uses a scratch registry and real fixture output, retaining the QUIET/ok assertions and adding a nonvacuous orphan/freshness/schema control. An intermediate registry-suite attempt reached production signal paths and was stopped; it remains rejected. The corrected committed test head passed all 42 registry tests with no capability refusals and all owned children reaped. No product gate or guard changed.
+
 No frontend or live browser acceptance is claimed: this train changes lane source and test integration, not Command Center or runtime. Deployment and natural-fire evidence remain separate prerequisites.
 
 ## Owner actions and rollback
