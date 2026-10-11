@@ -1435,7 +1435,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `fd07383244ed` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `65e44fbb268f` |
-| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `d68078918c5d` |
+| `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `c67755127210` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_01_20261011.md` | Refactor shard 01 — offline CLI plans and durable receipts | review_required | OK | `79cbfc00a4a6` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_02_20261011.md` | Refactor shard 02 — source handoff | review_required | OK | `92f50ecf978d` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_03_20261011.md` | Refactor shard 03 — source preparation, 2026-10-11 | review_required | OK | `5e1df4819f3b` |
