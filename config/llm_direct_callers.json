@@ -1,0 +1,344 @@
+{
+ "schema": "LlmDirectCallers@v1",
+ "as_of": "2026-10-11",
+ "source": "dispatch-shadow-wave4/BLOCKERS.md section 'Model call not via cio-governed-bridge' (37 lanes)",
+ "bridge_default": "off",
+ "lane_count": 37,
+ "qualifies_today": false,
+ "note": "TRADEAI_LLM_VIA_BRIDGE defaults off. scripts/llm_lane.py generate() calls text_via_bridge only when the flag is on and process_id is set, and it raises BRIDGE_ROUTE_REFUSED instead of calling a provider. config/llm_process_registry.json and config/n8n_run_allowlist.json were not edited. A lane qualifies for the n8n llm class only after its process_id is registered, its allowlist entry declares llm_route via cio-governed-bridge, and the flag is how that lane runs. None of these 37 qualify on this branch.",
+ "lanes": [
+  {
+   "lane_id": "watch-review-workers",
+   "cron_lines": "L830",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "watch-review-workers-cio",
+   "cron_lines": "L832",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "due-diligence-questions",
+   "cron_lines": "L957",
+   "inventory_class": "Not Recommended for Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path without a governed-bridge route (and no --dry-run)",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-top20-external-intel",
+   "cron_lines": "L453",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "provider argv --lanes grok,chatgpt; OAuth proxies not the bridge",
+   "this_change": "Provider is selected in argv or a direct client. \u00a723.18 forbids an argv token that picks a provider. Not wired.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-usefulness-backfill",
+   "cron_lines": "L947",
+   "inventory_class": "Not Recommended for Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path without a governed-bridge route (and no --dry-run)",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "llm-deferred-drain",
+   "cron_lines": "L984",
+   "inventory_class": "Not Recommended for Migration",
+   "business_fn": "maintenance",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-learning-pipeline-learn",
+   "cron_lines": "L1043",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "maintenance",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-learning-pipeline-tune",
+   "cron_lines": "L1044",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "maintenance",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-overnight-pipeline-night",
+   "cron_lines": "L1045",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "maintenance",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-overnight-pipeline-close",
+   "cron_lines": "L1046",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "maintenance",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-subject-enhance-dispatch",
+   "cron_lines": "L1036",
+   "inventory_class": "Not Recommended for Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path without a governed-bridge route (and no --dry-run)",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "multi-tier-trade-reviewer-weekly",
+   "cron_lines": "L131",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "OpenAI/Anthropic tiers not admitted (\u00a723.18)",
+   "this_change": "Provider is selected in argv or a direct client. \u00a723.18 forbids an argv token that picks a provider. Not wired.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "multi-tier-trade-reviewer-monthly",
+   "cron_lines": "L138",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "OpenAI/Anthropic tiers not admitted (\u00a723.18)",
+   "this_change": "Provider is selected in argv or a direct client. \u00a723.18 forbids an argv token that picks a provider. Not wired.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "rag-indexer",
+   "cron_lines": "L252",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "in-process Ollama embedding call (rag_retrieval.embed_text -> ollama_embedding_policy :50-56), not the governed bridge",
+   "this_change": "Not on llm_lane.generate. Needs its own bridge call for embeddings or chat. Not wired.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "topic-curator-at-30-9-13",
+   "cron_lines": "L300",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "in-process generate_cloud -> llm_lane (wave-3 \u00a75)",
+   "this_change": "generate() hook covers this call only when it already passes process_id and TRADEAI_LLM_VIA_BRIDGE is on. No provider fallback.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "topic-curator-ensemble",
+   "cron_lines": "L302",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "in-process LLM; FAILING every run",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "aegis-synthesis",
+   "cron_lines": "L306",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path without a governed-bridge route (and no --dry-run)",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "health-agent-llm-review",
+   "cron_lines": "L337",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "monitoring",
+   "blocker": "direct Ollama HTTP, no process_id; no flock",
+   "this_change": "Not on llm_lane.generate. Needs its own bridge call for embeddings or chat. Not wired.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "trade-close-llm-analyzer-source",
+   "cron_lines": "L355",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-source-curation",
+   "cron_lines": "L376",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path without a governed-bridge route (and no --dry-run)",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "holdings-llm-refresh",
+   "cron_lines": "L383",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "portfolio data",
+   "blocker": "in-process generate_cloud (wave-3 \u00a75); receipt shared with holdings_change_trigger",
+   "this_change": "generate() hook covers this call only when it already passes process_id and TRADEAI_LLM_VIA_BRIDGE is on. No provider fallback.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "multi-tier-trade-reviewer-overnight",
+   "cron_lines": "L401",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "in-process DeepSeek, not the bridge (AGENTS \u00a723.18)",
+   "this_change": "Provider is selected in argv or a direct client. \u00a723.18 forbids an argv token that picks a provider. Not wired.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "journal-review-builder",
+   "cron_lines": "L457",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "in-process llm_lane.generate (grok/local) with no process_id (journal_review_builder.py:116); llm_lane load_dotenv whole .env",
+   "this_change": "generate() hook covers this call only when it already passes process_id and TRADEAI_LLM_VIA_BRIDGE is on. No provider fallback.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "portfolio-lookthrough-themes",
+   "cron_lines": "L484",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "portfolio data",
+   "blocker": "--grok in-process llm_lane.generate, no registered process",
+   "this_change": "generate() hook covers this call only when it already passes process_id and TRADEAI_LLM_VIA_BRIDGE is on. No provider fallback.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "directive-keyword-enhancer",
+   "cron_lines": "L519",
+   "inventory_class": "Requires Custom Development",
+   "business_fn": "research",
+   "blocker": "model call on the live path without a governed-bridge route (and no --dry-run)",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "analyst-urgent-refresh",
+   "cron_lines": "L570",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "reporting",
+   "blocker": "model call on the live path without a governed-bridge route (and no --dry-run)",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "generate-analyst-reports-autonomous-weekly",
+   "cron_lines": "L571",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "reporting",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "generate-analyst-reports-autonomous-full",
+   "cron_lines": "L572",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "reporting",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "llm-intelligence-enrichment-section",
+   "cron_lines": "L600",
+   "inventory_class": "Candidate for Retirement",
+   "business_fn": "reporting",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "proposal-llm-review-worker",
+   "cron_lines": "L684",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "trading-adjacent",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-analyst-coverage",
+   "cron_lines": "L705",
+   "inventory_class": "Retain as Existing Cron Job",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "run-research-intelligence-overnight",
+   "cron_lines": "L728 L729",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "run-research-intelligence-overnight-archive",
+   "cron_lines": "L730",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "topic-research-synthesizer-at-20-x",
+   "cron_lines": "L732",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "topic-ingestion",
+   "cron_lines": "L734 L735",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "topic-research-synthesizer-reground",
+   "cron_lines": "L736",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  },
+  {
+   "lane_id": "hermes-cross-source-synthesizer",
+   "cron_lines": "L826",
+   "inventory_class": "Requires Refactoring Before Migration",
+   "business_fn": "research",
+   "blocker": "model call on the live path (grep), not routed via cio-governed-bridge with a registered process",
+   "this_change": "Blocker is a grep of a model call. The hook covers it only if that call is llm_lane.generate with a process_id. Not verified per file, and not wired on by default.",
+   "qualifies_for_llm_class": false
+  }
+ ]
+}

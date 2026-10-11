@@ -284,6 +284,24 @@ def generate(
 
     deepseek_requested = lane_l in _DEEPSEEK_LANES
 
+    # Opt-in only. Default off, so cron and tests keep the in-process provider path.
+    # When the flag is on, a missing process_id or a bridge refusal does not fall
+    # through to a provider key. That is the §23.18 route; the lane still needs a
+    # registered process_id and an allowlist llm_route before it is llm-class.
+    if os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}:
+        if not process_id:
+            raise RuntimeError(
+                "BRIDGE_ROUTE_REFUSED: TRADEAI_LLM_VIA_BRIDGE is on and this call has no process_id"
+            )
+        from lib.llm_bridge_route import text_via_bridge
+
+        text = text_via_bridge(str(process_id), str(prompt), timeout_s=float(timeout or 60))
+        if text is None:
+            raise RuntimeError("BRIDGE_ROUTE_REFUSED: governed bridge returned no text")
+        if return_provenance:
+            return text, {"via": "cio-governed-bridge", "process_id": str(process_id)}
+        return text
+
     if process_id and not _skip_consumption and (
         lane_l in ("grok", "chatgpt") or lane_l in _ANTHROPIC_LANES
         or deepseek_requested

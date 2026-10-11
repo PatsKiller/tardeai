@@ -4474,6 +4474,18 @@ GATES = [
          "tests/test_n8n_incident_fanin_monitor_fold_20261011.py",
          "tests/test_monitor_fold_parity_20261011.py"],
     ),
+    (
+        # G1–G3 and G7 (2026-10-11, local, not live). Backup enforcer archives instead of
+        # unlinking and skips a dump still being written. The recommendation id is a hash
+        # of the source row. approval-escalate is a read-only board. The bridge route
+        # stays off unless TRADEAI_LLM_VIA_BRIDGE is set, and the test never imports
+        # llm_lane (that import reads .env).
+        # ANCHOR: GROK_G1_G7_20261011
+        "grok_g1_g7_20261011",
+        ["tests/test_agent_recommendation_normalizer_dedupe_20261011.py",
+         "tests/test_approval_escalate_20261011.py",
+         "tests/test_llm_bridge_route_20261011.py"],
+    ),
 ]
 
 

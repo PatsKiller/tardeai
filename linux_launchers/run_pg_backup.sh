@@ -43,6 +43,7 @@ if [ -z "$DB_PASSWORD" ]; then
 fi
 
 BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_$TIMESTAMP.sql.gz"
+PART_FILE="${BACKUP_FILE}.part"
 PARTIAL_MIN_BYTES=$((1500 * 1024 * 1024))  # full dumps ~2–2.5G; <1.5GB = incomplete thrash
 # Policy (2026-08-11): single local dump only — see config/backup_policy.yaml
 # Interval 20h so daily cadence @02:30 is the only writer; health-agent cannot storm.
@@ -72,6 +73,8 @@ fi
     # memory_r10_m2.* blocks COPY in pg_dump (seen Sep 21–29). Exclude those tables'
     # data so the trading/ops dump can complete. Schema DDL for excluded tables is kept.
     # Honest: restore of embeddings / R10 memory facts needs a privileged dump separately.
+    # Write the .part name so the hourly enforcer cannot see a growing dump as a
+    # finished trade_ai_*.sql.gz. Rename only after the size check.
     PGPASSWORD="$DB_PASSWORD" pg_dump \
         -U "$DB_USER" \
         -h "$DB_HOST" \
@@ -81,15 +84,17 @@ fi
         --no-acl \
         --exclude-table-data='intelligence.*' \
         --exclude-table-data='memory_r10_m2.*' \
-        "$DB_NAME" | gzip -9 > "$BACKUP_FILE"
+        "$DB_NAME" | gzip -9 > "$PART_FILE"
 
-    BYTES=$(stat -c%s "$BACKUP_FILE" 2>/dev/null || echo 0)
-    SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+    BYTES=$(stat -c%s "$PART_FILE" 2>/dev/null || echo 0)
+    SIZE=$(du -h "$PART_FILE" | cut -f1)
     if [ "$BYTES" -lt "$PARTIAL_MIN_BYTES" ]; then
-        echo "[$(date)] ERROR: dump too small (${SIZE}/${BYTES}B) — treating as incomplete"
-        rm -f "$BACKUP_FILE"
+        echo "[$(date)] ERROR: dump too small (${SIZE}/${BYTES}B) — moving the partial to archive/"
+        mkdir -p "$BACKUP_DIR/archive"
+        mv -f -- "$PART_FILE" "$BACKUP_DIR/archive/$(basename "$PART_FILE").incomplete"
         exit 1
     fi
+    mv -f -- "$PART_FILE" "$BACKUP_FILE"
     echo "[$(date)] Backup complete: $BACKUP_FILE ($SIZE)"
 
     # Hard retention: backup_enforcer keeps newest MAX_RETAIN_COUNT=1 full dump only.
@@ -100,11 +105,11 @@ fi
     else
         # Fallback: keep newest 1 only
         mapfile -t _all < <(ls -t "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null)
+        mkdir -p "$BACKUP_DIR/archive"
         for ((i=1; i<${#_all[@]}; i++)); do
-            echo "[$(date)] Retention: removing ${_all[$i]}"
-            rm -f -- "${_all[$i]}"
+            echo "[$(date)] Retention: archiving ${_all[$i]}"
+            mv -f -- "${_all[$i]}" "$BACKUP_DIR/archive/"
         done
-        find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -size -500M -delete 2>/dev/null || true
     fi
     REMAINING=$(ls -1 "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null | wc -l)
     echo "[$(date)] Retention cleanup done. $REMAINING backups retained (max $MAX_RETAIN_COUNT)."
