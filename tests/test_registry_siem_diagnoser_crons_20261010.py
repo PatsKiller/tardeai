@@ -4,6 +4,9 @@ before their crontab lines exist (REMEDIATION_PLAN §5 L2, §6 R1-R5).
 Same pattern as tests/test_registry_ops_crons_20261009.py: kind cron, scheduler.expression = the 5 cron fields,
 scheduler.install_line = the exact line the operator's `cron` grant installs, state PAUSED until then (green before
 and after the install), then a registry PR flips it to ACTIVE. Hermetic: repo files only, no crontab, no systemctl.
+
+2026-10-11 registry-drift: both install_lines are on the host crontab (TRADEAI_LANE markers present; diagnoser
+appended under packet diagnoser-only-20261011) and both rows flipped to ACTIVE.
 """
 from __future__ import annotations
 
@@ -31,15 +34,17 @@ LANES = {
                               "/tmp/tradeai_n8n_failure_diagnosis.lock", "timeout -k 30 600 ",
                               "logs/n8n_failure_diagnosis.log", 0.25, "data/runtime/n8n_failure_diagnosis_last.json"),
 }
+#: 2026-10-11: both lines on host crontab; rows flipped PAUSED → ACTIVE.
+INSTALLED = set(LANES)
 
 
 @pytest.mark.parametrize("lane_id", sorted(LANES))
-def test_row_is_paused_pending_install_with_the_exact_line(lane_id):
+def test_row_is_active_installed_with_the_exact_line(lane_id):
     sched, match, lock, timeout, log, cadence, receipt = LANES[lane_id]
     row = ROWS[lane_id]
     assert LR.validate_row(row) == []
-    assert row["state"] == "PAUSED" and row["review_by"] and row["state_since"] == "2026-10-10"
-    assert "PENDING INSTALL" in row["state_reason"] and "siem-diagnoser-schedule" in row["state_reason"]
+    assert row["state"] == "ACTIVE" and row["review_by"] and row["state_since"] == "2026-10-10"
+    assert "INSTALLED" in row["state_reason"] and "siem-diagnoser-schedule" in row["state_reason"]
     s = row["scheduler"]
     assert s["kind"] == "cron" and s["match"] == match and s["expression"] == sched
     line = s["install_line"]
@@ -68,11 +73,11 @@ def test_lines_are_discovered_as_exactly_these_lanes():
 
 
 def test_the_wrapper_flag_the_diagnoser_line_needs_is_pinned_by_its_own_pr():
-    """The line is only valid once run_with_deepseek_offpeak.sh accepts --defer-in-process (PR #1652); until that
-    lands the row stays PAUSED and the packet's install.sh refuses. This test records the dependency."""
+    """The line is only valid once run_with_deepseek_offpeak.sh accepts --defer-in-process (PR #1652);
+    install refused until that landed. Dependency stays pinned after the ACTIVE flip."""
     row = ROWS["n8n-failure-diagnosis"]
     assert "--defer-in-process" in row["scheduler"]["install_line"] and "PR #1652" in row["state_reason"]
-    assert row["state"] == "PAUSED"
+    assert row["state"] == "ACTIVE" and "n8n-failure-diagnosis" in INSTALLED
 
 
 def test_neither_lane_is_a_sender_or_on_the_n8n_allowlist():

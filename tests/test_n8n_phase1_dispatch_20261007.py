@@ -127,6 +127,9 @@ def test_incident_fanin_bounds_to_48h_and_closes_on_recovery(env, tmp_path, monk
     assert ("breach_detector", "cio-delivery:NO_OUTPUT") in items
     assert ("breach_detector", "old-lane:SILENT") not in items          # 5 days old → not open
     assert ("expected_services", "INACTIVE:hermes-gateway.service") in items
+    # siem-active-flip 2026-10-11: n8n-failure-diagnosis is ACTIVE, so diagnoser liveness arms and a missing
+    # receipt in this hermetic fixture is itself an open P1 (TRADEAI_FANIN_DIAGNOSIS stays on).
+    assert ("n8n_failure_diagnosis", "diagnoser:receipt_missing") in items
 
     t = _transport(frozenset(PILOT_LANES) | {INCIDENT_LANE})
     monkeypatch.setattr(gc.GatewayClient, "_http", lambda self, url, envelope: t(url, envelope))
@@ -134,13 +137,14 @@ def test_incident_fanin_bounds_to_48h_and_closes_on_recovery(env, tmp_path, monk
     receipt = tmp_path / "fanin.json"
     assert fanin_main(["--apply", "--receipt", str(receipt)]) == 0
     doc = json.loads(receipt.read_text())
-    assert doc["open"] == 2 and all(r["state"] == "ARTIFACT_WRITTEN" for r in doc["incidents"])
+    assert doc["open"] == 3 and all(r["state"] == "ARTIFACT_WRITTEN" for r in doc["incidents"])
     # recovery: the service comes back → next run acks the incident from recovery-observer
     (env / "data" / "runtime" / "expected_services_last_run.json").write_text(json.dumps({
         "schema": "ExpectedServicesReport@v1", "ran_at": now.isoformat(), "checked": 10, "off": 0, "off_items": []}))
     assert fanin_main(["--apply", "--receipt", str(receipt)]) == 0
     doc2 = json.loads(receipt.read_text())
-    assert doc2["open"] == 1 and len(doc2["recovered"]) == 1 and doc2["recovered"][0]["state"] == "CONSUMED"
+    # breach + diagnoser:receipt_missing remain; only expected_services recovered
+    assert doc2["open"] == 2 and len(doc2["recovered"]) == 1 and doc2["recovered"][0]["state"] == "CONSUMED"
 
 
 def test_incident_lane_is_refused_unless_allowed(env, tmp_path, monkeypatch):
