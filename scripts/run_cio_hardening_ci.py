@@ -2146,6 +2146,10 @@ GATES = [
             "tests/test_agents_policy_4_3_0_r1_classes.py",
             # AGENTS.md 4.4.0 (PROPOSED 2026-10-10): R1 shadow row may be a cron row (§23.11, §23.18 (c)).
             "tests/test_agents_policy_4_4_0_r1_shadow_shape.py",
+            # AGENTS.md 4.6.0 (PROPOSED 2026-10-10): §24 platform rules (notifications, search routing, data broker, …).
+            "tests/test_agents_policy_4_6_0_platform_rules.py",
+            # AGENTS.md 5.0.0 (2026-10-10): operator-run adapter sync + execution-ops guard scope (§24.10).
+            "tests/test_agents_policy_5_0_0_execution_ops.py",
             "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
@@ -3684,6 +3688,26 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: N8N_HEALTH_CONTRACTS (2026-10-10, operator ~16:45 ET): every n8n lane / generic workflow / host
+        # monitor has an N8nHealthContract@v1 in config/n8n_health_contracts.json (purpose, connects_to, healthy /
+        # degraded / failed, baseline, alerting, remediation); scripts/check_n8n_health_contracts.py fails a lane that
+        # enters shadow/canary/cutover without one, and canary/cutover need a REVIEWED contract. Hermetic: tmp ledger.
+        "n8n_health_contracts_20261010",
+        [
+            "tests/test_n8n_health_contracts_20261010.py",
+        ],
+    ),
+    (
+        # ANCHOR: N8N_ONBOARDING_STANDARD (2026-10-10, operator ~16:35/16:40/16:50 ET): the n8n configuration reference,
+        # onboarding standard and monitoring/remediation standard exist with headers, carry the 2026-10-10 rules
+        # (RC1-RC10), quote numbers equal to the code (relay ROUTES, notifier defaults, diagnoser caps, class caps,
+        # dispatcher naming), stale statements stay gone, and AGENTS.md points at the standard. Static reads only.
+        "n8n_onboarding_standard_20261010",
+        [
+            "tests/test_n8n_onboarding_standard_20261010.py",
+        ],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
         # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
         # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
@@ -4395,6 +4419,14 @@ GATES = [
         # Transport captured, never sent.
         "notification_intents_20261010",
         ["tests/test_notification_intents_20261010.py"],
+    ),
+    (
+        # Release-pinned daemons (packets/unit-code-roots, 2026-10-10): one-off exact-SHA drop-ins left 4 user
+        # daemons on a032116e7 for 4 days because promote rewrote only portfolio-server's. Promote/rollback now
+        # rewrite stale pins into 90-release-pin.conf, archive pin-only one-offs (never delete), never touch a
+        # broker-adjacent unit, and rollback restores the archived drop-ins. Fake systemd tree + fake systemctl.
+        "release_pin_daemons_20261010",
+        ["tests/test_release_pin_daemons_20261010.py"],
     ),
 ]
 

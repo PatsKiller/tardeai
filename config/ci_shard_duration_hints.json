@@ -711,6 +711,7 @@
   "tests/test_release_grant_binding_20260925.py": 0.5,
   "tests/test_release_links_reports_dir.py": 0.6,
   "tests/test_release_pin_and_validator.py": 0.4,
+  "tests/test_release_pin_daemons_20261010.py": 2.5,
   "tests/test_repair_cio_event_bus_fork_20261004.py": 0.8,
   "tests/test_replay_determinism_a.py": 0.5,
   "tests/test_replay_determinism_b.py": 0.5,
