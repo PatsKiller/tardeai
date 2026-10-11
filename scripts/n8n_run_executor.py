@@ -5,14 +5,15 @@
 request and nothing else; this process, in its own cgroup, claims the oldest
 REQUESTED row (RUNNING, one transaction), looks the lane up in
 config/n8n_run_allowlist.json and runs the lane's OWN command under the lane's
-OWN lock::
+OWN lock (``live``) or ``<lock>.dryrun`` (``dry_run`` — never the live lock, 2026-10-11 LOCK_STEAL; see
+``lock_path_for``)::
 
     bash scripts/safe_flock.sh <lock> timeout -k 30 <timeout_s> [bash scripts/market_day_gate.sh] <command...> <mode arg>
 
 The allowlist is data: a lane missing from it at execution time is RUN_REFUSED,
 a mode whose argument is ``null`` is RUN_REFUSED, and nothing here can name a
-command that is not in that file. The lock is the lane's existing lock so a cron
-line and an n8n fire cannot double-run (``lock_kind: flock`` reuses a cron
+command that is not in that file. The live lock is the lane's existing lock so a cron
+line and an n8n LIVE fire cannot double-run (``lock_kind: flock`` reuses a cron
 ``flock -n`` file; the default reuses safe_flock's pid file).
 
 Evidence (rail 8): every claim ends in a RunReceipt@v1 on the ledger row, under
@@ -90,6 +91,8 @@ NO_STAGE_CLAMP = object()
 REGISTRY_REL = Path("config") / "lane_registry.json"
 ALLOWLIST_SCHEMA = "N8nRunAllowlist@v1"
 RUN_MODES = ("dry_run", "live")
+#: A dry_run takes ``<lock>`` + this suffix, never the lane's live lock (lock_path_for; 2026-10-11 LOCK_STEAL).
+DRY_RUN_LOCK_SUFFIX = ".dryrun"
 LOCK_KINDS = ("safe_flock", "flock")
 FLOCK_CONFLICT_EXIT = 75
 TIMEOUT_EXITS = frozenset({124, 137})
@@ -249,6 +252,8 @@ def validate_entry(entry: Mapping[str, Any]) -> str | None:
         return "bad_command"
     if not isinstance(entry.get("lock"), str) or not entry["lock"].startswith("/"):
         return "bad_lock"
+    if entry["lock"].endswith(DRY_RUN_LOCK_SUFFIX):
+        return "bad_lock"  # a live lock named like a dry-run lock could collide with another lane's dry runs
     if entry.get("lock_kind", "safe_flock") not in LOCK_KINDS:
         return "bad_lock_kind"
     timeout_s = entry.get("timeout_s")
@@ -297,6 +302,22 @@ def resolve_token(token: str, *, env: Mapping[str, str], state_root: Path, code_
     return token.replace("$PY", py).replace("$STATE_ROOT", str(state_root)).replace("$CODE_ROOT", str(code_root))
 
 
+def lock_path_for(entry: Mapping[str, Any], mode: str) -> str:
+    """The lock one run of ``mode`` takes. Pure.
+
+    ``live`` (canary / cutover) takes the lane's OWN lock — the same file the cron line / unit holds — because there
+    the shared lock is the intended no-double-run guard. ``dry_run`` NEVER takes it: it takes ``<lock>.dryrun``
+    (``DRY_RUN_LOCK_SUFFIX``). 2026-10-11 (Agent LK, LOCK_STEAL finding): the dispatcher fires a shadow dry_run in
+    the SAME minute as the cron slot it shadows; whichever process reached the shared lock first won, and when the
+    dry_run won the real cron ``flock -n`` exited 1 silently — 8 real runs on 6 lanes were lost in ~17 h of shadow
+    dispatch. A dry run writes nothing (AGENTS.md §6, ``lane_last_receipt.dry_run_report``), so it needs no mutual
+    exclusion with the live run; it still serialises against other dry runs of the same lane on ``.dryrun``.
+    A time offset for shadow fires was considered and rejected: it only narrows the race (a slow cron run still
+    overlaps) and makes the shadow's slot no longer the slot it shadows; a disjoint lock removes the race."""
+    lock = str(entry["lock"])
+    return f"{lock}{DRY_RUN_LOCK_SUFFIX}" if mode == "dry_run" else lock
+
+
 def build_argv(
     entry: Mapping[str, Any], mode: str, *, env: Mapping[str, str], state_root: Path, code_root: Path
 ) -> list[str] | None:
@@ -304,7 +325,7 @@ def build_argv(
     mode_arg = entry.get(f"{mode}_arg")
     if mode_arg is None:
         return None
-    lock = str(entry["lock"])
+    lock = lock_path_for(entry, mode)
     if entry.get("lock_kind", "safe_flock") == "flock":
         wrapper = ["flock", "-n", "-E", str(FLOCK_CONFLICT_EXIT), lock]
     else:
@@ -432,6 +453,8 @@ def _execute_once(
     receipt["output_signal"] = signal_rel
     receipt["output_signal_mtime_before"] = _mtime(signal_path)
     receipt["argv"] = argv
+    receipt["lock"] = {"path": lock_path_for(entry, mode), "scope": "dryrun" if mode == "dry_run" else "live",
+                       "kind": entry.get("lock_kind", "safe_flock")}
     timeout_s = float(entry["timeout_s"])
     run = runner or _subprocess_runner
     lane_env, receipt["env_allowlist"] = build_child_env(env, lane_id, entry)
