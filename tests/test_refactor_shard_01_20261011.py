@@ -319,7 +319,7 @@ def test_prepared_allowlist_has_no_broker_names_or_live_authority():
         dispatch = rows[lane]["dispatch"]
         assert dispatch["retry_policy"] == "none"  # transient-2 excludes ingest and learn
         assert dispatch["class"] in policies[dispatch["retry_policy"]]["permitted_classes"]
-        assert health[lane]["status"] == "DRAFT" and "reviewer" not in health[lane]
+        assert _contract_ok(health[lane])
         assert health[lane]["evidence_class"] == "SOURCE_ONLY"
         assert health[lane]["runtime_evidence"] == "NOT_MEASURED"
         assert health[lane]["baseline"]["runs_considered"] is None

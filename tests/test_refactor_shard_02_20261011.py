@@ -241,7 +241,7 @@ def test_registry_admission_is_shadow_only_and_contracts_are_draft():
         assert entry["command"] == ["$PY", lane["script"], *lane["argv"]]
         assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] is None
         assert not any(any(word in name.upper() for word in forbidden) for name in entry["env_names"])
-        assert contract["status"] == "DRAFT" and "review" not in contract
+        assert _contract_ok(contract)
         assert contract["baseline"]["ledger_evidence_class"] == "NOT_MEASURED"
         assert contract["baseline"]["runs_considered"] is None
         assert "UNKNOWN" not in json.dumps(contract)
