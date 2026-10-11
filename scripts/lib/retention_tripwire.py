@@ -40,7 +40,7 @@ SCHEMA = "RetentionArchiveTripwire@v1"
 TRIPWIRE_NAME = "TRIPWIRE.jsonl"
 
 #: Path fragments that identify an archived store. Any live reference to one of these is a read.
-NEEDLES: tuple[str, ...] = ("archive/db_retention", "archive/db_trim")
+NEEDLES: tuple[str, ...] = ("archive/db_retention", "archive/db_trim", "archive/file_prune")
 
 #: Repo files that legitimately name the archive: its writers, this reader, and the registries that
 #: document where the archive lives. Relative to the repo root.
@@ -63,6 +63,8 @@ PATH_KEYS: tuple[str, ...] = ("archive", "dump", "ddl_file")
 def tripwire_files(state_root: Path) -> list[Path]:
     base = Path(state_root) / "archive"
     out = sorted((base / "db_retention").glob(f"*/{TRIPWIRE_NAME}"))
+    # 2026-10-11: file-prune archives (db_retention FILE_PRUNE, archive-then-unlink) and their tripwires.
+    out += sorted((base / "file_prune").glob(f"*/{TRIPWIRE_NAME}"))
     trim = base / "db_trim" / TRIPWIRE_NAME
     if trim.is_file():
         out.append(trim)

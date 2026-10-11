@@ -63,6 +63,28 @@ def _writer():
     return W
 
 
+def _managed_purge():
+    """lib.retention_archive.managed_purge (2026-10-11, retention-all-managed): archive + sha256 manifest +
+    tripwire BEFORE every librarian DELETE. Same guarded import as _writer()."""
+    try:
+        from lib.retention_archive import managed_purge
+    except ImportError:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from lib.retention_archive import managed_purge
+    return managed_purge
+
+
+def _archive_first(policy: dict) -> bool:
+    """Top-level ``archive_first`` in config/hermes_librarian_policy.yaml; default ON. ``false`` restores
+    the inherited hard DELETEs (rollback lever)."""
+    return policy.get("archive_first", True) is not False
+
+
+def _purge(conn, policy: dict, *, table: str, where_sql: str, params=(), label: str, dry_run: bool) -> dict:
+    return _managed_purge()(conn, table=table, where_sql=where_sql, params=params, label=label,
+                            writer="hermes_librarian", apply=not dry_run, archive=_archive_first(policy))
+
+
 def load_policy():
     if POLICY_PATH.exists():
         return yaml.safe_load(POLICY_PATH.read_text())
@@ -91,21 +113,14 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
     actions.append({"table": "hermes_research_intelligence", "action": "archive_staged",
                     "count": staged_count, "threshold_days": staged_cfg})
 
-    # 2. Purge archived research
+    # 2. Purge archived research (archive-first since 2026-10-11)
     purge_cfg = policy.get("hermes_research_intelligence", {}).get("archived_purge_days", 180)
-    cur.execute("""
-        SELECT COUNT(*) FROM hermes_research_intelligence
-        WHERE status = 'archived' AND created_at < CURRENT_DATE - %s::int
-    """, (purge_cfg,))
-    archived_count = cur.fetchone()[0]
-    if archived_count > 0 and not dry_run:
-        cur.execute("""
-            DELETE FROM hermes_research_intelligence
-            WHERE status = 'archived' AND created_at < CURRENT_DATE - %s::int
-        """, (purge_cfg,))
-        conn.commit()
+    r = _purge(conn, policy, table="hermes_research_intelligence", label=f"librarian_archived_{purge_cfg}d",
+               where_sql="t.status = 'archived' AND t.created_at < CURRENT_DATE - %s::int", params=(purge_cfg,),
+               dry_run=dry_run)
     actions.append({"table": "hermes_research_intelligence", "action": "purge_archived",
-                    "count": archived_count, "threshold_days": purge_cfg})
+                    "count": r["eligible"], "threshold_days": purge_cfg, "deleted": r["deleted"],
+                    "archived": r["archived"], "archive_first": r["archive"]})
 
     # 3. Cold-archive old discovery candidates
     cold_cfg = policy.get("hermes_discovery_candidates", {}).get("cold_archive_days", 90)
@@ -126,60 +141,30 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
     actions.append({"table": "hermes_discovery_candidates", "action": "cold_archive",
                     "count": cold_count, "threshold_days": cold_cfg})
 
-    # 4. Purge failed embedding queue entries
+    # 4. Purge failed embedding queue entries (archive-first since 2026-10-11)
     failed_cfg = policy.get("hermes_embedding_queue", {}).get("failed_purge_days", 14)
-    cur.execute("""
-        SELECT COUNT(*) FROM hermes_embedding_queue
-        WHERE embedding_status = 'failed' AND created_at < CURRENT_DATE - %s::int
-    """, (failed_cfg,))
-    failed_count = cur.fetchone()[0]
-    if failed_count > 0 and not dry_run:
-        cur.execute("""
-            DELETE FROM hermes_embedding_queue
-            WHERE embedding_status = 'failed' AND created_at < CURRENT_DATE - %s::int
-        """, (failed_cfg,))
-        conn.commit()
+    r = _purge(conn, policy, table="hermes_embedding_queue", label=f"librarian_failed_{failed_cfg}d",
+               where_sql="t.embedding_status = 'failed' AND t.created_at < CURRENT_DATE - %s::int",
+               params=(failed_cfg,), dry_run=dry_run)
     actions.append({"table": "hermes_embedding_queue", "action": "purge_failed",
-                    "count": failed_count, "threshold_days": failed_cfg})
+                    "count": r["eligible"], "threshold_days": failed_cfg, "deleted": r["deleted"],
+                    "archived": r["archived"], "archive_first": r["archive"]})
 
     # 5. Purge orphan content_embeddings (source row gone) — major disk leak (2026-08-11 audit)
     # Match rag_health.py: source_id::int join (same cast used in production orphan detection).
+    # 2026-10-11 (retention-all-managed): archive-first -- the orphan's vector + text land in
+    # the row-archive root (retention_archive.archive_root) with a manifest + tripwire before the DELETE.
     orphan_cfg = policy.get("content_embeddings", {}).get("orphan_purge_days", 30)
-    cur.execute("""
-        SELECT COUNT(*) FROM content_embeddings ce
-        WHERE ce.source_type = 'news'
-          AND NOT EXISTS (SELECT 1 FROM news_articles na WHERE na.id = ce.source_id::int)
-    """)
-    news_orphans = cur.fetchone()[0]
-    if news_orphans > 0 and not dry_run:
-        cur.execute("""
-            DELETE FROM content_embeddings ce
-            WHERE ce.source_type = 'news'
-              AND NOT EXISTS (SELECT 1 FROM news_articles na WHERE na.id = ce.source_id::int)
-        """)
-        conn.commit()
-    actions.append({"table": "content_embeddings", "action": "purge_news_orphans",
-                    "count": news_orphans, "threshold_days": orphan_cfg})
-
-    cur.execute("""
-        SELECT COUNT(*) FROM content_embeddings ce
-        WHERE ce.source_type = 'hermes_research'
-          AND NOT EXISTS (
-            SELECT 1 FROM hermes_research_intelligence hri WHERE hri.id = ce.source_id::int
-          )
-    """)
-    hermes_orphans = cur.fetchone()[0]
-    if hermes_orphans > 0 and not dry_run:
-        cur.execute("""
-            DELETE FROM content_embeddings ce
-            WHERE ce.source_type = 'hermes_research'
-              AND NOT EXISTS (
-                SELECT 1 FROM hermes_research_intelligence hri WHERE hri.id = ce.source_id::int
-              )
-        """)
-        conn.commit()
-    actions.append({"table": "content_embeddings", "action": "purge_hermes_research_orphans",
-                    "count": hermes_orphans, "threshold_days": orphan_cfg})
+    for source, parent, action in (("news", "news_articles", "purge_news_orphans"),
+                                   ("hermes_research", "hermes_research_intelligence",
+                                    "purge_hermes_research_orphans")):
+        r = _purge(conn, policy, table="content_embeddings", label=f"librarian_orphan_{source}",
+                   where_sql=f"t.source_type = %s AND NOT EXISTS (SELECT 1 FROM {parent} p "
+                             "WHERE p.id = t.source_id::int)",
+                   params=(source,), dry_run=dry_run)
+        actions.append({"table": "content_embeddings", "action": action, "count": r["eligible"],
+                        "threshold_days": orphan_cfg, "deleted": r["deleted"], "archived": r["archived"],
+                        "archive_first": r["archive"]})
 
     # 6. Age purge for content_embeddings (largest disk consumer when orphans=0)
     # 2026-10-11 (DB retention study §2.6 #4): this 90 d DELETE duplicated db_retention's registry row

@@ -519,36 +519,35 @@ def auto_archive_stale(
     }
 
 
-def retention_purge(conn, *, apply: bool) -> dict:
-    """Delete archived / drained rows past retention windows (curator-owned only)."""
+def retention_purge(conn, *, apply: bool, archive: bool = True) -> dict:
+    """Delete archived / drained rows past retention windows (curator-owned only).
+
+    2026-10-11 (retention-all-managed): the three DELETEs go through lib.retention_archive.managed_purge --
+    archive + sha256 manifest + tripwire BEFORE each delete, and a dry run only COUNTS (it used to run the
+    DELETEs and merely skip the commit, so a later commit on the same connection could keep them).
+    Registered in config/data_retention_policy.json purge_paths (owner research_critique_pipeline).
+    """
+    try:
+        from lib.retention_archive import managed_purge
+    except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+        from retention_archive import managed_purge
     cur = conn.cursor()
     purged = {"directives": 0, "research": 0, "staging": 0, "findings": 0}
-
-    cur.execute(
-        """DELETE FROM watch_directives
-           WHERE status='archived'
-             AND created_by = ANY(%s)
-             AND COALESCE((spec->>'archived_at')::timestamptz, updated_at)
-                 < NOW() - %s * INTERVAL '1 day'""",
-        (list(CURATOR_CREATORS), RETENTION_DIRECTIVE_DAYS),
-    )
-    purged["directives"] = cur.rowcount
-
-    cur.execute(
-        """DELETE FROM hermes_research_intelligence
-           WHERE status='archived'
-             AND updated_at < NOW() - %s * INTERVAL '1 day'""",
-        (RETENTION_RESEARCH_DAYS,),
-    )
-    purged["research"] = cur.rowcount
-
-    cur.execute(
-        """DELETE FROM hermes_directive_hits_staging
-           WHERE drained = true
-             AND drained_at < NOW() - %s * INTERVAL '1 day'""",
-        (RETENTION_STAGING_DAYS,),
-    )
-    purged["staging"] = cur.rowcount
+    w = "research_critique_pipeline"
+    r = managed_purge(conn, table="watch_directives", label=f"curator_archived_{RETENTION_DIRECTIVE_DAYS}d",
+                      where_sql="t.status='archived' AND t.created_by = ANY(%s) AND "
+                                "COALESCE((t.spec->>'archived_at')::timestamptz, t.updated_at) "
+                                "< NOW() - %s * INTERVAL '1 day'",
+                      params=(list(CURATOR_CREATORS), RETENTION_DIRECTIVE_DAYS), writer=w, apply=apply, archive=archive)
+    purged["directives"] = r["deleted"] if apply else r["eligible"]
+    r = managed_purge(conn, table="hermes_research_intelligence", label=f"archived_{RETENTION_RESEARCH_DAYS}d",
+                      where_sql="t.status='archived' AND t.updated_at < NOW() - %s * INTERVAL '1 day'",
+                      params=(RETENTION_RESEARCH_DAYS,), writer=w, apply=apply, archive=archive)
+    purged["research"] = r["deleted"] if apply else r["eligible"]
+    r = managed_purge(conn, table="hermes_directive_hits_staging", label=f"drained_{RETENTION_STAGING_DAYS}d",
+                      where_sql="t.drained = true AND t.drained_at < NOW() - %s * INTERVAL '1 day'",
+                      params=(RETENTION_STAGING_DAYS,), writer=w, apply=apply, archive=archive)
+    purged["staging"] = r["deleted"] if apply else r["eligible"]
 
     cur.execute(
         """UPDATE hermes_validation_findings

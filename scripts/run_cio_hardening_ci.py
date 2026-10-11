@@ -4055,6 +4055,14 @@ GATES = [
         ["tests/test_retention_hardening_20261011.py"],
     ),
     (
+        # Retention all managed 2026-10-11 (operator: "Add, enable, and manage all deletes and purges"):
+        # archive_first on 93/96 DELETE rows, managed_purge for every converted owner (librarian, siem,
+        # protection prune, research critique, self-tune), file_prune archive-then-unlink, archive projection
+        # + ARCHIVE_GROWTH, purge_paths registry + unregistered-deleter gate.
+        "retention_all_managed_20261011",
+        ["tests/test_retention_all_managed_20261011.py"],
+    ),
+    (
         # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
         # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
         # in 503 errors, alert-quality registry row matches the host.
