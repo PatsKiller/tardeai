@@ -2474,15 +2474,54 @@ def _reports_analyst_export(query=None, body=None):
 
 
 def _reports_analyst_generate(query=None, body=None):
-    """POST /api/v2/reports/analyst/generate — ad-hoc prospectus generation + registry."""
+    """POST /api/v2/reports/analyst/generate — ad-hoc prospectus generation + registry.
+
+    Wave C: when TRADEAI_N8N_CC_WAVE_C_MODE is dry_run|apply, enqueue lane
+    analyst-prospectus-generate via host_run_request (202 + run_id) instead of
+    running reporting_engine inline. Does not overload generate-analyst-daily-digest.
+    """
     import sys as _s
 
     _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
-    import reporting_engine as _re
 
     q = dict(query or {})
     if body and isinstance(body, dict):
         q.update(body)
+
+    try:
+        from lib.n8n_cc_wave_c import LANE_ANALYST, enqueue_for_wave_c_mode, wave_c_mode
+
+        if wave_c_mode() != "off":
+            got = enqueue_for_wave_c_mode(lane_id=LANE_ANALYST, payload=q)
+            if got.get("accepted"):
+                return {
+                    "ok": True,
+                    "accepted": True,
+                    "queued": True,
+                    "http_status": 202,
+                    "run_id": got.get("run_id"),
+                    "lane_id": LANE_ANALYST,
+                    "wave_c_mode": got.get("wave_c_mode"),
+                    "enqueue_mode": got.get("mode"),
+                    "ledger": got.get("ledger"),
+                    "authority": "READ_ONLY_ADVISORY",
+                    "financial_action": False,
+                    "message": "Prospectus generate enqueued via coordination/run (host_run_request)",
+                }
+            if got.get("reason") != "wave_c_mode_off":
+                return {
+                    "ok": False,
+                    "accepted": False,
+                    "error": got.get("reason") or "enqueue_refused",
+                    "run_id": got.get("run_id"),
+                    "lane_id": LANE_ANALYST,
+                    "wave_c_mode": got.get("wave_c_mode"),
+                }
+    except Exception:
+        pass  # fail-open to legacy sync path when Wave C helper is unavailable
+
+    import reporting_engine as _re
+
     mode = (q.get("mode") or "single").lower()
     try:
         if mode == "batch_holdings":
@@ -28738,11 +28777,48 @@ def _report_catalog_cached():
 def _reports_brief_regenerate(body=None):
     """POST /api/v2/reports/brief/regenerate — WS-B: rebuild today's aegis brief .md +
     .json sidecar from live context. Deterministic-light (fetches the chat-context API,
-    formats, writes files). Telegram is NOT re-sent — send path untouched."""
+    formats, writes files). Telegram is NOT re-sent — send path untouched.
+
+    Wave C: when TRADEAI_N8N_CC_WAVE_C_MODE is dry_run|apply, enqueue lane
+    aegis-brief-regenerate via host_run_request instead of inline heavy work.
+    """
     try:
         import sys as _s
 
         _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        try:
+            from lib.n8n_cc_wave_c import LANE_BRIEF, enqueue_for_wave_c_mode, wave_c_mode
+
+            if wave_c_mode() != "off":
+                got = enqueue_for_wave_c_mode(
+                    lane_id=LANE_BRIEF,
+                    payload=dict(body or {}) if isinstance(body, dict) else {},
+                )
+                if got.get("accepted"):
+                    return {
+                        "ok": True,
+                        "accepted": True,
+                        "queued": True,
+                        "http_status": 202,
+                        "run_id": got.get("run_id"),
+                        "lane_id": LANE_BRIEF,
+                        "wave_c_mode": got.get("wave_c_mode"),
+                        "enqueue_mode": got.get("mode"),
+                        "ledger": got.get("ledger"),
+                        "authority": "READ_ONLY_ADVISORY",
+                        "message": "Brief regenerate enqueued via coordination/run (host_run_request)",
+                    }
+                if got.get("reason") != "wave_c_mode_off":
+                    return {
+                        "ok": False,
+                        "accepted": False,
+                        "error": got.get("reason") or "enqueue_refused",
+                        "run_id": got.get("run_id"),
+                        "lane_id": LANE_BRIEF,
+                        "wave_c_mode": got.get("wave_c_mode"),
+                    }
+        except Exception:
+            pass
         from aegis_morning_brief_delivery import _get_morning_brief, write_formal_export
 
         brief, summary = _get_morning_brief()
@@ -49533,6 +49609,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 q = query or {}
                 res = _reports_analyst_generate(q, body)
+                if res.get("queued") or res.get("http_status") == 202:
+                    return 202, res
                 return (200 if res.get("ok", True) and not res.get("error") else 400), res
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)[:200]}
@@ -54932,6 +55010,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST" and base_path == "/api/v2/reports/brief/regenerate":
         try:
             result = _reports_brief_regenerate(body or {})
+            if result.get("queued") or result.get("http_status") == 202:
+                return 202, result
             return (200 if result.get("ok") else 500), result
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}

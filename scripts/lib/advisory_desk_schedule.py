@@ -163,7 +163,8 @@ def _unlock(fd: TextIO | None) -> None:
         pass
 
 
-def _execute_run(*, live_llm: bool, lock_fd: TextIO) -> None:
+def execute_run_now(*, live_llm: bool = True) -> dict[str, Any]:
+    """Build desk + enrich opinions (sync). Used by the executor CLI and the legacy Thread path."""
     from lib.data_broker.advisory_desk import (
         build_advisory_desk,
         enrich_advisory_with_opinions,
@@ -180,39 +181,103 @@ def _execute_run(*, live_llm: bool, lock_fd: TextIO) -> None:
             include_synthesis=True,
             force=True,
         )
+        payload = {
+            "state": "ok",
+            "started_at": started,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "live_llm": live_llm,
+            "authority": "READ_ONLY_ADVISORY",
+            "financial_action": False,
+            "broker_write_authority": "NONE",
+        }
         with _STATE_LOCK:
-            _write_status(
-                {
-                    "state": "ok",
-                    "started_at": started,
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "live_llm": live_llm,
-                    "authority": "READ_ONLY_ADVISORY",
-                    "financial_action": False,
-                    "broker_write_authority": "NONE",
-                }
-            )
+            _write_status(payload)
+        return payload
     except Exception as exc:
+        payload = {
+            "state": "error",
+            "started_at": started,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "error": f"{type(exc).__name__}: {exc}"[:400],
+            "live_llm": live_llm,
+            "authority": "READ_ONLY_ADVISORY",
+            "financial_action": False,
+            "broker_write_authority": "NONE",
+        }
         with _STATE_LOCK:
-            _write_status(
-                {
-                    "state": "error",
-                    "started_at": started,
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "error": f"{type(exc).__name__}: {exc}"[:400],
-                    "live_llm": live_llm,
-                    "authority": "READ_ONLY_ADVISORY",
-                    "financial_action": False,
-                    "broker_write_authority": "NONE",
-                }
-            )
+            _write_status(payload)
+        return payload
+
+
+def _execute_run(*, live_llm: bool, lock_fd: TextIO) -> None:
+    try:
+        execute_run_now(live_llm=live_llm)
     finally:
         _unlock(lock_fd)
 
 
 def start_run_now(*, live_llm: bool = True) -> dict[str, Any]:
-    """Kick a background desk rebuild. Returns immediately."""
+    """Kick a desk rebuild. Wave C: host_run_request when TRADEAI_N8N_CC_WAVE_C_MODE != off."""
     global _THREAD
+    try:
+        from lib.n8n_cc_wave_c import LANE_ADVISORY, enqueue_for_wave_c_mode, wave_c_mode
+    except ImportError:
+        from n8n_cc_wave_c import LANE_ADVISORY, enqueue_for_wave_c_mode, wave_c_mode  # type: ignore
+
+    mode = wave_c_mode()
+    if mode != "off":
+        # dry_run mode always enqueues dry_run (no paid LLM). apply enqueues live (stage-clamped).
+        got = enqueue_for_wave_c_mode(
+            lane_id=LANE_ADVISORY,
+            payload={"live_llm": live_llm, "source": "api_v3_advisory_run_now"},
+        )
+        if got.get("accepted"):
+            started = datetime.now(timezone.utc).isoformat()
+            with _STATE_LOCK:
+                _write_status(
+                    {
+                        "state": "running",
+                        "started_at": started,
+                        "live_llm": live_llm if mode == "apply" else False,
+                        "authority": "READ_ONLY_ADVISORY",
+                        "financial_action": False,
+                        "broker_write_authority": "NONE",
+                        "run_id": got.get("run_id"),
+                        "lane_id": LANE_ADVISORY,
+                        "wave_c_mode": mode,
+                        "enqueue_mode": got.get("mode"),
+                        "ledger": got.get("ledger"),
+                    }
+                )
+            return {
+                "ok": True,
+                "accepted": True,
+                "state": "running",
+                "started_at": started,
+                "live_llm": live_llm if mode == "apply" else False,
+                "authority": "READ_ONLY_ADVISORY",
+                "financial_action": False,
+                "broker_write_authority": "NONE",
+                "run_id": got.get("run_id"),
+                "lane_id": LANE_ADVISORY,
+                "wave_c_mode": mode,
+                "enqueue_mode": got.get("mode"),
+                "ledger": got.get("ledger"),
+                "schedule": schedule_payload(),
+                "message": (
+                    "Enqueued advisory desk rebuild via coordination/run (host_run_request). "
+                    "Advisory only."
+                ),
+            }
+        if got.get("reason") not in ("wave_c_mode_off",):
+            out = run_status()
+            out["ok"] = False
+            out["accepted"] = False
+            out["reason"] = got.get("reason") or "enqueue_refused"
+            out["wave_c_mode"] = mode
+            out["run_id"] = got.get("run_id")
+            return out
+
     lock_fd = _try_lock()
     if lock_fd is None:
         out = run_status()
@@ -232,6 +297,7 @@ def start_run_now(*, live_llm: bool = True) -> dict[str, Any]:
                 "authority": "READ_ONLY_ADVISORY",
                 "financial_action": False,
                 "broker_write_authority": "NONE",
+                "wave_c_mode": "off",
             }
         )
         t = threading.Thread(
@@ -251,6 +317,7 @@ def start_run_now(*, live_llm: bool = True) -> dict[str, Any]:
         "authority": "READ_ONLY_ADVISORY",
         "financial_action": False,
         "broker_write_authority": "NONE",
+        "wave_c_mode": "off",
         "schedule": schedule_payload(),
         "message": (
             "Rebuilding desk facts, Flash opinions, and Pro synthesis. "
