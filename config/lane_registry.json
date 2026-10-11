@@ -22633,7 +22633,74 @@
         "UNVERIFIED_OUTPUT"
       ]
     }
-  ],
+  ,
+    {
+      "lane_id": "advisory-desk-run-now",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none",
+        "expression": "on-demand:api-v3-advisory-run-now",
+        "match": "scripts/advisory_desk_run_now.py",
+        "stage": "shadow",
+        "wave": "WAVE_C"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-11",
+      "state_reason": "Wave C on-demand host lane: CC advisory run-now via host_run_request / coordination/run. No cron twin. Stage shadow clamps live\u2192dry_run until promote. Authority READ_ONLY_ADVISORY; paid LLM only on live_arg after cutover.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/advisory-desk-run-now_last.json",
+        "key": "ok_at"
+      },
+      "severity": "High",
+      "note": "API POST /api/v3/advisory/run-now when TRADEAI_N8N_CC_WAVE_C_MODE=dry_run|apply. Default mode off keeps Thread path."
+    },
+    {
+      "lane_id": "analyst-prospectus-generate",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none",
+        "expression": "on-demand:api-v2-reports-analyst-generate",
+        "match": "scripts/analyst_prospectus_generate.py",
+        "stage": "shadow",
+        "wave": "WAVE_C"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-11",
+      "state_reason": "Wave C on-demand host lane: ad-hoc prospectus generate via host_run_request. Distinct from generate-analyst-daily-digest. Stage shadow; request sidecar under n8n_cc_wave_c/requests/.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/analyst-prospectus-generate_last.json",
+        "key": "ok_at"
+      },
+      "severity": "High",
+      "note": "API POST /api/v2/reports/analyst/generate when TRADEAI_N8N_CC_WAVE_C_MODE=dry_run|apply."
+    },
+    {
+      "lane_id": "aegis-brief-regenerate",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none",
+        "expression": "on-demand:api-v2-reports-brief-regenerate",
+        "match": "scripts/aegis_brief_regenerate.py",
+        "stage": "shadow",
+        "wave": "WAVE_C"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-11",
+      "state_reason": "Wave C on-demand host lane: aegis brief .md/.json regenerate via host_run_request. Telegram send path untouched. Stage shadow.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/aegis-brief-regenerate_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "API POST /api/v2/reports/brief/regenerate when TRADEAI_N8N_CC_WAVE_C_MODE=dry_run|apply."
+    }
+],
   "freshness_contracts": [
     {
       "key": "jcm.holdings_llm_refresh",
