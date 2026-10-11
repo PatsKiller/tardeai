@@ -1,0 +1,68 @@
+{
+ "material-change-detector-stage1": {
+  "command": [
+   "$PY",
+   "scripts/material_change_detector.py",
+   "--apply"
+  ],
+  "cron": "*/30 * * * *",
+  "original_line": "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector",
+  "snapshot_as_of": "2026-10-11T17:05:28.513179+00:00",
+  "evidence_class": "APPROVED_SELECTED_CRON_SNAPSHOT; full census NOT_MEASURED"
+ },
+ "cio-stance-classification-drain": {
+  "command": [
+   "$PY",
+   "scripts/drain_cio_stance_classification.py",
+   "--apply"
+  ],
+  "cron": "20 7,19 * * 1-5",
+  "original_line": "20 7,19 * * 1-5 cd $PROJ && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; set +a; exec flock -n /tmp/cio_stance_classify.lock \"$PY\" scripts/drain_cio_stance_classification.py --apply' >> logs/cio_stance_classification_drain.log 2>&1  # lane cio-stance-classification-drain (M5, deterministic classification for missing-CIO-stance holds; no LLM)",
+  "snapshot_as_of": "2026-10-11T17:05:28.513179+00:00",
+  "evidence_class": "APPROVED_SELECTED_CRON_SNAPSHOT; full census NOT_MEASURED"
+ },
+ "build-symbol-profiles-at-0-19": {
+  "command": [
+   "$PY",
+   "scripts/build_symbol_profiles.py"
+  ],
+  "cron": "0 19 * * 0",
+  "original_line": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)",
+  "snapshot_as_of": "2026-10-11T17:05:28.513179+00:00",
+  "evidence_class": "APPROVED_SELECTED_CRON_SNAPSHOT; full census NOT_MEASURED"
+ },
+ "drain-discovery-backlog": {
+  "command": [
+   "$PY",
+   "scripts/drain_discovery_backlog.py",
+   "--apply"
+  ],
+  "cron": "0 6 * * 1-5",
+  "original_line": "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1",
+  "snapshot_as_of": "2026-10-11T17:05:28.513179+00:00",
+  "evidence_class": "APPROVED_SELECTED_CRON_SNAPSHOT; full census NOT_MEASURED"
+ },
+ "finviz-sector-research": {
+  "command": [
+   "$PY",
+   "scripts/finviz_sector_research.py"
+  ],
+  "cron": "15 10,16 * * 1-5",
+  "original_line": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1",
+  "snapshot_as_of": "2026-10-11T17:05:28.513179+00:00",
+  "evidence_class": "APPROVED_SELECTED_CRON_SNAPSHOT; full census NOT_MEASURED"
+ },
+ "commitment-outcome-sweep": {
+  "command": [
+   "$PY",
+   "scripts/sweep_commitment_outcomes.py",
+   "--apply",
+   "--state-root",
+   "/home/johnclaw/trade-ai-state/persistent_wake/state"
+  ],
+  "cron": "20 18 * * *",
+  "original_line": "20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+  "snapshot_as_of": "2026-10-11T17:05:28.513179+00:00",
+  "evidence_class": "APPROVED_SELECTED_CRON_SNAPSHOT; full census NOT_MEASURED"
+ }
+}

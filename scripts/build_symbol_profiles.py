@@ -280,7 +280,7 @@ def receipt_name(symbols, watchlist_top) -> str | None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--symbols")
     ap.add_argument("--force", action="store_true")
     ap.add_argument(
@@ -290,7 +290,13 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     symbols = a.symbols.split(",") if a.symbols else None
     if a.dry_run:
-        run(symbols=symbols, force=a.force, watchlist_top=a.watchlist_top, dry_run=True)
+        if a.watchlist_top:
+            # Keep the already-reviewed watchlist lane's data preview unchanged.
+            run(symbols=symbols, force=a.force, watchlist_top=a.watchlist_top, dry_run=True)
+            return 0
+        print(f"DRY-RUN build-symbol-profiles-at-0-19: would refresh profiles for "
+              f"{a.symbols or 'watch-grade universe'} (force={a.force}, watchlist_top={a.watchlist_top}) "
+              "via yfinance/Finviz and symbol_profiles; inputs NOT_MEASURED")
         return 0
     name = receipt_name(symbols, a.watchlist_top)
     started_at = _now_iso()
@@ -315,6 +321,12 @@ def _receipt(name, **kw):
     from lib.lane_last_receipt import write_receipt
 
     write_receipt(name, **kw)
+    if name == "build_symbol_profiles":
+        own = dict(kw)
+        counts = own.get("summary") or {}
+        # Partial provider/writer misses keep the legacy CLI's exit 0 but cannot advance success.
+        own["ok"] = own["ok"] and not (counts.get("no_profile") or counts.get("rejected"))
+        write_receipt("build-symbol-profiles-at-0-19", exit_code=0 if kw["ok"] else 1, **own)
 
 
 if __name__ == "__main__":
