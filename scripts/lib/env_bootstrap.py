@@ -40,6 +40,7 @@ from typing import Iterable
 _LOADED = False
 
 ENV_BOUND_NAMES_ENV = "TRADEAI_ENV_BOUND_NAMES"
+ENV_FILES_ENV = "TRADEAI_ENV_BOOTSTRAP_FILES"
 
 # Broker credential / broker-config names (AGENTS §0 rule 2, §23.18 ruling 3; config/secret_registry.yaml renders
 # ALPACA_* and SCHWAB_* and SNAPTRADE_* into the env file). Matched on the upper-cased name.
@@ -78,6 +79,9 @@ def _audit_hook() -> None:
 
 
 def _candidates() -> list[Path]:
+    override = os.environ.get(ENV_FILES_ENV)
+    if override is not None:
+        return [Path(p) for p in override.split(os.pathsep) if p.strip()]
     uid = os.getuid()
     xdg = os.environ.get("XDG_RUNTIME_DIR")
     paths = []
