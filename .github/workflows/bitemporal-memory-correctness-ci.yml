@@ -37,6 +37,8 @@ jobs:
           --health-retries 20
     env:
       TRADE_AI_CI: "1"
+      # Hermetic test bootstrap (tests/conftest.py): the M2 test-database bootstrap and port 55432 are opt-in.
+      M2_TEST_DB: "1"
       M2_DSN: "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
       # Explicitly refuse Studio-style production-looking DSNs in this job.
       TEST_DB_DSN: "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"

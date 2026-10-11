@@ -182,6 +182,7 @@ def test_classifier_result_resolves_persistent_first(monkeypatch, tmp_path):
     persistent = tmp_path / "persistent"
     (persistent / "data" / "monitoring").mkdir(parents=True)
     monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(persistent))
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)  # outranks the persistent root (hermetic bootstrap sets it)
     targets = C.result_targets()
     assert targets[0] == persistent / "data/monitoring/classifier_health.json"
     assert targets[-1] == C.PROJECT_ROOT / "data/monitoring/classifier_health.json"

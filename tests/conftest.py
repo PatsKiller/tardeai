@@ -59,9 +59,22 @@ from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
     route_tests_off_live_shadow as _route_m2_tests,
 )
 
+# Hermetic bootstrap (2026-10-11, SHARDS_01_04_HANDOFF "Earlier test setup ... not fully isolated"; AGENTS §24.6).
+# Installed before any test module imports: env loaders resolve to an empty fixture, live host paths
+# (~/trade-ai-releases/**, /run/user/*/tradeai/**, .env files outside the temp dir) refuse and fail the test that
+# reached them, and live-DSN connects raise. A test opts in with @pytest.mark.host_state("reason"); an operator
+# session with TRADEAI_TEST_HOST_STATE=1. See scripts/lib/hermetic_test_guard.py.
+from scripts.lib import hermetic_test_guard as _hermetic  # noqa: E402
+
 _route_m2_tests()
-if os.environ.get("M2_SKIP_DOCKER") != "1":
+# The M2 test-database bootstrap connects to the shadow container's maintenance database and may CREATE a
+# database there: host state, so it runs only when explicitly opted in. Without M2_TEST_DB=1 every M2 container
+# test skips through its existing M2_SKIP_DOCKER check, and the DB guard refuses port 55432.
+if _hermetic.m2_opted_in() and os.environ.get("M2_SKIP_DOCKER") != "1":
     _ensure_m2_test_db()
+else:
+    os.environ["M2_SKIP_DOCKER"] = "1"
+_hermetic.install()
 
 # The Hermes subject join reads live Postgres (desk opr_ gap rows, Hub promoted
 # counts) and the live identity registry in production. Unit runs stay hermetic:
@@ -82,19 +95,9 @@ os.environ.setdefault("TRADEAI_OPTIONS_OUTCOME_LOADER", "0")
 # ModuleNotFoundError during collection and the C1 firing gate did not run at all.
 # A gate that silently does not execute is the exact defect this suite exists to
 # close, so the dependency is stubbed rather than the tests skipped. Loading a real
-# .env inside a unit test would be wrong anyway: the stub is the correct behaviour,
-# not a workaround.
-if "dotenv" not in sys.modules:
-    try:
-        import dotenv  # noqa: F401
-    except ModuleNotFoundError:
-        import types as _types
-
-        _stub = _types.ModuleType("dotenv")
-        _stub.load_dotenv = lambda *a, **k: False
-        _stub.find_dotenv = lambda *a, **k: ""
-        _stub.dotenv_values = lambda *a, **k: {}
-        sys.modules["dotenv"] = _stub
+# .env inside a unit test would be wrong anyway. Where python-dotenv IS installed it
+# is wrapped instead (hermetic_test_guard.install_dotenv_guard): any path outside
+# the temp dir loads nothing unless the test opts in.
 
 # These four predate the pytest suite: they are standalone SCRIPTS whose entire
 # body — including live database writes to trade_approvals and
@@ -115,6 +118,75 @@ if "dotenv" not in sys.modules:
 def pytest_configure(config) -> None:
     config.addinivalue_line("markers", "tier0: R11 fast unit + contracts (<5 min)")
     config.addinivalue_line("markers", "tier1: R11 integration fixtures (<15 min)")
+    config.addinivalue_line(
+        "markers",
+        "host_state(reason): opt this test out of the hermetic guard (live env loaders, host paths, live DSN). "
+        "AGENTS §24.6: needs a stated reason.",
+    )
+
+
+_HERMETIC_COLLECTION: list[dict] = []
+
+
+def pytest_collection_finish(session) -> None:
+    """Accesses made while importing test modules belong to no test: keep them for a session-level error."""
+    _HERMETIC_COLLECTION.extend(_hermetic.drain())
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    """Lift the guard for the duration of a test marked host_state (setup, call and teardown)."""
+    marked = item.get_closest_marker(_hermetic.MARKER) is not None
+    if not marked:
+        yield
+        return
+    with _hermetic.allowed():
+        yield
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Turn every recorded host-state access into a failure (ERROR in setup/teardown) naming path and caller."""
+    outcome = yield
+    recs = _hermetic.drain()
+    if not recs:
+        return
+    rep = outcome.get_result()
+    msg = _hermetic.format_violations(recs, where=f"{item.nodeid} [{call.when}]")
+    rep.outcome = "failed"
+    rep.longrepr = msg if not rep.longrepr else f"{rep.longrepr}\n\n{msg}"
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+    if _HERMETIC_COLLECTION:
+        terminalreporter.section("hermetic test guard: collection", sep="=", red=True)
+        terminalreporter.write_line(_hermetic.format_violations(_HERMETIC_COLLECTION, where="collection"))
+    refusals = _hermetic.STATE.db_refusals
+    if refusals:
+        terminalreporter.write_line(
+            f"hermetic test guard: {len(refusals)} live-DSN connect(s) refused before reaching libpq "
+            f"(first: {refusals[0]['reason']}; caller {refusals[0]['caller']})"
+        )
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    if _HERMETIC_COLLECTION and session.exitstatus == 0:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_opt_in_env(request, monkeypatch):
+    """A host_state test gets the real loaders back: drop the empty-fixture overrides for that test only."""
+    if request.node.get_closest_marker(_hermetic.MARKER) is None:
+        return
+    monkeypatch.delenv(_hermetic.ENV_FILES_ENV, raising=False)
+    monkeypatch.delenv(_hermetic.LIVE_ROOT_ENV, raising=False)
+    monkeypatch.delenv(_hermetic.STATE_ROOT_ENV, raising=False)
+    monkeypatch.delenv(_hermetic.DEPLOY_CURRENT_ENV, raising=False)
+    monkeypatch.delenv(_hermetic.DEV_ROOT_ENV, raising=False)
+    monkeypatch.setenv("HOME", _hermetic.STATE.real_home)
+    if _hermetic.STATE.real_xdg_runtime:
+        monkeypatch.setenv("XDG_RUNTIME_DIR", _hermetic.STATE.real_xdg_runtime)
 
 
 collect_ignore = [

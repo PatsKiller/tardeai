@@ -100,7 +100,12 @@ def _py() -> str:
 
 def _served_data_root() -> Path:
     """Where receipts live: the served persistent-state data root from data_source_authority.json
-    (never a hard-coded host path); falls back to this tree's data/ when the registry is absent."""
+    (never a hard-coded host path); falls back to this tree's data/ when the registry is absent.
+    TRADEAI_STATE_ROOT, when set, wins: production sets it to that same persistent-state root, and the hermetic
+    test bootstrap points it at an empty fixture (AGENTS §24.6)."""
+    state_root = os.environ.get("TRADEAI_STATE_ROOT", "").strip()
+    if state_root:
+        return Path(state_root) / "data"
     try:
         reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
         root = (reg.get("served_from") or {}).get("root")

@@ -3881,6 +3881,14 @@ GATES = [
         ],
     ),
     (
+        # Hermetic test bootstrap (2026-10-11, AGENTS §24.6; SHARDS_01_04_HANDOFF "not fully isolated"): under pytest
+        # env loaders resolve to an empty fixture (env_bootstrap TRADEAI_ENV_BOOTSTRAP_FILES, live_project_root
+        # TRADEAI_LIVE_PROJECT_ROOT, dotenv wrapped), an audit hook refuses ~/trade-ai-releases/**, /run/user/*/tradeai
+        # and .env files and fails the test naming the caller, live-DSN connects raise, M2 bootstrap needs M2_TEST_DB=1.
+        "hermetic_test_guard_20261011",
+        ["tests/test_hermetic_test_guard_20261011.py"],
+    ),
+    (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
         # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.

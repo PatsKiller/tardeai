@@ -63,7 +63,7 @@ def _default_state_path() -> Path:
     Falls back to the checkout only when the shared root is absent, so tests and
     fresh clones still work.
     """
-    shared = Path("/home/johnclaw/trade-ai-releases/persistent-state/state")
+    shared = Path(os.environ.get("TRADEAI_STATE_ROOT") or "/home/johnclaw/trade-ai-releases/persistent-state") / "state"
     if shared.is_dir():
         return shared / "p1_digest_watermark.json"
     return ROOT / "data" / "runtime" / "p1_digest_watermark.json"

@@ -2,6 +2,8 @@
 Resolve the canonical live server project root directory.
 
 Priority chain:
+  0. TRADEAI_LIVE_PROJECT_ROOT (explicit override; the hermetic test bootstrap points it at an empty scratch
+     directory so no test resolves the served release -- AGENTS §24.6. Production never sets it.)
   1. CURRENT symlink (authoritative — set by deploy_portfolio_server.sh at deploy time)
   2. RuntimeAwareness (dynamic discovery — finds the PID on port 7777 and its working directory)
   3. __file__ fallback (dev directory — the existing behavior, used when no live server is running)
@@ -14,15 +16,20 @@ import os
 from pathlib import Path
 
 CURRENT_SYMLINK = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
-DEV_ROOT = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+# TRADEAI_DEV_ROOT: explicit override (the hermetic test bootstrap points it at an absent path, as on CI).
+DEV_ROOT = Path(os.environ.get("TRADEAI_DEV_ROOT") or "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
 DEV_VENV_PYTHON = DEV_ROOT / ".venv" / "bin" / "python"
 
 
 def get_live_project_root() -> Path:
     """
     Return the Path to the live server's project root.
-    Prefers CURRENT symlink > RuntimeAwareness > dev directory fallback.
+    Prefers TRADEAI_LIVE_PROJECT_ROOT > CURRENT symlink > RuntimeAwareness > dev directory fallback.
     """
+    override = os.environ.get("TRADEAI_LIVE_PROJECT_ROOT", "").strip()
+    if override:
+        return Path(override)
+
     # 1. CURRENT symlink (authoritative, set at deploy time)
     if CURRENT_SYMLINK.is_symlink():
         target = CURRENT_SYMLINK.resolve()

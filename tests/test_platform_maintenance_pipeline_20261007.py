@@ -187,6 +187,9 @@ def test_manifest_env_var_is_honoured(tmp_path):
 def _plan(cadence: str) -> list[dict]:
     env = dict(os.environ, PLATFORM_MAINT_LOCK_DIR="/nonexistent-never-used")
     env.pop("PLATFORM_MAINT_MANIFEST", None)
+    # The plan's DEFAULT state root ($HOME/trade-ai-releases/persistent-state, as cron renders it), not the hermetic
+    # bootstrap's TRADEAI_STATE_ROOT fixture; HOME is the bootstrap's empty fixture home, and this is a dry run.
+    env.pop("TRADEAI_STATE_ROOT", None)
     r = subprocess.run(["bash", str(RUNNER), "--cadence", cadence, "--dry-run"], cwd=str(ROOT), env=env,
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
