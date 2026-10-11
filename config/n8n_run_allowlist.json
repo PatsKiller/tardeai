@@ -1932,7 +1932,11 @@
       "lane_id": "finviz-proactive-research",
       "command": [
         "$PY",
-        "scripts/finviz_proactive_research.py"
+        "scripts/finviz_proactive_research.py",
+        "--max",
+        "400",
+        "--lookback-hours",
+        "12"
       ],
       "dry_run_arg": [
         "--dry-run"

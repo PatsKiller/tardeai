@@ -378,7 +378,8 @@ def test_finviz_unknown_flag_exit_two(state, flag):
     assert exc.value.code == 2 and snapshot(state) == {}
 
 
-def test_finviz_cron_argv_fake_receipt_and_soft_error(state, capsys):
+@pytest.mark.parametrize("argv", [[], ["--max", "400", "--lookback-hours", "12"]])
+def test_finviz_cron_argv_fake_receipt_and_soft_error(state, capsys, argv):
     mod = load_script("finviz_proactive_research")
     calls = []
     result = {"failed_writes": 0, "saved": 2}
@@ -394,18 +395,18 @@ def test_finviz_cron_argv_fake_receipt_and_soft_error(state, capsys):
     mod._load_env = lambda: None
     old = legacy_main(mod, "finviz_proactive_research.py", {"run": run})
     with pytest.raises(SystemExit) as exc:
-        old([])
+        old(argv)
     assert exc.value.code == 0
     old_calls, old_stdout = list(calls), capsys.readouterr().out
     calls.clear()
-    assert mod.main([]) == 0
+    assert mod.main(argv) == 0
     assert calls == old_calls and capsys.readouterr().out == old_stdout
     path = state / "data/runtime/finviz-proactive-research_last.json"
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "ok" and receipt["summary"]["saved"] == 2
     previous = receipt["ok_at"]
     result.update(failed_writes=1, saved=0)
-    assert mod.main([]) == 0  # established soft-failure exit is preserved
+    assert mod.main(argv) == 0  # established soft-failure exit is preserved
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "failed" and receipt["exit"] == 0 and receipt["ok_at"] == previous
 
@@ -625,7 +626,7 @@ def test_shard04_dispatch_rows_obey_current_policy_and_lock_proof():
     ("hermes_momentum_catalyst_researcher", ["--source", "scalp", "--apply"]),
     ("aegis_transcript_discovery", []),
     ("candidate_discovery_orchestrator", ["--apply"]),
-    ("finviz_proactive_research", []),
+    ("finviz_proactive_research", ["--max", "400", "--lookback-hours", "12"]),
     ("hermes_discovery_scorecard", []),
     ("hermes_research_agenda", ["--apply", "--json"]),
     ("hermes_research_worker_pool", ["--run", "--json"]),
@@ -695,3 +696,23 @@ def test_startup_failure_is_receipted_before_business_work(state, script, lane, 
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "failed" and receipt["exit"] == 1
     assert receipt["ok_at"] == previous
+
+
+def test_allowlist_preserves_exact_observed_cron_script_arguments():
+    import shlex
+    registry = json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]
+    allow = {r["lane_id"]: r for r in
+             json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
+    own = [r for r in registry if r.get("scheduler", {}).get("wave") == "R2-04"]
+    assert len(own) == 8
+    for row in own:
+        command = allow[row["lane_id"]]["command"]
+        tokens = shlex.split(row["scheduler"]["command_text"])
+        script_index = tokens.index(command[1])
+        observed = []
+        for token in tokens[script_index + 1:]:
+            if token in {">", ">>", "2>&1", "&&", ";", "#"}:
+                break
+            if token != "--apply":
+                observed.append(token)
+        assert command[2:] == observed, row["lane_id"]
