@@ -18,6 +18,7 @@ tier_scope() {
     deps)          echo "pip/npm/apt install, remove, upgrade — changes the runtime environment." ;;
     sudo)          echo "Any command run as root." ;;
     state-write)   echo "Writes to data/portfolios/state/ — live holdings, risk_management, personal_situation." ;;
+    execution-ops) echo "Per-incident operation of a broker-execution user unit (tradeai-active-trader-*), naming the unit in the reason: status/journal, code-root drop-in to portfolio-server/CURRENT, daemon-reload, restart; markets CLOSED, preflight, rollback by restoring the archived drop-in; max 6h. Never code, credentials, live/paper flags, orders or stops (AGENTS.md 5.0.0 §24.10)." ;;
     execution-engineering) echo "Per-task A1/A2 work on broker-adjacent code (scripts/active_trader/**, scripts/brokers/**, trading_session_grant.py): mocks, fixtures, simulated broker, replay. Never live credentials, endpoints, 2FA, live flags or orders (AGENTS.md 1.3.0 §22)." ;;
     release-write) echo "Writes to ~/trade-ai-releases/ or ~/trade-ai-deployments/ — immutable artifacts that are CURRENTLY RUNNING." ;;
     openclaw)      echo "OpenClaw gateway and ClawHub skill operations. Skills inherit full disk/terminal/network permissions." ;;
@@ -55,6 +56,21 @@ classify_cmd() {
   [[ "$cmd" =~ api\.telegram\.org ]] && { echo telegram; return; }
   [[ "$cmd" =~ (api\.anthropic\.com|api\.openai\.com|api\.x\.ai) ]] && { echo llm; return; }
   [[ "$cmd" =~ ^sudo ]] && { echo sudo; return; }
+  # AGENTS.md 5.0.0 §24.10: restart / daemon-reload of a broker-execution unit, and writes or renames under its
+  # drop-in directory, need a per-incident execution-ops grant, never a plain service grant. After sudo, so root
+  # stays sudo. A command that also uses another mutating verb, or names another production unit, is not
+  # execution-ops (it falls through to service). rm of a drop-in is destructive (§0 rule 6: archive by mv).
+  if [[ "$cmd" =~ (^|[[:space:];&|])systemctl[[:space:]] ]] && [[ "$cmd" =~ tradeai-active-trader- ]] && \
+     [[ "$cmd" =~ [[:space:]](restart|try-restart|daemon-reload)([[:space:]]|$) ]]; then
+    local _eo_rest="${cmd//tradeai-active-trader-/}"
+    if ! [[ "$cmd" =~ [[:space:]](start|stop|kill|mask|unmask|enable|disable|reenable|edit|revert|set-property|reload|isolate)([[:space:]]|$) ]] && \
+       ! [[ "$_eo_rest" =~ (tradeai-|trade-ai-|portfolio-|hermes-|openclaw-|aegis-|cio-|heartbeat-|n8n|m8m|postgresql|docker|\*) ]]; then
+      echo execution-ops; return
+    fi
+  fi
+  [[ "$cmd" =~ (^|[[:space:];&|])rm[[:space:]].*\.config/systemd/user/tradeai-active-trader- ]] && { echo destructive; return; }
+  [[ "$cmd" =~ \.config/systemd/user/tradeai-active-trader- ]] && \
+    [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|install|ln|touch|sed[[:space:]]+-i) ]] && { echo execution-ops; return; }
   # Verb may be separated from systemctl by any number of flags (--user, -M host,
   # --now). 45 of 48 tradeai units are user units, so the --user form is the one
   # that actually matters here. Over-classifying a read-only subcommand is safe;
@@ -83,6 +99,7 @@ classify_path() {
     */config/*.yaml|*/assets/*.yaml) echo config-write; return ;;
     */v2/*|*command-center-v2*) echo frozen-v2; return ;;
     */.openclaw/*) echo openclaw; return ;;
+    */.config/systemd/user/tradeai-active-trader-*) [[ "$tool" == "Delete" ]] && { echo file-delete; return; }; echo execution-ops; return ;;
     */.cursor/hooks/*|*/.cursor/*.json) echo guard-config; return ;;
   esac
   [[ "$tool" == "Delete" ]] && { echo file-delete; return; }

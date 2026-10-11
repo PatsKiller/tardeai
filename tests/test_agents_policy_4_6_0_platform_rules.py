@@ -31,6 +31,16 @@ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 TOKEN = "APPROVE_AGENTS_POLICY_4_6_0"
 
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
+# Operator-requested amendment 5.0.0 (asked for as "4.7.0", 2026-10-10 ~21:50 ET; PROPOSED, pending
+# APPROVE_AGENTS_POLICY_5_0_0): §0 rule 2 gains exactly this one sentence, pointing to §24.10. It is removed before
+# hashing, so the digest below still proves every other byte of §0 is unchanged; the sentence itself is pinned by
+# tests/test_agents_policy_5_0_0_execution_ops.py. Nothing else in §0 or §2 may move.
+RULE_2_EXCEPTION_5_0_0 = (
+    "\n   One operational exception, binding only once AGENTS.md 5.0.0 is ACTIVE: with an operator"
+    "\n   `execution-ops` grant naming the unit, an agent may inspect, re-point, reload and restart that"
+    "\n   broker-execution unit while markets are closed, and never touch its code, credentials, flags or"
+    "\n   orders (AGENTS.md §24.10)."
+)
 PINNED_SECTIONS = {
     "§0": (
         "# 0 · If you read nothing else",
@@ -68,6 +78,7 @@ def _section(text: str, start: str, end: str) -> str:
     e = re.search(rf"^{re.escape(end)}", text[s.start() + 1 :], re.M)
     assert e, end
     block = text[s.start() : s.start() + 1 + e.start()]
+    block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned — same mask as
     # the 4.1.0/4.3.0/4.4.0 pins (operator 2026-10-10 'Yes, from one to six', item 5; PR #1678).
     return re.sub(
@@ -110,12 +121,13 @@ def test_version_row_waits_for_the_operator_with_the_exact_phrase():
 
 
 def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
-    start = AGENTS.index("**4.6.0 is PROPOSED (MINOR)")
+    start = AGENTS.index("**4.6.0 is ")  # PROPOSED until ratified; ACTIVE after (#1682, 694350602)
     f = _flat(AGENTS[start : AGENTS.index("**4.3.0 is ACTIVE", start)])
     # #1666 (4.4.1 + 4.5.0) merged as dd8f4cff1; the banner now names that merge instead of "renumbers to 4.5.0".
     assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
     assert "316700266" in f
-    assert _control("Supersedes") == "4.5.0"
+    # 4.6.0 supersedes 4.5.0; a later version (5.0.0, #1686) supersedes 4.6.0.
+    assert _control("Supersedes") == ("4.5.0" if _version() == (4, 6, 0) else "4.6.0")
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
 
@@ -143,7 +155,8 @@ def test_23_14_is_byte_identical():
 
 
 def test_claude_md_adapter_restates_no_new_rule():
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(RULE_2_EXCEPTION_5_0_0, "")
     assert "n8n" not in text.lower() and "§24" not in text
 
 
@@ -153,7 +166,8 @@ def test_claude_md_adapter_restates_no_new_rule():
 def test_24_has_nine_subsections_each_citing_its_cause():
     s = _s24()
     nums = re.findall(r"^## (24\.\d+) ", s, re.M)
-    assert nums == [f"24.{i}" for i in range(1, 10)], nums
+    # 5.0.0 (PROPOSED, operator-requested 2026-10-10) appends §24.10; 4.6.0 still owns exactly 24.1–24.9.
+    assert nums in ([f"24.{i}" for i in range(1, 10)], [f"24.{i}" for i in range(1, 11)]), nums
     for part in re.split(r"^## 24\.\d+ ", s, flags=re.M)[1:]:
         bullets = re.split(r"\n- ", part)[1:]
         assert bullets, part[:80]

@@ -30,6 +30,10 @@ agent that reads fifteen lines and stops must still know them.
    replay). Without one, the broker execution subsystem is out of scope: do not modify, test
    against or investigate it. No agent ever calls a live broker, reads a live credential, sets a
    live flag, requests 2FA, calls `place_order`, or POSTs to an order route (AGENTS.md §22).
+   One operational exception, binding only once AGENTS.md 5.0.0 is ACTIVE: with an operator
+   `execution-ops` grant naming the unit, an agent may inspect, re-point, reload and restart that
+   broker-execution unit while markets are closed, and never touch its code, credentials, flags or
+   orders (AGENTS.md §24.10).
 3. **Never route around a permission denial.** Stop and report. No alternate remote, no
    direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
    budget.
