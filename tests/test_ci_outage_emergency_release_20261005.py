@@ -185,7 +185,38 @@ def test_a_release_write_grant_is_not_an_emergency_grant():
 # ── 4. commit rule (throwaway git repo) ─────────────────────────────────────
 
 def _git(repo, *args):
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run(["git", "-C", str(repo), *args], cwd=repo,
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_git_fixture_cwd_is_explicit_and_removing_it_fails_without_running_git(tmp_path, monkeypatch):
+    """Mutation control reproduces the missing-cwd defect at a fake boundary."""
+    from types import SimpleNamespace
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    seen = []
+
+    def fixture_process(command, **kwargs):
+        seen.append((command, kwargs))
+        assert kwargs.get("cwd") == repo, "Git fixture cwd must equal the scratch repo"
+        return SimpleNamespace(stdout="fixture-result\n")
+
+    monkeypatch.setattr(subprocess, "run", fixture_process)
+    assert _git(repo, "add", "fixture.txt") == "fixture-result"
+    assert seen[0][0] == ["git", "-C", str(repo), "add", "fixture.txt"]
+    assert seen[0][1]["check"] is True
+
+    tree = ast.parse(Path(__file__).read_text())
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_git")
+    for node in ast.walk(helper):
+        if isinstance(node, ast.Call):
+            node.keywords = [kw for kw in node.keywords if kw.arg != "cwd"]
+    namespace = dict(globals())
+    mutated = ast.fix_missing_locations(ast.Module(body=[helper], type_ignores=[]))
+    exec(compile(mutated, "fixture-remove-git-cwd", "exec"), namespace)
+    with pytest.raises(AssertionError, match="Git fixture cwd must equal the scratch repo"):
+        namespace["_git"](repo, "add", "fixture.txt")
+    assert len(seen) == 2 and "cwd" not in seen[1][1]
 
 
 @pytest.fixture
