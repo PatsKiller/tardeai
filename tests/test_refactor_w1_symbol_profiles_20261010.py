@@ -125,10 +125,10 @@ def test_bsp_dry_run_reaches_no_fetch_and_no_write(bsp_env, monkeypatch, capsys,
 
 def test_bsp_dry_run_report_tracks_state(bsp_env, monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "yfinance", None)
-    bsp.main(["--dry-run"])
+    bsp.run(dry_run=True)
     before = json.loads(capsys.readouterr().out)["checked"]
     bsp_env.answers[1] = ("updated_at > now() - interval '30 days'", [])  # nothing fresh any more
-    bsp.main(["--dry-run"])
+    bsp.run(dry_run=True)
     after = json.loads(capsys.readouterr().out)["checked"]
     assert (before, after) == (2, 3)
 

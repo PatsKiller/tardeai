@@ -100,7 +100,9 @@ def test_the_run_record_carries_a_disposition():
     """The RESULT line must name the outcome, not leave it to be inferred."""
     import scripts.material_change_detector as mcd
 
-    src = inspect.getsource(mcd.main)
+    # Refactor shard 05 (train 4, 2026-10-11) moved the run body (and its RESULT line) into _run(); main() is now the
+    # argv/dry-run/receipt wrapper. Inspect the function that prints the RESULT record.
+    src = inspect.getsource(getattr(mcd, "_run", mcd.main))
     assert "already_present" in src, "the result record does not report dedup"
     assert "write_disposition" in src, (
         "the result record has no field naming legitimate-empty vs failed"

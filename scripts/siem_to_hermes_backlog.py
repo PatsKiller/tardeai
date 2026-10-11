@@ -25,15 +25,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-# Load .env
-env_path = PROJECT_ROOT / ".env"
-if env_path.exists():
-    for line in env_path.read_text().splitlines():
-        if "=" in line and not line.strip().startswith("#"):
-            k, v = line.split("=", 1)
-            k, v = k.strip(), v.strip().strip("'\"")
-            if k and k not in os.environ:
-                os.environ[k] = v
+def _load_env():
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"))
 
 LANE_ID = "siem-to-hermes-backlog"
 
@@ -177,14 +171,19 @@ def generate_backlog(max_items=5, dry_run=True):
 
 def main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--max", type=int, default=5)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="preview only; wins over --apply")
     args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN siem-to-hermes-backlog: would stage up to {args.max} recurring SIEM findings "
+              "in hermes_research_intelligence plus a lane receipt; inputs NOT_MEASURED")
+        return 0
     live = args.apply and not args.dry_run
 
     if not live:
+        _load_env()
         candidates, inserted = generate_backlog(max_items=args.max, dry_run=True)
         would_insert, would_skip = preview_backlog(candidates)
         print(f"\nBacklog candidates: {len(candidates)}")
@@ -206,6 +205,7 @@ def main(argv=None) -> int:
         from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
     try:
+        _load_env()
         candidates, inserted = generate_backlog(max_items=args.max, dry_run=False)
     except Exception as exc:
         write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="siem_to_hermes_backlog.py",

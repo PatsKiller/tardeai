@@ -145,7 +145,9 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
     # 80 / 33 after #1681; 2026-10-11 rebuild: +3 W4 provider owners, -6 lanes absorbed by the C1 premarket stage
     # (their rows RETIRED, allowlist entries removed) -> 77 lanes, 34 with an automatic dry-run rerun.
     # Train 3 rebuild (operator 2026-10-11): + SW4 (15) and shard 01-04 (10 admitted) lanes -> 102 lanes, 46 auto dry-run.
-    assert cat["summary"]["lanes"] == 102 and cat["summary"]["lanes_with_auto_rerun"] == 46
+    # Train 4 rebuild (2026-10-11): + 11 shard 05-08 lanes admitted -> 113 lanes, 50 auto dry-run; after merging main
+    # (#1700 heartbeat-watch lane, canary in #1710): + 1 -> 114 lanes, 51 auto dry-run.
+    assert cat["summary"]["lanes"] == 114 and cat["summary"]["lanes_with_auto_rerun"] == 51
 
 
 def test_class_caps_quoted_equal_the_retry_policies():

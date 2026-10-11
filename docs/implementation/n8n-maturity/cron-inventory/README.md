@@ -56,6 +56,9 @@ that record. It is updated **every time a job is retired, consolidated or cut ov
 | 2026-10-11 (PR, not merged) | W4 provider owners in dispatcher SHADOW (R1 `ingest`, AGENTS 4.4.0 cron-row shape): 3 cron rows gain `stage: shadow` + `dispatch.mode: dry_run`, allowlist `live_arg: null`, REVIEWED health contracts; cron lines unchanged and still do the work. finviz-enrichment `scheduler.match` narrowed to its own line; L638 (`--scalp-hot`) gets its own cron row `finviz-enrichment-scalp-hot` (no dispatch). Excluded: news-ingest L193/L649/L650 (no `--dry-run`, no LaneRunReceipt, KEEP_ON_CRON) and sec-filings-feed L1002 (no LaneRunReceipt, sources the whole tmpfs secret render). No crontab change; `flock -n` for L142/L150/L243 is a later cron packet (canary prerequisite) | registry rows (cron:L142 L150 L243; declare-only cron:L638) | branch `n8nmat/w4-provider-owners-shadow`; dry runs under `TRADE_AI_CI=1` from the worktree (finviz, social exit 0; sec static proof), 0 tracked/state files changed |
 | 2026-10-11 (PR, not merged) | SW4 shadow wave 4 (R1, AGENTS 4.4.0 cron-row shape): 15 cron rows gain `stage: shadow` + `dispatch.mode: dry_run`, allowlist `live_arg: null`, REVIEWED health contracts; cron lines unchanged and still do the work. ingest: L490 update-lockup-earnings-dates, L505 etf-analyst-enrich, L520 etf-performance-enrich, L550 validate-expense-ratios, L929 identity-sweep-stage0, L289 aegis-social-sentiment, L291 aegis-transcript-discovery, L308 aegis-nightly-ingestion, L863 hermes-social-sentiment, L862 sync-social-to-intelligence; learn: L218 record-decision-outcome, L275 agent-outcome-scorer, L197 feedback-loop-processor, L687 hermes-tag-lift-discovery, L365 trade-backtest-engine (crontab -l 2026-10-11 line numbers). Code: 9 scripts now copy only named `.env` keys (was the whole file, broker credentials included); etf_performance_enrich strict argparse. Not onboarded: the premarket C1 stage steps (retired by the C1 PR), and the blocker table in the PR body. |
 
+| 2026-10-11 (source proposal, not live) | Shard06: seven strict offline writer previews and canonical receipts; seven DRAFT W4 shadow admissions (R2-06), report env mode. Two cron locks proposed only; one scalp-hot visibility declaration without dispatch, allowlist or contract; existing main reviewed rows preserved. 12 sender skips, 3 class skips and 15 blocked rows remain unchanged. No cron/systemd/n8n edit. | finviz-market-movers, proposal-backtest-engine, run-sec-form4-momentum-context, social-ingest-stocktwits, instrument-belief-writer, sec-filings-feed, trade-thesis-review-engine | [source runbook](../REFACTOR_SHARD_06_20261011.md); exact approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00; frozen old-vs-new mock tests; runtime/ledger NOT_MEASURED |
+| 2026-10-11 (local source proposal, not merged or deployed) | Shard 07: seven new dry-run shadow proposals (4 ingest, 3 learn), exact approved cron argv and seven DRAFT contracts; 17 blocked, 6 sender skips, 5 broker skips, 2 class skips. Four proposed outer flock additions need an operator packet. No cron line changed. | 37 assigned lanes; seven proposed registry/allowlist rows | [source runbook](../REFACTOR_SHARD_07_20261011.md); base 9f602186a; scoped snapshot 2026-10-11T17:05:28.513179+00:00; runtime/ledger NOT_MEASURED |
+
 **Approved 2026-10-10, not yet applied (each needs its grant; rows change here when applied):**
 
 | Item | Rows | Packet (`~/n8n-maturity-verification/packets/`) | Grant |
@@ -81,3 +84,27 @@ Eight proposed shadow rows; 12 blockers, 9 sender skips, 6 broker/safety-family 
 class skips. No host scheduler changes. All new contracts DRAFT. The per-lane report is
 [REFACTOR_SHARD_03_20261011.md](../REFACTOR_SHARD_03_20261011.md); inventory overlay
 `refactor/inventory_rows_03.tsv`. Only the integrator rebuilds the workbook and optionally syncs Drive.
+
+| 2026-10-11 (local source packet, not live) | Shard05: six new dry-run-only source admissions; 19 blocked (including one existing reviewed main shadow retained), five sender exclusions, five broker exclusions and two monitor exclusions. Exact approved selected cron lines and all business argv retained; two missing outer flocks proposed only. Contracts DRAFT, SOURCE_ONLY / ledger NOT_MEASURED, runs_considered null; shared env report-mode blockers remain. No cron/service/database/release/model/send/runtime change | 37 assigned lanes, six new proposals | `REFACTOR_SHARD_05_20261011.md`; `n8nmat/refactor-shard-05`; local evidence and inventory_rows_05.tsv |
+### 2026-10-11 refactor shard 08 (source only)
+
+37 lanes assessed; 2 DRAFT offline shadow proposals, 14 broker skips, 3 sender skips, 1 class skip, 17 blocked/retained. No runtime inventory numbers changed. [Source report](../REFACTOR_SHARD_08_20261011.md). One outer cron lock proposed; contracts remain unreviewed.
+
+### 2026-10-11 shards 05–08 local source integration
+
+Four ordered local merges preserve 22 DRAFT proposals and all reviewed main records. Fresh main already retired
+five proposed lanes, so only 17 remain ACTIVE source proposals; no runtime acceptance or inventory stage is inferred.
+Eight missing-lock proposals require operator reconciliation (five ACTIVE, three RETIRED). Governor and feeder reuse
+their existing underscore-path `safe_flock.sh` PID guards; their corrected executor kinds are `safe_flock`.
+[Integration source report](../REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md).
+No cron, systemd, n8n or runtime change; release remains blocked by operator review and stopped safety-gated profiles.
+
+### 2026-10-11 merge train 4 (shards 05–08 integrated, source only)
+
+Of the 17 ACTIVE shard 05–08 proposals, 11 are admitted as shadow rows (DRAFT contracts, allowlist report mode,
+`live_arg` null). Held with train 2's rows (no allowlist entry, no contract): the five lanes train 2 RETIRED into the
+premarket C1 stage (price-db-sync, sync-dividend-data, iris-proposal-curator, run-sec-form4-momentum-context,
+watch-valuation-backfill) and the five SW4-excluded lanes (agent-recommendation-normalizer,
+build-symbol-profiles-at-0-19, social-ingest-stocktwits with its social-ingest-scalp-hot split,
+cio-stance-classification-drain, drain-discovery-backlog) and sec-filings-feed (W4 provider-owner EXCLUDED: "refactor
+first, then a W4 row"; shard 06 did the refactor, re-admission is the owner's call). Shard source changes are kept. No cron, systemd or n8n change.

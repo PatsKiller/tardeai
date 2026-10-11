@@ -1,0 +1,140 @@
+{
+  "schema": "Refactor0508ApprovedCronLockProof@v1",
+  "as_of": "2026-10-11T17:05:28.513179+00:00",
+  "evidence_class": "SOURCE_ONLY_APPROVED_SELECTED_CRON",
+  "full_census": "NOT_MEASURED",
+  "lanes": {
+    "build-symbol-profiles-at-0-19": {
+      "cron_lines": [
+        "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)"
+      ],
+      "lock_proposed": false
+    },
+    "cio-stance-classification-drain": {
+      "cron_lines": [
+        "20 7,19 * * 1-5 cd $PROJ && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; set +a; exec flock -n /tmp/cio_stance_classify.lock \"$PY\" scripts/drain_cio_stance_classification.py --apply' >> logs/cio_stance_classification_drain.log 2>&1  # lane cio-stance-classification-drain (M5, deterministic classification for missing-CIO-stance holds; no LLM)"
+      ],
+      "lock_proposed": false
+    },
+    "commitment-outcome-sweep": {
+      "cron_lines": [
+        "20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "drain-discovery-backlog": {
+      "cron_lines": [
+        "0 6 * * 1-5 cd $PROJ && $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "finviz-sector-research": {
+      "cron_lines": [
+        "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1"
+      ],
+      "lock_proposed": false
+    },
+    "material-change-detector-stage1": {
+      "cron_lines": [
+        "*/30 * * * * cd $PROJ && flock -n /tmp/material_change_detect.lock $PY scripts/material_change_detector.py --apply >> logs/material_change_detect.log 2>&1  # stage-1 detector"
+      ],
+      "lock_proposed": false
+    },
+    "finviz-market-movers": {
+      "cron_lines": [
+        "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min — premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window"
+      ],
+      "lock_proposed": false
+    },
+    "instrument-belief-writer": {
+      "cron_lines": [
+        "50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "proposal-backtest-engine": {
+      "cron_lines": [
+        "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)"
+      ],
+      "lock_proposed": false
+    },
+    "run-sec-form4-momentum-context": {
+      "cron_lines": [
+        "45 5 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_sec_form4_ctx.lock $PY scripts/run_sec_form4_momentum_context.py --apply >> logs/sec_form4_momentum_context.log 2>&1"
+      ],
+      "lock_proposed": false
+    },
+    "sec-filings-feed": {
+      "cron_lines": [
+        "20 8,12,17,21 * * 1-5 CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> /home/johnclaw/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1"
+      ],
+      "lock_proposed": false
+    },
+    "social-ingest-stocktwits": {
+      "cron_lines": [
+        "30 8,10,13 * * 1-5 cd $PROJ && $PY scripts/social_ingest.py --source stocktwits --discover >> logs/social_ingest.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "trade-thesis-review-engine": {
+      "cron_lines": [
+        "40 18 * * 1-5 cd $PROJ && flock -n /tmp/thesis_review_engine.lock $PY scripts/trade_thesis_review_engine.py --apply --json >> logs/trade_thesis_review_engine.log 2>&1  # scored thesis review -> journal-learning (idempotent safety-net)"
+      ],
+      "lock_proposed": false
+    },
+    "aegis-evening-packet": {
+      "cron_lines": [
+        "45 19 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1"
+      ],
+      "lock_proposed": false
+    },
+    "document-mentions-backfill": {
+      "cron_lines": [
+        "25 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/document_mentions_backfill.lock timeout 25m $PY scripts/backfill_document_mentions.py --all --limit 4000 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/document_mentions.log 2>&1"
+      ],
+      "lock_proposed": false
+    },
+    "hermes-scope-governor": {
+      "cron_lines": [
+        "7,37 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_scope_governor.lock $PY scripts/hermes_scope_governor.py --apply >> logs/hermes_scope_governor.log 2>&1"
+      ],
+      "lock_proposed": false
+    },
+    "iris-proposal-curator": {
+      "cron_lines": [
+        "20 7 * * * cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "price-db-sync": {
+      "cron_lines": [
+        "20 7 * * 1-5 cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "sync-dividend-data": {
+      "cron_lines": [
+        "5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "watch-valuation-backfill": {
+      "cron_lines": [
+        "47 6 * * * cd $PROJ && flock -n /tmp/watch_valuation_backfill.lock $PY scripts/watch_valuation_backfill.py --limit 400 >> logs/watch_valuation_backfill.log 2>&1  # yfinance valuation supplement for Watch names Finviz misses (resumable, capped); feeds finviz-strip-map fallback (2026-07-25)"
+      ],
+      "lock_proposed": false
+    },
+    "agent-recommendation-normalizer": {
+      "cron_lines": [
+        "30 8 * * 1-5 cd $PROJ && $PY scripts/agent_recommendation_normalizer.py --apply >> logs/agent_rec_normalizer.log 2>&1"
+      ],
+      "lock_proposed": true
+    },
+    "hermes-score-event-feeder": {
+      "cron_lines": [
+        "*/5 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feeder.py --apply >> logs/hermes_event_feeder.log 2>&1"
+      ],
+      "lock_proposed": false
+    }
+  }
+}

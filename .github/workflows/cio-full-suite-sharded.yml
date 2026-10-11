@@ -133,6 +133,8 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       M2_TEST_DATABASE: m2_shadow_test
+      # Hermetic test bootstrap (tests/conftest.py): the M2 test-database bootstrap and port 55432 are opt-in.
+      M2_TEST_DB: "1"
       ALERT_TEST_DSN: postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow_test_alerts
     steps:
       - uses: actions/checkout@v4

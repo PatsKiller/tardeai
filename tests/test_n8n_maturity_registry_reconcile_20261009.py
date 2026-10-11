@@ -263,7 +263,10 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # Refactor train 3 (2026-10-11) adopted 6 more generated rows with dispatch blocks (shard 01
     # daily-incubator-refresh, finviz-screener-runner; shard 02 weekly-incubator-builder; shard 03 investment-costs;
     # shard 04 finviz-proactive-research, hermes-research-worker-pool): 241 - 6 = 235 generated rows left.
-    assert len(gen) >= 235
+    # Train 4 (shards 05-08, 2026-10-11) adopts 7 more generated rows with dispatch blocks (sector research, proposal
+    # backtests, score feeder, thesis review, movers, scope governor, evening packet); the shards' normalizer and
+    # discovery-drain adoptions are held (SW4 EXCLUDED, train 2 rows kept): 235 - 7 = 228 generated rows left.
+    assert len(gen) >= 228
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep

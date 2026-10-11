@@ -176,6 +176,7 @@ def test_source_order_the_write_is_after_the_dry_run_return():
 
 def test_state_dir_resolves_on_the_persistent_root(monkeypatch, tmp_path):
     monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path))
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)  # outranks the persistent root (hermetic bootstrap sets it)
     (tmp_path / "data/portfolios/state").mkdir(parents=True)
     assert mat._state_dir() == tmp_path / "data/portfolios/state"
 

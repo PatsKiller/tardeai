@@ -34,12 +34,22 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
-_env_path = ROOT / ".env"
-if _env_path.is_file():
-    for line in _env_path.read_text().splitlines():
+# Names this process reads for its DB connection. Loaded from main(), not at import.
+# Broker-prefixed names (ALPACA_*, SCHWAB_*, ...) are never copied. ALPACA_MODE is still
+# read from the process environment when proposal generation asks for it; the overnight
+# cron line does not pass --generate-proposals.
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
+
+
+def _load_env() -> None:
+    path = ROOT / ".env"
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
         if "=" in line and not line.startswith("#"):
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            if k.strip() in _ENV_KEYS:
+                os.environ.setdefault(k.strip(), v.strip())
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [catalyst-momentum] %(message)s")
 log = logging.getLogger("catalyst_momentum")
@@ -76,9 +86,12 @@ def _kill_paths() -> list[Path]:
 
 
 LAST_RUN_RELATIVE = Path("data") / "cio" / "catalyst_momentum_last_run.json"
-DB = dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
-          dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
-          password=os.getenv("DB_PASSWORD", ""))
+
+
+def _db_kwargs() -> dict:
+    return dict(host=os.getenv("DB_HOST", "127.0.0.1"), port=int(os.getenv("DB_PORT", "5432")),
+                dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+                password=os.getenv("DB_PASSWORD", ""))
 
 # Cadence bands: candidate selectivity + caps + whether to auto-generate gated proposals
 BANDS = {
@@ -134,6 +147,7 @@ def _write_last_run(payload: dict) -> Path | None:
 
 
 def main():
+    _load_env()
     ap = argparse.ArgumentParser()
     ap.add_argument("--band", choices=list(BANDS), default="premarket_scalp")
     ap.add_argument("--apply", action="store_true", help="stage catalyst findings (feed #1)")
@@ -241,7 +255,7 @@ def _run(args, stats: dict) -> int:
     log.info("  %d candidates (RVOL≥%s, score≥%s)", len(cands), band["min_rvol"], band["min_score"])
     stats["candidates"] = len(cands)
 
-    conn = psycopg2.connect(**DB); conn.autocommit = True
+    conn = psycopg2.connect(**_db_kwargs()); conn.autocommit = True
     cur = conn.cursor()
     staged, gated, proposals, search_errors = 0, [], 0, 0
     for c in cands:

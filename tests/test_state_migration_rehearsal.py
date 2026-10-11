@@ -25,6 +25,11 @@ from pathlib import Path
 
 import pytest
 
+# Explicit hermetic-guard opt-in (AGENTS §24.6, tests/conftest.py): the `replica` fixture copies the producer and
+# served state roots READ-ONLY into tmp_path and every write goes to that copy; where the roots are absent (CI) the
+# tests skip. Nothing here writes a live path.
+pytestmark = pytest.mark.host_state("rehearsal replicates the live state roots read-only into tmp_path")
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))

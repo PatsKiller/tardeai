@@ -38,6 +38,7 @@ sys.path.insert(0, str(PROJ))
 
 SCHEMA = "FilingEvent@v1"
 LANE = "sec-filings-feed"
+_LAST_COUNTS = {}
 AUTHORITY = "READ_ONLY_ADVISORY"
 SOURCE = "sec_edgar"
 TICKER_MAP_URL = "https://www.sec.gov/files/company_tickers.json"
@@ -172,8 +173,8 @@ def existing_guids(path: Path) -> set[str]:
     return guids
 
 
-def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="SEC 8-K/10-Q/10-K filings → FilingEvent@v1")
+def _execute(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="SEC 8-K/10-Q/10-K filings → FilingEvent@v1", allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="append new rows (default: dry run)")
     ap.add_argument("--symbols", default="", help="comma list (default: holdings + fundamentals universe)")
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
@@ -240,6 +241,7 @@ def main(argv=None) -> int:
         new_rows += fresh
         per_symbol[sym] = len(fresh)
     counts["new"] = len(new_rows)
+    _LAST_COUNTS.update(counts)
     summary = {"schema": "FilingsFeedRun@v1", "as_of": now.isoformat(), "mode": "apply" if a.apply else "dry_run",
                "since_days": a.since_days, "counts": counts, "high_severity_new": sum(1 for r in new_rows if r["severity"] == "high"),
                "path": str(path), "authority": AUTHORITY}
@@ -269,7 +271,38 @@ def main(argv=None) -> int:
                                     work_failed=counts["unavailable"], root=root, env=env).get("pg"))
     except Exception as exc:  # noqa: BLE001
         print(f"heartbeat skipped: {type(exc).__name__}")
-    return 0
+    return 1 if counts["unavailable"] and not counts["fetched"] else 0
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    ap = argparse.ArgumentParser(description="SEC filings event feed", allow_abbrev=False)
+    ap.add_argument("--apply", action="store_true", help="append new rows (default: dry run)")
+    ap.add_argument("--symbols", default="", help="comma list (default: holdings + fundamentals universe)")
+    ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    ap.add_argument("--since-days", type=int, default=7)
+    ap.add_argument("--root", help="state root (default: production persistent-state)")
+    ap.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE}: would read up to {args.limit} symbols, fetch EDGAR submissions for "
+              f"{args.since_days} days and append new FilingEvent rows and the latest summary; "
+              "no identity/state read, ticker-cache write, DB, provider or writes")
+        return 0
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    _LAST_COUNTS.clear()
+    try:
+        rc = _execute(argv)
+    except Exception as exc:
+        if args.apply:
+            write_lane_receipt(LANE, ok=False, exit_code=1, started_at=started,
+                               script="sec_filings_feed.py", error=type(exc).__name__)
+        raise
+    if args.apply:
+        write_lane_receipt(LANE, ok=rc == 0, exit_code=rc, started_at=started,
+                           script="sec_filings_feed.py", summary=_LAST_COUNTS)
+    return rc
 
 
 if __name__ == "__main__":

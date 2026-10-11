@@ -391,12 +391,16 @@ def outcome(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0], allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write (default: dry run)")
     ap.add_argument("--dry-run", action="store_true", help="report only; wins over --apply")
     ap.add_argument("--symbol", action="append", help="limit to these symbols (repeatable)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN cio-stance-classification-drain: would classify {args.symbol or 'pending symbols'} "
+              "and write classification/rule rows plus receipts; inputs NOT_MEASURED")
+        return 0
     apply = bool(args.apply and not args.dry_run)  # AGENTS.md §6: the only value passed to run()
     only = {s.upper() for s in args.symbol} if args.symbol else None
     started = datetime.now(timezone.utc).isoformat()

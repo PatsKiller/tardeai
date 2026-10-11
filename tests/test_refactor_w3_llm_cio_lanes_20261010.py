@@ -627,12 +627,10 @@ def test_drain_dry_run_wins_over_apply(monkeypatch, capsys, _state):
     c = _drain_wire(monkeypatch, write_fn=_boom, n=2)
     assert drain.main(["--apply", "--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert "[DRY-RUN] pending=2" in out
-    s = _dry_line(out)["summary"]
-    assert s["would_apply"] == ["S0", "S1"] and s["pending"] == 2
-    assert c.readonly is True
+    assert "DRY-RUN cio-stance-classification-drain: would classify pending symbols" in out
+    assert "inputs NOT_MEASURED" in out and c.readonly is None
     _drain_wire(monkeypatch, write_fn=_boom, n=3)
-    drain.main(["--apply", "--dry-run"])
+    drain.main([])  # legacy implicit data preview remains mutation-tested
     assert _dry_line(capsys.readouterr().out)["summary"]["pending"] == 3
     assert not _receipt_file(_state, "cio-stance-classification-drain").exists()
 

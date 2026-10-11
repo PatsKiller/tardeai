@@ -1,20 +1,43 @@
 """Operator/system feedback on discovery candidates + score-adjustment hook.
 
 record_feedback() writes hermes_discovery_feedback and nudges per-source /
-per-trend score deltas persisted to data/runtime/hermes_discovery_weights.json.
+per-trend score deltas persisted to data/runtime/hermes_discovery_weights.json
+under the persistent state root. The checkout copy is a seed, never a write target.
 Deltas are CUMULATIVE and hard-bounded to ±MAX_ABS_DELTA (0.3) per key —
 feedback tilts scoring, it can never dominate it.
 """
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-WEIGHTS_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_weights.json"
+_CHECKOUT_WEIGHTS = PROJECT_ROOT / "data" / "runtime" / "hermes_discovery_weights.json"
+# Kept for callers that import the checkout path. Live reads and writes use weights_path().
+WEIGHTS_PATH = _CHECKOUT_WEIGHTS
 WEIGHTS_VERSION = "discovery-weights-v1"
+
+
+def _under_test() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CIO_TEST_ISOLATION")
+                or os.environ.get("TRADE_AI_CI") == "1")
+
+
+def resolve_weights_path(*, under_test: bool, state_root: Path, checkout: Path) -> Path:
+    if under_test:
+        return checkout
+    return state_root / "data" / "runtime" / "hermes_discovery_weights.json"
+
+
+def weights_path() -> Path:
+    """Where discovery weights are read and written. Tests and CI stay on the checkout path."""
+    if _under_test():
+        return _CHECKOUT_WEIGHTS
+    from ...persistent_state_root import good_persistent_root
+    return resolve_weights_path(under_test=False, state_root=good_persistent_root(), checkout=_CHECKOUT_WEIGHTS)
 
 MAX_ABS_DELTA = 0.3
 
@@ -33,23 +56,37 @@ def _clamp_delta(v: float) -> float:
     return max(-MAX_ABS_DELTA, min(MAX_ABS_DELTA, float(v)))
 
 
-def load_weight_adjustments(path: Path | None = None) -> dict[str, Any]:
-    """Read the persisted adjustment file; empty shell if missing/corrupt."""
-    p = path or WEIGHTS_PATH
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            data.setdefault("source_deltas", {})
-            data.setdefault("trend_deltas", {})
-            return data
-    except Exception:
-        pass
+def _empty_weights() -> dict[str, Any]:
     return {"version": WEIGHTS_VERSION, "updated_at": None,
             "source_deltas": {}, "trend_deltas": {}}
 
 
+def _parse_weights(p: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if isinstance(data, dict):
+        data.setdefault("source_deltas", {})
+        data.setdefault("trend_deltas", {})
+        return data
+    return None
+
+
+def load_weight_adjustments(path: Path | None = None) -> dict[str, Any]:
+    """Read the persisted adjustment file; empty shell if missing/corrupt.
+
+    A missing state file is seeded from the checkout copy. The seed is not written back."""
+    p = path or weights_path()
+    if p.is_file():
+        return _parse_weights(p) or _empty_weights()
+    if path is None and p != _CHECKOUT_WEIGHTS and _CHECKOUT_WEIGHTS.is_file():
+        return _parse_weights(_CHECKOUT_WEIGHTS) or _empty_weights()
+    return _empty_weights()
+
+
 def _save_weight_adjustments(data: dict[str, Any], path: Path | None = None) -> Path:
-    p = path or WEIGHTS_PATH
+    p = path or weights_path()
     data = dict(data)
     data["version"] = WEIGHTS_VERSION
     data["updated_at"] = datetime.now(timezone.utc).isoformat()

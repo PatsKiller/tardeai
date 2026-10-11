@@ -26,6 +26,8 @@ import sec_form4_source_maturity as sm  # noqa: E402
 
 CONTEXT_ARTIFACT = ROOT / "data" / "runtime" / "sec_form4_momentum_context_latest.json"
 MAX_SYMBOLS = 40
+LANE_ID = "run-sec-form4-momentum-context"
+_LAST_COUNTS = {}
 
 
 def _momentum_symbols(conn, days: int = 2) -> list:
@@ -96,7 +98,7 @@ def build_context(conn, symbols: list, refresh: bool) -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="SEC/Form 4 momentum catalyst context (supporting evidence only)")
+    ap = argparse.ArgumentParser(description="SEC/Form 4 momentum catalyst context (supporting evidence only)", allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true", help="report only (default)")
     ap.add_argument("--apply", action="store_true", help="refresh Form 4 + write the context artifact")
     ap.add_argument("--limit", type=int, default=MAX_SYMBOLS)
@@ -112,7 +114,7 @@ def main() -> int:
     except Exception as e:
         rep.update(status="WARN", note=f"db unavailable: {str(e).splitlines()[0][:80]}")
         print(json.dumps(rep, default=str))
-        return 0
+        return 1
 
     symbols = _momentum_symbols(conn)[: args.limit]
     body = build_context(conn, symbols, refresh=apply)
@@ -128,10 +130,45 @@ def main() -> int:
             rep["artifact"] = str(CONTEXT_ARTIFACT.relative_to(ROOT))
         except Exception as e:
             rep["artifact_error"] = str(e)[:80]
-    rep["status"] = rep.get("status", "PASS")
+    failed = bool(rep.get("artifact_error")) or (apply and isinstance(body.get("refreshed"), str))
+    _LAST_COUNTS.update(symbols=body["symbols"], catalyst_relevant_symbols=body["catalyst_relevant_symbols"],
+                        refreshed=body["refreshed"] if isinstance(body["refreshed"], int) else 0,
+                        refresh_failed=isinstance(body.get("refreshed"), str))
+    rep["status"] = "FAIL" if failed else rep.get("status", "PASS")
     print(json.dumps(rep, default=str))
-    return 0
+    return 1 if failed else 0
+
+
+def cli(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = argparse.ArgumentParser(description="SEC/Form 4 context", allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--limit", type=int, default=MAX_SYMBOLS)
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would read up to {args.limit} momentum symbols, refresh SEC Form 4 "
+              "and write supporting context; no DB, provider or writes")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    _LAST_COUNTS.clear()
+    previous = sys.argv
+    sys.argv = ["run_sec_form4_momentum_context.py", *argv]
+    try:
+        rc = main()
+    except Exception as exc:
+        if args.apply:
+            write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                               script="run_sec_form4_momentum_context.py", error=type(exc).__name__)
+        raise
+    finally:
+        sys.argv = previous
+    if args.apply:
+        write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                           script="run_sec_form4_momentum_context.py", summary=_LAST_COUNTS)
+    return rc
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli())

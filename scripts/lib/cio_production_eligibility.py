@@ -153,11 +153,23 @@ def under_test_isolation() -> bool:
     return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CIO_TEST_ISOLATION"))
 
 
+# The only environment names cio_state_root() reads. Each lookup below is a literal so the
+# executor closure check can see them (a loop variable is an unresolved read and fails the lane).
+_STATE_ROOT_ENV_NAMES = ("CIO_STATE_ROOT", "TRADEAI_ROOT", "MATURITY_CONTROL_ROOT")
+
+
 def cio_state_root() -> Path:
-    for key in ("CIO_STATE_ROOT", "TRADEAI_ROOT", "MATURITY_CONTROL_ROOT"):
-        val = (os.environ.get(key) or "").strip()
-        if val:
-            return Path(val)
+    """First non-empty of CIO_STATE_ROOT, TRADEAI_ROOT, MATURITY_CONTROL_ROOT, else the checkout."""
+    if _STATE_ROOT_ENV_NAMES != ("CIO_STATE_ROOT", "TRADEAI_ROOT", "MATURITY_CONTROL_ROOT"):
+        raise RuntimeError("state-root env names drifted from the literal lookups")
+    for val in (
+        os.environ.get("CIO_STATE_ROOT"),
+        os.environ.get("TRADEAI_ROOT"),
+        os.environ.get("MATURITY_CONTROL_ROOT"),
+    ):
+        text = (val or "").strip()
+        if text:
+            return Path(text)
     return PROJECT_ROOT
 
 

@@ -178,6 +178,11 @@ _CRON_SHAPE = re.compile(r"^\S+ \S+ \S+ \S+ \S+$")
 _RETRY_POLICY_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
 _RECEIPT_REL = re.compile(r"^data/[A-Za-z0-9._/-]+$")
 _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
+# Cron flags the word splitter does not treat as senders. `--alert` becomes the word "alert",
+# which is not a forbidden token, so audit-enrichment-coverage's `--alert` stayed eligible.
+# `--alerts` and `system_health_alerts.py` do not match. `--send` and `--telegram` already match
+# as words; the flag form is recorded here so a cron line is judged the same way.
+_SENDER_FLAG = re.compile(r"(?<![a-z0-9])--(alert|send|telegram)(?![a-z0-9])")
 
 _DISPATCH_KEYS = frozenset({"mode", "cron", "tz", "wave", "class", "priority", "retry_policy", "catchup_min",
                             "min_interval_s", "after", "triggers", "sweep_cron", "digest_window", "digest_role"})
@@ -617,6 +622,9 @@ def _matcher(word_forms, partners: frozenset[str], script_substrings: tuple, dis
         for sub in distinctive:
             if sub in squashed and sub not in hits:
                 hits.append(sub)
+        for flag in _SENDER_FLAG.findall(text.lower()):
+            if flag not in hits:
+                hits.append(flag)
         return tuple(hits)
 
     return match

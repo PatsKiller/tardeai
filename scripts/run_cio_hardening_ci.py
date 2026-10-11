@@ -24,6 +24,11 @@ REPO = Path(__file__).resolve().parents[1]
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
     ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
+    # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
+    ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),
+    # ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work.
+    ("refactor_shard_05_20261011", ["tests/test_refactor_shard_05_20261011.py"]),
+    ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),
     (
         "options_workflow",
         [
@@ -1199,7 +1204,9 @@ GATES = [
     # incidents become one deduped system_health_events row per n8n:<lane>|kind; inbox accepts CRITICAL/URGENT.
     (
         "n8n_siem_bridge_20261010",
-        ["tests/test_n8n_siem_bridge_20261010.py"],
+        ["tests/test_n8n_siem_bridge_20261010.py",
+         # 2026-10-11: siem_critical_notify skips n8n:* bridge rows (the incident fan-in owns them).
+         "tests/test_siem_notify_n8n_single_route_20261011.py"],
     ),
     # LLM self-remediation for n8n lanes (REMEDIATION_PLAN §6, operator decisions 2026-10-09 23:38 ET): remediation
     # catalogue from the inventory, governed diagnosis (n8n_lane_failure_diagnosis), bounded actions, selftest lane.
@@ -3889,6 +3896,29 @@ GATES = [
         ],
     ),
     (
+        # Hermetic test bootstrap (2026-10-11, AGENTS §24.6; SHARDS_01_04_HANDOFF "not fully isolated"): under pytest
+        # env loaders resolve to an empty fixture (env_bootstrap TRADEAI_ENV_BOOTSTRAP_FILES, live_project_root
+        # TRADEAI_LIVE_PROJECT_ROOT, dotenv wrapped), an audit hook refuses ~/trade-ai-releases/**, /run/user/*/tradeai
+        # and .env files and fails the test naming the caller, live-DSN connects raise, M2 bootstrap needs M2_TEST_DB=1.
+        "hermetic_test_guard_20261011",
+        ["tests/test_hermetic_test_guard_20261011.py"],
+    ),
+    (
+        # ANCHOR: GROK_G8_G9_ENV_20261011 — literal state-root reads in cio_production_eligibility,
+        # and DB-only env copies in the hermes bridges and catalyst_momentum_engine. Hermetic:
+        # tmp env files, synthetic values. The closure re-measure pins that no report lane flips.
+        "grok_g8_g9_env_20261011",
+        ["tests/test_grok_g8_g9_env_20261011.py"],
+    ),
+    (
+        # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the
+        # release tree, and --alert/--send/--telegram as sender tokens. The n8n: SIEM skip is the
+        # g11 implementation; its own test is on the n8n_siem_bridge gate. Hermetic: tmp paths,
+        # psycopg2 stubbed only when the driver is absent.
+        "grok_g10_g12_20261011",
+        ["tests/test_grok_g10_g12_20261011.py"],
+    ),
+    (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live
         # shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry
         # output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks.
@@ -4267,6 +4297,7 @@ GATES = [
         # hermes_directive_discovery, earnings_enrich, ipo_lockup_alert. Hermetic: fake DB, tmp state root.
         "refactor_w2_bucket_v1_20261010",
         [
+            "tests/test_refactor_shard_08_20261011.py",
             "tests/test_refactor_w2_signal_fusion_20261010.py",
             "tests/test_refactor_w2_learning_lanes_20261010.py",
             "tests/test_refactor_w2_ingest_alert_lanes_20261010.py",
@@ -4587,6 +4618,13 @@ GATES = [
         ["tests/test_agent_recommendation_normalizer_dedupe_20261011.py",
          "tests/test_approval_escalate_20261011.py",
          "tests/test_llm_bridge_route_20261011.py"],
+    ),
+    (
+        # Shard06 source-only previews: exact approved cron argv against frozen old entrypoints;
+        # no auth/DB/provider work or state writes in previews; fake real receipts retain prior ok_at
+        # on failure. Seven DRAFT admissions, no broker env, existing reviewed rows preserved.
+        "refactor_shard_06_20261011",
+        ["tests/test_refactor_shard_06_20261011.py"],
     ),
 ]
 

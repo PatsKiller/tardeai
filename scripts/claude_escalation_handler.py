@@ -493,7 +493,8 @@ def _verify_remediation(item) -> tuple[bool, str]:
             today = datetime.now().date().isoformat()
         for p in (
             PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json",
-            Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/data/runtime/trade_ai_cache.json"),
+            Path(os.environ.get("TRADEAI_LIVE_PROJECT_ROOT") or "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
+            / "data" / "runtime" / "trade_ai_cache.json",
         ):
             try:
                 if p.exists():

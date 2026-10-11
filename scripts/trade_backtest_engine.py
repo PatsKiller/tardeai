@@ -9,8 +9,9 @@ Grades entry quality (A-D) and exit quality (A-D) using historical OHLCV from yf
 credential files, DB or yfinance. The older preview() remains available to explicit library
 callers; it is not the dispatcher CLI. A real run writes data/runtime/trade_backtest_engine_last.json
 (LaneRunReceipt@v1; ok_at only on success) under the persistent state root and exits 1 on failure.
-Per-trade data gaps ('insufficient'/'error') are
-findings in the counts, not a failed run."""
+A mix of per-trade data gaps ('insufficient' or 'error') is a finding and still exits 0. Every
+attempted trade landing in data_quality 'error' (the price source is down) exits 1 (G10, 2026-10-11).
+Zero trades is a finding, exit 0."""
 import os, sys, time, logging
 from datetime import timedelta
 from pathlib import Path
@@ -554,6 +555,14 @@ def print_summary():
     conn.close()
 
 
+def _counts_exit(counts: dict) -> int:
+    """1 only when every attempted trade is data_quality 'error'. Zero trades stays 0."""
+    n = sum(int(v) for v in counts.values())
+    if n > 0 and int(counts.get("error") or 0) == n:
+        return 1
+    return 0
+
+
 def main(argv=None):
     args = _arguments(argv)
     if args.dry_run:
@@ -569,9 +578,12 @@ def main(argv=None):
         write_receipt(RECEIPT_NAME, ok=False, exit_code=1, error=f'{type(exc).__name__}: {exc}', started_at=started)
         log.error(f'backtest FAILED: {type(exc).__name__}: {exc}')
         return 1
-    write_receipt(RECEIPT_NAME, ok=True, exit_code=0, summary={'counts': counts, 'trades': sum(counts.values())},
+    rc = _counts_exit(counts)
+    write_receipt(RECEIPT_NAME, ok=(rc == 0), exit_code=rc,
+                  summary={'counts': counts, 'trades': sum(counts.values())},
+                  error='every trade backtest errored' if rc else None,
                   started_at=started)
-    return 0
+    return rc
 
 
 if __name__ == '__main__':

@@ -18,9 +18,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from dotenv import load_dotenv
-load_dotenv(str(ROOT / ".env"))
-from db_adapter import _get_conn
+def _load_env():
+    from lib.env_bootstrap import load_env
+    load_env(names=("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "FINVIZ_API_TOKEN"))
+
+
+def _get_conn():
+    from db_adapter import _get_conn as connect
+    return connect()
 
 TOKEN = os.getenv("FINVIZ_API_TOKEN", "").strip()
 BASE = "https://elite.finviz.com/grp_export.ashx"
@@ -80,10 +85,12 @@ def run(dry_run=False):
     _ensure_table(cur); conn.commit()
     today = datetime.now().strftime("%Y-%m-%d")
     total = 0
+    failed_groups = 0
     for gtype in ("sector", "industry"):
         try:
             rows = _fetch(gtype)
         except Exception as e:
+            failed_groups += 1
             print(f"  {gtype}: fetch error {str(e)[:60]}"); continue
         print(f"  {gtype}: {len(rows)} groups")
         for r in rows:
@@ -117,10 +124,38 @@ def run(dry_run=False):
         if secs:
             print(f"  sector leaders: {secs[0]}  laggards: {secs[-1]}")
     print(f"{'DRY ' if dry_run else ''}stored {total} group rows for {today}")
+    LAST_COUNTS.update(rows=total, failed_groups=failed_groups)
     return 0
 
 
+LAST_COUNTS = {}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true", help="offline plan, no provider or database access")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print("DRY-RUN finviz-sector-research: would fetch sector/industry group performance "
+              "and upsert finviz_group_performance plus a lane receipt; inputs NOT_MEASURED")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    global TOKEN
+    LAST_COUNTS.clear()
+    try:
+        _load_env()
+        TOKEN = os.getenv("FINVIZ_API_TOKEN", "").strip()
+        rc = run(dry_run=False)
+    except Exception as exc:
+        write_lane_receipt("finviz-sector-research", ok=False, exit_code=1, started_at=started,
+                           script="finviz_sector_research.py", error=type(exc).__name__)
+        raise
+    ok = rc == 0 and not LAST_COUNTS.get("failed_groups") and LAST_COUNTS.get("rows", 0) > 0
+    write_lane_receipt("finviz-sector-research", ok=ok, exit_code=rc, started_at=started,
+                       script="finviz_sector_research.py", summary=LAST_COUNTS)
+    return rc
+
+
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true")
-    raise SystemExit(run(dry_run=ap.parse_args().dry_run))
+    raise SystemExit(main())

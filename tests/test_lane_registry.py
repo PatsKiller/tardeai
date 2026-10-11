@@ -283,7 +283,14 @@ def test_stance_organic_observe_lanes_use_weekday_int_lists():
         assert validate_row(lane) == []
 
 
-def test_a_clean_report_says_quiet():
+def test_a_clean_report_says_quiet(monkeypatch):
+    # The real registry's output signals name live absolute paths (the p1 digest watermark under persistent-state);
+    # observing them would read production state under pytest (AGENTS §24.6, hermetic guard). This test is about the
+    # report's shape, so every signal is observed as absent.
+    import scripts.lib.lane_registry as _lr
+
+    monkeypatch.setattr(_lr, "observe_signal",
+                        lambda sig, **k: {"last_output_at": None, "readable": True, "detail": "stubbed (hermetic)"})
     rep = collect_lane_registry_report(cron_text="", include_systemd=False,
                                        registry_path=ROOT / "config" / "lane_registry.json")
     # With no schedulers discovered, ACTIVE lanes orphan — so assert the wording
