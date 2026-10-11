@@ -7,6 +7,7 @@ archived copy at data/runtime/archive/maturity_score_latest.json is never opened
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ class ArchivedMaturityScoreRefused(RuntimeError):
 
 
 def persistent_maturity_score_path() -> Path:
-    return Path("/home/johnclaw/trade-ai-releases/persistent-state") / LIVE_REL
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or "/home/johnclaw/trade-ai-releases/persistent-state") / LIVE_REL
 
 
 def is_archived_maturity_score_path(path: Path | str) -> bool:

@@ -1838,7 +1838,7 @@ def resolve_epoch_id(env: dict | None = None) -> str:
         return explicit
     try:
         target = Path(
-            "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+            os.environ.get("TRADEAI_LIVE_PROJECT_ROOT") or "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
         ).resolve()
         name = target.name
         if name and name != "CURRENT":
@@ -1857,7 +1857,9 @@ def resolve_release_id() -> str:
     apart cannot reconcile main == served == CURRENT.
     """
     try:
-        target = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT").resolve()
+        target = Path(
+            os.environ.get("TRADEAI_LIVE_PROJECT_ROOT") or "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+        ).resolve()
         name = target.name
         if name and name != "CURRENT":
             return name

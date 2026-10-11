@@ -22,6 +22,13 @@ DEFAULT_CURRENT = Path(
     "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
 )
 
+
+def _default_current() -> Path:
+    """CURRENT, or the explicit TRADEAI_LIVE_PROJECT_ROOT override (lib.live_project_root; the hermetic test
+    bootstrap points it at an empty scratch directory, AGENTS §24.6). Resolved per call."""
+    override = os.environ.get("TRADEAI_LIVE_PROJECT_ROOT", "").strip()
+    return Path(override) if override else DEFAULT_CURRENT
+
 _ENV_KEYS = (
     "TRADEAI_SOURCE_SHA",
     "BUILD_SHA",
@@ -72,7 +79,7 @@ def resolve_source_sha(
         if val and val.lower() != "unknown":
             return val
 
-    current = Path(current_release) if current_release else DEFAULT_CURRENT
+    current = Path(current_release) if current_release else _default_current()
     root = Path(project_root) if project_root else Path(__file__).resolve().parents[2]
 
     for path in (
