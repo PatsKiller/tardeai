@@ -215,7 +215,7 @@ def main() -> int:
             message += f"\n…and {len(lines) - len(shown)} more (daily cap {cap}; in next digest)"
         try:
             from telegram_alert import send_telegram
-            send_telegram(message, bypass_router=True)
+            send_telegram(message, priority="P1", producer="watch_alerts_eval")  # armed price triggers: time-critical, self-capped
         except Exception:
             pass
 

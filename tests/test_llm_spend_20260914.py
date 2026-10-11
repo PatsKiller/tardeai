@@ -124,7 +124,7 @@ def test_a_period_is_sent_once(tmp_path, monkeypatch):
     monkeypatch.setattr(rep, "cc_link", lambda: "")
     monkeypatch.setattr(sys, "argv", ["llm_spend_report.py", "--period", "weekly", "--send"])
     assert rep.main() == 0 and rep.main() == 0
-    assert len(sent) == 1 and sent[0]["bypass_router"] is True
+    assert len(sent) == 1 and sent[0]["priority"] == "P2" and "bypass_router" not in sent[0]
     assert json.loads((tmp_path / "last_weekly.json").read_text())["sent"] is True
 
 

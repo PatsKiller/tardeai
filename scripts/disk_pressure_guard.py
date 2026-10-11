@@ -135,7 +135,7 @@ def run_enforcer(*, dry_run: bool) -> dict:
 def notify(text: str) -> str:
     try:
         from telegram_alert import send_telegram  # noqa: PLC0415
-        ok = send_telegram(text, bypass_router=True, message_class="operator_alert")
+        ok = send_telegram(text, message_class="operator_alert", priority="P1", producer="disk_pressure_guard")
         return "accepted" if ok else "send_returned_false"
     except Exception as exc:  # noqa: BLE001 - alerting must never raise here
         return f"error:{type(exc).__name__}"

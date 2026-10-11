@@ -72,7 +72,7 @@ def main() -> int:
         red = sum(1 for card in console["cards"] if "NOT met" in card["verdict_preview"])
         send_telegram(f"[OPERATIONAL] Oversight Weekly: {len(rows)} reviews · ${spend:.2f} · "
                       f"{len(seen)} OBJECTs · console: {red} criteria red · report on the desk",
-                      bypass_router=True)
+                      priority="P2", producer="oversight_weekly_digest")
     except Exception as e:
         print(f"[weekly-digest] telegram failed: {e}")
     return 0

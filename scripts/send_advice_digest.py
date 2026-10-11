@@ -7,8 +7,8 @@
 Window: everything since the previous digest's cut-off (watermark under the persistent state root, so every
 checkout shares it); a first run looks back 24 h. The 17:00 digest also reports what moved today.
 
-Delivery bypasses the router (a digest of deferred messages must not itself be deferred — p1_digest_sender's
-lesson). Only after a confirmed send: held CIO advisory notes are marked delivered with the digest's message id,
+Delivery is a P2 notification intent routed by its declared priority, never by the text classifier (a digest of
+deferred messages must not itself be deferred — p1_digest_sender's lesson; its slots are outside quiet hours). Only after a confirmed send: held CIO advisory notes are marked delivered with the digest's message id,
 the folded P1 archive watermark advances, and the digest watermark moves. A failed send loses nothing.
 Receipt: data/runtime/advice_digest_latest.json.
 """
@@ -108,7 +108,7 @@ def deliver(messages: list[str]) -> list[str | None]:
 
     ids = []
     for m in messages:
-        r = send_telegram_with_id(m, bypass_router=True, message_class="report",
+        r = send_telegram_with_id(m, message_class="report", priority="P2", producer="send_advice_digest",
                                   link_preview_options={"is_disabled": True})
         if not r.get("accepted"):
             raise RuntimeError("digest message not accepted by the transport")

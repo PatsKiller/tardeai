@@ -640,3 +640,126 @@ def route_alert(message: str) -> dict:
 def surface_destination(message: str) -> str:
     """Return the dashboard/page destination for a message."""
     return route_alert(message)["destination"]
+
+
+# ── Notification intents: an explicit priority instead of bypass_router=True ─────────────────────────────
+#
+# Operator 2026-10-10 ("moving the 30 bypass senders ... do tonight"); AGENTS.md §24.1 (4.6.0, PROPOSED):
+# senders emit notification intents and the gateway decides. Thirty scheduled senders passed
+# bypass_router=True, which skipped classify_alert() AND every dedupe and receipt with it. The text
+# classifier was the reason they bypassed (it digested GO setups and scheduled reports by their wording), so
+# an intent carries its priority explicitly and the classifier is never consulted for it:
+#
+#   P1  delivered now. Never capped (not counted against DAILY_SEND_BUDGET, never held by it) and never
+#       quiet-held — the same contract as incident_notifier's P1. The router adds what bypass lacked: a
+#       content-keyed dedupe with a declared window, and a durable route receipt.
+#   P2  delivered now, except during the operator's quiet window (22:00–07:00 America/New_York by default,
+#       operator decision 2026-10-09 — the incident notifier's window and env vars, read here so there is one
+#       window). A held P2 is archived to telegram_outbox channel 'reports_archive' (forced report_type, so it
+#       is stored even when report_capture does not recognise the header); the advice digest folds that
+#       archive (scripts/lib/advice_digest.collect_other). If the hold cannot be persisted, the P2 is
+#       delivered instead — a failure to hold must never become a silent drop (AGENTS.md §9.1).
+#
+# Not changed: classify_alert, should_send_telegram, DAILY_SEND_BUDGET and every text-routed producer.
+INTENT_P1 = "P1"
+INTENT_P2 = "P2"
+INTENT_PRIORITIES = (INTENT_P1, INTENT_P2)
+DEFAULT_INTENT_DEDUPE_MINUTES = 60
+HELD_P2_REPORT_TYPE = "notification_intent_p2"
+INTENT_RECEIPT_SCHEMA = "NotificationIntentRoute@v1"
+INTENT_RECEIPTS_ENV = "TRADEAI_INTENT_RECEIPTS_PATH"
+_INTENT_RECEIPTS_DEFAULT = PROJ / "data" / "runtime" / "notification_intent_receipts.jsonl"
+
+# Same env vars and defaults as scripts/incident_notifier.py (ENV_CLOCK / ENV_TZ); parity is test-pinned.
+_QUIET_START_ENV = ("TRADEAI_INCIDENT_NOTIFIER_QUIET_START", "22:00")
+_QUIET_END_ENV = ("TRADEAI_INCIDENT_NOTIFIER_QUIET_END", "07:00")
+_QUIET_TZ_ENV = ("TRADEAI_INCIDENT_NOTIFIER_TZ", "America/New_York")
+
+_intent_sent: dict = {}
+
+
+def _hhmm(text: str, default: str) -> int:
+    for candidate in (text, default):
+        try:
+            h, m = (int(x) for x in str(candidate).strip().split(":"))
+        except ValueError:
+            continue
+        if 0 <= h < 24 and 0 <= m < 60:
+            return h * 60 + m
+    return 0
+
+
+def intent_in_quiet_hours(now=None) -> bool:
+    """True inside the operator's quiet window. Wall clock in the configured tz; start > end wraps midnight."""
+    from datetime import datetime as _dt, timezone as _tz
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    start = _hhmm(os.environ.get(_QUIET_START_ENV[0]) or "", _QUIET_START_ENV[1])
+    end = _hhmm(os.environ.get(_QUIET_END_ENV[0]) or "", _QUIET_END_ENV[1])
+    tz_name = str(os.environ.get(_QUIET_TZ_ENV[0]) or _QUIET_TZ_ENV[1]).strip()
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo(_QUIET_TZ_ENV[1])
+    t = (now or _dt.now(_tz.utc)).astimezone(tz)
+    m = t.hour * 60 + t.minute
+    if start == end:
+        return False
+    return (start <= m < end) if start < end else (m >= start or m < end)
+
+
+def intent_dedupe_key(message: str) -> str:
+    """The whole normalised body, hashed. Exact content only: a P1 that differs in any word is never deduped."""
+    norm = " ".join((message or "").split())
+    return "intent:" + hashlib.sha256(norm.encode("utf-8")).hexdigest()[:24]
+
+
+def _intent_receipts_path() -> Path:
+    return Path(os.environ.get(INTENT_RECEIPTS_ENV) or _INTENT_RECEIPTS_DEFAULT)
+
+
+def record_intent_receipt(route: dict, *, delivered, archived=None) -> None:
+    """Append the route decision and its outcome. Best-effort: a receipt failure never blocks a send."""
+    row = {"schema": INTENT_RECEIPT_SCHEMA, "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           **{k: route.get(k) for k in ("priority", "decision", "dedupe_key", "window_minutes", "producer")},
+           "delivered": delivered, "archived_report_type": archived,
+           "preview": str(route.get("preview") or "")[:80]}
+    try:
+        p = _intent_receipts_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+    except Exception as e:
+        log.warning("intent receipt write failed: %s", type(e).__name__)
+
+
+def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = None,
+                 producer: str | None = None, now=None) -> dict:
+    """Decide one notification intent. Pure apart from reading the durable dedupe store.
+
+    Returns {priority, decision, deliver, dedupe_key, window_minutes, producer, preview}; decision is one of
+    DELIVER, DEDUPED (same body inside the window — already delivered), HELD_QUIET_HOURS (P2 only).
+    ``dedupe_minutes=0`` turns dedupe off for a producer that already keeps its own send ledger.
+    """
+    pr = str(priority or "").strip().upper()
+    if pr not in INTENT_PRIORITIES:
+        raise ValueError(f"notification intent priority must be one of {INTENT_PRIORITIES}, got {priority!r}")
+    window = DEFAULT_INTENT_DEDUPE_MINUTES if dedupe_minutes is None else max(0, int(dedupe_minutes))
+    key = intent_dedupe_key(message)
+    route = {"priority": pr, "dedupe_key": key, "window_minutes": window, "producer": producer,
+             "preview": (message or "")[:80]}
+    if window and (time.time() - _intent_sent.get(key, 0) < window * 60
+                   or _durable_recently_sent(key, window * 60)):
+        return {**route, "decision": "DEDUPED", "deliver": False}
+    if pr == INTENT_P2 and intent_in_quiet_hours(now):
+        return {**route, "decision": "HELD_QUIET_HOURS", "deliver": False}
+    return {**route, "decision": "DELIVER", "deliver": True}
+
+
+def mark_intent_sent(route: dict) -> None:
+    """After a confirmed transport send: make the dedupe window real across processes."""
+    key = route.get("dedupe_key")
+    if not key or not route.get("window_minutes"):
+        return
+    _intent_sent[key] = time.time()
+    durable_mark_sent(key, meta={"priority": route.get("priority"), "producer": route.get("producer")})

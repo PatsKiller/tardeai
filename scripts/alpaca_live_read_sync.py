@@ -302,7 +302,7 @@ def _clear_fail(account_key: str):
 def _telegram(msg: str):
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg, bypass_router=True)  # uses all configured chat_ids from env
+        send_telegram(msg, priority="P1", producer="alpaca_live_read_sync")  # broker-health: failure streak + its recovery
     except Exception as e:
         log.warning("telegram: %s", e)
 

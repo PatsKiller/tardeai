@@ -343,7 +343,7 @@ def _ladder_l4_l5(rows: list[dict], sla_by_lane: dict, now, runtime_dir: Path, *
                 try:
                     from telegram_alert import send_telegram  # type: ignore
                     send_telegram(f"STOP HEALTH — supervisor L4: lane {lane} {kind} OPEN for {int(age_s // 3600)}h (breach {r.get('breach_id')}); L1–L3 did not recover it",
-                                  bypass_router=True)
+                                  priority="P1", producer="supervisor_breach_detector")
                     rec["paged"] = True; out["l4_paged"] += 1
                 except Exception as exc:  # noqa: BLE001
                     rec["paged"] = False; rec["error"] = type(exc).__name__

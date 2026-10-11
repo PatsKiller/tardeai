@@ -4408,6 +4408,14 @@ GATES = [
         "search_routing_engine_20261010",
         ["tests/test_search_routing_engine_20261010.py"],
     ),
+    (
+        # Notification intents (operator 2026-10-10, "moving the 30 bypass senders"): 20 sender modules
+        # declare P1/P2 instead of bypass_router=True; P1 never capped or quiet-held, P2 held in quiet hours
+        # and archived for the digest, both deduped and receipted. Shrink-only gate on bypass_router sites.
+        # Transport captured, never sent.
+        "notification_intents_20261010",
+        ["tests/test_notification_intents_20261010.py"],
+    ),
 ]
 
 
