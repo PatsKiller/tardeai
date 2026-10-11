@@ -1,4 +1,6 @@
-"""Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X4: LLM, learning and CIO hygiene lanes.
+"""Shard04 update: explicit identity-sweep preview is offline; implicit corpus preview stays compatible.
+
+Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X4: LLM, learning and CIO hygiene lanes.
 
 - scripts/llm_intelligence_enrichment.py (cron L184/L185/L186, lane llm-intelligence-enrichment)
 - scripts/feedback_loop_processor.py (cron L197, lane feedback-loop-processor)
@@ -559,15 +561,11 @@ def test_bsi_dry_run_wins_over_apply(monkeypatch, capsys, _state):
     c = _bsi_conn(("AAA", "BBB"))
     monkeypatch.setattr(bsi, "_db", lambda: c)
     assert bsi.main(["--all", "--apply", "--add-columns", "--dry-run"]) == 0
-    out = capsys.readouterr().out
-    assert "apply=False" in out
-    s = _dry_line(out)["summary"]
-    assert s["resolved"] == 2 * len(bsi.TARGETS) and s["rows_stamped"] == 0
-    assert c.readonly is True and c.writes() == [] and c.commits == 0
-    c1 = _bsi_conn(("AAA",))
-    monkeypatch.setattr(bsi, "_db", lambda: c1)
+    assert "DRY-RUN identity-sweep-stage0: would" in capsys.readouterr().out
+    assert c.readonly is None and c.sql == [] and c.commits == 0
+    monkeypatch.setattr(bsi, "_db", _boom)
     assert bsi.main(["--all", "--apply", "--dry-run"]) == 0
-    assert _dry_line(capsys.readouterr().out)["summary"]["resolved"] == len(bsi.TARGETS)
+
     assert not _receipt_file(_state, "identity-sweep-stage0").exists()
 
 

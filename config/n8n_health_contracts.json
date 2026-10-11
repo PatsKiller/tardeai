@@ -11527,6 +11527,1406 @@
     "method": "every field checked against the script source at origin/main e24ccd6c5, the live crontab (crontab -l, read-only, 2026-10-11), config/data_source_authority.json and the cron logs; the inventory free-text edges were replaced by source-cited edges",
     "basis_note": "baseline stays CLASS_DEFAULT_PROVISIONAL: the ledger holds 0 live dispatcher runs of this lane, and dry-run fires never set a baseline; re-learn after 14 live runs (canary)"
    }
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "identity-sweep-stage0",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Resolve research rows onto subject identities using deterministic registry lookups.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:identity-sweep-stage0"
+   },
+   "owner": "platform",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/backfill_subject_identity.py --all",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/identity_sweep.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/identity-sweep-stage0_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Research corpus and security identity registry",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:identity-sweep-stage0 dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "Research corpus and security identity registry",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:identity-sweep-stage0 triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "Subject identity columns consumed by material-change dossier readers",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:identity-sweep-stage0 outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/identity-sweep-stage0_last.json fresh within 1.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 1.0 h but younger than 1.5 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Research corpus and security identity registry (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 1.5 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 1.0,
+    "freshness_failed_after_h": 1.5,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "*/30 * * * *"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:identity-sweep-stage0 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/identity-sweep-stage0_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='identity-sweep-stage0' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:identity-sweep-stage0' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/identity-sweep-stage0_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "hermes-momentum-catalyst-scalp",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Collect advisory catalyst context for momentum candidates through the host search routing engine.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:hermes-momentum-catalyst-scalp"
+   },
+   "owner": "hermes",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/hermes_momentum_catalyst_researcher.py --source scalp",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/hermes_scalp_catalyst.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Scalp candidate projection and governed search results",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-momentum-catalyst-scalp dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "Scalp candidate projection and governed search results",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-momentum-catalyst-scalp triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "Advisory catalyst JSONL consumed by momentum context readers",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:hermes-momentum-catalyst-scalp outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/hermes-momentum-catalyst-scalp_last.json fresh within 2.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 2.0 h but younger than 3.0 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Scalp candidate projection and governed search results (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 3.0 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 2.0,
+    "freshness_failed_after_h": 3.0,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "25 6-15 * * 1-5"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:hermes-momentum-catalyst-scalp business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-momentum-catalyst-scalp' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-momentum-catalyst-scalp' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/hermes-momentum-catalyst-scalp_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "aegis-transcript-discovery",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Discover and persist advisory transcript intelligence and bounded research discoveries.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:aegis-transcript-discovery"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/aegis_transcript_discovery.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/aegis-transcript-discovery.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/aegis-transcript-discovery_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "YouTube transcript corpus, article index and research universe",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:aegis-transcript-discovery dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "YouTube transcript corpus, article index and research universe",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:aegis-transcript-discovery triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "Transcript intelligence and discovery rows consumed by Aegis research dossiers",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:aegis-transcript-discovery outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/aegis-transcript-discovery_last.json fresh within 144.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 144.0 h but younger than 216.0 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: YouTube transcript corpus, article index and research universe (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 216.0 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 144.0,
+    "freshness_failed_after_h": 216.0,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "0 9 * * 1-5"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:aegis-transcript-discovery business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/aegis-transcript-discovery_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='aegis-transcript-discovery' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:aegis-transcript-discovery' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/aegis-transcript-discovery_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "candidate-discovery-orchestrator",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Poll and persist advisory candidate discovery events with per-source liveness.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:candidate-discovery-orchestrator"
+   },
+   "owner": "proposals",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/candidate_discovery_orchestrator.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/candidate-discovery-orchestrator.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/candidate-discovery-orchestrator_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Finviz and internal social, news, incubator and market-mover research source adapters",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:candidate-discovery-orchestrator dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "Finviz and internal social, news, incubator and market-mover research source adapters",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:candidate-discovery-orchestrator triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "Candidate discovery events consumed by research proposal dossier builders",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:candidate-discovery-orchestrator outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/candidate-discovery-orchestrator_last.json fresh within 144.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 144.0 h but younger than 216.0 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Finviz and internal social, news, incubator and market-mover research source adapters (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 216.0 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 144.0,
+    "freshness_failed_after_h": 216.0,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "15 6 * * 1-5"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:candidate-discovery-orchestrator business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/candidate-discovery-orchestrator_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='candidate-discovery-orchestrator' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:candidate-discovery-orchestrator' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/candidate-discovery-orchestrator_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "finviz-proactive-research",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Ingest advisory Finviz headlines for the research universe.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:finviz-proactive-research"
+   },
+   "owner": "scalp",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/finviz_proactive_research.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/finviz_proactive.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/finviz-proactive-research_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Governed Finviz headline export and watch universe",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:finviz-proactive-research dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "Governed Finviz headline export and watch universe",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:finviz-proactive-research triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "News article research rows consumed by catalyst dossier readers",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:finviz-proactive-research outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/finviz-proactive-research_last.json fresh within 132.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 132.0 h but younger than 198.0 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Governed Finviz headline export and watch universe (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 198.0 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 132.0,
+    "freshness_failed_after_h": 198.0,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 300,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "30 9,11,13,15 * * 1-5"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:finviz-proactive-research business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/finviz-proactive-research_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='finviz-proactive-research' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:finviz-proactive-research' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/finviz-proactive-research_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "hermes-discovery-scorecard",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Compute advisory research discovery feedback and do-no-harm outcomes.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:hermes-discovery-scorecard"
+   },
+   "owner": "learning",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/hermes_discovery_scorecard.py",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/hermes-discovery-scorecard.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/hermes-discovery-scorecard_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Hermes discovery candidates, audit, decisions and feedback windows",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-discovery-scorecard dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "Hermes discovery candidates, audit, decisions and feedback windows",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-discovery-scorecard triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "Discovery scorecard and outcome feed consumed by research learning review",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:hermes-discovery-scorecard outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/hermes-discovery-scorecard_last.json fresh within 48.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Hermes discovery candidates, audit, decisions and feedback windows (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 72.0 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 48.0,
+    "freshness_failed_after_h": 72.0,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 300,
+    "class": "learn",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "30 5 * * *"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:hermes-discovery-scorecard business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/hermes-discovery-scorecard_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-discovery-scorecard' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-discovery-scorecard' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/hermes-discovery-scorecard_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "hermes-research-agenda-at-45-7",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Rank research agenda topics from discovery and outcome feedback, then apply bounded topic lifecycle changes.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:hermes-research-agenda-at-45-7"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/hermes_research_agenda.py --json",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/hermes_agenda.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/hermes-research-agenda-at-45-7_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Hermes discovery candidates, entity links, research yield and sector rotation evidence",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-research-agenda-at-45-7 dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "Hermes discovery candidates, entity links, research yield and sector rotation evidence",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-research-agenda-at-45-7 triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "Topic monitor rows and research agenda audit consumed by research workers",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:hermes-research-agenda-at-45-7 outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/hermes-research-agenda-at-45-7_last.json fresh within 48.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 240.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Hermes discovery candidates, entity links, research yield and sector rotation evidence (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 72.0 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 48.0,
+    "freshness_failed_after_h": 72.0,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 300,
+    "class": "learn",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 240.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "45 7 * * *"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:hermes-research-agenda-at-45-7 business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/hermes-research-agenda-at-45-7_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-research-agenda-at-45-7' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-research-agenda-at-45-7' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/hermes-research-agenda-at-45-7_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
+  },
+  {
+   "schema": "N8nHealthContract@v1",
+   "id": "hermes-research-worker-pool",
+   "kind": "lane",
+   "workflow_id": "tradeai-dispatcher",
+   "status": "DRAFT",
+   "target_reason": "refactor_shard_04",
+   "stage": "shadow",
+   "purpose": {
+    "text": "Run a bounded advisory research discovery pool without promotion authority.",
+    "business_function": "research",
+    "source": "inventory refactor-shard04:hermes-research-worker-pool"
+   },
+   "owner": "research",
+   "connects_to": [
+    {
+     "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+     "kind": "service",
+     "direction": "calls",
+     "source": "AGENTS.md §23.3"
+    },
+    {
+     "name": "$PY scripts/hermes_research_worker_pool.py --run --json",
+     "kind": "runner",
+     "direction": "calls",
+     "source": "config/n8n_run_allowlist.json command"
+    },
+    {
+     "name": "/tmp/hermes_worker_pool.lock",
+     "kind": "lock",
+     "direction": "read_write",
+     "source": "config/n8n_run_allowlist.json lock (flock)"
+    },
+    {
+     "name": "data/runtime/hermes-research-worker-pool_last.json",
+     "kind": "receipt",
+     "direction": "write",
+     "source": "LaneRunReceipt / allowlist output_signal"
+    },
+    {
+     "name": "Declared research worker lanes and internal research corpus",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-research-worker-pool dependencies (DRAFT: free text)"
+    },
+    {
+     "name": "Declared research worker lanes and internal research corpus",
+     "kind": "inventory_text",
+     "direction": "read",
+     "source": "inventory refactor-shard04:hermes-research-worker-pool triggers_inputs (DRAFT: free text)"
+    },
+    {
+     "name": "Hermes discovery inbox candidates consumed by research reviewers",
+     "kind": "inventory_text",
+     "direction": "write",
+     "source": "inventory refactor-shard04:hermes-research-worker-pool outputs_downstream (DRAFT: free text)"
+    }
+   ],
+   "healthy": [
+    {
+     "check": "shadow_dry_run_done",
+     "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+    },
+    {
+     "check": "dry_run_writes_nothing",
+     "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before (a dry run writes nothing, AGENTS.md §6)"
+    },
+    {
+     "check": "cron_twin_output_fresh",
+     "text": "the live cron line keeps the registry output_signal data/runtime/hermes-research-worker-pool_last.json fresh within 2.0 h (2x cadence)"
+    },
+    {
+     "check": "duration_within_baseline",
+     "text": "duration <= 720.0 s (80% of timeout_s 900)"
+    },
+    {
+     "check": "cron_receipt_status_ok",
+     "text": "The host lane receipt has status ok. A preserved recent ok_at does not make a subsequent failed receipt healthy."
+    }
+   ],
+   "degraded": [
+    {
+     "check": "late",
+     "text": "output_signal older than 2.0 h but younger than 3.0 h (2x-3x cadence)"
+    },
+    {
+     "check": "slow",
+     "text": "duration above 720.0 s"
+    },
+    {
+     "check": "retried",
+     "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+    },
+    {
+     "check": "upstream_stale",
+     "text": "an upstream input is stale: Declared research worker lanes and internal research corpus (not machine-checked yet)"
+    }
+   ],
+   "failed": [
+    {
+     "check": "run_failed",
+     "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+    },
+    {
+     "check": "no_receipt",
+     "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+    },
+    {
+     "check": "stale",
+     "text": "output_signal older than 3.0 h (3x cadence)"
+    },
+    {
+     "check": "breaker_or_dlq",
+     "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+    },
+    {
+     "check": "dry_run_wrote",
+     "text": "a dry_run changed its output_signal or any durable state"
+    },
+    {
+     "check": "cron_receipt_failed",
+     "text": "The host lane receipt has status failed, including established soft failures with exit 0. Skipped gates and entirely skipped pools must not advance ok_at."
+    }
+   ],
+   "baseline": {
+    "freshness_degraded_after_h": 2.0,
+    "freshness_failed_after_h": 3.0,
+    "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+    "timeout_s": 900,
+    "class": "ingest",
+    "computed_on": "2026-10-11",
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "source": "SOURCE_ONLY class defaults; coordination ledger NOT_MEASURED. No live runtime distribution or live run count was read by this shard.",
+    "runs_considered": null,
+    "duration_degraded_above_s": 720.0,
+    "runtime_evidence": "NOT_MEASURED",
+    "freshness_calendar": {
+     "tz": "America/New_York",
+     "cron": [
+      "5 * * * *"
+     ],
+     "interpretation": "Provisional 2x/3x maximum scheduled inter-fire gap, including declared weekend gaps; runtime baseline remains NOT_MEASURED."
+    }
+   },
+   "alerting": {
+    "lane_severity": "Medium",
+    "severity_basis": "inventory refactor-shard04:hermes-research-worker-pool business_function=research (catalogue rule)",
+    "failed": {
+     "siem_severity": "WARN",
+     "notifier_priority": "P2"
+    },
+    "degraded": {
+     "siem_severity": "INFO",
+     "notifier_priority": "P3"
+    },
+    "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+    "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+   },
+   "remediation": {
+    "catalogue_entry": false,
+    "diagnosis_excluded": false,
+    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+   },
+   "evidence": {
+    "receipt": "data/runtime/hermes-research-worker-pool_last.json",
+    "verify": [
+     "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='hermes-research-worker-pool' ORDER BY requested_at DESC LIMIT 10\"",
+     "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:hermes-research-worker-pool' ORDER BY created_at DESC LIMIT 10",
+     "stat / jq the receipt: data/runtime/hermes-research-worker-pool_last.json"
+    ],
+    "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
+   },
+   "review_by": "2026-10-25",
+   "evidence_class": "SOURCE_ONLY"
   }
  ]
 }

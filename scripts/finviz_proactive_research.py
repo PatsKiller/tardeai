@@ -12,16 +12,37 @@ Uses the same FINVIZ_API_TOKEN as the screeners (no extra creds). Deduped by sou
 """
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from dotenv import load_dotenv
-load_dotenv(str(ROOT / ".env"))
-from db_adapter import _get_conn
-from lib.writers.news_articles_writer import is_duplicate, write_news_articles
+LANE_ID = "finviz-proactive-research"
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "FINVIZ_API_TOKEN"})
+
+
+def _load_env():
+    from dotenv import dotenv_values
+    for name, value in dotenv_values(ROOT / ".env").items():
+        if name in _ENV_KEYS and value is not None:
+            os.environ.setdefault(name, value)
+
+
+def _get_conn():
+    from db_adapter import _get_conn as connect
+    return connect()
+
+
+def is_duplicate(*args, **kwargs):
+    from lib.writers.news_articles_writer import is_duplicate as check
+    return check(*args, **kwargs)
+
+
+def write_news_articles(*args, **kwargs):
+    from lib.writers.news_articles_writer import write_news_articles as write
+    return write(*args, **kwargs)
 
 
 def _universe(cur, max_n):
@@ -45,7 +66,7 @@ def _universe(cur, max_n):
     return out[:max_n]
 
 
-def run(max_n=150, lookback_hours=72, dry_run=False):
+def run(max_n=150, lookback_hours=72, dry_run=False, summary=None):
     try:
         from finviz_news import fetch_finviz_stock_news_all
         from content_scoring import score_content, tag_content
@@ -59,6 +80,7 @@ def run(max_n=150, lookback_hours=72, dry_run=False):
     print(f"finviz proactive research: {len(allnews)} stock-news items vs {len(universe)}-symbol universe "
           f"({'DRY' if dry_run else 'LIVE'})")
     saved, skipped, covered = 0, 0, set()
+    failed_writes = 0
     for it in allnews:
         head = (it.get("headline") or "")[:500]
         url = (it.get("url") or "")[:500]
@@ -92,19 +114,45 @@ def run(max_n=150, lookback_hours=72, dry_run=False):
                     continue
                 saved += 1
             except Exception as e:
+                failed_writes += 1
                 conn.rollback(); print(f"  {sym}: save error {str(e)[:50]}"); continue
     if not dry_run:
         conn.commit()
     print(json.dumps({"news_items": len(allnews), "universe": len(universe),
                       "symbols_covered": len(covered), "saved": saved, "skipped_dup": skipped,
                       "mode": "DRY" if dry_run else "LIVE"}, indent=2))
+    if summary is not None:
+        summary.update(news_items=len(allnews), universe=len(universe), symbols_covered=len(covered),
+                       saved=saved, skipped_dup=skipped, failed_writes=failed_writes)
     return 0
 
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
+def main(argv=None):
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--max", type=int, default=150)
     ap.add_argument("--lookback-hours", type=int, default=72)
     ap.add_argument("--dry-run", action="store_true")
-    a = ap.parse_args()
-    raise SystemExit(run(max_n=a.max, lookback_hours=a.lookback_hours, dry_run=a.dry_run))
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would ingest Finviz headlines for up to {args.max} research symbols")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    summary = {}
+    try:
+        _load_env()
+        rc = run(max_n=args.max, lookback_hours=args.lookback_hours, dry_run=False, summary=summary)
+    except Exception as exc:
+        write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                           script="finviz_proactive_research.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    # Keep the established soft-error exit behavior, but do not advance output proof after failed writes.
+    failed = rc != 0 or bool(summary.get("failed_writes"))
+    write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                       script="finviz_proactive_research.py", summary=summary,
+                       error="write_failed" if summary.get("failed_writes") else ("run_failed" if rc else None))
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

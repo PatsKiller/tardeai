@@ -38,11 +38,10 @@ a lookup failure the run stops rather than continuing to write worthless answers
 
 LANE (cron L926, ``--all --apply``): identity-sweep-stage0.
 
---dry-run wins over --apply (and over --add-columns): ``apply`` is computed once as
-``args.apply and not args.dry_run`` and every UPDATE / ALTER / commit is behind it; a dry run's
-session is also READ ONLY at the server (lane_last_receipt.enforce_readonly). A run without --apply
-is the same dry run. A dry run prints one DRY-RUN report line (symbols that would resolve per table,
-topics, columns that would be added) and never writes the lane receipt.
+Explicit --dry-run wins over --apply and --add-columns, prints an offline plan, and
+returns before any database or credential access. The historical implicit preview
+(without --apply or --dry-run) still opens a READ ONLY session and reports measured
+symbols/topics/columns. Neither preview writes a lane receipt.
 
 A real (--apply) run writes <state_root>/data/runtime/identity-sweep-stage0_last.json
 (LaneRunReceipt@v1: rows_stamped / topic_rows / unresolvable_rows / symbols_resolved per run; ok_at only
@@ -90,6 +89,7 @@ RANK = {"CONFIRMED": 3, "CANDIDATE": 2, "UNRESOLVED": 1, None: 0, "": 0}
 BATCH = int(os.getenv("IDENTITY_BACKFILL_BATCH", "2000"))
 
 LANE_ID = "identity-sweep-stage0"
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"})
 
 
 def _receipt_lib():
@@ -118,7 +118,8 @@ def _db():
     for line in (ROOT / ".env").read_text().splitlines():
         if "=" in line and not line.strip().startswith("#"):
             k, _, v = line.partition("=")
-            os.environ.setdefault(k.strip(), v.strip())
+            if k.strip() in _ENV_KEYS:
+                os.environ.setdefault(k.strip(), v.strip())
     return psycopg2.connect(
         host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
         user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"),
@@ -275,7 +276,7 @@ def _totals(results: list[dict]) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--table", action="append", choices=sorted(TARGETS))
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--add-columns", action="store_true")
@@ -287,6 +288,13 @@ def main(argv: list[str] | None = None) -> int:
     tables = sorted(TARGETS) if args.all else (args.table or [])
     if not tables:
         ap.error("pass --all or --table <name>")
+
+    # The dispatcher preview must not open a database or render any credentials.
+    # Preserve the historical implicit preview when --apply is absent.
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would resolve subject identities in "
+              f"{', '.join(tables)}; add_columns={args.add_columns}; limit={args.limit}")
+        return 0
 
     # AGENTS.md §6: one decision, made before the connection opens; every write below is behind it.
     apply = bool(args.apply and not args.dry_run)

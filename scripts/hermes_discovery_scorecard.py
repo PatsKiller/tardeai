@@ -25,10 +25,8 @@ stable hand-off; the bus builder can fold it in when it grows section support.
 Usage:
   python3 scripts/hermes_discovery_scorecard.py [--json] [--dry-run]
 
-Lane hermes-discovery-scorecard (cron L832, no flags). --dry-run (refactor wave 3, 2026-10-10) runs every scorecard
-SELECT in a READ ONLY db_adapter session (plus the read-only `crontab -l` drift check), prints the card (--json) and a
-DRY-RUN report of the two files it would write, then returns BEFORE _atomic_write/write_outcome_feed: neither
-hermes_discovery_scorecard.json nor hermes_discovery_outcome_feed.json is touched and no receipt is written.
+Lane hermes-discovery-scorecard (cron L832, no flags). Explicit --dry-run prints an offline plan and returns
+before database, credential or host-scheduler access. Neither scorecard, outcome feed nor receipt is written.
 
 Exit codes: 0 = scorecard computed and both files written; 1 = Postgres unavailable (SELECT 1 probe -- db_adapter
 returns None on a failed query, which used to publish an all-zero "steady" card), or a crash (failed receipt,
@@ -412,27 +410,15 @@ def _receipt_summary(card: dict) -> dict:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
+    ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", action="store_true", help="print scorecard JSON to stdout")
     ap.add_argument("--dry-run", action="store_true",
-                    help="compute + report only; write neither JSON file nor the receipt")
+                    help="offline plan; no credentials, DB, host queries or writes")
     args = ap.parse_args(argv)
 
     if args.dry_run:
-        import contextlib
-        from lib.lane_last_receipt import dry_run_report
-
-        readonly = _readonly_db_session()
-        if not _db_available():
-            print(f"[{LANE_ID}] Postgres unavailable — no scorecard", file=sys.stderr)
-            return 1
-        card = build_scorecard()
-        if args.json:
-            print(json.dumps(card, indent=2, default=str))
-        with contextlib.redirect_stdout(sys.stderr) if args.json else contextlib.nullcontext():
-            dry_run_report(LANE_ID, {**_receipt_summary(card), "readonly_session": readonly},
-                           would_write=[str(SCORECARD_PATH), str(OUTCOME_FEED_PATH)])
+        print(f"DRY-RUN {LANE_ID}: would compute advisory discovery outcomes and publish the scorecard feed")
         return 0
 
     from lib.lane_last_receipt import now_iso, write_lane_receipt

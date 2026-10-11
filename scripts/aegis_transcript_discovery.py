@@ -13,10 +13,9 @@ Entry point: main() (returns a dict; aegis_overnight.py calls it) / cli() for th
 Usage (cron L291, lane aegis-transcript-discovery):
   python3 scripts/aegis_transcript_discovery.py [--dry-run]
 
---dry-run (refactor wave 3, 2026-10-10) puts the db_adapter session in READ ONLY, resolves the universe and runs
-the internal reads (youtube_transcripts corpus, article_index), then prints a DRY-RUN report and returns: no
-Brave query and no YouTube transcript API call (network=False; it reports what WOULD be queried when
-AEGIS_BRAVE_ENABLED=1), never calls persist_transcripts/persist_discovery/_db_write, and writes no receipt.
+--dry-run on the CLI prints an offline plan and returns before credentials, database or network access.
+The internal main(dry_run=True) preview remains available to existing callers: it performs read-only corpus
+inspection, suppresses Brave and YouTube requests and never persists output or a run receipt.
 
 Exit codes (cli): 0 = ran (zero records is a finding, still 0); 1 = the run failed: Postgres unavailable
 (SELECT 1 probe), or there were records to persist and EVERY write failed. A single failed write or a Brave/network
@@ -38,16 +37,23 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-# Load .env
-_env_path = PROJECT_ROOT / ".env"
-if _env_path.exists():
-    for line in _env_path.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, _, v = line.partition("=")
-            k, v = k.strip(), v.strip()
-            if k and v and k not in os.environ:
-                os.environ[k] = v
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD",
+                       "BRAVE_SEARCH_API_KEY", "AEGIS_BRAVE_ENABLED", "SEARCH_ROUTING_ENGINE"})
+
+
+def _load_env():
+    _env_path = PROJECT_ROOT / ".env"
+    if _env_path.exists():
+        for line in _env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                k, v = k.strip(), v.strip()
+                if k in _ENV_KEYS and v and k not in os.environ:
+                    os.environ[k] = v
+    if "BRAVE_SEARCH_API_KEY" in os.environ:
+        global BRAVE_KEY
+        BRAVE_KEY = os.environ["BRAVE_SEARCH_API_KEY"]
 
 AGENT = "aegis"
 RUN_ID = f"aegis-transcript-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -517,6 +523,8 @@ def persist_discovery(records: list[dict]) -> int:
 # ── Main ─────────────────────────────────────────────────────────────────
 
 def main(dry_run: bool = False):
+    if not dry_run:
+        _load_env()
     print(f"[aegis-transcript] Starting — {RUN_ID}" + (" (DRY RUN)" if dry_run else ""))
     readonly = _enforce_readonly_db() if dry_run else False
     if not _db_available():
@@ -581,13 +589,13 @@ def cli(argv=None) -> int:
     """Cron entry: --dry-run, honest exit code, LaneRunReceipt@v1 on real runs only (see module docstring)."""
     import argparse
 
-    ap = argparse.ArgumentParser(description="Aegis transcript + discovery ingestion (cron L291)")
+    ap = argparse.ArgumentParser(description="Aegis transcript + discovery ingestion (cron L291)", allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true",
-                    help="DB reads + report; no Brave/YouTube request, no INSERT, no receipt")
+                    help="offline plan; no credentials, DB, network, writes or receipt")
     args = ap.parse_args(argv)
     if args.dry_run:
-        result = main(dry_run=True)
-        return 1 if result.get("error") else 0
+        print(f"DRY-RUN {LANE_ID}: would discover and persist advisory transcript intelligence")
+        return 0
 
     from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()

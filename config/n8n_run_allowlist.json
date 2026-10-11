@@ -1801,6 +1801,248 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/social-ingest-all_last.json"
+    },
+    {
+      "lane_id": "identity-sweep-stage0",
+      "command": [
+        "$PY",
+        "scripts/backfill_subject_identity.py",
+        "--all"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/identity_sweep.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/identity-sweep-stage0_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "IDENTITY_BACKFILL_BATCH",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "hermes-momentum-catalyst-scalp",
+      "command": [
+        "$PY",
+        "scripts/hermes_momentum_catalyst_researcher.py",
+        "--source",
+        "scalp"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_scalp_catalyst.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "SCALP_HOT_TIER",
+        "SEARCH_ROUTING_ENGINE",
+        "SEARXNG_URL",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "aegis-transcript-discovery",
+      "command": [
+        "$PY",
+        "scripts/aegis_transcript_discovery.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/aegis-transcript-discovery.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/aegis-transcript-discovery_last.json",
+      "env_names": [
+        "AEGIS_BRAVE_ENABLED",
+        "BRAVE_SEARCH_API_KEY",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "SEARCH_ROUTING_ENGINE",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "candidate-discovery-orchestrator",
+      "command": [
+        "$PY",
+        "scripts/candidate_discovery_orchestrator.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/candidate-discovery-orchestrator.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/candidate-discovery-orchestrator_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "finviz-proactive-research",
+      "command": [
+        "$PY",
+        "scripts/finviz_proactive_research.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/finviz_proactive.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/finviz-proactive-research_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "hermes-discovery-scorecard",
+      "command": [
+        "$PY",
+        "scripts/hermes_discovery_scorecard.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes-discovery-scorecard.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-discovery-scorecard_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "hermes-research-agenda-at-45-7",
+      "command": [
+        "$PY",
+        "scripts/hermes_research_agenda.py",
+        "--json"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_agenda.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-research-agenda-at-45-7_last.json",
+      "env_names": [
+        "DB_PASSWORD",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "hermes-research-worker-pool",
+      "command": [
+        "$PY",
+        "scripts/hermes_research_worker_pool.py",
+        "--run",
+        "--json"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_worker_pool.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-research-worker-pool_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
     }
   ],
   "blocked_reasons": {

@@ -14,11 +14,9 @@ Usage:
     python candidate_discovery_orchestrator.py --apply
     python candidate_discovery_orchestrator.py --apply --max-candidates 200
 
-Dry run (n8n refactor wave 3, 2026-10-10): ``--dry-run`` WINS over ``--apply``; no ``--apply`` is still a
-dry run. It polls the DB-backed sources on a session made READ ONLY at the server, SKIPS the Finviz
-source (its discover() probes the paid Finviz Elite export; reported as would-probe instead), prints a
-``DRY-RUN`` report and returns BEFORE ``_record_events`` / ``report_source`` are reachable. It writes no
-receipt.
+Explicit ``--dry-run`` prints an offline plan and returns before credential loading or source polling.
+Without ``--apply`` or explicit ``--dry-run``, the legacy read-only corpus preview remains unchanged.
+Neither preview persists a lane receipt.
 
 A REAL (``--apply``) run writes LaneRunReceipt@v1
 ``<state_root>/data/runtime/candidate-discovery-orchestrator_last.json`` (``ok_at`` only on success).
@@ -159,13 +157,16 @@ def _dry_run(args) -> int:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true", help="read + report only; wins over --apply")
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--max-candidates", type=int, default=100)
     args = parser.parse_args(argv)
 
-    if args.dry_run or not args.apply:
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would poll advisory discovery sources and record up to {args.max_candidates} events")
+        return 0
+    if not args.apply:
         return _dry_run(args)
 
     lr = _receipt_lib()

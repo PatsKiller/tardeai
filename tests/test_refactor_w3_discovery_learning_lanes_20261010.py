@@ -1,4 +1,6 @@
-"""Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X3: discovery + learning lanes.
+"""Shard04 update: explicit candidate CLI preview stops before DB or source-adapter work.
+
+Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X3: discovery + learning lanes.
 
 Nine cron rows, one script each:
 - research_watchlist_discovery.py (L858), sync_social_to_intelligence.py (L859), hermes_social_sentiment.py (L860),
@@ -449,9 +451,8 @@ def test_cdo_dry_run_skips_finviz_and_records_nothing(monkeypatch, capsys, _stat
     monkeypatch.setattr(cdo, "_all_sources", lambda: srcs)
     monkeypatch.setattr(cdo, "_record_events", _boom)
     assert cdo.main(["--apply", "--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["would_record"] == 3 and rep["summary"]["skipped_sources"] == ["finviz"]
-    assert conn.readonly is True and conn.writes() == [] and sources == [] and _no_runtime_files(_state)
+    assert "DRY-RUN candidate-discovery-orchestrator: would" in capsys.readouterr().out
+    assert conn.readonly is None and conn.sql == [] and sources == [] and _no_runtime_files(_state)
 
 
 def test_cdo_real_run_records_and_writes_receipt(monkeypatch, _state, sources):

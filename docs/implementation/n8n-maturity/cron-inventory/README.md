@@ -30,6 +30,7 @@ that record. It is updated **every time a job is retired, consolidated or cut ov
 
 | Date (ET) | Change | Rows | Evidence |
 |---|---|---|---|
+| 2026-10-11 (local source branch only) | Shard 04: 8 offline shadow proposals, 15 blocked, 6 broker skips, 6 sender skips, 2 class skips; all 37 accounted for. Contracts DRAFT; proposed candidate-discovery flock not installed. No runtime change, workbook rebuild or Drive sync. | 37 assigned identities | `../REFACTOR_SHARD_04_20261011.md`; branch `n8nmat/refactor-shard-04`; untracked per-shard dry-run/gate evidence |
 | 2026-10-09 22:54 | Baseline inventory (676 units; 560 active) | all | builder run; enrichment S1–S6 |
 | 2026-10-09 22:30 | maturity-remeasure: n8n live workflow e18d7849b4142927 unpublished (operator option b); cron L1000 single scheduler | cron:L1000, n8n:e18d7849b4142927 | grant 26b8747d6cc949bb |
 | 2026-10-09 22:55 | 16 RELAY_HOST shadow workflows archived (V8 F1) | 16 n8n rows | grant ee4dfdf11479cd3c; operator-run packets/archive-16.sh |
