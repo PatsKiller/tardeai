@@ -4438,6 +4438,15 @@ GATES = [
         "release_pin_daemons_20261010",
         ["tests/test_release_pin_daemons_20261010.py"],
     ),
+    (
+        # W1-9 monitor fold coverage (2026-10-11, MONITOR_FOLD_COVERAGE.md gaps 1/3/6): the registry's
+        # freshness_contracts carry job_coverage_monitor's 12 DB checks, 8 pipeline_freshness and 8
+        # system_freshness targets (each pinned to its source line); supervisor_breach_detector raises STALE_OUTPUT
+        # and INPUT_STARVATION (pipeline_liveness) as detect + record only, throttled to 30 min, never laddered.
+        # Hermetic: tmp registry/state root, no DB, fake liveness.
+        "monitor_fold_coverage_20261011",
+        ["tests/test_monitor_fold_coverage_20261011.py"],
+    ),
 ]
 
 
