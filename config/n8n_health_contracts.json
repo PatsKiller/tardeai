@@ -14124,7 +14124,7 @@
    "id": "watch-goods-consistency",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "SOURCE_ONLY refactor shard01 shadow proposal",
    "stage": "shadow",
    "purpose": {
@@ -14278,14 +14278,20 @@
    },
    "review_by": "2026-10-25",
    "evidence_class": "SOURCE_ONLY",
-   "runtime_evidence": "NOT_MEASURED"
+   "runtime_evidence": "NOT_MEASURED",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "finviz-screener-runner",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "SOURCE_ONLY refactor shard01 shadow proposal",
    "stage": "shadow",
    "purpose": {
@@ -14439,14 +14445,20 @@
    },
    "review_by": "2026-10-25",
    "evidence_class": "SOURCE_ONLY",
-   "runtime_evidence": "NOT_MEASURED"
+   "runtime_evidence": "NOT_MEASURED",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "daily-incubator-refresh",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "SOURCE_ONLY refactor shard01 shadow proposal",
    "stage": "shadow",
    "purpose": {
@@ -14600,14 +14612,20 @@
    },
    "review_by": "2026-10-25",
    "evidence_class": "SOURCE_ONLY",
-   "runtime_evidence": "NOT_MEASURED"
+   "runtime_evidence": "NOT_MEASURED",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "resolve-due-checkpoints",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "SOURCE_ONLY refactor shard01 shadow proposal",
    "stage": "shadow",
    "purpose": {
@@ -14761,14 +14779,20 @@
    },
    "review_by": "2026-10-25",
    "evidence_class": "SOURCE_ONLY",
-   "runtime_evidence": "NOT_MEASURED"
+   "runtime_evidence": "NOT_MEASURED",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "research-intelligence-materialize",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "stage:shadow",
    "stage": "shadow",
    "purpose": {
@@ -14930,14 +14954,20 @@
    },
    "review_by": "2026-10-25",
    "evidence_class": "SOURCE_ONLY",
-   "natural_runtime_acceptance": "NOT_MEASURED"
+   "natural_runtime_acceptance": "NOT_MEASURED",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "source-outcome-attribution",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "stage:shadow",
    "stage": "shadow",
    "purpose": {
@@ -15099,14 +15129,20 @@
    },
    "review_by": "2026-10-25",
    "evidence_class": "SOURCE_ONLY",
-   "natural_runtime_acceptance": "NOT_MEASURED"
+   "natural_runtime_acceptance": "NOT_MEASURED",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "weekly-incubator-builder",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "stage:shadow",
    "stage": "shadow",
    "purpose": {
@@ -15268,14 +15304,20 @@
    },
    "review_by": "2026-10-25",
    "evidence_class": "SOURCE_ONLY",
-   "natural_runtime_acceptance": "NOT_MEASURED"
+   "natural_runtime_acceptance": "NOT_MEASURED",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "investment-costs",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "dispatch",
    "stage": "shadow",
    "purpose": {
@@ -15429,14 +15471,20 @@
     "evidence_class": "SOURCE_ONLY",
     "runtime_evidence_class": "NOT_MEASURED"
    },
-   "review_by": "2026-10-25"
+   "review_by": "2026-10-25",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "register-analyst-sources",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "dispatch",
    "stage": "shadow",
    "purpose": {
@@ -15590,14 +15638,20 @@
     "evidence_class": "SOURCE_ONLY",
     "runtime_evidence_class": "NOT_MEASURED"
    },
-   "review_by": "2026-10-25"
+   "review_by": "2026-10-25",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "hermes-momentum-catalyst-scalp",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "refactor_shard_04",
    "stage": "shadow",
    "purpose": {
@@ -15765,14 +15819,20 @@
     "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
    },
    "review_by": "2026-10-25",
-   "evidence_class": "SOURCE_ONLY"
+   "evidence_class": "SOURCE_ONLY",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "finviz-proactive-research",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "refactor_shard_04",
    "stage": "shadow",
    "purpose": {
@@ -15940,14 +16000,20 @@
     "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
    },
    "review_by": "2026-10-25",
-   "evidence_class": "SOURCE_ONLY"
+   "evidence_class": "SOURCE_ONLY",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "hermes-research-agenda-at-45-7",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "refactor_shard_04",
    "stage": "shadow",
    "purpose": {
@@ -16115,14 +16181,20 @@
     "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
    },
    "review_by": "2026-10-25",
-   "evidence_class": "SOURCE_ONLY"
+   "evidence_class": "SOURCE_ONLY",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   },
   {
    "schema": "N8nHealthContract@v1",
    "id": "hermes-research-worker-pool",
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
-   "status": "DRAFT",
+   "status": "REVIEWED",
    "target_reason": "refactor_shard_04",
    "stage": "shadow",
    "purpose": {
@@ -16290,7 +16362,13 @@
     "never": "Host receipts and output signals are authoritative; n8n execution color is not business completion proof. Runtime is not measured by this source refactor."
    },
    "review_by": "2026-10-25",
-   "evidence_class": "SOURCE_ONLY"
+   "evidence_class": "SOURCE_ONLY",
+   "review": {
+    "prepared_by": "agent draft (Codex shards 01-04)",
+    "status": "REVIEWED",
+    "reviewed_by": "operator PatsKiller 2026-10-11",
+    "reviewed_on": "2026-10-11"
+   }
   }
  ]
 }
