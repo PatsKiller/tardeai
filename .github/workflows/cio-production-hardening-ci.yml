@@ -36,7 +36,8 @@ jobs:
     # serial gates step.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 2026-10-11: push-to-main FAST profile exceeded 20 min after the 10-10/10-11 test growth (run 38151425912 cancelled twice at 20m on 9f602186a); PR profile unchanged
+    timeout-minutes: 35
     env:
       TRADE_AI_CI: "1"
       CIO_TELEGRAM_INTERDICT: "1"
