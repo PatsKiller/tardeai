@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    ("refactor_shard_03_20261011", ["tests/test_refactor_shard_03_20261011.py"]),
     (
         "options_workflow",
         [
@@ -2358,6 +2359,13 @@ GATES = [
         ],
     ),
     (
+        # 2026-10-11: shard 01 offline CLI plans, original cron argv and scratch lane receipts.
+        "refactor_shard_01",
+        [
+            "tests/test_refactor_shard_01_20261011.py",
+        ],
+    ),
+    (
         # 2026-09-15: the incubator promoter proposed flat 2R geometry that the gate refused; nothing promoted since 07-01.
         "incubator_promoter_authoritative_levels",
         [
@@ -4174,6 +4182,11 @@ GATES = [
         ["tests/test_portfolio_reports_state_root_20261009.py"],
     ),
     (
+        # R2-02: structural dry runs, exact cron argv, failed-ok_at carry, no broker env.
+        "refactor_shard_02_20261011",
+        ["tests/test_refactor_shard_02_20261011.py"],
+    ),
+    (
         # ANCHOR: REFACTOR_W1_20261010 — n8n refactor wave 1: --dry-run that cannot reach a write/send
         # (read-only DB session or return-before-writer, asserted by source ordering), LaneRunReceipt@v1
         # <state_root>/data/runtime/<lane_id>_last.json with ok_at only on success, findings exit 0 /
@@ -4182,6 +4195,7 @@ GATES = [
         # Hermetic: fake conns / fake db_adapter / fake sender modules, tmp TRADEAI_STATE_ROOT.
         "refactor_w1_20261010",
         [
+            "tests/test_refactor_shard_04_20261011.py",
             "tests/test_refactor_w1_data_gap_resolver_20261010.py",
             "tests/test_refactor_w1_health_monitors_20261010.py",
             "tests/test_refactor_w1_materializers_20261010.py",
@@ -4540,10 +4554,19 @@ GATES = [
         # "event" fires a registry row with dispatch.triggers when its Data Broker domain as_of (file-only readers,
         # lib/data_broker/as_of_signal.py; news_ingestion emits catalyst_news) or an upstream RUN_DONE advances past
         # the consumer's receipt watermark. dry_run only (shadow), one coalesced e: key per as_of minute, debounce,
-        # a due/in-flight schedule slot absorbs the event, the cron line's flock lock skips a concurrent fire.
+        # a due/in-flight schedule slot absorbs the event, the cron line's flock lock skips a concurrent LIVE fire
+        # (a dry_run takes <lock>.dryrun since shadow_lock_isolation_20261011).
         # Hermetic: tmp state root and ledger, real flock on a tmp lock running /bin/true.
         "w5_event_consumers_20261011",
         ["tests/test_w5_event_consumers_20261011.py"],
+    ),
+    (
+        # Shadow lock isolation (2026-10-11, Agent LK, LOCK_STEAL finding): a dry_run fire takes <lock>.dryrun and
+        # never the lane's live lock (a same-minute shadow fire used to make the real cron `flock -n` skip: 8 real
+        # runs on 6 lanes in ~17 h); a live fire still contends on the shared lock; the receipt records the lock.
+        # Hermetic: tmp locks, real flock and safe_flock.sh, /bin/echo as the command.
+        "shadow_lock_isolation_20261011",
+        ["tests/test_shadow_lock_isolation_20261011.py"],
     ),
     (
         # G1–G3 and G7 (2026-10-11, local, not live). Backup enforcer archives instead of

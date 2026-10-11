@@ -213,7 +213,7 @@ def _dry_run(args) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true", help="read + report only; wins over --apply")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--max-symbols", type=int, default=60)
@@ -265,5 +265,19 @@ def main(argv=None) -> int:
     return rc
 
 
+def cli(argv=None) -> int:
+    """Source-only n8n plan; main retains its injectable read-only DB preview."""
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--max-symbols", type=int, default=60)
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would surface at most {args.max_symbols} research/social ideas,"
+              " upsert descriptive watchlist metadata and write lane receipt; counts NOT_MEASURED")
+        return 0
+    return main(argv)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(cli())

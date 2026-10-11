@@ -1,4 +1,6 @@
-"""Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X2: Aegis ingest + Hermes discovery lanes.
+"""Shard04 update: explicit transcript and scorecard CLI previews are offline; real-run assertions stay intact.
+
+Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X2: Aegis ingest + Hermes discovery lanes.
 
 - aegis_social_sentiment / aegis_transcript_discovery / aegis_nightly_ingestion (cron L289 L291 L308): new cli()
   with --dry-run (READ ONLY db_adapter session, no external fetch, no _db_write, no receipt); real runs leave a
@@ -52,7 +54,7 @@ import hermes_industry_novelty_discovery as hind  # noqa: E402
 import hermes_tag_lift_discovery as htl  # noqa: E402
 import siem_to_hermes_backlog as s2h  # noqa: E402
 from lib import lane_last_receipt as llr  # noqa: E402
-from lib.hermes_discovery import analyst_signals, feedback, inbox, industry_novelty, tag_lift  # noqa: E402
+from lib.hermes_discovery import analyst_signals, entity_spikes, feedback, inbox, industry_novelty, tag_lift  # noqa: E402
 
 _WRITE_VERBS = ("INSERT", "UPDATE", "DELETE", "ALTER", "CREATE", "TRUNCATE")
 
@@ -261,11 +263,9 @@ def test_social_dry_run_no_fetch_no_write_no_receipt(monkeypatch, capsys, fake_d
     monkeypatch.setattr(ass.requests, "get", _boom)
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     assert ass.cli(["--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["lane_id"] == "aegis-social-sentiment"
-    assert rep["summary"]["would_fetch_stocktwits_streams"] == 2
-    assert rep["summary"]["would_fetch_reddit_pages"] == len(ass.SUBREDDITS)
-    assert fake_db.readonly is True
+    out = capsys.readouterr().out
+    assert "DRY-RUN aegis-social-sentiment:" in out and "social_sentiment_history" in out
+    assert fake_db.readonly is None and fake_db.sql == []
     assert not _receipt_file(_state, "aegis-social-sentiment").exists()
 
 
@@ -361,10 +361,8 @@ def test_transcript_dry_run_db_reads_only(monkeypatch, capsys, fake_db, _state):
     monkeypatch.setattr(atd.requests, "get", _boom)
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     assert atd.cli(["--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["would_write_transcripts"] == 2
-    assert rep["summary"]["would_query_brave"] > 0
-    assert fake_db.readonly is True
+    assert "DRY-RUN aegis-transcript-discovery: would" in capsys.readouterr().out
+    assert fake_db.readonly is None and fake_db.sql == []
     assert not _receipt_file(_state, "aegis-transcript-discovery").exists()
 
 
@@ -498,6 +496,8 @@ def _payload(ctype="TREND_CANDIDATE"):
 
 
 def test_tag_lift_lib_dry_run_cannot_reach_writers(monkeypatch):
+    # covered_keys has a separate query boundary; inject empty coverage instead of live DB reads.
+    monkeypatch.setattr(entity_spikes, "_rows", lambda *a, **k: [])
     monkeypatch.setattr(tag_lift, "_execute", lambda *a, **k: [])
     monkeypatch.setattr(
         tag_lift,
@@ -514,6 +514,7 @@ def test_tag_lift_lib_dry_run_cannot_reach_writers(monkeypatch):
 
 
 def test_analyst_lib_dry_run_cannot_reach_upsert(monkeypatch):
+    monkeypatch.setattr(entity_spikes, "_rows", lambda *a, **k: [])
     monkeypatch.setattr(analyst_signals, "_execute", lambda *a, **k: [])
     monkeypatch.setattr(analyst_signals, "build_ticker_payloads", lambda *a, **k: [_payload("TICKER_CANDIDATE")])
     monkeypatch.setattr(analyst_signals, "build_sector_payloads", lambda *a, **k: [_payload()])
@@ -523,6 +524,7 @@ def test_analyst_lib_dry_run_cannot_reach_upsert(monkeypatch):
 
 
 def test_novelty_lib_dry_run_cannot_reach_upsert(monkeypatch):
+    monkeypatch.setattr(entity_spikes, "_rows", lambda *a, **k: [])
     monkeypatch.setattr(industry_novelty, "_execute", lambda *a, **k: [])
     monkeypatch.setattr(industry_novelty, "build_payloads", lambda *a, **k: [_payload("GAP_CANDIDATE")])
     monkeypatch.setattr(inbox, "upsert_candidate", _boom)
@@ -555,10 +557,8 @@ def test_scorecard_dry_run_writes_neither_file(monkeypatch, capsys, fake_db, tmp
     monkeypatch.setattr(hds, "write_outcome_feed", _boom)
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     assert hds.main(["--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["candidates_total"] == 7 and rep["summary"]["recommendation"] == "steady"
-    assert str(hds.SCORECARD_PATH) in rep["would_write"]
-    assert fake_db.readonly is True
+    assert "DRY-RUN hermes-discovery-scorecard: would" in capsys.readouterr().out
+    assert fake_db.readonly is None and fake_db.sql == []
     assert not (tmp_path / "rt").exists()
     assert not _receipt_file(_state, "hermes-discovery-scorecard").exists()
 
@@ -581,7 +581,7 @@ def test_scorecard_db_unavailable_exit_1_no_zero_card(monkeypatch, fake_db, tmp_
     assert not hds.SCORECARD_PATH.exists()
     r = _receipt(_state, "hermes-discovery-scorecard")
     assert r["status"] == "failed" and r["error"] == "db_unavailable" and r["ok_at"] == "2026-10-01T00:00:00+00:00"
-    assert hds.main(["--dry-run"]) == 1
+    assert hds.main(["--dry-run"]) == 0  # structural plan does not consult unavailable DB
 
 
 def test_scorecard_crash_failed_receipt(monkeypatch, fake_db, tmp_path, _state):

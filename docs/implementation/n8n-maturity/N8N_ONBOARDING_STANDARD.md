@@ -88,6 +88,10 @@ Source: refactor waves 1–3 (#1641, #1646, #1658) and AGENTS.md §23.18 (e).
 4. **Lock = the cron line's lock.** The allowlist `lock` equals the `flock -n` / `safe_flock.sh` lock in the
    crontab line, or the canary cannot prove no double run (§23.12). Lanes without one need a crontab edit first
    (2026-10-10: `wave23-flock` added `flock -n` to L318, L314, L427 at 16:20 ET under cron grant 08c0bb77ec898136).
+   Only a **live** fire takes that lock. A `dry_run` fire takes `<lock>.dryrun` (`n8n_run_executor.lock_path_for`;
+   the receipt's `lock` block names the path and scope), because a shadow dry run in the same minute as the cron slot
+   used to win the shared lock and make the real cron run skip silently (2026-10-11: 8 real runs on 6 lanes lost in
+   ~17 h; `tests/test_shadow_lock_isolation_20261011.py`). An allowlist `lock` may not end in `.dryrun`.
 5. **No checkout-relative paths.** Resolve stores through `TRADEAI_STATE_ROOT` / `persistent_state_root`, and run
    from the pinned release, never `CURRENT` for a dry run and never the dev tree (§9.3, §9.4). Root causes on
    2026-10-10: L227 called `.venv/bin/python` relative to the release (alerts dead since 10-06); several lanes

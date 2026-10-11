@@ -8,7 +8,7 @@ Hermes builds its own research agenda:
   - PIVOT: sector RS rotation deltas → research topics for LEADING underweight sectors
 
 Safety:
-  - dry-run by default, --apply to commit
+  - implicit preview by default, --apply to commit; explicit --dry-run is an offline plan
   - kill switches: HERMES_DISABLED + HERMES_AGENDA_DISABLED
   - 12h minimum between applies (agenda is a slow signal)
   - never touches operator-created topics
@@ -34,6 +34,7 @@ KILL_HERMES = PROJECT_ROOT / "data" / "runtime" / "HERMES_DISABLED"
 KILL_AGENDA = PROJECT_ROOT / "data" / "runtime" / "HERMES_AGENDA_DISABLED"
 STATE_FILE = PROJECT_ROOT / "data" / "runtime" / "hermes_agenda_last_run.json"
 CONFIG_FILE = PROJECT_ROOT / "config" / "hermes_research_agenda.yaml"
+LANE_ID = "hermes-research-agenda-at-45-7"
 
 
 # ── config ────────────────────────────────────────────────────────────────────
@@ -550,16 +551,28 @@ def run_agenda(*, apply=False, limit=15):
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
-def main():
-    parser = argparse.ArgumentParser(description="Hermes Research Agenda Engine (Phase 2)")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Hermes Research Agenda Engine (Phase 2)", allow_abbrev=False)
     parser.add_argument("--apply", action="store_true", help="Apply agenda (default: dry-run)")
-    parser.add_argument("--dry-run", action="store_true", help="Dry-run (explicit)")
+    parser.add_argument("--dry-run", action="store_true", help="Offline plan; no credential, DB or state access")
     parser.add_argument("--limit", type=int, default=15, help="Max candidates to consider")
     parser.add_argument("--json", action="store_true", help="Output JSON")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would rank research topics and apply the governed agenda for up to {args.limit} candidates")
+        return 0
 
-    apply = args.apply and not args.dry_run
-    result = run_agenda(apply=apply, limit=args.limit)
+    apply = args.apply
+    if apply:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+        started = now_iso()
+    try:
+        result = run_agenda(apply=apply, limit=args.limit)
+    except Exception as exc:
+        if apply:
+            write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                               script="hermes_research_agenda.py", error=f"{type(exc).__name__}: {exc}")
+        raise
 
     if args.json:
         print(json.dumps(result, default=str, indent=2))
@@ -573,6 +586,14 @@ def main():
         print(f"  Retires: {result.get('retires', 0)}")
         print(f"  Boosts:  {result.get('boosts', 0)}")
 
+    if apply:
+        completed = result.get("status") == "ok"
+        write_lane_receipt(LANE_ID, ok=completed, exit_code=0, started_at=started,
+                           script="hermes_research_agenda.py",
+                           summary={k: result.get(k) for k in ("status", "reason", "candidates_found", "creates", "retires", "boosts")},
+                           error=None if completed else "agenda_blocked")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,4 +1,6 @@
-"""Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X3: discovery + learning lanes.
+"""Shard04 update: explicit candidate CLI preview stops before DB or source-adapter work.
+
+Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X3: discovery + learning lanes.
 
 Nine cron rows, one script each:
 - research_watchlist_discovery.py (L858), sync_social_to_intelligence.py (L859), hermes_social_sentiment.py (L860),
@@ -310,9 +312,8 @@ def test_sst_dry_run_wins_and_never_reaches_upsert(monkeypatch, capsys, _state, 
     conn = FakeConn(_sst_responder())
     _sst_env(monkeypatch, conn, upsert=_boom)
     assert sst.main(["--apply", "--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["would_fold"] == 2 and rep["summary"]["labels"] == {"bullish": 1, "bearish": 1}
-    assert conn.readonly is True and conn.writes() == [] and sources == [] and _no_runtime_files(_state)
+    assert capsys.readouterr().out.startswith("DRY-RUN sync-social-to-intelligence:")
+    assert conn.readonly is None and conn.sql == [] and sources == [] and _no_runtime_files(_state)
 
 
 def test_sst_real_run_writes_receipt(monkeypatch, _state, sources):
@@ -345,7 +346,7 @@ def test_sst_universe_failure_raises_with_failed_receipt(monkeypatch, _state, so
         sst.main(["--apply"])
     rec = _receipt(_state, "sync-social-to-intelligence")
     assert rec["status"] == "failed" and rec["ok_at"] == prev
-    assert sst.main(["--dry-run"]) == 1
+    assert sst.main(["--dry-run"]) == 0  # structural preview needs no universe or DB
 
 
 def test_sst_source_ordering():
@@ -376,9 +377,9 @@ def test_hss_dry_run_sends_no_searxng_and_persists_nothing(monkeypatch, capsys, 
     monkeypatch.setattr(hss, "persist", _boom)
     monkeypatch.setattr(hss.urllib.request, "urlopen", _boom)
     assert hss.main(["--apply", "--dry-run", "--max-symbols", "2"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["universe"] == 2 and rep["summary"]["would_fetch_searxng_queries"] == 6
-    assert conn.readonly is True and sources == [] and _no_runtime_files(_state)
+    out = capsys.readouterr().out
+    assert "DRY-RUN hermes-social-sentiment:" in out and "cap 2" in out
+    assert conn.readonly is None and conn.sql == [] and sources == [] and _no_runtime_files(_state)
 
 
 def test_hss_dry_run_varies_with_cap(monkeypatch, capsys):
@@ -449,9 +450,8 @@ def test_cdo_dry_run_skips_finviz_and_records_nothing(monkeypatch, capsys, _stat
     monkeypatch.setattr(cdo, "_all_sources", lambda: srcs)
     monkeypatch.setattr(cdo, "_record_events", _boom)
     assert cdo.main(["--apply", "--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["would_record"] == 3 and rep["summary"]["skipped_sources"] == ["finviz"]
-    assert conn.readonly is True and conn.writes() == [] and sources == [] and _no_runtime_files(_state)
+    assert "DRY-RUN candidate-discovery-orchestrator: would" in capsys.readouterr().out
+    assert conn.readonly is None and conn.sql == [] and sources == [] and _no_runtime_files(_state)
 
 
 def test_cdo_real_run_records_and_writes_receipt(monkeypatch, _state, sources):
@@ -647,9 +647,8 @@ def test_blc_dry_run_wins_over_apply(monkeypatch, tmp_path, capsys, _state):
     monkeypatch.setattr(blc, "_append", _boom)
     assert blc.main(["--apply", "--dry-run"]) == 0
     out = capsys.readouterr().out
-    rep = _dry_line(out)
-    assert rep["summary"]["candidates"] == 30 and rep["summary"]["would_append_new"] == 29
-    assert "(+5 more candidates not listed" in out  # detail capped at 25
+    assert out.startswith("DRY-RUN build-lesson-candidates:")
+    assert len(out.splitlines()) == 1  # no corpus read or durable-memory initialization
     assert (root / blc.LESSON_CANDIDATE_PATH).read_bytes() == before and _no_runtime_files(_state)
 
 
@@ -685,7 +684,7 @@ def test_blc_append_failure_raises_with_failed_receipt(monkeypatch, tmp_path, _s
 
 def test_blc_source_ordering():
     main = _src(blc.main)
-    dry = main[main.index("if args.dry_run or not args.apply:") : main.index("lr = _receipt_lib()")]
+    dry = main[main.index("if args.dry_run:") : main.index("lr = _receipt_lib()")]
     assert "run(apply=False)" in dry and "write_lane_receipt" not in dry and "apply=True" not in dry
 
 

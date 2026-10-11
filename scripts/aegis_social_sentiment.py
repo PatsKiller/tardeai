@@ -13,11 +13,11 @@ Entry point: main() (returns a dict; aegis_overnight.py calls it) / cli() for th
 Usage (cron L289, lane aegis-social-sentiment):
   python3 scripts/aegis_social_sentiment.py [--dry-run]
 
---dry-run (refactor wave 3, 2026-10-10) puts the db_adapter session in READ ONLY, resolves the universe and
-prints a DRY-RUN report of what a real run would fetch (Reddit subreddit pages, StockTwits symbol streams, Brave
-queries only when AEGIS_BRAVE_ENABLED=1) and write (social_sentiment_history, at most one row per symbol), then
-returns: it makes NO external request (Reddit/StockTwits are rate-limited, Brave is quota-bearing), never calls
-persist_sentiment/_db_write and writes no receipt.
+--dry-run CLI (shard03, 2026-10-11) is an offline argv/environment plan: no credential file,
+DB, source request, persist or receipt is reachable. Universe counts are not asserted without
+reading the universe. The older main(dry_run=True) library preview remains a READ ONLY universe
+read for its existing callers; it is not the dispatcher CLI. Own env loading copies explicit
+names only and happens on real business runs. Shared import-closure narrowing remains separate.
 
 Exit codes (cli): 0 = ran (zero mentions is a finding, still 0); 1 = the run failed: Postgres unavailable
 (SELECT 1 probe), or the universe was non-empty and NO social source returned a single HTTP 200 (every fetch
@@ -32,6 +32,25 @@ import os
 import re
 import sys
 import time
+
+
+def _arguments(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description="Aegis social sentiment ingestion", allow_abbrev=False)
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args(argv)
+
+
+def _plan():
+    print("DRY-RUN aegis-social-sentiment: would resolve tracked symbols; fetch Reddit, StockTwits "
+          f"and optional Brave (enabled={os.getenv('AEGIS_BRAVE_ENABLED', '0')}); "
+          "write social_sentiment_history and the live run receipt; no DB or network opened")
+
+
+if __name__ == "__main__" and _arguments().dry_run:
+    _plan()
+    raise SystemExit(0)
+
 import requests
 from datetime import date, datetime
 from pathlib import Path
@@ -53,6 +72,19 @@ if _env_path.exists():
             k, v = k.strip(), v.strip()
             if k in _ENV_NAMES and v and k not in os.environ:
                 os.environ[k] = v
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD",
+                       "BRAVE_SEARCH_API_KEY", "AEGIS_BRAVE_ENABLED"})
+
+
+def _load_env():
+    """Own loader is bounded; db_adapter's shared loader remains an integration dependency."""
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.strip() and not line.lstrip().startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                if key.strip() in _ENV_KEYS:
+                    os.environ.setdefault(key.strip(), value.strip())
 
 AGENT = "aegis"
 RUN_ID = f"aegis-social-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -370,6 +402,9 @@ def persist_sentiment(symbol: str, sentiment: dict, source_family: str):
 # ── Main ─────────────────────────────────────────────────────────────────
 
 def main(dry_run: bool = False):
+    global BRAVE_KEY
+    _load_env()
+    BRAVE_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
     print(f"[aegis-social] Sentiment ingestion starting — {RUN_ID}" + (" (DRY RUN)" if dry_run else ""))
     FETCH_OK.clear()
     readonly = _enforce_readonly_db() if dry_run else False
@@ -441,15 +476,10 @@ def main(dry_run: bool = False):
 
 def cli(argv=None) -> int:
     """Cron entry: --dry-run, honest exit code, LaneRunReceipt@v1 on real runs only (see module docstring)."""
-    import argparse
-
-    ap = argparse.ArgumentParser(description="Aegis social sentiment ingestion (cron L289)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="resolve universe + report; no external fetch, no INSERT, no receipt")
-    args = ap.parse_args(argv)
+    args = _arguments(argv)
     if args.dry_run:
-        result = main(dry_run=True)
-        return 1 if result.get("error") else 0
+        _plan()
+        return 0
 
     from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()

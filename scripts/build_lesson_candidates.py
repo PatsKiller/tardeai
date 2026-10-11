@@ -17,9 +17,9 @@ Candidates only. Nothing here ratifies a lesson or influences behaviour;
 AUTHORITY: READ_ONLY_ADVISORY.
 
 Dry run (n8n refactor wave 3, 2026-10-10): ``--dry-run`` WINS over ``--apply``; no ``--apply`` is still a
-dry run. Both read the observation corpus, the durable memory store and the existing candidate file, and
-call ``run(apply=False)``, in which ``_append`` is not reachable; the dry run also prints a ``DRY-RUN``
-report and writes no receipt.
+dry run. Explicit ``--dry-run`` prints a structural plan before reading the observation corpus or opening
+the durable-memory store. The legacy no-``--apply`` preview still calls ``run(apply=False)``;
+its output is unchanged. Neither preview writes a receipt.
 
 A REAL (``--apply``) run writes LaneRunReceipt@v1 ``<state_root>/data/runtime/build-lesson-candidates_last.json``
 (``ok_at`` only on success). Exit codes: 0 = ran (zero new candidates is a finding, still 0); 1 = the run
@@ -184,7 +184,7 @@ def _print_text(result: dict[str, Any], detail_limit: int) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Build lesson candidates from outcomes")
+    ap = argparse.ArgumentParser(description="Build lesson candidates from outcomes", allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write (default: dry run)")
     ap.add_argument("--dry-run", action="store_true", help="never write; wins over --apply")
     ap.add_argument("--json", action="store_true")
@@ -192,7 +192,11 @@ def main(argv=None) -> int:
                     help="candidates listed in text output (default 25; -1 = all)")
     args = ap.parse_args(argv)
 
-    if args.dry_run or not args.apply:
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would read outcomes and append lesson candidates; no reads, writes or provider calls performed")
+        return 0
+
+    if not args.apply:
         result = run(apply=False)
         if args.json:
             print(json.dumps(result, indent=2, sort_keys=True, default=str))

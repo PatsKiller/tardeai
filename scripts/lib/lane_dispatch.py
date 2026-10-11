@@ -917,7 +917,9 @@ def cron_flock_locks(command_text: str) -> list[str]:
 
 def r1_canary_lock_matches(row: Mapping[str, Any], entry: Mapping[str, Any]) -> tuple[bool, str]:
     """(ok, reason) for an R1 cron row at canary: live_arg set, lock_kind flock, and the allowlist lock is the cron
-    line's lock (§23.12: a lane whose allowlist lock is not the cron line's lock cannot prove no double run)."""
+    line's lock (§23.12: a lane whose allowlist lock is not the cron line's lock cannot prove no double run).
+    This is about the LIVE lock only: a dry_run fire takes ``<lock>.dryrun`` (n8n_run_executor.lock_path_for,
+    2026-10-11 LOCK_STEAL), so a shadow dry run can never make the cron line's ``flock -n`` skip."""
     if not isinstance(entry.get("live_arg"), list):
         return False, f"canary_on_cron:live_arg {entry.get('live_arg')!r} (must be set for the live fire)"
     if entry.get("lock_kind") != "flock":

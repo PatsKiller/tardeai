@@ -1,6 +1,7 @@
 """Refactor wave 1 (cron -> n8n, 2026-10-10): scripts/market_regime_collector.py (cron L199 / L213).
 
-- --dry-run collects and reports, wins over --apply, runs on a READ ONLY session, and returns before
+- explicit --dry-run prints a structural plan before opening any DB/provider; it wins over --apply.
+- the legacy no--apply preview collects on a READ ONLY session and returns before
   save_indicators is reachable (AGENTS.md §6) -- no DB write, no receipt, no file.
 - a real run (--apply) writes data/runtime/market_regime_collector_last.json, ok_at only on success;
   a failing save leaves a failed receipt and exits non-zero.
@@ -98,20 +99,23 @@ def test_dry_run_reaches_no_write(env, monkeypatch, capsys, argv):
     assert mrc.main(argv) == 0
     assert env["saved"] == [], "save_indicators reached from a dry run"
     assert ("commit",) not in env["conn"].log
-    assert ("set_session", {"readonly": True}) in env["conn"].log, "dry run must run on a READ ONLY session"
+    if "--dry-run" in argv:
+        assert env["conn"].log == [], "structural dry run must not open a DB session"
+    else:
+        assert ("set_session", {"readonly": True}) in env["conn"].log, "legacy preview must be READ ONLY"
     assert not (env["root"] / "data").exists(), "dry run wrote a file under the state root"
     out = capsys.readouterr().out
-    assert "dry_run" in out
+    assert out.startswith("DRY-RUN market-regime-collector:") if "--dry-run" in argv else "dry_run" in out
 
 
 def test_dry_run_reports_what_it_would_write_and_tracks_state(env, monkeypatch, capsys):
     _forbid_receipt(monkeypatch)
-    mrc.main(["--dry-run", "--json"])
+    mrc.main(["--json"])  # legacy read-only, non-applying preview
     first = json.loads(capsys.readouterr().out)
     assert first["would_write"] == {"table": "market_regime_indicators", "rows": first["indicators_collected"]}
     # Mutation test (§6): change the underlying state, the report changes with it.
     env["conn"].breadth = 5
-    mrc.main(["--dry-run", "--json"])
+    mrc.main(["--json"])
     second = json.loads(capsys.readouterr().out)
     sig = {i["indicator_key"]: i.get("signal") for i in second["indicators"]}
     assert sig["scan_breadth_24h"] == "missing"

@@ -395,8 +395,7 @@
       "live_arg": [],
       "market_gate": true,
       "output_signal": "data/runtime/trade_ai_scalp_live_last.json"
-    }
-,
+    },
     {
       "lane_id": "classifier-health-check",
       "env_names": ["DB_CONN_TRACE", "DB_HOST", "DB_NAME", "DB_PASSWORD", "DB_PORT", "DB_USER", "PROJECT_ROOT", "SAFE_FLOCK_LOG_DIR", "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_ROOT"],
@@ -1874,6 +1873,309 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/etf-performance-enrich_last.json"
+    },
+    {
+      "lane_id": "watch-goods-consistency",
+      "command": [
+        "$PY",
+        "scripts/watch_goods_consistency_check.py",
+        "--apply-proposal-backfill"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "watch_goods_consistency_check.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/watch_goods_consistency.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/watch-goods-consistency_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "finviz-screener-runner",
+      "command": [
+        "$PY",
+        "scripts/finviz_screener_runner.py",
+        "--run"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "FINVIZ_COOKIE",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "finviz_screener_runner.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/finviz_screener.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/finviz-screener-runner_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "daily-incubator-refresh",
+      "command": [
+        "$PY",
+        "scripts/daily_incubator_refresh.py",
+        "--apply"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "daily_incubator_refresh.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/daily-incubator-refresh.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/daily-incubator-refresh_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "resolve-due-checkpoints",
+      "command": [
+        "$PY",
+        "scripts/resolve_due_checkpoints.py",
+        "--apply",
+        "--apply-pending-data"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PENDING_DATA_APPLY",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Shared db_adapter/env_bootstrap closure can reload the whole rendered environment; source-only shadow must return before that closure. Canary blocked until n8nmat/env-bootstrap-narrow is integrated and measured.",
+      "env_evidence": "resolve_due_checkpoints.py literal source reads plus DB adapter/runtime receipt closure; values never inspected.",
+      "lock": "/tmp/resolve-due-checkpoints.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "market_gate": false,
+      "output_signal": "data/runtime/resolve-due-checkpoints_last.json",
+      "source": "Exact native-approved crontab -l snapshot 2026-10-11T14:57:08.697196+00:00; cron remains unchanged."
+    },
+    {
+      "lane_id": "weekly-incubator-builder",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/weekly_incubator_builder.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "env_report_reason": "session13_db, multi_strategy_classifier and pipeline_registry load checkout environment in the real-run closure. Their narrowing is integrator work; optional --llm is absent from this exact allowlist command and is not admitted.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. No legacy flock; lock is proposed for n8n only, canary blocked until operator adds the same cron lock.",
+      "command": [
+        "$PY",
+        "scripts/weekly_incubator_builder.py",
+        "--run-label",
+        "1900",
+        "--apply"
+      ],
+      "lock": "/tmp/weekly-incubator-builder.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/weekly-incubator-builder_last.json"
+    },
+    {
+      "lane_id": "investment-costs",
+      "command": [
+        "$PY",
+        "scripts/investment_costs.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "Own literal env reads and source import closure reviewed; dry CLI opens no credential file or database.",
+      "lock": "/tmp/inv_costs.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/investment-costs_last.json",
+      "source": "5 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_costs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/investment_costs.py\" >> logs/investment_costs.log 2>&1",
+      "env_report_reason": "Shared db_adapter/env_bootstrap and imported research/provider libraries are not fully bounded on this base; shared closure fix belongs to integrator. Own direct loaders copy only declared names. Dry-run exits before those imports/calls."
+    },
+    {
+      "lane_id": "hermes-momentum-catalyst-scalp",
+      "command": [
+        "$PY",
+        "scripts/hermes_momentum_catalyst_researcher.py",
+        "--source",
+        "scalp"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_scalp_catalyst.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "SCALP_HOT_TIER",
+        "SEARCH_ROUTING_ENGINE",
+        "SEARXNG_URL",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "finviz-proactive-research",
+      "command": [
+        "$PY",
+        "scripts/finviz_proactive_research.py",
+        "--max",
+        "400",
+        "--lookback-hours",
+        "12"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/finviz_proactive.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/finviz-proactive-research_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "FINVIZ_API_TOKEN",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "hermes-research-agenda-at-45-7",
+      "command": [
+        "$PY",
+        "scripts/hermes_research_agenda.py",
+        "--json"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_agenda.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-research-agenda-at-45-7_last.json",
+      "env_names": [
+        "DB_PASSWORD",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+    },
+    {
+      "lane_id": "hermes-research-worker-pool",
+      "command": [
+        "$PY",
+        "scripts/hermes_research_worker_pool.py",
+        "--run",
+        "--json"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_worker_pool.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-research-worker-pool_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
+      "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
     }
   ],
   "blocked_reasons": {

@@ -370,8 +370,8 @@ def _parse_as_of(raw: str | None) -> datetime | None:
     return dt
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Resolve due outcome checkpoints")
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Resolve due outcome checkpoints", allow_abbrev=False)
     ap.add_argument("--apply", action="store_true",
                     help="write SCHEDULED resolutions (default: dry run)")
     ap.add_argument(
@@ -383,6 +383,7 @@ def main() -> int:
         ),
     )
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="source plan; no input store or price DB access")
     ap.add_argument("--migrate-missing-deadlines", action="store_true",
                     help="preview conservative deadline migration; --apply appends proposals only")
     ap.add_argument("--limit", type=int, default=None)
@@ -395,7 +396,24 @@ def main() -> int:
             "a prior session close is the honest horizon."
         ),
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print("DRY-RUN resolve-due-checkpoints: would resolve scheduled outcomes"
+              + (" and triage pending data" if args.apply_pending_data else "")
+              + f"; limit={args.limit}; append observations and lane receipt; counts NOT_MEASURED")
+        return 0
+    from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        return _run_cli(args, started_at=started)
+    except Exception as exc:
+        if args.apply or args.apply_pending_data:
+            write_lane_receipt("resolve-due-checkpoints", ok=False, exit_code=1,
+                               started_at=started, script="resolve_due_checkpoints.py", error=type(exc).__name__)
+        raise
+
+
+def _run_cli(args, started_at=None) -> int:
 
     if args.migrate_missing_deadlines:
         root = _state_root()
@@ -403,6 +421,9 @@ def main() -> int:
         if args.apply:
             for row in rows:
                 _append(root / CHECKPOINT_PATH, row)
+            from scripts.lib.lane_last_receipt import write_lane_receipt
+            write_lane_receipt("resolve-due-checkpoints", ok=True, exit_code=0, started_at=started_at,
+                               script="resolve_due_checkpoints.py", summary={"deadline_proposals": len(rows)})
         print(json.dumps({"schema": "CheckpointDeadlineMigration@v1", "applied": args.apply,
                           "proposed": len(rows), "derived": sum(bool(r.get("due_at")) for r in rows),
                           "review_required": sum(not r.get("due_at") for r in rows),
@@ -414,6 +435,12 @@ def main() -> int:
         apply_pending_data=args.apply_pending_data,
         now=_parse_as_of(args.as_of),
     )
+    if args.apply or args.apply_pending_data:
+        from scripts.lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt("resolve-due-checkpoints", ok=not bool(result["pending_apply_refused"]),
+                           exit_code=0, started_at=started_at, script="resolve_due_checkpoints.py",
+                           summary={key: result[key] for key in ("due", "resolved", "pending_data",
+                                                               "pending_resolved", "pending_expired")})
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True, default=str))
     else:

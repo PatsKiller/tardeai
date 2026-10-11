@@ -22,7 +22,8 @@ Usage:
     python3 scripts/sync_social_to_intelligence.py --apply
 
 Dry run (n8n refactor wave 3, 2026-10-10): ``--dry-run`` WINS over ``--apply``; no ``--apply`` is still a
-dry run. It resolves the universe and reads the latest sentiment exactly like a real run, on a session
+dry run. Explicit ``--dry-run`` prints a structural plan before any DB, environment-file or provider
+access. The legacy no-``--apply`` preview resolves the universe and reads sentiment on a session
 made READ ONLY at the server first (the db_adapter thread-local connection, which the universe resolver
 shares), prints a ``DRY-RUN`` report and returns BEFORE ``upsert_entity`` / ``report_source`` are reachable.
 It writes no receipt.
@@ -55,6 +56,18 @@ if _env_path.exists():
             k, v = k.strip(), v.strip()
             if k in _ENV_NAMES and v and k not in os.environ:
                 os.environ[k] = v
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "SOCIAL_FOLD_MAX_AGE_HOURS")
+
+
+def _load_env():
+    global MAX_AGE_HOURS
+    from dotenv import dotenv_values
+    values = dotenv_values(PROJECT_ROOT / ".env")
+    for name in _ENV_KEYS:
+        if values.get(name) is not None:
+            os.environ.setdefault(name, values[name])
+    MAX_AGE_HOURS = float(os.getenv("SOCIAL_FOLD_MAX_AGE_HOURS", "168"))
+
 
 MAX_AGE_HOURS = float(os.getenv("SOCIAL_FOLD_MAX_AGE_HOURS", "168"))  # 7 days
 LANE_ID = "sync-social-to-intelligence"
@@ -166,13 +179,17 @@ def _dry_run() -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true", help="read + report only; wins over --apply")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args(argv)
 
-    print(f"[social-fold] folding social_sentiment_history -> intelligence_entities (max_age={MAX_AGE_HOURS:.0f}h)")
-    if args.dry_run or not args.apply:
+    if args.dry_run:
+        print(f"DRY-RUN {LANE_ID}: would fold sentiment through intelligence_entity_manager and report source health; no DB or writes performed")
+        return 0
+    if not args.apply:
+        _load_env()
+        print(f"[social-fold] folding social_sentiment_history -> intelligence_entities (max_age={MAX_AGE_HOURS:.0f}h)")
         return _dry_run()
 
     lr = _receipt_lib()
@@ -180,6 +197,8 @@ def main(argv=None) -> int:
     rows: list[dict] = []
     folded = failed = 0
     try:
+        _load_env()
+        print(f"[social-fold] folding social_sentiment_history -> intelligence_entities (max_age={MAX_AGE_HOURS:.0f}h)")
         symbols = resolve_universe()
         if _UNIVERSE_ERROR:
             raise RuntimeError(f"universe resolution failed ({_UNIVERSE_ERROR[0]})")
