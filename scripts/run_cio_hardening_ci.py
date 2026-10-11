@@ -4195,6 +4195,7 @@ GATES = [
         # Hermetic: fake conns / fake db_adapter / fake sender modules, tmp TRADEAI_STATE_ROOT.
         "refactor_w1_20261010",
         [
+            "tests/test_refactor_shard_04_20261011.py",
             "tests/test_refactor_w1_data_gap_resolver_20261010.py",
             "tests/test_refactor_w1_health_monitors_20261010.py",
             "tests/test_refactor_w1_materializers_20261010.py",

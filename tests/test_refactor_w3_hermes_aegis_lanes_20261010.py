@@ -1,4 +1,6 @@
-"""Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X2: Aegis ingest + Hermes discovery lanes.
+"""Shard04 update: explicit transcript and scorecard CLI previews are offline; real-run assertions stay intact.
+
+Refactor wave 3 (cron -> n8n, 2026-10-10), bucket X2: Aegis ingest + Hermes discovery lanes.
 
 - aegis_social_sentiment / aegis_transcript_discovery / aegis_nightly_ingestion (cron L289 L291 L308): new cli()
   with --dry-run (READ ONLY db_adapter session, no external fetch, no _db_write, no receipt); real runs leave a
@@ -359,10 +361,8 @@ def test_transcript_dry_run_db_reads_only(monkeypatch, capsys, fake_db, _state):
     monkeypatch.setattr(atd.requests, "get", _boom)
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     assert atd.cli(["--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["would_write_transcripts"] == 2
-    assert rep["summary"]["would_query_brave"] > 0
-    assert fake_db.readonly is True
+    assert "DRY-RUN aegis-transcript-discovery: would" in capsys.readouterr().out
+    assert fake_db.readonly is None and fake_db.sql == []
     assert not _receipt_file(_state, "aegis-transcript-discovery").exists()
 
 
@@ -557,10 +557,8 @@ def test_scorecard_dry_run_writes_neither_file(monkeypatch, capsys, fake_db, tmp
     monkeypatch.setattr(hds, "write_outcome_feed", _boom)
     monkeypatch.setattr(llr, "write_lane_receipt", _boom)
     assert hds.main(["--dry-run"]) == 0
-    rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"]["candidates_total"] == 7 and rep["summary"]["recommendation"] == "steady"
-    assert str(hds.SCORECARD_PATH) in rep["would_write"]
-    assert fake_db.readonly is True
+    assert "DRY-RUN hermes-discovery-scorecard: would" in capsys.readouterr().out
+    assert fake_db.readonly is None and fake_db.sql == []
     assert not (tmp_path / "rt").exists()
     assert not _receipt_file(_state, "hermes-discovery-scorecard").exists()
 
@@ -583,7 +581,7 @@ def test_scorecard_db_unavailable_exit_1_no_zero_card(monkeypatch, fake_db, tmp_
     assert not hds.SCORECARD_PATH.exists()
     r = _receipt(_state, "hermes-discovery-scorecard")
     assert r["status"] == "failed" and r["error"] == "db_unavailable" and r["ok_at"] == "2026-10-01T00:00:00+00:00"
-    assert hds.main(["--dry-run"]) == 1
+    assert hds.main(["--dry-run"]) == 0  # structural plan does not consult unavailable DB
 
 
 def test_scorecard_crash_failed_receipt(monkeypatch, fake_db, tmp_path, _state):

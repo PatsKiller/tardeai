@@ -6590,8 +6590,10 @@
       "scheduler": {
         "kind": "cron",
         "expression": "25 6-15 * * 1-5",
-        "command_text": "hermes_momentum_catalyst_researcher.py --source scalp --apply",
-        "match": "scripts/hermes_momentum_catalyst_researcher.py"
+        "command_text": "25 6-15 * * 1-5 cd $PROJ && flock -n /tmp/hermes_scalp_catalyst.lock timeout 5m $PY scripts/hermes_momentum_catalyst_researcher.py --source scalp --apply >> logs/hermes_scalp_catalyst.log 2>&1  # Hermes catalyst research on the day scalp candidates (feeds social_scalp_scanner GO gate)",
+        "match": "scripts/hermes_momentum_catalyst_researcher.py",
+        "stage": "shadow",
+        "wave": "R2-04"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
@@ -6604,8 +6606,9 @@
         4
       ],
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/cio/catalyst_momentum_last_run.json"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-momentum-catalyst-scalp_last.json",
+        "key": "ok_at"
       },
       "note": "Operator decision D2 (2026-10-07): the CURRENT-tree cron line is the single scheduler for the momentum catalyst researcher (10 runs/day); the dev-tree timer is retired.",
       "value_class": "Nice to Have",
@@ -6620,7 +6623,18 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "25 6-15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "hermes-external-feedback-nightly",
@@ -8242,16 +8256,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 7 * * *",
-        "match": "scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 07:30"
+        "match": "scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 07:30",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "45 7 * * * cd $PROJ && flock -n /tmp/hermes_agenda.lock $PY scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 07:30 topic bridge (2026-08-04)"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "data/runtime/hermes_agenda_last_run.json",
-        "key": "last_apply_ts",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_research_agenda.py:35 STATE_FILE written at :532 on every --apply run (last_apply_ts); host mtime 2026-10-09T07:45:01"
+        "path": "data/runtime/hermes-research-agenda-at-45-7_last.json",
+        "key": "ok_at"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -8272,7 +8287,18 @@
       },
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "45 7 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "hermes-research-agenda-at-15-18",
@@ -13930,14 +13956,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "15 6 * * 1-5",
-        "match": "scripts/candidate_discovery_orchestrator.py"
+        "match": "scripts/candidate_discovery_orchestrator.py",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "15 6 * * 1-5 cd $PROJ && $PY scripts/candidate_discovery_orchestrator.py --apply >> logs/candidate_discovery.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/candidate_discovery.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/candidate-discovery-orchestrator_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P07",
@@ -13965,6 +13994,17 @@
         "stage": "premarket",
         "step_id": "candidate_discovery_orchestrator",
         "on": "2026-10-11"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "15 6 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
       }
     },
     {
@@ -17815,14 +17855,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "30 9,11,13,15 * * 1-5",
-        "match": "scripts/finviz_proactive_research.py"
+        "match": "scripts/finviz_proactive_research.py",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1"
       },
       "expected_cadence_hours": 66.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/finviz_proactive.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/finviz-proactive-research_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P02",
@@ -17839,7 +17882,18 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 9,11,13,15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "finviz-sector-research",
@@ -19070,14 +19124,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "5 * * * *",
-        "match": "scripts/hermes_research_worker_pool.py"
+        "match": "scripts/hermes_research_worker_pool.py",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "5 * * * * cd $PROJ && flock -n /tmp/hermes_worker_pool.lock $PY scripts/hermes_research_worker_pool.py --run --json >> logs/hermes_worker_pool.log 2>&1  # white-space/strategy/proxy/legal lanes, self-gated by lane cadence + do-no-harm (2026-07-05)"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_worker_pool.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-research-worker-pool_last.json",
+        "key": "ok_at"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -19094,7 +19151,18 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "run-options-monitor",
@@ -20454,15 +20522,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "30 5 * * *",
-        "match": "scripts/hermes_discovery_scorecard.py"
+        "match": "scripts/hermes_discovery_scorecard.py",
+        "stage": "shadow",
+        "wave": "R2-04",
+        "command_text": "30 5 * * * cd $PROJ && $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/hermes_discovery_scorecard.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_discovery_scorecard.py:39 SCORECARD_PATH atomic write at :379; host mtime 2026-10-04T05:30:02 (STALE: offpeak wrapper logs PEAK_SKIP daily since, so receipt only moves on real runs)"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-discovery-scorecard_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P13",
@@ -20479,7 +20549,18 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 5 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 4,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "siem-to-hermes-backlog",

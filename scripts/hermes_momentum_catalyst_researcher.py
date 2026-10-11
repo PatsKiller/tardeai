@@ -28,15 +28,18 @@ SEARXNG_URL = os.getenv("SEARXNG_URL", "http://127.0.0.1:18888/search")
 MAX_SOURCES_PER_TICKER = 3
 MAX_TOTAL_SOURCES = 15
 
-# Load .env
-env_path = PROJECT_ROOT / ".env"
-if env_path.exists():
-    for line in env_path.read_text().splitlines():
-        if "=" in line and not line.strip().startswith("#"):
-            k, v = line.split("=", 1)
-            k, v = k.strip(), v.strip().strip("'\"")
-            if k and k not in os.environ:
-                os.environ[k] = v
+_ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "SEARXNG_URL"})
+
+
+def _load_env():
+    env_path = PROJECT_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip("\'\"")
+                if k in _ENV_KEYS:
+                    os.environ.setdefault(k, v)
 
 
 CATALYST_TYPES = {
@@ -246,7 +249,7 @@ def run(candidates, dry_run=True, output_path=None, merge=True, max_total_source
     return results
 
 
-def get_scalp_candidates(max_tickers=15):
+def get_scalp_candidates(max_tickers=15, *, read_errors=None):
     """Today's distinct social-scalp candidates (WAIT/GO) whose GO tier depends on catalyst
     verification — highest score first. Read-only."""
     import psycopg2
@@ -272,6 +275,8 @@ def get_scalp_candidates(max_tickers=15):
         conn.close()
     except Exception as e:
         print(f"scalp candidate read failed: {e}")
+        if read_errors is not None:
+            read_errors.append(type(e).__name__)
     return syms
 
 
@@ -310,7 +315,7 @@ def select_hot_candidates(awaiting, scalp_candidates, list_symbols, researched, 
     return keep[:cap]
 
 
-def get_awaiting_catalyst(max_tickers=15):
+def get_awaiting_catalyst(max_tickers=15, *, read_errors=None):
     """Today's names blocked only on catalyst verification (the scalp_priority class). Read-only."""
     import psycopg2
     try:
@@ -327,21 +332,48 @@ def get_awaiting_catalyst(max_tickers=15):
         return syms
     except Exception as e:
         print(f"awaiting-catalyst read failed: {e}")
+        if read_errors is not None:
+            read_errors.append(type(e).__name__)
         return []
 
 
-if __name__ == "__main__":
+def main(argv=None):
     import argparse
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--source", choices=["momentum", "scalp"], default="momentum",
                     help="Which candidate pool to research: TradeAI momentum lane or today's social-scalp candidates.")
     ap.add_argument("--max-tickers", type=int, default=5)
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--dry-run", action="store_true", default=True)
+    ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--on-list-advance", action="store_true",
                     help="scalp hot tier: run only when the scalp list's as_of advanced (event trigger)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
+
+    if args.dry_run:
+        print(f"DRY-RUN hermes-momentum-catalyst-scalp: would research {args.source} candidates; max_tickers={args.max_tickers}")
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    record = args.apply and args.source == "scalp"
+    try:
+        _load_env()
+        counts = _execute(args)
+    except Exception as exc:
+        if record:
+            write_lane_receipt("hermes-momentum-catalyst-scalp", ok=False, exit_code=1,
+                               started_at=started, summary={}, error=type(exc).__name__)
+        raise
+    if record:
+        failed = bool(counts.get("gate_skipped") or counts.get("candidate_read_failures"))
+        write_lane_receipt("hermes-momentum-catalyst-scalp", ok=not failed, exit_code=0,
+                           started_at=started, summary=counts,
+                           error="gate_skipped" if counts.get("gate_skipped") else ("candidate_read_failed" if failed else None))
+    return 0
+
+
+def _execute(args):
+    read_errors = []
     today = datetime.now().strftime("%Y-%m-%d")
     out = str(PROJECT_ROOT / f"data/hermes/momentum_catalysts/{today}_catalysts.jsonl")
     hot_research = args.source == "scalp" and _hot_research_on()
@@ -358,7 +390,7 @@ if __name__ == "__main__":
                 "decision": trig.decide("hermes-scalp-catalyst", list_env, hot_enabled=hot_research)}
         print(json.dumps({"gate": "scalp_list_trigger", **gate["decision"]}, default=str))
         if not gate["decision"]["fire"]:
-            sys.exit(0)
+            return {"gate_skipped": 1, "tickers": 0, "sources": 0}
 
     if args.source == "scalp" and hot_research:
         from lib import scalp_hot_tier as hot
@@ -366,15 +398,15 @@ if __name__ == "__main__":
         if gate is None:
             from lib.data_broker import scalp_list as sl
             list_syms = list(sl.get_scalp_list().get("symbols") or [])
-        priority = get_awaiting_catalyst(max_tickers=hot.RESEARCH_SYMBOL_CAP)
-        candidates = select_hot_candidates(priority, get_scalp_candidates(max_tickers=hot.RESEARCH_SYMBOL_CAP),
+        priority = get_awaiting_catalyst(max_tickers=hot.RESEARCH_SYMBOL_CAP, read_errors=read_errors)
+        candidates = select_hot_candidates(priority, get_scalp_candidates(max_tickers=hot.RESEARCH_SYMBOL_CAP, read_errors=read_errors),
                                            list_syms, researched_today(out), stale_min=hot.RESEARCH_STALE_MIN,
                                            cap=hot.RESEARCH_SYMBOL_CAP)
         _cap = 40
         print(f"[hot-tier] {len(candidates)} names new to the list or > {hot.RESEARCH_STALE_MIN:g} min stale "
               f"(priority {len(priority)}); search via routing engine")
     elif args.source == "scalp":
-        candidates = get_scalp_candidates(max_tickers=max(args.max_tickers, 15))
+        candidates = get_scalp_candidates(max_tickers=max(args.max_tickers, 15), read_errors=read_errors)
         _cap = 40  # cover ~15 scalp candidates × up to 3 sources
     else:
         from hermes_momentum_candidate_reader import get_momentum_candidates
@@ -384,7 +416,7 @@ if __name__ == "__main__":
         print(f"No {args.source} candidates found.")
         if gate is not None and args.apply:
             trig.commit("hermes-scalp-catalyst", gate["list_env"], decision=gate["decision"]["decision"])
-        sys.exit(0)
+        return {"tickers": 0, "sources": 0, "candidate_read_failures": len(read_errors)}
 
     print(f"Researching {len(candidates)} {args.source} candidates...")
 
@@ -400,3 +432,11 @@ if __name__ == "__main__":
     print(f"  Total sources: {sum(r['source_count'] for r in results)}")
     if not args.apply:
         print("\nDry-run. Use --apply to write.")
+
+    return {"tickers": len(results), "with_catalyst": with_catalyst,
+            "sources": sum(r["source_count"] for r in results),
+            "candidate_read_failures": len(read_errors)}
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
