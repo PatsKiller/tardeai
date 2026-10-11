@@ -8156,17 +8156,17 @@
         "evidence": "SCRIPT_RECEIPT",
         "evidence_ref": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
       },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P14",
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P14",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": "L790",
+        "f_id": "L789",
         "pipeline": "P14",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P14",
-        "f_recommendation": "CONSOLIDATE into P14 (already a pipeline step or quiet prewarm)",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "CONSOLIDATE-into P14",
         "event_driven_candidate": false,
-        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+        "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "hand_curated": {
         "from": "reconcile_lane_registry@v1",
@@ -12834,7 +12834,15 @@
         "recommendation": "PIPELINE:P10",
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line"
+        "f_evidence": "Unverified use: no consumer check run for this line",
+        "f_ids": [
+          "L731",
+          "L732"
+        ],
+        "f_recommendations": [
+          "PIPELINE:P10",
+          "PIPELINE:P10"
+        ]
       },
       "retire_batch": "b-families-top5"
     },
@@ -15150,7 +15158,7 @@
     },
     {
       "lane_id": "set-purge-dates",
-      "owner": "platform",
+      "owner": "research",
       "scheduler": {
         "kind": "cron",
         "expression": "0 3 1 * *",
@@ -15163,14 +15171,17 @@
         "path": "logs/transcript_purge.log",
         "evidence": "CRON_LOG_REDIRECT"
       },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
+      "value_class": "Technical Debt",
+      "recommendation": "PIPELINE:P16",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
+        "f_id": "L156",
+        "pipeline": "P03",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P16",
+        "f_recommendation": "REDESIGN → P16 retention (inline python with DB password parse in crontab)",
+        "event_driven_candidate": false,
+        "f_evidence": "inline SQL in crontab"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -16984,6 +16995,38 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
+      "lane_id": "hermes-source-curation",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 23 * * *",
+        "match": "scripts/hermes_source_curation.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_source_curation.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L376",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
       "lane_id": "portfolio-server-watchdog",
       "owner": "platform",
       "scheduler": {
@@ -18611,7 +18654,7 @@
     },
     {
       "lane_id": "reporting-engine",
-      "owner": "platform",
+      "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
         "expression": "*/15 6-17 * * 1-5",
@@ -18625,14 +18668,17 @@
         "evidence": "SCRIPT_RECEIPT",
         "evidence_ref": "scripts/reporting_engine.py:351 _ELIGIBLE_CACHE written by eligible_report_payload(use_cache=False) (:400); host mtime 2026-10-09T16:15:04"
       },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
+      "value_class": "Technical Debt",
+      "recommendation": "R0_ELIMINATE",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
+        "f_id": "L573",
+        "pipeline": "P01",
+        "value_class": "Technical Debt",
+        "recommendation": "R0_ELIMINATE",
+        "f_recommendation": "ELIMINATE → event cache refresh",
+        "event_driven_candidate": false,
+        "f_evidence": "inline prewarm; log stale since 10-07 \"canceling statement due to lock timeout\""
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -18902,7 +18948,7 @@
     },
     {
       "lane_id": "compute-intraday-vwap",
-      "owner": "platform",
+      "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
         "expression": "*/20 9-16 * * 1-5",
@@ -18916,14 +18962,21 @@
         "evidence": "SCRIPT_RECEIPT",
         "evidence_ref": "scripts/compute_intraday_vwap.py:23 CACHE write_text :86 (skipped only when no active proposal symbols); host mtime 2026-10-09T16:00:05"
       },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
+      "value_class": "Operationally Important",
+      "recommendation": "PIPELINE:P01",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
+        "f_id": "L608",
+        "pipeline": "P01",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P01",
+        "f_recommendation": "CONSOLIDATE-into P01",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line",
+        "schedule_changed_since_rationalization": {
+          "f_sched": "*/20 13-21 * * 1-5",
+          "live_sched": "*/20 9-16 * * 1-5"
+        }
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -19957,7 +20010,7 @@
     },
     {
       "lane_id": "defense-execution",
-      "owner": "platform",
+      "owner": "execution",
       "scheduler": {
         "kind": "cron",
         "expression": "*/10 9-16 * * 1-5",
@@ -19970,14 +20023,17 @@
         "path": "logs/defense_fills.log",
         "evidence": "CRON_LOG_REDIRECT"
       },
-      "value_class": "UNCLASSIFIED",
+      "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
+        "f_id": "L761",
+        "pipeline": "P09",
+        "value_class": "Operationally Important",
+        "recommendation": "MIGRATE_N8N",
+        "f_recommendation": "MOVE into P09 options loop",
+        "event_driven_candidate": false,
+        "f_evidence": "inline poll_fills every 10 min"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -20424,7 +20480,7 @@
     },
     {
       "lane_id": "run-scalp-shadow-logger",
-      "owner": "platform",
+      "owner": "scalp",
       "scheduler": {
         "kind": "cron",
         "expression": "*/5 6-15 * * 1-5",
@@ -20437,14 +20493,21 @@
         "path": "logs/scalp_shadow_logger.log",
         "evidence": "CRON_LOG_REDIRECT"
       },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
+      "value_class": "Business Critical",
+      "recommendation": "PIPELINE:P02",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
+        "f_id": "L804",
+        "pipeline": "P02",
+        "value_class": "Business Critical",
+        "recommendation": "PIPELINE:P02",
+        "f_recommendation": "CONSOLIDATE → one P02 scalp loop feeding Trade-AI + Active Trader",
+        "event_driven_candidate": false,
+        "f_evidence": "3 scalp scanners on overlapping 5-min cadences (06–11 and 09:30–16) each pulling Finviz/quotes",
+        "schedule_changed_since_rationalization": {
+          "f_sched": "*/5 6-11 * * 1-5",
+          "live_sched": "*/5 6-15 * * 1-5"
+        }
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -20466,14 +20529,17 @@
         "path": "logs/moomoo_opend_health.log",
         "evidence": "CRON_LOG_REDIRECT"
       },
-      "value_class": "UNCLASSIFIED",
+      "value_class": "Technical Debt",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
+        "f_id": "L806",
+        "pipeline": "P12",
+        "value_class": "Technical Debt",
+        "recommendation": "R0_ELIMINATE",
+        "f_recommendation": "ELIMINATE (systemd linger already autostarts moomoo-opend)",
+        "event_driven_candidate": false,
+        "f_evidence": "@reboot belt-and-braces line"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -20487,7 +20553,7 @@
     },
     {
       "lane_id": "hermes-cross-source-synthesizer",
-      "owner": "platform",
+      "owner": "research",
       "scheduler": {
         "kind": "cron",
         "expression": "20 18 * * 1,4",
@@ -20500,14 +20566,54 @@
         "path": "logs/hermes_synthesizer.log",
         "evidence": "CRON_LOG_REDIRECT"
       },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
+      "value_class": "Technical Debt",
+      "recommendation": "PIPELINE:P10",
       "rationalization": {
         "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
+        "f_id": "L823",
+        "pipeline": "P10",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P10",
+        "f_recommendation": "REDESIGN or ELIMINATE",
+        "event_driven_candidate": false,
+        "f_evidence": "log file never created (scheduled Mon/Thu 06:20)",
+        "schedule_changed_since_rationalization": {
+          "f_sched": "20 6 * * 1,4",
+          "live_sched": "20 18 * * 1,4"
+        }
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "hermes-discovery-yield-builder",
+      "owner": "learning",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 3 * * *",
+        "match": "scripts/hermes_discovery_yield_builder.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hermes_discovery_yield.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/hermes_discovery_yield_builder.py:28 OUTPUT_PATH written at :245; host mtime 2026-10-04T03:45:01 (STALE: offpeak wrapper logs PEAK_SKIP daily since)"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P13",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L824",
+        "pipeline": "P13",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -20539,6 +20645,38 @@
         "value_class": "Duplicated",
         "recommendation": "MERGE_INTO:P13",
         "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+        "event_driven_candidate": false,
+        "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+    },
+    {
+      "lane_id": "siem-to-hermes-backlog",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 6 * * *",
+        "match": "scripts/siem_to_hermes_backlog.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/siem_to_hermes_backlog.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P10",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L835",
+        "pipeline": "P10",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P10",
+        "f_recommendation": "CONSOLIDATE into P10 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
@@ -21926,7 +22064,7 @@
       "reconciled_on": "2026-10-09",
       "unit_enabled_state": "enabled",
       "cadence_basis": "daemon: liveness judged hourly",
-      "exec_start": "/usr/bin/python3 ~/trade-ai-releases/portfolio-server/CURRENT/scripts/chatgpt_oauth_proxy.py",
+      "exec_start": "/usr/bin/python3 ~/trade-ai-releases/portfolio-server/<release>/scripts/chatgpt_oauth_proxy.py",
       "stay_on_cron": {
         "class": "daemon",
         "token": "chatgpt-oauth-proxy.service",
@@ -22043,7 +22181,7 @@
       "reconciled_on": "2026-10-09",
       "unit_enabled_state": "enabled",
       "cadence_basis": "daemon: liveness judged hourly",
-      "exec_start": "/usr/bin/python3 ~/trade-ai-releases/portfolio-server/CURRENT/scripts/grok_oauth_proxy.py",
+      "exec_start": "/usr/bin/python3 ~/trade-ai-releases/portfolio-server/<release>/scripts/grok_oauth_proxy.py",
       "stay_on_cron": {
         "class": "daemon",
         "token": "grok-oauth-proxy.service",
@@ -22084,7 +22222,7 @@
       "reconciled_on": "2026-10-09",
       "unit_enabled_state": "enabled",
       "cadence_basis": "daemon: liveness judged hourly",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/heartbeat_receiver.py",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/<release>/scripts/heartbeat_receiver.py",
       "stay_on_cron": {
         "class": "daemon",
         "token": "heartbeat-receiver.service",
