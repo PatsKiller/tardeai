@@ -275,17 +275,18 @@ def test_apply_receipt_records_the_grant(monkeypatch, tmp_path):
 
 
 # ── 3. one owner for the content_embeddings 90 d rail ───────────────────────
-def test_registry_names_db_retention_owner_and_archive_first_defaults_off():
+def test_registry_names_db_retention_owner_and_archive_first_is_on():
+    # Operator 2026-10-11: archive the 90 d content_embeddings rows, then delete them (archive_first true).
     import db_retention as dr
     doc = _registry()
     assert validate(doc) == []
     row = next(r for r in doc["policies"] if r["table"] == "content_embeddings")
-    assert row["class"] == "DELETE" and row["window_days"] == 90 and row["archive_first"] is False
+    assert row["class"] == "DELETE" and row["window_days"] == 90 and row["archive_first"] is True
     assert "SOLE owner" in row["reason"]
     enforced = {t: (d, a) for t, _c, d, a in dr.enforced_policies(doc)}
-    assert enforced["content_embeddings"] == (90, False)          # default: the inherited hard DELETE
-    row["archive_first"] = True
-    assert {t: a for t, _c, _d, a in dr.enforced_policies(doc)}["content_embeddings"] is True
+    assert enforced["content_embeddings"] == (90, True)
+    row["archive_first"] = False
+    assert {t: a for t, _c, _d, a in dr.enforced_policies(doc)}["content_embeddings"] is False
 
 
 @pytest.mark.parametrize("table,value,needle", [
