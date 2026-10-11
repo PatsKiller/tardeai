@@ -23,6 +23,8 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only.
+    ("refactor_shards_05_08_locks_20261011", ["tests/test_refactor_shards_05_08_locks_20261011.py"]),
     # ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work.
     ("refactor_shard_05_20261011", ["tests/test_refactor_shard_05_20261011.py"]),
     ("refactor_shard_07_20261011", ["tests/test_refactor_shard_07_20261011.py"]),

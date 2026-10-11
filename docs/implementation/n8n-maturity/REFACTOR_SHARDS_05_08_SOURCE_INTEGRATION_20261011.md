@@ -29,8 +29,14 @@ executor base names. Only this redundant metadata is removed; fake child-environ
 effective report-mode child environment identical. Named-variable evidence and report-mode closure holds remain.
 
 The approved selected cron snapshot is dated `2026-10-11T17:05:28.513179+00:00`; the full cron census and timer
-runtime are NOT_MEASURED. The nine original missing-lock proposals remain operator packets. Three belong to
+runtime are NOT_MEASURED. Eight genuinely missing-lock proposals remain operator packets. Three belong to
 already retired lanes and require ownership reconciliation before any installation. No cron line or lock is installed.
+
+The governor and score feeder reuse the existing `safe_flock.sh` PID guards at `/tmp/hermes_scope_governor.lock`
+and `/tmp/hermes_event_feeder.lock`, respectively. Both executor kinds are `safe_flock`; OS `flock` would not share
+their PID guard. This corrects the governor's proposed hyphen path and both incorrect OS-lock kinds. A frozen
+22-lane approved-cron regression audits every existing kind/path and distinguishes eight proposals (five ACTIVE,
+three RETIRED). Before correction it reports three failures and 24 passes; no scheduler or lock is run by these tests.
 
 The four shard fake suites and main normalizer deduplication test pass under a scratch minimal environment,
 empty dotenv, nodeps and pre-import DB/socket/production-file guards inherited by subprocesses. Source registry,

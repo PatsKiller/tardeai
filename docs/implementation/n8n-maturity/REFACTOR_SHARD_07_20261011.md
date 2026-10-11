@@ -16,13 +16,13 @@ The approved scoped cron snapshot is dated 2026-10-11T17:05:28.513179+00:00. Its
 |---|---|---|---|
 | document-mentions-backfill | `scripts/backfill_document_mentions.py --all --limit 4000 --apply` | `/tmp/document_mentions_backfill.lock` | False |
 | aegis-evening-packet | `scripts/aegis_evening_packet.py` | `/tmp/aegis_evening_packet.lock` | False |
-| hermes-scope-governor | `scripts/hermes_scope_governor.py --apply` | `/tmp/hermes-scope-governor.lock` | True |
+| hermes-scope-governor | `scripts/hermes_scope_governor.py --apply` | `/tmp/hermes_scope_governor.lock` (`safe_flock`, existing PID guard) | False |
 | iris-proposal-curator | `scripts/iris_proposal_curator.py --apply` | `/tmp/iris-proposal-curator.lock` | True |
 | price-db-sync | `scripts/price_db_sync.py` | `/tmp/price-db-sync.lock` | True |
 | sync-dividend-data | `scripts/sync_dividend_data.py` | `/tmp/sync-dividend-data.lock` | True |
 | watch-valuation-backfill | `scripts/watch_valuation_backfill.py --limit 400` | `/tmp/watch_valuation_backfill.lock` | False |
 
-The governor’s current safe_flock.sh is a PID-file wrapper; it does not provide an outer flock. Its proposed flock and the three cron lines without any lock require a separate operator packet. Other proposed lock paths equal their observed outer flock paths. The document backfill timeout is the observed 25 minutes; other proposed timeouts without an observed timeout remain source defaults.
+The governor’s current safe_flock.sh is a PID-file wrapper. The integration reuses its exact kind and underscore path; no governor outer flock is proposed. Only the three cron lines without any lock need a separate operator packet. Other existing locks retain their observed kind and path. The document backfill timeout is the observed 25 minutes; other proposed timeouts without an observed timeout remain source defaults. This supersedes the original shard07 governor-lock proposal without changing the scheduler.
 
 All seven env allowlists stay in report mode: complete real-path shared import closure has not been proven. Entrypoint loaders copy only named environment keys. No broker names occur in proposed env_names. Shared import closure, partial provider failure semantics and compound/model/timer owners need their owning shared work before enforce mode or runtime readiness.
 

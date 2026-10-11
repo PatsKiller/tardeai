@@ -1436,16 +1436,16 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `6084f82ac5b5` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `39f879c0e74f` |
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n | review_required | OK | `d68078918c5d` |
-| `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration | review_required | OK | `78924f61c48d` |
+| `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration | review_required | OK | `ece79fe32767` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_05_20261011.md` | Refactor shard 05 — 2026-10-11 source packet | review_required | MISSING HEADER | `2721ae4011cb` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_06_20261011.md` | Shard06 cron writer preview and receipt proposal (2026-10-11) | review_required | MISSING HEADER | `77a266619a2c` |
-| `docs/implementation/n8n-maturity/REFACTOR_SHARD_07_20261011.md` | Shard 07 source refactor | review_required | OK | `55d2a65a72a7` |
+| `docs/implementation/n8n-maturity/REFACTOR_SHARD_07_20261011.md` | Shard 07 source refactor | review_required | OK | `2f2c13ca6634` |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_08_20261011.md` | Refactor shard 08 | review_required | OK | `5d785957a2fd` |
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `5a9e9ad6c050` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a6874bcd3c32` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `529bca63c840` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `3236b2d00b09` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `376ee4d412cb` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `bbcf489b4a63` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `993baebfd7cf` |
 | `docs/implementation/n8n-parallel/00-baseline.md` | n8n parallel program — phase 0 baseline | review_required | OK | `743d99a3ee49` |

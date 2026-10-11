@@ -83,5 +83,7 @@ Procedure for any n8n change that this log records: `../N8N_ONBOARDING_STANDARD.
 
 Four ordered local merges preserve 22 DRAFT proposals and all reviewed main records. Fresh main already retired
 five proposed lanes, so only 17 remain ACTIVE source proposals; no runtime acceptance or inventory stage is inferred.
-Nine original lock proposals require operator reconciliation. [Integration source report](../REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md).
+Eight missing-lock proposals require operator reconciliation (five ACTIVE, three RETIRED). Governor and feeder reuse
+their existing underscore-path `safe_flock.sh` PID guards; their corrected executor kinds are `safe_flock`.
+[Integration source report](../REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md).
 No cron, systemd, n8n or runtime change; release remains blocked by operator review and stopped safety-gated profiles.

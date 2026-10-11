@@ -16472,10 +16472,10 @@
           "source": "config/n8n_run_allowlist.json"
         },
         {
-          "name": "/tmp/hermes-scope-governor.lock",
+          "name": "/tmp/hermes_scope_governor.lock",
           "kind": "lock",
           "direction": "read_write",
-          "source": "proposed outer flock; cron packet required"
+          "source": "Existing safe_flock.sh PID guard reused; exact approved cron snapshot 2026-10-11T17:05:28.513179+00:00"
         },
         {
           "name": "data/runtime/hermes-scope-governor_last.json",
@@ -17269,7 +17269,7 @@
           "name": "/tmp/hermes_event_feeder.lock",
           "kind": "lock",
           "direction": "read_write",
-          "source": "config/n8n_run_allowlist.json lock (flock)"
+          "source": "Existing safe_flock.sh PID guard reused; exact approved cron snapshot 2026-10-11T17:05:28.513179+00:00"
         },
         {
           "name": "data/runtime/hermes-score-event-feeder_last.json",
