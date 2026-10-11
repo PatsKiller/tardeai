@@ -8,6 +8,8 @@ Owner:       platform (n8n maturity program, Agent A supervises)
 Policy:      AGENTS.md 4.4.1 §9.3, §17, §23 (this file restates; where it differs, AGENTS.md wins). AGENTS.md 4.5.0
              §23.19 (PROPOSED, awaiting APPROVE_AGENTS_POLICY_4_5_0) makes this procedure mandatory. AGENTS.md
              4.6.0 §24 (PROPOSED, branch n8nmat/agents-4-6-0) adds the platform rules restated in rules 9–13 of §2.
+             AGENTS.md 5.2.0 §8.1 (PROPOSED, branch n8nmat/agents-5-2-0-validation) — validation before "working" —
+             is restated in the proof note of §1 and in steps 8, 9, 10 and 12.
 Companion:   docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md (monitoring, SIEM,
              Telegram, LLM remediation, workflow health contracts)
 Entry point: docs/implementation/n8n-maturity/N8N_CONFIGURATION.md (how n8n is configured on this host)
@@ -35,6 +37,17 @@ approval (`Expires-At: 2026-10-11T17:30:03-04:00`; AGENTS.md changes keep the op
 
 Do the steps in order. Each row: what to do, what proves it, and what authority it needs.
 
+**Proof note (restates AGENTS.md 5.2.0 §8.1; adds no rule).** A step is proven working only by (1) the unit and
+regression tests for what it touched under `TRADE_AI_CI=1`, (2) a quoted dry run, and (3) a forced fire — the lane,
+workflow or relay path triggered on demand exactly as its schedule would (through `coordination/run`, in the mode
+its stage allows, with the same argv, env, wrappers and lock), proven by a receipt, ledger row or log line dated
+after the trigger. Natural fires are then monitored, not awaited: nobody waits for one to call a step working. Where
+this checklist conditions a step on natural-schedule evidence (step 8, step 12, a `PAUSED` monitor's flip to
+`ACTIVE`), that condition stays. A forced `live` fire needs the grant the step needed; an overlapping natural fire
+must show `RUN_SKIPPED_LOCK` or a harmless run; the forced fire is recorded in the PR or the change-log row. No
+forced fire for a broker, order, stop, session or 2FA path, an operator-only surface, or a send that would reach the
+operator twice; a clock-gated lane's forced fire goes through its wrapper, and a deferral receipt is its proof.
+
 | # | Step | Enforced / proved by | Authority |
 |---|---|---|---|
 | 1 | **Inventory row first.** The job has a row in `docs/implementation/n8n-maturity/cron-inventory/` (classification, notes, `approval_status`). No job is migrated, modified, disabled, consolidated or retired until its row is Approved. | cron-inventory `README.md` (operator mandate 2026-10-09 ~21:50 ET, "cron freeze"); the change-log row lands in the same PR train | operator row approval |
@@ -44,11 +57,11 @@ Do the steps in order. Each row: what to do, what proves it, and what authority 
 | 5 | **Allowlist entry** in `config/n8n_run_allowlist.json`: exact cron argv, `lock` + `lock_kind`, `timeout_s`, non-empty `dry_run_arg`, `live_arg` (null at shadow), `output_signal` = the LaneRunReceipt path, `env_names`, `llm_route` for an `llm` lane. | `r1_class_admission` (d)/(e); gateway `FORBIDDEN_ROUTE_TOKENS`; `tests/test_n8n_run_allowlist_20261008.py` | same PR as step 6 |
 | 6 | **Registry row for the stage** (§3 below), with `dispatch.retry_policy` for the class and `adopted_from_generator` if the row was generated. One registry PR at a time. | `scripts/check_lane_registry.py --fail-on-new --state-drift --no-exemptions` (and `--n8n-live` on the host); `validate_dispatch_block` (:880); `scripts/reconcile_lane_registry.py --snapshot-in --write` must be a no-op | merged reviewed PR = operator decision (§23.11) |
 | 7 | **Remediation catalogue**: regenerate `config/n8n_remediation_catalogue.json` after the allowlist PR so the diagnoser knows the lane (or record why it is excluded). | `python3 scripts/build_remediation_catalogue.py --check`; companion standard §5 | agent PR; operator reviews the catalogue (decision 4) |
-| 8 | **Prove the shadow fire** on the natural schedule: `RUN_DONE` in mode `dry_run` in the coordination ledger, receipt and output_signal unchanged. | ledger `runs` rows + `RunReceipt@v2` `output_signal_mtime_before == after`; `scripts/lib/n8n_due.py` `compute_due` week sweep emits the lane `dry_run` only | none |
-| 9 | **Canary** (4.4.0): `dispatch.mode live`, `live_arg` set, allowlist lock equal to every `flock` lock in `scheduler.command_text`. One live fire with the cron line still present; the lock proves no double run. | `r1_canary_lock_matches` (:825); §23.12 | registry PR |
-| 10 | **Cutover** per wave: `_cutover.py --lane <id>` comments the exact line `# RETIRED <date> n8n-cutover <lane_id>`, flips the row to `kind: n8n`, `expression: "dispatcher"`, `stage: cutover`, writes `CutoverReceipt@v1`. | `scripts/pipelines/cutover/_cutover.py`; `CRON_PRESENT_WHILE_SCHEDULER_N8N` in `check_lane_registry` | one `cron` grant per wave naming every lane id |
+| 8 | **Prove the shadow fire** on the natural schedule: `RUN_DONE` in mode `dry_run` in the coordination ledger, receipt and output_signal unchanged. A forced `dry_run` fire proves the lane works first (AGENTS.md §8.1); this natural fire is the schedule proof and stays the gate. | ledger `runs` rows + `RunReceipt@v2` `output_signal_mtime_before == after`; `scripts/lib/n8n_due.py` `compute_due` week sweep emits the lane `dry_run` only | none |
+| 9 | **Canary** (4.4.0): `dispatch.mode live`, `live_arg` set, allowlist lock equal to every `flock` lock in `scheduler.command_text`. One live fire with the cron line still present; the lock proves no double run. The canary fire is the forced `live` run of AGENTS.md §8.1. | `r1_canary_lock_matches` (:825); §23.12 | registry PR |
+| 10 | **Cutover** per wave: `_cutover.py --lane <id>` comments the exact line `# RETIRED <date> n8n-cutover <lane_id>`, flips the row to `kind: n8n`, `expression: "dispatcher"`, `stage: cutover`, writes `CutoverReceipt@v1`. The cut-over lane is proven working by a forced dispatcher fire under the same grant (AGENTS.md §8.1). | `scripts/pipelines/cutover/_cutover.py`; `CRON_PRESENT_WHILE_SCHEDULER_N8N` in `check_lane_registry` | one `cron` grant per wave naming every lane id |
 | 11 | **Monitoring proof**: SIEM row on a controlled failure, diagnosis within cap or a recorded exclusion, notifier would send. | companion standard §6 (R6 per lane) | dry run first; live injection needs the selftest lane |
-| 12 | **Natural-schedule evidence after cutover** (2 cadences clean; weekly/monthly lanes on their natural fire). A wave fire is not natural evidence. | output_signal on the natural slot; §23.12 last bullet | none |
+| 12 | **Natural-schedule evidence after cutover** (2 cadences clean; weekly/monthly lanes on their natural fire). A wave fire is not natural evidence. It is monitored, not awaited: the lane was declared working on its forced fire (AGENTS.md §8.1). | output_signal on the natural slot; §23.12 last bullet | none |
 | 13 | **Inventory change-log row** for any retire / consolidate / cutover / install. | `cron-inventory/README.md` change log | in the same PR train |
 
 Rollback for every step is in §9. Nothing is ever deleted (§0 rail 6).
