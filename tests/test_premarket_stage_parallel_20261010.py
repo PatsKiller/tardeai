@@ -145,6 +145,20 @@ def test_committed_premarket_manifest_parallel_plan():
     assert len({s["id"] for s in st["steps"]}) == 37
 
 
+def test_wave_plan_p95_matches_readiness_rule():
+    """The wave plan's serial p95 must equal the readiness report's sum of p95 (same per-step rule): an
+    unverified partial p95_s never undercuts the design's upper bound."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import report_tranche_b_readiness as rtb  # noqa: E402
+    m = pm.load(PREMARKET)
+    steps = m["stages"]["premarket"]["steps"]
+    want = round(sum(rtb.step_duration(s.get("measured") or {})["p95_s"] for s in steps), 1)
+    assert pm.wave_plan(m, "premarket")["serial_p95_s"] == want
+    assert pm._p95({"measured": {"verified": False, "p95_s": 1.0, "upper_bound_p95_s": 444.8}}) == (444.8, False)
+    assert pm._p95({"measured": {"verified": True, "p95_s": 2.0, "upper_bound_p95_s": 9.0}}) == (2.0, True)
+    assert pm._p95({"measured": {"verified": False, "p95_s": 3.0}}) == (3.0, False)
+
+
 def test_real_premarket_runner_dry_run_prints_waves_executes_nothing(tmp_path):
     env = {"HOME": os.environ.get("HOME", "/tmp"), "PATH": "/usr/bin:/bin", "PY": "/usr/bin/python3", "PIPELINE_TODAY_DOW": "3"}
     r = subprocess.run(["bash", str(PREMARKET_RUNNER), "--manifest", str(PREMARKET), "--project-root", str(tmp_path),

@@ -266,11 +266,16 @@ def plan_records(manifest: dict, stage: str) -> list[str]:
 
 
 def _p95(st: dict) -> tuple[float, bool]:
+    # Same rule as report_tranche_b_readiness.step_duration: a p95 counts as measured only when the
+    # design VERIFIED it; otherwise the PAM upper bound wins over a partial (unverified) p95_s, which can be
+    # a log-span lower bound (e.g. backtest_history_snapshot p95_s 1.0 vs upper bound 444.8).
     me = st.get("measured") or {}
     v = me.get("p95_s")
-    if isinstance(v, (int, float)):
-        return float(v), bool(me.get("verified"))
-    v = me.get("upper_bound_p95_s")
+    if me.get("verified") and isinstance(v, (int, float)):
+        return float(v), True
+    ub = me.get("upper_bound_p95_s")
+    if isinstance(ub, (int, float)):
+        return float(ub), False
     if isinstance(v, (int, float)):
         return float(v), False
     return float(timeout_seconds(st.get("timeout", "0"))), False
