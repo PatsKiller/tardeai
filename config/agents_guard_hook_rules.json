@@ -509,6 +509,22 @@
       ]
     },
     {
+      "id": "broker.execution_ops",
+      "family": "broker",
+      "section": "AGENTS.md 5.0.0 §24.10, §0 rule 2 (broker-execution unit operations only under an execution-ops grant)",
+      "action": "deny",
+      "enabled": true,
+      "reason": "Restarting or reloading a broker-execution unit needs an active per-incident operator 'execution-ops' grant naming the unit; a 'service' grant does not reach it.",
+      "grant_tier": "execution-ops",
+      "unit_regex": "^tradeai-active-trader-",
+      "verbs": [
+        "restart",
+        "try-restart",
+        "daemon-reload"
+      ],
+      "note": "Read by the liveops.service matcher in scripts/hooks/agents_guard_pretooluse.py: these verbs on these units are checked against the execution-ops grant instead of service; a bare daemon-reload counts as execution-ops only while that grant is active. Every other verb on these units stays liveops.service."
+    },
+    {
       "id": "liveops.cron",
       "family": "liveops",
       "section": "AGENTS.md §9.3 (installing, editing or removing a scheduler entry is operator-only), §17",
