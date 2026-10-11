@@ -1197,7 +1197,9 @@ GATES = [
     # incidents become one deduped system_health_events row per n8n:<lane>|kind; inbox accepts CRITICAL/URGENT.
     (
         "n8n_siem_bridge_20261010",
-        ["tests/test_n8n_siem_bridge_20261010.py"],
+        ["tests/test_n8n_siem_bridge_20261010.py",
+         # 2026-10-11: siem_critical_notify skips n8n:* bridge rows (the incident fan-in owns them).
+         "tests/test_siem_notify_n8n_single_route_20261011.py"],
     ),
     # LLM self-remediation for n8n lanes (REMEDIATION_PLAN §6, operator decisions 2026-10-09 23:38 ET): remediation
     # catalogue from the inventory, governed diagnosis (n8n_lane_failure_diagnosis), bounded actions, selftest lane.
@@ -3872,6 +3874,14 @@ GATES = [
         # tmp env files, synthetic values. The closure re-measure pins that no report lane flips.
         "grok_g8_g9_env_20261011",
         ["tests/test_grok_g8_g9_env_20261011.py"],
+    ),
+    (
+        # ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the
+        # release tree, and --alert/--send/--telegram as sender tokens. The n8n: SIEM skip is the
+        # g11 implementation; its own test is on the n8n_siem_bridge gate. Hermetic: tmp paths,
+        # psycopg2 stubbed only when the driver is absent.
+        "grok_g10_g12_20261011",
+        ["tests/test_grok_g10_g12_20261011.py"],
     ),
     (
         # ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator "n8n drives a governed lane": trade-ai-scalp-live

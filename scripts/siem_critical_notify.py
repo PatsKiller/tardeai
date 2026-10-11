@@ -11,6 +11,11 @@ flat 6h cooldown re-paged every long-lived open incident ~4x/day forever.
 State is a small json file keyed by incident signature (component|event_type|severity),
 holding the last-notified time and the event count at that time.
 
+n8n bridge rows are NOT paged here. Components starting ``n8n:`` are written by the n8n-siem-bridge
+(scripts/n8n_siem_bridge.py) from the same findings the n8n incident fan-in already routes to the incident
+notifier; paging them here too sent every n8n item twice (fan-in alert + SIEM P0 digest). The incident fan-in
+owns them; they still show on the SIEM dashboard.
+
 Cron: every 15 min.
 """
 import json
@@ -25,6 +30,7 @@ STATE = Path.home() / ".local" / "state" / "siem_notified.json"
 COOLDOWN_H = 24   # a still-open incident group re-pages at most once per day...
 GROWTH_PCT = 0.5  # ...unless its event count grew by more than this since the last page
 RECENT_H = 2      # only alert on incidents whose last event was within this window (not stale 14d history)
+N8N_BRIDGE_PREFIX = "n8n:"  # components owned by the n8n incident fan-in route (single route per item)
 
 
 def _within(iso, hours):
@@ -36,6 +42,18 @@ def _within(iso, hours):
         return (now - dt).total_seconds() <= hours * 3600
     except Exception:
         return False
+
+
+def _is_n8n_bridge(inc):
+    """True for an incident built from n8n-siem-bridge rows (component ``n8n:<lane>``)."""
+    return str(inc.get("component") or "").startswith(N8N_BRIDGE_PREFIX)
+
+
+def select_incidents(correlated):
+    """The incidents this notifier pages: recent P0/P1, excluding n8n bridge rows (the fan-in pages those)."""
+    return [c for c in correlated or []
+            if c.get("severity") in ("P0", "P1") and _within(c.get("last"), RECENT_H)
+            and not _is_n8n_bridge(c)]
 
 
 def _load_state():
@@ -73,8 +91,7 @@ def main():
     except Exception as e:
         print(f"[siem-notify] could not read SIEM: {e}"); return 0
 
-    incidents = [c for c in data.get("correlated", [])
-                 if c.get("severity") in ("P0", "P1") and _within(c.get("last"), RECENT_H)]
+    incidents = select_incidents(data.get("correlated", []))
     state = _load_state()
     # migrate legacy entries (bare float timestamp → dict; event baseline unknown)
     state = {k: (v if isinstance(v, dict) else {"t": v, "events": None})
