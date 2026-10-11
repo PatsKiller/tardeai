@@ -5334,13 +5334,15 @@
     }
   ],
   "worktree_base_sha": "65337da5366b469c8478b198187201bd37671bc2",
-  "validated_source_head": "9356f8a62ec7e320e5556e1401b6123322c6d737",
+  "validated_source_head": "f1e266ba5d7b1ec9a17abc3857b1cdc4b60d0217",
   "validation": {
     "evidence_class": "TEST_ONLY",
-    "targeted_tests": 227,
+    "targeted_tests": 228,
     "existing_regressions": 106,
     "refusals": [],
     "full_integrated_pr_profile": "PENDING_ROOT",
-    "runtime": "NOT_MEASURED"
+    "runtime": "NOT_MEASURED",
+    "combined_tests": 334,
+    "evidence": "docs/_evidence/completion-119/04-06/targeted-04-06-final-owned-head.json"
   }
 }
