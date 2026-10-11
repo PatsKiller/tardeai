@@ -1324,7 +1324,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "Not inventoried per lane in dispatcher shadow wave D3: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop. No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
-      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L418. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none); it is NOT in this entry. Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
+      "source": "dispatcher shadow wave D3 (n8n-maturity, R1 class ingest), cron:L418. SHADOW ONLY and inert until AGENTS.md 4.4.0 is ACTIVE: live_arg null (no live mode exists), the registry row carries only an r1_pending block. lock and lock_kind are the live cron line's. The cron line's live argument is (none). CANARY (canary-wave1, 2026-10-11): live_arg [] = the cron line's argv exactly (scripts/research_insight_extractor.py with no argument runs run_default(dry_run=False)); the live fire runs under the cron line's own flock lock, so a slot the cron run holds ends RUN_SKIPPED_LOCK (no double run), and a sequential re-run in the same slot inserts nothing new (NOT EXISTS on research_insights.source_reference). Dry run from served CURRENT af292381c: exit 0, 0 files changed (n8n-maturity dispatch-shadow-wave3/SELECTION.md).",
       "command": [
         "$PY",
         "scripts/research_insight_extractor.py"
@@ -1335,7 +1335,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "market_gate": false,
       "output_signal": "data/runtime/research-insight-extractor_last.json"
     },

@@ -58,11 +58,11 @@ EXCLUDED = ("news-ingestion", "news-ingestion-tail", "sec-filings-feed")
 
 #: The crontab lines (2026-10-11, crontab -l) that share a script with a W4 row; each W4 match must hit exactly one.
 SIBLING_LINES = [
-    "cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1",
+    "cd $PROJ && flock -n /tmp/finviz_enrichment.lock $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1",
     "cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/finviz_enrichment_scalp_hot.lock timeout 240 bash "
     "scripts/market_day_gate.sh $PY scripts/finviz_enrichment.py --scalp-hot >> logs/finviz_enrichment_scalp_hot.log 2>&1",
-    "cd $PROJ && $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1",
-    "cd $PROJ && $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1",
+    "cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1",
+    "cd $PROJ && flock -n /tmp/social_ingest_all.lock $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1",
     "cd $PROJ && $PY scripts/social_ingest.py --source stocktwits --discover >> logs/social_ingest.log 2>&1",
 ]
 
@@ -107,19 +107,21 @@ def test_allowlist_entry_is_shadow_only_and_carries_no_broker_credential(lane):
 
 
 @pytest.mark.parametrize("lane", sorted(W4))
-def test_lock_is_proposed_not_claimed_so_canary_stays_blocked(lane):
-    """The three cron lines have no flock today: the allowlist names the lock a cron packet must add, and the
-    canary gate (lock equal to every flock lock in command_text) refuses until that packet lands."""
+def test_cron_lock_is_installed_and_matches_but_the_row_stays_shadow(lane):
+    """The w4-flock packet is installed (crontab -l 2026-10-11 ~10:10 ET: each line carries `flock -n <lock>`), and
+    canary wave 1 synced scheduler.command_text to the flocked line: the canary lock gate now passes on a simulated
+    canary, but the row stays shadow (live_arg null) until it has a RUN_DONE dry_run (§23.12 / canary-wave1)."""
     e = ALLOW[lane]
     text = ROWS[lane]["scheduler"]["command_text"]
     assert e["lock_kind"] == "flock" and e["lock"].startswith("/tmp/")
-    assert LD.cron_flock_locks(text) == []
-    assert "PROPOSED" in e["source"] and e["lock"] in e["source"]
+    assert LD.cron_flock_locks(text) == [e["lock"]]
+    assert e["lock"] in e["source"]
+    assert ROWS[lane]["scheduler"]["stage"] == "shadow" and e["live_arg"] is None
     canary = json.loads(json.dumps(ROWS[lane]))
     canary["scheduler"]["stage"] = "canary"
     canary["dispatch"]["mode"] = "live"
-    ok, why = LD.r1_canary_lock_matches(canary, dict(e, live_arg=[]))
-    assert not ok, why
+    assert LD.r1_canary_lock_matches(canary, dict(e, live_arg=[])) == (True, "canary_on_cron")
+    assert LD.r1_canary_lock_matches(canary, e)[0] is False  # live_arg null: no live fire from a shadow row
 
 
 def test_each_match_hits_exactly_its_own_cron_line():

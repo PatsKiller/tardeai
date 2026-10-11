@@ -10160,7 +10160,7 @@
         "kind": "cron",
         "expression": "50 6,12,18 * * *",
         "match": "scripts/research_insight_extractor.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D3",
         "command_text": "cd $PROJ && flock -n /tmp/research_insight_extractor.lock $PY scripts/research_insight_extractor.py >> logs/research_insight_extractor.log 2>&1"
       },
@@ -10190,7 +10190,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "50 6,12,18 * * *"
         ],
@@ -10199,6 +10199,13 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "canary": {
+        "wave": "canary-wave1",
+        "since": "2026-10-11",
+        "evidence": "coordination ledger (mode=ro) 2026-10-11: natural dispatcher dry_run fires d:research-insight-extractor:dry_run:20261010T1850 RUN_DONE exit 0 4.609 s (output_signal mtime unchanged) and 20261011T0650 RUN_SKIPPED_LOCK exit 75 (cron held /tmp/research_insight_extractor.lock); 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED.",
+        "lock_proof": "scheduler.command_text == the live cron line L418 command; its only flock lock /tmp/research_insight_extractor.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
+        "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
       }
     },
     {
@@ -10936,7 +10943,7 @@
         "match": "scripts/finviz_enrichment.py >> logs/finviz_enrichment.log",
         "stage": "shadow",
         "wave": "W4",
-        "command_text": "cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/finviz_enrichment.lock $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -11017,7 +11024,7 @@
         "match": "scripts/sec_data_ingest.py",
         "stage": "shadow",
         "wave": "W4",
-        "command_text": "cd $PROJ && $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -11065,7 +11072,7 @@
         "match": "scripts/social_ingest.py --source all",
         "stage": "shadow",
         "wave": "W4",
-        "command_text": "cd $PROJ && $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/social_ingest_all.lock $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
