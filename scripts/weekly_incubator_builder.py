@@ -18,18 +18,17 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from session13_db import get_conn
-from multi_strategy_classifier import load_all_strategies, classify_symbol, load_enrichment_cache
+def _load_runtime():
+    """Defer environment-loading imports and telemetry until a validated real run."""
+    global get_conn, load_all_strategies, classify_symbol, load_enrichment_cache, PipelineRun
+    from session13_db import get_conn
+    from multi_strategy_classifier import load_all_strategies, classify_symbol, load_enrichment_cache
+    try:
+        from pipeline_registry import PipelineRun
+    except ImportError:
+        from contextlib import nullcontext
+        PipelineRun = lambda *_a, **_k: nullcontext()
 
-# Pipeline telemetry
-try:
-    from pipeline_registry import PipelineRun
-except ImportError:
-    class PipelineRun:
-        def __init__(self, *a, **k): pass
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def rows(self, n): pass
 
 log = logging.getLogger("weekly_incubator_builder")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -226,19 +225,37 @@ def upsert_ticker(conn, tick, multi_source_map, strategy_id=None, match_info=Non
     return "rolled_on" if is_insert else "stayed"
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Weekly incubator universe builder")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Weekly incubator universe builder", allow_abbrev=False)
     parser.add_argument("--run-label", type=str, default=None, help="Run label for tracking")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing to DB")
     parser.add_argument("--apply", action="store_true", help="Write changes to DB")
     parser.add_argument("--limit", type=int, default=200, help="Max tickers to process (default 200)")
     parser.add_argument("--llm", action="store_true", help="Enable LLM-assisted classification via qwen3:14b")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    if not args.dry_run and not args.apply:
+    if args.dry_run:
+        print("DRY-RUN weekly-incubator-builder: would classify recent scans and refresh incubator_universe/events; no DB, telemetry, provider or model calls performed")
+        return 0
+    if not args.apply:
         log.error("Must specify --dry-run or --apply")
-        sys.exit(1)
+        return 1
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        _load_runtime()
+        with PipelineRun("weekly_incubator_builder"):
+            summary = _execute(args)
+    except Exception as exc:
+        write_lane_receipt("weekly-incubator-builder", ok=False, exit_code=1, started_at=started,
+                           script="weekly_incubator_builder.py", error=f"{type(exc).__name__}: {exc}")
+        return 1
+    write_lane_receipt("weekly-incubator-builder", ok=True, exit_code=0, started_at=started,
+                       script="weekly_incubator_builder.py", summary=summary)
+    return 0
 
+
+def _execute(args):
     # Load all strategies + enrichment data dynamically
     all_strategies = load_all_strategies()
     enrichment = load_enrichment_cache()
@@ -323,12 +340,13 @@ def main():
     except Exception:
         conn.rollback()
         log.exception("weekly_incubator_builder failed")
-        sys.exit(1)
+        raise
     finally:
         conn.close()
+    return {"symbols": len(tickers), "strategy_matches": total_strategy_matches,
+            "rolled_on": rolled_on, "stayed": stayed, "total_active": total_active}
 
 
 if __name__ == "__main__":
-    with PipelineRun("weekly_incubator_builder") as _run:
-        main()
+    raise SystemExit(main())
 

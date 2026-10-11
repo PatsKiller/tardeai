@@ -4181,6 +4181,11 @@ GATES = [
         ["tests/test_portfolio_reports_state_root_20261009.py"],
     ),
     (
+        # R2-02: structural dry runs, exact cron argv, failed-ok_at carry, no broker env.
+        "refactor_shard_02_20261011",
+        ["tests/test_refactor_shard_02_20261011.py"],
+    ),
+    (
         # ANCHOR: REFACTOR_W1_20261010 — n8n refactor wave 1: --dry-run that cannot reach a write/send
         # (read-only DB session or return-before-writer, asserted by source ordering), LaneRunReceipt@v1
         # <state_root>/data/runtime/<lane_id>_last.json with ok_at only on success, findings exit 0 /

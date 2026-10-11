@@ -26,6 +26,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
 
 
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "SEC_USER_AGENT")
+
+
 def _load_env() -> None:
     f = ROOT / ".env"
     if f.is_file():
@@ -33,7 +36,8 @@ def _load_env() -> None:
             s = raw.strip()
             if s and not s.startswith("#") and "=" in s:
                 k, v = s.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+                if k.strip() in _ENV_KEYS:
+                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
 def universe(limit: int) -> list[str]:
@@ -123,13 +127,35 @@ def ingest_documents(conn, sym: str, cik: str, filings: list, *, fetch_json=None
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="SEC company facts -> sec_xbrl")
+    ap = argparse.ArgumentParser(description="SEC company facts -> sec_xbrl", allow_abbrev=False)
     ap.add_argument("--symbols", default="")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="structural plan; wins over --apply")
     ap.add_argument("--since-days", type=int, default=45,
                     help="8-K window for catalyst events and EX-99.1 documents (default 45; a one-off "
                          "wider window backfills an earlier quarter's release, e.g. DELL Q1 FY27 on 2026-05-28)")
     a = ap.parse_args(argv)
+    if a.dry_run:
+        print("DRY-RUN sec-fundamentals-ingest: would ingest SEC facts, filing events and documents for the priority universe; no DB, environment file or network calls performed")
+        return 0
+    if not a.apply:
+        _execute(a)  # Preserve the legacy provider-backed, non-applying preview.
+        return 0
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started = now_iso()
+    try:
+        summary = _execute(a)
+    except Exception as exc:
+        write_lane_receipt("sec-fundamentals-ingest", ok=False, exit_code=1, started_at=started,
+                           script="sec_fundamentals_ingest.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    rc = 1 if summary["failed"] else 0
+    write_lane_receipt("sec-fundamentals-ingest", ok=rc == 0, exit_code=rc, started_at=started,
+                       script="sec_fundamentals_ingest.py", summary=summary)
+    return rc
+
+
+def _execute(a):
     _load_env()
     import psycopg2
     import psycopg2.extras
@@ -197,7 +223,11 @@ def main(argv=None) -> int:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     print(json.dumps({"mode": "apply" if a.apply else "dry_run", "symbols": len(syms), "statuses": counts,
                       "results": report}, indent=1, default=str))
-    return 0
+    return {"symbols": len(syms), "failed": sum(r.get("status") == "ERROR" or bool(r.get("filing_documents_error")) for r in report),
+            "statuses": counts, "facts_inserted": sum(r.get("inserted", 0) for r in report),
+            "facts_updated": sum(r.get("updated", 0) for r in report),
+            "filing_events_new": sum(r.get("filing_events_new", 0) for r in report),
+            "filing_documents_new": sum(r.get("filing_documents_new", 0) for r in report)}
 
 
 if __name__ == "__main__":

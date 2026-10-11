@@ -11,11 +11,12 @@ source_performance table.
   python3 scripts/source_outcome_attribution.py            # compute + upsert
   python3 scripts/source_outcome_attribution.py --dry-run
 
-The dry run computes on a READ ONLY session and returns BEFORE write_rows() (the only INSERT/commit)
-is reachable (AGENTS.md §6). A real run writes data/runtime/source_outcome_attribution_last.json
+Explicit --dry-run prints a structural plan before loading DB settings or connecting.
+The run(dry_run=True) Python preview remains available on a READ ONLY session. A real run writes data/runtime/source_outcome_attribution_last.json
 (LaneRunReceipt@v1; ok_at only on success) under the persistent state root and exits 1 on failure.
 scripts/source_maturity_chain.py runs this, source_maturity and source_vetting_ladder as one lane.
 """
+import argparse
 import os, sys, json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,15 +25,22 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 LOOKBACK_DAYS = 90       # news + trade window
 ATTRIB_DAYS = 5          # a mention counts if it precedes entry by <= this
-RECEIPT_NAME = "source_outcome_attribution"
-if (ROOT / ".env").exists():  # absent in a bare checkout/test tree; the served release symlinks it
-    for ln in (ROOT / ".env").read_text().splitlines():
-        if "=" in ln and not ln.strip().startswith("#"):
-            k, _, v = ln.partition("="); os.environ.setdefault(k.strip(), v.strip().strip("'\""))
-import psycopg2
+RECEIPT_NAME = "source_outcome_attribution"  # retained for existing chain consumers
+LANE_ID = "source-outcome-attribution"
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+
+
+def _load_env():
+    """Load this lane's named DB settings only, after argument validation."""
+    from dotenv import dotenv_values
+    values = dotenv_values(ROOT / ".env")
+    for name in _ENV_KEYS:
+        if values.get(name) is not None:
+            os.environ.setdefault(name, values[name])
 
 
 def _db():
+    import psycopg2
     return psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
                             dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
                             password=os.getenv("DB_PASSWORD"))
@@ -143,21 +151,26 @@ def run(dry_run=False):
 
 
 def main(argv=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if "--dry-run" in argv:
-        run(dry_run=True)
+    ap = argparse.ArgumentParser(description="Attribute source outcomes", allow_abbrev=False)
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        print("DRY-RUN source-outcome-attribution: would compute source attribution and upsert source_performance; no DB or provider calls performed")
         return 0
     from lib.lane_last_receipt import now_iso, write_receipt
 
     started = now_iso()
     try:
+        _load_env()
         rep = run()
     except Exception as exc:  # noqa: BLE001 -- recorded in the receipt, then a non-zero exit
-        write_receipt(RECEIPT_NAME, ok=False, error=f"{type(exc).__name__}: {exc}", started_at=started)
+        for name in (RECEIPT_NAME, LANE_ID):
+            write_receipt(name, ok=False, exit_code=1, error=f"{type(exc).__name__}: {exc}", started_at=started)
         print(f"source_outcome_attribution FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
-    write_receipt(RECEIPT_NAME, ok=True, started_at=started,
-                  summary={k: rep[k] for k in ("sources", "upserted", "with_matched_trades")})
+    for name in (RECEIPT_NAME, LANE_ID):
+        write_receipt(name, ok=True, exit_code=0, started_at=started,
+                      summary={k: rep[k] for k in ("sources", "upserted", "with_matched_trades")})
     return 0
 
 

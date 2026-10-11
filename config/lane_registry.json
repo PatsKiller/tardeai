@@ -4744,16 +4744,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 6 * * *",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/build_lesson_candidates.py --apply >> logs/build_lesson_candidates.log 2>&1",
-        "match": "scripts/build_lesson_candidates.py --apply"
+        "command_text": "40 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/build_lesson_candidates.py --apply >> logs/build_lesson_candidates.log 2>&1",
+        "match": "scripts/build_lesson_candidates.py --apply",
+        "stage": "shadow",
+        "wave": "R2-02"
       },
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/cio/lesson_candidates.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/build-lesson-candidates_last.json",
+        "key": "ok_at"
       },
-      "note": "Declared 2026-09-24 (agentic-memory tranche 1): outcome_observations -> LessonCandidate@v2 (OUTCOME_DERIVED stamp). Was in undeclared_baseline.",
+      "note": "Declared 2026-09-24 (agentic-memory tranche 1): outcome_observations -> LessonCandidate@v2 (OUTCOME_DERIVED stamp). Was in undeclared_baseline. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P07",
       "rationalization": {
@@ -4778,6 +4781,29 @@
         "stage": "premarket",
         "step_id": "build_lesson_candidates",
         "on": "2026-10-11"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "40 6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "previous_output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/lesson_candidates.jsonl"
+      },
+      "refactor_evidence": {
+        "class": "SOURCE_ONLY",
+        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
+        "native_approval": true,
+        "worktree": "refactor-shard-02",
+        "runtime_activation": "NOT_PERFORMED",
+        "contract_status": "DRAFT"
       }
     },
     {
@@ -5267,16 +5293,19 @@
       "scheduler": {
         "kind": "cron",
         "expression": "30 21 * * *",
-        "command_text": "sec_fundamentals_ingest.py --apply",
-        "match": "sec_fundamentals_ingest.py"
+        "command_text": "30 21 * * * cd $PROJ && flock -n /tmp/sec_fundamentals_ingest.lock $PY scripts/sec_fundamentals_ingest.py --apply >> logs/sec_fundamentals_ingest.log 2>&1  # TRADEAI_LANE sec-fundamentals-ingest (operator 2026-09-27 fundamentals F1, PR #1292)",
+        "match": "sec_fundamentals_ingest.py",
+        "stage": "shadow",
+        "wave": "R2-02"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/sec_fundamentals_ingest.log"
+        "kind": "json_key",
+        "path": "data/runtime/sec-fundamentals-ingest_last.json",
+        "key": "ok_at"
       },
-      "note": "Operator 2026-09-27 fundamentals plan F1: SEC company facts -> sec_xbrl for priority requests, options desk and the debt-ordered queue (ETFs skipped). The only writer of sec_xbrl.",
+      "note": "Operator 2026-09-27 fundamentals plan F1: SEC company facts -> sec_xbrl for priority requests, options desk and the debt-ordered queue (ETFs skipped). The only writer of sec_xbrl. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P03",
       "rationalization": {
@@ -5289,7 +5318,30 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 21 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "previous_output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/sec_fundamentals_ingest.log"
+      },
+      "refactor_evidence": {
+        "class": "SOURCE_ONLY",
+        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
+        "native_approval": true,
+        "worktree": "refactor-shard-02",
+        "runtime_activation": "NOT_PERFORMED",
+        "contract_status": "DRAFT"
+      }
     },
     {
       "lane_id": "platform-conformance-audit",
@@ -13050,14 +13102,17 @@
         "match": "scripts/market_regime_collector.py",
         "schedules": [
           "5 16 * * 1-5"
-        ]
+        ],
+        "command_text": "5 16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_market_regime_collector.lock $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && flock -n /tmp/tradeai_market_regime_classifier.lock $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1",
+        "stage": "shadow",
+        "wave": "R2-02"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/regime_collector.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/market-regime-collector_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
@@ -13072,9 +13127,36 @@
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED. | Train 3 integration: the 06:30 line is absorbed into premarket-data-pipeline (C1, train 2), so this shadow row covers the 16:05 line only (expression, schedules, command_text, dispatch.cron).",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base): Fri 16:05 -> Mon 16:05 once the 06:30 line is absorbed",
-      "c1_note": "C1 2026-10-11: cron:L199 (step premarket/premarket/market_regime_collector_am) absorbed by premarket-data-pipeline; the row stays ACTIVE for its other live line(s) and retires when the last one is absorbed. Schedules reduced to the 16:05 slot (L213, `5 16 * * 1-5 ... market_regime_collector.py --apply && ... market_regime_classifier.py --apply`), which stays on cron: after_close is not admissible (operator ruling 2026-10-11), so this row is NOT retired. Hand-curated from 2026-10-11 so the reconciler keeps the reduced schedule."
+      "c1_note": "C1 2026-10-11: cron:L199 (step premarket/premarket/market_regime_collector_am) absorbed by premarket-data-pipeline; the row stays ACTIVE for its other live line(s) and retires when the last one is absorbed. Schedules reduced to the 16:05 slot (L213, `5 16 * * 1-5 ... market_regime_collector.py --apply && ... market_regime_classifier.py --apply`), which stays on cron: after_close is not admissible (operator ruling 2026-10-11), so this row is NOT retired. Hand-curated from 2026-10-11 so the reconciler keeps the reduced schedule.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "previous_output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/regime_collector.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
+      "refactor_evidence": {
+        "class": "SOURCE_ONLY",
+        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
+        "native_approval": true,
+        "worktree": "refactor-shard-02",
+        "runtime_activation": "NOT_PERFORMED",
+        "contract_status": "DRAFT"
+      }
     },
     {
       "lane_id": "market-regime-classifier",
@@ -13289,15 +13371,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 5 * * *",
-        "match": "scripts/source_outcome_attribution.py"
+        "match": "scripts/source_outcome_attribution.py",
+        "command_text": "45 5 * * * cd $PROJ && flock -n /tmp/source_maturity.lock bash -c \"$PY scripts/source_outcome_attribution.py && $PY scripts/source_maturity.py && $PY scripts/source_vetting_ladder.py\" >> logs/source_maturity.log 2>&1",
+        "stage": "shadow",
+        "wave": "R2-02"
       },
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/source_vetting_actions_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/source_vetting_ladder.py:18,63 ACTIONS.write_text(updated_at, actions) - last step of the attribution->maturity->vetting chain (source_maturity.py:21,126 also writes source_maturity_latest.json); host mtime 2026-10-09T05:45:02"
+        "kind": "json_key",
+        "path": "data/runtime/source-outcome-attribution_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P13",
@@ -13312,7 +13396,7 @@
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "state_since": "2026-10-11",
       "superseded_by": "premarket-data-pipeline",
@@ -13325,6 +13409,34 @@
         "stage": "premarket",
         "step_id": "source_outcome_attribution",
         "on": "2026-10-11"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "45 5 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "learn",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "previous_output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/source_vetting_actions_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/source_vetting_ladder.py:18,63 ACTIONS.write_text(updated_at, actions) - last step of the attribution->maturity->vetting chain (source_maturity.py:21,126 also writes source_maturity_latest.json); host mtime 2026-10-09T05:45:02"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
+      "refactor_evidence": {
+        "class": "SOURCE_ONLY",
+        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
+        "native_approval": true,
+        "worktree": "refactor-shard-02",
+        "runtime_activation": "NOT_PERFORMED",
+        "contract_status": "DRAFT"
       }
     },
     {
@@ -13557,15 +13669,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "35 6 * * *",
-        "match": "scripts/research_intelligence_materialize.py"
+        "match": "scripts/research_intelligence_materialize.py",
+        "command_text": "35 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_materialize_cron.lock $PY scripts/research_intelligence_materialize.py >> logs/ri_materialize.log 2>&1  # RI v3.1 snapshot rebuild after overnight content",
+        "stage": "shadow",
+        "wave": "R2-02"
       },
       "expected_cadence_hours": 24.0,
       "state": "RETIRED",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/ri_snapshots/top.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/research_intelligence_materialize.py:36 SNAP_DIR, per-lane {lane}.json written at :96-98 (top.json); host mtime 2026-10-09T06:35:02"
+        "kind": "json_key",
+        "path": "data/runtime/research-intelligence-materialize_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P10",
@@ -13580,7 +13694,7 @@
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "state_since": "2026-10-11",
       "superseded_by": "premarket-data-pipeline",
@@ -13593,6 +13707,34 @@
         "stage": "premarket",
         "step_id": "research_intelligence_materialize",
         "on": "2026-10-11"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "35 6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "previous_output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/ri_snapshots/top.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/research_intelligence_materialize.py:36 SNAP_DIR, per-lane {lane}.json written at :96-98 (top.json); host mtime 2026-10-09T06:35:02"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
+      "refactor_evidence": {
+        "class": "SOURCE_ONLY",
+        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
+        "native_approval": true,
+        "worktree": "refactor-shard-02",
+        "runtime_activation": "NOT_PERFORMED",
+        "contract_status": "DRAFT"
       }
     },
     {
@@ -15171,14 +15313,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 19 * * 0",
-        "match": "scripts/weekly_incubator_builder.py"
+        "match": "scripts/weekly_incubator_builder.py",
+        "command_text": "0 19 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1",
+        "stage": "shadow",
+        "wave": "R2-02"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/incubator_builder.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/weekly-incubator-builder_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P07",
@@ -15192,10 +15337,36 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. R2-02: source-only structural shadow candidate; cron remains authoritative. scheduler.wave is shard provenance R2-02; dispatch.wave W4 is the existing valid enum. Natural runtime proof NOT_MEASURED.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 19 * * 0"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      },
+      "previous_output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/incubator_builder.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-11",
+      "adopted_reason": "R2-02 source shadow candidate; preserve the reviewed dispatch intent when reconciling generated cron rows. Health contract remains DRAFT; operator review is required before activation.",
+      "refactor_evidence": {
+        "class": "SOURCE_ONLY",
+        "cron_snapshot_as_of": "2026-10-11T14:57:08.697196+00:00",
+        "native_approval": true,
+        "worktree": "refactor-shard-02",
+        "runtime_activation": "NOT_PERFORMED",
+        "contract_status": "DRAFT"
+      }
     },
     {
       "lane_id": "send-telegram-proposal-alert",
