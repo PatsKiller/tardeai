@@ -157,6 +157,13 @@ evaluates `degraded` / `failed` checks with the contract baseline; (3) the diagn
 - The heartbeat watcher's host lane (`heartbeat-watch`, not yet a registry row) will check every registry row's
   output_signal at 2× cadence, including stay-behind cron lanes (L4, L5); until it exists the supervisor breach
   detector timer and the lab watchdog (`tradeai-n8n-lab-watchdog.timer`, n8n `/healthz` every 5 min) cover it.
+- **Breach detector kinds and their fan-in severity** (`scripts/n8n_incident_fanin.py` `SEV`, `breach_severity`):
+  HUNG, FAILING, MEMORY_UNREACHABLE → P1; NO_OUTPUT, SILENT, BACKLOG, SLO_MISS → P2; UNGOVERNED and anything
+  unmapped → P3. The two W1-9 kinds (2026-10-11, operator ruling R11 "R11 yes"; `MONITOR_FOLD_COVERAGE_W1-9.md`):
+  **STALE_OUTPUT** takes its freshness contract's own `severity` (P1/P2/P3, P0 → P1, none → P2), one finding per
+  contract; **INPUT_STARVATION** is P2 for STARVED and P3 for NO_ELIGIBLE_INPUT and UNKNOWN, one finding per status.
+  Both stay record-only in the detector (no L1–L5); the fan-in carries them to the notifier. Test:
+  `tests/test_n8n_incident_fanin_monitor_fold_20261011.py`.
 
 ### 4.3 Telegram routing (L8) — one chokepoint
 
