@@ -310,6 +310,9 @@ def test_guard_scope_installed_consistently_or_not_at_all():
         ("systemctl --user daemon-reload && systemctl --user restart tradeai-active-trader-motion.service", "execution-ops"),
         ("mv ~/.config/systemd/user/tradeai-active-trader-motion.service.d/95-code-root-current.conf /tmp/x", "execution-ops"),
         ("systemctl --user stop tradeai-active-trader-motion.service", "service"),
+        ("systemctl --user restart tradeai-active-trader-motion.service portfolio-server.service", "service"),
+        ("systemctl --user daemon-reload", "service"),
+        ("rm ~/.config/systemd/user/tradeai-active-trader-motion.service.d/95-code-root-current.conf", "destructive"),
         ("systemctl --user restart portfolio-server.service", "service"),
         ("sudo systemctl restart tradeai-active-trader-motion.service", "sudo"),
         ("systemctl --user status tradeai-active-trader-motion.service", "none"),
@@ -325,3 +328,59 @@ def test_guard_classifier_routes_broker_unit_operations(cmd, tier):
     script = f'source "{GUARD_LIB}"; classify_cmd "$1"'
     out = subprocess.run([bash, "-c", script, "_", cmd], capture_output=True, text=True, timeout=20, check=False)
     assert out.stdout.strip() == tier, (cmd, out.stdout, out.stderr)
+
+
+@pytest.mark.parametrize("window,ok", [("6h", True), ("7h", False)])
+def test_bin_guard_caps_execution_ops_at_6h(tmp_path, window, ok):
+    if not _installed():
+        pytest.skip("execution-ops not installed yet (operator-run packet installer)")
+    if not (shutil.which("bash") and shutil.which("jq")):
+        pytest.skip("bash/jq unavailable")
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "TRADE_AI_CI": "1",
+           "GUARD_APPROVALS_DIR": str(tmp_path / "approvals"), "GUARD_AUDIT_LOG": str(tmp_path / "audit.jsonl")}
+    out = subprocess.run([str(GUARD), "grant", "execution-ops", "--for", window, "--uses", "3", "--reason", "test", "--yes"],
+                         capture_output=True, text=True, timeout=30, check=False, env=env)
+    assert (out.returncode == 0) is ok, (out.stdout, out.stderr)
+    if not ok:
+        assert "capped at 6h" in out.stdout
+
+
+HOOK = ROOT / "scripts" / "hooks" / "agents_guard_pretooluse.py"
+HOOK_RULES = ROOT / "config" / "agents_guard_hook_rules.json"
+
+
+@pytest.mark.parametrize(
+    "grant,cmd,denied",
+    [
+        ("service", "systemctl --user restart tradeai-active-trader-motion.service", True),
+        ("execution-ops", "systemctl --user restart tradeai-active-trader-motion.service", False),
+        ("execution-ops", "systemctl --user stop tradeai-active-trader-motion.service", True),
+        ("execution-ops", "systemctl --user daemon-reload", False),
+        ("service", "systemctl --user restart portfolio-server.service", False),
+    ],
+)
+def test_claude_hook_routes_broker_unit_restart_to_execution_ops(tmp_path, monkeypatch, grant, cmd, denied):
+    """Hermetic (HOME, state root and ledger in tmp). Runs only once the installer has patched the hook."""
+    if "broker.execution_ops" not in HOOK_RULES.read_text(encoding="utf-8"):
+        pytest.skip("execution-ops hook rule not installed yet (operator-run packet installer)")
+    import importlib.util
+    import json
+    import time
+
+    monkeypatch.setenv("HOME", str(Path("/nonexistent-eo-home") / tmp_path.name))
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path / "approvals"))
+    monkeypatch.setenv("TRADEAI_AGENTS_GUARD_RULES", str(HOOK_RULES))
+    monkeypatch.setenv("TRADEAI_AGENTS_GUARD_MODE", "deny")
+    (tmp_path / "approvals").mkdir()
+    (tmp_path / "approvals" / "grants.json").write_text(
+        json.dumps({grant: {"expires": int(time.time()) + 1800, "uses": 5, "reason": "test"}})
+    )
+    spec = importlib.util.spec_from_file_location("agents_guard_pretooluse_eo", HOOK)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    payload = {"session_id": "s", "cwd": f"{tmp_path}/wt", "hook_event_name": "PreToolUse", "tool_name": "Bash",
+               "tool_input": {"command": cmd}, "transcript_path": "/dev/null"}
+    _out, records, _ = mod.run(json.dumps(payload))
+    assert any(r["would_deny"] for r in records) is denied, records
