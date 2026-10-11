@@ -30,6 +30,7 @@ that record. It is updated **every time a job is retired, consolidated or cut ov
 
 | Date (ET) | Change | Rows | Evidence |
 |---|---|---|---|
+| 2026-10-11 (local source, not live) | R2-02: seven structural shadow candidates, strict argv and canonical success/failure receipts; DRAFT contracts require operator review. Three cron locks proposed only; broker/sender/other-class/model/timer lanes excluded. Legacy cron unchanged | 37 assigned; BLOCKED 8, SHADOW_READY 7, SKIP_BROKER 5, SKIP_CLASS 7, SKIP_SENDER 10 | [shard report](../REFACTOR_SHARD_02_20261011.md); approved scoped cron snapshot 2026-10-11T14:57:08.697196+00:00; hermetic tests |
 | 2026-10-09 22:54 | Baseline inventory (676 units; 560 active) | all | builder run; enrichment S1–S6 |
 | 2026-10-09 22:30 | maturity-remeasure: n8n live workflow e18d7849b4142927 unpublished (operator option b); cron L1000 single scheduler | cron:L1000, n8n:e18d7849b4142927 | grant 26b8747d6cc949bb |
 | 2026-10-09 22:55 | 16 RELAY_HOST shadow workflows archived (V8 F1) | 16 n8n rows | grant ee4dfdf11479cd3c; operator-run packets/archive-16.sh |

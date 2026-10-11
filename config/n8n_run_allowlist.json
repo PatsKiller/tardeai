@@ -1801,6 +1801,206 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/social-ingest-all_last.json"
+    },
+    {
+      "lane_id": "build-lesson-candidates",
+      "env_names": [
+        "GOVERNED_MEMORY_ADVISORY_INFLUENCE",
+        "MATURITY_CONTROL_ROOT",
+        "MEMORY_BEHAVIOR_INFLUENCE",
+        "TRADEAI_CHECKPOINT_REGISTRY_LOOKUP",
+        "TRADEAI_CIO_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/build_lesson_candidates.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. No legacy flock; lock is proposed for n8n only, canary blocked until operator adds the same cron lock.",
+      "command": [
+        "$PY",
+        "scripts/build_lesson_candidates.py",
+        "--apply"
+      ],
+      "lock": "/tmp/build-lesson-candidates.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/build-lesson-candidates_last.json"
+    },
+    {
+      "lane_id": "market-regime-collector",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/market_regime_collector.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "env_report_reason": "session13_db imports the whole checkout environment before connecting. Integrator must narrow that shared loader before enforce or canary.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
+      "command": [
+        "$PY",
+        "scripts/market_regime_collector.py",
+        "--apply"
+      ],
+      "lock": "/tmp/tradeai_market_regime_collector.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/market-regime-collector_last.json"
+    },
+    {
+      "lane_id": "research-intelligence-materialize",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/research_intelligence_materialize.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "env_report_reason": "db_adapter import closure uses env_bootstrap; shared narrowing belongs to the integrator. The explicit dry run returns before these imports.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
+      "command": [
+        "$PY",
+        "scripts/research_intelligence_materialize.py"
+      ],
+      "lock": "/tmp/ri_materialize_cron.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/research-intelligence-materialize_last.json"
+    },
+    {
+      "lane_id": "source-outcome-attribution",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/source_outcome_attribution.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
+      "command": [
+        "$PY",
+        "scripts/source_outcome_attribution.py"
+      ],
+      "lock": "/tmp/source_maturity.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/source-outcome-attribution_last.json"
+    },
+    {
+      "lane_id": "sync-social-to-intelligence",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "SOCIAL_FOLD_MAX_AGE_HOURS"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/sync_social_to_intelligence.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "env_report_reason": "resolve_universe imports aegis_nightly_ingestion and db_adapter; their shared/other-shard loaders remain broad. No canary until that closure is narrowed.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. No legacy flock; lock is proposed for n8n only, canary blocked until operator adds the same cron lock.",
+      "command": [
+        "$PY",
+        "scripts/sync_social_to_intelligence.py",
+        "--apply"
+      ],
+      "lock": "/tmp/sync-social-to-intelligence.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/sync-social-to-intelligence_last.json"
+    },
+    {
+      "lane_id": "weekly-incubator-builder",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/weekly_incubator_builder.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "env_report_reason": "session13_db, multi_strategy_classifier and pipeline_registry load checkout environment in the real-run closure. Their narrowing is integrator work; optional --llm is absent from this exact allowlist command and is not admitted.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. No legacy flock; lock is proposed for n8n only, canary blocked until operator adds the same cron lock.",
+      "command": [
+        "$PY",
+        "scripts/weekly_incubator_builder.py",
+        "--run-label",
+        "1900",
+        "--apply"
+      ],
+      "lock": "/tmp/weekly-incubator-builder.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/weekly-incubator-builder_last.json"
+    },
+    {
+      "lane_id": "sec-fundamentals-ingest",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "SEC_USER_AGENT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/sec_fundamentals_ingest.py named settings and import-closure source inspection; no broker or model credential names admitted.",
+      "env_report_reason": "The priority-universe acquisition helper still reads DB_PASSWORD from a checkout-relative environment file; named local loading is fixed, but this shared/other-owner path remains to audit before enforce/canary.",
+      "source": "R2-02 source shadow candidate, approved read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00. Exact cron argv retained; --dry-run wins over mutation flags. Cron remains the real scheduler; health contract DRAFT, no runtime activation or natural acceptance. Legacy cron flock path reused; no scheduler change.",
+      "command": [
+        "$PY",
+        "scripts/sec_fundamentals_ingest.py",
+        "--apply"
+      ],
+      "lock": "/tmp/sec_fundamentals_ingest.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1200,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/sec-fundamentals-ingest_last.json"
     }
   ],
   "blocked_reasons": {

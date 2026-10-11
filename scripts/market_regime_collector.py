@@ -13,9 +13,15 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-from dotenv import load_dotenv
+_ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 
-load_dotenv(PROJECT_ROOT / ".env")
+
+def _load_env():
+    from dotenv import dotenv_values
+    values = dotenv_values(PROJECT_ROOT / ".env")
+    for name in _ENV_KEYS:
+        if values.get(name) is not None:
+            os.environ.setdefault(name, values[name])
 
 
 def _f(v):
@@ -208,23 +214,28 @@ def save_indicators(conn, indicators, dry_run=True):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Market Regime Collector")
+    parser = argparse.ArgumentParser(description="Market Regime Collector", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true", help="collect and report; never write (wins over --apply)")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--symbols")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
+    if args.dry_run:
+        print("DRY-RUN market-regime-collector: would collect regime indicators and persist market_regime_indicators; no DB, network or writes performed")
+        return 0
     # --dry-run wins: a dispatcher passing both must never write (AGENTS.md §6).
     dry_run = args.dry_run or not args.apply
     started_at = _now_iso()
     snapshot_id = _uid("SNAP_")
-    conn = _get_conn()
-    if dry_run:
-        from lib.lane_last_receipt import enforce_readonly
-
-        enforce_readonly(conn)  # dry run: the server refuses any write (AGENTS.md §6)
+    conn = None
     try:
+        _load_env()
+        conn = _get_conn()
+        if dry_run:
+            from lib.lane_last_receipt import enforce_readonly
+
+            enforce_readonly(conn)  # legacy preview: the server refuses any write
         indicators = collect_scan_based_indicators(conn, snapshot_id)
         indicators.append(collect_market_session(snapshot_id))
         vix_ind = collect_vix(snapshot_id)
@@ -269,7 +280,8 @@ def main(argv=None):
             )
         raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def _now_iso():
@@ -289,7 +301,10 @@ def _receipt(**kw):
     """Real-run receipt (data/runtime/market_regime_collector_last.json, ok_at on success only)."""
     from lib.lane_last_receipt import write_receipt
 
-    write_receipt("market_regime_collector", **kw)
+    # Keep the legacy filename for existing consumers and add the canonical lane-id receipt.
+    kw.setdefault("exit_code", 0 if kw.get("ok") else 1)
+    for name in ("market_regime_collector", "market-regime-collector"):
+        write_receipt(name, **kw)
 
 
 if __name__ == "__main__":
