@@ -7911,7 +7911,7 @@
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
    "status": "DRAFT",
-   "target_reason": "r1_pending",
+   "target_reason": "stage:shadow",
    "stage": "shadow",
    "purpose": {
     "text": "06:45/12:45/18:45: classify unprocessed news_articles into scored catalyst_events (keyword classifier + DB weights)",
@@ -7945,12 +7945,6 @@
      "source": "LaneRunReceipt / allowlist output_signal"
     },
     {
-     "name": "logs/news_to_catalyst.log",
-     "kind": "output_signal",
-     "direction": "write",
-     "source": "config/lane_registry.json output_signal"
-    },
-    {
      "name": "Postgres, catalyst_classifier, flock; after hermes_news_bridge L413 (:40)",
      "kind": "inventory_text",
      "direction": "read",
@@ -7967,6 +7961,18 @@
      "kind": "inventory_text",
      "direction": "write",
      "source": "inventory cron:L406 outputs_downstream (DRAFT: free text)"
+    },
+    {
+     "name": "Data Broker domain catalyst_news as_of (scripts/lib/data_broker/as_of_signal.py read_as_of) -> coordination/due source event -> tradeai-event-router",
+     "kind": "event_trigger",
+     "direction": "read",
+     "source": "config/lane_registry.json dispatch.triggers (broker_as_of)"
+    },
+    {
+     "name": "RUN_DONE of lane hermes-news-bridge in the coordination ledger -> coordination/due source event -> tradeai-event-router",
+     "kind": "event_trigger",
+     "direction": "read",
+     "source": "config/lane_registry.json dispatch.triggers (run_done)"
     }
    ],
    "healthy": [
@@ -7980,11 +7986,15 @@
     },
     {
      "check": "cron_twin_output_fresh",
-     "text": "the live cron line keeps the registry output_signal logs/news_to_catalyst.log fresh within 24.0 h (2x cadence)"
+     "text": "the live cron line keeps the registry output_signal data/runtime/news-to-catalyst_last.json fresh within 24.0 h (2x cadence)"
     },
     {
      "check": "duration_within_baseline",
      "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    },
+    {
+     "check": "event_fire_dry_run_done",
+     "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger"
     }
    ],
    "degraded": [
@@ -8003,6 +8013,10 @@
     {
      "check": "upstream_stale",
      "text": "an upstream input is stale: Postgres, catalyst_classifier, flock; after hermes_news_bridge L413 (:40) (not machine-checked yet)"
+    },
+    {
+     "check": "event_debounced_or_coalesced",
+     "text": "advances arrive faster than min_interval_s 1800 s or while a schedule run of the lane is due or in flight, so they coalesce into one later fire (expected under bursts; investigate if no e: run lands in a trading day with input advances)"
     }
    ],
    "failed": [
@@ -8023,6 +8037,10 @@
      "text": "a dead letter was written or the lane's breaker opened (3 failures)"
     },
     {
+     "check": "trigger_source_unreadable",
+     "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is missing or malformed, or the as_of is in the future) for more than one input cadence"
+    },
+    {
      "check": "dry_run_wrote",
      "text": "a dry_run changed its output_signal or any durable state"
     }
@@ -8041,7 +8059,7 @@
    },
    "alerting": {
     "lane_severity": "Medium",
-    "severity_basis": "inventory cron:L406 business_function=research (catalogue rule)",
+    "severity_basis": "remediation catalogue (cron:L406: business_function=research)",
     "failed": {
      "siem_severity": "WARN",
      "notifier_priority": "P2"
@@ -8054,9 +8072,20 @@
     "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
    },
    "remediation": {
-    "catalogue_entry": false,
+    "catalogue_entry": true,
     "diagnosis_excluded": false,
-    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "auto": true
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "auto": true
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": null
    },
    "evidence": {
     "receipt": "data/runtime/news-to-catalyst_last.json",
@@ -8067,7 +8096,7 @@
     ],
     "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
    },
-   "review_by": "2026-10-24"
+   "review_by": "2026-10-25"
   },
   {
    "schema": "N8nHealthContract@v1",
@@ -8241,7 +8270,7 @@
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
    "status": "DRAFT",
-   "target_reason": "r1_pending",
+   "target_reason": "stage:shadow",
    "stage": "shadow",
    "purpose": {
     "text": "06:50/12:50/18:50: extract structured insights (strategy type, thesis, horizon, confidence) from recent news and catalysts",
@@ -8275,12 +8304,6 @@
      "source": "LaneRunReceipt / allowlist output_signal"
     },
     {
-     "name": "logs/research_insight_extractor.log",
-     "kind": "output_signal",
-     "direction": "write",
-     "source": "config/lane_registry.json output_signal"
-    },
-    {
      "name": "Postgres, flock",
      "kind": "inventory_text",
      "direction": "read",
@@ -8297,6 +8320,12 @@
      "kind": "inventory_text",
      "direction": "write",
      "source": "inventory cron:L418 outputs_downstream (DRAFT: free text)"
+    },
+    {
+     "name": "RUN_DONE of lane news-to-catalyst in the coordination ledger -> coordination/due source event -> tradeai-event-router",
+     "kind": "event_trigger",
+     "direction": "read",
+     "source": "config/lane_registry.json dispatch.triggers (run_done)"
     }
    ],
    "healthy": [
@@ -8310,11 +8339,15 @@
     },
     {
      "check": "cron_twin_output_fresh",
-     "text": "the live cron line keeps the registry output_signal logs/research_insight_extractor.log fresh within 24.0 h (2x cadence)"
+     "text": "the live cron line keeps the registry output_signal data/runtime/research-insight-extractor_last.json fresh within 24.0 h (2x cadence)"
     },
     {
      "check": "duration_within_baseline",
      "text": "duration <= 240.0 s (80% of timeout_s 300)"
+    },
+    {
+     "check": "event_fire_dry_run_done",
+     "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger"
     }
    ],
    "degraded": [
@@ -8333,6 +8366,10 @@
     {
      "check": "upstream_stale",
      "text": "an upstream input is stale: Postgres, flock (not machine-checked yet)"
+    },
+    {
+     "check": "event_debounced_or_coalesced",
+     "text": "advances arrive faster than min_interval_s 1800 s or while a schedule run of the lane is due or in flight, so they coalesce into one later fire (expected under bursts; investigate if no e: run lands in a trading day with input advances)"
     }
    ],
    "failed": [
@@ -8353,6 +8390,10 @@
      "text": "a dead letter was written or the lane's breaker opened (3 failures)"
     },
     {
+     "check": "trigger_source_unreadable",
+     "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is missing or malformed, or the as_of is in the future) for more than one input cadence"
+    },
+    {
      "check": "dry_run_wrote",
      "text": "a dry_run changed its output_signal or any durable state"
     }
@@ -8371,7 +8412,7 @@
    },
    "alerting": {
     "lane_severity": "Medium",
-    "severity_basis": "inventory cron:L418 business_function=research (catalogue rule)",
+    "severity_basis": "remediation catalogue (cron:L418: business_function=research)",
     "failed": {
      "siem_severity": "WARN",
      "notifier_priority": "P2"
@@ -8384,9 +8425,20 @@
     "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
    },
    "remediation": {
-    "catalogue_entry": false,
+    "catalogue_entry": true,
     "diagnosis_excluded": false,
-    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "auto": true
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "auto": true
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": null
    },
    "evidence": {
     "receipt": "data/runtime/research-insight-extractor_last.json",
@@ -8397,7 +8449,7 @@
     ],
     "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
    },
-   "review_by": "2026-10-24"
+   "review_by": "2026-10-25"
   },
   {
    "schema": "N8nHealthContract@v1",
@@ -8735,7 +8787,7 @@
    "kind": "lane",
    "workflow_id": "tradeai-dispatcher",
    "status": "DRAFT",
-   "target_reason": "r1_pending",
+   "target_reason": "stage:shadow",
    "stage": "shadow",
    "purpose": {
     "text": "Active-set signal fusion every 30 min 04:00-16:59 weekdays (~260 symbols, intraday cadence)",
@@ -8769,12 +8821,6 @@
      "source": "LaneRunReceipt / allowlist output_signal"
     },
     {
-     "name": "logs/signal_fusion.log",
-     "kind": "output_signal",
-     "direction": "write",
-     "source": "config/lane_registry.json output_signal"
-    },
-    {
      "name": "Postgres (direct psycopg2.connect with password, signal_fusion.py:36), flock",
      "kind": "inventory_text",
      "direction": "read",
@@ -8791,6 +8837,12 @@
      "kind": "inventory_text",
      "direction": "write",
      "source": "inventory cron:L411 outputs_downstream (DRAFT: free text)"
+    },
+    {
+     "name": "Data Broker domain scalp_list as_of (scripts/lib/data_broker/as_of_signal.py read_as_of) -> coordination/due source event -> tradeai-event-router",
+     "kind": "event_trigger",
+     "direction": "read",
+     "source": "config/lane_registry.json dispatch.triggers (broker_as_of)"
     }
    ],
    "healthy": [
@@ -8804,11 +8856,15 @@
     },
     {
      "check": "cron_twin_output_fresh",
-     "text": "the live cron line keeps the registry output_signal logs/signal_fusion.log fresh within 119.0 h (2x cadence)"
+     "text": "the live cron line keeps the registry output_signal data/runtime/signal_fusion_active_last.json fresh within 119.0 h (2x cadence)"
     },
     {
      "check": "duration_within_baseline",
      "text": "duration <= 480.0 s (80% of timeout_s 600)"
+    },
+    {
+     "check": "event_fire_dry_run_done",
+     "text": "each input as_of advance past the lane's receipt watermark yields at most one e:<lane>:dry_run:<as_of minute> run, which ends RUN_DONE or RUN_SKIPPED_LOCK (cron line held the lock) in the coordination ledger"
     }
    ],
    "degraded": [
@@ -8827,6 +8883,10 @@
     {
      "check": "upstream_stale",
      "text": "an upstream input is stale: Postgres (direct psycopg2.connect with password, signal_fusion.py:36), flock (not machine-checked yet)"
+    },
+    {
+     "check": "event_debounced_or_coalesced",
+     "text": "advances arrive faster than min_interval_s 1800 s or while a schedule run of the lane is due or in flight, so they coalesce into one later fire (expected under bursts; investigate if no e: run lands in a trading day with input advances)"
     }
    ],
    "failed": [
@@ -8847,6 +8907,10 @@
      "text": "a dead letter was written or the lane's breaker opened (3 failures)"
     },
     {
+     "check": "trigger_source_unreadable",
+     "text": "coordination/due reports errors[] trigger_source_unreadable for this lane (the domain as_of file is missing or malformed, or the as_of is in the future) for more than one input cadence"
+    },
+    {
      "check": "dry_run_wrote",
      "text": "a dry_run changed its output_signal or any durable state"
     }
@@ -8865,7 +8929,7 @@
    },
    "alerting": {
     "lane_severity": "Medium",
-    "severity_basis": "inventory cron:L411 business_function=research (catalogue rule)",
+    "severity_basis": "remediation catalogue (cron:L411: business_function=research)",
     "failed": {
      "siem_severity": "WARN",
      "notifier_priority": "P2"
@@ -8878,9 +8942,20 @@
     "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
    },
    "remediation": {
-    "catalogue_entry": false,
+    "catalogue_entry": true,
     "diagnosis_excluded": false,
-    "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+    "actions": [
+     {
+      "action_id": "rerun_dry_run",
+      "auto": true
+     },
+     {
+      "action_id": "reap_orphan_run",
+      "auto": true
+     }
+    ],
+    "default_action": "suggest_only",
+    "suggest_only_reason": null
    },
    "evidence": {
     "receipt": "data/runtime/signal_fusion_active_last.json",
@@ -8891,7 +8966,7 @@
     ],
     "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
    },
-   "review_by": "2026-10-24"
+   "review_by": "2026-10-25"
   },
   {
    "schema": "N8nHealthContract@v1",

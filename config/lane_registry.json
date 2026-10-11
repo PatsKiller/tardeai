@@ -9958,7 +9958,18 @@
         "wave": "W3",
         "class": "ingest",
         "priority": 5,
-        "retry_policy": "none"
+        "retry_policy": "none",
+        "min_interval_s": 1800,
+        "triggers": [
+          {
+            "source": "broker_as_of",
+            "domain": "catalyst_news"
+          },
+          {
+            "source": "run_done",
+            "lane_id": "hermes-news-bridge"
+          }
+        ]
       }
     },
     {
@@ -10102,7 +10113,14 @@
         "wave": "W3",
         "class": "ingest",
         "priority": 5,
-        "retry_policy": "none"
+        "retry_policy": "none",
+        "min_interval_s": 1800,
+        "triggers": [
+          {
+            "source": "broker_as_of",
+            "domain": "scalp_list"
+          }
+        ]
       }
     },
     {
@@ -10198,7 +10216,14 @@
         "wave": "W3",
         "class": "ingest",
         "priority": 5,
-        "retry_policy": "none"
+        "retry_policy": "none",
+        "min_interval_s": 1800,
+        "triggers": [
+          {
+            "source": "run_done",
+            "lane_id": "news-to-catalyst"
+          }
+        ]
       }
     },
     {

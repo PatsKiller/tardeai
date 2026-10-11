@@ -110,7 +110,10 @@ _RECEIPT_SIGNAL = re.compile(r"^data/runtime/[A-Za-z0-9._-]+_last\.json$")
 R1_DAEMON_ARGV_TOKENS = ("--daemon", "--loop", "--forever", "--watch", "--serve")
 DISPATCH_WAVES = ("W0", "W1", "W2", "W3", "W4", "W5")
 DISPATCH_TZ = "America/New_York"
-TRIGGER_SOURCES = ("run_done", "receipt", "cio_bus", "ledger_event", "outbox")
+TRIGGER_SOURCES = ("run_done", "receipt", "cio_bus", "ledger_event", "outbox", "broker_as_of")
+#: The trigger sources coordination/due (source event) computes today (W5, n8n_due._event_evals). The others parse
+#: and validate but are reported `trigger_source_unreadable` by due until their reader lands (design 02 §6).
+COMPUTED_TRIGGER_SOURCES = ("run_done", "broker_as_of")
 DIGEST_ROLES = ("preparer", "sender")
 WATCH_SEVERITIES = ("P1", "P2", "P3")
 
@@ -180,8 +183,35 @@ _DISPATCH_KEYS = frozenset({"mode", "cron", "tz", "wave", "class", "priority", "
                             "min_interval_s", "after", "triggers", "sweep_cron", "digest_window", "digest_role"})
 _DISPATCH_REQUIRED = ("mode", "cron", "class", "priority", "retry_policy", "wave")
 _AFTER_KEYS = frozenset({"lane_id", "same_day", "deadline_min", "soft"})
-_TRIGGER_KEYS = frozenset({"source", "lane_id", "receipt_rel", "event_type"})
+_TRIGGER_KEYS = frozenset({"source", "lane_id", "receipt_rel", "event_type", "domain"})
+_DOMAIN_NAME = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 _WATCH_KEYS = frozenset({"factor", "severity", "max_run_s", "stay_behind", "restart_safe"})
+
+
+_AS_OF_SIGNAL_PATH = Path(__file__).resolve().parent / "data_broker" / "as_of_signal.py"
+_AS_OF_SIGNAL_MODNAME = "tradeai_data_broker_as_of_signal"
+
+
+def as_of_signal_module():
+    """scripts/lib/data_broker/as_of_signal.py, loaded BY PATH and cached. The data_broker package __init__ imports
+    ``lib.*``, which the gateway (repo root on sys.path only) cannot resolve; the module itself is stdlib-only with
+    lazy imports, so loading the file directly works from every entry point (gateway, executor, checks, tests)."""
+    import importlib.util
+    import sys as _sys
+
+    mod = _sys.modules.get(_AS_OF_SIGNAL_MODNAME)
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(_AS_OF_SIGNAL_MODNAME, _AS_OF_SIGNAL_PATH)
+        if spec is None or spec.loader is None:  # pragma: no cover — the file ships with this module
+            raise ImportError(str(_AS_OF_SIGNAL_PATH))
+        mod = importlib.util.module_from_spec(spec)
+        _sys.modules[_AS_OF_SIGNAL_MODNAME] = mod
+        try:
+            spec.loader.exec_module(mod)
+        except BaseException:
+            _sys.modules.pop(_AS_OF_SIGNAL_MODNAME, None)
+            raise
+    return mod
 
 
 class DispatchBlockError(ValueError):
@@ -207,6 +237,9 @@ class Trigger:
     lane_id: Optional[str] = None
     receipt_rel: Optional[str] = None
     event_type: Optional[str] = None
+    #: source broker_as_of: the Data Broker domain whose as_of advance fires the lane (scripts/lib/data_broker/
+    #: as_of_signal.py DOMAINS; W5, CONSOLIDATION_PLAN §E.4).
+    domain: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -334,8 +367,17 @@ def _triggers(v: Any) -> tuple[Trigger, ...]:
         ev = _str_or_none(t, "event_type", where)
         if ev is not None and len(ev) > 80:
             raise _bad(f"{where}.event_type longer than 80")
-        out.append(Trigger(source=t["source"], lane_id=_str_or_none(t, "lane_id", where),
-                           receipt_rel=rel, event_type=ev))
+        dom = _str_or_none(t, "domain", where)
+        if dom is not None and not _DOMAIN_NAME.match(dom):
+            raise _bad(f"{where}.domain is not a domain name: {dom!r}")
+        if t["source"] == "broker_as_of" and dom is None:
+            raise _bad(f"{where}: source broker_as_of needs a domain")
+        if dom is not None and t["source"] != "broker_as_of":
+            raise _bad(f"{where}.domain is only for source broker_as_of")
+        lane = _str_or_none(t, "lane_id", where)
+        if t["source"] == "run_done" and lane is None:
+            raise _bad(f"{where}: source run_done needs a lane_id")
+        out.append(Trigger(source=t["source"], lane_id=lane, receipt_rel=rel, event_type=ev, domain=dom))
     return tuple(out)
 
 
@@ -974,6 +1016,11 @@ def validate_dispatch_block(row: Mapping[str, Any], *, known_lane_ids: Optional[
             if trig.source == "run_done" and (trig.lane_id not in known or trig.lane_id == lane):
                 issues.append(DispatchIssue(lane, ISSUE_AFTER_UNKNOWN_LANE,
                                             f"triggers[{i}] run_done lane_id {trig.lane_id!r}"))
+    for i, trig in enumerate(block.triggers):
+        if trig.source == "broker_as_of" and trig.domain not in as_of_signal_module().DOMAINS:
+            issues.append(DispatchIssue(lane, ISSUE_BAD_BLOCK,
+                                        f"triggers[{i}] broker_as_of domain {trig.domain!r} has no as_of reader "
+                                        "(scripts/lib/data_broker/as_of_signal.py DOMAINS)"))
     if block.mode != "off":
         ok, why = dispatch_eligible(row)
         if not ok:

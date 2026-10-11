@@ -338,6 +338,26 @@ sequenceDiagram
   X->>X: run, then advance event_cursors on RUN_DONE
 ```
 
+*Amended 2026-10-11 (W5, `n8nmat/w5-event-consumers`; CONSOLIDATION_PLAN §E.4). What was built differs from the
+sketch above in four ways; the code is `scripts/lib/n8n_due.py` `_event_evals` and its module docstring.*
+- **Sources computed:** `run_done` (ledger) and a new `broker_as_of` (`dispatch.triggers[].domain`): the Data Broker
+  domain's `as_of`, read from files only by `scripts/lib/data_broker/as_of_signal.py` (`scalp_list` from its owners'
+  own receipts; `catalyst_news` from `data/runtime/broker_as_of/catalyst_news.json`, emitted by
+  `scripts/news_ingestion.py`, flag `DATA_BROKER_AS_OF_EMIT`, default on). `receipt`, `cio_bus`, `ledger_event` and
+  `outbox` still parse but due reports them `trigger_source_unreadable`.
+- **No `event_cursors` writes.** The cursor is the consumer's watermark: its LaneRunReceipt `started_at` (the live
+  cron line writes it) and the `started_at` of its own RUN_DONE rows. An `as_of` at or below the watermark fires
+  nothing, so the executor needed no change. An `as_of` older than the lane's catch-up window is left to the cron
+  line / sweep.
+- **Key:** `e:<lane>:<mode>:<as_of local minute YYYYMMDDTHHMM>`, not a cursor hash, because the gateway's key regex
+  and `parse_key` take a minute stamp; the slot state machine is the schedule one (reason `event`).
+- **No double fire:** a schedule slot of the same lane that is due or in flight absorbs the event (COALESCED), an
+  older `e:` run in flight holds it, `min_interval_s` debounces it (DEBOUNCED), and a fire that meets the live cron
+  line on its `flock` lock ends `RUN_SKIPPED_LOCK`, which settles that key. Event fires are `dry_run` only
+  (`EVENT_MODES`) until the operator rules an event canary.
+- **Rows (shadow):** `signal-fusion-active` ← `scalp_list` (1800 s); `news-to-catalyst` ← `catalyst_news` +
+  `run_done hermes-news-bridge` (1800 s); `research-insight-extractor` ← `run_done news-to-catalyst` (1800 s).
+
 ### 6.1 The 23 pollers and 4 prewarms (F §6): which have a real producer event
 
 **Summary:**
