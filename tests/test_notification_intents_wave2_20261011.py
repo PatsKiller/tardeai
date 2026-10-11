@@ -45,6 +45,36 @@ _REAL_TR = {n: getattr(TR, n) for n in ("route_intent", "intent_archive_report_t
 
 
 @pytest.fixture
+def no_psycopg2(monkeypatch):
+    """Stub psycopg2 when it is not installed (CI has no DB driver).
+
+    These senders import psycopg2 at module scope for their DB work; the notifier functions under test never
+    connect. A stub that raises on connect keeps the test from silently touching a database, and leaves a host
+    with the real driver untouched.
+    """
+    try:
+        import psycopg2  # noqa: F401
+        import psycopg2.extras  # noqa: F401
+        return
+    except ImportError:
+        pass
+    import types
+
+    def _no_db(*_a, **_k):
+        raise RuntimeError("psycopg2 stub: tests must not connect to a database")
+
+    pg = types.ModuleType("psycopg2")
+    pg.connect = _no_db
+    pg.Error = pg.OperationalError = pg.DatabaseError = Exception
+    extras = types.ModuleType("psycopg2.extras")
+    extras.RealDictCursor = extras.DictCursor = object
+    extras.execute_values = extras.execute_batch = _no_db
+    pg.extras = extras
+    monkeypatch.setitem(sys.modules, "psycopg2", pg)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
+
+
+@pytest.fixture
 def intents(alarm_capture, monkeypatch, tmp_path):
     """Transport stubbed, durable state in tmp, legacy runtime mode, no gateway, no comms-ledger writes."""
     for n, f in _REAL_TA.items():
@@ -211,13 +241,13 @@ def test_hermes_score_alerts_is_p3(intents):
     assert _pp(intents) == [("P3", "hermes_score_alerts")] and not intents.fired
 
 
-def test_incubator_pipeline_failure_is_p2(intents):
+def test_incubator_pipeline_failure_is_p2(no_psycopg2, intents):
     import incubator_proposal_promoter as m
     m._send_pipeline_alert("❌ Incubator pipeline failure probe")
     assert _pp(intents) == [("P2", "incubator_proposal_promoter")]
 
 
-def test_social_scalp_wait_is_p2(intents, monkeypatch):
+def test_social_scalp_wait_is_p2(no_psycopg2, intents, monkeypatch):
     import social_scalp_scanner as m
     # Bound at import (`from telegram_alert import send_telegram`); other tests rebind it -- use the notifier.
     monkeypatch.setattr(m, "send_telegram", _REAL_TA["send_telegram"])
@@ -226,7 +256,7 @@ def test_social_scalp_wait_is_p2(intents, monkeypatch):
     intents.assert_fired(contains="WAIT *PRB*")
 
 
-def test_pipeline_watchdog_urgent_is_p1_else_p3(intents):
+def test_pipeline_watchdog_urgent_is_p1_else_p3(no_psycopg2, intents):
     import pipeline_watchdog as m
     m.send_telegram("CRITICAL: probe failed 3x. Manual check needed.", urgent=True)
     m.send_telegram("PRB GO 80pts for 2.0hr with 0 analyses. Queued.")

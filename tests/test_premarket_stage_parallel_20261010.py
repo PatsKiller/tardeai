@@ -160,7 +160,10 @@ def test_wave_plan_p95_matches_readiness_rule():
 
 
 def test_real_premarket_runner_dry_run_prints_waves_executes_nothing(tmp_path):
-    env = {"HOME": os.environ.get("HOME", "/tmp"), "PATH": "/usr/bin:/bin", "PY": "/usr/bin/python3", "PIPELINE_TODAY_DOW": "3"}
+    # PIPELINE_LOCK_DIR: a private stage lock, so a parallel CI gate (or the live host's cron) dry-running or
+    # running the same real manifest cannot make this run a clean "[lock] ... already running" skip.
+    env = {"HOME": os.environ.get("HOME", "/tmp"), "PATH": "/usr/bin:/bin", "PY": "/usr/bin/python3", "PIPELINE_TODAY_DOW": "3",
+           "PIPELINE_LOCK_DIR": str(tmp_path)}
     r = subprocess.run(["bash", str(PREMARKET_RUNNER), "--manifest", str(PREMARKET), "--project-root", str(tmp_path),
                         "--dry-run"],
                        cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=120)
