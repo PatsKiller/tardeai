@@ -241,6 +241,10 @@ python3 scripts/check_n8n_health_contracts.py
   45 suggest-only; 18 lanes carry actions; **8 lanes have an automatic dry-run rerun**:
   crontab-snapshot-for-health-agent, finviz-view-contracts, maturity-remeasure, n8n-pilot-dispatch,
   n8n-research-intake-consumer, n8n-selftest-fail, n8n-workflow-drift-check, source-attribution-monitor.
+- **2026-10-11:** 77 lanes, 101 actions, 34 with an automatic dry-run rerun (Critical 17, High 12, Medium 32, Low 16;
+  43 suggest-only) after the C1 premarket rebuild: the W4 provider owners join (finviz-enrichment, sec-data-ingest,
+  social-ingest-all) and 6 lanes whose cron lines became premarket-data-pipeline steps drop out; 12 more absorbed
+  lanes stay listed as suggest-only (RETIRED, no allowlist entry).
 - **Action ids** (`ACTION_IDS`): `rerun_dry_run` (one `dry_run` request through the gateway's own
   `coordination/run` path, `host_run_request` — never a direct ledger insert); `rerun_dry_then_live` (only for a lane
   at `scheduler.stage == "cutover"`; none today); `reap_orphan_run` (a RUNNING row with no live owner, overdue 2× its
@@ -360,7 +364,7 @@ lock; exceed a cap; send portfolio data to a provider (§2A); act on a lane in `
 | Diagnoser row `n8n-failure-diagnosis` (`3-59/15`) | merged **PAUSED** (#1657), not installed; needs #1652 promoted | same |
 | Install order (operator ruling) | bridge first, diagnoser ~2 h later; each under a `cron` grant; then a registry PR flips PAUSED → ACTIVE | packet README steps 3–6 |
 | Incident notifier | ACTIVE (L1052) | registry #1654 |
-| Catalogue | 80 lanes (33 auto dry-run) after the #1681 rebuild; scalp-live excluded | `config/n8n_remediation_catalogue.json` |
+| Catalogue | 77 lanes (34 auto dry-run) after the 2026-10-11 C1 premarket rebuild (80 / 33 after #1681); scalp-live excluded | `config/n8n_remediation_catalogue.json` |
 | Severity | 2 of 619 registry rows set → RUN_* lands WARN (L6 open) | §4.1 |
 | Diagnoser DB row | synced 16:27 ET | `packets/llm-seed-sync/apply-20261010.txt` |
 | Health contracts | 68 DRAFT, not read at runtime yet | §3 |
