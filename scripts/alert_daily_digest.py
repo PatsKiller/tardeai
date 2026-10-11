@@ -85,7 +85,7 @@ def main() -> int:
         return 0
     try:
         from telegram_alert import send_telegram
-        send_telegram(msg, bypass_router=True)  # operator-specced daily ops digest
+        send_telegram(msg, priority="P2", producer="alert_daily_digest")  # operator-specced daily ops digest
         print("[alert-digest] sent:\n" + msg)
     except Exception as e:
         print(f"[alert-digest] telegram failed: {e}\n{msg}")

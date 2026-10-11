@@ -252,7 +252,7 @@ def run(dry_run: bool = False, today=None) -> tuple[int, dict]:
         one_liner += f" · FAILED steps: {', '.join(failed)}"
     try:
         from telegram_alert import send_telegram
-        accepted = bool(send_telegram(one_liner, bypass_router=True))
+        accepted = bool(send_telegram(one_liner, priority="P2", producer="system_rollup_snapshot"))
         steps["telegram"] = {"status": "accepted" if accepted else "failed",
                              **({} if accepted else {"error": "send_telegram returned False"})}
     except Exception as e:

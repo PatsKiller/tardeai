@@ -42,7 +42,10 @@ def test_reminder_reaches_the_transport(tmp_path, monkeypatch):
     monkeypatch.setattr(TA, "send_telegram", lambda text, **kw: sent.append((text, kw)) or True)
     monkeypatch.setattr(sys, "argv", ["rem", "--ledger", str(tmp_path / "led.jsonl"), "--send"])
     assert rem.main() == 0
-    assert sent and "pkg-test-fire-0001".replace("_", "-") in sent[0][0] and sent[0][1].get("bypass_router") is True
+    assert sent and "pkg-test-fire-0001".replace("_", "-") in sent[0][0]
+    # P1 notification intent (2026-10-10): routed by declared priority, never bypassed, dedupe off (ledger-scheduled).
+    assert sent[0][1].get("priority") == "P1" and sent[0][1].get("dedupe_minutes") == 0
+    assert "bypass_router" not in sent[0][1]
     rows = [json.loads(l) for l in (tmp_path / "led.jsonl").read_text().splitlines() if l.strip()]
     assert any(r.get("event") == "NOTE" and r.get("sent") is True for r in rows)
 
@@ -70,7 +73,8 @@ def test_supervisor_l4_page_reaches_the_transport(tmp_path, monkeypatch):
     monkeypatch.setattr(TA, "send_telegram", lambda text, **kw: sent.append((text, kw)) or True)
     out = sbd._ladder_l4_l5(rows, {"lane-x": {"ladder_max": 4}}, now, tmp_path, live=True)
     assert out["l4_candidates"] == 1 and out["l4_paged"] == 1, out
-    assert sent and "supervisor L4" in sent[0][0] and "lane-x" in sent[0][0] and sent[0][1].get("bypass_router") is True
+    assert sent and "supervisor L4" in sent[0][0] and "lane-x" in sent[0][0]
+    assert sent[0][1].get("priority") == "P1" and "bypass_router" not in sent[0][1]
     receipts = [json.loads(l) for l in (tmp_path / "supervisor_ladder_receipts.jsonl").read_text().splitlines() if l.strip()]
     assert any(r.get("level") == 4 and r.get("paged") is True for r in receipts)
 

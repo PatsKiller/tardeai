@@ -85,10 +85,10 @@ def _ensure_table(cur) -> None:
     _ensured = True
 
 
-def _store(message: str, ok: bool, channel: str) -> str | None:
+def _store(message: str, ok: bool, channel: str, report_type: str | None = None) -> str | None:
     conn = None
     try:
-        rtype = classify_report(message)
+        rtype = report_type or classify_report(message)
         if not rtype:
             return None
         from db_adapter import _get_conn
@@ -116,7 +116,13 @@ def capture(message: str, ok: bool = True, channel: str = "telegram") -> str | N
     return _store(message, ok=ok, channel=channel)
 
 
-def archive_message(message: str, suppressed: bool = False, reason: str = "") -> str | None:
-    """Store recognized messages that were suppressed by the router (Reports archive only)."""
+def archive_message(message: str, suppressed: bool = False, reason: str = "",
+                    report_type: str | None = None) -> str | None:
+    """Store recognized messages that were suppressed by the router (Reports archive only).
+
+    ``report_type`` forces storage under that type even when the header is not recognized. A held P2
+    notification intent uses it: an intent the router holds must reach the archive the advice digest folds,
+    whatever its first line says, or holding it would drop it.
+    """
     ch = "reports_archive" if suppressed else "telegram"
-    return _store(message, ok=not suppressed, channel=ch)
+    return _store(message, ok=not suppressed, channel=ch, report_type=report_type)

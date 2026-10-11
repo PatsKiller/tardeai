@@ -124,7 +124,7 @@ def send_telegram(text, chat_ids=None, dry_run=False):
         return True
 
     from telegram_alert import send_telegram as _send
-    ok = _send(text, bypass_router=True)
+    ok = _send(text, priority="P2", producer="send_morning_brief")  # intent: scheduled brief (07:30, outside quiet hours)
     if ok:
         log.info("Sent")
         try:

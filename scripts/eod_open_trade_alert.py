@@ -174,9 +174,9 @@ def send_eod_alert():
     log.info(f"Sending EOD alert: {len(rows)} open trades")
 
     # Route through the central Telegram chokepoint so the report is FQDN-normalized AND
-    # persisted to telegram_outbox for the v3 Reports portal. bypass_router: scheduled report.
+    # persisted to telegram_outbox for the v3 Reports portal. Intent P2: scheduled report, not an interrupt.
     from telegram_alert import send_telegram
-    ok = bool(send_telegram(message, bypass_router=True))
+    ok = bool(send_telegram(message, priority="P2", producer="eod_open_trade_alert"))
     try:
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if root not in sys.path:

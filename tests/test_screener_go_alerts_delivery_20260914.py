@@ -24,12 +24,13 @@ GOOD = {"symbol": "ARMP", "run_label": "0900", "scanned_at": "2026-09-14T14:08:0
         "disqualified": False, "source": "screener"}
 
 
-def test_main_sends_with_the_router_bypassed_and_records_only_real_sends(monkeypatch, tmp_path):
+def test_main_sends_as_a_p1_intent_and_records_only_real_sends(monkeypatch, tmp_path):
     calls = []
     fake = types.ModuleType("telegram_alert")
 
     def send_telegram(msg, bypass_router=False, message_class="operator_alert", **kw):
-        calls.append({"bypass_router": bypass_router, "message_class": message_class, "msg": msg})
+        calls.append({"bypass_router": bypass_router, "message_class": message_class, "msg": msg,
+                      "priority": kw.get("priority")})
         return True
     fake.send_telegram = send_telegram
     monkeypatch.setitem(sys.modules, "telegram_alert", fake)
@@ -47,7 +48,8 @@ def test_main_sends_with_the_router_bypassed_and_records_only_real_sends(monkeyp
     )
     monkeypatch.setattr(sys, "argv", ["screener_go_alerts.py", "--send", "--session", "2026-09-14"])
     assert g.main() == 0
-    assert calls and calls[0]["bypass_router"] is True
+    # 2026-10-10: a declared P1 intent replaces bypass_router=True (never text-classified, capped or held).
+    assert calls and calls[0]["priority"] == "P1" and calls[0]["bypass_router"] is False
     assert "2026-09-14:ARMP" in (tmp_path / "sent.json").read_text()
 
 
