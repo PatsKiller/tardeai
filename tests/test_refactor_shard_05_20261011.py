@@ -257,6 +257,7 @@ def test_own_allowlist_source_shape_and_no_broker_names():
     for lane in CRON_PROOF:
         entry = lanes[lane]
         assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
+        assert entry["env_evidence"] and entry["env_report_reason"]
         assert not any(any(t in n.upper() for t in ("ALPACA", "SCHWAB", "MOOMOO", "BROKER", "IBKR", "SNAPTRADE"))
                        for n in entry["env_names"])
         assert rows[lane]["scheduler"]["wave"] == "R2-05" and rows[lane]["dispatch"]["wave"] == "W4"
