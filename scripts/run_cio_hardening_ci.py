@@ -3635,6 +3635,8 @@ GATES = [
             "tests/test_maturity_score_independent_20261007.py",
             "tests/test_n8n_coordination_gateway_20261007.py",
             "tests/test_n8n_research_intake_20261008.py",
+            # Wave B CC orchestrate (2026-10-11): research-intake + watch-refresh emit helpers + spotlights.
+            "tests/test_n8n_cc_wave_b_emit_20261011.py",
             "tests/test_n8n_coordination_ledger_20261007.py",
             "tests/test_n8n_gateway_http_20261007.py",
             "tests/test_n8n_lab_watchdog_20261007.py",
