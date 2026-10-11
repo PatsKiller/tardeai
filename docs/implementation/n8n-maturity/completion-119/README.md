@@ -48,6 +48,10 @@ The fourth profile at `7fb6f1648` stopped on a host-crontab call from a Python c
 
 The registry CLI test helper now requires an explicit discovery fixture. Its source-report test also uses a scratch registry and real fixture output, retaining the QUIET/ok assertions and adding a nonvacuous orphan/freshness/schema control. An intermediate registry-suite attempt reached production signal paths and was stopped; it remains rejected. The corrected committed test head passed all 42 registry tests with no capability refusals and all owned children reaped. No product gate or guard changed.
 
+The fifth profile at `b41f5c776` stopped at a further child crontab probe, exit -15, with owned children reaped. The registered repricer-registry CLI test still ran `--json` without discovery; its live-host claim cannot belong to a source-only suite. A scratch scheduler observation is required instead, retaining undeclared-row and restoration checks. This correction concerns registry fixtures only; no repricer business or broker code is investigated or changed. The killed child's exact argv was not captured, so attribution is based on the source call and gate ordering. The fifth attempt remains rejected.
+
+The repricer declaration tests now require independent synthetic scheduler observations. Removing its row still fails, restoring it passes, and injecting an unrelated unknown job fails with that exact undeclared entry. All four tests passed on their corrected committed head under unchanged barriers, with no refusals and all owned children reaped. The assembled full profile remains the final acceptance requirement.
+
 No frontend or live browser acceptance is claimed: this train changes lane source and test integration, not Command Center or runtime. Deployment and natural-fire evidence remain separate prerequisites.
 
 ## Owner actions and rollback
