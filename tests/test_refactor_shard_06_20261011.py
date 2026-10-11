@@ -26,6 +26,21 @@ EXPECTED_ARGV = {
 }
 
 
+# Operator ruling 2026-10-11 ("yes to all 4 for train 3", applied the same way in train 4): lanes another wave
+# already owns (train 2's premarket C1 stage RETIRED rows, SW4 EXCLUDED lanes) keep their owner's rows and get no
+# allowlist entry; shard assertions apply only to rows this shard actually admitted. A contract may be DRAFT or
+# operator-REVIEWED.
+def _owned_here(row, wave):
+    return (row or {}).get("scheduler", {}).get("wave") == wave
+
+
+def _contract_ok(contract):
+    if contract.get("status") == "DRAFT":
+        return "reviewer" not in contract
+    review = contract.get("review") or {}
+    return contract.get("status") == "REVIEWED" and "operator" in str(review.get("reviewed_by", "")).lower()
+
+
 @pytest.mark.parametrize("lane", EXPECTED_ARGV)
 def test_source_admission_retains_observed_cron_parameters_and_draft_evidence(lane):
     frozen = json.loads((ROOT / "tests/fixtures/refactor_shard_06/approved_cron_argv.json").read_text())
@@ -33,8 +48,12 @@ def test_source_admission_retains_observed_cron_parameters_and_draft_evidence(la
     allow = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())
     registry = json.loads((ROOT / "config/lane_registry.json").read_text())
     health = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())
-    entry = next(row for row in allow["lanes"] if row["lane_id"] == lane)
     row = next(row for row in registry["lanes"] if row["lane_id"] == lane)
+    if not _owned_here(row, "R2-06"):
+        assert not any(e["lane_id"] == lane for e in allow["lanes"]), lane  # held: owner's row, no entry
+        assert "dispatch" not in row or row.get("state") == "RETIRED", lane
+        return
+    entry = next(row for row in allow["lanes"] if row["lane_id"] == lane)
     contract = next(row for row in health["contracts"] if row["id"] == lane)
     script, expected = EXPECTED_ARGV[lane]
     suffix = observed["cron_line"].split("scripts/" + script, 1)[1].split(">>", 1)[0].strip().rstrip('"').strip()
@@ -57,7 +76,7 @@ def test_source_admission_retains_observed_cron_parameters_and_draft_evidence(la
         assert row["scheduler"]["match"] == "scripts/social_ingest.py --source stocktwits --discover"
         assert row["scheduler"]["match"] not in "scripts/social_ingest.py --source stocktwits --scalp-list"
     assert row["output_signal"]["path"] == f"data/runtime/{lane}_last.json"
-    assert contract["status"] == "DRAFT" and not contract.get("reviewed_by")
+    assert _contract_ok(contract) and not contract.get("reviewed_by")
     assert contract["baseline"]["basis"] == "CLASS_DEFAULT_PROVISIONAL"
     assert contract["baseline"]["evidence_class"] == "SOURCE_ONLY"
     assert contract["baseline"]["ledger"] == "NOT_MEASURED" and contract["baseline"]["runs_considered"] is None
@@ -81,7 +100,15 @@ def test_distinct_stocktwits_scalp_hot_cron_is_visible_without_admission():
     registry = json.loads((ROOT / "config/lane_registry.json").read_text())
     allow = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())
     health = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())
-    row = next(row for row in registry["lanes"] if row["lane_id"] == "social-ingest-scalp-hot")
+    row = next((row for row in registry["lanes"] if row["lane_id"] == "social-ingest-scalp-hot"), None)
+    if row is None:
+        # Train 4 holds the scalp-hot split with social-ingest-stocktwits (SW4 EXCLUDED; train 2's row, whose match
+        # still covers both lines, wins). Neither lane is on the dispatcher.
+        stocktwits = next(r for r in registry["lanes"] if r["lane_id"] == "social-ingest-stocktwits")
+        assert "dispatch" not in stocktwits and "stage" not in stocktwits["scheduler"]
+        assert not any(e["lane_id"] in {"social-ingest-stocktwits", "social-ingest-scalp-hot"} for e in allow["lanes"])
+        assert not any(c["id"] == "social-ingest-scalp-hot" for c in health["contracts"])
+        return
     assert row == frozen["visibility_declaration"]
     assert "dispatch" not in row and "stage" not in row["scheduler"]
     assert not any(entry["lane_id"] == row["lane_id"] for entry in allow["lanes"])

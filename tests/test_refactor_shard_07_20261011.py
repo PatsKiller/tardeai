@@ -207,9 +207,28 @@ def test_fake_real_failure_preserves_previous_success_and_exception(lane, name, 
     assert receipt["error"] == "RuntimeError"
 
 
+# Operator ruling 2026-10-11 ("yes to all 4 for train 3", applied the same way in train 4): lanes another wave
+# already owns (train 2's premarket C1 stage RETIRED rows, SW4 EXCLUDED lanes) keep their owner's rows and get no
+# allowlist entry; shard assertions apply only to rows this shard actually admitted. A contract may be DRAFT or
+# operator-REVIEWED.
+def _owned_here(row, wave):
+    return (row or {}).get("scheduler", {}).get("wave") == wave
+
+
+def _contract_ok(contract):
+    if contract.get("status") == "DRAFT":
+        return "reviewer" not in contract
+    review = contract.get("review") or {}
+    return contract.get("status") == "REVIEWED" and "operator" in str(review.get("reviewed_by", "")).lower()
+
+
 @pytest.mark.parametrize("lane,name,argv", SPECS)
 def test_allowlist_exact_arguments_and_no_broker_environment(lane, name, argv):
     doc = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_bytes())
+    rows = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_bytes())["lanes"]}
+    if not _owned_here(rows.get(lane), "R2-07"):
+        assert not any(row["lane_id"] == lane for row in doc["lanes"]), lane  # held: owner's row, no entry
+        return
     entry = next(row for row in doc["lanes"] if row["lane_id"] == lane)
     assert entry["command"] == ["$PY", f"scripts/{name}.py", *argv]
     assert entry["dry_run_arg"] == ["--dry-run"] and entry["live_arg"] is None

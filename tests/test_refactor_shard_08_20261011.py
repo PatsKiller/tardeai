@@ -189,9 +189,28 @@ def test_neutral_cwd_offline_cli(state, lane, name, argv):
     assert result.stdout.startswith("DRY-RUN " + lane + ":") and snapshot(state) == before
 
 
+# Operator ruling 2026-10-11 ("yes to all 4 for train 3", applied the same way in train 4): lanes another wave
+# already owns (train 2's premarket C1 stage RETIRED rows, SW4 EXCLUDED lanes) keep their owner's rows and get no
+# allowlist entry; shard assertions apply only to rows this shard actually admitted. A contract may be DRAFT or
+# operator-REVIEWED.
+def _owned_here(row, wave):
+    return (row or {}).get("scheduler", {}).get("wave") == wave
+
+
+def _contract_ok(contract):
+    if contract.get("status") == "DRAFT":
+        return "reviewer" not in contract
+    review = contract.get("review") or {}
+    return contract.get("status") == "REVIEWED" and "operator" in str(review.get("reviewed_by", "")).lower()
+
+
 @pytest.mark.parametrize("lane,name,argv", CASES)
 def test_allowlist_keeps_exact_arguments_and_original_lock(lane, name, argv):
     doc = json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())
+    rows = {r["lane_id"]: r for r in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
+    if not _owned_here(rows.get(lane), "R2-08"):
+        assert not any(e["lane_id"] == lane for e in doc["lanes"]), lane  # held: owner's row, no entry
+        return
     entry = next(e for e in doc["lanes"] if e["lane_id"] == lane)
     assert entry["command"] == PROOF[lane]["command"]
     assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]

@@ -250,11 +250,29 @@ def test_weekly_profile_partial_failure_keeps_exit_zero_without_advancing_ok(sta
     assert receipt["status"] == "failed" and receipt["exit"] == 0 and receipt["ok_at"] == old
 
 
+# Operator ruling 2026-10-11 ("yes to all 4 for train 3", applied the same way in train 4): lanes another wave
+# already owns (train 2's premarket C1 stage RETIRED rows, SW4 EXCLUDED lanes) keep their owner's rows and get no
+# allowlist entry; shard assertions apply only to rows this shard actually admitted. A contract may be DRAFT or
+# operator-REVIEWED.
+def _owned_here(row, wave):
+    return (row or {}).get("scheduler", {}).get("wave") == wave
+
+
+def _contract_ok(contract):
+    if contract.get("status") == "DRAFT":
+        return "reviewer" not in contract
+    review = contract.get("review") or {}
+    return contract.get("status") == "REVIEWED" and "operator" in str(review.get("reviewed_by", "")).lower()
+
+
 def test_own_allowlist_source_shape_and_no_broker_names():
     lanes = {x["lane_id"]: x for x in json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     rows = {x["lane_id"]: x for x in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
     contracts = {x["id"]: x for x in json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]}
     for lane in CRON_PROOF:
+        if not _owned_here(rows.get(lane), "R2-05"):
+            assert lane not in lanes, lane  # held: the owner's row wins, no allowlist entry
+            continue
         entry = lanes[lane]
         assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
         assert entry["env_evidence"] and entry["env_report_reason"]
@@ -262,7 +280,7 @@ def test_own_allowlist_source_shape_and_no_broker_names():
                        for n in entry["env_names"])
         assert rows[lane]["scheduler"]["wave"] == "R2-05" and rows[lane]["dispatch"]["wave"] == "W4"
         contract = contracts[lane]
-        assert contract["status"] == "DRAFT" and contract["baseline"]["runs_considered"] is None
+        assert _contract_ok(contract) and contract["baseline"]["runs_considered"] is None
 
 
 @pytest.mark.parametrize("lane,name,argv", CASES)
@@ -279,7 +297,8 @@ def test_frozen_argv_matches_observed_cron_arguments():
     proof = json.loads((ROOT / "tests/fixtures/refactor_shard_05/cron_argv.json").read_text())
     entries = {x["lane_id"]: x for x in json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     for lane in CRON_PROOF:
-        assert entries[lane]["command"] == proof[lane]["command"]
+        if lane in entries:  # held lanes (owner's row kept) have no entry; the cron proof below still applies
+            assert entries[lane]["command"] == proof[lane]["command"]
         assert proof[lane]["original_line"].startswith(proof[lane]["cron"] + " ")
         tokens = shlex.split(proof[lane]["original_line"])
         if "bash" in tokens and "-c" in tokens:
