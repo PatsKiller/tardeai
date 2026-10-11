@@ -2,6 +2,14 @@
 # CURRENT-pinned FREE_FIRST_ONLY circulation. Never dispatches a paid provider.
 # Invoked by tradeai-free-first-circulation.service after flock -n.
 set -euo pipefail
+DRY_RUN=0
+for arg in "$@"; do
+  case "$arg" in --dry-run) DRY_RUN=1 ;; *) echo "unknown argument: $arg" >&2; exit 2 ;; esac
+done
+if (( DRY_RUN )); then
+  echo "DRY-RUN free-first-circulation: would run the existing bounded free-first circulation with cursor and internal singleton lock; no model, state or files; inputs NOT_MEASURED"
+  exit 0
+fi
 ROOT="${TRADEAI_CURRENT:-/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT}"
 PY="${TRADEAI_VENV_PYTHON:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python}"
 cd "$ROOT"
