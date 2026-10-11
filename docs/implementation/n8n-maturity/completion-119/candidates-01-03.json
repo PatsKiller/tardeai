@@ -14,7 +14,7 @@
   "source_entrypoints_changed": 16,
   "operational_admissions_added": 0,
   "contracts_reviewed": 0,
-  "source_acceptance": "BLOCKED_TEST_REFUSAL_AND_OWNER_BOUNDARIES",
+  "source_acceptance": "HELD_FINAL_TRAIN_CI_AND_OWNER_BOUNDARIES",
   "rows": [
     {
       "lane_id": "cio-nightly-reflection",
@@ -35,7 +35,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -67,7 +67,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -147,7 +147,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Shared run_once source belongs integrator. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
+        "Integrator shared run_once offline CLI is available; authorization/queue execution is not admitted. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -190,7 +190,9 @@
         "cron_expression": null,
         "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
         "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
-      }
+      },
+      "shared_offline_cli_available": true,
+      "shared_source_commit": "910fbe0ab1ff7918fb7bc9d0ecb4bbc848e8b9b3"
     },
     {
       "lane_id": "hermes-subject-enhance-dispatch",
@@ -255,6 +257,15 @@
         "required_reviews": [
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [],
+        "known_internal_lock_source_only": "/tmp/hermes_subject_enhance_dispatch.lock",
+        "proposed_uninstalled_lock": "/tmp/hermes_subject_enhance_dispatch.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -319,6 +330,15 @@
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
           "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/health-agent-llm-review.lock",
+        "action": "NEEDS_OPERATOR_GRANT_IF_CURRENT_CRON_HAS_NO_LOCK",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -391,6 +411,17 @@
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
           "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/proposal_llm_review_worker.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/proposal_llm_review_worker.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -468,7 +499,8 @@
         "evidence_ref": "scripts/shadow_batch_generator.py:54 STATUS_FILE written at :316 on generating runs (NOT on skipped_locked early return :403); host mtime 2026-10-04T10:17:01 (weekday runs currently skipped_locked per logs/shadow_batch.log)"
       },
       "remaining": [
-        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+        "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+        "Historical weekly cron sources the whole rendered environment and has a distinct outer weekly lock; current cron/env/import closure and exact lock ownership need operator reconciliation before admission."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -523,8 +555,20 @@
         "reviewer": null,
         "automatic_promotion": false,
         "required_reviews": [
-          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
+          "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
+          "Historical weekly cron sources the whole rendered environment and has a distinct outer weekly lock; current cron/env/import closure and exact lock ownership need operator reconciliation before admission."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/shadow_batch_weekly.lock"
+        ],
+        "known_internal_lock_source_only": "/tmp/shadow_batch.lock",
+        "proposed_uninstalled_lock": "/tmp/shadow_batch.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -546,7 +590,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -578,7 +622,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -707,6 +751,17 @@
         "required_reviews": [
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/directive_kw_enhancer.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/directive_kw_enhancer.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -769,6 +824,17 @@
         "required_reviews": [
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/hermes_synthesizer.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/hermes_synthesizer.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -843,6 +909,18 @@
         "required_reviews": [
           "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/tradeai_market_regime_collector.lock",
+          "/tmp/tradeai_market_regime_classifier.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/tradeai_market_regime_collector.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -921,6 +999,17 @@
         "required_reviews": [
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/weekly_trade_review.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/weekly_trade_review.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -1001,6 +1090,17 @@
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
           "Legacy direct Anthropic route remains ungoverned; caller/task/tier authority must be reviewed before n8n admission."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/monthly_trade_review.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/monthly_trade_review.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -1079,6 +1179,17 @@
         "required_reviews": [
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/overnight_trade_review.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/overnight_trade_review.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -1141,6 +1252,17 @@
           "Registered per-process/per-tier governed route, full child closure and approved authority remain pending; no model/provider choice or calls in this source train.",
           "Retired local-model implementation remains a legacy owner blocker; this source change does not restore Ollama."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/lookthrough_themes.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/lookthrough_themes.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -1212,6 +1334,17 @@
         "required_reviews": [
           "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/sec_fundamentals_ingest.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/sec_fundamentals_ingest.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     },
     {
@@ -1260,7 +1393,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -1312,7 +1445,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -1370,7 +1503,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -1408,7 +1541,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -1463,7 +1596,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -1495,7 +1628,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -1553,7 +1686,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -1589,7 +1722,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -1641,7 +1774,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -1673,7 +1806,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -1767,7 +1900,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Shared run_once source belongs integrator. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
+        "Integrator shared run_once offline CLI is available; authorization/queue execution is not admitted. Timer-native queue contract/operator auth must remain intact; no new flag or claim authority."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -1810,7 +1943,9 @@
         "cron_expression": null,
         "conversion_rule": "No fabricated cron. Preserve OnCalendar timezone/DST, persistence, jitter and monotonic start-after-activation semantics. Relative timers stay systemd-owned unless same semantics are explicitly reviewed.",
         "independence": "Keep watchdog/recovery and operator-auth queue runners independent; design grants no actor/recovery/send authority."
-      }
+      },
+      "shared_offline_cli_available": true,
+      "shared_source_commit": "910fbe0ab1ff7918fb7bc9d0ecb4bbc848e8b9b3"
     },
     {
       "lane_id": "tradeai-maturity-feeds",
@@ -1832,7 +1967,7 @@
       },
       "remaining": [
         "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-        "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+        "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
       ],
       "evidence_class": "SOURCE_ONLY",
       "runtime_status": "NOT_MEASURED",
@@ -1865,7 +2000,7 @@
         "automatic_promotion": false,
         "required_reviews": [
           "Timer-native admission requires operator ratification; installed timer/unit/lock/output drift remains NOT_MEASURED.",
-          "Full read/write/import closure and candidate contract require owner review; targeted test profile was stopped by production-access refusal."
+          "Full read/write/import closure and timer candidate contract require owner review; isolated CLI/receipt tests pass; final-train CI remains pending."
         ]
       },
       "timer_native_design": {
@@ -1993,7 +2128,28 @@
         "required_reviews": [
           "Existing source preparation retained; exact historical argv/lock, data-source ownership and import/env closure require integration review."
         ]
+      },
+      "lock_candidate": {
+        "evidence_class": "STALE_HISTORICAL",
+        "current_host_lock": "NOT_MEASURED",
+        "historical_outer_locks": [
+          "/tmp/opening_intel.lock"
+        ],
+        "known_internal_lock_source_only": null,
+        "proposed_uninstalled_lock": "/tmp/opening_intel.lock",
+        "action": "REUSE_EXISTING_AUTHORITY_AFTER_CURRENT_MEASUREMENT",
+        "shadow_lock": "DRY_RUN_ISOLATED_FROM_LIVE_LOCK; integration executor proof required"
       }
     }
-  ]
+  ],
+  "source_validation_head": "97d2e8500f65eb661bf1f4e6909b2cbb22f27ffa",
+  "origin_main_measured_at_validation": "c15b7b98caa3909665ac5abb878f02eb558d6ff6",
+  "shared_source_commit": "910fbe0ab1ff7918fb7bc9d0ecb4bbc848e8b9b3",
+  "targeted_tests": {
+    "evidence_class": "TEST_ONLY",
+    "passed": 136,
+    "exit": 0,
+    "refusals": 0,
+    "proof": "VALIDATION_01_03.json"
+  }
 }
